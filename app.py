@@ -2,8 +2,55 @@ from sanic import Sanic
 from sanic import response
 from sanic_jinja2 import SanicJinja2
 import sqlite3
+from pathlib import Path
 from functools import wraps
 import json
+import hashlib
+
+app_root = Path(__file__).parent
+
+BUILD_METADATA = 'build-metadata.json'
+DB_GLOBS = ('*.db', '*.sqlite', '*.sqlite3')
+HASH_BLOCK_SIZE = 1024 * 1024
+
+
+def ensure_build_metadata(regenerate=False):
+    build_metadata = app_root / BUILD_METADATA
+    if build_metadata.exists() and not regenerate:
+        json.loads(build_metadata.read_text())
+    metadata = {}
+    for glob in DB_GLOBS:
+        for path in app_root.glob(glob):
+            name = path.stem
+            if name in metadata:
+                raise Exception('Multiple files with same stem %s' % name)
+            # Calculate hash, efficiently
+            m = hashlib.sha256()
+            with path.open('rb') as fp:
+                while True:
+                    data = fp.read(HASH_BLOCK_SIZE)
+                    if not data:
+                        break
+                    m.update(data)
+            # List tables and their row counts
+            tables = {}
+            with sqlite3.connect('file:{}?immutable=1'.format(path.name), uri=True) as conn:
+                conn.row_factory = sqlite3.Row
+                table_names = [
+                    r['name']
+                    for r in conn.execute('select * from sqlite_master where type="table"')
+                ]
+                for table in table_names:
+                    tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
+
+            metadata[name] = {
+                'hash': m.hexdigest(),
+                'file': path.name,
+                'tables': tables,
+            }
+    build_metadata.write_text(json.dumps(metadata, indent=4))
+    return metadata
+
 
 app = Sanic(__name__)
 jinja = SanicJinja2(app)
@@ -37,6 +84,7 @@ async def index(request, sql=None):
     return jinja.render('index.html', request,
         headers=headers,
         rows=list(rows),
+        metadata=json.dumps(ensure_build_metadata(True), indent=2)
     )
 
 

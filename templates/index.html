@@ -1,0 +1,20 @@
+<style>
+td {
+    white-space: pre;
+    vertical-align: top;
+    border-top: 1px solid #666;
+    padding: 2px 4px;
+}
+</style>
+<table>
+    <tr>
+        {% for header in headers %}<th scope="col">{{ header }}</th>{% endfor %}
+    </tr>
+    {% for row in rows %}
+        <tr>
+            {% for td in row %}
+                <td>{{ td }}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+</table>

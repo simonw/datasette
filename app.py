@@ -2,6 +2,7 @@ from sanic import Sanic
 from sanic import response
 from sanic_jinja2 import SanicJinja2
 import sqlite3
+from functools import wraps
 import json
 
 app = Sanic(__name__)
@@ -12,7 +13,21 @@ conn = sqlite3.connect('file:northwind.db?immutable=1', uri=True)
 conn.row_factory = sqlite3.Row
 
 
+def sqlerrors(fn):
+    @wraps(fn)
+    async def inner(*args, **kwargs):
+        try:
+            return await fn(*args, **kwargs)
+        except sqlite3.OperationalError as e:
+            return response.json({
+                'ok': False,
+                'error': str(e),
+            })
+    return inner
+
+
 @app.route('/')
+@sqlerrors
 async def index(request, sql=None):
     sql = sql or request.args.get('sql', '')
     if not sql:
@@ -26,6 +41,7 @@ async def index(request, sql=None):
 
 
 @app.route('/<table:[a-zA-Z0-9].*>.json')
+@sqlerrors
 async def table_json(request, table):
     sql = 'select * from {} limit 20'.format(table)
     return response.json([
@@ -34,6 +50,7 @@ async def table_json(request, table):
 
 
 @app.route('/<table:[a-zA-Z0-9].*>')
+@sqlerrors
 async def table(request, table):
     sql = 'select * from {} limit 20'.format(table)
     return await index(request, sql)

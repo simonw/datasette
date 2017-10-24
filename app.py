@@ -8,6 +8,7 @@ from pathlib import Path
 from functools import wraps
 import json
 import hashlib
+import sys
 
 app_root = Path(__file__).parent
 
@@ -191,4 +192,7 @@ def resolve_db_name(db_name, **kwargs):
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8006)
+    if '--build' in sys.argv:
+        ensure_build_metadata(True)
+    else:
+        app.run(host="0.0.0.0", port=8006)

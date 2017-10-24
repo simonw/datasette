@@ -137,7 +137,8 @@ class DatabaseView(BaseView):
 
     def data(self, request, name, hash):
         conn = get_conn(name)
-        rows = conn.execute('select * from sqlite_master')
+        sql = request.args.get('sql') or 'select * from sqlite_master'
+        rows = conn.execute(sql)
         columns = [r[0] for r in rows.description]
         return {
             'database': name,

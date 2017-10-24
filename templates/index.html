@@ -1,21 +1,4 @@
-<style>
-td {
-    white-space: pre;
-    vertical-align: top;
-    border-top: 1px solid #666;
-    padding: 2px 4px;
-}
-</style>
-<pre>{{ metadata }}</pre>
-<table>
-    <tr>
-        {% for header in headers %}<th scope="col">{{ header }}</th>{% endfor %}
-    </tr>
-    {% for row in rows %}
-        <tr>
-            {% for td in row %}
-                <td>{{ td }}</td>
-            {% endfor %}
-        </tr>
-    {% endfor %}
-</table>
+<h1>Database{% if databases.keys()|length != 1 %}s{% endif %}</h1>
+{% for name, info in databases.items() %}
+    <p><a href="{{ name}}-{{ info.hash|truncate(7, end='') }}">{{ name }}</a></p>
+{% endfor %}

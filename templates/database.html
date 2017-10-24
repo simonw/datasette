@@ -1,0 +1,27 @@
+<h1>{{ database }}</h1>
+
+<style>
+td {
+    vertical-align: top;
+    border-top: 1px solid #666;
+    padding: 2px 4px;
+}
+</style>
+<table>
+    <tr>
+        {% for header in headers %}<th scope="col">{{ header }}</th>{% endfor %}
+    </tr>
+    {% for row in rows %}
+        <tr>
+            {% for td in row %}
+                <td>
+                    {% if loop.index == 2 and row.type == "table" %}
+                        <a href="/{{ database }}/{{ td }}">{{ td }}</a>
+                    {% else %}
+                        {{ td }}
+                    {% endif %}
+                </td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+</table>

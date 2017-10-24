@@ -1,5 +1,6 @@
 from sanic import Sanic
 from sanic import response
+from sanic.exceptions import NotFound
 from sanic_jinja2 import SanicJinja2
 import sqlite3
 from pathlib import Path
@@ -12,6 +13,19 @@ app_root = Path(__file__).parent
 BUILD_METADATA = 'build-metadata.json'
 DB_GLOBS = ('*.db', '*.sqlite', '*.sqlite3')
 HASH_BLOCK_SIZE = 1024 * 1024
+
+conns = {}
+
+
+def get_conn(name):
+    if name not in conns:
+        info = ensure_build_metadata()[name]
+        conns[name] = sqlite3.connect(
+            'file:{}?immutable=1'.format(info['file']),
+            uri=True
+        )
+        conns[name].row_factory = sqlite3.Row
+    return conns[name]
 
 
 def ensure_build_metadata(regenerate=False):
@@ -55,10 +69,6 @@ def ensure_build_metadata(regenerate=False):
 app = Sanic(__name__)
 jinja = SanicJinja2(app)
 
-#conn = sqlite3.connect('file:flights.db?immutable=1', uri=True)
-conn = sqlite3.connect('file:northwind.db?immutable=1', uri=True)
-conn.row_factory = sqlite3.Row
-
 
 def sqlerrors(fn):
     @wraps(fn)
@@ -76,32 +86,85 @@ def sqlerrors(fn):
 @app.route('/')
 @sqlerrors
 async def index(request, sql=None):
-    sql = sql or request.args.get('sql', '')
-    if not sql:
-        sql = 'select * from sqlite_master'
-    rows = conn.execute(sql)
-    headers = [r[0] for r in rows.description]
-    return jinja.render('index.html', request,
-        headers=headers,
-        rows=list(rows),
-        metadata=json.dumps(ensure_build_metadata(True), indent=2)
+    databases = ensure_build_metadata(True)
+    return jinja.render(
+        'index.html',
+        request,
+        databases=databases,
     )
 
 
-@app.route('/<table:[a-zA-Z0-9].*>.json')
-@sqlerrors
-async def table_json(request, table):
-    sql = 'select * from {} limit 20'.format(table)
-    return response.json([
-        dict(r) for r in conn.execute(sql)
-    ])
+@app.route('/favicon.ico')
+async def favicon(request):
+    return response.text('')
 
 
-@app.route('/<table:[a-zA-Z0-9].*>')
+@app.route('/<db_name:[^/]+$>')
 @sqlerrors
-async def table(request, table):
-    sql = 'select * from {} limit 20'.format(table)
-    return await index(request, sql)
+async def database(request, db_name):
+    name, hash, should_redirect = resolve_db_name(db_name)
+    if should_redirect:
+        return response.redirect(should_redirect)
+    conn = get_conn(name)
+    rows = conn.execute('select * from sqlite_master')
+    headers = [r[0] for r in rows.description]
+    return jinja.render(
+        'database.html',
+        request,
+        database=name,
+        database_hash=hash,
+        headers=headers,
+        rows=rows,
+    )
+
+
+@app.route('/<db_name:[^/]+>/<table:[^/]+$>')
+@sqlerrors
+async def table(request, db_name, table):
+    # The name should have the hash - if it
+    # does not, serve a redirect
+    name, hash, should_redirect = resolve_db_name(db_name)
+    if should_redirect:
+        return response.redirect(should_redirect + '/' + table)
+    conn = get_conn(name)
+    rows = conn.execute('select * from {} limit 20'.format(table))
+    headers = [r[0] for r in rows.description]
+    return jinja.render(
+        'table.html',
+        request,
+        database=name,
+        database_hash=hash,
+        table=table,
+        headers=headers,
+        rows=rows,
+    )
+
+
+def resolve_db_name(db_name):
+    databases = ensure_build_metadata()
+    hash = None
+    name = None
+    if '-' in db_name:
+        # Might be name-and-hash, or might just be
+        # a name with a hyphen in it
+        name, hash = db_name.rsplit('-', 1)
+        if name not in databases:
+            # Try the whole name
+            name = db_name
+            hash = None
+    else:
+        name = db_name
+    # Verify the hash
+    try:
+        info = databases[name]
+    except KeyError:
+        raise NotFound()
+    expected = info['hash'][:7]
+    if expected != hash:
+        return name, expected, '/{}-{}'.format(
+            name, expected,
+        )
+    return name, expected, None
 
 
 if __name__ == '__main__':

@@ -1,4 +1,9 @@
 build-metadata.json
+datasets.json
+
+# SQLite databases
+*.db
+*.sqlite
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -102,5 +107,3 @@ ENV/
 # mypy
 .mypy_cache/
 
-# SQLite databases
-*.db

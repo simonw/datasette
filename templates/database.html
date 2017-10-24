@@ -9,14 +9,14 @@ td {
 </style>
 <table>
     <tr>
-        {% for header in headers %}<th scope="col">{{ header }}</th>{% endfor %}
+        {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
     </tr>
     {% for row in rows %}
         <tr>
             {% for td in row %}
                 <td>
                     {% if loop.index == 2 and row.type == "table" %}
-                        <a href="/{{ database }}/{{ td }}">{{ td }}</a>
+                        <a href="/{{ database }}-{{ database_hash }}/{{ td }}">{{ td }}</a>
                     {% else %}
                         {{ td }}
                     {% endif %}

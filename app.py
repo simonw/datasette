@@ -1,6 +1,7 @@
 from sanic import Sanic
 from sanic import response
 from sanic.exceptions import NotFound
+from sanic.views import HTTPMethodView
 from sanic_jinja2 import SanicJinja2
 import sqlite3
 from pathlib import Path
@@ -15,6 +16,10 @@ DB_GLOBS = ('*.db', '*.sqlite', '*.sqlite3')
 HASH_BLOCK_SIZE = 1024 * 1024
 
 conns = {}
+
+
+app = Sanic(__name__)
+jinja = SanicJinja2(app)
 
 
 def get_conn(name):
@@ -66,8 +71,26 @@ def ensure_build_metadata(regenerate=False):
     return metadata
 
 
-app = Sanic(__name__)
-jinja = SanicJinja2(app)
+class BaseView(HTTPMethodView):
+    template = None
+
+    async def get(self, request, db_name, **kwargs):
+        name, hash, should_redirect = resolve_db_name(db_name)
+        if should_redirect:
+            return response.redirect(should_redirect)
+        try:
+            as_json = kwargs.pop('as_json')
+        except KeyError:
+            as_json = False
+        data = self.data(request, name, hash, **kwargs)
+        if as_json:
+            return response.json(data)
+        else:
+            return jinja.render(
+                self.template,
+                request,
+                **data,
+            )
 
 
 def sqlerrors(fn):
@@ -99,45 +122,39 @@ async def favicon(request):
     return response.text('')
 
 
-@app.route('/<db_name:[^/]+$>')
-@sqlerrors
-async def database(request, db_name):
-    name, hash, should_redirect = resolve_db_name(db_name)
-    if should_redirect:
-        return response.redirect(should_redirect)
-    conn = get_conn(name)
-    rows = conn.execute('select * from sqlite_master')
-    headers = [r[0] for r in rows.description]
-    return jinja.render(
-        'database.html',
-        request,
-        database=name,
-        database_hash=hash,
-        headers=headers,
-        rows=rows,
-    )
+class DatabaseView(BaseView):
+    template = 'database.html'
+
+    def data(self, request, name, hash):
+        conn = get_conn(name)
+        rows = conn.execute('select * from sqlite_master')
+        columns = [r[0] for r in rows.description]
+        return {
+            'database': name,
+            'database_hash': hash,
+            'rows': rows,
+            'columns': columns,
+        }
 
 
-@app.route('/<db_name:[^/]+>/<table:[^/]+$>')
-@sqlerrors
-async def table(request, db_name, table):
-    # The name should have the hash - if it
-    # does not, serve a redirect
-    name, hash, should_redirect = resolve_db_name(db_name)
-    if should_redirect:
-        return response.redirect(should_redirect + '/' + table)
-    conn = get_conn(name)
-    rows = conn.execute('select * from {} limit 20'.format(table))
-    headers = [r[0] for r in rows.description]
-    return jinja.render(
-        'table.html',
-        request,
-        database=name,
-        database_hash=hash,
-        table=table,
-        headers=headers,
-        rows=rows,
-    )
+class TableView(BaseView):
+    template = 'table.html'
+
+    def data(self, request, name, hash, table):
+        conn = get_conn(name)
+        rows = conn.execute('select * from {} limit 20'.format(table))
+        columns = [r[0] for r in rows.description]
+        return {
+            'database': name,
+            'database_hash': hash,
+            'table': table,
+            'rows': rows,
+            'columns': columns,
+        }
+
+
+app.add_route(DatabaseView.as_view(), '/<db_name:[^/]+?><as_json:(.json)?$>')
+app.add_route(TableView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.json)?$>')
 
 
 def resolve_db_name(db_name):

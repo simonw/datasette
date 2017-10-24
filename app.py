@@ -77,14 +77,19 @@ def ensure_build_metadata(regenerate=False):
 class BaseView(HTTPMethodView):
     template = None
 
+    def redirect(self, request, path):
+        if request.query_string:
+            path = '{}?{}'.format(
+                path, request.query_string
+            )
+        r = response.redirect(path)
+        r.headers['Link'] = '<{}>; rel=preload'.format(path)
+        return r
+
     async def get(self, request, db_name, **kwargs):
         name, hash, should_redirect = resolve_db_name(db_name, **kwargs)
         if should_redirect:
-            r = response.redirect(should_redirect)
-            r.headers['Link'] = '<{}>; rel=preload'.format(
-                should_redirect
-            )
-            return r
+            return self.redirect(request, should_redirect)
         try:
             as_json = kwargs.pop('as_json')
         except KeyError:

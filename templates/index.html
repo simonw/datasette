@@ -1,4 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Databases{% endblock %}
+
+{% block content %}
 <h1>Database{% if databases.keys()|length != 1 %}s{% endif %}</h1>
 {% for name, info in databases.items() %}
     <p><a href="{{ name}}-{{ info.hash|truncate(7, end='') }}">{{ name }}</a></p>
 {% endfor %}
+
+{% endblock %}

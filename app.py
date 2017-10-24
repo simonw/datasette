@@ -86,7 +86,13 @@ class BaseView(HTTPMethodView):
             as_json = kwargs.pop('as_json')
         except KeyError:
             as_json = False
-        data = self.data(request, name, hash, **kwargs)
+        try:
+            data = self.data(request, name, hash, **kwargs)
+        except sqlite3.OperationalError as e:
+            data = {
+                'ok': False,
+                'error': str(e),
+            }
         if as_json:
             r = response.json(data)
             r.headers['Access-Control-Allow-Origin'] = '*'
@@ -103,21 +109,7 @@ class BaseView(HTTPMethodView):
         return r
 
 
-def sqlerrors(fn):
-    @wraps(fn)
-    async def inner(*args, **kwargs):
-        try:
-            return await fn(*args, **kwargs)
-        except sqlite3.OperationalError as e:
-            return response.json({
-                'ok': False,
-                'error': str(e),
-            })
-    return inner
-
-
 @app.route('/')
-@sqlerrors
 async def index(request, sql=None):
     databases = ensure_build_metadata(True)
     return jinja.render(

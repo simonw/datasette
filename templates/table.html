@@ -1,3 +1,8 @@
+{% extends "base.html" %}
+
+{% block title %}{{ database }}: {{ table }}{% endblock %}
+
+{% block content %}
 <h1><a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></h1>
 
 <h2>{{ table }}</h2>
@@ -22,3 +27,4 @@ td {
         </tr>
     {% endfor %}
 </table>
+{% endblock %}

@@ -1,3 +1,8 @@
+{% extends "base.html" %}
+
+{% block title %}{{ database }}{% endblock %}
+
+{% block content %}
 <h1>{{ database }}</h1>
 
 <style>
@@ -25,3 +30,4 @@ td {
         </tr>
     {% endfor %}
 </table>
+{% endblock %}

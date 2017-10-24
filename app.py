@@ -11,6 +11,7 @@ import json
 import base64
 import hashlib
 import sys
+import time
 
 app_root = Path(__file__).parent
 
@@ -95,6 +96,7 @@ class BaseView(HTTPMethodView):
         except KeyError:
             as_json = False
         extra_template_data = {}
+        start = time.time()
         try:
             data, extra_template_data = self.data(
                 request, name, hash, **kwargs
@@ -104,6 +106,8 @@ class BaseView(HTTPMethodView):
                 'ok': False,
                 'error': str(e),
             }
+        end = time.time()
+        data['took_ms'] = (end - start) * 1000
         if as_json:
             # Special case for .jsono extension
             if as_json == '.jsono':

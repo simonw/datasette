@@ -20,7 +20,7 @@ td {
         <tr>
             {% for td in row %}
                 <td>
-                    {% if loop.index == 2 and row.type == "table" %}
+                    {% if loop.index == 2 and row.type in ("table", "view") %}
                         <a href="/{{ database }}-{{ database_hash }}/{{ td }}">{{ td }}</a>
                     {% else %}
                         {{ td }}

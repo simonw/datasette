@@ -17,10 +17,14 @@ td {
 </style>
 <table>
     <tr>
+        {% if primary_keys and row_link %}<th scope="col">Link</th>{% endif %}
         {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
     </tr>
     {% for row in rows %}
         <tr>
+            {% if primary_keys and row_link %}
+                <td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>
+            {% endif %}
             {% for td in row %}
                 <td>{{ td }}</td>
             {% endfor %}

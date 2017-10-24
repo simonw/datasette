@@ -40,6 +40,7 @@ def test_pks_for_table(sql, table, expected_keys):
 @pytest.mark.parametrize('row,pks,expected_path', [
     ({'A': 'foo', 'B': 'bar'}, ['A', 'B'], 'foo,bar'),
     ({'A': 'f,o', 'B': 'bar'}, ['A', 'B'], 'f%2Co,bar'),
+    ({'A': 123}, ['A'], '123'),
 ])
 def test_path_from_row_pks(row, pks, expected_path):
     actual_path = app.path_from_row_pks(row, pks)

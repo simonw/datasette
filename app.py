@@ -88,8 +88,11 @@ class BaseView(HTTPMethodView):
             as_json = kwargs.pop('as_json')
         except KeyError:
             as_json = False
+        extra_template_data = {}
         try:
-            data = self.data(request, name, hash, **kwargs)
+            data, extra_template_data = self.data(
+                request, name, hash, **kwargs
+            )
         except sqlite3.OperationalError as e:
             data = {
                 'ok': False,
@@ -99,10 +102,15 @@ class BaseView(HTTPMethodView):
             r = response.json(data)
             r.headers['Access-Control-Allow-Origin'] = '*'
         else:
+            context = {**data, **dict(
+                extra_template_data()
+                if callable(extra_template_data)
+                else extra_template_data
+            )}
             r = jinja.render(
                 self.template,
                 request,
-                **data,
+                **context,
             )
         # Set far-future cache expiry
         r.headers['Cache-Control'] = 'max-age={}'.format(
@@ -136,9 +144,10 @@ class DatabaseView(BaseView):
         columns = [r[0] for r in rows.description]
         return {
             'database': name,
-            'database_hash': hash,
             'rows': rows,
             'columns': columns,
+        }, {
+            'database_hash': hash,
         }
 
 
@@ -149,12 +158,16 @@ class TableView(BaseView):
         conn = get_conn(name)
         rows = conn.execute('select * from {} limit 20'.format(table))
         columns = [r[0] for r in rows.description]
+        pks = pks_for_table(conn, table)
         return {
             'database': name,
-            'database_hash': hash,
             'table': table,
             'rows': rows,
             'columns': columns,
+            'primary_keys': pks,
+        }, lambda: {
+            'database_hash': hash,
+            'row_link': lambda row: path_from_row_pks(row, pks),
         }
 
 
@@ -174,15 +187,19 @@ class RowView(BaseView):
         )
         rows = conn.execute(sql, pk_values)
         columns = [r[0] for r in rows.description]
+        pks = pks_for_table(conn, table)
         rows = list(rows)
         if not rows:
             raise NotFound('Record not found: {}'.format(pk_values))
         return {
             'database': name,
-            'database_hash': hash,
             'table': table,
             'rows': rows,
             'columns': columns,
+            'primary_keys': pks,
+        }, {
+            'database_hash': hash,
+            'row_link': None,
         }
 
 
@@ -239,9 +256,13 @@ def pks_for_table(conn, table):
 
 
 def path_from_row_pks(row, pks):
+    if not pks:
+        return ''
     bits = []
     for pk in pks:
-        bits.append(urllib.parse.quote_plus(row[pk]))
+        bits.append(
+            urllib.parse.quote_plus(str(row[pk]))
+        )
     return ','.join(bits)
 
 

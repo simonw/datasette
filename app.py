@@ -100,6 +100,15 @@ class BaseView(HTTPMethodView):
                 'error': str(e),
             }
         if as_json:
+            # Special case for .jsono extension
+            if as_json == '.jsono':
+                columns = data.get('columns')
+                rows = data.get('rows')
+                if rows and columns:
+                    data['rows'] = [
+                        dict(zip(columns, row))
+                        for row in rows
+                    ]
             r = response.HTTPResponse(
                 json.dumps(
                     data, cls=CustomJSONEncoder
@@ -212,9 +221,9 @@ class RowView(BaseView):
         }
 
 
-app.add_route(DatabaseView.as_view(), '/<db_name:[^/]+?><as_json:(.json)?$>')
-app.add_route(TableView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.json)?$>')
-app.add_route(RowView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.json)?$>')
+app.add_route(DatabaseView.as_view(), '/<db_name:[^/]+?><as_json:(.jsono?)?$>')
+app.add_route(TableView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.jsono?)?$>')
+app.add_route(RowView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>')
 
 
 def resolve_db_name(db_name, **kwargs):
@@ -278,7 +287,7 @@ def path_from_row_pks(row, pks):
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, sqlite3.Row):
-            return dict(obj)
+            return tuple(obj)
         if isinstance(obj, bytes):
             # Does it encode to utf8?
             try:

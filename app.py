@@ -75,22 +75,31 @@ class BaseView(HTTPMethodView):
     template = None
 
     async def get(self, request, db_name, **kwargs):
-        name, hash, should_redirect = resolve_db_name(db_name)
+        name, hash, should_redirect = resolve_db_name(db_name, **kwargs)
         if should_redirect:
-            return response.redirect(should_redirect)
+            r = response.redirect(should_redirect)
+            r.headers['Link'] = '<{}>; rel=preload'.format(
+                should_redirect
+            )
+            return r
         try:
             as_json = kwargs.pop('as_json')
         except KeyError:
             as_json = False
         data = self.data(request, name, hash, **kwargs)
         if as_json:
-            return response.json(data)
+            r = response.json(data)
         else:
-            return jinja.render(
+            r = jinja.render(
                 self.template,
                 request,
                 **data,
             )
+        # Set far-future cache expiry
+        r.headers['Cache-Control'] = 'max-age={}'.format(
+            365 * 24 * 60 * 60
+        )
+        return r
 
 
 def sqlerrors(fn):
@@ -157,7 +166,7 @@ app.add_route(DatabaseView.as_view(), '/<db_name:[^/]+?><as_json:(.json)?$>')
 app.add_route(TableView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.json)?$>')
 
 
-def resolve_db_name(db_name):
+def resolve_db_name(db_name, **kwargs):
     databases = ensure_build_metadata()
     hash = None
     name = None
@@ -178,9 +187,12 @@ def resolve_db_name(db_name):
         raise NotFound()
     expected = info['hash'][:7]
     if expected != hash:
-        return name, expected, '/{}-{}'.format(
+        should_redirect = '/{}-{}'.format(
             name, expected,
         )
+        if 'table' in kwargs:
+            should_redirect += '/' + kwargs['table']
+        return name, expected, should_redirect
     return name, expected, None
 
 

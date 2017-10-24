@@ -1,6 +1,7 @@
 import app
 import pytest
 import sqlite3
+import json
 
 
 @pytest.mark.parametrize('path,expected', [
@@ -45,3 +46,21 @@ def test_pks_for_table(sql, table, expected_keys):
 def test_path_from_row_pks(row, pks, expected_path):
     actual_path = app.path_from_row_pks(row, pks)
     assert expected_path == actual_path
+
+
+@pytest.mark.parametrize('obj,expected', [
+    ({
+        'Description': 'Soft drinks',
+        'Picture': b"\x15\x1c\x02\xc7\xad\x05\xfe",
+        'CategoryID': 1,
+    }, """
+        {"CategoryID": 1, "Description": "Soft drinks", "Picture": {"$base64": true, "encoded": "FRwCx60F/g=="}}
+    """.strip()),
+])
+def test_custom_json_encoder(obj, expected):
+    actual = json.dumps(
+        obj,
+        cls=app.CustomJSONEncoder,
+        sort_keys=True
+    )
+    assert expected == actual

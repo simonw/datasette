@@ -8,6 +8,7 @@ from pathlib import Path
 from functools import wraps
 import urllib.parse
 import json
+import base64
 import hashlib
 import sys
 
@@ -99,8 +100,15 @@ class BaseView(HTTPMethodView):
                 'error': str(e),
             }
         if as_json:
-            r = response.json(data)
-            r.headers['Access-Control-Allow-Origin'] = '*'
+            r = response.HTTPResponse(
+                json.dumps(
+                    data, cls=CustomJSONEncoder
+                ),
+                content_type='application/json',
+                headers={
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
         else:
             context = {**data, **dict(
                 extra_template_data()
@@ -159,6 +167,7 @@ class TableView(BaseView):
         rows = conn.execute('select * from {} limit 20'.format(table))
         columns = [r[0] for r in rows.description]
         pks = pks_for_table(conn, table)
+        rows = list(rows)
         return {
             'database': name,
             'table': table,
@@ -264,6 +273,22 @@ def path_from_row_pks(row, pks):
             urllib.parse.quote_plus(str(row[pk]))
         )
     return ','.join(bits)
+
+
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, sqlite3.Row):
+            return dict(obj)
+        if isinstance(obj, bytes):
+            # Does it encode to utf8?
+            try:
+                return obj.decode('utf8')
+            except UnicodeDecodeError:
+                return {
+                    '$base64': True,
+                    'encoded': base64.b64encode(obj).decode('latin1'),
+                }
+        return json.JSONEncoder.default(self, obj)
 
 
 if __name__ == '__main__':

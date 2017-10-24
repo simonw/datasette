@@ -288,6 +288,8 @@ class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, sqlite3.Row):
             return tuple(obj)
+        if isinstance(obj, sqlite3.Cursor):
+            return list(obj)
         if isinstance(obj, bytes):
             # Does it encode to utf8?
             try:

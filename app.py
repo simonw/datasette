@@ -89,6 +89,7 @@ class BaseView(HTTPMethodView):
         data = self.data(request, name, hash, **kwargs)
         if as_json:
             r = response.json(data)
+            r.headers['Access-Control-Allow-Origin'] = '*'
         else:
             r = jinja.render(
                 self.template,

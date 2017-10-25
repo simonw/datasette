@@ -4,6 +4,7 @@ from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 from sanic_jinja2 import SanicJinja2
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from functools import wraps
 import urllib.parse
@@ -18,6 +19,7 @@ app_root = Path(__file__).parent
 BUILD_METADATA = 'build-metadata.json'
 DB_GLOBS = ('*.db', '*.sqlite', '*.sqlite3')
 HASH_BLOCK_SIZE = 1024 * 1024
+SQL_TIME_LIMIT_MS = 1000
 
 conns = {}
 
@@ -167,7 +169,8 @@ class DatabaseView(BaseView):
     def data(self, request, name, hash):
         conn = get_conn(name)
         sql = request.args.get('sql') or 'select * from sqlite_master'
-        rows = conn.execute(sql)
+        with sqlite_timelimit(conn, SQL_TIME_LIMIT_MS):
+            rows = conn.execute(sql)
         columns = [r[0] for r in rows.description]
         return {
             'database': name,
@@ -192,10 +195,13 @@ class TableView(BaseView):
         else:
             sql = 'select * from "{}" limit 50'.format(table)
             params = []
-        rows = conn.execute(sql, params)
+
+        with sqlite_timelimit(conn, SQL_TIME_LIMIT_MS):
+            rows = conn.execute(sql, params)
+
         columns = [r[0] for r in rows.description]
-        pks = pks_for_table(conn, table)
         rows = list(rows)
+        pks = pks_for_table(conn, table)
         info = ensure_build_metadata()
         total_rows = info[name]['tables'].get(table)
         return {
@@ -353,6 +359,18 @@ class CustomJSONEncoder(json.JSONEncoder):
                     'encoded': base64.b64encode(obj).decode('latin1'),
                 }
         return json.JSONEncoder.default(self, obj)
+
+
+@contextmanager
+def sqlite_timelimit(conn, ms):
+    deadline = time.time() + (ms / 1000)
+
+    def handler():
+        if time.time() >= deadline:
+            return 1
+    conn.set_progress_handler(handler, 10000)
+    yield
+    conn.set_progress_handler(None, 10000)
 
 
 if __name__ == '__main__':

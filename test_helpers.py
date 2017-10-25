@@ -100,6 +100,14 @@ def test_custom_json_encoder(obj, expected):
         '"bar" > ? and "bax" <= ? and "baz" >= ? and "foo" < ?',
         ['2', '4', '3', '1']
     ),
+    (
+        {
+            'foo__like': ['2%2'],
+            'zax__glob': ['3*'],
+        },
+        '"foo" like ? and "zax" glob ?',
+        ['2%2', '3*']
+    ),
 ])
 def test_build_where(args, expected_where, expected_params):
     actual_where, actual_params = app.build_where_clause(args)

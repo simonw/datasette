@@ -329,6 +329,8 @@ def build_where_clause(args):
             'gte': '"{}" >= ?',
             'lt': '"{}" < ?',
             'lte': '"{}" <= ?',
+            'glob': '"{}" glob ?',
+            'like': '"{}" like ?',
         }[lookup]
         value = values[0]
         value_convert = {

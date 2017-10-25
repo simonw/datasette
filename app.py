@@ -183,6 +183,7 @@ class TableView(BaseView):
 
     def data(self, request, name, hash, table):
         conn = get_conn(name)
+        table = urllib.parse.unquote_plus(table)
         if request.args:
             where_clause, params = build_where_clause(request.args)
             sql = 'select * from "{}" where {} limit 50'.format(
@@ -196,7 +197,7 @@ class TableView(BaseView):
         pks = pks_for_table(conn, table)
         rows = list(rows)
         info = ensure_build_metadata()
-        total_rows = info[name]['tables'][table]
+        total_rows = info[name]['tables'].get(table)
         return {
             'database': name,
             'table': table,

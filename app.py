@@ -325,14 +325,17 @@ def build_where_clause(args):
             'contains': '"{}" like ?',
             'endswith': '"{}" like ?',
             'startswith': '"{}" like ?',
+            'gt': '"{}" > ?',
+            'gte': '"{}" >= ?',
+            'lt': '"{}" < ?',
+            'lte': '"{}" <= ?',
         }[lookup]
         value = values[0]
         value_convert = {
-            'exact': lambda s: s,
             'contains': lambda s: '%{}%'.format(s),
             'endswith': lambda s: '%{}'.format(s),
             'startswith': lambda s: '{}%'.format(s),
-        }[lookup]
+        }.get(lookup, lambda s: s)
         converted = value_convert(value)
         sql_bits.append(
             (template.format(column), converted)

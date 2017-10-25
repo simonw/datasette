@@ -67,17 +67,39 @@ def test_custom_json_encoder(obj, expected):
 
 
 @pytest.mark.parametrize('args,expected_where,expected_params', [
-    ({
-        'name_english__contains': ['foo'],
-    }, '"name_english" like ?', ['%foo%']),
-    ({
-        'foo': ['bar'],
-        'bar__contains': ['baz'],
-    }, '"bar" like ? and "foo" = ?', ['%baz%', 'bar']),
-    ({
-        'foo__startswith': ['bar'],
-        'bar__endswith': ['baz'],
-    }, '"bar" like ? and "foo" like ?', ['%baz', 'bar%']),
+    (
+        {
+            'name_english__contains': ['foo'],
+        },
+        '"name_english" like ?',
+        ['%foo%']
+    ),
+    (
+        {
+            'foo': ['bar'],
+            'bar__contains': ['baz'],
+        },
+        '"bar" like ? and "foo" = ?',
+        ['%baz%', 'bar']
+    ),
+    (
+        {
+            'foo__startswith': ['bar'],
+            'bar__endswith': ['baz'],
+        },
+        '"bar" like ? and "foo" like ?',
+        ['%baz', 'bar%']
+    ),
+    (
+        {
+            'foo__lt': ['1'],
+            'bar__gt': ['2'],
+            'baz__gte': ['3'],
+            'bax__lte': ['4'],
+        },
+        '"bar" > ? and "bax" <= ? and "baz" >= ? and "foo" < ?',
+        ['2', '4', '3', '1']
+    ),
 ])
 def test_build_where(args, expected_where, expected_params):
     actual_where, actual_params = app.build_where_clause(args)

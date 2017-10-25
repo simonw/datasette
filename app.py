@@ -225,7 +225,7 @@ class RowView(BaseView):
         pk_values = compound_pks_from_path(pk_path)
         pks = pks_for_table(conn, table)
         wheres = [
-            '{}=?'.format(pk)
+            '"{}"=?'.format(pk)
             for pk in pks
         ]
         sql = 'select * from "{}" where {}'.format(

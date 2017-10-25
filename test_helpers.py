@@ -64,3 +64,22 @@ def test_custom_json_encoder(obj, expected):
         sort_keys=True
     )
     assert expected == actual
+
+
+@pytest.mark.parametrize('args,expected_where,expected_params', [
+    ({
+        'name_english__contains': ['foo'],
+    }, '"name_english" like ?', ['%foo%']),
+    ({
+        'foo': ['bar'],
+        'bar__contains': ['baz'],
+    }, '"bar" like ? and "foo" = ?', ['%baz%', 'bar']),
+    ({
+        'foo__startswith': ['bar'],
+        'bar__endswith': ['baz'],
+    }, '"bar" like ? and "foo" like ?', ['%baz', 'bar%']),
+])
+def test_build_where(args, expected_where, expected_params):
+    actual_where, actual_params = app.build_where_clause(args)
+    assert expected_where == actual_where
+    assert expected_params == actual_params

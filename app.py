@@ -183,7 +183,15 @@ class TableView(BaseView):
 
     def data(self, request, name, hash, table):
         conn = get_conn(name)
-        rows = conn.execute('select * from {} limit 20'.format(table))
+        if request.args:
+            where_clause, params = build_where_clause(request.args)
+            sql = 'select * from "{}" where {} limit 50'.format(
+                table, where_clause
+            )
+        else:
+            sql = 'select * from "{}" limit 50'.format(table)
+            params = []
+        rows = conn.execute(sql, params)
         columns = [r[0] for r in rows.description]
         pks = pks_for_table(conn, table)
         rows = list(rows)
@@ -292,6 +300,37 @@ def path_from_row_pks(row, pks):
             urllib.parse.quote_plus(str(row[pk]))
         )
     return ','.join(bits)
+
+
+def build_where_clause(args):
+    sql_bits = []
+    for key, values in args.items():
+        if '__' in key:
+            column, lookup = key.rsplit('__', 1)
+        else:
+            column = key
+            lookup = 'exact'
+        template = {
+            'exact': '"{}" = ?',
+            'contains': '"{}" like ?',
+            'endswith': '"{}" like ?',
+            'startswith': '"{}" like ?',
+        }[lookup]
+        value = values[0]
+        value_convert = {
+            'exact': lambda s: s,
+            'contains': lambda s: '%{}%'.format(s),
+            'endswith': lambda s: '%{}'.format(s),
+            'startswith': lambda s: '{}%'.format(s),
+        }[lookup]
+        converted = value_convert(value)
+        sql_bits.append(
+            (template.format(column), converted)
+        )
+    sql_bits.sort(key=lambda p: p[0])
+    where_clause = ' and '.join(p[0] for p in sql_bits)
+    params = [p[1] for p in sql_bits]
+    return where_clause, params
 
 
 class CustomJSONEncoder(json.JSONEncoder):

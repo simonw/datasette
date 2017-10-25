@@ -195,10 +195,13 @@ class TableView(BaseView):
         columns = [r[0] for r in rows.description]
         pks = pks_for_table(conn, table)
         rows = list(rows)
+        info = ensure_build_metadata()
+        total_rows = info[name]['tables'][table]
         return {
             'database': name,
             'table': table,
             'rows': rows,
+            'total_rows': total_rows,
             'columns': columns,
             'primary_keys': pks,
         }, lambda: {

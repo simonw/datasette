@@ -280,6 +280,8 @@ def resolve_db_name(db_name, **kwargs):
         )
         if 'table' in kwargs:
             should_redirect += '/' + kwargs['table']
+        if 'as_json' in kwargs:
+            should_redirect += kwargs['as_json']
         return name, expected, should_redirect
     return name, expected, None
 

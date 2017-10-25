@@ -94,6 +94,9 @@ class BaseView(HTTPMethodView):
         name, hash, should_redirect = resolve_db_name(db_name, **kwargs)
         if should_redirect:
             return self.redirect(request, should_redirect)
+        return await self.view_get(request, name, hash, **kwargs)
+
+    async def view_get(self, request, name, hash, **kwargs):
         try:
             as_json = kwargs.pop('as_json')
         except KeyError:
@@ -181,6 +184,16 @@ class DatabaseView(BaseView):
         }
 
 
+class DatabaseDownload(BaseView):
+    async def view_get(self, request, name, hash, **kwargs):
+        filepath = ensure_build_metadata()[name]['file']
+        return await response.file_stream(
+            filepath, headers={
+                'Content-Disposition': 'attachment; filename="{}"'.format(filepath)
+            }
+        )
+
+
 class TableView(BaseView):
     template = 'table.html'
 
@@ -249,7 +262,8 @@ class RowView(BaseView):
         }
 
 
-app.add_route(DatabaseView.as_view(), '/<db_name:[^/]+?><as_json:(.jsono?)?$>')
+app.add_route(DatabaseView.as_view(), '/<db_name:[^/\.]+?><as_json:(.jsono?)?$>')
+app.add_route(DatabaseDownload.as_view(), '/<db_name:[^/]+?><as_db:(\.db)$>')
 app.add_route(TableView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.jsono?)?$>')
 app.add_route(RowView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>')
 
@@ -282,6 +296,8 @@ def resolve_db_name(db_name, **kwargs):
             should_redirect += '/' + kwargs['table']
         if 'as_json' in kwargs:
             should_redirect += kwargs['as_json']
+        if 'as_db' in kwargs:
+            should_redirect += kwargs['as_db']
         return name, expected, should_redirect
     return name, expected, None
 

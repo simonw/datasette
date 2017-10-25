@@ -34,6 +34,7 @@ def get_conn(name):
             uri=True
         )
         conns[name].row_factory = sqlite3.Row
+        conns[name].text_factory = lambda x: str(x, 'utf-8', 'replace')
     return conns[name]
 
 
@@ -279,7 +280,7 @@ def pks_for_table(conn, table):
         if row[-1]
     ]
     rows.sort(key=lambda row: row[-1])
-    return [r[1] for r in rows]
+    return [str(r[1]) for r in rows]
 
 
 def path_from_row_pks(row, pks):

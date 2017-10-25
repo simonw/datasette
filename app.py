@@ -13,6 +13,7 @@ import base64
 import hashlib
 import sys
 import time
+import magic
 
 app_root = Path(__file__).parent
 
@@ -249,9 +250,37 @@ class RowView(BaseView):
         }
 
 
+class CellView(BaseView):
+    async def get(self, request, db_name, table, pk_path, column, as_json=False):
+        name, hash, should_redirect = resolve_db_name(db_name, **{
+            'table': table,
+            'pk_path': pk_path,
+            'column': column,
+            'as_json': as_json,
+        })
+        if should_redirect:
+            return self.redirect(request, should_redirect)
+        conn = get_conn(name)
+        pk_values = compound_pks_from_path(pk_path)
+        pks = pks_for_table(conn, table)
+        wheres = [
+            '"{}"=?'.format(pk)
+            for pk in pks
+        ]
+        sql = 'select "{}" from "{}" where {}'.format(
+            column, table, ' AND '.join(wheres)
+        )
+        row = conn.execute(sql, pk_values).fetchone()
+        content = row[0].decode('latin1')
+        # Sniff content type
+        content_type = magic.from_buffer(content[:1024], mime=True)
+        return response.text(content, content_type=content_type)
+
+
 app.add_route(DatabaseView.as_view(), '/<db_name:[^/]+?><as_json:(.jsono?)?$>')
 app.add_route(TableView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.jsono?)?$>')
 app.add_route(RowView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>')
+app.add_route(CellView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?>/<column:[^/]+?><as_json:(.jsono?)?$>')
 
 
 def resolve_db_name(db_name, **kwargs):
@@ -280,6 +309,8 @@ def resolve_db_name(db_name, **kwargs):
         )
         if 'table' in kwargs:
             should_redirect += '/' + kwargs['table']
+        if 'column' in kwargs:
+            should_redirect += '/' + kwargs['column']
         if 'as_json' in kwargs:
             should_redirect += kwargs['as_json']
         return name, expected, should_redirect

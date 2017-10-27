@@ -5,7 +5,7 @@
 {% block content %}
 <h1><a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></h1>
 
-<h2>{{ table }}{% if total_rows != None %} ({{ total_rows }} total row{% if total_rows == 1 %}{% else %}s{% endif %} in this table){% endif %}</h2>
+<h2>{{ table }}{% if total_rows != None %} ({{ "{:,}".format(total_rows) }} total row{% if total_rows == 1 %}{% else %}s{% endif %} in this table){% endif %}</h2>
 
 <style>
 td {

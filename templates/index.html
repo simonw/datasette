@@ -3,9 +3,11 @@
 {% block title %}Databases{% endblock %}
 
 {% block content %}
-<h1>Database{% if databases.keys()|length != 1 %}s{% endif %}</h1>
-{% for name, info in databases.items() %}
-    <p><a href="{{ name}}-{{ info.hash|truncate(7, end='') }}">{{ name }}</a></p>
+<h1>Database{% if databases|length != 1 %}s{% endif %}</h1>
+{% for database in databases %}
+    <h2><a href="{{ database.path }}">{{ database.name }}</a></h2>
+    <p>{{ "{:,}".format(database.total_rows) }} rows in {{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}</p>
+    <p>{% for table, count in database.tables_truncated %}<a href="{{ database.path }}/{{ table }}" title="{{ count }} rows">{{ table }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
 {% endfor %}
 
 {% endblock %}

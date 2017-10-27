@@ -153,7 +153,22 @@ class BaseView(HTTPMethodView):
 
 @app.route('/')
 async def index(request, sql=None):
-    databases = ensure_build_metadata(True)
+    databases = []
+    for key, info in ensure_build_metadata(True).items():
+        database = {
+            'name': key,
+            'hash': info['hash'],
+            'path': '{}-{}'.format(key, info['hash'][:7]),
+            'tables_truncated': sorted(
+                info['tables'].items(),
+                key=lambda p: p[1],
+                reverse=True
+            )[:5],
+            'tables_count': len(info['tables'].items()),
+            'tables_more': len(info['tables'].items()) > 5,
+            'total_rows': sum(info['tables'].values()),
+        }
+        databases.append(database)
     return jinja.render(
         'index.html',
         request,

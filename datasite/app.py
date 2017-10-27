@@ -3,6 +3,8 @@ from sanic import response
 from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 from sanic_jinja2 import SanicJinja2
+from jinja2 import FileSystemLoader
+import click
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -14,7 +16,7 @@ import hashlib
 import sys
 import time
 
-app_root = Path(__file__).parent
+app_root = Path(__file__).parent.parent
 
 BUILD_METADATA = 'build-metadata.json'
 DB_GLOBS = ('*.db', '*.sqlite', '*.sqlite3')
@@ -25,7 +27,12 @@ conns = {}
 
 
 app = Sanic(__name__)
-jinja = SanicJinja2(app)
+jinja = SanicJinja2(
+    app,
+    loader=FileSystemLoader([
+        str(app_root / 'datasite' / 'templates')
+    ])
+)
 
 
 def get_conn(name):
@@ -43,10 +50,12 @@ def get_conn(name):
 def ensure_build_metadata(regenerate=False):
     build_metadata = app_root / BUILD_METADATA
     if build_metadata.exists() and not regenerate:
-        json.loads(build_metadata.read_text())
+        return json.loads(build_metadata.read_text())
+    print('Building metadata... path={}'.format(build_metadata))
     metadata = {}
     for glob in DB_GLOBS:
         for path in app_root.glob(glob):
+            print('  globbing, path={}'.format(path))
             name = path.stem
             if name in metadata:
                 raise Exception('Multiple files with same stem %s' % name)
@@ -154,7 +163,7 @@ class BaseView(HTTPMethodView):
 @app.route('/')
 async def index(request, sql=None):
     databases = []
-    for key, info in ensure_build_metadata(True).items():
+    for key, info in ensure_build_metadata().items():
         database = {
             'name': key,
             'hash': info['hash'],
@@ -246,7 +255,7 @@ class TableView(BaseView):
 
 
 class RowView(BaseView):
-    template = 'table.html'
+    template = 'row.html'
 
     def data(self, request, name, hash, table, pk_path):
         conn = get_conn(name)
@@ -409,10 +418,3 @@ def sqlite_timelimit(conn, ms):
     conn.set_progress_handler(handler, 10000)
     yield
     conn.set_progress_handler(None, 10000)
-
-
-if __name__ == '__main__':
-    if '--build' in sys.argv:
-        ensure_build_metadata(True)
-    else:
-        app.run(host="0.0.0.0", port=8006)

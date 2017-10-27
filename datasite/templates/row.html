@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}{{ database }}: {{ table }}{% endblock %}
+
+{% block content %}
+<h1><a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></h1>
+
+<h2><a href="/{{ database }}-{{ database_hash }}/{{ table }}">{{ table }}</a></h2>
+
+<style>
+td {
+    white-space: pre;
+    vertical-align: top;
+    border-top: 1px solid #666;
+    padding: 2px 4px;
+}
+</style>
+<table>
+    <tr>
+        {% if primary_keys and row_link %}<th scope="col">Link</th>{% endif %}
+        {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+    </tr>
+    {% for row in rows %}
+        <tr>
+            {% if primary_keys and row_link %}
+                <td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>
+            {% endif %}
+            {% for td in row %}
+                <td>{{ td }}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+</table>
+{% if took_ms %}<small>Took {{ took_ms }}</small>{% endif %}
+{% endblock %}

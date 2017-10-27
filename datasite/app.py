@@ -259,6 +259,7 @@ class RowView(BaseView):
 
     def data(self, request, name, hash, table, pk_path):
         conn = get_conn(name)
+        table = urllib.parse.unquote_plus(table)
         pk_values = compound_pks_from_path(pk_path)
         pks = pks_for_table(conn, table)
         wheres = [

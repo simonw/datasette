@@ -8,6 +8,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'click==6.7',
+        'click-default-group==1.2',
         'sanic==0.6.0',
         'sanic-jinja2==0.5.5',
     ],

@@ -4,7 +4,6 @@ from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 from sanic_jinja2 import SanicJinja2
 from jinja2 import FileSystemLoader
-import click
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path

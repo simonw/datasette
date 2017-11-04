@@ -1,4 +1,4 @@
-import app
+from datasite import app
 import pytest
 import sqlite3
 import json

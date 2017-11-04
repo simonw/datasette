@@ -15,4 +15,6 @@ setup(
         [console_scripts]
         datasite=datasite.cli:cli
     ''',
+    setup_requires=['pytest-runner'],
+    tests_require=['pytest'],
 )

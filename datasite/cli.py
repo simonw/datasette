@@ -1,6 +1,6 @@
 import click
 from click_default_group import DefaultGroup
-from .app import app, ensure_build_metadata
+from .app import app_factory, ensure_build_metadata
 
 
 @click.group(cls=DefaultGroup, default='serve', default_if_no_args=True)
@@ -23,4 +23,5 @@ def build():
 def serve(files, host, port, debug):
     """Serve up specified database files with a web UI"""
     click.echo('Serve! files={} on port {}'.format(files, port))
+    app = app_factory(files)
     app.run(host=host, port=port, debug=debug)

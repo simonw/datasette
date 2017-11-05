@@ -25,15 +25,6 @@ SQL_TIME_LIMIT_MS = 1000
 conns = {}
 
 
-app = Sanic(__name__)
-jinja = SanicJinja2(
-    app,
-    loader=FileSystemLoader([
-        str(app_root / 'datasite' / 'templates')
-    ])
-)
-
-
 def get_conn(name):
     if name not in conns:
         info = ensure_build_metadata()[name]
@@ -88,6 +79,9 @@ def ensure_build_metadata(regenerate=False):
 
 class BaseView(HTTPMethodView):
     template = None
+
+    def __init__(self, jinja):
+        self.jinja = jinja
 
     def redirect(self, request, path):
         if request.query_string:
@@ -147,7 +141,7 @@ class BaseView(HTTPMethodView):
                 if callable(extra_template_data)
                 else extra_template_data
             )}
-            r = jinja.render(
+            r = self.jinja.render(
                 self.template,
                 request,
                 **context,
@@ -159,32 +153,34 @@ class BaseView(HTTPMethodView):
         return r
 
 
-@app.route('/')
-async def index(request, sql=None):
-    databases = []
-    for key, info in ensure_build_metadata().items():
-        database = {
-            'name': key,
-            'hash': info['hash'],
-            'path': '{}-{}'.format(key, info['hash'][:7]),
-            'tables_truncated': sorted(
-                info['tables'].items(),
-                key=lambda p: p[1],
-                reverse=True
-            )[:5],
-            'tables_count': len(info['tables'].items()),
-            'tables_more': len(info['tables'].items()) > 5,
-            'total_rows': sum(info['tables'].values()),
-        }
-        databases.append(database)
-    return jinja.render(
-        'index.html',
-        request,
-        databases=databases,
-    )
+class IndexView(HTTPMethodView):
+    def __init__(self, jinja):
+        self.jinja = jinja
+
+    async def get(self, request):
+        databases = []
+        for key, info in ensure_build_metadata().items():
+            database = {
+                'name': key,
+                'hash': info['hash'],
+                'path': '{}-{}'.format(key, info['hash'][:7]),
+                'tables_truncated': sorted(
+                    info['tables'].items(),
+                    key=lambda p: p[1],
+                    reverse=True
+                )[:5],
+                'tables_count': len(info['tables'].items()),
+                'tables_more': len(info['tables'].items()) > 5,
+                'total_rows': sum(info['tables'].values()),
+            }
+            databases.append(database)
+        return self.jinja.render(
+            'index.html',
+            request,
+            databases=databases,
+        )
 
 
-@app.route('/favicon.ico')
 async def favicon(request):
     return response.text('')
 
@@ -284,12 +280,6 @@ class RowView(BaseView):
             'database_hash': hash,
             'row_link': None,
         }
-
-
-app.add_route(DatabaseView.as_view(), '/<db_name:[^/\.]+?><as_json:(.jsono?)?$>')
-app.add_route(DatabaseDownload.as_view(), '/<db_name:[^/]+?><as_db:(\.db)$>')
-app.add_route(TableView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.jsono?)?$>')
-app.add_route(RowView.as_view(), '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>')
 
 
 def resolve_db_name(db_name, **kwargs):
@@ -418,3 +408,32 @@ def sqlite_timelimit(conn, ms):
     conn.set_progress_handler(handler, 10000)
     yield
     conn.set_progress_handler(None, 10000)
+
+
+def app_factory(files):
+    app = Sanic(__name__)
+    jinja = SanicJinja2(
+        app,
+        loader=FileSystemLoader([
+            str(app_root / 'datasite' / 'templates')
+        ])
+    )
+    app.add_route(IndexView.as_view(jinja), '/')
+    app.add_route(favicon, '/favicon.ico')
+    app.add_route(
+        DatabaseView.as_view(jinja),
+        '/<db_name:[^/\.]+?><as_json:(.jsono?)?$>'
+    )
+    app.add_route(
+        DatabaseDownload.as_view(jinja),
+        '/<db_name:[^/]+?><as_db:(\.db)$>'
+    )
+    app.add_route(
+        TableView.as_view(jinja),
+        '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.jsono?)?$>'
+    )
+    app.add_route(
+        RowView.as_view(jinja),
+        '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>'
+    )
+    return app

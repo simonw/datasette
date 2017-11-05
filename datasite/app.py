@@ -95,7 +95,7 @@ class BaseView(HTTPMethodView):
         rows.sort(key=lambda row: row[-1])
         return [str(r[1]) for r in rows]
 
-    async def execute(self, db_name, sql):
+    async def execute(self, db_name, sql, params=None):
         """Executes sql against db_name in a thread"""
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
@@ -111,7 +111,8 @@ class BaseView(HTTPMethodView):
                 setattr(connections, db_name, conn)
 
             with sqlite_timelimit(conn, SQL_TIME_LIMIT_MS):
-                rows = conn.execute(sql)
+                print('execute: ', sql, 'params=', params)
+                rows = conn.execute(sql, params or {})
             return rows
 
         return await asyncio.get_event_loop().run_in_executor(
@@ -135,7 +136,7 @@ class BaseView(HTTPMethodView):
             data, extra_template_data = await self.data(
                 request, name, hash, **kwargs
             )
-        except sqlite3.OperationalError as e:
+        except (sqlite3.OperationalError, InvalidSql) as e:
             data = {
                 'ok': False,
                 'error': str(e),
@@ -216,8 +217,13 @@ class DatabaseView(BaseView):
     template = 'database.html'
 
     async def data(self, request, name, hash):
-        sql = request.args.get('sql') or 'select * from sqlite_master'
-        rows = await self.execute(name, sql)
+        sql = 'select * from sqlite_master'
+        params = {}
+        if request.args.get('sql'):
+            params = request.raw_args
+            sql = params.pop('sql')
+            validate_sql_select(sql)
+        rows = await self.execute(name, sql, params)
         columns = [r[0] for r in rows.description]
         return {
             'database': name,
@@ -448,3 +454,15 @@ def app_factory(files, num_threads=3):
         '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>'
     )
     return app
+
+
+class InvalidSql(Exception):
+    pass
+
+
+def validate_sql_select(sql):
+    sql = sql.strip().lower()
+    if not sql.startswith('select '):
+        raise InvalidSql('Statement must begin with SELECT')
+    if 'pragma' in sql:
+        raise InvalidSql('Statement may not contain PRAGMA')

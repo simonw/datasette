@@ -1,6 +1,5 @@
 from datasite import app
 import pytest
-import sqlite3
 import json
 
 
@@ -13,29 +12,6 @@ import json
 ])
 def test_compound_pks_from_path(path, expected):
     assert expected == app.compound_pks_from_path(path)
-
-
-@pytest.mark.parametrize('sql,table,expected_keys', [
-    ('''
-        CREATE TABLE `Compound` (
-            A varchar(5) NOT NULL,
-            B varchar(10) NOT NULL,
-            PRIMARY KEY (A, B)
-        );
-    ''', 'Compound', ['A', 'B']),
-    ('''
-        CREATE TABLE `Compound2` (
-            A varchar(5) NOT NULL,
-            B varchar(10) NOT NULL,
-            PRIMARY KEY (B, A)
-        );
-    ''', 'Compound2', ['B', 'A']),
-])
-def test_pks_for_table(sql, table, expected_keys):
-    conn = sqlite3.connect(':memory:')
-    conn.execute(sql)
-    actual = app.pks_for_table(conn, table)
-    assert expected_keys == actual
 
 
 @pytest.mark.parametrize('row,pks,expected_path', [
@@ -113,3 +89,22 @@ def test_build_where(args, expected_where, expected_params):
     actual_where, actual_params = app.build_where_clause(args)
     assert expected_where == actual_where
     assert expected_params == actual_params
+
+
+@pytest.mark.parametrize('bad_sql', [
+    'update blah;',
+    'PRAGMA case_sensitive_like = true'
+    "SELECT * FROM pragma_index_info('idx52')",
+])
+def test_validate_sql_select_bad(bad_sql):
+    with pytest.raises(app.InvalidSql):
+        app.validate_sql_select(bad_sql)
+
+
+@pytest.mark.parametrize('good_sql', [
+    'select count(*) from airports',
+    'select foo from bar',
+    'select 1 + 1',
+])
+def test_validate_sql_select_good(good_sql):
+    app.validate_sql_select(good_sql)

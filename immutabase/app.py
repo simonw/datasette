@@ -285,13 +285,16 @@ class RowView(BaseView):
         pk_values = compound_pks_from_path(pk_path)
         pks = await self.pks_for_table(name, table)
         wheres = [
-            '"{}"=?'.format(pk)
-            for pk in pks
+            '"{}"=:p{}'.format(pk, i)
+            for i, pk in enumerate(pks)
         ]
         sql = 'select * from "{}" where {}'.format(
             table, ' AND '.join(wheres)
         )
-        rows = await self.execute(name, sql)
+        params = {}
+        for i, pk_value in enumerate(pk_values):
+            params['p{}'.format(i)] = pk_value
+        rows = await self.execute(name, sql, params)
         columns = [r[0] for r in rows.description]
         rows = list(rows)
         if not rows:

@@ -11,8 +11,9 @@ def cli():
 
 
 @cli.command()
-def build():
-    ensure_build_metadata(True)
+@click.argument('files', type=click.Path(exists=True), nargs=-1)
+def build(files):
+    ensure_build_metadata(files, True)
 
 
 @cli.command()

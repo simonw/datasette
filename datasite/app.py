@@ -21,49 +21,47 @@ import time
 app_root = Path(__file__).parent.parent
 
 BUILD_METADATA = 'build-metadata.json'
-DB_GLOBS = ('*.db', '*.sqlite', '*.sqlite3')
 HASH_BLOCK_SIZE = 1024 * 1024
 SQL_TIME_LIMIT_MS = 1000
 
 connections = threading.local()
 
 
-def ensure_build_metadata(regenerate=False):
+def ensure_build_metadata(files, regenerate=False):
     build_metadata = app_root / BUILD_METADATA
     if build_metadata.exists() and not regenerate:
         return json.loads(build_metadata.read_text())
     print('Building metadata... path={}'.format(build_metadata))
     metadata = {}
-    for glob in DB_GLOBS:
-        for path in app_root.glob(glob):
-            print('  globbing, path={}'.format(path))
-            name = path.stem
-            if name in metadata:
-                raise Exception('Multiple files with same stem %s' % name)
-            # Calculate hash, efficiently
-            m = hashlib.sha256()
-            with path.open('rb') as fp:
-                while True:
-                    data = fp.read(HASH_BLOCK_SIZE)
-                    if not data:
-                        break
-                    m.update(data)
-            # List tables and their row counts
-            tables = {}
-            with sqlite3.connect('file:{}?immutable=1'.format(path.name), uri=True) as conn:
-                conn.row_factory = sqlite3.Row
-                table_names = [
-                    r['name']
-                    for r in conn.execute('select * from sqlite_master where type="table"')
-                ]
-                for table in table_names:
-                    tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
+    for filename in files:
+        path = Path(filename)
+        name = path.stem
+        if name in metadata:
+            raise Exception('Multiple files with same stem %s' % name)
+        # Calculate hash, efficiently
+        m = hashlib.sha256()
+        with path.open('rb') as fp:
+            while True:
+                data = fp.read(HASH_BLOCK_SIZE)
+                if not data:
+                    break
+                m.update(data)
+        # List tables and their row counts
+        tables = {}
+        with sqlite3.connect('file:{}?immutable=1'.format(path.name), uri=True) as conn:
+            conn.row_factory = sqlite3.Row
+            table_names = [
+                r['name']
+                for r in conn.execute('select * from sqlite_master where type="table"')
+            ]
+            for table in table_names:
+                tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
 
-            metadata[name] = {
-                'hash': m.hexdigest(),
-                'file': path.name,
-                'tables': tables,
-            }
+        metadata[name] = {
+            'hash': m.hexdigest(),
+            'file': path.name,
+            'tables': tables,
+        }
     build_metadata.write_text(json.dumps(metadata, indent=4))
     return metadata
 
@@ -71,7 +69,8 @@ def ensure_build_metadata(regenerate=False):
 class BaseView(HTTPMethodView):
     template = None
 
-    def __init__(self, jinja, executor):
+    def __init__(self, files, jinja, executor):
+        self.files = files
         self.jinja = jinja
         self.executor = executor
 
@@ -100,7 +99,7 @@ class BaseView(HTTPMethodView):
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
             if not conn:
-                info = ensure_build_metadata()[db_name]
+                info = ensure_build_metadata(self.files)[db_name]
                 conn = sqlite3.connect(
                     'file:{}?immutable=1'.format(info['file']),
                     uri=True,
@@ -111,7 +110,6 @@ class BaseView(HTTPMethodView):
                 setattr(connections, db_name, conn)
 
             with sqlite_timelimit(conn, SQL_TIME_LIMIT_MS):
-                print('execute: ', sql, 'params=', params)
                 rows = conn.execute(sql, params or {})
             return rows
 
@@ -120,7 +118,7 @@ class BaseView(HTTPMethodView):
         )
 
     async def get(self, request, db_name, **kwargs):
-        name, hash, should_redirect = resolve_db_name(db_name, **kwargs)
+        name, hash, should_redirect = resolve_db_name(self.files, db_name, **kwargs)
         if should_redirect:
             return self.redirect(request, should_redirect)
         return await self.view_get(request, name, hash, **kwargs)
@@ -181,13 +179,14 @@ class BaseView(HTTPMethodView):
 
 
 class IndexView(HTTPMethodView):
-    def __init__(self, jinja, executor):
+    def __init__(self, files, jinja, executor):
+        self.files = files
         self.jinja = jinja
         self.executor = executor
 
     async def get(self, request):
         databases = []
-        for key, info in ensure_build_metadata().items():
+        for key, info in ensure_build_metadata(self.files).items():
             database = {
                 'name': key,
                 'hash': info['hash'],
@@ -236,7 +235,7 @@ class DatabaseView(BaseView):
 
 class DatabaseDownload(BaseView):
     async def view_get(self, request, name, hash, **kwargs):
-        filepath = ensure_build_metadata()[name]['file']
+        filepath = ensure_build_metadata(self.files)[name]['file']
         return await response.file_stream(
             filepath, headers={
                 'Content-Disposition': 'attachment; filename="{}"'.format(filepath)
@@ -263,7 +262,7 @@ class TableView(BaseView):
         columns = [r[0] for r in rows.description]
         rows = list(rows)
         pks = await self.pks_for_table(name, table)
-        info = ensure_build_metadata()
+        info = ensure_build_metadata(self.files)
         total_rows = info[name]['tables'].get(table)
         return {
             'database': name,
@@ -309,8 +308,8 @@ class RowView(BaseView):
         }
 
 
-def resolve_db_name(db_name, **kwargs):
-    databases = ensure_build_metadata()
+def resolve_db_name(files, db_name, **kwargs):
+    databases = ensure_build_metadata(files)
     hash = None
     name = None
     if '-' in db_name:
@@ -428,29 +427,29 @@ def sqlite_timelimit(conn, ms):
 
 def app_factory(files, num_threads=3):
     app = Sanic(__name__)
+    executor = futures.ThreadPoolExecutor(max_workers=num_threads)
     jinja = SanicJinja2(
         app,
         loader=FileSystemLoader([
             str(app_root / 'datasite' / 'templates')
         ])
     )
-    executor = futures.ThreadPoolExecutor(max_workers=num_threads)
-    app.add_route(IndexView.as_view(jinja, executor), '/')
+    app.add_route(IndexView.as_view(files, jinja, executor), '/')
     app.add_route(favicon, '/favicon.ico')
     app.add_route(
-        DatabaseView.as_view(jinja, executor),
+        DatabaseView.as_view(files, jinja, executor),
         '/<db_name:[^/\.]+?><as_json:(.jsono?)?$>'
     )
     app.add_route(
-        DatabaseDownload.as_view(jinja, executor),
+        DatabaseDownload.as_view(files, jinja, executor),
         '/<db_name:[^/]+?><as_db:(\.db)$>'
     )
     app.add_route(
-        TableView.as_view(jinja, executor),
+        TableView.as_view(files, jinja, executor),
         '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.jsono?)?$>'
     )
     app.add_route(
-        RowView.as_view(jinja, executor),
+        RowView.as_view(files, jinja, executor),
         '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>'
     )
     return app

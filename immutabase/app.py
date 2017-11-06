@@ -431,7 +431,7 @@ def app_factory(files, num_threads=3):
     jinja = SanicJinja2(
         app,
         loader=FileSystemLoader([
-            str(app_root / 'datasite' / 'templates')
+            str(app_root / 'immutabase' / 'templates')
         ])
     )
     app.add_route(IndexView.as_view(files, jinja, executor), '/')

@@ -6,7 +6,7 @@ from .app import app_factory, ensure_build_metadata
 @click.group(cls=DefaultGroup, default='serve', default_if_no_args=True)
 def cli():
     """
-    Datasite!
+    Immutabase!
     """
 
 

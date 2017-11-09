@@ -248,20 +248,27 @@ class TableView(BaseView):
 
     async def data(self, request, name, hash, table):
         table = urllib.parse.unquote_plus(table)
+        pks = await self.pks_for_table(name, table)
+        use_rowid = not pks
+        select = '*'
+        if use_rowid:
+            select = 'rowid, *'
         if request.args:
             where_clause, params = build_where_clause(request.args)
-            sql = 'select * from "{}" where {} limit 50'.format(
-                table, where_clause
+            sql = 'select {} from "{}" where {} limit 50'.format(
+                select, table, where_clause
             )
         else:
-            sql = 'select * from "{}" limit 50'.format(table)
+            sql = 'select {} from "{}" limit 50'.format(select, table)
             params = []
 
         rows = await self.execute(name, sql)
 
         columns = [r[0] for r in rows.description]
+        display_columns = columns
+        if use_rowid:
+            display_columns = display_columns[1:]
         rows = list(rows)
-        pks = await self.pks_for_table(name, table)
         info = ensure_build_metadata(self.files)
         total_rows = info[name]['tables'].get(table)
         return {
@@ -273,7 +280,9 @@ class TableView(BaseView):
             'primary_keys': pks,
         }, lambda: {
             'database_hash': hash,
-            'row_link': lambda row: path_from_row_pks(row, pks),
+            'use_rowid': use_rowid,
+            'row_link': lambda row: path_from_row_pks(row, pks, use_rowid),
+            'display_columns': display_columns,
         }
 
 
@@ -284,12 +293,17 @@ class RowView(BaseView):
         table = urllib.parse.unquote_plus(table)
         pk_values = compound_pks_from_path(pk_path)
         pks = await self.pks_for_table(name, table)
+        use_rowid = not pks
+        select = '*'
+        if use_rowid:
+            select = 'rowid, *'
+            pks = ['rowid']
         wheres = [
             '"{}"=:p{}'.format(pk, i)
             for i, pk in enumerate(pks)
         ]
-        sql = 'select * from "{}" where {}'.format(
-            table, ' AND '.join(wheres)
+        sql = 'select {} from "{}" where {}'.format(
+            select, table, ' AND '.join(wheres)
         )
         params = {}
         for i, pk_value in enumerate(pk_values):
@@ -351,9 +365,9 @@ def compound_pks_from_path(path):
     ]
 
 
-def path_from_row_pks(row, pks):
-    if not pks:
-        return ''
+def path_from_row_pks(row, pks, use_rowid):
+    if use_rowid:
+        return urllib.parse.quote_plus(str(row['rowid']))
     bits = []
     for pk in pks:
         bits.append(

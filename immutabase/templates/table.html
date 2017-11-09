@@ -8,6 +8,9 @@
 <h2>{{ table }}{% if total_rows != None %} ({{ "{:,}".format(total_rows) }} total row{% if total_rows == 1 %}{% else %}s{% endif %} in this table){% endif %}</h2>
 
 <style>
+th {
+    padding-right: 1em;
+}
 td {
     white-space: pre;
     vertical-align: top;
@@ -17,16 +20,16 @@ td {
 </style>
 <table>
     <tr>
-        {% if primary_keys and row_link %}<th scope="col">Link</th>{% endif %}
-        {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+        <th scope="col">{% if use_rowid %}rowid{% else %}Link{% endif %}</th>
+        {% for column in display_columns %}<th scope="col">{{ column }}</th>{% endfor %}
     </tr>
     {% for row in rows %}
         <tr>
-            {% if primary_keys and row_link %}
-                <td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>
-            {% endif %}
+            <td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>
             {% for td in row %}
-                <td>{{ td }}</td>
+                {% if not use_rowid or (use_rowid and not loop.first) %}
+                    <td>{{ td }}</td>
+                {% endif %}
             {% endfor %}
         </tr>
     {% endfor %}

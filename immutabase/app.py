@@ -110,7 +110,13 @@ class BaseView(HTTPMethodView):
                 setattr(connections, db_name, conn)
 
             with sqlite_timelimit(conn, SQL_TIME_LIMIT_MS):
-                rows = conn.execute(sql, params or {})
+                try:
+                    rows = conn.execute(sql, params or {})
+                except Exception:
+                    print('sql = {}, params = {}'.format(
+                        sql, params
+                    ))
+                    raise
             return rows
 
         return await asyncio.get_event_loop().run_in_executor(
@@ -262,7 +268,7 @@ class TableView(BaseView):
             sql = 'select {} from "{}" limit 50'.format(select, table)
             params = []
 
-        rows = await self.execute(name, sql)
+        rows = await self.execute(name, sql, params)
 
         columns = [r[0] for r in rows.description]
         display_columns = columns
@@ -278,6 +284,8 @@ class TableView(BaseView):
             'total_rows': total_rows,
             'columns': columns,
             'primary_keys': pks,
+            'sql': sql,
+            'sql_params': params,
         }, lambda: {
             'database_hash': hash,
             'use_rowid': use_rowid,
@@ -378,24 +386,26 @@ def path_from_row_pks(row, pks, use_rowid):
 
 def build_where_clause(args):
     sql_bits = []
-    for key, values in args.items():
+    params = {}
+    for i, (key, values) in enumerate(args.items()):
         if '__' in key:
             column, lookup = key.rsplit('__', 1)
         else:
             column = key
             lookup = 'exact'
         template = {
-            'exact': '"{}" = ?',
-            'contains': '"{}" like ?',
-            'endswith': '"{}" like ?',
-            'startswith': '"{}" like ?',
-            'gt': '"{}" > ?',
-            'gte': '"{}" >= ?',
-            'lt': '"{}" < ?',
-            'lte': '"{}" <= ?',
-            'glob': '"{}" glob ?',
-            'like': '"{}" like ?',
+            'exact': '"{}" = :{}',
+            'contains': '"{}" like :{}',
+            'endswith': '"{}" like :{}',
+            'startswith': '"{}" like :{}',
+            'gt': '"{}" > :{}',
+            'gte': '"{}" >= :{}',
+            'lt': '"{}" < :{}',
+            'lte': '"{}" <= :{}',
+            'glob': '"{}" glob :{}',
+            'like': '"{}" like :{}',
         }[lookup]
+        numeric_operators = {'gt', 'gte', 'lt', 'lte'}
         value = values[0]
         value_convert = {
             'contains': lambda s: '%{}%'.format(s),
@@ -403,12 +413,14 @@ def build_where_clause(args):
             'startswith': lambda s: '{}%'.format(s),
         }.get(lookup, lambda s: s)
         converted = value_convert(value)
+        if lookup in numeric_operators and converted.isdigit():
+            converted = int(converted)
+        param_id = 'p{}'.format(i)
         sql_bits.append(
-            (template.format(column), converted)
+            template.format(column, param_id)
         )
-    sql_bits.sort(key=lambda p: p[0])
-    where_clause = ' and '.join(p[0] for p in sql_bits)
-    params = [p[1] for p in sql_bits]
+        params[param_id] = converted
+    where_clause = ' and '.join(sql_bits)
     return where_clause, params
 
 

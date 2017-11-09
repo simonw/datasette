@@ -256,16 +256,22 @@ class TableView(BaseView):
         table = urllib.parse.unquote_plus(table)
         pks = await self.pks_for_table(name, table)
         use_rowid = not pks
-        select = '*'
         if use_rowid:
             select = 'rowid, *'
+            order_by = 'rowid'
+        else:
+            select = '*'
+            order_by = ', '.join(pks)
+
         if request.args:
             where_clause, params = build_where_clause(request.args)
-            sql = 'select {} from "{}" where {} limit 50'.format(
-                select, table, where_clause
+            sql = 'select {} from "{}" where {} order by {} limit 50'.format(
+                select, table, where_clause, order_by
             )
         else:
-            sql = 'select {} from "{}" limit 50'.format(select, table)
+            sql = 'select {} from "{}" order by {} limit 50'.format(
+                select, table, order_by
+            )
             params = []
 
         rows = await self.execute(name, sql, params)

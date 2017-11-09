@@ -21,8 +21,13 @@ def build(files):
 @click.option('-h', '--host', default='0.0.0.0')
 @click.option('-p', '--port', default=8001)
 @click.option('--debug', is_flag=True)
-def serve(files, host, port, debug):
+@click.option('--reload', is_flag=True)
+def serve(files, host, port, debug, reload):
     """Serve up specified database files with a web UI"""
+    if reload:
+        import hupper
+        hupper.start_reloader('immutabase.cli.serve')
+
     click.echo('Serve! files={} on port {}'.format(files, port))
     app = app_factory(files)
     app.run(host=host, port=port, debug=debug)

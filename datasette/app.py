@@ -393,7 +393,7 @@ def path_from_row_pks(row, pks, use_rowid):
 def build_where_clause(args):
     sql_bits = []
     params = {}
-    for i, (key, values) in enumerate(args.items()):
+    for i, (key, values) in enumerate(sorted(args.items())):
         if '__' in key:
             column, lookup = key.rsplit('__', 1)
         else:

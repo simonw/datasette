@@ -20,7 +20,7 @@ def test_compound_pks_from_path(path, expected):
     ({'A': 123}, ['A'], '123'),
 ])
 def test_path_from_row_pks(row, pks, expected_path):
-    actual_path = app.path_from_row_pks(row, pks)
+    actual_path = app.path_from_row_pks(row, pks, False)
     assert expected_path == actual_path
 
 
@@ -47,7 +47,7 @@ def test_custom_json_encoder(obj, expected):
         {
             'name_english__contains': ['foo'],
         },
-        '"name_english" like ?',
+        '"name_english" like :p0',
         ['%foo%']
     ),
     (
@@ -55,7 +55,7 @@ def test_custom_json_encoder(obj, expected):
             'foo': ['bar'],
             'bar__contains': ['baz'],
         },
-        '"bar" like ? and "foo" = ?',
+        '"bar" like :p0 and "foo" = :p1',
         ['%baz%', 'bar']
     ),
     (
@@ -63,7 +63,7 @@ def test_custom_json_encoder(obj, expected):
             'foo__startswith': ['bar'],
             'bar__endswith': ['baz'],
         },
-        '"bar" like ? and "foo" like ?',
+        '"bar" like :p0 and "foo" like :p1',
         ['%baz', 'bar%']
     ),
     (
@@ -73,22 +73,25 @@ def test_custom_json_encoder(obj, expected):
             'baz__gte': ['3'],
             'bax__lte': ['4'],
         },
-        '"bar" > ? and "bax" <= ? and "baz" >= ? and "foo" < ?',
-        ['2', '4', '3', '1']
+        '"bar" > :p0 and "bax" <= :p1 and "baz" >= :p2 and "foo" < :p3',
+        [2, 4, 3, 1]
     ),
     (
         {
             'foo__like': ['2%2'],
             'zax__glob': ['3*'],
         },
-        '"foo" like ? and "zax" glob ?',
+        '"foo" like :p0 and "zax" glob :p1',
         ['2%2', '3*']
     ),
 ])
 def test_build_where(args, expected_where, expected_params):
     actual_where, actual_params = app.build_where_clause(args)
     assert expected_where == actual_where
-    assert expected_params == actual_params
+    assert {
+        'p{}'.format(i): param
+        for i, param in enumerate(expected_params)
+    } == actual_params
 
 
 @pytest.mark.parametrize('bad_sql', [

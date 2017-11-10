@@ -1,3 +1,7 @@
+"""
+Tests for various datasette helper functions.
+"""
+
 from datasette import app
 import pytest
 import json

@@ -192,7 +192,7 @@ class IndexView(HTTPMethodView):
 
     async def get(self, request):
         databases = []
-        for key, info in ensure_build_metadata(self.files).items():
+        for key, info in sorted(ensure_build_metadata(self.files).items()):
             database = {
                 'name': key,
                 'hash': info['hash'],

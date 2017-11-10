@@ -1,6 +1,6 @@
 import click
 from click_default_group import DefaultGroup
-from .app import app_factory, ensure_build_metadata
+from .app import Datasette, ensure_build_metadata
 
 
 @click.group(cls=DefaultGroup, default='serve', default_if_no_args=True)
@@ -29,5 +29,5 @@ def serve(files, host, port, debug, reload):
         hupper.start_reloader('datasette.cli.serve')
 
     click.echo('Serve! files={} on port {}'.format(files, port))
-    app = app_factory(files)
+    app = Datasette(files).app()
     app.run(host=host, port=port, debug=debug)

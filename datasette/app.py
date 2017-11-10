@@ -69,10 +69,10 @@ def ensure_build_metadata(files, regenerate=False):
 class BaseView(HTTPMethodView):
     template = None
 
-    def __init__(self, files, jinja, executor):
-        self.files = files
-        self.jinja = jinja
-        self.executor = executor
+    def __init__(self, datasette):
+        self.files = datasette.files
+        self.jinja = datasette.jinja
+        self.executor = datasette.executor
 
     def redirect(self, request, path):
         if request.query_string:
@@ -185,10 +185,10 @@ class BaseView(HTTPMethodView):
 
 
 class IndexView(HTTPMethodView):
-    def __init__(self, files, jinja, executor):
-        self.files = files
-        self.jinja = jinja
-        self.executor = executor
+    def __init__(self, datasette):
+        self.files = datasette.files
+        self.jinja = datasette.jinja
+        self.executor = datasette.executor
 
     async def get(self, request):
         databases = []
@@ -460,36 +460,43 @@ def sqlite_timelimit(conn, ms):
     conn.set_progress_handler(None, 10000)
 
 
-def app_factory(files, num_threads=3):
-    app = Sanic(__name__)
-    executor = futures.ThreadPoolExecutor(max_workers=num_threads)
-    jinja = SanicJinja2(
-        app,
-        loader=FileSystemLoader([
-            str(app_root / 'datasette' / 'templates')
-        ])
-    )
-    app.add_route(IndexView.as_view(files, jinja, executor), '/')
-    # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
-    app.add_route(favicon, '/favicon.ico')
-    app.static('/-/static/', str(app_root / 'datasette' / 'static'))
-    app.add_route(
-        DatabaseView.as_view(files, jinja, executor),
-        '/<db_name:[^/\.]+?><as_json:(.jsono?)?$>'
-    )
-    app.add_route(
-        DatabaseDownload.as_view(files, jinja, executor),
-        '/<db_name:[^/]+?><as_db:(\.db)$>'
-    )
-    app.add_route(
-        TableView.as_view(files, jinja, executor),
-        '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.jsono?)?$>'
-    )
-    app.add_route(
-        RowView.as_view(files, jinja, executor),
-        '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>'
-    )
-    return app
+class Datasette:
+    def __init__(self, files, num_threads=3):
+        self.files = files
+        self.num_threads = num_threads
+        self.executor = futures.ThreadPoolExecutor(
+            max_workers=num_threads
+        )
+
+    def app(self):
+        app = Sanic(__name__)
+        self.jinja = SanicJinja2(
+            app,
+            loader=FileSystemLoader([
+                str(app_root / 'datasette' / 'templates')
+            ])
+        )
+        app.add_route(IndexView.as_view(self), '/')
+        # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
+        app.add_route(favicon, '/favicon.ico')
+        app.static('/-/static/', str(app_root / 'datasette' / 'static'))
+        app.add_route(
+            DatabaseView.as_view(self),
+            '/<db_name:[^/\.]+?><as_json:(.jsono?)?$>'
+        )
+        app.add_route(
+            DatabaseDownload.as_view(self),
+            '/<db_name:[^/]+?><as_db:(\.db)$>'
+        )
+        app.add_route(
+            TableView.as_view(self),
+            '/<db_name:[^/]+>/<table:[^/]+?><as_json:(.jsono?)?$>'
+        )
+        app.add_route(
+            RowView.as_view(self),
+            '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(.jsono?)?$>'
+        )
+        return app
 
 
 class InvalidSql(Exception):

@@ -466,13 +466,13 @@ def app_factory(files, num_threads=3):
     jinja = SanicJinja2(
         app,
         loader=FileSystemLoader([
-            str(app_root / 'immutabase' / 'templates')
+            str(app_root / 'datasette' / 'templates')
         ])
     )
     app.add_route(IndexView.as_view(files, jinja, executor), '/')
     # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
     app.add_route(favicon, '/favicon.ico')
-    app.static('/-/static/', str(app_root / 'immutabase' / 'static'))
+    app.static('/-/static/', str(app_root / 'datasette' / 'static'))
     app.add_route(
         DatabaseView.as_view(files, jinja, executor),
         '/<db_name:[^/\.]+?><as_json:(.jsono?)?$>'

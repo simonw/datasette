@@ -1,4 +1,4 @@
-from immutabase import app
+from datasette import app
 import pytest
 import json
 

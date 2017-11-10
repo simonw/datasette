@@ -6,7 +6,7 @@ from .app import app_factory, ensure_build_metadata
 @click.group(cls=DefaultGroup, default='serve', default_if_no_args=True)
 def cli():
     """
-    Immutabase!
+    Datasette!
     """
 
 
@@ -26,7 +26,7 @@ def serve(files, host, port, debug, reload):
     """Serve up specified database files with a web UI"""
     if reload:
         import hupper
-        hupper.start_reloader('immutabase.cli.serve')
+        hupper.start_reloader('datasette.cli.serve')
 
     click.echo('Serve! files={} on port {}'.format(files, port))
     app = app_factory(files)

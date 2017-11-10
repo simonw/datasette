@@ -23,10 +23,10 @@ def path_from_row_pks(row, pks, use_rowid):
     return ','.join(bits)
 
 
-def build_where_clause(args):
+def build_where_clauses(args):
     sql_bits = []
     params = {}
-    for i, (key, values) in enumerate(sorted(args.items())):
+    for i, (key, value) in enumerate(sorted(args.items())):
         if '__' in key:
             column, lookup = key.rsplit('__', 1)
         else:
@@ -45,7 +45,6 @@ def build_where_clause(args):
             'like': '"{}" like :{}',
         }[lookup]
         numeric_operators = {'gt', 'gte', 'lt', 'lte'}
-        value = values[0]
         value_convert = {
             'contains': lambda s: '%{}%'.format(s),
             'endswith': lambda s: '%{}'.format(s),
@@ -59,8 +58,7 @@ def build_where_clause(args):
             template.format(column, param_id)
         )
         params[param_id] = converted
-    where_clause = ' and '.join(sql_bits)
-    return where_clause, params
+    return sql_bits, params
 
 
 class CustomJSONEncoder(json.JSONEncoder):
@@ -103,3 +101,9 @@ def validate_sql_select(sql):
         raise InvalidSql('Statement must begin with SELECT')
     if 'pragma' in sql:
         raise InvalidSql('Statement may not contain PRAGMA')
+
+
+def path_with_added_args(request, args):
+    current = request.raw_args.copy()
+    current.update(args)
+    return request.path + '?' + urllib.parse.urlencode(current)

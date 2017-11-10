@@ -14,10 +14,11 @@ import json
 import hashlib
 import time
 from .utils import (
-    build_where_clause,
+    build_where_clauses,
     CustomJSONEncoder,
     InvalidSql,
     path_from_row_pks,
+    path_with_added_args,
     compound_pks_from_path,
     sqlite_timelimit,
     validate_sql_select,
@@ -78,6 +79,7 @@ class BaseView(HTTPMethodView):
         self.files = datasette.files
         self.jinja = datasette.jinja
         self.executor = datasette.executor
+        self.page_size = datasette.page_size
         self.cache_headers = datasette.cache_headers
 
     def redirect(self, request, path):
@@ -270,16 +272,52 @@ class TableView(BaseView):
             select = '*'
             order_by = ', '.join(pks)
 
-        if request.args:
-            where_clause, params = build_where_clause(request.args)
-            sql = 'select {} from "{}" where {} order by {} limit 50'.format(
-                select, table, where_clause, order_by
-            )
+        # Special args start with _ and do not contain a __
+        # That's so if there is a column that starts with _
+        # it can still be queried using ?_col__exact=blah
+        special_args = {}
+        other_args = {}
+        for key, value in request.args.items():
+            if key.startswith('_') and '__' not in key:
+                special_args[key] = value[0]
+            else:
+                other_args[key] = value[0]
+
+        if other_args:
+            where_clauses, params = build_where_clauses(other_args)
         else:
-            sql = 'select {} from "{}" order by {} limit 50'.format(
-                select, table, order_by
-            )
-            params = []
+            where_clauses = []
+            params = {}
+
+        after = special_args.get('_after')
+        if after:
+            if use_rowid:
+                where_clauses.append(
+                    'rowid > :p{}'.format(
+                        len(params),
+                    )
+                )
+                params['p{}'.format(len(params))] = after
+            else:
+                pk_values = compound_pks_from_path(after)
+                if len(pk_values) == len(pks):
+                    param_counter = len(params)
+                    for pk, value in zip(pks, pk_values):
+                        where_clauses.append(
+                            '"{}" > :p{}'.format(
+                                pk, param_counter,
+                            )
+                        )
+                        params['p{}'.format(param_counter)] = value
+                        param_counter += 1
+
+        where_clause = ''
+        if where_clauses:
+            where_clause = 'where {}'.format(' and '.join(where_clauses))
+
+        sql = 'select {} from "{}" {} order by {} limit {}'.format(
+            select, table, where_clause, order_by, self.page_size + 1,
+        )
 
         rows = await self.execute(name, sql, params)
 
@@ -290,20 +328,27 @@ class TableView(BaseView):
         rows = list(rows)
         info = ensure_build_metadata(self.files)
         total_rows = info[name]['tables'].get(table)
+        after = None
+        after_link = None
+        if len(rows) > self.page_size:
+            after = path_from_row_pks(rows[-2], pks, use_rowid)
+            after_link = path_with_added_args(request, {'_after': after})
         return {
             'database': name,
             'table': table,
-            'rows': rows,
+            'rows': rows[:self.page_size],
             'total_rows': total_rows,
             'columns': columns,
             'primary_keys': pks,
             'sql': sql,
             'sql_params': params,
+            'after': after,
         }, lambda: {
             'database_hash': hash,
             'use_rowid': use_rowid,
             'row_link': lambda row: path_from_row_pks(row, pks, use_rowid),
             'display_columns': display_columns,
+            'after_link': after_link,
         }
 
 
@@ -381,13 +426,14 @@ def resolve_db_name(files, db_name, **kwargs):
 
 
 class Datasette:
-    def __init__(self, files, num_threads=3, cache_headers=True):
+    def __init__(self, files, num_threads=3, cache_headers=True, page_size=50):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
             max_workers=num_threads
         )
         self.cache_headers = cache_headers
+        self.page_size = page_size
 
     def app(self):
         app = Sanic(__name__)

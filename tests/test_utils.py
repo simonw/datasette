@@ -90,7 +90,8 @@ def test_custom_json_encoder(obj, expected):
     ),
 ])
 def test_build_where(args, expected_where, expected_params):
-    actual_where, actual_params = utils.build_where_clause(args)
+    sql_bits, actual_params = utils.build_where_clauses(args)
+    actual_where = ' and '.join(sql_bits)
     assert expected_where == actual_where
     assert {
         'p{}'.format(i): param

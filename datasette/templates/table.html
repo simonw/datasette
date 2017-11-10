@@ -34,5 +34,8 @@ td {
         </tr>
     {% endfor %}
 </table>
+{% if after_link %}
+    <p><a href="{{ after_link }}">Next page</a></p>
+{% endif %}
 {% if took_ms %}<small>Took {{ took_ms }}</small>{% endif %}
 {% endblock %}

@@ -2,7 +2,7 @@
 Tests for various datasette helper functions.
 """
 
-from datasette import app
+from datasette import utils
 import pytest
 import json
 
@@ -15,7 +15,7 @@ import json
     ('123%2F433%2F112', ['123/433/112']),
 ])
 def test_compound_pks_from_path(path, expected):
-    assert expected == app.compound_pks_from_path(path)
+    assert expected == utils.compound_pks_from_path(path)
 
 
 @pytest.mark.parametrize('row,pks,expected_path', [
@@ -24,7 +24,7 @@ def test_compound_pks_from_path(path, expected):
     ({'A': 123}, ['A'], '123'),
 ])
 def test_path_from_row_pks(row, pks, expected_path):
-    actual_path = app.path_from_row_pks(row, pks, False)
+    actual_path = utils.path_from_row_pks(row, pks, False)
     assert expected_path == actual_path
 
 
@@ -40,7 +40,7 @@ def test_path_from_row_pks(row, pks, expected_path):
 def test_custom_json_encoder(obj, expected):
     actual = json.dumps(
         obj,
-        cls=app.CustomJSONEncoder,
+        cls=utils.CustomJSONEncoder,
         sort_keys=True
     )
     assert expected == actual
@@ -90,7 +90,7 @@ def test_custom_json_encoder(obj, expected):
     ),
 ])
 def test_build_where(args, expected_where, expected_params):
-    actual_where, actual_params = app.build_where_clause(args)
+    actual_where, actual_params = utils.build_where_clause(args)
     assert expected_where == actual_where
     assert {
         'p{}'.format(i): param
@@ -104,8 +104,8 @@ def test_build_where(args, expected_where, expected_params):
     "SELECT * FROM pragma_index_info('idx52')",
 ])
 def test_validate_sql_select_bad(bad_sql):
-    with pytest.raises(app.InvalidSql):
-        app.validate_sql_select(bad_sql)
+    with pytest.raises(utils.InvalidSql):
+        utils.validate_sql_select(bad_sql)
 
 
 @pytest.mark.parametrize('good_sql', [
@@ -114,4 +114,4 @@ def test_validate_sql_select_bad(bad_sql):
     'select 1 + 1',
 ])
 def test_validate_sql_select_good(good_sql):
-    app.validate_sql_select(good_sql)
+    utils.validate_sql_select(good_sql)

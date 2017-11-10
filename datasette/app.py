@@ -78,6 +78,7 @@ class BaseView(HTTPMethodView):
         self.files = datasette.files
         self.jinja = datasette.jinja
         self.executor = datasette.executor
+        self.cache_headers = datasette.cache_headers
 
     def redirect(self, request, path):
         if request.query_string:
@@ -183,9 +184,10 @@ class BaseView(HTTPMethodView):
                 **context,
             )
         # Set far-future cache expiry
-        r.headers['Cache-Control'] = 'max-age={}'.format(
-            365 * 24 * 60 * 60
-        )
+        if self.cache_headers:
+            r.headers['Cache-Control'] = 'max-age={}'.format(
+                365 * 24 * 60 * 60
+            )
         return r
 
 
@@ -379,12 +381,13 @@ def resolve_db_name(files, db_name, **kwargs):
 
 
 class Datasette:
-    def __init__(self, files, num_threads=3):
+    def __init__(self, files, num_threads=3, cache_headers=True):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
             max_workers=num_threads
         )
+        self.cache_headers = cache_headers
 
     def app(self):
         app = Sanic(__name__)

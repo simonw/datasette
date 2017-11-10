@@ -29,5 +29,5 @@ def serve(files, host, port, debug, reload):
         hupper.start_reloader('datasette.cli.serve')
 
     click.echo('Serve! files={} on port {}'.format(files, port))
-    app = Datasette(files).app()
+    app = Datasette(files, cache_headers=not debug and not reload).app()
     app.run(host=host, port=port, debug=debug)

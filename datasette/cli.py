@@ -1,7 +1,9 @@
 import click
 from click_default_group import DefaultGroup
 import os
+import shutil
 from subprocess import call
+import sys
 import tempfile
 from .app import Datasette, ensure_build_metadata
 from .utils import make_dockerfile
@@ -23,6 +25,16 @@ def build(files):
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
 def publish(files):
+    if not shutil.which('now'):
+        click.secho(
+            ' The publish command requires "now" to be installed and configured ',
+            bg='red',
+            fg='white',
+            bold=True,
+            err=True,
+        )
+        click.echo('Follow the instructions at https://zeit.co/now#whats-now', err=True)
+        sys.exit(1)
     tmp = tempfile.TemporaryDirectory()
     # We create a datasette folder in there to get a nicer now deploy name
     datasette_dir = os.path.join(tmp.name, 'datasette')

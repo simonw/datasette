@@ -44,6 +44,13 @@ def test_table_page(three_table_app_client):
     data = response.json
     assert data['query']['sql'] == 'select * from "simple_primary_key" order by pk limit 51'
     assert data['query']['params'] == {}
+    assert data['rows'] == [{
+        'pk': '1',
+        'content': 'hello',
+    }, {
+        'pk': '2',
+        'content': 'world',
+    }]
 
 
 THREE_TABLES = '''

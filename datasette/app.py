@@ -149,7 +149,7 @@ class BaseView(HTTPMethodView):
                 'error': str(e),
             }
         end = time.time()
-        data['took_ms'] = (end - start) * 1000
+        data['query_ms'] = (end - start) * 1000
         if as_json:
             # Special case for .jsono extension
             if as_json == '.jsono':
@@ -209,7 +209,7 @@ class IndexView(HTTPMethodView):
                 )[:5],
                 'tables_count': len(info['tables'].items()),
                 'tables_more': len(info['tables'].items()) > 5,
-                'total_rows': sum(info['tables'].values()),
+                'table_rows': sum(info['tables'].values()),
             }
             databases.append(database)
         if as_json:
@@ -321,9 +321,9 @@ class TableView(BaseView):
 
         where_clause = ''
         if where_clauses:
-            where_clause = 'where {}'.format(' and '.join(where_clauses))
+            where_clause = 'where {} '.format(' and '.join(where_clauses))
 
-        sql = 'select {} from "{}" {} order by {} limit {}'.format(
+        sql = 'select {} from "{}" {}order by {} limit {}'.format(
             select, table, where_clause, order_by, self.page_size + 1,
         )
 
@@ -335,7 +335,7 @@ class TableView(BaseView):
             display_columns = display_columns[1:]
         rows = list(rows)
         info = self.ds.metadata()
-        total_rows = info[name]['tables'].get(table)
+        table_rows = info[name]['tables'].get(table)
         after = None
         after_link = None
         if len(rows) > self.page_size:
@@ -345,11 +345,13 @@ class TableView(BaseView):
             'database': name,
             'table': table,
             'rows': rows[:self.page_size],
-            'total_rows': total_rows,
+            'table_rows': table_rows,
             'columns': columns,
             'primary_keys': pks,
-            'sql': sql,
-            'sql_params': params,
+            'query': {
+                'sql': sql,
+                'params': params,
+            },
             'after': after,
         }, lambda: {
             'database_hash': hash,

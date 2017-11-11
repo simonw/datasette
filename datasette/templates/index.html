@@ -6,7 +6,7 @@
 <h1>Datasette</h1>
 {% for database in databases %}
     <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.hash[:6] }}"><a href="{{ database.path }}">{{ database.name }}</a></h2>
-    <p>{{ "{:,}".format(database.total_rows) }} rows in {{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}</p>
+    <p>{{ "{:,}".format(database.table_rows) }} rows in {{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}</p>
     <p>{% for table, count in database.tables_truncated %}<a href="{{ database.path }}/{{ table }}" title="{{ count }} rows">{{ table }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
 {% endfor %}
 

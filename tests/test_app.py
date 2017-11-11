@@ -36,6 +36,14 @@ def test_database_page(three_table_app_client):
     assert 'three_tables' in response.text
 
 
+def test_table_page(three_table_app_client):
+    _, response = three_table_app_client.get('/three_tables/simple_primary_key')
+    assert response.status == 200
+    _, response = three_table_app_client.get('/three_tables/simple_primary_key.jsono')
+    assert response.status == 200
+    data = response.json
+    assert data['query']['sql'] == 'select * from "simple_primary_key" order by pk limit 51'
+    assert data['query']['params'] == {}
 
 
 THREE_TABLES = '''

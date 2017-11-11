@@ -27,56 +27,17 @@ from .utils import (
 
 app_root = Path(__file__).parent.parent
 
-BUILD_METADATA = 'build-metadata.json'
 HASH_BLOCK_SIZE = 1024 * 1024
 SQL_TIME_LIMIT_MS = 1000
 
 connections = threading.local()
 
 
-def ensure_build_metadata(files, regenerate=True):
-    build_metadata = app_root / BUILD_METADATA
-    if build_metadata.exists() and not regenerate:
-        return json.loads(build_metadata.read_text())
-    print('Building metadata... path={}'.format(build_metadata))
-    metadata = {}
-    for filename in files:
-        path = Path(filename)
-        name = path.stem
-        if name in metadata:
-            raise Exception('Multiple files with same stem %s' % name)
-        # Calculate hash, efficiently
-        m = hashlib.sha256()
-        with path.open('rb') as fp:
-            while True:
-                data = fp.read(HASH_BLOCK_SIZE)
-                if not data:
-                    break
-                m.update(data)
-        # List tables and their row counts
-        tables = {}
-        with sqlite3.connect('file:{}?immutable=1'.format(path.name), uri=True) as conn:
-            conn.row_factory = sqlite3.Row
-            table_names = [
-                r['name']
-                for r in conn.execute('select * from sqlite_master where type="table"')
-            ]
-            for table in table_names:
-                tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
-
-        metadata[name] = {
-            'hash': m.hexdigest(),
-            'file': path.name,
-            'tables': tables,
-        }
-    build_metadata.write_text(json.dumps(metadata, indent=4))
-    return metadata
-
-
 class BaseView(HTTPMethodView):
     template = None
 
     def __init__(self, datasette):
+        self.ds = datasette
         self.files = datasette.files
         self.jinja = datasette.jinja
         self.executor = datasette.executor
@@ -103,12 +64,45 @@ class BaseView(HTTPMethodView):
         rows.sort(key=lambda row: row[-1])
         return [str(r[1]) for r in rows]
 
+    def resolve_db_name(self, db_name, **kwargs):
+        databases = self.ds.metadata()
+        hash = None
+        name = None
+        if '-' in db_name:
+            # Might be name-and-hash, or might just be
+            # a name with a hyphen in it
+            name, hash = db_name.rsplit('-', 1)
+            if name not in databases:
+                # Try the whole name
+                name = db_name
+                hash = None
+        else:
+            name = db_name
+        # Verify the hash
+        try:
+            info = databases[name]
+        except KeyError:
+            raise NotFound('Database not found: {}'.format(name))
+        expected = info['hash'][:7]
+        if expected != hash:
+            should_redirect = '/{}-{}'.format(
+                name, expected,
+            )
+            if 'table' in kwargs:
+                should_redirect += '/' + kwargs['table']
+            if 'as_json' in kwargs:
+                should_redirect += kwargs['as_json']
+            if 'as_db' in kwargs:
+                should_redirect += kwargs['as_db']
+            return name, expected, should_redirect
+        return name, expected, None
+
     async def execute(self, db_name, sql, params=None):
         """Executes sql against db_name in a thread"""
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
             if not conn:
-                info = ensure_build_metadata(self.files)[db_name]
+                info = self.ds.metadata()[db_name]
                 conn = sqlite3.connect(
                     'file:{}?immutable=1'.format(info['file']),
                     uri=True,
@@ -133,7 +127,7 @@ class BaseView(HTTPMethodView):
         )
 
     async def get(self, request, db_name, **kwargs):
-        name, hash, should_redirect = resolve_db_name(self.files, db_name, **kwargs)
+        name, hash, should_redirect = self.resolve_db_name(db_name, **kwargs)
         if should_redirect:
             return self.redirect(request, should_redirect)
         return await self.view_get(request, name, hash, **kwargs)
@@ -196,13 +190,14 @@ class BaseView(HTTPMethodView):
 
 class IndexView(HTTPMethodView):
     def __init__(self, datasette):
+        self.ds = datasette
         self.files = datasette.files
         self.jinja = datasette.jinja
         self.executor = datasette.executor
 
     async def get(self, request, as_json):
         databases = []
-        for key, info in sorted(ensure_build_metadata(self.files).items()):
+        for key, info in sorted(self.ds.metadata().items()):
             database = {
                 'name': key,
                 'hash': info['hash'],
@@ -263,7 +258,7 @@ class DatabaseView(BaseView):
 
 class DatabaseDownload(BaseView):
     async def view_get(self, request, name, hash, **kwargs):
-        filepath = ensure_build_metadata(self.files)[name]['file']
+        filepath = self.ds.metadata()[name]['file']
         return await response.file_stream(
             filepath, headers={
                 'Content-Disposition': 'attachment; filename="{}"'.format(filepath)
@@ -339,7 +334,7 @@ class TableView(BaseView):
         if use_rowid:
             display_columns = display_columns[1:]
         rows = list(rows)
-        info = ensure_build_metadata(self.files)
+        info = self.ds.metadata()
         total_rows = info[name]['tables'].get(table)
         after = None
         after_link = None
@@ -404,42 +399,8 @@ class RowView(BaseView):
         }
 
 
-def resolve_db_name(files, db_name, **kwargs):
-    databases = ensure_build_metadata(files)
-    hash = None
-    name = None
-    if '-' in db_name:
-        # Might be name-and-hash, or might just be
-        # a name with a hyphen in it
-        name, hash = db_name.rsplit('-', 1)
-        if name not in databases:
-            # Try the whole name
-            name = db_name
-            hash = None
-    else:
-        name = db_name
-    # Verify the hash
-    try:
-        info = databases[name]
-    except KeyError:
-        raise NotFound('Database not found: {}'.format(name))
-    expected = info['hash'][:7]
-    if expected != hash:
-        should_redirect = '/{}-{}'.format(
-            name, expected,
-        )
-        if 'table' in kwargs:
-            should_redirect += '/' + kwargs['table']
-        if 'as_json' in kwargs:
-            should_redirect += kwargs['as_json']
-        if 'as_db' in kwargs:
-            should_redirect += kwargs['as_db']
-        return name, expected, should_redirect
-    return name, expected, None
-
-
 class Datasette:
-    def __init__(self, files, num_threads=3, cache_headers=True, page_size=50):
+    def __init__(self, files, num_threads=3, cache_headers=True, page_size=50, metadata=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -447,6 +408,43 @@ class Datasette:
         )
         self.cache_headers = cache_headers
         self.page_size = page_size
+        self._metadata = metadata
+
+    def metadata(self):
+        if self._metadata:
+            return self._metadata
+        metadata = {}
+        for filename in self.files:
+            path = Path(filename)
+            name = path.stem
+            if name in metadata:
+                raise Exception('Multiple files with same stem %s' % name)
+            # Calculate hash, efficiently
+            m = hashlib.sha256()
+            with path.open('rb') as fp:
+                while True:
+                    data = fp.read(HASH_BLOCK_SIZE)
+                    if not data:
+                        break
+                    m.update(data)
+            # List tables and their row counts
+            tables = {}
+            with sqlite3.connect('file:{}?immutable=1'.format(path.name), uri=True) as conn:
+                conn.row_factory = sqlite3.Row
+                table_names = [
+                    r['name']
+                    for r in conn.execute('select * from sqlite_master where type="table"')
+                ]
+                for table in table_names:
+                    tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
+
+            metadata[name] = {
+                'hash': m.hexdigest(),
+                'file': path.name,
+                'tables': tables,
+            }
+        self._metadata = metadata
+        return metadata
 
     def app(self):
         app = Sanic(__name__)

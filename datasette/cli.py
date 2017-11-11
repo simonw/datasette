@@ -1,11 +1,12 @@
 import click
 from click_default_group import DefaultGroup
+import json
 import os
 import shutil
 from subprocess import call
 import sys
 import tempfile
-from .app import Datasette, ensure_build_metadata
+from .app import Datasette
 from .utils import make_dockerfile
 
 
@@ -18,8 +19,10 @@ def cli():
 
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
-def build(files):
-    ensure_build_metadata(files, True)
+@click.option('-m', '--metadata', default='metadata.json')
+def build_metadata(files, metadata):
+    app = Datasette(files)
+    open(metadata, 'w').write(json.dumps(app.metadata(), indent=2))
 
 
 @cli.command()
@@ -62,12 +65,20 @@ def publish(files):
 @click.option('-p', '--port', default=8001)
 @click.option('--debug', is_flag=True)
 @click.option('--reload', is_flag=True)
-def serve(files, host, port, debug, reload):
+@click.option('-m', '--metadata')
+def serve(files, host, port, debug, reload, metadata):
     """Serve up specified database files with a web UI"""
     if reload:
         import hupper
         hupper.start_reloader('datasette.cli.serve')
 
+    if metadata:
+        metadata = json.load(open(metadata))
+
     click.echo('Serve! files={} on port {}'.format(files, port))
-    app = Datasette(files, cache_headers=not debug and not reload).app()
+    app = Datasette(
+        files,
+        cache_headers=not debug and not reload,
+        metadata=metadata,
+    ).app()
     app.run(host=host, port=port, debug=debug)

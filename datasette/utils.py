@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import base64
 import json
+import re
 import sqlite3
 import time
 import urllib
@@ -107,3 +108,10 @@ def path_with_added_args(request, args):
     current = request.raw_args.copy()
     current.update(args)
     return request.path + '?' + urllib.parse.urlencode(current)
+
+
+_css_re = re.compile(r'''['"\n\\]''')
+
+
+def escape_css_string(s):
+    return _css_re.sub(lambda m: '\\{:X}'.format(ord(m.group())), s)

@@ -1,0 +1,54 @@
+
+body {
+    margin: 0 1em;
+    font-family: "Helvetica Neue", sans-serif;
+    font-size: 1rem;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #212529;
+    text-align: left;
+    background-color: #fff;
+}
+table {
+    border-collapse: collapse;
+}
+td {
+    border-top: 1px solid #ccc;
+    padding: 4px;
+    vertical-align: top;
+}
+th {
+    padding-right: 1em;
+}
+@media only screen and (max-width: 576px) {
+    /* Force table to not be like tables anymore */
+    table, thead, tbody, th, td, tr {
+        display: block;
+    }
+
+    /* Hide table headers (but not display: none;, for accessibility) */
+    thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    tr {
+        border: 1px solid #ccc;
+        margin-bottom: 1em;
+    }
+
+    td {
+        /* Behave  like a "row" */
+        border: none;
+        border-bottom: 1px solid #eee;
+        padding: 0;
+        padding-left: 10%;
+    }
+
+    td:before {
+        display: block;
+        margin-left: -10%;
+        font-size: 0.8em;
+    }
+}

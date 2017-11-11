@@ -16,6 +16,7 @@ import time
 from .utils import (
     build_where_clauses,
     CustomJSONEncoder,
+    escape_css_string,
     InvalidSql,
     path_from_row_pks,
     path_with_added_args,
@@ -443,6 +444,7 @@ class Datasette:
                 str(app_root / 'datasette' / 'templates')
             ])
         )
+        self.jinja.add_env('escape_css_string', escape_css_string, 'filters')
         app.add_route(IndexView.as_view(self), '/')
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, '/favicon.ico')

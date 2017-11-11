@@ -2,37 +2,41 @@
 
 {% block title %}{{ database }}: {{ table }}{% endblock %}
 
+{% block extra_head %}
+<style>
+@media only screen and (max-width: 576px) {
+    td:nth-of-type(1):before { content: "{% if use_rowid %}rowid{% else %}Link{% endif %}"; }
+{% for column in display_columns %}
+    td:nth-of-type({{ loop.index + 1 }}):before { content: "{{ column|escape_css_string }}"; }
+{% endfor %}
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}"><a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></h1>
 
 <h2>{{ table }}{% if total_rows != None %} ({{ "{:,}".format(total_rows) }} total row{% if total_rows == 1 %}{% else %}s{% endif %} in this table){% endif %}</h2>
 
-<style>
-th {
-    padding-right: 1em;
-}
-td {
-    white-space: pre;
-    vertical-align: top;
-    border-top: 1px solid #666;
-    padding: 2px 4px;
-}
-</style>
 <table>
-    <tr>
-        <th scope="col">{% if use_rowid %}rowid{% else %}Link{% endif %}</th>
-        {% for column in display_columns %}<th scope="col">{{ column }}</th>{% endfor %}
-    </tr>
+    <thead>
+        <tr>
+            <th scope="col">{% if use_rowid %}rowid{% else %}Link{% endif %}</th>
+            {% for column in display_columns %}<th scope="col">{{ column }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
     {% for row in rows %}
         <tr>
             <td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>
             {% for td in row %}
                 {% if not use_rowid or (use_rowid and not loop.first) %}
-                    <td>{{ td }}</td>
+                    <td>{{ td or "&nbsp;" }}</td>
                 {% endif %}
             {% endfor %}
         </tr>
     {% endfor %}
+    </tbody>
 </table>
 {% if after_link %}
     <p><a href="{{ after_link }}">Next page</a></p>

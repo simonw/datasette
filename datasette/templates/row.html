@@ -2,34 +2,36 @@
 
 {% block title %}{{ database }}: {{ table }}{% endblock %}
 
+{% block extra_head %}
+<style>
+@media only screen and (max-width: 576px) {
+{% for column in columns %}
+    td:nth-of-type({{ loop.index }}):before { content: "{{ column|escape_css_string }}"; }
+{% endfor %}
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}"><a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></h1>
 
 <h2><a href="/{{ database }}-{{ database_hash }}/{{ table }}">{{ table }}</a></h2>
 
-<style>
-td {
-    white-space: pre;
-    vertical-align: top;
-    border-top: 1px solid #666;
-    padding: 2px 4px;
-}
-</style>
 <table>
-    <tr>
-        {% if primary_keys and row_link %}<th scope="col">Link</th>{% endif %}
-        {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
-    </tr>
+    <thead>
+        <tr>
+            {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
     {% for row in rows %}
         <tr>
-            {% if primary_keys and row_link %}
-                <td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>
-            {% endif %}
             {% for td in row %}
                 <td>{{ td }}</td>
             {% endfor %}
         </tr>
     {% endfor %}
+    </tbody>
 </table>
 {% if took_ms %}<small>Took {{ took_ms }}</small>{% endif %}
 {% endblock %}

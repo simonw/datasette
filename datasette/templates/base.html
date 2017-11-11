@@ -2,21 +2,17 @@
 <html>
 <head>
     <title>{% block title %}{% endblock %}</title>
-    <link rel="stylesheet" href="/-/static/bootstrap-4.0.0-beta.2.min.css">
-<style>
-th {
-    text-align: left;
-}
-</style>
+    <link rel="stylesheet" href="/-/static/app.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 {% block extra_head %}{% endblock %}
 </head>
 <body>
-<div class="container">
+
 {% if error %}
     <div style="padding: 1em; margin: 1em; border: 3px solid red;">{{ error }}</div>
 {% endif %}
 {% block content %}
 {% endblock %}
-</div>
+
 </body>
 </html>

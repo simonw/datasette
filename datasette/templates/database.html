@@ -7,17 +7,13 @@
 
 <p><a href="/{{ database }}-{{ database_hash }}.db">download {{ database }}.db</a></p>
 
-<style>
-td {
-    vertical-align: top;
-    border-top: 1px solid #666;
-    padding: 2px 4px;
-}
-</style>
 <table>
-    <tr>
-        {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
-    </tr>
+    <thead>
+        <tr>
+            {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
     {% for row in rows %}
         <tr>
             {% for td in row %}
@@ -31,5 +27,6 @@ td {
             {% endfor %}
         </tr>
     {% endfor %}
+</tbody>
 </table>
 {% endblock %}

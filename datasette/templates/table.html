@@ -14,9 +14,13 @@
 {% endblock %}
 
 {% block content %}
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}"><a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></h1>
+<div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></div>
 
-<h2>{{ table }}{% if total_rows != None %} ({{ "{:,}".format(total_rows) }} total row{% if total_rows == 1 %}{% else %}s{% endif %} in this table){% endif %}</h2>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ table }}</h1>
+
+{% if total_rows != None %}
+    <h2>{{ "{:,}".format(total_rows) }} total row{% if total_rows == 1 %}{% else %}s{% endif %} in this table</h2>
+{% endif %}
 
 <table>
     <thead>
@@ -41,5 +45,5 @@
 {% if after_link %}
     <p><a href="{{ after_link }}">Next page</a></p>
 {% endif %}
-{% if took_ms %}<small>Took {{ took_ms }}</small>{% endif %}
+
 {% endblock %}

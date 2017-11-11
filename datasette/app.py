@@ -393,6 +393,7 @@ class RowView(BaseView):
             'rows': rows,
             'columns': columns,
             'primary_keys': pks,
+            'primary_key_values': pk_values,
         }, {
             'database_hash': hash,
             'row_link': None,

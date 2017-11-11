@@ -200,7 +200,7 @@ class IndexView(HTTPMethodView):
         self.jinja = datasette.jinja
         self.executor = datasette.executor
 
-    async def get(self, request):
+    async def get(self, request, as_json):
         databases = []
         for key, info in sorted(ensure_build_metadata(self.files).items()):
             database = {
@@ -217,11 +217,23 @@ class IndexView(HTTPMethodView):
                 'total_rows': sum(info['tables'].values()),
             }
             databases.append(database)
-        return self.jinja.render(
-            'index.html',
-            request,
-            databases=databases,
-        )
+        if as_json:
+            return response.HTTPResponse(
+                json.dumps(
+                    {db['name']: db for db in databases},
+                    cls=CustomJSONEncoder
+                ),
+                content_type='application/json',
+                headers={
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+        else:
+            return self.jinja.render(
+                'index.html',
+                request,
+                databases=databases,
+            )
 
 
 async def favicon(request):
@@ -445,7 +457,7 @@ class Datasette:
             ])
         )
         self.jinja.add_env('escape_css_string', escape_css_string, 'filters')
-        app.add_route(IndexView.as_view(self), '/')
+        app.add_route(IndexView.as_view(self), '/<as_json:(.jsono?)?$>')
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, '/favicon.ico')
         app.static('/-/static/', str(app_root / 'datasette' / 'static'))

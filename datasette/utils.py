@@ -115,3 +115,17 @@ _css_re = re.compile(r'''['"\n\\]''')
 
 def escape_css_string(s):
     return _css_re.sub(lambda m: '\\{:X}'.format(ord(m.group())), s)
+
+
+def make_dockerfile(files):
+    return '''
+FROM python:3
+COPY . /app
+WORKDIR /app
+RUN pip install https://static.simonwillison.net/static/2017/datasette-0.1-py3-none-any.whl
+RUN datasette build {}
+EXPOSE 8006
+CMD ["datasette", "serve", {}, "--port", "8006"]'''.format(
+        ' '.join(files),
+        '"' + '", "'.join(files) + '"',
+    ).strip()

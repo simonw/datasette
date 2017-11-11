@@ -20,6 +20,7 @@ from .utils import (
     InvalidSql,
     path_from_row_pks,
     path_with_added_args,
+    path_with_ext,
     compound_pks_from_path,
     sqlite_timelimit,
     validate_sql_select,
@@ -174,7 +175,10 @@ class BaseView(HTTPMethodView):
                 extra_template_data()
                 if callable(extra_template_data)
                 else extra_template_data
-            )}
+            ), **{
+                'url_json': path_with_ext(request, '.json'),
+                'url_jsono': path_with_ext(request, '.jsono'),
+            }}
             r = self.jinja.render(
                 self.template,
                 request,
@@ -240,19 +244,26 @@ class DatabaseView(BaseView):
 
     async def data(self, request, name, hash):
         sql = 'select * from sqlite_master'
+        custom_sql = False
         params = {}
         if request.args.get('sql'):
             params = request.raw_args
             sql = params.pop('sql')
             validate_sql_select(sql)
+            custom_sql = True
         rows = await self.execute(name, sql, params)
         columns = [r[0] for r in rows.description]
         return {
             'database': name,
             'rows': rows,
             'columns': columns,
+            'query': {
+                'sql': sql,
+                'params': params,
+            }
         }, {
             'database_hash': hash,
+            'custom_sql': custom_sql,
         }
 
 

@@ -110,6 +110,14 @@ def path_with_added_args(request, args):
     return request.path + '?' + urllib.parse.urlencode(current)
 
 
+def path_with_ext(request, ext):
+    path = request.path
+    path += ext
+    if request.query_string:
+        path += '?' + request.query_string
+    return path
+
+
 _css_re = re.compile(r'''['"\n\\]''')
 
 

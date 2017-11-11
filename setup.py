@@ -18,5 +18,8 @@ setup(
         datasette=datasette.cli:cli
     ''',
     setup_requires=['pytest-runner'],
-    tests_require=['pytest'],
+    tests_require=[
+        'pytest==3.2.3',
+        'aiohttp==2.3.2',
+    ],
 )

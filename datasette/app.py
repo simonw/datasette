@@ -34,7 +34,7 @@ SQL_TIME_LIMIT_MS = 1000
 connections = threading.local()
 
 
-def ensure_build_metadata(files, regenerate=False):
+def ensure_build_metadata(files, regenerate=True):
     build_metadata = app_root / BUILD_METADATA
     if build_metadata.exists() and not regenerate:
         return json.loads(build_metadata.read_text())

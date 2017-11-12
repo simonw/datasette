@@ -24,10 +24,6 @@
 
 <p>This data as <a href="{{ url_json }}">.json</a>, <a href="{{ url_jsono }}">.jsono</a></p>
 
-{% if view_definition %}
-    <pre>{{ view_definition }}</pre>
-{% endif %}
-
 <table>
     <thead>
         <tr>
@@ -55,6 +51,10 @@
 
 {% if table_definition %}
     <pre>{{ table_definition }}</pre>
+{% endif %}
+
+{% if view_definition %}
+    <pre>{{ view_definition }}</pre>
 {% endif %}
 
 {% endblock %}

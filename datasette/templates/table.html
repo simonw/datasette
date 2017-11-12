@@ -16,13 +16,17 @@
 {% block content %}
 <div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></div>
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ table }}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ table }}{% if is_view %} (view){% endif %}</h1>
 
 {% if table_rows != None %}
     <h2>{{ "{:,}".format(table_rows) }} total row{% if table_rows == 1 %}{% else %}s{% endif %} in this table</h2>
 {% endif %}
 
 <p>This data as <a href="{{ url_json }}">.json</a>, <a href="{{ url_jsono }}">.jsono</a></p>
+
+{% if view_definition %}
+    <pre>{{ view_definition }}</pre>
+{% endif %}
 
 <table>
     <thead>

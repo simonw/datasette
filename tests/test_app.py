@@ -91,6 +91,21 @@ def test_table_page(three_table_app_client):
     }]
 
 
+def test_view(three_table_app_client):
+    _, response = three_table_app_client.get('/four_tables/simple_view')
+    assert response.status == 200
+    _, response = three_table_app_client.get('/four_tables/simple_view.jsono')
+    assert response.status == 200
+    data = response.json
+    assert data['rows'] == [{
+        'upper_content': 'HELLO',
+        'content': 'hello',
+    }, {
+        'upper_content': 'WORLD',
+        'content': 'world',
+    }]
+
+
 FOUR_TABLES = '''
 CREATE TABLE simple_primary_key (
   pk varchar(30) primary key,
@@ -115,4 +130,7 @@ CREATE TABLE "Table With Space In Name" (
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
+
+CREATE VIEW simple_view AS
+    SELECT content, upper(content) AS upper_content FROM simple_primary_key;
 '''

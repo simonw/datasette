@@ -303,13 +303,24 @@ class TableView(BaseView):
     async def data(self, request, name, hash, table):
         table = urllib.parse.unquote_plus(table)
         pks = await self.pks_for_table(name, table)
-        use_rowid = not pks
+        is_view = bool(list(await self.execute(name, "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n", {
+            'n': table,
+        }))[0][0])
+        view_definition = None
+        if is_view:
+            view_definition = list(await self.execute(name, 'select sql from sqlite_master where name = :n and type="view"', {
+                'n': table,
+            }))[0][0];
+        use_rowid = not pks and not is_view
         if use_rowid:
             select = 'rowid, *'
             order_by = 'rowid'
         else:
             select = '*'
             order_by = ', '.join(pks)
+
+        if is_view:
+            order_by = ''
 
         # Special args start with _ and do not contain a __
         # That's so if there is a column that starts with _
@@ -354,7 +365,10 @@ class TableView(BaseView):
         if where_clauses:
             where_clause = 'where {} '.format(' and '.join(where_clauses))
 
-        sql = 'select {} from "{}" {}order by {} limit {}'.format(
+        if order_by:
+            order_by = 'order by {} '.format(order_by)
+
+        sql = 'select {} from "{}" {}{}limit {}'.format(
             select, table, where_clause, order_by, self.page_size + 1,
         )
 
@@ -375,6 +389,8 @@ class TableView(BaseView):
         return {
             'database': name,
             'table': table,
+            'is_view': is_view,
+            'view_definition': view_definition,
             'rows': rows[:self.page_size],
             'table_rows': table_rows,
             'columns': columns,

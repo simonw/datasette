@@ -315,10 +315,15 @@ class TableView(BaseView):
             'n': table,
         }))[0][0])
         view_definition = None
+        table_definition = None
         if is_view:
             view_definition = list(await self.execute(name, 'select sql from sqlite_master where name = :n and type="view"', {
                 'n': table,
-            }))[0][0];
+            }))[0][0]
+        else:
+            table_definition = list(await self.execute(name, 'select sql from sqlite_master where name = :n and type="table"', {
+                'n': table,
+            }))[0][0]
         use_rowid = not pks and not is_view
         if use_rowid:
             select = 'rowid, *'
@@ -399,6 +404,7 @@ class TableView(BaseView):
             'table': table,
             'is_view': is_view,
             'view_definition': view_definition,
+            'table_definition': table_definition,
             'rows': rows[:self.page_size],
             'table_rows': table_rows,
             'columns': columns,

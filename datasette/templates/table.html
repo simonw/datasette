@@ -49,9 +49,12 @@
     </tbody>
 </table>
 
-
 {% if after_link %}
      <p><a href="{{ after_link }}">Next page</a></p>
+{% endif %}
+
+{% if table_definition %}
+    <pre>{{ table_definition }}</pre>
 {% endif %}
 
 {% endblock %}

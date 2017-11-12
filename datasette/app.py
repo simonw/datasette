@@ -140,6 +140,8 @@ class BaseView(HTTPMethodView):
             as_json = False
         extra_template_data = {}
         start = time.time()
+        template = self.template
+        status_code = 200
         try:
             data, extra_template_data = await self.data(
                 request, name, hash, **kwargs
@@ -148,7 +150,11 @@ class BaseView(HTTPMethodView):
             data = {
                 'ok': False,
                 'error': str(e),
+                'database': name,
+                'database_hash': hash,
             }
+            template = 'error.html'
+            status_code = 400
         end = time.time()
         data['query_ms'] = (end - start) * 1000
         if as_json:
@@ -165,6 +171,7 @@ class BaseView(HTTPMethodView):
                 json.dumps(
                     data, cls=CustomJSONEncoder
                 ),
+                status=status_code,
                 content_type='application/json',
                 headers={
                     'Access-Control-Allow-Origin': '*'
@@ -180,10 +187,11 @@ class BaseView(HTTPMethodView):
                 'url_jsono': path_with_ext(request, '.jsono'),
             }}
             r = self.jinja.render(
-                self.template,
+                template,
                 request,
                 **context,
             )
+            r.status = status_code
         # Set far-future cache expiry
         if self.cache_headers:
             r.headers['Cache-Control'] = 'max-age={}'.format(

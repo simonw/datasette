@@ -47,11 +47,12 @@ def publish(files):
         os.path.join(saved_cwd, name)
         for name in files
     ]
+    file_names = [os.path.split(f)[-1] for f in files]
     try:
-        dockerfile = make_dockerfile(files)
+        dockerfile = make_dockerfile(file_names)
         os.chdir(datasette_dir)
         open('Dockerfile', 'w').write(dockerfile)
-        for path, filename in zip(file_paths, files):
+        for path, filename in zip(file_paths, file_names):
             os.link(path, os.path.join(datasette_dir, filename))
         call('now')
     finally:

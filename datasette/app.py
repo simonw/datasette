@@ -493,7 +493,7 @@ class Datasette:
                     m.update(data)
             # List tables and their row counts
             tables = {}
-            with sqlite3.connect('file:{}?immutable=1'.format(path.name), uri=True) as conn:
+            with sqlite3.connect('file:{}?immutable=1'.format(path), uri=True) as conn:
                 conn.row_factory = sqlite3.Row
                 table_names = [
                     r['name']
@@ -504,7 +504,7 @@ class Datasette:
 
             metadata[name] = {
                 'hash': m.hexdigest(),
-                'file': path.name,
+                'file': str(path),
                 'tables': tables,
             }
         self._metadata = metadata

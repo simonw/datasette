@@ -243,27 +243,26 @@ class DatabaseView(BaseView):
     template = 'database.html'
 
     async def data(self, request, name, hash):
-        sql = 'select * from sqlite_master'
-        custom_sql = False
-        params = {}
-        if request.args.get('sql'):
-            params = request.raw_args
-            sql = params.pop('sql')
-            validate_sql_select(sql)
-            custom_sql = True
-        rows = await self.execute(name, sql, params)
-        columns = [r[0] for r in rows.description]
+        tables = []
+        table_metadata = self.ds.metadata()[name]['tables']
+        for table_name, table_rows in table_metadata.items():
+            rows = await self.execute(
+                name,
+                'PRAGMA table_info({});'.format(table_name)
+            )
+            tables.append({
+                'name': table_name,
+                'columns': [r[1] for r in rows],
+                'table_rows': table_rows,
+            })
+        tables.sort(key=lambda t: t['name'])
+        views = await self.execute(name, 'select name from sqlite_master where type = "view"')
         return {
             'database': name,
-            'rows': rows,
-            'columns': columns,
-            'query': {
-                'sql': sql,
-                'params': params,
-            }
+            'tables': tables,
+            'views': [v[0] for v in views],
         }, {
             'database_hash': hash,
-            'custom_sql': custom_sql,
         }
 
 

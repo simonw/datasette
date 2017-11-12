@@ -13,6 +13,23 @@
     <p><a href="/{{ database }}-{{ database_hash }}.db">download {{ database }}.db</a></p>
 {% endif %}
 
+{% for table in tables %}
+<div class="db-table">
+    <h2><a href="/{{ database }}-{{ database_hash }}/{{ table.name }}">{{ table.name }}</a></h2>
+    <p><em>{% for column in table.columns[:9] %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}{% if table.columns|length > 9 %}...{% endif %}</em></p>
+    <p>{{ "{:,}".format(table.table_rows) }} row{% if table.table_rows == 1 %}{% else %}s{% endif %}</p>
+</div>
+{% endfor %}
+
+{% if views %}
+    <h2>Views</h2>
+    <ul>
+        {% for view in views %}
+            <li><a href="/{{ database }}-{{ database_hash }}/{{ view }}">{{ view }}</a></li>
+        {% endfor %}
+    </ul>
+{% endif %}
+
 <table>
     <thead>
         <tr>

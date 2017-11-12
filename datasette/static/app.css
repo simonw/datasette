@@ -64,3 +64,12 @@ th {
 .hd :link {
     text-decoration: none;
 }
+
+.db-table p {
+    margin-top: 0;
+    margin-bottom: 0.3em;
+}
+.db-table h2 {
+    margin-top: 1em;
+    margin-bottom: 0;
+}

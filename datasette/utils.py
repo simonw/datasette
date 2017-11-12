@@ -119,10 +119,18 @@ def path_with_ext(request, ext):
 
 
 _css_re = re.compile(r'''['"\n\\]''')
+_boring_table_name_re = re.compile(r'^[a-zA-Z0-9_]+$')
 
 
 def escape_css_string(s):
     return _css_re.sub(lambda m: '\\{:X}'.format(ord(m.group())), s)
+
+
+def escape_sqlite_table_name(s):
+    if _boring_table_name_re.match(s):
+        return s
+    else:
+        return '[{}]'.format(s)
 
 
 def make_dockerfile(files):
@@ -130,7 +138,7 @@ def make_dockerfile(files):
 FROM python:3
 COPY . /app
 WORKDIR /app
-RUN pip install https://static.simonwillison.net/static/2017/datasette-0.2-py3-none-any.whl
+RUN pip install https://static.simonwillison.net/static/2017/datasette-0.4-py3-none-any.whl
 RUN datasette build_metadata {} --metadata metadata.json
 EXPOSE 8006
 CMD ["datasette", "serve", {}, "--port", "8006", "--metadata", "metadata.json"]'''.format(

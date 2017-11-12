@@ -13,7 +13,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a> / <a href="/{{ database }}-{{ database_hash }}/{{ table }}">{{ table }}</a></div>
+<div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a> / <a href="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}">{{ table }}</a></div>
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ table }}: {{ ', '.join(primary_key_values) }}</a></h1>
 

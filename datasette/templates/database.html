@@ -2,6 +2,18 @@
 
 {% block title %}{{ database }}{% endblock %}
 
+{% block extra_head %}
+{% if columns %}
+<style>
+@media only screen and (max-width: 576px) {
+{% for column in columns %}
+    td:nth-of-type({{ loop.index }}):before { content: "{{ column|escape_css_string }}"; }
+{% endfor %}
+}
+</style>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="hd"><a href="/">home</a>{% if query %} / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a>{% endif %}</div>
 
@@ -14,13 +26,32 @@
 {% endif %}
 
 <form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
-    <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name }}{% endif %}</textarea></p>
+    <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_table_name }}{% endif %}</textarea></p>
     <p><input type="submit" value="Run SQL"></p>
 </form>
 
+{% if rows %}
+<table>
+    <thead>
+        <tr>
+            {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+        <tr>
+            {% for td in row %}
+                <td>{{ td or "&nbsp;" }}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
 {% for table in tables %}
 <div class="db-table">
-    <h2><a href="/{{ database }}-{{ database_hash }}/{{ table.name|urlencode }}">{{ table.name }}</a></h2>
+    <h2><a href="/{{ database }}-{{ database_hash }}/{{ table.name|quote_plus }}">{{ table.name }}</a></h2>
     <p><em>{% for column in table.columns[:9] %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}{% if table.columns|length > 9 %}...{% endif %}</em></p>
     <p>{{ "{:,}".format(table.table_rows) }} row{% if table.table_rows == 1 %}{% else %}s{% endif %}</p>
 </div>

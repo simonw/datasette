@@ -36,7 +36,7 @@
     <tbody>
     {% for row in rows %}
         <tr>
-            {% if not is_view %}<td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>{% endif %}
+            {% if not is_view %}<td><a href="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>{% endif %}
             {% for td in row %}
                 {% if not use_rowid or (use_rowid and not loop.first) %}
                     <td>{{ td or "&nbsp;" }}</td>

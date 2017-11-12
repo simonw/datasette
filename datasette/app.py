@@ -17,6 +17,7 @@ from .utils import (
     build_where_clauses,
     CustomJSONEncoder,
     escape_css_string,
+    escape_sqlite_table_name,
     InvalidSql,
     path_from_row_pks,
     path_with_added_args,
@@ -117,8 +118,8 @@ class BaseView(HTTPMethodView):
                 try:
                     rows = conn.execute(sql, params or {})
                 except Exception:
-                    print('sql = {}, params = {}'.format(
-                        sql, params
+                    print('ERROR: conn={}, sql = {}, params = {}'.format(
+                        conn, repr(sql), params
                     ))
                     raise
             return rows
@@ -381,8 +382,8 @@ class TableView(BaseView):
         if order_by:
             order_by = 'order by {} '.format(order_by)
 
-        sql = 'select {} from "{}" {}{}limit {}'.format(
-            select, table, where_clause, order_by, self.page_size + 1,
+        sql = 'select {} from {} {}{}limit {}'.format(
+            select, escape_sqlite_table_name(table), where_clause, order_by, self.page_size + 1,
         )
 
         rows = await self.execute(name, sql, params)
@@ -519,6 +520,8 @@ class Datasette:
             ])
         )
         self.jinja.add_env('escape_css_string', escape_css_string, 'filters')
+        self.jinja.add_env('quote_plus', lambda u: urllib.parse.quote_plus(u), 'filters')
+        self.jinja.add_env('escape_table_name', escape_sqlite_table_name, 'filters')
         app.add_route(IndexView.as_view(self), '/<as_json:(.jsono?)?$>')
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, '/favicon.ico')

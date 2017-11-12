@@ -243,6 +243,8 @@ class DatabaseView(BaseView):
     template = 'database.html'
 
     async def data(self, request, name, hash):
+        if request.args.get('sql'):
+            return await self.custom_sql(request, name, hash)
         tables = []
         table_metadata = self.ds.metadata()[name]['tables']
         for table_name, table_rows in table_metadata.items():
@@ -263,6 +265,25 @@ class DatabaseView(BaseView):
             'views': [v[0] for v in views],
         }, {
             'database_hash': hash,
+        }
+
+    async def custom_sql(self, request, name, hash):
+        params = request.raw_args
+        sql = params.pop('sql')
+        validate_sql_select(sql)
+        rows = await self.execute(name, sql, params)
+        columns = [r[0] for r in rows.description]
+        return {
+            'database': name,
+            'rows': rows,
+            'columns': columns,
+            'query': {
+                'sql': sql,
+                'params': params,
+            }
+        }, {
+            'database_hash': hash,
+            'custom_sql': True,
         }
 
 

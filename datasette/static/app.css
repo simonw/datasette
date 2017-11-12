@@ -73,3 +73,34 @@ th {
     margin-top: 1em;
     margin-bottom: 0;
 }
+
+form.sql textarea {
+    border: 1px solid #ccc;
+    width: 70%;
+    height: 3em;
+    padding: 4px;
+    font-family: monospace;
+    font-size: 1.3em;
+}
+@media only screen and (max-width: 576px) {
+    form.sql textarea {
+        width: 95%;
+    }
+}
+form.sql p {
+    margin: 0;
+}
+form.sql input[type=submit] {
+    color: #fff;
+    background-color: #007bff;
+    border-color: #007bff;
+    font-weight: 400;
+    cursor: pointer;
+    text-align: center;
+    vertical-align: middle;
+    border: 1px solid blue;
+    padding: .275rem .75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    border-radius: .25rem;
+}

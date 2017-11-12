@@ -34,6 +34,40 @@ def test_database_page(three_table_app_client):
     assert response.status == 302
     _, response = three_table_app_client.get('/three_tables')
     assert 'three_tables' in response.text
+    # Test JSON list of tables
+    _, response = three_table_app_client.get('/three_tables.json')
+    data = response.json
+    assert 'three_tables' == data['database']
+    assert [{
+        'columns': ['pk1', 'pk2', 'content'],
+        'name': 'compound_primary_key',
+        'table_rows': 0
+    }, {
+        'columns': ['content'],
+        'name': 'no_primary_key',
+        'table_rows': 0,
+    }, {
+        'columns': ['pk', 'content'],
+        'name': 'simple_primary_key',
+        'table_rows': 2
+    }] == data['tables']
+
+
+def test_custom_sql(three_table_app_client):
+    _, response = three_table_app_client.get(
+        '/three_tables.jsono?sql=select+content+from+simple_primary_key'
+    )
+    data = response.json
+    assert {
+        'sql': 'select content from simple_primary_key',
+        'params': {}
+    } == data['query']
+    assert [
+        {'content': 'hello'},
+        {'content': 'world'}
+    ] == data['rows']
+    assert ['content'] == data['columns']
+    assert 'three_tables' == data['database']
 
 
 def test_table_page(three_table_app_client):

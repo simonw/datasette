@@ -250,7 +250,7 @@ class DatabaseView(BaseView):
         for table_name, table_rows in table_metadata.items():
             rows = await self.execute(
                 name,
-                'PRAGMA table_info({});'.format(table_name)
+                'PRAGMA table_info([{}]);'.format(table_name)
             )
             tables.append({
                 'name': table_name,

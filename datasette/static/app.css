@@ -13,7 +13,8 @@ table {
     border-collapse: collapse;
 }
 td {
-    border-top: 1px solid #ccc;
+    border-top: 1px solid #aaa;
+    border-right: 1px solid #eee;
     padding: 4px;
     vertical-align: top;
 }

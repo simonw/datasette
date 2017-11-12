@@ -5,9 +5,11 @@
 {% block extra_head %}
 <style>
 @media only screen and (max-width: 576px) {
+    {% if not is_view %}
     td:nth-of-type(1):before { content: "{% if use_rowid %}rowid{% else %}Link{% endif %}"; }
+    {% endif %}
 {% for column in display_columns %}
-    td:nth-of-type({{ loop.index + 1 }}):before { content: "{{ column|escape_css_string }}"; }
+    td:nth-of-type({% if is_view %}{{ loop.index }}{% else %}{{ loop.index + 1 }}{% endif %}):before { content: "{{ column|escape_css_string }}"; }
 {% endfor %}
 }
 </style>
@@ -27,14 +29,14 @@
 <table>
     <thead>
         <tr>
-            <th scope="col">{% if use_rowid %}rowid{% else %}Link{% endif %}</th>
+            {% if not is_view %}<th scope="col">{% if use_rowid %}rowid{% else %}Link{% endif %}</th>{% endif %}
             {% for column in display_columns %}<th scope="col">{{ column }}</th>{% endfor %}
         </tr>
     </thead>
     <tbody>
     {% for row in rows %}
         <tr>
-            <td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>
+            {% if not is_view %}<td><a href="/{{ database }}-{{ database_hash }}/{{ table }}/{{ row_link(row) }}">{{ row_link(row) }}</a></td>{% endif %}
             {% for td in row %}
                 {% if not use_rowid or (use_rowid and not loop.first) %}
                     <td>{{ td or "&nbsp;" }}</td>

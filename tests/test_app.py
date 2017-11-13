@@ -187,14 +187,6 @@ CREATE TABLE no_primary_key (
   content text
 );
 
-WITH RECURSIVE
-  cnt(x) AS (
-     SELECT 1
-     UNION ALL
-     SELECT x+1 FROM cnt LIMIT 201
-  )
-  INSERT INTO no_primary_key SELECT * from cnt;
-
 CREATE VIEW paginated_view AS
     SELECT
         content,
@@ -218,4 +210,8 @@ INSERT INTO [table/with/slashes.csv] VALUES (3, 'hey');
 
 CREATE VIEW simple_view AS
     SELECT content, upper(content) AS upper_content FROM simple_primary_key;
-'''
+
+''' + '\n'.join([
+    'INSERT INTO no_primary_key VALUES ({});'.format(i + 1)
+    for i in range(201)
+])

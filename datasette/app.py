@@ -381,17 +381,17 @@ class TableView(BaseView):
             where_clauses = []
             params = {}
 
-        after = special_args.get('_after')
-        if after:
+        next = special_args.get('_next')
+        if next:
             if use_rowid:
                 where_clauses.append(
                     'rowid > :p{}'.format(
                         len(params),
                     )
                 )
-                params['p{}'.format(len(params))] = after
+                params['p{}'.format(len(params))] = next
             else:
-                pk_values = compound_pks_from_path(after)
+                pk_values = compound_pks_from_path(next)
                 if len(pk_values) == len(pks):
                     param_counter = len(params)
                     for pk, value in zip(pks, pk_values):
@@ -423,11 +423,11 @@ class TableView(BaseView):
         rows = list(rows)
         info = self.ds.inspect()
         table_rows = info[name]['tables'].get(table)
-        after = None
-        after_link = None
+        next = None
+        next_url = None
         if len(rows) > self.page_size:
-            after = path_from_row_pks(rows[-2], pks, use_rowid)
-            after_link = path_with_added_args(request, {'_after': after})
+            next = path_from_row_pks(rows[-2], pks, use_rowid)
+            next_url = urllib.parse.urljoin(request.url, path_with_added_args(request, {'_next': next}))
         return {
             'database': name,
             'table': table,
@@ -443,13 +443,13 @@ class TableView(BaseView):
                 'sql': sql,
                 'params': params,
             },
-            'after': after,
+            'next': next,
+            'next_url': next_url,
         }, lambda: {
             'database_hash': hash,
             'use_rowid': use_rowid,
             'row_link': lambda row: path_from_row_pks(row, pks, use_rowid),
             'display_columns': display_columns,
-            'after_link': after_link,
         }
 
 

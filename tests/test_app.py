@@ -122,6 +122,21 @@ def test_table_with_slashes_in_name(app_client):
     }]
 
 
+def test_paginate(app_client):
+    path = '/test_tables/no_primary_key.jsono'
+    fetched = []
+    count = 0
+    while path:
+        _, response = app_client.get(path)
+        count += 1
+        fetched.extend(response.json['rows'])
+        path = response.json['next_url']
+        if path:
+            assert path.endswith(response.json['next'])
+    assert 201 == len(fetched)
+    assert 5 == count
+
+
 def test_max_returned_rows(app_client):
     _, response = app_client.get(
         '/test_tables.jsono?sql=select+content+from+no_primary_key'

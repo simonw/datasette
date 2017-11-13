@@ -27,7 +27,8 @@ def build_metadata(files, metadata):
 
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
-def publish(files):
+@click.option('-n', '--name', default='datasette')
+def publish(files, name):
     if not shutil.which('now'):
         click.secho(
             ' The publish command requires "now" to be installed and configured ',
@@ -40,7 +41,7 @@ def publish(files):
         sys.exit(1)
     tmp = tempfile.TemporaryDirectory()
     # We create a datasette folder in there to get a nicer now deploy name
-    datasette_dir = os.path.join(tmp.name, 'datasette')
+    datasette_dir = os.path.join(tmp.name, name)
     os.mkdir(datasette_dir)
     saved_cwd = os.getcwd()
     file_paths = [

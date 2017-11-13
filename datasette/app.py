@@ -46,6 +46,11 @@ class BaseView(HTTPMethodView):
         self.page_size = datasette.page_size
         self.cache_headers = datasette.cache_headers
 
+    def options(self, request, *args, **kwargs):
+        r = response.text('ok')
+        r.headers['Access-Control-Allow-Origin'] = '*'
+        return r
+
     def redirect(self, request, path):
         if request.query_string:
             path = '{}?{}'.format(
@@ -53,6 +58,7 @@ class BaseView(HTTPMethodView):
             )
         r = response.redirect(path)
         r.headers['Link'] = '<{}>; rel=preload'.format(path)
+        r.headers['Access-Control-Allow-Origin'] = '*'
         return r
 
     async def pks_for_table(self, name, table):

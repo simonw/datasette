@@ -138,7 +138,7 @@ def make_dockerfile(files):
 FROM python:3
 COPY . /app
 WORKDIR /app
-RUN pip install https://static.simonwillison.net/static/2017/datasette-0.4-py3-none-any.whl
+RUN pip install https://static.simonwillison.net/static/2017/datasette-0.5-py3-none-any.whl
 RUN datasette build_metadata {} --metadata metadata.json
 EXPOSE 8006
 CMD ["datasette", "serve", {}, "--port", "8006", "--metadata", "metadata.json"]'''.format(

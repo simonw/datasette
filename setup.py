@@ -2,7 +2,11 @@ from setuptools import setup, find_packages
 
 setup(
     name='datasette',
-    version='0.7',
+    description='An instant JSON API for your SQLite databases',
+    author='Simon Willison',
+    version='0.8',
+    license='Apache License, Version 2.0',
+    url='https://github.com/simonw/datasette',
     packages=find_packages(),
     package_data={'datasette': ['templates/*.html']},
     include_package_data=True,
@@ -21,5 +25,14 @@ setup(
     tests_require=[
         'pytest==3.2.3',
         'aiohttp==2.3.2',
+    ],
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Science/Research',
+        'Intended Audience :: End Users/Desktop',
+        'Topic :: Database',
+        'License :: OSI Approved :: Apache Software License',
+        'Programming Language :: Python :: 3.6',
     ],
 )

@@ -122,8 +122,11 @@ def test_table_with_slashes_in_name(app_client):
     }]
 
 
-def test_paginate(app_client):
-    path = '/test_tables/no_primary_key.jsono'
+@pytest.mark.parametrize('path,expected_rows,expected_pages', [
+    ('/test_tables/no_primary_key.jsono', 201, 5),
+    ('/test_tables/paginated_view.jsono', 201, 5),
+])
+def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
     fetched = []
     count = 0
     while path:
@@ -132,9 +135,11 @@ def test_paginate(app_client):
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
         if path:
-            assert path.endswith(response.json['next'])
-    assert 201 == len(fetched)
-    assert 5 == count
+            assert response.json['next'] and path.endswith(response.json['next'])
+        assert count < 10, 'Possible infinite loop detected'
+
+    assert expected_rows == len(fetched)
+    assert expected_pages == count
 
 
 def test_max_returned_rows(app_client):
@@ -189,6 +194,12 @@ WITH RECURSIVE
      SELECT x+1 FROM cnt LIMIT 201
   )
   INSERT INTO no_primary_key SELECT * from cnt;
+
+CREATE VIEW paginated_view AS
+    SELECT
+        content,
+        '- ' || content || ' -' AS content_extra
+    FROM no_primary_key;
 
 CREATE TABLE "Table With Space In Name" (
   pk varchar(30) primary key,

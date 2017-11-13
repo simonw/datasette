@@ -382,8 +382,12 @@ class TableView(BaseView):
             params = {}
 
         next = special_args.get('_next')
+        offset = ''
         if next:
-            if use_rowid:
+            if is_view:
+                # _next is an offset
+                offset = ' offset {}'.format(int(next))
+            elif use_rowid:
                 where_clauses.append(
                     'rowid > :p{}'.format(
                         len(params),
@@ -410,8 +414,13 @@ class TableView(BaseView):
         if order_by:
             order_by = 'order by {} '.format(order_by)
 
-        sql = 'select {} from {} {}{}limit {}'.format(
-            select, escape_sqlite_table_name(table), where_clause, order_by, self.page_size + 1,
+        sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
+            select=select,
+            table_name=escape_sqlite_table_name(table),
+            where=where_clause,
+            order_by=order_by,
+            limit=self.page_size + 1,
+            offset=offset,
         )
 
         rows, truncated, description = await self.execute(name, sql, params, truncate=True)
@@ -423,11 +432,16 @@ class TableView(BaseView):
         rows = list(rows)
         info = self.ds.inspect()
         table_rows = info[name]['tables'].get(table)
-        next = None
+        next_value = None
         next_url = None
         if len(rows) > self.page_size:
-            next = path_from_row_pks(rows[-2], pks, use_rowid)
-            next_url = urllib.parse.urljoin(request.url, path_with_added_args(request, {'_next': next}))
+            if is_view:
+                next_value = int(next or 0) + self.page_size
+            else:
+                next_value = path_from_row_pks(rows[-2], pks, use_rowid)
+            next_url = urllib.parse.urljoin(request.url, path_with_added_args(request, {
+                '_next': next_value,
+            }))
         return {
             'database': name,
             'table': table,
@@ -443,7 +457,7 @@ class TableView(BaseView):
                 'sql': sql,
                 'params': params,
             },
-            'next': next,
+            'next': next_value and str(next_value) or None,
             'next_url': next_url,
         }, lambda: {
             'database_hash': hash,

@@ -26,6 +26,7 @@ def build(files, inspect_file):
 
 
 @cli.command()
+@click.argument('publisher', type=click.Choice(['now']))
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
 @click.option(
     '-n', '--name', default='datasette',
@@ -35,7 +36,15 @@ def build(files, inspect_file):
     '-m', '--metadata', type=click.File(mode='r'),
     help='Path to JSON file containing metadata to publish'
 )
-def publish(files, name, metadata):
+def publish(publisher, files, name, metadata):
+    """
+    Publish specified SQLite database files to the internet along with a datasette API.
+
+    Only current option for PUBLISHER is 'now'. You must have Zeit Now installed:
+    https://zeit.co/now
+
+    Example usage: datasette publish now my-database.db
+    """
     if not shutil.which('now'):
         click.secho(
             ' The publish command requires "now" to be installed and configured ',

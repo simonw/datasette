@@ -92,15 +92,15 @@ def package(files, tag, metadata):
 
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
-@click.option('-h', '--host', default='0.0.0.0')
-@click.option('-p', '--port', default=8001)
-@click.option('--debug', is_flag=True)
-@click.option('--reload', is_flag=True)
-@click.option('--cors', is_flag=True)
-@click.option('--inspect-file')
-@click.option('-m', '--metadata', type=click.File(mode='r'))
+@click.option('-h', '--host', default='0.0.0.0', help='host for server, defaults to 0.0.0.0')
+@click.option('-p', '--port', default=8001, help='port for server, defaults to 8001')
+@click.option('--debug', is_flag=True, help='Enable debug mode - useful for development')
+@click.option('--reload', is_flag=True, help='Automatically reload if code change detected - useful for development')
+@click.option('--cors', is_flag=True, help='Enable CORS by serving Access-Control-Allow-Origin: *')
+@click.option('--inspect-file', help='Path to JSON file created using "datasette build"')
+@click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
 def serve(files, host, port, debug, reload, cors, inspect_file, metadata):
-    """Serve up specified database files with a web UI"""
+    """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
         hupper.start_reloader('datasette.cli.serve')

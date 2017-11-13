@@ -104,10 +104,12 @@ def serve(files, host, port, debug, reload, inspect_file, metadata):
         metadata_data = json.loads(metadata.read())
 
     click.echo('Serve! files={} on port {}'.format(files, port))
-    app = Datasette(
+    ds = Datasette(
         files,
         cache_headers=not debug and not reload,
         inspect_data=inspect_data,
         metadata=metadata_data,
-    ).app()
-    app.run(host=host, port=port, debug=debug)
+    )
+    # Force initial hashing/table counting
+    ds.inspect()
+    ds.app().run(host=host, port=port, debug=debug)

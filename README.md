@@ -172,7 +172,7 @@ Here's example output for the package command:
     Step 3/7 : WORKDIR /app
      ---> Using cache
      ---> 139699e91621
-    Step 4/7 : RUN pip install https://static.simonwillison.net/static/2017/datasette-0.9-py3-none-any.whl
+    Step 4/7 : RUN pip install datasette
      ---> Using cache
      ---> 340efa82bfd7
     Step 5/7 : RUN datasette build parlgov.db --inspect-file inspect-data.json

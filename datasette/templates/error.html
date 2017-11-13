@@ -8,7 +8,7 @@
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash and database_hash[:6] }}">{{ database }}</h1>
 
 {% if error %}
-    <div style="padding: 1em; margin: 1em; border: 3px solid red;">{{ error }}</div>
+    <div style="padding: 1em; margin: 1em 0; border: 3px solid red;">{{ error }}</div>
 {% endif %}
 
 {% endblock %}

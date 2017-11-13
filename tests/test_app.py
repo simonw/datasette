@@ -12,7 +12,7 @@ def app_client():
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
-        yield Datasette([filepath]).app().test_client
+        yield Datasette([filepath], page_size=50, max_returned_rows=100).app().test_client
 
 
 def test_homepage(app_client):
@@ -49,7 +49,7 @@ def test_database_page(app_client):
     }, {
         'columns': ['content'],
         'name': 'no_primary_key',
-        'table_rows': 0,
+        'table_rows': 201,
     }, {
         'columns': ['pk', 'content'],
         'name': 'simple_primary_key',
@@ -76,6 +76,7 @@ def test_custom_sql(app_client):
     ] == data['rows']
     assert ['content'] == data['columns']
     assert 'test_tables' == data['database']
+    assert not data['truncated']
 
 
 def test_invalid_custom_sql(app_client):
@@ -121,6 +122,19 @@ def test_table_with_slashes_in_name(app_client):
     }]
 
 
+def test_max_returned_rows(app_client):
+    _, response = app_client.get(
+        '/test_tables.jsono?sql=select+content+from+no_primary_key'
+    )
+    data = response.json
+    assert {
+        'sql': 'select content from no_primary_key',
+        'params': {}
+    } == data['query']
+    assert data['truncated']
+    assert 100 == len(data['rows'])
+
+
 def test_view(app_client):
     _, response = app_client.get('/test_tables/simple_view')
     assert response.status == 200
@@ -152,6 +166,14 @@ CREATE TABLE compound_primary_key (
 CREATE TABLE no_primary_key (
   content text
 );
+
+WITH RECURSIVE
+  cnt(x) AS (
+     SELECT 1
+     UNION ALL
+     SELECT x+1 FROM cnt LIMIT 201
+  )
+  INSERT INTO no_primary_key SELECT * from cnt;
 
 CREATE TABLE "Table With Space In Name" (
   pk varchar(30) primary key,

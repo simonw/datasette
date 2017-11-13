@@ -80,17 +80,21 @@ http://localhost:8001/History/downloads.jsono will return that data as JSON in a
       Serve up specified SQLite database files with a web UI
 
     Options:
-      -h, --host TEXT          host for server, defaults to 0.0.0.0
-      -p, --port INTEGER       port for server, defaults to 8001
-      --debug                  Enable debug mode - useful for development
-      --reload                 Automatically reload if code change detected -
-                               useful for development
-      --cors                   Enable CORS by serving Access-Control-Allow-Origin:
-                               *
-      --inspect-file TEXT      Path to JSON file created using "datasette build"
-      -m, --metadata FILENAME  Path to JSON file containing license/source
-                               metadata
-      --help                   Show this message and exit.
+      -h, --host TEXT              host for server, defaults to 0.0.0.0
+      -p, --port INTEGER           port for server, defaults to 8001
+      --debug                      Enable debug mode - useful for development
+      --reload                     Automatically reload if code change detected -
+                                   useful for development
+      --cors                       Enable CORS by serving Access-Control-Allow-
+                                   Origin: *
+      --page_size INTEGER          Page size - default is 100
+      --max_returned_rows INTEGER  Max allowed rows to return at once - default is
+                                   1000. Set to 0 to disable check entirely.
+      --inspect-file TEXT          Path to JSON file created using "datasette
+                                   build"
+      -m, --metadata FILENAME      Path to JSON file containing license/source
+                                   metadata
+      --help                       Show this message and exit.
 
 ## metadata.json
 

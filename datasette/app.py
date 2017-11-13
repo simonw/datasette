@@ -44,7 +44,7 @@ class BaseView(HTTPMethodView):
         self.jinja = datasette.jinja
         self.executor = datasette.executor
         self.page_size = datasette.page_size
-        self.cache_headers = datasette.cache_headers
+        self.max_returned_rows = datasette.max_returned_rows
 
     def options(self, request, *args, **kwargs):
         r = response.text('ok')
@@ -107,7 +107,7 @@ class BaseView(HTTPMethodView):
             return name, expected, should_redirect
         return name, expected, None
 
-    async def execute(self, db_name, sql, params=None):
+    async def execute(self, db_name, sql, params=None, truncate=False):
         """Executes sql against db_name in a thread"""
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
@@ -124,13 +124,25 @@ class BaseView(HTTPMethodView):
 
             with sqlite_timelimit(conn, SQL_TIME_LIMIT_MS):
                 try:
-                    rows = conn.execute(sql, params or {})
+                    cursor = conn.cursor()
+                    cursor.execute(sql, params or {})
+                    description = None
+                    if self.max_returned_rows and truncate:
+                        rows = cursor.fetchmany(self.max_returned_rows + 1)
+                        truncated = len(rows) > self.max_returned_rows
+                        rows = rows[:self.max_returned_rows]
+                    else:
+                        rows = cursor.fetchall()
+                        truncated = False
                 except Exception:
                     print('ERROR: conn={}, sql = {}, params = {}'.format(
                         conn, repr(sql), params
                     ))
                     raise
-            return rows
+            if truncate:
+                return rows, truncated, cursor.description
+            else:
+                return rows
 
         return await asyncio.get_event_loop().run_in_executor(
             self.executor, sql_operation_in_thread
@@ -208,7 +220,7 @@ class BaseView(HTTPMethodView):
             )
             r.status = status_code
         # Set far-future cache expiry
-        if self.cache_headers:
+        if self.ds.cache_headers:
             r.headers['Cache-Control'] = 'max-age={}'.format(
                 365 * 24 * 60 * 60
             )
@@ -295,11 +307,12 @@ class DatabaseView(BaseView):
         params = request.raw_args
         sql = params.pop('sql')
         validate_sql_select(sql)
-        rows = await self.execute(name, sql, params)
-        columns = [r[0] for r in rows.description]
+        rows, truncated, description = await self.execute(name, sql, params, truncate=True)
+        columns = [r[0] for r in description]
         return {
             'database': name,
             'rows': rows,
+            'truncated': truncated,
             'columns': columns,
             'query': {
                 'sql': sql,
@@ -401,9 +414,9 @@ class TableView(BaseView):
             select, escape_sqlite_table_name(table), where_clause, order_by, self.page_size + 1,
         )
 
-        rows = await self.execute(name, sql, params)
+        rows, truncated, description = await self.execute(name, sql, params, truncate=True)
 
-        columns = [r[0] for r in rows.description]
+        columns = [r[0] for r in description]
         display_columns = columns
         if use_rowid:
             display_columns = display_columns[1:]
@@ -422,6 +435,7 @@ class TableView(BaseView):
             'view_definition': view_definition,
             'table_definition': table_definition,
             'rows': rows[:self.page_size],
+            'truncated': truncated,
             'table_rows': table_rows,
             'columns': columns,
             'primary_keys': pks,
@@ -480,7 +494,9 @@ class RowView(BaseView):
 
 
 class Datasette:
-    def __init__(self, files, num_threads=3, cache_headers=True, page_size=50, cors=False, inspect_data=None, metadata=None):
+    def __init__(
+            self, files, num_threads=3, cache_headers=True, page_size=100,
+            max_returned_rows=1000, cors=False, inspect_data=None, metadata=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -488,6 +504,7 @@ class Datasette:
         )
         self.cache_headers = cache_headers
         self.page_size = page_size
+        self.max_returned_rows = max_returned_rows
         self.cors = cors
         self._inspect = inspect_data
         self.metadata = metadata or {}

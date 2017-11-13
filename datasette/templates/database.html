@@ -30,6 +30,10 @@
     <p><input type="submit" value="Run SQL"></p>
 </form>
 
+{% if truncated %}
+    <div style="padding: 1em; margin: 1em 0; border: 3px solid red;">These results were truncated. You will need to apply OFFSET/LIMIT to see the whole result set.</div>
+{% endif %}
+
 {% if rows %}
 <table>
     <thead>

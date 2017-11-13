@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='datasette',
-    version='0.5',
+    version='0.6',
     packages=find_packages(),
     package_data={'datasette': ['templates/*.html']},
     include_package_data=True,

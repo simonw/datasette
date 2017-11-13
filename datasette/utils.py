@@ -133,15 +133,16 @@ def escape_sqlite_table_name(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files):
+def make_dockerfile(files, metadata_file):
     return '''
 FROM python:3
 COPY . /app
 WORKDIR /app
-RUN pip install https://static.simonwillison.net/static/2017/datasette-0.5-py3-none-any.whl
-RUN datasette build_metadata {} --metadata metadata.json
+RUN pip install https://static.simonwillison.net/static/2017/datasette-0.6-py3-none-any.whl
+RUN datasette build {} --inspect-file inspect-data.json
 EXPOSE 8006
-CMD ["datasette", "serve", {}, "--port", "8006", "--metadata", "metadata.json"]'''.format(
+CMD ["datasette", "serve", {}, "--port", "8006", "--inspect-file", "inspect-data.json"{}]'''.format(
         ' '.join(files),
         '"' + '", "'.join(files) + '"',
+        metadata_file and ', "--metadata", "{}"'.format(metadata_file) or '',
     ).strip()

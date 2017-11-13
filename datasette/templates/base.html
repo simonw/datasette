@@ -14,6 +14,20 @@
 <div class="ft">
     Powered by <a href="https://github.com/simonw/datasette">Datasette</a>
     {% if query_ms %}&middot; Query took {{ query_ms|round(3) }}ms{% endif %}
+    {% if metadata.license %}&middot; Data license:
+        {% if metadata.license_url %}
+            <a href="{{ metadata.license_url }}">{{ metadata.license }}</a>
+        {% else %}
+            {{ metadata.license }}
+        {% endif %}
+    {% endif %}
+    {% if metadata.source_url %}&middot;
+        {% if metadata.source %}
+            Data source: <a href="{{ metadata.source_url }}">{{ metadata.source }}</a>
+        {% else %}
+            <a href="{{ metadata.source_url }}">Data source</a>
+        {% endif %}
+    {% endif %}
 </div>
 
 </body>

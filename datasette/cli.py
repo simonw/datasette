@@ -19,16 +19,23 @@ def cli():
 
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
-@click.option('-m', '--metadata', default='metadata.json')
-def build_metadata(files, metadata):
+@click.option('--inspect-file', default='inspect-data.json')
+def build(files, inspect_file):
     app = Datasette(files)
-    open(metadata, 'w').write(json.dumps(app.metadata(), indent=2))
+    open(inspect_file, 'w').write(json.dumps(app.inspect(), indent=2))
 
 
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
-@click.option('-n', '--name', default='datasette')
-def publish(files, name):
+@click.option(
+    '-n', '--name', default='datasette',
+    help='Application name to use when deploying to Now'
+)
+@click.option(
+    '-m', '--metadata', type=click.File(mode='r'),
+    help='Path to JSON file containing metadata to publish'
+)
+def publish(files, name, metadata):
     if not shutil.which('now'):
         click.secho(
             ' The publish command requires "now" to be installed and configured ',
@@ -50,9 +57,11 @@ def publish(files, name):
     ]
     file_names = [os.path.split(f)[-1] for f in files]
     try:
-        dockerfile = make_dockerfile(file_names)
+        dockerfile = make_dockerfile(file_names, metadata and 'metadata.json')
         os.chdir(datasette_dir)
         open('Dockerfile', 'w').write(dockerfile)
+        if metadata:
+            open('metadata.json', 'w').write(metadata.read())
         for path, filename in zip(file_paths, file_names):
             os.link(path, os.path.join(datasette_dir, filename))
         call('now')
@@ -67,20 +76,27 @@ def publish(files, name):
 @click.option('-p', '--port', default=8001)
 @click.option('--debug', is_flag=True)
 @click.option('--reload', is_flag=True)
-@click.option('-m', '--metadata')
-def serve(files, host, port, debug, reload, metadata):
+@click.option('--inspect-file')
+@click.option('-m', '--metadata', type=click.File(mode='r'))
+def serve(files, host, port, debug, reload, inspect_file, metadata):
     """Serve up specified database files with a web UI"""
     if reload:
         import hupper
         hupper.start_reloader('datasette.cli.serve')
 
+    inspect_data = None
+    if inspect_file:
+        inspect_data = json.load(open(inspect_file))
+
+    metadata_data = None
     if metadata:
-        metadata = json.load(open(metadata))
+        metadata_data = json.loads(metadata.read())
 
     click.echo('Serve! files={} on port {}'.format(files, port))
     app = Datasette(
         files,
         cache_headers=not debug and not reload,
-        metadata=metadata,
+        inspect_data=inspect_data,
+        metadata=metadata_data,
     ).app()
     app.run(host=host, port=port, debug=debug)

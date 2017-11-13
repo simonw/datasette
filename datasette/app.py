@@ -73,7 +73,7 @@ class BaseView(HTTPMethodView):
         return [str(r[1]) for r in rows]
 
     def resolve_db_name(self, db_name, **kwargs):
-        databases = self.ds.metadata()
+        databases = self.ds.inspect()
         hash = None
         name = None
         if '-' in db_name:
@@ -110,7 +110,7 @@ class BaseView(HTTPMethodView):
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
             if not conn:
-                info = self.ds.metadata()[db_name]
+                info = self.ds.inspect()[db_name]
                 conn = sqlite3.connect(
                     'file:{}?immutable=1'.format(info['file']),
                     uri=True,
@@ -192,6 +192,7 @@ class BaseView(HTTPMethodView):
             ), **{
                 'url_json': path_with_ext(request, '.json'),
                 'url_jsono': path_with_ext(request, '.jsono'),
+                'metadata': self.ds.metadata,
             }}
             r = self.jinja.render(
                 template,
@@ -216,7 +217,7 @@ class IndexView(HTTPMethodView):
 
     async def get(self, request, as_json):
         databases = []
-        for key, info in sorted(self.ds.metadata().items()):
+        for key, info in sorted(self.ds.inspect().items()):
             database = {
                 'name': key,
                 'hash': info['hash'],
@@ -247,6 +248,7 @@ class IndexView(HTTPMethodView):
                 'index.html',
                 request,
                 databases=databases,
+                metadata=self.ds.metadata,
             )
 
 
@@ -261,8 +263,8 @@ class DatabaseView(BaseView):
         if request.args.get('sql'):
             return await self.custom_sql(request, name, hash)
         tables = []
-        table_metadata = self.ds.metadata()[name]['tables']
-        for table_name, table_rows in table_metadata.items():
+        table_inspect = self.ds.inspect()[name]['tables']
+        for table_name, table_rows in table_inspect.items():
             rows = await self.execute(
                 name,
                 'PRAGMA table_info([{}]);'.format(table_name)
@@ -304,7 +306,7 @@ class DatabaseView(BaseView):
 
 class DatabaseDownload(BaseView):
     async def view_get(self, request, name, hash, **kwargs):
-        filepath = self.ds.metadata()[name]['file']
+        filepath = self.ds.inspect()[name]['file']
         return await response.file_stream(
             filepath, headers={
                 'Content-Disposition': 'attachment; filename="{}"'.format(filepath)
@@ -399,7 +401,7 @@ class TableView(BaseView):
         if use_rowid:
             display_columns = display_columns[1:]
         rows = list(rows)
-        info = self.ds.metadata()
+        info = self.ds.inspect()
         table_rows = info[name]['tables'].get(table)
         after = None
         after_link = None
@@ -471,7 +473,7 @@ class RowView(BaseView):
 
 
 class Datasette:
-    def __init__(self, files, num_threads=3, cache_headers=True, page_size=50, metadata=None):
+    def __init__(self, files, num_threads=3, cache_headers=True, page_size=50, inspect_data=None, metadata=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -479,43 +481,42 @@ class Datasette:
         )
         self.cache_headers = cache_headers
         self.page_size = page_size
-        self._metadata = metadata
+        self._inspect = inspect_data
+        self.metadata = metadata
 
-    def metadata(self):
-        if self._metadata:
-            return self._metadata
-        metadata = {}
-        for filename in self.files:
-            path = Path(filename)
-            name = path.stem
-            if name in metadata:
-                raise Exception('Multiple files with same stem %s' % name)
-            # Calculate hash, efficiently
-            m = hashlib.sha256()
-            with path.open('rb') as fp:
-                while True:
-                    data = fp.read(HASH_BLOCK_SIZE)
-                    if not data:
-                        break
-                    m.update(data)
-            # List tables and their row counts
-            tables = {}
-            with sqlite3.connect('file:{}?immutable=1'.format(path), uri=True) as conn:
-                conn.row_factory = sqlite3.Row
-                table_names = [
-                    r['name']
-                    for r in conn.execute('select * from sqlite_master where type="table"')
-                ]
-                for table in table_names:
-                    tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
+    def inspect(self):
+        if not self._inspect:
+            self._inspect = {}
+            for filename in self.files:
+                path = Path(filename)
+                name = path.stem
+                if name in self._inspect:
+                    raise Exception('Multiple files with same stem %s' % name)
+                # Calculate hash, efficiently
+                m = hashlib.sha256()
+                with path.open('rb') as fp:
+                    while True:
+                        data = fp.read(HASH_BLOCK_SIZE)
+                        if not data:
+                            break
+                        m.update(data)
+                # List tables and their row counts
+                tables = {}
+                with sqlite3.connect('file:{}?immutable=1'.format(path), uri=True) as conn:
+                    conn.row_factory = sqlite3.Row
+                    table_names = [
+                        r['name']
+                        for r in conn.execute('select * from sqlite_master where type="table"')
+                    ]
+                    for table in table_names:
+                        tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
 
-            metadata[name] = {
-                'hash': m.hexdigest(),
-                'file': str(path),
-                'tables': tables,
-            }
-        self._metadata = metadata
-        return metadata
+                self._inspect[name] = {
+                    'hash': m.hexdigest(),
+                    'file': str(path),
+                    'tables': tables,
+                }
+        return self._inspect
 
     def app(self):
         app = Sanic(__name__)

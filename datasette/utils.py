@@ -1,8 +1,10 @@
 from contextlib import contextmanager
 import base64
 import json
+import os
 import re
 import sqlite3
+import tempfile
 import time
 import urllib
 
@@ -140,9 +142,35 @@ COPY . /app
 WORKDIR /app
 RUN pip install https://static.simonwillison.net/static/2017/datasette-0.6-py3-none-any.whl
 RUN datasette build {} --inspect-file inspect-data.json
-EXPOSE 8006
-CMD ["datasette", "serve", {}, "--port", "8006", "--inspect-file", "inspect-data.json"{}]'''.format(
+EXPOSE 8001
+CMD ["datasette", "serve", {}, "--port", "8001", "--inspect-file", "inspect-data.json"{}]'''.format(
         ' '.join(files),
         '"' + '", "'.join(files) + '"',
         metadata_file and ', "--metadata", "{}"'.format(metadata_file) or '',
     ).strip()
+
+
+@contextmanager
+def temporary_docker_directory(files, name, metadata):
+    tmp = tempfile.TemporaryDirectory()
+    # We create a datasette folder in there to get a nicer now deploy name
+    datasette_dir = os.path.join(tmp.name, name)
+    os.mkdir(datasette_dir)
+    saved_cwd = os.getcwd()
+    file_paths = [
+        os.path.join(saved_cwd, name)
+        for name in files
+    ]
+    file_names = [os.path.split(f)[-1] for f in files]
+    try:
+        dockerfile = make_dockerfile(file_names, metadata and 'metadata.json')
+        os.chdir(datasette_dir)
+        open('Dockerfile', 'w').write(dockerfile)
+        if metadata:
+            open('metadata.json', 'w').write(metadata.read())
+        for path, filename in zip(file_paths, file_names):
+            os.link(path, os.path.join(datasette_dir, filename))
+        yield
+    finally:
+        tmp.cleanup()
+        os.chdir(saved_cwd)

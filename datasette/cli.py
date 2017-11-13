@@ -1,13 +1,13 @@
 import click
 from click_default_group import DefaultGroup
 import json
-import os
 import shutil
 from subprocess import call
 import sys
-import tempfile
 from .app import Datasette
-from .utils import make_dockerfile
+from .utils import (
+    temporary_docker_directory,
+)
 
 
 @click.group(cls=DefaultGroup, default='serve', default_if_no_args=True)
@@ -46,28 +46,39 @@ def publish(files, name, metadata):
         )
         click.echo('Follow the instructions at https://zeit.co/now#whats-now', err=True)
         sys.exit(1)
-    tmp = tempfile.TemporaryDirectory()
-    # We create a datasette folder in there to get a nicer now deploy name
-    datasette_dir = os.path.join(tmp.name, name)
-    os.mkdir(datasette_dir)
-    saved_cwd = os.getcwd()
-    file_paths = [
-        os.path.join(saved_cwd, name)
-        for name in files
-    ]
-    file_names = [os.path.split(f)[-1] for f in files]
-    try:
-        dockerfile = make_dockerfile(file_names, metadata and 'metadata.json')
-        os.chdir(datasette_dir)
-        open('Dockerfile', 'w').write(dockerfile)
-        if metadata:
-            open('metadata.json', 'w').write(metadata.read())
-        for path, filename in zip(file_paths, file_names):
-            os.link(path, os.path.join(datasette_dir, filename))
+
+    with temporary_docker_directory(files, name, metadata):
         call('now')
-    finally:
-        tmp.cleanup()
-        os.chdir(saved_cwd)
+
+
+@cli.command()
+@click.argument('files', type=click.Path(exists=True), nargs=-1, required=True)
+@click.option(
+    '-t', '--tag',
+    help='Name for the resulting Docker container, can optionally use name:tag format'
+)
+@click.option(
+    '-m', '--metadata', type=click.File(mode='r'),
+    help='Path to JSON file containing metadata to publish'
+)
+def package(files, tag, metadata):
+    "Package specified SQLite files into a new datasette Docker container"
+    if not shutil.which('docker'):
+        click.secho(
+            ' The package command requires "docker" to be installed and configured ',
+            bg='red',
+            fg='white',
+            bold=True,
+            err=True,
+        )
+        sys.exit(1)
+    with temporary_docker_directory(files, 'datasette', metadata):
+        args = ['docker', 'build']
+        if tag:
+            args.append('-t')
+            args.append(tag)
+        args.append('.')
+        call(args)
 
 
 @cli.command()

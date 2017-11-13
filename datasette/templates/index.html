@@ -13,7 +13,7 @@
             {{ metadata.license }}
         {% endif %}
     {% endif %}
-    {% if metadata.source_url %}&middot;
+    {% if metadata.source_url %}{% if metadata.license %}&middot;{% endif %}
         {% if metadata.source %}
             Data source: <a href="{{ metadata.source_url }}">{{ metadata.source }}</a>
         {% else %}

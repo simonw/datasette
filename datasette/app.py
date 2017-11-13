@@ -166,6 +166,10 @@ class BaseView(HTTPMethodView):
             status_code = 400
         end = time.time()
         data['query_ms'] = (end - start) * 1000
+        for key in ('source', 'source_url', 'license', 'license_url'):
+            value = self.ds.metadata.get(key)
+            if value:
+                data[key] = value
         if as_json:
             # Special case for .jsono extension
             if as_json == '.jsono':
@@ -486,7 +490,7 @@ class Datasette:
         self.page_size = page_size
         self.cors = cors
         self._inspect = inspect_data
-        self.metadata = metadata
+        self.metadata = metadata or {}
 
     def inspect(self):
         if not self._inspect:

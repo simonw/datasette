@@ -58,7 +58,7 @@ th {
     border-bottom: 2px solid #ccc;
 }
 .ft {
-    margin-top: 1em;
+    margin: 1em 0;
     border-top: 1px solid #ccc;
     font-size: 0.8em;
 }

@@ -87,9 +87,10 @@ def package(files, tag, metadata):
 @click.option('-p', '--port', default=8001)
 @click.option('--debug', is_flag=True)
 @click.option('--reload', is_flag=True)
+@click.option('--cors', is_flag=True)
 @click.option('--inspect-file')
 @click.option('-m', '--metadata', type=click.File(mode='r'))
-def serve(files, host, port, debug, reload, inspect_file, metadata):
+def serve(files, host, port, debug, reload, cors, inspect_file, metadata):
     """Serve up specified database files with a web UI"""
     if reload:
         import hupper
@@ -107,6 +108,7 @@ def serve(files, host, port, debug, reload, inspect_file, metadata):
     ds = Datasette(
         files,
         cache_headers=not debug and not reload,
+        cors=cors,
         inspect_data=inspect_data,
         metadata=metadata_data,
     )

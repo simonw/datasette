@@ -143,7 +143,7 @@ WORKDIR /app
 RUN pip install https://static.simonwillison.net/static/2017/datasette-0.6-py3-none-any.whl
 RUN datasette build {} --inspect-file inspect-data.json
 EXPOSE 8001
-CMD ["datasette", "serve", {}, "--port", "8001", "--inspect-file", "inspect-data.json"{}]'''.format(
+CMD ["datasette", "serve", {}, "--port", "8001", "--cors", "--inspect-file", "inspect-data.json"{}]'''.format(
         ' '.join(files),
         '"' + '", "'.join(files) + '"',
         metadata_file and ', "--metadata", "{}"'.format(metadata_file) or '',

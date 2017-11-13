@@ -48,7 +48,8 @@ class BaseView(HTTPMethodView):
 
     def options(self, request, *args, **kwargs):
         r = response.text('ok')
-        r.headers['Access-Control-Allow-Origin'] = '*'
+        if self.ds.cors:
+            r.headers['Access-Control-Allow-Origin'] = '*'
         return r
 
     def redirect(self, request, path):
@@ -58,7 +59,8 @@ class BaseView(HTTPMethodView):
             )
         r = response.redirect(path)
         r.headers['Link'] = '<{}>; rel=preload'.format(path)
-        r.headers['Access-Control-Allow-Origin'] = '*'
+        if self.ds.cors:
+            r.headers['Access-Control-Allow-Origin'] = '*'
         return r
 
     async def pks_for_table(self, name, table):
@@ -174,15 +176,16 @@ class BaseView(HTTPMethodView):
                         dict(zip(columns, row))
                         for row in rows
                     ]
+            headers = {}
+            if self.ds.cors:
+                headers['Access-Control-Allow-Origin'] = '*'
             r = response.HTTPResponse(
                 json.dumps(
                     data, cls=CustomJSONEncoder
                 ),
                 status=status_code,
                 content_type='application/json',
-                headers={
-                    'Access-Control-Allow-Origin': '*'
-                }
+                headers=headers,
             )
         else:
             context = {**data, **dict(
@@ -473,7 +476,7 @@ class RowView(BaseView):
 
 
 class Datasette:
-    def __init__(self, files, num_threads=3, cache_headers=True, page_size=50, inspect_data=None, metadata=None):
+    def __init__(self, files, num_threads=3, cache_headers=True, page_size=50, cors=False, inspect_data=None, metadata=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -481,6 +484,7 @@ class Datasette:
         )
         self.cache_headers = cache_headers
         self.page_size = page_size
+        self.cors = cors
         self._inspect = inspect_data
         self.metadata = metadata
 

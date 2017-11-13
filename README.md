@@ -92,6 +92,7 @@ http://localhost:8001/History/downloads.jsono will return that data as JSON in a
       --page_size INTEGER          Page size - default is 100
       --max_returned_rows INTEGER  Max allowed rows to return at once - default is
                                    1000. Set to 0 to disable check entirely.
+      --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
       --inspect-file TEXT          Path to JSON file created using "datasette
                                    build"
       -m, --metadata FILENAME      Path to JSON file containing license/source
@@ -134,6 +135,7 @@ This will create a docker image containing both the datasette application and th
     Options:
       -n, --name TEXT          Application name to use when deploying to Now
       -m, --metadata FILENAME  Path to JSON file containing metadata to publish
+      --extra-options TEXT     Extra options to pass to datasette serve
       --help                   Show this message and exit.
 
 ## datasette package
@@ -149,4 +151,43 @@ If you have docker installed you can use `datasette package` to create a new Doc
       -t, --tag TEXT           Name for the resulting Docker container, can
                                optionally use name:tag format
       -m, --metadata FILENAME  Path to JSON file containing metadata to publish
+      --extra-options TEXT     Extra options to pass to datasette serve
       --help                   Show this message and exit.
+
+Both publish and package accept an `extra_options` argument option, which will affect how the resulting application is executed. For example, say you want to increase the SQL time limit for a particular container:
+
+    datasette package parlgov.db --extra-options="--sql_time_limit_ms=2500 --page_size=10"
+
+The resulting container will run the application with those options.
+
+Here's example output for the package command:
+
+    $ datasette package parlgov.db --extra-options="--sql_time_limit_ms=2500 --page_size=10"
+    Sending build context to Docker daemon  4.459MB
+    Step 1/7 : FROM python:3
+     ---> 79e1dc9af1c1
+    Step 2/7 : COPY . /app
+     ---> Using cache
+     ---> cd4ec67de656
+    Step 3/7 : WORKDIR /app
+     ---> Using cache
+     ---> 139699e91621
+    Step 4/7 : RUN pip install https://static.simonwillison.net/static/2017/datasette-0.9-py3-none-any.whl
+     ---> Using cache
+     ---> 340efa82bfd7
+    Step 5/7 : RUN datasette build parlgov.db --inspect-file inspect-data.json
+     ---> Using cache
+     ---> 5fddbe990314
+    Step 6/7 : EXPOSE 8001
+     ---> Using cache
+     ---> 8e83844b0fed
+    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --sql_time_limit_ms=2500 --page_size=10
+     ---> Using cache
+     ---> 1bd380ea8af3
+    Successfully built 1bd380ea8af3
+
+You can now run the resulting container like so:
+
+    docker run -p 8081:8001 1bd380ea8af3
+
+This exposes port 8001 inside the container as port 8081 on your host machine, so you can access the application at http://localhost:8081/

@@ -135,7 +135,15 @@ def escape_sqlite_table_name(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files, metadata_file):
+def make_dockerfile(files, metadata_file, extra_options=''):
+    cmd = ['"datasette"', '"serve"']
+    cmd.append('"' + '", "'.join(files) + '"')
+    cmd.extend(['"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
+    if metadata_file:
+        cmd.extend(['"--metadata"', '"{}"'.format(metadata_file)])
+    if extra_options:
+        for opt in extra_options.split():
+            cmd.append('"{}"'.format(opt))
     return '''
 FROM python:3
 COPY . /app
@@ -143,15 +151,14 @@ WORKDIR /app
 RUN pip install datasette
 RUN datasette build {} --inspect-file inspect-data.json
 EXPOSE 8001
-CMD ["datasette", "serve", {}, "--port", "8001", "--cors", "--inspect-file", "inspect-data.json"{}]'''.format(
+CMD [{}]'''.format(
         ' '.join(files),
-        '"' + '", "'.join(files) + '"',
-        metadata_file and ', "--metadata", "{}"'.format(metadata_file) or '',
+        ', '.join(cmd)
     ).strip()
 
 
 @contextmanager
-def temporary_docker_directory(files, name, metadata):
+def temporary_docker_directory(files, name, metadata, extra_options):
     tmp = tempfile.TemporaryDirectory()
     # We create a datasette folder in there to get a nicer now deploy name
     datasette_dir = os.path.join(tmp.name, name)
@@ -163,7 +170,7 @@ def temporary_docker_directory(files, name, metadata):
     ]
     file_names = [os.path.split(f)[-1] for f in files]
     try:
-        dockerfile = make_dockerfile(file_names, metadata and 'metadata.json')
+        dockerfile = make_dockerfile(file_names, metadata and 'metadata.json', extra_options)
         os.chdir(datasette_dir)
         open('Dockerfile', 'w').write(dockerfile)
         if metadata:

@@ -30,7 +30,6 @@ from .utils import (
 app_root = Path(__file__).parent.parent
 
 HASH_BLOCK_SIZE = 1024 * 1024
-SQL_TIME_LIMIT_MS = 1000
 
 connections = threading.local()
 
@@ -122,11 +121,10 @@ class BaseView(HTTPMethodView):
                 conn.text_factory = lambda x: str(x, 'utf-8', 'replace')
                 setattr(connections, db_name, conn)
 
-            with sqlite_timelimit(conn, SQL_TIME_LIMIT_MS):
+            with sqlite_timelimit(conn, self.ds.sql_time_limit_ms):
                 try:
                     cursor = conn.cursor()
                     cursor.execute(sql, params or {})
-                    description = None
                     if self.max_returned_rows and truncate:
                         rows = cursor.fetchmany(self.max_returned_rows + 1)
                         truncated = len(rows) > self.max_returned_rows
@@ -510,7 +508,8 @@ class RowView(BaseView):
 class Datasette:
     def __init__(
             self, files, num_threads=3, cache_headers=True, page_size=100,
-            max_returned_rows=1000, cors=False, inspect_data=None, metadata=None):
+            max_returned_rows=1000, sql_time_limit_ms=1000, cors=False,
+            inspect_data=None, metadata=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -519,6 +518,7 @@ class Datasette:
         self.cache_headers = cache_headers
         self.page_size = page_size
         self.max_returned_rows = max_returned_rows
+        self.sql_time_limit_ms = sql_time_limit_ms
         self.cors = cors
         self._inspect = inspect_data
         self.metadata = metadata or {}

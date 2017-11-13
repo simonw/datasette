@@ -36,7 +36,8 @@ def build(files, inspect_file):
     '-m', '--metadata', type=click.File(mode='r'),
     help='Path to JSON file containing metadata to publish'
 )
-def publish(publisher, files, name, metadata):
+@click.option('--extra-options', help='Extra options to pass to datasette serve')
+def publish(publisher, files, name, metadata, extra_options):
     """
     Publish specified SQLite database files to the internet along with a datasette API.
 
@@ -56,7 +57,7 @@ def publish(publisher, files, name, metadata):
         click.echo('Follow the instructions at https://zeit.co/now#whats-now', err=True)
         sys.exit(1)
 
-    with temporary_docker_directory(files, name, metadata):
+    with temporary_docker_directory(files, name, metadata, extra_options):
         call('now')
 
 
@@ -70,7 +71,8 @@ def publish(publisher, files, name, metadata):
     '-m', '--metadata', type=click.File(mode='r'),
     help='Path to JSON file containing metadata to publish'
 )
-def package(files, tag, metadata):
+@click.option('--extra-options', help='Extra options to pass to datasette serve')
+def package(files, tag, metadata, extra_options):
     "Package specified SQLite files into a new datasette Docker container"
     if not shutil.which('docker'):
         click.secho(
@@ -81,7 +83,7 @@ def package(files, tag, metadata):
             err=True,
         )
         sys.exit(1)
-    with temporary_docker_directory(files, 'datasette', metadata):
+    with temporary_docker_directory(files, 'datasette', metadata, extra_options):
         args = ['docker', 'build']
         if tag:
             args.append('-t')
@@ -99,9 +101,10 @@ def package(files, tag, metadata):
 @click.option('--cors', is_flag=True, help='Enable CORS by serving Access-Control-Allow-Origin: *')
 @click.option('--page_size', default=100, help='Page size - default is 100')
 @click.option('--max_returned_rows', default=1000, help='Max allowed rows to return at once - default is 1000. Set to 0 to disable check entirely.')
+@click.option('--sql_time_limit_ms', default=1000, help='Max time allowed for SQL queries in ms')
 @click.option('--inspect-file', help='Path to JSON file created using "datasette build"')
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
-def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, inspect_file, metadata):
+def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, inspect_file, metadata):
     """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
@@ -122,6 +125,7 @@ def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, 
         cors=cors,
         page_size=page_size,
         max_returned_rows=max_returned_rows,
+        sql_time_limit_ms=sql_time_limit_ms,
         inspect_data=inspect_data,
         metadata=metadata_data,
     )

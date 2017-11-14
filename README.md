@@ -7,6 +7,8 @@
 
 Datasette provides an instant, read-only JSON API for any SQLite database. It also provides tools  for packaging the database up as a Docker container and deploying that container to hosting providers such as [Zeit Now](https://zeit.co/now).
 
+Soke examples: https://github.com/simonw/datasette/wiki/Datasettes
+
 ## Installation
 
     pip3 install datasette

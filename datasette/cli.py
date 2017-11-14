@@ -37,7 +37,8 @@ def build(files, inspect_file):
     help='Path to JSON file containing metadata to publish'
 )
 @click.option('--extra-options', help='Extra options to pass to datasette serve')
-def publish(publisher, files, name, metadata, extra_options):
+@click.option('--force', is_flag=True, help='Pass --force option to now')
+def publish(publisher, files, name, metadata, extra_options, force):
     """
     Publish specified SQLite database files to the internet along with a datasette API.
 
@@ -58,7 +59,10 @@ def publish(publisher, files, name, metadata, extra_options):
         sys.exit(1)
 
     with temporary_docker_directory(files, name, metadata, extra_options):
-        call('now')
+        if force:
+            call(['now', '--force'])
+        else:
+            call('now')
 
 
 @cli.command()

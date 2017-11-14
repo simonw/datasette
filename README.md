@@ -136,6 +136,7 @@ This will create a docker image containing both the datasette application and th
       -n, --name TEXT          Application name to use when deploying to Now
       -m, --metadata FILENAME  Path to JSON file containing metadata to publish
       --extra-options TEXT     Extra options to pass to datasette serve
+      --force                  Pass --force option to now
       --help                   Show this message and exit.
 
 ## datasette package

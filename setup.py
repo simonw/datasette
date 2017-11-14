@@ -4,7 +4,7 @@ setup(
     name='datasette',
     description='An instant JSON API for your SQLite databases',
     author='Simon Willison',
-    version='0.9',
+    version='0.10',
     license='Apache License, Version 2.0',
     url='https://github.com/simonw/datasette',
     packages=find_packages(),

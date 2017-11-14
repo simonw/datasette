@@ -138,7 +138,7 @@ def escape_sqlite_table_name(s):
 def make_dockerfile(files, metadata_file, extra_options=''):
     cmd = ['"datasette"', '"serve"']
     cmd.append('"' + '", "'.join(files) + '"')
-    cmd.extend(['"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
+    cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
     if metadata_file:
         cmd.extend(['"--metadata"', '"{}"'.format(metadata_file)])
     if extra_options:

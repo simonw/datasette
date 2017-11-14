@@ -170,6 +170,17 @@ def test_view(app_client):
     }]
 
 
+def test_row(app_client):
+    _, response = app_client.get('/test_tables/simple_primary_key/1', allow_redirects=False)
+    assert response.status == 302
+    assert response.headers['Location'].endswith('/1')
+    _, response = app_client.get('/test_tables/simple_primary_key/1')
+    assert response.status == 200
+    _, response = app_client.get('/test_tables/simple_primary_key/1.jsono')
+    assert response.status == 200
+    assert [{'pk': '1', 'content': 'hello'}] == response.json['rows']
+
+
 TABLES = '''
 CREATE TABLE simple_primary_key (
   pk varchar(30) primary key,

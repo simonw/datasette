@@ -99,6 +99,8 @@ class BaseView(HTTPMethodView):
             )
             if 'table' in kwargs:
                 should_redirect += '/' + kwargs['table']
+            if 'pk_path' in kwargs:
+                should_redirect += '/' + kwargs['pk_path']
             if 'as_json' in kwargs:
                 should_redirect += kwargs['as_json']
             if 'as_db' in kwargs:
@@ -487,8 +489,9 @@ class RowView(BaseView):
         params = {}
         for i, pk_value in enumerate(pk_values):
             params['p{}'.format(i)] = pk_value
-        rows = await self.execute(name, sql, params)
-        columns = [r[0] for r in rows.description]
+        # rows, truncated, description = await self.execute(name, sql, params, truncate=True)
+        rows, truncated, description = await self.execute(name, sql, params, truncate=True)
+        columns = [r[0] for r in description]
         rows = list(rows)
         if not rows:
             raise NotFound('Record not found: {}'.format(pk_values))

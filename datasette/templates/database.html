@@ -12,6 +12,13 @@
 }
 </style>
 {% endif %}
+<script src="/-/static/codemirror-5.31.0.js"></script>
+<link rel="stylesheet" href="/-/static/codemirror-5.31.0-min.css" />
+<script src="/-/static/codemirror-5.31.0-sql.min.js"></script>
+<style>
+    .CodeMirror { height: auto; border: 1px solid #ddd; }
+    .CodeMirror-scroll { max-height: 200px; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -69,5 +76,13 @@
         {% endfor %}
     </ul>
 {% endif %}
+
+<script>
+    var editor = CodeMirror.fromTextArea(document.getElementsByName("sql")[0], {
+      lineNumbers: true,
+      mode: "text/x-sql",
+      lineWrapping: true,
+    });
+</script>
 
 {% endblock %}

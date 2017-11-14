@@ -121,7 +121,7 @@ def path_with_ext(request, ext):
 
 
 _css_re = re.compile(r'''['"\n\\]''')
-_boring_table_name_re = re.compile(r'^[a-zA-Z0-9_]+$')
+_boring_table_name_re = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
 def escape_css_string(s):

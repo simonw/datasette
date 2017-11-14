@@ -26,7 +26,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 5
+    assert d['tables_count'] == 6
 
 
 def test_database_page(app_client):
@@ -39,6 +39,10 @@ def test_database_page(app_client):
     data = response.json
     assert 'test_tables' == data['database']
     assert [{
+        'columns': ['content'],
+        'name': '123_starts_with_digits',
+        'table_rows': 0,
+    }, {
         'columns': ['pk', 'content'],
         'name': 'Table With Space In Name',
         'table_rows': 0,
@@ -125,6 +129,7 @@ def test_table_with_slashes_in_name(app_client):
 @pytest.mark.parametrize('path,expected_rows,expected_pages', [
     ('/test_tables/no_primary_key.jsono', 201, 5),
     ('/test_tables/paginated_view.jsono', 201, 5),
+    ('/test_tables/123_starts_with_digits.jsono', 0, 1),
 ])
 def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
     fetched = []
@@ -195,6 +200,10 @@ CREATE TABLE compound_primary_key (
 );
 
 CREATE TABLE no_primary_key (
+  content text
+);
+
+CREATE TABLE [123_starts_with_digits] (
   content text
 );
 

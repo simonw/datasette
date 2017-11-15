@@ -46,6 +46,7 @@ def build_where_clauses(args):
             'lte': '"{}" <= :{}',
             'glob': '"{}" glob :{}',
             'like': '"{}" like :{}',
+            'isnull': '"{}" is null',
         }[lookup]
         numeric_operators = {'gt', 'gte', 'lt', 'lte'}
         value_convert = {

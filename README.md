@@ -84,7 +84,7 @@ http://localhost:8001/History/downloads.jsono will return that data as JSON in a
       Serve up specified SQLite database files with a web UI
 
     Options:
-      -h, --host TEXT              host for server, defaults to 0.0.0.0
+      -h, --host TEXT              host for server, defaults to 127.0.0.1
       -p, --port INTEGER           port for server, defaults to 8001
       --debug                      Enable debug mode - useful for development
       --reload                     Automatically reload if code change detected -

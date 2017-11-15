@@ -166,7 +166,8 @@ CMD [{}]'''.format(
 
 
 @contextmanager
-def temporary_docker_directory(files, name, metadata, extra_options):
+def temporary_docker_directory(files, name, metadata, extra_options, extra_metadata=None):
+    extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
     # We create a datasette folder in there to get a nicer now deploy name
     datasette_dir = os.path.join(tmp.name, name)
@@ -177,12 +178,19 @@ def temporary_docker_directory(files, name, metadata, extra_options):
         for name in files
     ]
     file_names = [os.path.split(f)[-1] for f in files]
+    if metadata:
+        metadata_content = json.load(open(metadata))
+    else:
+        metadata_content = {}
+    for key, value in extra_metadata.items():
+        if value:
+            metadata_content[key] = value
     try:
-        dockerfile = make_dockerfile(file_names, metadata and 'metadata.json', extra_options)
+        dockerfile = make_dockerfile(file_names, metadata_content and 'metadata.json', extra_options)
         os.chdir(datasette_dir)
+        if metadata_content:
+            open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))
         open('Dockerfile', 'w').write(dockerfile)
-        if metadata:
-            open('metadata.json', 'w').write(metadata.read())
         for path, filename in zip(file_paths, file_names):
             os.link(path, os.path.join(datasette_dir, filename))
         yield

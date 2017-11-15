@@ -139,6 +139,11 @@ This will create a docker image containing both the datasette application and th
       -m, --metadata FILENAME  Path to JSON file containing metadata to publish
       --extra-options TEXT     Extra options to pass to datasette serve
       --force                  Pass --force option to now
+      --title TEXT             Title for metadata
+      --license TEXT           License label for metadata
+      --license_url TEXT       License URL for metadata
+      --source TEXT            Source label for metadata
+      --source_url TEXT        Source URL for metadata
       --help                   Show this message and exit.
 
 ## datasette package
@@ -155,6 +160,11 @@ If you have docker installed you can use `datasette package` to create a new Doc
                                optionally use name:tag format
       -m, --metadata FILENAME  Path to JSON file containing metadata to publish
       --extra-options TEXT     Extra options to pass to datasette serve
+      --title TEXT             Title for metadata
+      --license TEXT           License label for metadata
+      --license_url TEXT       License URL for metadata
+      --source TEXT            Source label for metadata
+      --source_url TEXT        Source URL for metadata
       --help                   Show this message and exit.
 
 Both publish and package accept an `extra_options` argument option, which will affect how the resulting application is executed. For example, say you want to increase the SQL time limit for a particular container:

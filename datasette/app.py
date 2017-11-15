@@ -114,7 +114,7 @@ class BaseView(HTTPMethodView):
         for name, num_args, func in self.ds.sqlite_functions:
             conn.create_function(name, num_args, func)
 
-    async def execute(self, db_name, sql, params=None, truncate=False):
+    async def execute(self, db_name, sql, params=None, truncate=False, custom_time_limit=None):
         """Executes sql against db_name in a thread"""
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
@@ -128,7 +128,11 @@ class BaseView(HTTPMethodView):
                 self.prepare_connection(conn)
                 setattr(connections, db_name, conn)
 
-            with sqlite_timelimit(conn, self.ds.sql_time_limit_ms):
+            time_limit_ms = self.ds.sql_time_limit_ms
+            if custom_time_limit and custom_time_limit < self.ds.sql_time_limit_ms:
+                time_limit_ms = custom_time_limit
+
+            with sqlite_timelimit(conn, time_limit_ms):
                 try:
                     cursor = conn.cursor()
                     cursor.execute(sql, params or {})
@@ -312,7 +316,12 @@ class DatabaseView(BaseView):
         params = request.raw_args
         sql = params.pop('sql')
         validate_sql_select(sql)
-        rows, truncated, description = await self.execute(name, sql, params, truncate=True)
+        extra_args = {}
+        if params.get('_sql_time_limit_ms'):
+            extra_args['custom_time_limit'] = int(params['_sql_time_limit_ms'])
+        rows, truncated, description = await self.execute(
+            name, sql, params, truncate=True, **extra_args
+        )
         columns = [r[0] for r in description]
         return {
             'database': name,
@@ -428,7 +437,13 @@ class TableView(BaseView):
             offset=offset,
         )
 
-        rows, truncated, description = await self.execute(name, sql, params, truncate=True)
+        extra_args = {}
+        if request.raw_args.get('_sql_time_limit_ms'):
+            extra_args['custom_time_limit'] = int(request.raw_args['_sql_time_limit_ms'])
+
+        rows, truncated, description = await self.execute(
+            name, sql, params, truncate=True, **extra_args
+        )
 
         columns = [r[0] for r in description]
         display_columns = columns

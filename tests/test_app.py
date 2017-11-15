@@ -101,6 +101,18 @@ def test_sql_time_limit(app_client):
     assert 'interrupted' == response.json['error']
 
 
+def test_custom_sql_time_limit(app_client):
+    _, response = app_client.get(
+        '/test_tables.jsono?sql=select+sleep(0.01)'
+    )
+    assert 200 == response.status
+    _, response = app_client.get(
+        '/test_tables.jsono?sql=select+sleep(0.01)&_sql_time_limit_ms=5'
+    )
+    assert 400 == response.status
+    assert 'interrupted' == response.json['error']
+
+
 def test_invalid_custom_sql(app_client):
     _, response = app_client.get(
         '/test_tables?sql=.schema'

@@ -3,6 +3,7 @@ import os
 import pytest
 import sqlite3
 import tempfile
+import time
 
 
 @pytest.fixture(scope='module')
@@ -12,7 +13,16 @@ def app_client():
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
-        yield Datasette([filepath], page_size=50, max_returned_rows=100).app().test_client
+        ds = Datasette(
+            [filepath],
+            page_size=50,
+            max_returned_rows=100,
+            sql_time_limit_ms=20,
+        )
+        ds.sqlite_functions.append(
+            ('sleep', 1, lambda n: time.sleep(float(n))),
+        )
+        yield ds.app().test_client
 
 
 def test_homepage(app_client):
@@ -81,6 +91,14 @@ def test_custom_sql(app_client):
     assert ['content'] == data['columns']
     assert 'test_tables' == data['database']
     assert not data['truncated']
+
+
+def test_sql_time_limit(app_client):
+    _, response = app_client.get(
+        '/test_tables.jsono?sql=select+sleep(0.5)'
+    )
+    assert 400 == response.status
+    assert 'interrupted' == response.json['error']
 
 
 def test_invalid_custom_sql(app_client):

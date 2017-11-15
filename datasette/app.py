@@ -108,6 +108,12 @@ class BaseView(HTTPMethodView):
             return name, expected, should_redirect
         return name, expected, None
 
+    def prepare_connection(self, conn):
+        conn.row_factory = sqlite3.Row
+        conn.text_factory = lambda x: str(x, 'utf-8', 'replace')
+        for name, num_args, func in self.ds.sqlite_functions:
+            conn.create_function(name, num_args, func)
+
     async def execute(self, db_name, sql, params=None, truncate=False):
         """Executes sql against db_name in a thread"""
         def sql_operation_in_thread():
@@ -119,8 +125,7 @@ class BaseView(HTTPMethodView):
                     uri=True,
                     check_same_thread=False,
                 )
-                conn.row_factory = sqlite3.Row
-                conn.text_factory = lambda x: str(x, 'utf-8', 'replace')
+                self.prepare_connection(conn)
                 setattr(connections, db_name, conn)
 
             with sqlite_timelimit(conn, self.ds.sql_time_limit_ms):
@@ -525,6 +530,7 @@ class Datasette:
         self.cors = cors
         self._inspect = inspect_data
         self.metadata = metadata or {}
+        self.sqlite_functions = []
 
     def inspect(self):
         if not self._inspect:

@@ -2,11 +2,11 @@ import click
 from click_default_group import DefaultGroup
 import json
 import shutil
-from subprocess import call
+from subprocess import call, check_output
 import sys
 from .app import Datasette
 from .utils import (
-    temporary_docker_directory,
+    temporary_docker_directory, temporary_heroku_directory
 )
 
 
@@ -26,7 +26,7 @@ def build(files, inspect_file):
 
 
 @cli.command()
-@click.argument('publisher', type=click.Choice(['now']))
+@click.argument('publisher', type=click.Choice(['now', 'heroku']))
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
 @click.option(
     '-n', '--name', default='datasette',
@@ -52,22 +52,34 @@ def publish(publisher, files, name, metadata, extra_options, force, **extra_meta
 
     Example usage: datasette publish now my-database.db
     """
-    if not shutil.which('now'):
-        click.secho(
-            ' The publish command requires "now" to be installed and configured ',
-            bg='red',
-            fg='white',
-            bold=True,
-            err=True,
-        )
-        click.echo('Follow the instructions at https://zeit.co/now#whats-now', err=True)
-        sys.exit(1)
+    if publisher == 'now':
+        if not shutil.which('now'):
+            click.secho(
+                ' The publish command requires "now" to be installed and configured ',
+                bg='red',
+                fg='white',
+                bold=True,
+                err=True,
+            )
+            click.echo('Follow the instructions at https://zeit.co/now#whats-now', err=True)
+            sys.exit(1)
 
-    with temporary_docker_directory(files, name, metadata, extra_options, extra_metadata):
-        if force:
-            call(['now', '--force'])
-        else:
-            call('now')
+        with temporary_docker_directory(files, name, metadata, extra_options, extra_metadata):
+            if force:
+                call(['now', '--force'])
+            else:
+                call('now')
+
+    elif publisher == 'heroku':
+        # FIXME: need to verify we have heroku, heroku-builds, and are logged in (ugh)
+        with temporary_heroku_directory(files, name, metadata, extra_options, extra_metadata):
+            # build(files) doesn't work, dunno why
+            app = Datasette(files)
+            open("inspect-data.json", 'w').write(json.dumps(app.inspect(), indent=2))
+
+            create_output = check_output(['heroku', 'apps:create', '--json'])
+            app_name = json.loads(create_output)["name"]
+            call(["heroku", "builds:create", "-a", app_name])
 
 
 @cli.command()

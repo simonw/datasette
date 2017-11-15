@@ -179,7 +179,7 @@ def temporary_docker_directory(files, name, metadata, extra_options, extra_metad
     ]
     file_names = [os.path.split(f)[-1] for f in files]
     if metadata:
-        metadata_content = json.load(open(metadata))
+        metadata_content = json.load(metadata)
     else:
         metadata_content = {}
     for key, value in extra_metadata.items():

@@ -96,6 +96,7 @@ http://localhost:8001/History/downloads.jsono will return that data as JSON in a
       --max_returned_rows INTEGER  Max allowed rows to return at once - default is
                                    1000. Set to 0 to disable check entirely.
       --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
+      --load-extension TEXT        Path to a SQLite extension to load
       --inspect-file TEXT          Path to JSON file created using "datasette
                                    build"
       -m, --metadata FILENAME      Path to JSON file containing license/source

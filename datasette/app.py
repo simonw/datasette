@@ -116,6 +116,10 @@ class BaseView(HTTPMethodView):
         conn.text_factory = lambda x: str(x, 'utf-8', 'replace')
         for name, num_args, func in self.ds.sqlite_functions:
             conn.create_function(name, num_args, func)
+        if self.ds.sqlite_extensions:
+            conn.enable_load_extension(True)
+            for extension in self.ds.sqlite_extensions:
+                conn.execute("SELECT load_extension('{}')".format(extension))
 
     async def execute(self, db_name, sql, params=None, truncate=False, custom_time_limit=None):
         """Executes sql against db_name in a thread"""
@@ -554,7 +558,7 @@ class Datasette:
     def __init__(
             self, files, num_threads=3, cache_headers=True, page_size=100,
             max_returned_rows=1000, sql_time_limit_ms=1000, cors=False,
-            inspect_data=None, metadata=None):
+            inspect_data=None, metadata=None, sqlite_extensions=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -568,6 +572,7 @@ class Datasette:
         self._inspect = inspect_data
         self.metadata = metadata or {}
         self.sqlite_functions = []
+        self.sqlite_extensions = sqlite_extensions or []
 
     def inspect(self):
         if not self._inspect:

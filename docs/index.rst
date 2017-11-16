@@ -118,6 +118,17 @@ datasette serve options
       --debug                      Enable debug mode - useful for development
       --reload                     Automatically reload if code change detected -
                                    useful for development
-      --cors                       Enable CORS by
+      --cors                       Enable CORS by serving Access-Control-Allow-
+                                   Origin: *
+      --page_size INTEGER          Page size - default is 100
+      --max_returned_rows INTEGER  Max allowed rows to return at once - default is
+                                   1000. Set to 0 to disable check entirely.
+      --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
+      --load-extension TEXT        Path to a SQLite extension to load
+      --inspect-file TEXT          Path to JSON file created using "datasette
+                                   build"
+      -m, --metadata FILENAME      Path to JSON file containing license/source
+                                   metadata
+      --help                       Show this message and exit.
 
 .. _Zeit Now: https://zeit.co/now

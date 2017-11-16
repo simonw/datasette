@@ -88,6 +88,15 @@ def test_custom_json_encoder(obj, expected):
         ['"foo" like :p0', '"zax" glob :p1'],
         ['2%2', '3*']
     ),
+    (
+        {
+            'foo__isnull': '1',
+            'baz__isnull': '1',
+            'bar__gt': '10'
+        },
+        ['"bar" > :p0', '"baz" is null', '"foo" is null'],
+        [10]
+    ),
 ])
 def test_build_where(args, expected_where, expected_params):
     sql_bits, actual_params = utils.build_where_clauses(args)

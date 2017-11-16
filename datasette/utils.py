@@ -57,11 +57,15 @@ def build_where_clauses(args):
         converted = value_convert(value)
         if lookup in numeric_operators and converted.isdigit():
             converted = int(converted)
-        param_id = 'p{}'.format(i)
+        if ':{}' in template:
+            param_id = 'p{}'.format(i)
+            params[param_id] = converted
+            tokens = (column, param_id)
+        else:
+            tokens = (column,)
         sql_bits.append(
-            template.format(column, param_id)
+            template.format(*tokens)
         )
-        params[param_id] = converted
     return sql_bits, params
 
 

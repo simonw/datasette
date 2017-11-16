@@ -83,13 +83,23 @@ form.sql textarea {
     font-family: monospace;
     font-size: 1.3em;
 }
+form.sql label {
+    font-weight: bold;
+    display: inline-block;
+    width: 15%;
+}
+form.sql input[type=text] {
+    border: 1px solid #ccc;
+    width: 60%;
+    padding: 4px;
+    font-family: monospace;
+    display: inline-block;
+    font-size: 1.1em;
+}
 @media only screen and (max-width: 576px) {
     form.sql textarea {
         width: 95%;
     }
-}
-form.sql p {
-    margin: 0;
 }
 form.sql input[type=submit] {
     color: #fff;

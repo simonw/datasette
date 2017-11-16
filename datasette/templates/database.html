@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="/-/static/codemirror-5.31.0-min.css" />
 <script src="/-/static/codemirror-5.31.0-sql.min.js"></script>
 <style>
-    .CodeMirror { height: 70px; width: 80%; border: 1px solid #ddd; }
+    .CodeMirror { height: auto; min-height: 70px; width: 80%; border: 1px solid #ddd; }
     .CodeMirror-scroll { max-height: 200px; }
 </style>
 {% endblock %}
@@ -33,7 +33,14 @@
 {% endif %}
 
 <form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
+    <h3>Custom SQL query</h3>
     <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_table_name }}{% endif %}</textarea></p>
+    {% if named_parameter_values %}
+        <h3>Query parameters</h3>
+        {% for name, value in named_parameter_values.items() %}
+            <p><label for="qp{{ loop.counter }}">{{ name }}</label> <input type="text" id="qp{{ loop.counter }}" name="{{ name }}" value="{{ value }}"></p>
+        {% endfor %}
+    {% endif %}
     <p><input type="submit" value="Run SQL"></p>
 </form>
 

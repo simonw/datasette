@@ -4,6 +4,7 @@ from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 from sanic_jinja2 import SanicJinja2
 from jinja2 import FileSystemLoader
+import re
 import sqlite3
 from pathlib import Path
 from concurrent import futures
@@ -286,6 +287,7 @@ async def favicon(request):
 
 class DatabaseView(BaseView):
     template = 'database.html'
+    re_named_parameter = re.compile(':([a-zA-Z0-0_]+)')
 
     async def data(self, request, name, hash):
         if request.args.get('sql'):
@@ -316,6 +318,19 @@ class DatabaseView(BaseView):
         params = request.raw_args
         sql = params.pop('sql')
         validate_sql_select(sql)
+
+        # Extract any :named parameters
+        named_parameters = self.re_named_parameter.findall(sql)
+        named_parameter_values = {
+            named_parameter: params.get(named_parameter) or ''
+            for named_parameter in named_parameters
+        }
+
+        # Set to blank string if missing from params
+        for named_parameter in named_parameters:
+            if named_parameter not in params:
+                params[named_parameter] = ''
+
         extra_args = {}
         if params.get('_sql_time_limit_ms'):
             extra_args['custom_time_limit'] = int(params['_sql_time_limit_ms'])
@@ -335,6 +350,7 @@ class DatabaseView(BaseView):
         }, {
             'database_hash': hash,
             'custom_sql': True,
+            'named_parameter_values': named_parameter_values,
         }
 
 

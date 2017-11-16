@@ -468,7 +468,9 @@ class TableView(BaseView):
             display_columns = display_columns[1:]
         rows = list(rows)
         info = self.ds.inspect()
-        table_rows = info[name]['tables'].get(table)['count']
+        table_rows = None
+        if not is_view:
+            table_rows = info[name]['tables'][table]['count']
         next_value = None
         next_url = None
         if len(rows) > self.page_size:

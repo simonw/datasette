@@ -610,7 +610,8 @@ class Datasette:
             app,
             loader=FileSystemLoader([
                 str(app_root / 'datasette' / 'templates')
-            ])
+            ]),
+            autoescape=True,
         )
         self.jinja.add_env('escape_css_string', escape_css_string, 'filters')
         self.jinja.add_env('quote_plus', lambda u: urllib.parse.quote_plus(u), 'filters')

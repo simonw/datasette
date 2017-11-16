@@ -16,14 +16,15 @@ import hashlib
 import time
 from .utils import (
     build_where_clauses,
+    compound_pks_from_path,
     CustomJSONEncoder,
     escape_css_string,
     escape_sqlite_table_name,
+    get_all_foreign_keys,
     InvalidSql,
     path_from_row_pks,
     path_with_added_args,
     path_with_ext,
-    compound_pks_from_path,
     sqlite_timelimit,
     validate_sql_select,
 )
@@ -253,12 +254,12 @@ class IndexView(HTTPMethodView):
                 'path': '{}-{}'.format(key, info['hash'][:7]),
                 'tables_truncated': sorted(
                     info['tables'].items(),
-                    key=lambda p: p[1],
+                    key=lambda p: p[1]['count'],
                     reverse=True
                 )[:5],
                 'tables_count': len(info['tables'].items()),
                 'tables_more': len(info['tables'].items()) > 5,
-                'table_rows': sum(info['tables'].values()),
+                'table_rows': sum([t['count'] for t in info['tables'].values()]),
             }
             databases.append(database)
         if as_json:
@@ -294,7 +295,7 @@ class DatabaseView(BaseView):
             return await self.custom_sql(request, name, hash)
         tables = []
         table_inspect = self.ds.inspect()[name]['tables']
-        for table_name, table_rows in table_inspect.items():
+        for table_name, info in table_inspect.items():
             rows = await self.execute(
                 name,
                 'PRAGMA table_info([{}]);'.format(table_name)
@@ -302,7 +303,7 @@ class DatabaseView(BaseView):
             tables.append({
                 'name': table_name,
                 'columns': [r[1] for r in rows],
-                'table_rows': table_rows,
+                'table_rows': info['count'],
             })
         tables.sort(key=lambda t: t['name'])
         views = await self.execute(name, 'select name from sqlite_master where type = "view"')
@@ -467,7 +468,7 @@ class TableView(BaseView):
             display_columns = display_columns[1:]
         rows = list(rows)
         info = self.ds.inspect()
-        table_rows = info[name]['tables'].get(table)
+        table_rows = info[name]['tables'].get(table)['count']
         next_value = None
         next_url = None
         if len(rows) > self.page_size:
@@ -588,7 +589,13 @@ class Datasette:
                         for r in conn.execute('select * from sqlite_master where type="table"')
                     ]
                     for table in table_names:
-                        tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
+                        tables[table] = {
+                            'count': conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0],
+                        }
+
+                    foreign_keys = get_all_foreign_keys(conn)
+                    for table, info in foreign_keys.items():
+                        tables[table]['foreign_keys'] = info
 
                 self._inspect[name] = {
                     'hash': m.hexdigest(),

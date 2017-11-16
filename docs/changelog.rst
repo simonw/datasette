@@ -1,13 +1,49 @@
 Changelog
 =========
 
+0.12
+----
+- Added ``__version__``, now displayed as tooltip in page footer (`#108`_).
+- Added initial docs, including a changelog (`#99`_).
+- Turned on auto-escaping in Jinja.
+- Added a UI for editing named parameters (`#96`_).
+- Pin to specific Jinja version. (`#100`_).
+- Default to 127.0.0.1 not 0.0.0.0. (`#98`_).
+- Added extra metadata options to publish and package commands. (`#92`_).
+
+  You can now run these commands like so::
+
+      datasette now publish mydb.db \
+          --title="My Title" \
+          --source="Source" \
+          --source_url="http://www.example.com/" \
+          --license="CC0" \
+          --license_url="https://creativecommons.org/publicdomain/zero/1.0/"
+
+  This will write those values into the metadata.json that is packaged with the
+  app. If you also pass ``--metadata=metadata.json`` that file will be updated with the extra
+  values before being written into the Docker image.
+- Added simple production-ready Dockerfile (`#94`_) [Andrew
+  Cutler]
+- New ``?_sql_time_limit_ms=10`` argument to database and table page (`#95`_)
+- SQL syntax highlighting with Codemirror (`#89`_) [Tom Dyson]
+
+.. _#89: https://github.com/simonw/datasette/issues/89
+.. _#92: https://github.com/simonw/datasette/issues/92
+.. _#94: https://github.com/simonw/datasette/issues/94
+.. _#95: https://github.com/simonw/datasette/issues/95
+.. _#96: https://github.com/simonw/datasette/issues/96
+.. _#98: https://github.com/simonw/datasette/issues/98
+.. _#99: https://github.com/simonw/datasette/issues/99
+.. _#100: https://github.com/simonw/datasette/issues/100
+.. _#108: https://github.com/simonw/datasette/issues/108
+
 0.11 (2017-11-14)
 -----------------
 - Added ``datasette publish now --force`` option.
 
   This calls ``now`` with ``--force`` - useful as it means you get a fresh copy of datasette even if Now has already cached that docker layer.
 - Enable ``--cors`` by default when running in a container.
-
 
 0.10 (2017-11-14)
 -----------------

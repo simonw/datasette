@@ -1,8 +1,8 @@
 Changelog
 =========
 
-0.12
-----
+0.12 (2017-11-16)
+-----------------
 - Added ``__version__``, now displayed as tooltip in page footer (`#108`_).
 - Added initial docs, including a changelog (`#99`_).
 - Turned on auto-escaping in Jinja.

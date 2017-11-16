@@ -1,10 +1,11 @@
 from setuptools import setup, find_packages
+from datasette import __version__
 
 setup(
     name='datasette',
     description='An instant JSON API for your SQLite databases',
     author='Simon Willison',
-    version='0.11',
+    version=__version__,
     license='Apache License, Version 2.0',
     url='https://github.com/simonw/datasette',
     packages=find_packages(),

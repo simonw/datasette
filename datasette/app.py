@@ -28,6 +28,7 @@ from .utils import (
     sqlite_timelimit,
     validate_sql_select,
 )
+from .version import __version__
 
 app_root = Path(__file__).parent.parent
 
@@ -223,6 +224,7 @@ class BaseView(HTTPMethodView):
                 'url_json': path_with_ext(request, '.json'),
                 'url_jsono': path_with_ext(request, '.jsono'),
                 'metadata': self.ds.metadata,
+                'datasette_version': __version__,
             }}
             r = self.jinja.render(
                 template,
@@ -279,6 +281,7 @@ class IndexView(HTTPMethodView):
                 request,
                 databases=databases,
                 metadata=self.ds.metadata,
+                datasette_version=__version__,
             )
 
 

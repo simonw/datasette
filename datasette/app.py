@@ -590,7 +590,35 @@ class RowView(BaseView):
             'primary_key_values': pk_values,
         }, {
             'database_hash': hash,
+            'foreign_key_tables': await self.foreign_key_tables(name, table, pk_values),
         }
+
+    async def foreign_key_tables(self, name, table, pk_values):
+        if len(pk_values) != 1:
+            return []
+        table_info = self.ds.inspect()[name]['tables'].get(table)
+        if not table:
+            return []
+        foreign_keys = table_info['foreign_keys']['incoming']
+        sql = 'select ' + ', '.join([
+            '(select count(*) from {table} where "{column}"= :id)'.format(
+                table=escape_sqlite_table_name(fk['other_table']),
+                column=fk['other_column'],
+            )
+            for fk in foreign_keys
+        ])
+        try:
+            rows = list(await self.execute(name, sql, {'id': pk_values[0]}))
+        except sqlite3.OperationalError:
+            # Almost certainly hit the timeout
+            return []
+        foreign_table_counts = dict(zip([fk['other_table'] for fk in foreign_keys], rows[0]))
+        foreign_key_tables = []
+        for fk in foreign_keys:
+            count = foreign_table_counts[fk['other_table']]
+            if count:
+                foreign_key_tables.append({**fk, **{'count': count}})
+        return foreign_key_tables
 
 
 class Datasette:

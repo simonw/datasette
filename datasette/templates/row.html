@@ -35,4 +35,18 @@
     {% endfor %}
     </tbody>
 </table>
+
+{% if foreign_key_tables %}
+    <h2>Links from other tables</h2>
+    <ul>
+        {% for other in foreign_key_tables %}
+            <li>
+                <a href="/{{ database }}-{{ database_hash }}/{{ other.other_table|quote_plus }}?{{ other.other_column }}={{ ', '.join(primary_key_values) }}">
+                    {{ "{:,}".format(other.count) }} row{% if other.count == 1 %}{% else %}s{% endif %}</a>
+                from {{ other.other_column }} in {{ other.other_table }}
+            </li>
+        {% endfor %}
+    </ul>
+{% endif %}
+
 {% endblock %}

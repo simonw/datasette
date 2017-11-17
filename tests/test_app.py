@@ -26,7 +26,7 @@ def app_client():
 
 
 def test_homepage(app_client):
-    _, response = app_client.get('/')
+    response = app_client.get('/', gather_request=False)
     assert response.status == 200
     assert 'test_tables' in response.text
 
@@ -40,12 +40,12 @@ def test_homepage(app_client):
 
 
 def test_database_page(app_client):
-    _, response = app_client.get('/test_tables', allow_redirects=False)
+    response = app_client.get('/test_tables', allow_redirects=False, gather_request=False)
     assert response.status == 302
-    _, response = app_client.get('/test_tables')
+    response = app_client.get('/test_tables', gather_request=False)
     assert 'test_tables' in response.text
     # Test JSON list of tables
-    _, response = app_client.get('/test_tables.json')
+    response = app_client.get('/test_tables.json', gather_request=False)
     data = response.json
     assert 'test_tables' == data['database']
     assert [{
@@ -76,8 +76,9 @@ def test_database_page(app_client):
 
 
 def test_custom_sql(app_client):
-    _, response = app_client.get(
-        '/test_tables.jsono?sql=select+content+from+simple_primary_key'
+    response = app_client.get(
+        '/test_tables.jsono?sql=select+content+from+simple_primary_key',
+        gather_request=False
     )
     data = response.json
     assert {
@@ -94,33 +95,38 @@ def test_custom_sql(app_client):
 
 
 def test_sql_time_limit(app_client):
-    _, response = app_client.get(
-        '/test_tables.jsono?sql=select+sleep(0.5)'
+    response = app_client.get(
+        '/test_tables.jsono?sql=select+sleep(0.5)',
+        gather_request=False
     )
     assert 400 == response.status
     assert 'interrupted' == response.json['error']
 
 
 def test_custom_sql_time_limit(app_client):
-    _, response = app_client.get(
-        '/test_tables.jsono?sql=select+sleep(0.01)'
+    response = app_client.get(
+        '/test_tables.jsono?sql=select+sleep(0.01)',
+        gather_request=False
     )
     assert 200 == response.status
-    _, response = app_client.get(
-        '/test_tables.jsono?sql=select+sleep(0.01)&_sql_time_limit_ms=5'
+    response = app_client.get(
+        '/test_tables.jsono?sql=select+sleep(0.01)&_sql_time_limit_ms=5',
+        gather_request=False
     )
     assert 400 == response.status
     assert 'interrupted' == response.json['error']
 
 
 def test_invalid_custom_sql(app_client):
-    _, response = app_client.get(
-        '/test_tables?sql=.schema'
+    response = app_client.get(
+        '/test_tables?sql=.schema',
+        gather_request=False
     )
     assert response.status == 400
     assert 'Statement must begin with SELECT' in response.text
-    _, response = app_client.get(
-        '/test_tables.json?sql=.schema'
+    response = app_client.get(
+        '/test_tables.json?sql=.schema',
+        gather_request=False
     )
     assert response.status == 400
     assert response.json['ok'] is False
@@ -128,9 +134,9 @@ def test_invalid_custom_sql(app_client):
 
 
 def test_table_page(app_client):
-    _, response = app_client.get('/test_tables/simple_primary_key')
+    response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
     assert response.status == 200
-    _, response = app_client.get('/test_tables/simple_primary_key.jsono')
+    response = app_client.get('/test_tables/simple_primary_key.jsono', gather_request=False)
     assert response.status == 200
     data = response.json
     assert data['query']['sql'] == 'select * from simple_primary_key order by pk limit 51'
@@ -145,9 +151,9 @@ def test_table_page(app_client):
 
 
 def test_table_with_slashes_in_name(app_client):
-    _, response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv')
+    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv', gather_request=False)
     assert response.status == 200
-    _, response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv.jsono')
+    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv.jsono', gather_request=False)
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -165,7 +171,7 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
     fetched = []
     count = 0
     while path:
-        _, response = app_client.get(path)
+        response = app_client.get(path, gather_request=False)
         count += 1
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
@@ -178,8 +184,9 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
 
 
 def test_max_returned_rows(app_client):
-    _, response = app_client.get(
-        '/test_tables.jsono?sql=select+content+from+no_primary_key'
+    response = app_client.get(
+        '/test_tables.jsono?sql=select+content+from+no_primary_key',
+        gather_request=False
     )
     data = response.json
     assert {
@@ -191,9 +198,9 @@ def test_max_returned_rows(app_client):
 
 
 def test_view(app_client):
-    _, response = app_client.get('/test_tables/simple_view')
+    response = app_client.get('/test_tables/simple_view', gather_request=False)
     assert response.status == 200
-    _, response = app_client.get('/test_tables/simple_view.jsono')
+    response = app_client.get('/test_tables/simple_view.jsono', gather_request=False)
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -206,12 +213,16 @@ def test_view(app_client):
 
 
 def test_row(app_client):
-    _, response = app_client.get('/test_tables/simple_primary_key/1', allow_redirects=False)
+    response = app_client.get(
+        '/test_tables/simple_primary_key/1',
+        allow_redirects=False,
+        gather_request=False
+    )
     assert response.status == 302
     assert response.headers['Location'].endswith('/1')
-    _, response = app_client.get('/test_tables/simple_primary_key/1')
+    response = app_client.get('/test_tables/simple_primary_key/1', gather_request=False)
     assert response.status == 200
-    _, response = app_client.get('/test_tables/simple_primary_key/1.jsono')
+    response = app_client.get('/test_tables/simple_primary_key/1.jsono', gather_request=False)
     assert response.status == 200
     assert [{'pk': '1', 'content': 'hello'}] == response.json['rows']
 

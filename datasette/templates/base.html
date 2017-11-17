@@ -12,7 +12,7 @@
 {% endblock %}
 
 <div class="ft">
-    Powered by <a href="https://github.com/simonw/datasette">Datasette</a>
+    Powered by <a href="https://github.com/simonw/datasette" title="Datasette v{{ datasette_version }}">Datasette</a>
     {% if query_ms %}&middot; Query took {{ query_ms|round(3) }}ms{% endif %}
     {% if metadata.license %}&middot; Data license:
         {% if metadata.license_url %}

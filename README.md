@@ -2,6 +2,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/datasette.svg)](https://pypi.python.org/pypi/datasette)
 [![Travis CI](https://travis-ci.org/simonw/datasette.svg?branch=master)](https://travis-ci.org/simonw/datasette)
+[![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](http://datasette.readthedocs.io/en/latest/?badge=latest)
 
 *An instant JSON API for your SQLite databases*
 
@@ -95,6 +96,7 @@ http://localhost:8001/History/downloads.jsono will return that data as JSON in a
       --max_returned_rows INTEGER  Max allowed rows to return at once - default is
                                    1000. Set to 0 to disable check entirely.
       --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
+      --load-extension TEXT        Path to a SQLite extension to load
       --inspect-file TEXT          Path to JSON file created using "datasette
                                    build"
       -m, --metadata FILENAME      Path to JSON file containing license/source

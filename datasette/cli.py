@@ -124,9 +124,13 @@ def package(files, tag, metadata, extra_options, **extra_metadata):
 @click.option('--page_size', default=100, help='Page size - default is 100')
 @click.option('--max_returned_rows', default=1000, help='Max allowed rows to return at once - default is 1000. Set to 0 to disable check entirely.')
 @click.option('--sql_time_limit_ms', default=1000, help='Max time allowed for SQL queries in ms')
+@click.option(
+    'sqlite_extensions', '--load-extension', envvar='SQLITE_EXTENSIONS', multiple=True,
+    type=click.Path(exists=True, resolve_path=True), help='Path to a SQLite extension to load'
+)
 @click.option('--inspect-file', help='Path to JSON file created using "datasette build"')
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
-def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, inspect_file, metadata):
+def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata):
     """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
@@ -150,6 +154,7 @@ def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, 
         sql_time_limit_ms=sql_time_limit_ms,
         inspect_data=inspect_data,
         metadata=metadata_data,
+        sqlite_extensions=sqlite_extensions,
     )
     # Force initial hashing/table counting
     ds.inspect()

@@ -90,6 +90,11 @@
       mode: "text/x-sql",
       lineWrapping: true,
     });
+    editor.setOption("extraKeys", {
+      "Shift-Enter": function() {
+        document.getElementsByClassName("sql")[0].submit();
+      }
+    });
 </script>
 
 {% endblock %}

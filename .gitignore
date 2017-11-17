@@ -1,6 +1,8 @@
 build-metadata.json
 datasets.json
 
+scratchpad
+
 # SQLite databases
 *.db
 *.sqlite

@@ -59,7 +59,7 @@
     {% for row in rows %}
         <tr>
             {% for td in row %}
-                <td>{{ td or "&nbsp;"|safe }}</td>
+                <td>{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>
             {% endfor %}
         </tr>
     {% endfor %}

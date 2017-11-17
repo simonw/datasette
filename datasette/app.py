@@ -4,6 +4,7 @@ from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 from sanic_jinja2 import SanicJinja2
 from jinja2 import FileSystemLoader
+import re
 import sqlite3
 from pathlib import Path
 from concurrent import futures
@@ -15,17 +16,19 @@ import hashlib
 import time
 from .utils import (
     build_where_clauses,
+    compound_pks_from_path,
     CustomJSONEncoder,
     escape_css_string,
     escape_sqlite_table_name,
+    get_all_foreign_keys,
     InvalidSql,
     path_from_row_pks,
     path_with_added_args,
     path_with_ext,
-    compound_pks_from_path,
     sqlite_timelimit,
     validate_sql_select,
 )
+from .version import __version__
 
 app_root = Path(__file__).parent.parent
 
@@ -113,6 +116,10 @@ class BaseView(HTTPMethodView):
         conn.text_factory = lambda x: str(x, 'utf-8', 'replace')
         for name, num_args, func in self.ds.sqlite_functions:
             conn.create_function(name, num_args, func)
+        if self.ds.sqlite_extensions:
+            conn.enable_load_extension(True)
+            for extension in self.ds.sqlite_extensions:
+                conn.execute("SELECT load_extension('{}')".format(extension))
 
     async def execute(self, db_name, sql, params=None, truncate=False, custom_time_limit=None):
         """Executes sql against db_name in a thread"""
@@ -221,6 +228,7 @@ class BaseView(HTTPMethodView):
                 'url_json': path_with_ext(request, '.json'),
                 'url_jsono': path_with_ext(request, '.jsono'),
                 'metadata': self.ds.metadata,
+                'datasette_version': __version__,
             }}
             r = self.jinja.render(
                 template,
@@ -252,12 +260,12 @@ class IndexView(HTTPMethodView):
                 'path': '{}-{}'.format(key, info['hash'][:7]),
                 'tables_truncated': sorted(
                     info['tables'].items(),
-                    key=lambda p: p[1],
+                    key=lambda p: p[1]['count'],
                     reverse=True
                 )[:5],
                 'tables_count': len(info['tables'].items()),
                 'tables_more': len(info['tables'].items()) > 5,
-                'table_rows': sum(info['tables'].values()),
+                'table_rows': sum([t['count'] for t in info['tables'].values()]),
             }
             databases.append(database)
         if as_json:
@@ -277,6 +285,7 @@ class IndexView(HTTPMethodView):
                 request,
                 databases=databases,
                 metadata=self.ds.metadata,
+                datasette_version=__version__,
             )
 
 
@@ -286,13 +295,14 @@ async def favicon(request):
 
 class DatabaseView(BaseView):
     template = 'database.html'
+    re_named_parameter = re.compile(':([a-zA-Z0-0_]+)')
 
     async def data(self, request, name, hash):
         if request.args.get('sql'):
             return await self.custom_sql(request, name, hash)
         tables = []
         table_inspect = self.ds.inspect()[name]['tables']
-        for table_name, table_rows in table_inspect.items():
+        for table_name, info in table_inspect.items():
             rows = await self.execute(
                 name,
                 'PRAGMA table_info([{}]);'.format(table_name)
@@ -300,7 +310,7 @@ class DatabaseView(BaseView):
             tables.append({
                 'name': table_name,
                 'columns': [r[1] for r in rows],
-                'table_rows': table_rows,
+                'table_rows': info['count'],
             })
         tables.sort(key=lambda t: t['name'])
         views = await self.execute(name, 'select name from sqlite_master where type = "view"')
@@ -316,6 +326,19 @@ class DatabaseView(BaseView):
         params = request.raw_args
         sql = params.pop('sql')
         validate_sql_select(sql)
+
+        # Extract any :named parameters
+        named_parameters = self.re_named_parameter.findall(sql)
+        named_parameter_values = {
+            named_parameter: params.get(named_parameter) or ''
+            for named_parameter in named_parameters
+        }
+
+        # Set to blank string if missing from params
+        for named_parameter in named_parameters:
+            if named_parameter not in params:
+                params[named_parameter] = ''
+
         extra_args = {}
         if params.get('_sql_time_limit_ms'):
             extra_args['custom_time_limit'] = int(params['_sql_time_limit_ms'])
@@ -335,6 +358,7 @@ class DatabaseView(BaseView):
         }, {
             'database_hash': hash,
             'custom_sql': True,
+            'named_parameter_values': named_parameter_values,
         }
 
 
@@ -451,7 +475,9 @@ class TableView(BaseView):
             display_columns = display_columns[1:]
         rows = list(rows)
         info = self.ds.inspect()
-        table_rows = info[name]['tables'].get(table)
+        table_rows = None
+        if not is_view:
+            table_rows = info[name]['tables'][table]['count']
         next_value = None
         next_url = None
         if len(rows) > self.page_size:
@@ -532,7 +558,7 @@ class Datasette:
     def __init__(
             self, files, num_threads=3, cache_headers=True, page_size=100,
             max_returned_rows=1000, sql_time_limit_ms=1000, cors=False,
-            inspect_data=None, metadata=None):
+            inspect_data=None, metadata=None, sqlite_extensions=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -546,6 +572,7 @@ class Datasette:
         self._inspect = inspect_data
         self.metadata = metadata or {}
         self.sqlite_functions = []
+        self.sqlite_extensions = sqlite_extensions or []
 
     def inspect(self):
         if not self._inspect:
@@ -572,7 +599,13 @@ class Datasette:
                         for r in conn.execute('select * from sqlite_master where type="table"')
                     ]
                     for table in table_names:
-                        tables[table] = conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0]
+                        tables[table] = {
+                            'count': conn.execute('select count(*) from "{}"'.format(table)).fetchone()[0],
+                        }
+
+                    foreign_keys = get_all_foreign_keys(conn)
+                    for table, info in foreign_keys.items():
+                        tables[table]['foreign_keys'] = info
 
                 self._inspect[name] = {
                     'hash': m.hexdigest(),
@@ -587,7 +620,8 @@ class Datasette:
             app,
             loader=FileSystemLoader([
                 str(app_root / 'datasette' / 'templates')
-            ])
+            ]),
+            autoescape=True,
         )
         self.jinja.add_env('escape_css_string', escape_css_string, 'filters')
         self.jinja.add_env('quote_plus', lambda u: urllib.parse.quote_plus(u), 'filters')

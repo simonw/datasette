@@ -202,3 +202,32 @@ def temporary_docker_directory(files, name, metadata, extra_options, extra_metad
     finally:
         tmp.cleanup()
         os.chdir(saved_cwd)
+
+
+def get_all_foreign_keys(conn):
+    tables = [r[0] for r in conn.execute('select name from sqlite_master where type="table"')]
+    table_to_foreign_keys = {}
+    for table in tables:
+        table_to_foreign_keys[table] = {
+            'incoming': [],
+            'outgoing': [],
+        }
+    for table in tables:
+        infos = conn.execute(
+            'PRAGMA foreign_key_list([{}])'.format(table)
+        ).fetchmany()
+        for info in infos:
+            if info is not None:
+                id, seq, table_name, from_, to_, on_update, on_delete, match = info
+                table_to_foreign_keys[table_name]['incoming'].append({
+                    'other_table': table,
+                    'column': to_,
+                    'other_column': from_
+                })
+                table_to_foreign_keys[table]['outgoing'].append({
+                    'other_table': table_name,
+                    'column': from_,
+                    'other_column': to_
+                })
+
+    return table_to_foreign_keys

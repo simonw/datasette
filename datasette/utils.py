@@ -219,6 +219,10 @@ def get_all_foreign_keys(conn):
         for info in infos:
             if info is not None:
                 id, seq, table_name, from_, to_, on_update, on_delete, match = info
+                if table_name not in table_to_foreign_keys:
+                    # Weird edge case where something refers to a table that does
+                    # not actually exist
+                    continue
                 table_to_foreign_keys[table_name]['incoming'].append({
                     'other_table': table,
                     'column': to_,

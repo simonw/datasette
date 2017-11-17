@@ -229,6 +229,8 @@ def temporary_heroku_directory(files, name, metadata, extra_options, extra_metad
 
         open('runtime.txt', 'w').write('python-3.6.2')
         open('requirements.txt', 'w').write('datasette')
+        os.mkdir('bin')
+        open('bin/post_compile', 'w').write('datasette build --inspect-file inspect-data.json')
 
         quoted_files = " ".join(map(shlex.quote, files))
         procfile_cmd = f'web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json'

@@ -73,10 +73,6 @@ def publish(publisher, files, name, metadata, extra_options, force, **extra_meta
     elif publisher == 'heroku':
         # FIXME: need to verify we have heroku, heroku-builds, and are logged in (ugh)
         with temporary_heroku_directory(files, name, metadata, extra_options, extra_metadata):
-            # build(files) doesn't work, dunno why
-            app = Datasette(files)
-            open("inspect-data.json", 'w').write(json.dumps(app.inspect(), indent=2))
-
             create_output = check_output(['heroku', 'apps:create', '--json'])
             app_name = json.loads(create_output)["name"]
             call(["heroku", "builds:create", "-a", app_name])

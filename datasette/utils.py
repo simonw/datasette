@@ -215,7 +215,7 @@ def get_all_foreign_keys(conn):
     for table in tables:
         infos = conn.execute(
             'PRAGMA foreign_key_list([{}])'.format(table)
-        ).fetchmany()
+        ).fetchall()
         for info in infos:
             if info is not None:
                 id, seq, table_name, from_, to_, on_update, on_delete, match = info

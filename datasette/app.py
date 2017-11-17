@@ -12,6 +12,7 @@ import asyncio
 import threading
 import urllib.parse
 import json
+import jinja2
 import hashlib
 import time
 from .utils import (
@@ -470,10 +471,12 @@ class TableView(BaseView):
         )
 
         columns = [r[0] for r in description]
-        display_columns = columns
-        if use_rowid:
-            display_columns = display_columns[1:]
         rows = list(rows)
+
+        display_columns = columns
+        if not use_rowid and not is_view:
+            display_columns = ['Link'] + display_columns
+
         info = self.ds.inspect()
         table_rows = None
         if not is_view:
@@ -488,6 +491,7 @@ class TableView(BaseView):
             next_url = urllib.parse.urljoin(request.url, path_with_added_args(request, {
                 '_next': next_value,
             }))
+
         return {
             'database': name,
             'table': table,
@@ -508,9 +512,45 @@ class TableView(BaseView):
         }, lambda: {
             'database_hash': hash,
             'use_rowid': use_rowid,
-            'row_link': lambda row: path_from_row_pks(row, pks, use_rowid),
             'display_columns': display_columns,
+            'display_rows': make_display_rows(name, hash, table, rows, display_columns, pks, is_view, use_rowid),
         }
+
+
+def make_display_rows(database, database_hash, table, rows, display_columns, pks, is_view, use_rowid):
+    for row in rows:
+        cells = []
+        # Unless we are a view, the first column is a link - either to the rowid
+        # or to the simple or compound primary key
+        if not is_view:
+            display_value = jinja2.Markup(
+                '<a href="/{database}-{database_hash}/{table}/{flat_pks}">{flat_pks}</a>'.format(
+                    database=database,
+                    database_hash=database_hash,
+                    table=urllib.parse.quote_plus(table),
+                    flat_pks=path_from_row_pks(row, pks, use_rowid),
+                )
+            )
+            cells.append({
+                'column': 'rowid' if use_rowid else 'Link',
+                'value': display_value,
+            })
+
+        for value, column in zip(row, display_columns):
+            if use_rowid and column == 'rowid':
+                # We already showed this in the linked first column
+                continue
+            if False:  # TODO: This is where we will do foreign key linking
+                display_value = jinja2.Markup('<a href="#">{}</a>'.format('foreign key'))
+            elif value is None:
+                display_value = jinja2.Markup('&nbsp;')
+            else:
+                display_value = str(value)
+            cells.append({
+                'column': column,
+                'value': display_value,
+            })
+        yield cells
 
 
 class RowView(BaseView):
@@ -550,7 +590,6 @@ class RowView(BaseView):
             'primary_key_values': pk_values,
         }, {
             'database_hash': hash,
-            'row_link': None,
         }
 
 

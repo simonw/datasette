@@ -21,6 +21,13 @@ td {
 th {
     padding-right: 1em;
 }
+table a:link {
+    text-decoration: none;
+    color: #445ac8;
+}
+table a:visited {
+    color: #8f54c4;
+}
 @media only screen and (max-width: 576px) {
     /* Force table to not be like tables anymore */
     table, thead, tbody, th, td, tr {

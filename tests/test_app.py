@@ -4,6 +4,7 @@ import pytest
 import sqlite3
 import tempfile
 import time
+import urllib.parse
 
 
 @pytest.fixture(scope='module')
@@ -225,6 +226,28 @@ def test_row(app_client):
     response = app_client.get('/test_tables/simple_primary_key/1.jsono', gather_request=False)
     assert response.status == 200
     assert [{'pk': '1', 'content': 'hello'}] == response.json['rows']
+
+
+def test_add_filter_redirects(app_client):
+    filter_args = urllib.parse.urlencode({
+        '_filter_column': 'content',
+        '_filter_op': 'startswith',
+        '_filter_value': 'x'
+    })
+    # First we need to resolve the correct path before testing more redirects
+    path_base = app_client.get(
+        '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
+    ).headers['Location']
+    path = path_base + '?' + filter_args
+    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    assert response.status == 302
+    assert response.headers['Location'].endswith('?content__startswith=x')
+
+    # Adding a redirect to an existing querystring:
+    path = path_base + '?foo=bar&' + filter_args
+    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    assert response.status == 302
+    assert response.headers['Location'].endswith('?content__startswith=x&foo=bar')
 
 
 TABLES = '''

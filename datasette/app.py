@@ -57,7 +57,7 @@ class BaseView(HTTPMethodView):
         return r
 
     def redirect(self, request, path):
-        if request.query_string:
+        if request.query_string and '?' not in path:
             path = '{}?{}'.format(
                 path, request.query_string
             )
@@ -182,9 +182,13 @@ class BaseView(HTTPMethodView):
         template = self.template
         status_code = 200
         try:
-            data, extra_template_data = await self.data(
+            response_or_template_contexts = await self.data(
                 request, name, hash, **kwargs
             )
+            if isinstance(response_or_template_contexts, response.HTTPResponse):
+                return response_or_template_contexts
+            else:
+                data, extra_template_data = response_or_template_contexts
         except (sqlite3.OperationalError, InvalidSql) as e:
             data = {
                 'ok': False,
@@ -422,6 +426,18 @@ class TableView(BaseView):
             else:
                 other_args[key] = value[0]
 
+        # Handle ?_filter_column and redirect, if present
+        if '_filter_column' in special_args:
+            filter_column = special_args['_filter_column']
+            filter_op = special_args.get('_filter_op') or ''
+            filter_value = special_args.get('_filter_value') or ''
+            return self.redirect(request, path_with_added_args(request, {
+                '{}__{}'.format(filter_column, filter_op): filter_value,
+                '_filter_column': None,
+                '_filter_op': None,
+                '_filter_value': None,
+            }))
+
         if other_args:
             where_clauses, params = build_where_clauses(other_args)
         else:
@@ -433,7 +449,7 @@ class TableView(BaseView):
         fts_sql = detect_fts_sql(table)
         fts_rows = list(await self.execute(name, fts_sql))
         if fts_rows:
-            fts_table=fts_rows[0][0]
+            fts_table = fts_rows[0][0]
 
         search = special_args.get('_search')
         if search and fts_table:

@@ -120,9 +120,17 @@ def validate_sql_select(sql):
 
 
 def path_with_added_args(request, args):
-    current = request.raw_args.copy()
-    current.update(args)
-    return request.path + '?' + urllib.parse.urlencode(current)
+    current = {
+        key: value
+        for key, value in request.raw_args.items()
+        if key not in args
+    }
+    current.update({
+        key: value
+        for key, value in args.items()
+        if value is not None
+    })
+    return request.path + '?' + urllib.parse.urlencode(sorted(current.items()))
 
 
 def path_with_ext(request, ext):

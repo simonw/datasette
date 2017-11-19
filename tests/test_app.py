@@ -249,6 +249,16 @@ def test_add_filter_redirects(app_client):
     assert response.status == 302
     assert response.headers['Location'].endswith('?content__startswith=x&foo=bar')
 
+    # Test that op with a __x suffix overrides the filter value
+    path = path_base + '?' + urllib.parse.urlencode({
+        '_filter_column': 'content',
+        '_filter_op': 'isnull__5',
+        '_filter_value': 'x'
+    })
+    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    assert response.status == 302
+    assert response.headers['Location'].endswith('?content__isnull=5')
+
 
 TABLES = '''
 CREATE TABLE simple_primary_key (

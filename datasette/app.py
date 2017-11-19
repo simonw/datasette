@@ -431,6 +431,8 @@ class TableView(BaseView):
             filter_column = special_args['_filter_column']
             filter_op = special_args.get('_filter_op') or ''
             filter_value = special_args.get('_filter_value') or ''
+            if '__' in filter_op:
+                filter_op, filter_value = filter_op.split('__', 1)
             return self.redirect(request, path_with_added_args(request, {
                 '{}__{}'.format(filter_column, filter_op): filter_value,
                 '_filter_column': None,

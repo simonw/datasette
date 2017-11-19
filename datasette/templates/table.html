@@ -21,6 +21,12 @@
     <h2>{{ "{:,}".format(table_rows) }} total row{% if table_rows == 1 %}{% else %}s{% endif %} in this table</h2>
 {% endif %}
 
+{% if supports_search %}
+    <form action="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}" method="get">
+        <p><input type="search" name="_search" value="{{ search }}"> <input type="submit" value="Search"></p>
+    </form>
+{% endif %}
+
 {% if query.params %}
 <pre>{{ query.sql }}</pre>
 <pre>params = {{ query.params|tojson(4) }}</pre>

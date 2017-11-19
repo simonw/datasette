@@ -235,3 +235,20 @@ def get_all_foreign_keys(conn):
                 })
 
     return table_to_foreign_keys
+
+
+def detect_fts(conn, table, return_sql=False):
+    "Detect if table has a corresponding FTS virtual table and return it"
+    rows = conn.execute(detect_fts_sql(table)).fetchall()
+    if len(rows) == 0:
+        return None
+    else:
+        return rows[0][0]
+
+
+def detect_fts_sql(table):
+    return r'''
+        select name from sqlite_master
+            where rootpage = 0
+            and sql like '%VIRTUAL TABLE%USING FTS%content="{}"%';
+    '''.format(table)

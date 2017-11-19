@@ -19,6 +19,7 @@ from .utils import (
     build_where_clauses,
     compound_pks_from_path,
     CustomJSONEncoder,
+    detect_fts_sql,
     escape_css_string,
     escape_sqlite_table_name,
     get_all_foreign_keys,
@@ -427,6 +428,22 @@ class TableView(BaseView):
             where_clauses = []
             params = {}
 
+        # _search support:
+        fts_table = None
+        fts_sql = detect_fts_sql(table)
+        fts_rows = list(await self.execute(name, fts_sql))
+        if fts_rows:
+            fts_table=fts_rows[0][0]
+
+        search = special_args.get('_search')
+        if search and fts_table:
+            where_clauses.append(
+                'rowid in (select rowid from {fts_table} where {fts_table} match :search)'.format(
+                    fts_table=fts_table
+                )
+            )
+            params['search'] = search
+
         next = special_args.get('_next')
         offset = ''
         if next:
@@ -504,6 +521,8 @@ class TableView(BaseView):
         async def extra_template():
             return {
                 'database_hash': hash,
+                'supports_search': bool(fts_table),
+                'search': search or '',
                 'use_rowid': use_rowid,
                 'display_columns': display_columns,
                 'display_rows': await self.make_display_rows(name, hash, table, rows, display_columns, pks, is_view, use_rowid),

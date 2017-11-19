@@ -90,12 +90,13 @@ form.sql textarea {
     font-family: monospace;
     font-size: 1.3em;
 }
-form.sql label {
+form label {
     font-weight: bold;
     display: inline-block;
     width: 15%;
 }
-form.sql input[type=text] {
+form input[type=text],
+form input[type=search] {
     border: 1px solid #ccc;
     width: 60%;
     padding: 4px;
@@ -103,12 +104,15 @@ form.sql input[type=text] {
     display: inline-block;
     font-size: 1.1em;
 }
+form input[type=search] {
+    width: 40%;
+}
 @media only screen and (max-width: 576px) {
     form.sql textarea {
         width: 95%;
     }
 }
-form.sql input[type=submit] {
+form input[type=submit] {
     color: #fff;
     background-color: #007bff;
     border-color: #007bff;
@@ -118,7 +122,7 @@ form.sql input[type=submit] {
     vertical-align: middle;
     border: 1px solid blue;
     padding: .275rem .75rem;
-    font-size: 1rem;
-    line-height: 1.5;
+    font-size: 0.9rem;
+    line-height: 1;
     border-radius: .25rem;
 }

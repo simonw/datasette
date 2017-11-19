@@ -148,7 +148,7 @@ def escape_sqlite_table_name(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files, metadata_file, extra_options=''):
+def make_dockerfile(files, metadata_file, extra_options='', branch=None):
     cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
     cmd.append('"' + '", "'.join(files) + '"')
     cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
@@ -157,21 +157,27 @@ def make_dockerfile(files, metadata_file, extra_options=''):
     if extra_options:
         for opt in extra_options.split():
             cmd.append('"{}"'.format(opt))
+    install_from = 'datasette'
+    if branch:
+        install_from = 'https://github.com/simonw/datasette/archive/{}.zip'.format(
+            branch
+        )
     return '''
 FROM python:3
 COPY . /app
 WORKDIR /app
-RUN pip install datasette
-RUN datasette build {} --inspect-file inspect-data.json
+RUN pip install {install_from}
+RUN datasette build {files} --inspect-file inspect-data.json
 EXPOSE 8001
-CMD [{}]'''.format(
-        ' '.join(files),
-        ', '.join(cmd)
+CMD [{cmd}]'''.format(
+        files=' '.join(files),
+        cmd=', '.join(cmd),
+        install_from=install_from,
     ).strip()
 
 
 @contextmanager
-def temporary_docker_directory(files, name, metadata, extra_options, extra_metadata=None):
+def temporary_docker_directory(files, name, metadata, extra_options, branch=None, extra_metadata=None):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
     # We create a datasette folder in there to get a nicer now deploy name
@@ -191,7 +197,7 @@ def temporary_docker_directory(files, name, metadata, extra_options, extra_metad
         if value:
             metadata_content[key] = value
     try:
-        dockerfile = make_dockerfile(file_names, metadata_content and 'metadata.json', extra_options)
+        dockerfile = make_dockerfile(file_names, metadata_content and 'metadata.json', extra_options, branch)
         os.chdir(datasette_dir)
         if metadata_content:
             open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))

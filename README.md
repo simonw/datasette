@@ -141,6 +141,7 @@ This will create a docker image containing both the datasette application and th
       -m, --metadata FILENAME  Path to JSON file containing metadata to publish
       --extra-options TEXT     Extra options to pass to datasette serve
       --force                  Pass --force option to now
+      --branch TEXT            Install datasette from a GitHub branch e.g. master
       --title TEXT             Title for metadata
       --license TEXT           License label for metadata
       --license_url TEXT       License URL for metadata
@@ -162,6 +163,7 @@ If you have docker installed you can use `datasette package` to create a new Doc
                                optionally use name:tag format
       -m, --metadata FILENAME  Path to JSON file containing metadata to publish
       --extra-options TEXT     Extra options to pass to datasette serve
+      --branch TEXT            Install datasette from a GitHub branch e.g. master
       --title TEXT             Title for metadata
       --license TEXT           License label for metadata
       --license_url TEXT       License URL for metadata

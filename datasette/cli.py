@@ -39,12 +39,13 @@ def build(files, inspect_file):
 )
 @click.option('--extra-options', help='Extra options to pass to datasette serve')
 @click.option('--force', is_flag=True, help='Pass --force option to now')
+@click.option('--branch', help='Install datasette from a GitHub branch e.g. master')
 @click.option('--title', help='Title for metadata')
 @click.option('--license', help='License label for metadata')
 @click.option('--license_url', help='License URL for metadata')
 @click.option('--source', help='Source label for metadata')
 @click.option('--source_url', help='Source URL for metadata')
-def publish(publisher, files, name, metadata, extra_options, force, **extra_metadata):
+def publish(publisher, files, name, metadata, extra_options, force, branch, **extra_metadata):
     """
     Publish specified SQLite database files to the internet along with a datasette API.
 
@@ -64,7 +65,7 @@ def publish(publisher, files, name, metadata, extra_options, force, **extra_meta
         click.echo('Follow the instructions at https://zeit.co/now#whats-now', err=True)
         sys.exit(1)
 
-    with temporary_docker_directory(files, name, metadata, extra_options, extra_metadata):
+    with temporary_docker_directory(files, name, metadata, extra_options, branch, extra_metadata):
         if force:
             call(['now', '--force'])
         else:
@@ -82,12 +83,13 @@ def publish(publisher, files, name, metadata, extra_options, force, **extra_meta
     help='Path to JSON file containing metadata to publish'
 )
 @click.option('--extra-options', help='Extra options to pass to datasette serve')
+@click.option('--branch', help='Install datasette from a GitHub branch e.g. master')
 @click.option('--title', help='Title for metadata')
 @click.option('--license', help='License label for metadata')
 @click.option('--license_url', help='License URL for metadata')
 @click.option('--source', help='Source label for metadata')
 @click.option('--source_url', help='Source URL for metadata')
-def package(files, tag, metadata, extra_options, **extra_metadata):
+def package(files, tag, metadata, extra_options, branch, **extra_metadata):
     "Package specified SQLite files into a new datasette Docker container"
     if not shutil.which('docker'):
         click.secho(
@@ -98,7 +100,7 @@ def package(files, tag, metadata, extra_options, **extra_metadata):
             err=True,
         )
         sys.exit(1)
-    with temporary_docker_directory(files, 'datasette', metadata, extra_options, extra_metadata):
+    with temporary_docker_directory(files, 'datasette', metadata, extra_options, branch, extra_metadata):
         args = ['docker', 'build']
         if tag:
             args.append('-t')

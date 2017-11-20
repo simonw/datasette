@@ -16,6 +16,8 @@ CREATE TABLE "election_results" (
   FOREIGN KEY (office) REFERENCES office(id)
  );
 
+CREATE VIRTUAL TABLE "election_results_fts" USING FTS4 ("county", "party");
+
 CREATE TABLE "county" (
   "id" INTEGER PRIMARY KEY ,
   "name" TEXT
@@ -42,7 +44,32 @@ def ds_instance():
         yield Datasette([filepath])
 
 
-def test_inspect(ds_instance):
+def test_inspect_hidden_tables(ds_instance):
+    info = ds_instance.inspect()
+    tables = info['test_tables']['tables']
+    expected_hidden = (
+        'election_results_fts',
+        'election_results_fts_content',
+        'election_results_fts_docsize',
+        'election_results_fts_segdir',
+        'election_results_fts_segments',
+        'election_results_fts_stat',
+    )
+    expected_visible = (
+        'election_results',
+        'county',
+        'party',
+        'office',
+    )
+    assert sorted(expected_hidden) == sorted(
+        [table for table in tables if tables[table]['hidden']]
+    )
+    assert sorted(expected_visible) == sorted(
+        [table for table in tables if not tables[table]['hidden']]
+    )
+
+
+def test_inspect_foreign_keys(ds_instance):
     info = ds_instance.inspect()
     tables = info['test_tables']['tables']
     for table_name in ('county', 'party', 'office'):

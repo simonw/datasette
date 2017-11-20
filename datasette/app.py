@@ -778,13 +778,33 @@ class Datasette:
                         if column_names and len(column_names) == 2 and 'id' in column_names:
                             label_column = [c for c in column_names if c != 'id'][0]
                         tables[table] = {
+                            'name': table,
+                            'columns': column_names,
                             'count': count,
                             'label_column': label_column,
+                            'hidden': False,
                         }
 
                     foreign_keys = get_all_foreign_keys(conn)
                     for table, info in foreign_keys.items():
                         tables[table]['foreign_keys'] = info
+
+                    # Mark tables 'hidden' if they relate to FTS virtual tables
+                    fts_tables = [
+                        r['name']
+                        for r in conn.execute(
+                            '''
+                                select name from sqlite_master
+                                where rootpage = 0
+                                and sql like '%VIRTUAL TABLE%USING FTS%'
+                            '''
+                        )
+                    ]
+                    for t in tables.keys():
+                        for fts_table in fts_tables:
+                            if t == fts_table or t.startswith(fts_table):
+                                tables[t]['hidden'] = True
+                                continue
 
                 self._inspect[name] = {
                     'hash': m.hexdigest(),

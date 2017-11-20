@@ -456,7 +456,7 @@ class TableView(BaseView):
         search = special_args.get('_search')
         if search and fts_table:
             where_clauses.append(
-                'rowid in (select rowid from {fts_table} where {fts_table} match :search)'.format(
+                'rowid in (select rowid from [{fts_table}] where [{fts_table}] match :search)'.format(
                     fts_table=fts_table
                 )
             )

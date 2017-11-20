@@ -26,49 +26,6 @@ def path_from_row_pks(row, pks, use_rowid):
     return ','.join(bits)
 
 
-def build_where_clauses(args):
-    sql_bits = []
-    params = {}
-    for i, (key, value) in enumerate(sorted(args.items())):
-        if '__' in key:
-            column, lookup = key.rsplit('__', 1)
-        else:
-            column = key
-            lookup = 'exact'
-        template = {
-            'exact': '"{}" = :{}',
-            'contains': '"{}" like :{}',
-            'endswith': '"{}" like :{}',
-            'startswith': '"{}" like :{}',
-            'gt': '"{}" > :{}',
-            'gte': '"{}" >= :{}',
-            'lt': '"{}" < :{}',
-            'lte': '"{}" <= :{}',
-            'glob': '"{}" glob :{}',
-            'like': '"{}" like :{}',
-            'isnull': '"{}" is null',
-        }[lookup]
-        numeric_operators = {'gt', 'gte', 'lt', 'lte'}
-        value_convert = {
-            'contains': lambda s: '%{}%'.format(s),
-            'endswith': lambda s: '%{}'.format(s),
-            'startswith': lambda s: '{}%'.format(s),
-        }.get(lookup, lambda s: s)
-        converted = value_convert(value)
-        if lookup in numeric_operators and converted.isdigit():
-            converted = int(converted)
-        if ':{}' in template:
-            param_id = 'p{}'.format(i)
-            params[param_id] = converted
-            tokens = (column, param_id)
-        else:
-            tokens = (column,)
-        sql_bits.append(
-            template.format(*tokens)
-        )
-    return sql_bits, params
-
-
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, sqlite3.Row):
@@ -266,3 +223,103 @@ def detect_fts_sql(table):
             where rootpage = 0
             and sql like '%VIRTUAL TABLE%USING FTS%content="{}"%';
     '''.format(table)
+
+
+class Filter:
+    def __init__(self, key, sql_template, human_template, format='{}', numeric=False, no_argument=False):
+        self.key = key
+        self.sql_template = sql_template
+        self.human_template = human_template
+        self.format = format
+        self.numeric = numeric
+        self.no_argument = no_argument
+
+    def where_clause(self, column, value, param_counter):
+        converted = self.format.format(value)
+        if self.numeric and converted.isdigit():
+            converted = int(converted)
+        if self.no_argument:
+            kwargs = {
+                'c': column,
+            }
+            converted = None
+        else:
+            kwargs = {
+                'c': column,
+                'p': 'p{}'.format(param_counter),
+            }
+        return self.sql_template.format(**kwargs), converted
+
+    def human_clause(self, column, value):
+        if callable(self.human_template):
+            template = self.human_template(column, value)
+        else:
+            template = self.human_template
+        if self.no_argument:
+            return template.format(c=column)
+        else:
+            return template.format(c=column, v=value)
+
+
+class Filters:
+    _filters = [
+        Filter('exact', '"{c}" = :{p}', lambda c, v: '{c} = {v}' if v.isdigit() else '{c} = "{v}"'),
+        Filter('contains', '"{c}" like :{p}', '{c} contains "{v}"', format='%{}%'),
+        Filter('endswith', '"{c}" like :{p}', '{c} ends with "{v}"', format='%{}'),
+        Filter('startswith', '"{c}" like :{p}', '{c} starts with "{v}"', format='{}%'),
+        Filter('gt', '"{c}" > :{p}', '{c} > {v}', numeric=True),
+        Filter('gte', '"{c}" >= :{p}', '{c} \u2265 {v}', numeric=True),
+        Filter('lt', '"{c}" < :{p}', '{c} < {v}', numeric=True),
+        Filter('lte', '"{c}" <= :{p}', '{c} \u2264 {v}', numeric=True),
+        Filter('glob', '"{c}" glob :{p}', '{c} glob "{v}"'),
+        Filter('like', '"{c}" like :{p}', '{c} like "{v}"'),
+        Filter('isnull', '"{c}" is null', '{c} is null', no_argument=True),
+        Filter('notnull', '"{c}" is not null', '{c} is not null', no_argument=True),
+        Filter('isblank', '("{c}" is null or "{c}" = "")', '{c} is blank', no_argument=True),
+        Filter('notblank', '("{c}" is not null and "{c}" != "")', '{c} is not blank', no_argument=True),
+    ]
+    _filters_by_key = {
+        f.key: f for f in _filters
+    }
+
+    def __init__(self, pairs):
+        self.pairs = pairs
+
+    def human_description(self):
+        bits = []
+        for key, value in self.pairs:
+            if '__' in key:
+                column, lookup = key.rsplit('__', 1)
+            else:
+                column = key
+                lookup = 'exact'
+            filter = self._filters_by_key.get(lookup, None)
+            if filter:
+                bits.append(filter.human_clause(column, value))
+        # Comma separated, with an ' and ' at the end
+        and_bits = []
+        commas, tail = bits[:-1], bits[-1:]
+        if commas:
+            and_bits.append(', '.join(commas))
+        if tail:
+            and_bits.append(tail[0])
+        return ' and '.join(and_bits)
+
+    def build_where_clauses(self):
+        sql_bits = []
+        params = {}
+        for i, (key, value) in enumerate(self.pairs):
+            if '__' in key:
+                column, lookup = key.rsplit('__', 1)
+            else:
+                column = key
+                lookup = 'exact'
+            filter = self._filters_by_key.get(lookup, None)
+            if filter:
+                sql_bit, param = filter.where_clause(column, value, i)
+                sql_bits.append(sql_bit)
+                if param is not None:
+                    param_id = 'p{}'.format(i)
+                    params[param_id] = param
+        return sql_bits, params
+        return ' and '.join(sql_bits), params

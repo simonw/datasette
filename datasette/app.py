@@ -16,7 +16,7 @@ import jinja2
 import hashlib
 import time
 from .utils import (
-    build_where_clauses,
+    Filters,
     compound_pks_from_path,
     CustomJSONEncoder,
     detect_fts_sql,
@@ -440,11 +440,8 @@ class TableView(BaseView):
                 '_filter_value': None,
             }))
 
-        if other_args:
-            where_clauses, params = build_where_clauses(other_args)
-        else:
-            where_clauses = []
-            params = {}
+        filters = Filters(sorted(other_args.items()))
+        where_clauses, params = filters.build_where_clauses()
 
         # _search support:
         fts_table = None
@@ -539,6 +536,7 @@ class TableView(BaseView):
         async def extra_template():
             return {
                 'database_hash': hash,
+                'human_filter_description': filters.human_description(),
                 'supports_search': bool(fts_table),
                 'search': search or '',
                 'use_rowid': use_rowid,

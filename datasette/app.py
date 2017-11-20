@@ -419,10 +419,12 @@ class TableView(BaseView):
         # That's so if there is a column that starts with _
         # it can still be queried using ?_col__exact=blah
         special_args = {}
+        special_args_lists = {}
         other_args = {}
         for key, value in request.args.items():
             if key.startswith('_') and '__' not in key:
                 special_args[key] = value[0]
+                special_args_lists[key] = value
             else:
                 other_args[key] = value[0]
 
@@ -492,14 +494,24 @@ class TableView(BaseView):
         if order_by:
             order_by = 'order by {} '.format(order_by)
 
-        sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
-            select=select,
-            table_name=escape_sqlite_table_name(table),
-            where=where_clause,
-            order_by=order_by,
-            limit=self.page_size + 1,
-            offset=offset,
-        )
+        # _group_count=col1&_group_count=col2
+        group_count = special_args_lists.get('_group_count') or []
+        if group_count:
+            sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
+                group_cols=', '.join('"{}"'.format(group_count_col) for group_count_col in group_count),
+                table_name=escape_sqlite_table_name(table),
+                where=where_clause,
+            )
+            is_view = True
+        else:
+            sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
+                select=select,
+                table_name=escape_sqlite_table_name(table),
+                where=where_clause,
+                order_by=order_by,
+                limit=self.page_size + 1,
+                offset=offset,
+            )
 
         extra_args = {}
         if request.raw_args.get('_sql_time_limit_ms'):
@@ -568,7 +580,7 @@ class TableView(BaseView):
         expanded = {}
         tables = self.ds.inspect()[database]['tables']
         table_info = tables.get(table) or {}
-        if table_info:
+        if table_info and not is_view:
             foreign_keys = table_info['foreign_keys']['outgoing']
             for fk in foreign_keys:
                 label_column = tables.get(fk['other_table'], {}).get('label_column')

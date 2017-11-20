@@ -221,8 +221,11 @@ def detect_fts_sql(table):
     return r'''
         select name from sqlite_master
             where rootpage = 0
-            and sql like '%VIRTUAL TABLE%USING FTS%content="{}"%';
-    '''.format(table)
+            and (
+                sql like '%VIRTUAL TABLE%USING FTS%content="{table}"%'
+                or tbl_name = "{table}"
+            )
+    '''.format(table=table)
 
 
 class Filter:

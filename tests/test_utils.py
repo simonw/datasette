@@ -4,6 +4,7 @@ Tests for various datasette helper functions.
 
 from datasette import utils
 import pytest
+import sqlite3
 import json
 
 
@@ -99,7 +100,8 @@ def test_custom_json_encoder(obj, expected):
     ),
 ])
 def test_build_where(args, expected_where, expected_params):
-    sql_bits, actual_params = utils.build_where_clauses(args)
+    f = utils.Filters(sorted(args.items()))
+    sql_bits, actual_params = f.build_where_clauses()
     assert expected_where == sql_bits
     assert {
         'p{}'.format(i): param
@@ -124,3 +126,26 @@ def test_validate_sql_select_bad(bad_sql):
 ])
 def test_validate_sql_select_good(good_sql):
     utils.validate_sql_select(good_sql)
+
+
+def test_detect_fts():
+    sql = '''
+    CREATE TABLE "Dumb_Table" (
+      "TreeID" INTEGER,
+      "qSpecies" TEXT
+    );
+    CREATE TABLE "Street_Tree_List" (
+      "TreeID" INTEGER,
+      "qSpecies" TEXT,
+      "qAddress" TEXT,
+      "SiteOrder" INTEGER,
+      "qSiteInfo" TEXT,
+      "PlantType" TEXT,
+      "qCaretaker" TEXT
+    );
+    CREATE VIRTUAL TABLE "Street_Tree_List_fts" USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content="Street_Tree_List");
+    '''
+    conn = sqlite3.connect(':memory:')
+    conn.executescript(sql)
+    assert None is utils.detect_fts(conn, 'Dumb_Table')
+    assert 'Street_Tree_List_fts' == utils.detect_fts(conn, 'Street_Tree_List')

@@ -44,11 +44,8 @@
     <p><input type="submit" value="Run SQL"></p>
 </form>
 
-{% if truncated %}
-    <div style="padding: 1em; margin: 1em 0; border: 3px solid red;">These results were truncated. You will need to apply OFFSET/LIMIT to see the whole result set.</div>
-{% endif %}
-
 {% if rows %}
+<p>Returned {% if truncated %}more than {% endif %}{{ "{:,}".format(rows|length) }} row{% if rows|length == 1 %}{% else %}s{% endif %}</p>
 <table>
     <thead>
         <tr>
@@ -59,7 +56,7 @@
     {% for row in rows %}
         <tr>
             {% for td in row %}
-                <td>{{ td or "&nbsp;"|safe }}</td>
+                <td>{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>
             {% endfor %}
         </tr>
     {% endfor %}
@@ -93,7 +90,8 @@
     editor.setOption("extraKeys", {
       "Shift-Enter": function() {
         document.getElementsByClassName("sql")[0].submit();
-      }
+      },
+      Tab: false
     });
 </script>
 

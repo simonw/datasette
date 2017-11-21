@@ -81,7 +81,7 @@ def publish(publisher, files, name, metadata, extra_options, force, branch, **ex
 
         # Check for heroku-builds plugin
         plugins = [line.split()[0] for line in check_output(['heroku', 'plugins']).splitlines()]
-        if 'heroku-builds' not in plugins:
+        if b'heroku-builds' not in plugins:
             click.echo('Publishing to Heroku requires the heroku-builds plugin to be installed.')
             click.confirm('Install it? (this will run `heroku plugins:install heroku-builds`)', abort=True)
             call(["heroku", "plugins:install", "heroku-builds"])

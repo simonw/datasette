@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import re
+import shlex
 import sqlite3
 import tempfile
 import time

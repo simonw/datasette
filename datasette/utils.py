@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import re
+import shlex
 import sqlite3
 import tempfile
 import time
@@ -170,6 +171,59 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch=None
         for path, filename in zip(file_paths, file_names):
             os.link(path, os.path.join(datasette_dir, filename))
         yield
+    finally:
+        tmp.cleanup()
+        os.chdir(saved_cwd)
+
+
+@contextmanager
+def temporary_heroku_directory(files, name, metadata, extra_options, branch=None, extra_metadata=None):
+    # FIXME: lots of duplicated code from above
+
+    extra_metadata = extra_metadata or {}
+    tmp = tempfile.TemporaryDirectory()
+    saved_cwd = os.getcwd()
+
+    file_paths = [
+        os.path.join(saved_cwd, name)
+        for name in files
+    ]
+    file_names = [os.path.split(f)[-1] for f in files]
+
+    if metadata:
+        metadata_content = json.load(metadata)
+    else:
+        metadata_content = {}
+    for key, value in extra_metadata.items():
+        if value:
+            metadata_content[key] = value
+
+    try:
+        os.chdir(tmp.name)
+
+        if metadata_content:
+            open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))
+
+        open('runtime.txt', 'w').write('python-3.6.2')
+
+        if branch:
+            install_from = f'https://github.com/simonw/datasette/archive/{branch}.zip'
+        else:
+            install_from = 'datasette'
+
+        open('requirements.txt', 'w').write(install_from)
+        os.mkdir('bin')
+        open('bin/post_compile', 'w').write('datasette build --inspect-file inspect-data.json')
+
+        quoted_files = " ".join(map(shlex.quote, files))
+        procfile_cmd = f'web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json'
+        open('Procfile', 'w').write(procfile_cmd)
+
+        for path, filename in zip(file_paths, file_names):
+            os.link(path, os.path.join(tmp.name, filename))
+
+        yield
+
     finally:
         tmp.cleanup()
         os.chdir(saved_cwd)

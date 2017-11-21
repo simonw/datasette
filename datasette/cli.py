@@ -2,11 +2,11 @@ import click
 from click_default_group import DefaultGroup
 import json
 import shutil
-from subprocess import call
+from subprocess import call, check_output
 import sys
 from .app import Datasette
 from .utils import (
-    temporary_docker_directory,
+    temporary_docker_directory, temporary_heroku_directory
 )
 
 
@@ -27,11 +27,11 @@ def build(files, inspect_file):
 
 
 @cli.command()
-@click.argument('publisher', type=click.Choice(['now']))
+@click.argument('publisher', type=click.Choice(['now', 'heroku']))
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
 @click.option(
     '-n', '--name', default='datasette',
-    help='Application name to use when deploying to Now'
+    help='Application name to use when deploying to Now (ignored for Heroku)'
 )
 @click.option(
     '-m', '--metadata', type=click.File(mode='r'),
@@ -49,28 +49,47 @@ def publish(publisher, files, name, metadata, extra_options, force, branch, **ex
     """
     Publish specified SQLite database files to the internet along with a datasette API.
 
-    Only current option for PUBLISHER is 'now'. You must have Zeit Now installed:
-    https://zeit.co/now
+    Options for PUBLISHER:
+        * 'now' - You must have Zeit Now installed: https://zeit.co/now
+        * 'heroku' - You must have Heroku installed: https://cli.heroku.com/
 
     Example usage: datasette publish now my-database.db
     """
-    if not shutil.which('now'):
-        click.secho(
-            ' The publish command requires "now" to be installed and configured ',
-            bg='red',
-            fg='white',
-            bold=True,
-            err=True,
-        )
-        click.echo('Follow the instructions at https://zeit.co/now#whats-now', err=True)
-        sys.exit(1)
+    def _fail_if_publish_binary_not_installed(binary, publish_target, install_link):
+        """Exit (with error message) if ``binary` isn't installed"""
+        if not shutil.which(binary):
+            click.secho(
+                f" Publishing to {publish_target} requires {binary} to be installed and configured ",
+                bg='red',
+                fg='white',
+                bold=True,
+                err=True
+            )
+            click.echo(f"Follow the instructions at {install_link}", err=True)
+            sys.exit(1)
 
-    with temporary_docker_directory(files, name, metadata, extra_options, branch, extra_metadata):
-        if force:
-            call(['now', '--force'])
-        else:
-            call('now')
+    if publisher == 'now':
+        _fail_if_publish_binary_not_installed('now', 'Zeit Now', 'https://zeit.co/now')
+        with temporary_docker_directory(files, name, metadata, extra_options, branch, extra_metadata):
+            if force:
+                call(['now', '--force'])
+            else:
+                call('now')
 
+    elif publisher == 'heroku':
+        _fail_if_publish_binary_not_installed('heroku', 'Heroku', 'https://cli.heroku.com')
+
+        # Check for heroku-builds plugin
+        plugins = [line.split()[0] for line in check_output(['heroku', 'plugins']).splitlines()]
+        if b'heroku-builds' not in plugins:
+            click.echo('Publishing to Heroku requires the heroku-builds plugin to be installed.')
+            click.confirm('Install it? (this will run `heroku plugins:install heroku-builds`)', abort=True)
+            call(["heroku", "plugins:install", "heroku-builds"])
+
+        with temporary_heroku_directory(files, name, metadata, extra_options, branch, extra_metadata):
+            create_output = check_output(['heroku', 'apps:create', '--json'])
+            app_name = json.loads(create_output)["name"]
+            call(["heroku", "builds:create", "-a", app_name])
 
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1, required=True)

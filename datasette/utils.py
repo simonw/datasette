@@ -151,8 +151,8 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch=None
     os.mkdir(datasette_dir)
     saved_cwd = os.getcwd()
     file_paths = [
-        os.path.join(saved_cwd, name)
-        for name in files
+        os.path.join(saved_cwd, file_path)
+        for file_path in files
     ]
     file_names = [os.path.split(f)[-1] for f in files]
     if metadata:
@@ -185,8 +185,8 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch=None
     saved_cwd = os.getcwd()
 
     file_paths = [
-        os.path.join(saved_cwd, name)
-        for name in files
+        os.path.join(saved_cwd, file_path)
+        for file_path in files
     ]
     file_names = [os.path.split(f)[-1] for f in files]
 
@@ -207,7 +207,9 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch=None
         open('runtime.txt', 'w').write('python-3.6.2')
 
         if branch:
-            install_from = f'https://github.com/simonw/datasette/archive/{branch}.zip'
+            install_from = 'https://github.com/simonw/datasette/archive/{branch}.zip'.format(
+                branch=branch
+            )
         else:
             install_from = 'datasette'
 
@@ -216,7 +218,9 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch=None
         open('bin/post_compile', 'w').write('datasette build --inspect-file inspect-data.json')
 
         quoted_files = " ".join(map(shlex.quote, files))
-        procfile_cmd = f'web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json'
+        procfile_cmd = 'web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json'.format(
+            quoted_files=quoted_files,
+        )
         open('Procfile', 'w').write(procfile_cmd)
 
         for path, filename in zip(file_paths, file_names):

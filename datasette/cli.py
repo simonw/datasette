@@ -59,13 +59,18 @@ def publish(publisher, files, name, metadata, extra_options, force, branch, **ex
         """Exit (with error message) if ``binary` isn't installed"""
         if not shutil.which(binary):
             click.secho(
-                f" Publishing to {publish_target} requires {binary} to be installed and configured ",
+                "Publishing to {publish_target} requires {binary} to be installed and configured".format(
+                    publish_target=publish_target,
+                    binary=binary,
+                ),
                 bg='red',
                 fg='white',
                 bold=True,
                 err=True
             )
-            click.echo(f"Follow the instructions at {install_link}", err=True)
+            click.echo("Follow the instructions at {install_link}".format(
+                install_link=install_link,
+            ), err=True)
             sys.exit(1)
 
     if publisher == 'now':
@@ -87,9 +92,12 @@ def publish(publisher, files, name, metadata, extra_options, force, branch, **ex
             call(["heroku", "plugins:install", "heroku-builds"])
 
         with temporary_heroku_directory(files, name, metadata, extra_options, branch, extra_metadata):
-            create_output = check_output(['heroku', 'apps:create', '--json'])
+            create_output = check_output(
+                ['heroku', 'apps:create', '--json']
+            ).decode('utf8')
             app_name = json.loads(create_output)["name"]
             call(["heroku", "builds:create", "-a", app_name])
+
 
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1, required=True)

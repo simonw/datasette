@@ -52,27 +52,45 @@ def test_database_page(app_client):
     assert [{
         'columns': ['content'],
         'name': '123_starts_with_digits',
-        'table_rows': 0,
+        'count': 0,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
     }, {
         'columns': ['pk', 'content'],
         'name': 'Table With Space In Name',
-        'table_rows': 0,
+        'count': 0,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
     }, {
         'columns': ['pk1', 'pk2', 'content'],
         'name': 'compound_primary_key',
-        'table_rows': 0,
+        'count': 0,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
     }, {
         'columns': ['content'],
         'name': 'no_primary_key',
-        'table_rows': 201,
+        'count': 201,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
     }, {
         'columns': ['pk', 'content'],
         'name': 'simple_primary_key',
-        'table_rows': 2,
+        'count': 2,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
     }, {
         'columns': ['pk', 'content'],
         'name': 'table/with/slashes.csv',
-        'table_rows': 1,
+        'count': 1,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
     }] == data['tables']
 
 

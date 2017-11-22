@@ -65,12 +65,18 @@
 {% endif %}
 
 {% for table in tables %}
+{% if show_hidden or not table.hidden %}
 <div class="db-table">
-    <h2><a href="/{{ database }}-{{ database_hash }}/{{ table.name|quote_plus }}">{{ table.name }}</a></h2>
+    <h2><a href="/{{ database }}-{{ database_hash }}/{{ table.name|quote_plus }}">{{ table.name }}</a>{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
     <p><em>{% for column in table.columns[:9] %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}{% if table.columns|length > 9 %}...{% endif %}</em></p>
-    <p>{{ "{:,}".format(table.table_rows) }} row{% if table.table_rows == 1 %}{% else %}s{% endif %}</p>
+    <p>{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}</p>
 </div>
+{% endif %}
 {% endfor %}
+
+{% if hidden_count and not show_hidden %}
+    <p>... and <a href="/{{ database }}-{{ database_hash }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
+{% endif %}
 
 {% if views %}
     <h2>Views</h2>

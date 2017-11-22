@@ -82,6 +82,10 @@ table a:visited {
     margin-bottom: 0;
 }
 
+h2 em {
+    font-style: normal;
+    font-weight: lighter;
+}
 form.sql textarea {
     border: 1px solid #ccc;
     width: 70%;

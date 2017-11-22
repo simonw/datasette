@@ -267,18 +267,23 @@ class IndexView(HTTPMethodView):
     async def get(self, request, as_json):
         databases = []
         for key, info in sorted(self.ds.inspect().items()):
+            tables = [t for t in info['tables'].values() if not t['hidden']]
+            hidden_tables = [t for t in info['tables'].values() if t['hidden']]
             database = {
                 'name': key,
                 'hash': info['hash'],
                 'path': '{}-{}'.format(key, info['hash'][:7]),
                 'tables_truncated': sorted(
-                    info['tables'].items(),
-                    key=lambda p: p[1]['count'],
+                    tables,
+                    key=lambda t: t['count'],
                     reverse=True
                 )[:5],
-                'tables_count': len(info['tables'].items()),
-                'tables_more': len(info['tables'].items()) > 5,
-                'table_rows': sum([t['count'] for t in info['tables'].values()]),
+                'tables_count': len(tables),
+                'tables_more': len(tables) > 5,
+                'table_rows': sum(t['count'] for t in tables),
+                'hidden_table_rows': sum(t['count'] for t in hidden_tables),
+                'hidden_tables_count': len(hidden_tables),
+                'views_count': len(info['views']),
             }
             databases.append(database)
         if as_json:
@@ -313,26 +318,17 @@ class DatabaseView(BaseView):
     async def data(self, request, name, hash):
         if request.args.get('sql'):
             return await self.custom_sql(request, name, hash)
-        tables = []
-        table_inspect = self.ds.inspect()[name]['tables']
-        for table_name, info in table_inspect.items():
-            rows = await self.execute(
-                name,
-                'PRAGMA table_info([{}]);'.format(table_name)
-            )
-            tables.append({
-                'name': table_name,
-                'columns': [r[1] for r in rows],
-                'table_rows': info['count'],
-            })
-        tables.sort(key=lambda t: t['name'])
-        views = await self.execute(name, 'select name from sqlite_master where type = "view"')
+        info = self.ds.inspect()[name]
+        tables = list(info['tables'].values())
+        tables.sort(key=lambda t: (t['hidden'], t['name']))
         return {
             'database': name,
             'tables': tables,
-            'views': [v[0] for v in views],
+            'hidden_count': len([t for t in tables if t['hidden']]),
+            'views': info['views'],
         }, {
             'database_hash': hash,
+            'show_hidden': request.args.get('_show_hidden'),
         }
 
     async def custom_sql(self, request, name, hash):
@@ -760,12 +756,14 @@ class Datasette:
                         m.update(data)
                 # List tables and their row counts
                 tables = {}
+                views = []
                 with sqlite3.connect('file:{}?immutable=1'.format(path), uri=True) as conn:
                     conn.row_factory = sqlite3.Row
                     table_names = [
                         r['name']
                         for r in conn.execute('select * from sqlite_master where type="table"')
                     ]
+                    views = [v[0] for v in conn.execute('select name from sqlite_master where type = "view"')]
                     for table in table_names:
                         count = conn.execute(
                             'select count(*) from {}'.format(escape_sqlite_table_name(table))
@@ -810,6 +808,8 @@ class Datasette:
                     'hash': m.hexdigest(),
                     'file': str(path),
                     'tables': tables,
+                    'views': views,
+
                 }
         return self._inspect
 

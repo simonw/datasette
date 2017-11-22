@@ -25,7 +25,7 @@ setup(
     ''',
     setup_requires=['pytest-runner'],
     tests_require=[
-        'pytest==3.2.3',
+        'pytest==3.2.1',
         'aiohttp==2.3.2',
     ],
     classifiers=[

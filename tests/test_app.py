@@ -254,6 +254,10 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
     ('/test_tables/simple_primary_key.json?content__exact=', [
         ['3', ''],
     ]),
+    ('/test_tables/simple_primary_key.json?content__not=world', [
+        ['1', 'hello'],
+        ['3', ''],
+    ]),
 ])
 def test_table_filter_queries(app_client, path, expected_rows):
     response = app_client.get(path, gather_request=False)

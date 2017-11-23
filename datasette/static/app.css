@@ -135,3 +135,41 @@ form input[type=submit] {
     line-height: 1;
     border-radius: .25rem;
 }
+
+.filter-row {
+    margin-bottom: 0.3em;
+}
+
+.select-wrapper {
+    border: 1px solid #ccc;
+    width: 120px;
+    border-radius: 3px;
+    background-color: #fafafa;
+    position: relative;
+    display: inline-block;
+}
+.select-wrapper.filter-op {
+    width: 80px;
+}
+.select-wrapper::after {
+    content: "\25BE";
+    position: absolute;
+    top: 0px;
+    right: 5px;
+    color: #bbb;
+}
+
+.select-wrapper select {
+    padding: 5px 8px;
+    width: 100%;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    background-image: none;
+    -webkit-appearance: none;
+}
+
+.select-wrapper select:focus {
+    outline: none;
+}
+</style>

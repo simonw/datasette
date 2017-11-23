@@ -80,7 +80,7 @@ def test_database_page(app_client):
     }, {
         'columns': ['pk', 'content'],
         'name': 'simple_primary_key',
-        'count': 2,
+        'count': 3,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
@@ -106,7 +106,8 @@ def test_custom_sql(app_client):
     } == data['query']
     assert [
         {'content': 'hello'},
-        {'content': 'world'}
+        {'content': 'world'},
+        {'content': ''}
     ] == data['rows']
     assert ['content'] == data['columns']
     assert 'test_tables' == data['database']
@@ -166,6 +167,9 @@ def test_table_page(app_client):
     }, {
         'pk': '2',
         'content': 'world',
+    }, {
+        'pk': '3',
+        'content': '',
     }]
 
 
@@ -202,6 +206,23 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
     assert expected_pages == count
 
 
+@pytest.mark.parametrize('path,expected_rows', [
+    ('/test_tables/simple_primary_key.json?content=hello', [
+        ['1', 'hello'],
+    ]),
+    ('/test_tables/simple_primary_key.json?content__contains=o', [
+        ['1', 'hello'],
+        ['2', 'world'],
+    ]),
+    ('/test_tables/simple_primary_key.json?content__exact=', [
+        ['3', ''],
+    ]),
+])
+def test_table_filter_queries(app_client, path, expected_rows):
+    response = app_client.get(path, gather_request=False)
+    assert expected_rows == response.json['rows']
+
+
 def test_max_returned_rows(app_client):
     response = app_client.get(
         '/test_tables.jsono?sql=select+content+from+no_primary_key',
@@ -228,6 +249,9 @@ def test_view(app_client):
     }, {
         'upper_content': 'WORLD',
         'content': 'world',
+    }, {
+        'upper_content': '',
+        'content': '',
     }]
 
 
@@ -343,6 +367,7 @@ CREATE TABLE "table/with/slashes.csv" (
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
+INSERT INTO simple_primary_key VALUES (3, '');
 
 INSERT INTO [table/with/slashes.csv] VALUES (3, 'hey');
 

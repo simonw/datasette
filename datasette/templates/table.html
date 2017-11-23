@@ -29,12 +29,48 @@
     </form>
 {% endif %}
 
-{% if query.params %}
+<form class="filters" action="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}" method="get">
+    {% for column, lookup, value in filters.selections() %}
+        <p>
+            <select name="_filter_column_{{ loop.index }}" style="font-size: 20px">
+                {% for c in display_columns %}
+                    {% if c != 'rowid' %}
+                        <option{% if c == column %} selected{% endif %}>{{ c }}</option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+            <select name="_filter_op_{{ loop.index }}" style="font-size: 20px">
+                {% for key, display, no_argument in filters.lookups() %}
+                    <option value="{{ key }}{% if no_argument %}__1{% endif %}"{% if key == lookup %} selected{% endif %}>{{ display }}</option>
+                {% endfor %}
+            </select>
+            <input type="text" name="_filter_value_{{ loop.index }}" style="width: 200px" value="{{ value }}">
+        </p>
+    {% endfor %}
+    <p>
+        <select name="_filter_column" style="font-size: 20px">
+            {% for column in display_columns %}
+                {% if column != 'rowid' %}
+                    <option>{{ column }}</option>
+                {% endif %}
+            {% endfor %}
+        </select>
+        <select name="_filter_op" style="font-size: 20px">
+            {% for key, display, no_argument in filters.lookups() %}
+                <option value="{{ key }}{% if no_argument %}__1{% endif %}"{% if key == lookup %} selected{% endif %}>{{ display }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="_filter_value" style="width: 200px">
+        <input type="submit" value="{% if filters.has_selections() %}Apply filters{% else %}Add filter{% endif %}">
+    </p>
+</form>
+
 <pre>{{ query.sql }}</pre>
-<pre>params = {{ query.params|tojson(4) }}</pre>
-{% endif %}
+{% if query.params %}<pre>params = {{ query.params|tojson(4) }}</pre>{% endif %}
 
 <p>This data as <a href="{{ url_json }}">.json</a>, <a href="{{ url_jsono }}">.jsono</a></p>
+
+<p>Returned {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}</p>
 
 <table>
     <thead>

@@ -290,8 +290,9 @@ def detect_fts_sql(table):
 
 
 class Filter:
-    def __init__(self, key, sql_template, human_template, format='{}', numeric=False, no_argument=False):
+    def __init__(self, key, display, sql_template, human_template, format='{}', numeric=False, no_argument=False):
         self.key = key
+        self.display = display
         self.sql_template = sql_template
         self.human_template = human_template
         self.format = format
@@ -327,36 +328,37 @@ class Filter:
 
 class Filters:
     _filters = [
-        Filter('exact', '"{c}" = :{p}', lambda c, v: '{c} = {v}' if v.isdigit() else '{c} = "{v}"'),
-        Filter('contains', '"{c}" like :{p}', '{c} contains "{v}"', format='%{}%'),
-        Filter('endswith', '"{c}" like :{p}', '{c} ends with "{v}"', format='%{}'),
-        Filter('startswith', '"{c}" like :{p}', '{c} starts with "{v}"', format='{}%'),
-        Filter('gt', '"{c}" > :{p}', '{c} > {v}', numeric=True),
-        Filter('gte', '"{c}" >= :{p}', '{c} \u2265 {v}', numeric=True),
-        Filter('lt', '"{c}" < :{p}', '{c} < {v}', numeric=True),
-        Filter('lte', '"{c}" <= :{p}', '{c} \u2264 {v}', numeric=True),
-        Filter('glob', '"{c}" glob :{p}', '{c} glob "{v}"'),
-        Filter('like', '"{c}" like :{p}', '{c} like "{v}"'),
-        Filter('isnull', '"{c}" is null', '{c} is null', no_argument=True),
-        Filter('notnull', '"{c}" is not null', '{c} is not null', no_argument=True),
-        Filter('isblank', '("{c}" is null or "{c}" = "")', '{c} is blank', no_argument=True),
-        Filter('notblank', '("{c}" is not null and "{c}" != "")', '{c} is not blank', no_argument=True),
+        Filter('exact', '=', '"{c}" = :{p}', lambda c, v: '{c} = {v}' if v.isdigit() else '{c} = "{v}"'),
+        Filter('contains', 'contains', '"{c}" like :{p}', '{c} contains "{v}"', format='%{}%'),
+        Filter('endswith', 'ends with', '"{c}" like :{p}', '{c} ends with "{v}"', format='%{}'),
+        Filter('startswith', 'starts with', '"{c}" like :{p}', '{c} starts with "{v}"', format='{}%'),
+        Filter('gt', '>', '"{c}" > :{p}', '{c} > {v}', numeric=True),
+        Filter('gte', '\u2265', '"{c}" >= :{p}', '{c} \u2265 {v}', numeric=True),
+        Filter('lt', '<', '"{c}" < :{p}', '{c} < {v}', numeric=True),
+        Filter('lte', '\u2264', '"{c}" <= :{p}', '{c} \u2264 {v}', numeric=True),
+        Filter('glob', 'glob', '"{c}" glob :{p}', '{c} glob "{v}"'),
+        Filter('like', 'like', '"{c}" like :{p}', '{c} like "{v}"'),
+        Filter('isnull', 'is null', '"{c}" is null', '{c} is null', no_argument=True),
+        Filter('notnull', 'is not null', '"{c}" is not null', '{c} is not null', no_argument=True),
+        Filter('isblank', 'is blank', '("{c}" is null or "{c}" = "")', '{c} is blank', no_argument=True),
+        Filter('notblank', 'is not blank', '("{c}" is not null and "{c}" != "")', '{c} is not blank', no_argument=True),
     ]
     _filters_by_key = {
         f.key: f for f in _filters
     }
 
     def __init__(self, pairs):
+        print('pairs = ', pairs)
         self.pairs = pairs
+
+    def lookups(self):
+        "Yields (lookup, display, no_argument) pairs"
+        for filter in self._filters:
+            yield filter.key, filter.display, filter.no_argument
 
     def human_description(self):
         bits = []
-        for key, value in self.pairs:
-            if '__' in key:
-                column, lookup = key.rsplit('__', 1)
-            else:
-                column = key
-                lookup = 'exact'
+        for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:
                 bits.append(filter.human_clause(column, value))
@@ -369,15 +371,23 @@ class Filters:
             and_bits.append(tail[0])
         return ' and '.join(and_bits)
 
-    def build_where_clauses(self):
-        sql_bits = []
-        params = {}
-        for i, (key, value) in enumerate(self.pairs):
+    def selections(self):
+        "Yields (column, lookup, value) tuples"
+        for key, value in self.pairs:
             if '__' in key:
                 column, lookup = key.rsplit('__', 1)
             else:
                 column = key
                 lookup = 'exact'
+            yield column, lookup, value
+
+    def has_selections(self):
+        return bool(self.pairs)
+
+    def build_where_clauses(self):
+        sql_bits = []
+        params = {}
+        for i, (column, lookup, value) in enumerate(self.selections()):
             filter = self._filters_by_key.get(lookup, None)
             if filter:
                 sql_bit, param = filter.where_clause(column, value, i)
@@ -386,7 +396,6 @@ class Filters:
                     param_id = 'p{}'.format(i)
                     params[param_id] = param
         return sql_bits, params
-        return ' and '.join(sql_bits), params
 
 
 filter_column_re = re.compile(r'^_filter_column_\d+$')

@@ -2,6 +2,7 @@ from sanic import Sanic
 from sanic import response
 from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
+from sanic.request import RequestParameters
 from sanic_jinja2 import SanicJinja2
 from jinja2 import FileSystemLoader
 import re
@@ -412,13 +413,19 @@ class TableView(BaseView):
         if is_view:
             order_by = ''
 
+        # We roll our own query_string decoder because by default Sanic
+        # drops anything with an empty value e.g. ?name__exact=
+        args = RequestParameters(
+            urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
+        )
+
         # Special args start with _ and do not contain a __
         # That's so if there is a column that starts with _
         # it can still be queried using ?_col__exact=blah
         special_args = {}
         special_args_lists = {}
         other_args = {}
-        for key, value in request.args.items():
+        for key, value in args.items():
             if key.startswith('_') and '__' not in key:
                 special_args[key] = value[0]
                 special_args_lists[key] = value
@@ -540,6 +547,7 @@ class TableView(BaseView):
                 'supports_search': bool(fts_table),
                 'search': search or '',
                 'use_rowid': use_rowid,
+                'filters': filters,
                 'display_columns': display_columns,
                 'display_rows': await self.make_display_rows(name, hash, table, rows, display_columns, pks, is_view, use_rowid),
             }

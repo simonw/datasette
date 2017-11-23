@@ -37,7 +37,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 6
+    assert d['tables_count'] == 7
 
 
 def test_database_page(app_client):
@@ -64,6 +64,28 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
     }, {
+        'columns': ['pk', 'f1', 'f2', 'f3'],
+        'name': 'complex_foreign_keys',
+        'count': 1,
+        'foreign_keys': {
+            'incoming': [],
+            'outgoing': [{
+                'column': 'f3',
+                'other_column': 'id',
+                'other_table': 'simple_primary_key'
+            }, {
+                'column': 'f2',
+                'other_column': 'id',
+                'other_table': 'simple_primary_key'
+            }, {
+                'column': 'f1',
+                'other_column': 'id',
+                'other_table': 'simple_primary_key'
+            }],
+        },
+        'hidden': False,
+        'label_column': None,
+    }, {
         'columns': ['pk1', 'pk2', 'content'],
         'name': 'compound_primary_key',
         'count': 0,
@@ -82,7 +104,22 @@ def test_database_page(app_client):
         'name': 'simple_primary_key',
         'count': 3,
         'hidden': False,
-        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'foreign_keys': {
+            'incoming': [{
+                'column': 'id',
+                'other_column': 'f3',
+                'other_table': 'complex_foreign_keys'
+            }, {
+                'column': 'id',
+                'other_column': 'f2',
+                'other_table': 'complex_foreign_keys'
+            }, {
+                'column': 'id',
+                'other_column': 'f1',
+                'other_table': 'complex_foreign_keys'
+            }],
+            'outgoing': [],
+        },
         'label_column': None,
     }, {
         'columns': ['pk', 'content'],
@@ -270,6 +307,27 @@ def test_row(app_client):
     assert [{'pk': '1', 'content': 'hello'}] == response.json['rows']
 
 
+def test_row_foreign_key_tables(app_client):
+    response = app_client.get('/test_tables/simple_primary_key/1.json?_extras=foreign_key_tables', gather_request=False)
+    assert response.status == 200
+    assert [{
+        'column': 'id',
+        'count': 1,
+        'other_column': 'f3',
+        'other_table': 'complex_foreign_keys'
+    }, {
+        'column': 'id',
+        'count': 0,
+        'other_column': 'f2',
+        'other_table': 'complex_foreign_keys'
+    }, {
+        'column': 'id',
+        'count': 1,
+        'other_column': 'f1',
+        'other_table': 'complex_foreign_keys'
+    }] == response.json['foreign_key_tables']
+
+
 def test_add_filter_redirects(app_client):
     filter_args = urllib.parse.urlencode({
         '_filter_column': 'content',
@@ -379,9 +437,21 @@ CREATE TABLE "table/with/slashes.csv" (
   content text
 );
 
+CREATE TABLE "complex_foreign_keys" (
+  pk varchar(30) primary key,
+  f1 text,
+  f2 text,
+  f3 text,
+  FOREIGN KEY ("f1") REFERENCES [simple_primary_key](id),
+  FOREIGN KEY ("f2") REFERENCES [simple_primary_key](id),
+  FOREIGN KEY ("f3") REFERENCES [simple_primary_key](id)
+);
+
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');
+
+INSERT INTO complex_foreign_keys VALUES (1, 1, 2, 1);
 
 INSERT INTO [table/with/slashes.csv] VALUES (3, 'hey');
 

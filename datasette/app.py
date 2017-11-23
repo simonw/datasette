@@ -685,14 +685,19 @@ class RowView(BaseView):
                 'foreign_key_tables': await self.foreign_key_tables(name, table, pk_values),
             }
 
-        return {
+        data = {
             'database': name,
             'table': table,
             'rows': rows,
             'columns': columns,
             'primary_keys': pks,
             'primary_key_values': pk_values,
-        }, template_data
+        }
+
+        if 'foreign_key_tables' in (request.raw_args.get('_extras') or '').split(','):
+            data['foreign_key_tables'] = await self.foreign_key_tables(name, table, pk_values)
+
+        return data, template_data
 
     async def foreign_key_tables(self, name, table, pk_values):
         if len(pk_values) != 1:
@@ -702,7 +707,7 @@ class RowView(BaseView):
             return []
         foreign_keys = table_info['foreign_keys']['incoming']
         sql = 'select ' + ', '.join([
-            '(select count(*) from {table} where "{column}"= :id)'.format(
+            '(select count(*) from {table} where "{column}"=:id)'.format(
                 table=escape_sqlite_table_name(fk['other_table']),
                 column=fk['other_column'],
             )
@@ -713,12 +718,16 @@ class RowView(BaseView):
         except sqlite3.OperationalError:
             # Almost certainly hit the timeout
             return []
-        foreign_table_counts = dict(zip([fk['other_table'] for fk in foreign_keys], rows[0]))
+        foreign_table_counts = dict(
+            zip(
+                [(fk['other_table'], fk['other_column']) for fk in foreign_keys],
+                list(rows[0]),
+            )
+        )
         foreign_key_tables = []
         for fk in foreign_keys:
-            count = foreign_table_counts[fk['other_table']]
-            if count:
-                foreign_key_tables.append({**fk, **{'count': count}})
+            count = foreign_table_counts.get((fk['other_table'], fk['other_column'])) or 0
+            foreign_key_tables.append({**fk, **{'count': count}})
         return foreign_key_tables
 
 

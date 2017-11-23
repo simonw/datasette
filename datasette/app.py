@@ -383,7 +383,83 @@ class DatabaseDownload(BaseView):
         )
 
 
-class TableView(BaseView):
+class RowTableShared(BaseView):
+    async def make_display_rows(self, database, database_hash, table, rows, display_columns, pks, is_view, use_rowid):
+        # Get fancy with foreign keys
+        expanded = {}
+        tables = self.ds.inspect()[database]['tables']
+        table_info = tables.get(table) or {}
+        if table_info and not is_view:
+            foreign_keys = table_info['foreign_keys']['outgoing']
+            for fk in foreign_keys:
+                label_column = tables.get(fk['other_table'], {}).get('label_column')
+                if not label_column:
+                    # We only link cells to other tables with label columns defined
+                    continue
+                ids_to_lookup = set([row[fk['column']] for row in rows])
+                sql = 'select "{other_column}", "{label_column}" from {other_table} where "{other_column}" in ({placeholders})'.format(
+                    other_column=fk['other_column'],
+                    label_column=label_column,
+                    other_table=escape_sqlite_table_name(fk['other_table']),
+                    placeholders=', '.join(['?'] * len(ids_to_lookup)),
+                )
+                try:
+                    results = await self.execute(database, sql, list(set(ids_to_lookup)))
+                except sqlite3.OperationalError:
+                    # Probably hit the timelimit
+                    pass
+                else:
+                    for id, value in results:
+                        expanded[(fk['column'], id)] = (fk['other_table'], value)
+
+        to_return = []
+        for row in rows:
+            cells = []
+            # Unless we are a view, the first column is a link - either to the rowid
+            # or to the simple or compound primary key
+            if not is_view:
+                display_value = jinja2.Markup(
+                    '<a href="/{database}-{database_hash}/{table}/{flat_pks}">{flat_pks}</a>'.format(
+                        database=database,
+                        database_hash=database_hash,
+                        table=urllib.parse.quote_plus(table),
+                        flat_pks=path_from_row_pks(row, pks, use_rowid),
+                    )
+                )
+                cells.append({
+                    'column': 'rowid' if use_rowid else 'Link',
+                    'value': display_value,
+                })
+
+            for value, column in zip(row, display_columns):
+                if use_rowid and column == 'rowid':
+                    # We already showed this in the linked first column
+                    continue
+                elif (column, value) in expanded:
+                    other_table, label = expanded[(column, value)]
+                    display_value = jinja2.Markup(
+                        # TODO: Escape id/label/etc so no XSS here
+                        '<a href="/{database}-{database_hash}/{table}/{id}">{label}</a>&nbsp;<em>{id}</em>'.format(
+                            database=database,
+                            database_hash=database_hash,
+                            table=escape_sqlite_table_name(other_table),
+                            id=value,
+                            label=label,
+                        )
+                    )
+                elif value is None:
+                    display_value = jinja2.Markup('&nbsp;')
+                else:
+                    display_value = str(value)
+                cells.append({
+                    'column': column,
+                    'value': display_value,
+                })
+            to_return.append(cells)
+        return to_return
+
+
+class TableView(RowTableShared):
     template = 'table.html'
 
     async def data(self, request, name, hash, table):
@@ -575,82 +651,8 @@ class TableView(BaseView):
             'next_url': next_url,
         }, extra_template
 
-    async def make_display_rows(self, database, database_hash, table, rows, display_columns, pks, is_view, use_rowid):
-        # Get fancy with foreign keys
-        expanded = {}
-        tables = self.ds.inspect()[database]['tables']
-        table_info = tables.get(table) or {}
-        if table_info and not is_view:
-            foreign_keys = table_info['foreign_keys']['outgoing']
-            for fk in foreign_keys:
-                label_column = tables.get(fk['other_table'], {}).get('label_column')
-                if not label_column:
-                    # We only link cells to other tables with label columns defined
-                    continue
-                ids_to_lookup = set([row[fk['column']] for row in rows])
-                sql = 'select "{other_column}", "{label_column}" from {other_table} where "{other_column}" in ({placeholders})'.format(
-                    other_column=fk['other_column'],
-                    label_column=label_column,
-                    other_table=escape_sqlite_table_name(fk['other_table']),
-                    placeholders=', '.join(['?'] * len(ids_to_lookup)),
-                )
-                try:
-                    results = await self.execute(database, sql, list(set(ids_to_lookup)))
-                except sqlite3.OperationalError:
-                    # Probably hit the timelimit
-                    pass
-                else:
-                    for id, value in results:
-                        expanded[(fk['column'], id)] = (fk['other_table'], value)
 
-        to_return = []
-        for row in rows:
-            cells = []
-            # Unless we are a view, the first column is a link - either to the rowid
-            # or to the simple or compound primary key
-            if not is_view:
-                display_value = jinja2.Markup(
-                    '<a href="/{database}-{database_hash}/{table}/{flat_pks}">{flat_pks}</a>'.format(
-                        database=database,
-                        database_hash=database_hash,
-                        table=urllib.parse.quote_plus(table),
-                        flat_pks=path_from_row_pks(row, pks, use_rowid),
-                    )
-                )
-                cells.append({
-                    'column': 'rowid' if use_rowid else 'Link',
-                    'value': display_value,
-                })
-
-            for value, column in zip(row, display_columns):
-                if use_rowid and column == 'rowid':
-                    # We already showed this in the linked first column
-                    continue
-                elif (column, value) in expanded:
-                    other_table, label = expanded[(column, value)]
-                    display_value = jinja2.Markup(
-                        # TODO: Escape id/label/etc so no XSS here
-                        '<a href="/{database}-{database_hash}/{table}/{id}">{label}</a>&nbsp;<em>{id}</em>'.format(
-                            database=database,
-                            database_hash=database_hash,
-                            table=escape_sqlite_table_name(other_table),
-                            id=value,
-                            label=label,
-                        )
-                    )
-                elif value is None:
-                    display_value = jinja2.Markup('&nbsp;')
-                else:
-                    display_value = str(value)
-                cells.append({
-                    'column': column,
-                    'value': display_value,
-                })
-            to_return.append(cells)
-        return to_return
-
-
-class RowView(BaseView):
+class RowView(RowTableShared):
     template = 'row.html'
 
     async def data(self, request, name, hash, table, pk_path):
@@ -683,6 +685,8 @@ class RowView(BaseView):
             return {
                 'database_hash': hash,
                 'foreign_key_tables': await self.foreign_key_tables(name, table, pk_values),
+                'display_columns': columns,
+                'display_rows': await self.make_display_rows(name, hash, table, rows, columns, pks, False, use_rowid),
             }
 
         data = {

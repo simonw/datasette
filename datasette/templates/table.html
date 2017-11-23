@@ -78,22 +78,7 @@
 
 <p>Returned {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}</p>
 
-<table>
-    <thead>
-        <tr>
-            {% for column in display_columns %}<th scope="col">{{ column }}</th>{% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-    {% for row in display_rows %}
-        <tr>
-            {% for cell in row %}
-                <td>{{ cell.value }}</td>
-            {% endfor %}
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+{% include "_rows_and_columns.html" %}
 
 {% if next_url %}
      <p><a href="{{ next_url }}">Next page</a></p>

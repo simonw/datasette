@@ -19,22 +19,7 @@
 
 <p>This data as <a href="{{ url_json }}">.json</a>, <a href="{{ url_jsono }}">.jsono</a></p>
 
-<table>
-    <thead>
-        <tr>
-            {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-    {% for row in rows %}
-        <tr>
-            {% for td in row %}
-                <td>{{ td }}</td>
-            {% endfor %}
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+{% include "_rows_and_columns.html" %}
 
 {% if foreign_key_tables %}
     <h2>Links from other tables</h2>

@@ -1,0 +1,16 @@
+<table>
+    <thead>
+        <tr>
+            {% for column in display_columns %}<th scope="col">{{ column }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in display_rows %}
+        <tr>
+            {% for cell in row %}
+                <td>{{ cell.value }}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>

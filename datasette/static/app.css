@@ -18,6 +18,11 @@ td {
     padding: 4px;
     vertical-align: top;
 }
+td em {
+    font-style: normal;
+    font-size: 0.8em;
+    color: #aaa;
+}
 th {
     padding-right: 1em;
 }

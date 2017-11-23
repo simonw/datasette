@@ -108,13 +108,10 @@ form input[type=text],
 form input[type=search] {
     border: 1px solid #ccc;
     width: 60%;
-    padding: 4px;
+    padding: 9px 4px;
     font-family: monospace;
     display: inline-block;
     font-size: 1.1em;
-}
-form input[type=search] {
-    width: 40%;
 }
 @media only screen and (max-width: 576px) {
     form.sql textarea {
@@ -130,7 +127,7 @@ form input[type=submit] {
     text-align: center;
     vertical-align: middle;
     border: 1px solid blue;
-    padding: .275rem .75rem;
+    padding: .5em 0.8em;
     font-size: 0.9rem;
     line-height: 1;
     border-radius: .25rem;
@@ -195,7 +192,6 @@ form input[type=submit] {
     border-radius: 3px;
     -webkit-appearance: none;
     padding: 9px 4px;
-    text-align: top;
     font-size: 1em;
     font-family: Helvetica, sans-serif;
 }

@@ -49,6 +49,7 @@
     {% endfor %}
     <p>
         <select name="_filter_column" style="font-size: 20px">
+            <option value="">- pick a column -</option>
             {% for column in display_columns %}
                 {% if column != 'rowid' %}
                     <option>{{ column }}</option>

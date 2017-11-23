@@ -402,20 +402,20 @@ filter_column_re = re.compile(r'^_filter_column_\d+$')
 
 
 def filters_should_redirect(special_args):
-    print('special_args: ', special_args)
     redirect_params = []
     if '_filter_column' in special_args:
         filter_column = special_args['_filter_column']
-        filter_op = special_args.get('_filter_op') or ''
-        filter_value = special_args.get('_filter_value') or ''
-        if '__' in filter_op:
-            filter_op, filter_value = filter_op.split('__', 1)
-        redirect_params.extend([
-            ('{}__{}'.format(filter_column, filter_op), filter_value),
-            ('_filter_column', None),
-            ('_filter_op', None),
-            ('_filter_value', None),
-        ])
+        if filter_column:
+            filter_op = special_args.get('_filter_op') or ''
+            filter_value = special_args.get('_filter_value') or ''
+            if '__' in filter_op:
+                filter_op, filter_value = filter_op.split('__', 1)
+            redirect_params.extend([
+                ('{}__{}'.format(filter_column, filter_op), filter_value),
+                ('_filter_column', None),
+                ('_filter_op', None),
+                ('_filter_value', None),
+            ])
     # Now handle _filter_column_1=name&_filter_op_1=contains&_filter_value_1=hello
     column_keys = [k for k in special_args if filter_column_re.match(k)]
     for column_key in column_keys:

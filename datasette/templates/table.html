@@ -40,36 +40,32 @@
                         {% endif %}
                     {% endfor %}
                 </select>
-            </div>
-            <div class="select-wrapper filter-op">
+            </div><div class="select-wrapper filter-op">
                 <select name="_filter_op_{{ loop.index }}">
                     {% for key, display, no_argument in filters.lookups() %}
                         <option value="{{ key }}{% if no_argument %}__1{% endif %}"{% if key == lookup %} selected{% endif %}>{{ display }}</option>
                     {% endfor %}
                 </select>
-            </div>
-            <input type="text" name="_filter_value_{{ loop.index }}" style="width: 200px" value="{{ value }}">
+            </div><input type="text" name="_filter_value_{{ loop.index }}" class="filter-value" value="{{ value }}">
         </div>
     {% endfor %}
     <div class="filter-row">
         <div class="select-wrapper">
             <select name="_filter_column">
-                <option value="">- pick a column -</option>
+                <option value="">- column -</option>
                 {% for column in display_columns %}
                     {% if column != 'rowid' %}
                         <option>{{ column }}</option>
                     {% endif %}
                 {% endfor %}
             </select>
-        </div>
-        <div class="select-wrapper filter-op">
+        </div><div class="select-wrapper filter-op">
             <select name="_filter_op">
                 {% for key, display, no_argument in filters.lookups() %}
                     <option value="{{ key }}{% if no_argument %}__1{% endif %}"{% if key == lookup %} selected{% endif %}>{{ display }}</option>
                 {% endfor %}
             </select>
-        </div>
-        <input type="text" name="_filter_value" style="width: 200px">
+        </div><input type="text" name="_filter_value" class="filter-value">
         <input type="submit" value="{% if filters.has_selections() %}Apply filters{% else %}Add filter{% endif %}">
     </div>
 </form>

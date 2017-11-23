@@ -134,19 +134,22 @@ form input[type=submit] {
     font-size: 0.9rem;
     line-height: 1;
     border-radius: .25rem;
+    -webkit-appearance: button;
 }
 
 .filter-row {
-    margin-bottom: 0.3em;
+    margin-bottom: 0.6em;
 }
 
 .select-wrapper {
     border: 1px solid #ccc;
     width: 120px;
     border-radius: 3px;
+    padding: 0;
     background-color: #fafafa;
     position: relative;
     display: inline-block;
+    margin-right: 0.3em;
 }
 .select-wrapper.filter-op {
     width: 80px;
@@ -155,21 +158,59 @@ form input[type=submit] {
     content: "\25BE";
     position: absolute;
     top: 0px;
-    right: 5px;
+    right: 0.4em;
     color: #bbb;
+    pointer-events: none;
+    font-size: 1.2em;
+    padding-top: 0.16em;
 }
 
 .select-wrapper select {
-    padding: 5px 8px;
+    padding: 9px 8px;
     width: 100%;
     border: none;
     box-shadow: none;
     background: transparent;
     background-image: none;
     -webkit-appearance: none;
+    cursor: pointer;
+}
+.select-wrapper select {
+    font-size: 1em;
+    font-family: Helvetica, sans-serif;
+}
+.select-wrapper option {
+    font-size: 1em;
+    font-family: Helvetica, sans-serif;
 }
 
 .select-wrapper select:focus {
     outline: none;
 }
-</style>
+.filters {
+    font-size: 0.8em;
+}
+.filters input.filter-value {
+    width: 200px;
+    border-radius: 3px;
+    -webkit-appearance: none;
+    padding: 9px 4px;
+    text-align: top;
+    font-size: 1em;
+    font-family: Helvetica, sans-serif;
+}
+@media only screen and (max-width: 576px) {
+    .select-wrapper {
+        width: 100px;
+    }
+    .select-wrapper.filter-op {
+        width: 60px;
+    }
+    .filters input.filter-value {
+        width: 140px;
+    }
+    form input[type=submit] {
+        display: block;
+        margin-top: 0.6em;
+    }
+}

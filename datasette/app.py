@@ -58,8 +58,8 @@ class BaseView(HTTPMethodView):
             r.headers['Access-Control-Allow-Origin'] = '*'
         return r
 
-    def redirect(self, request, path):
-        if request.query_string and '?' not in path:
+    def redirect(self, request, path, forward_querystring=True):
+        if request.query_string and '?' not in path and forward_querystring:
             path = '{}?{}'.format(
                 path, request.query_string
             )
@@ -435,7 +435,11 @@ class TableView(BaseView):
         # Handle ?_filter_column and redirect, if present
         redirect_params = filters_should_redirect(special_args)
         if redirect_params:
-            return self.redirect(request, path_with_added_args(request, redirect_params))
+            return self.redirect(
+                request,
+                path_with_added_args(request, redirect_params),
+                forward_querystring=False
+            )
 
         filters = Filters(sorted(other_args.items()))
         where_clauses, params = filters.build_where_clauses()

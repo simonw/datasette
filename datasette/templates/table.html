@@ -34,6 +34,7 @@
         <div class="filter-row">
             <div class="select-wrapper">
                 <select name="_filter_column_{{ loop.index }}">
+                    <option value="">- remove filter -</option>
                     {% for c in display_columns %}
                         {% if c != 'rowid' %}
                             <option{% if c == column %} selected{% endif %}>{{ c }}</option>

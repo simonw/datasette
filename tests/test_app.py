@@ -303,7 +303,7 @@ def test_add_filter_redirects(app_client):
 
 
 def test_existing_filter_redirects(app_client):
-    filter_args = urllib.parse.urlencode({
+    filter_args = {
         '_filter_column_1': 'name',
         '_filter_op_1': 'contains',
         '_filter_value_1': 'hello',
@@ -316,16 +316,30 @@ def test_existing_filter_redirects(app_client):
         '_filter_column_4': 'name',
         '_filter_op_4': 'contains',
         '_filter_value_4': 'world',
-    })
+    }
     path_base = app_client.get(
         '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
     ).headers['Location']
-    path = path_base + '?' + filter_args
+    path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
     assert response.headers['Location'].endswith(
         '?age__gte=22&age__lt=30&name__contains=hello&name__contains=world'
     )
+
+    # Setting _filter_column_3 to empty string should remove *_3 entirely
+    filter_args['_filter_column_3'] = ''
+    path = path_base + '?' + urllib.parse.urlencode(filter_args)
+    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    assert response.status == 302
+    assert response.headers['Location'].endswith(
+        '?age__gte=22&name__contains=hello&name__contains=world'
+    )
+
+    # ?_filter_op=exact should be removed if unaccompanied by _fiter_column
+    response = app_client.get(path_base + '?_filter_op=exact', allow_redirects=False, gather_request=False)
+    assert response.status == 302
+    assert '?' not in response.headers['Location']
 
 
 TABLES = '''

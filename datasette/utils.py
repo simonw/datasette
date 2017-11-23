@@ -78,17 +78,20 @@ def validate_sql_select(sql):
 
 
 def path_with_added_args(request, args):
-    current = {
-        key: value
+    if isinstance(args, dict):
+        args = args.items()
+    arg_keys = set(a[0] for a in args)
+    current = [
+        (key, value)
         for key, value in request.raw_args.items()
-        if key not in args
-    }
-    current.update({
-        key: value
-        for key, value in args.items()
+        if key not in arg_keys
+    ]
+    current.extend([
+        (key, value)
+        for key, value in args
         if value is not None
-    })
-    return request.path + '?' + urllib.parse.urlencode(sorted(current.items()))
+    ])
+    return request.path + '?' + urllib.parse.urlencode(sorted(current))
 
 
 def path_with_ext(request, ext):
@@ -384,3 +387,39 @@ class Filters:
                     params[param_id] = param
         return sql_bits, params
         return ' and '.join(sql_bits), params
+
+
+filter_column_re = re.compile(r'^_filter_column_\d+$')
+
+
+def filters_should_redirect(special_args):
+    print('special_args: ', special_args)
+    redirect_params = []
+    if '_filter_column' in special_args:
+        filter_column = special_args['_filter_column']
+        filter_op = special_args.get('_filter_op') or ''
+        filter_value = special_args.get('_filter_value') or ''
+        if '__' in filter_op:
+            filter_op, filter_value = filter_op.split('__', 1)
+        redirect_params.extend([
+            ('{}__{}'.format(filter_column, filter_op), filter_value),
+            ('_filter_column', None),
+            ('_filter_op', None),
+            ('_filter_value', None),
+        ])
+    # Now handle _filter_column_1=name&_filter_op_1=contains&_filter_value_1=hello
+    column_keys = [k for k in special_args if filter_column_re.match(k)]
+    for column_key in column_keys:
+        number = column_key.split('_')[-1]
+        column = special_args[column_key]
+        op = special_args.get('_filter_op_{}'.format(number)) or 'exact'
+        value = special_args.get('_filter_value_{}'.format(number)) or ''
+        if '__' in op:
+            op, value = op.split('__', 1)
+        redirect_params.extend([
+            ('{}__{}'.format(column, op), value),
+            ('_filter_column_{}'.format(number), None),
+            ('_filter_op_{}'.format(number), None),
+            ('_filter_value_{}'.format(number), None),
+        ])
+    return redirect_params

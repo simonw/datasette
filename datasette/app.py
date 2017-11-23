@@ -22,6 +22,7 @@ from .utils import (
     detect_fts_sql,
     escape_css_string,
     escape_sqlite_table_name,
+    filters_should_redirect,
     get_all_foreign_keys,
     InvalidSql,
     path_from_row_pks,
@@ -425,18 +426,9 @@ class TableView(BaseView):
                 other_args[key] = value[0]
 
         # Handle ?_filter_column and redirect, if present
-        if '_filter_column' in special_args:
-            filter_column = special_args['_filter_column']
-            filter_op = special_args.get('_filter_op') or ''
-            filter_value = special_args.get('_filter_value') or ''
-            if '__' in filter_op:
-                filter_op, filter_value = filter_op.split('__', 1)
-            return self.redirect(request, path_with_added_args(request, {
-                '{}__{}'.format(filter_column, filter_op): filter_value,
-                '_filter_column': None,
-                '_filter_op': None,
-                '_filter_value': None,
-            }))
+        redirect_params = filters_should_redirect(special_args)
+        if redirect_params:
+            return self.redirect(request, path_with_added_args(request, redirect_params))
 
         filters = Filters(sorted(other_args.items()))
         where_clauses, params = filters.build_where_clauses()

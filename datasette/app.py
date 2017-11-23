@@ -626,7 +626,7 @@ class TableView(BaseView):
                     other_table, label = expanded[(column, value)]
                     display_value = jinja2.Markup(
                         # TODO: Escape id/label/etc so no XSS here
-                        '<a href="/{database}-{database_hash}/{table}/{id}">{label}</a> <em>{id}</em>'.format(
+                        '<a href="/{database}-{database_hash}/{table}/{id}">{label}</a>&nbsp;<em>{id}</em>'.format(
                             database=database,
                             database_hash=database_hash,
                             table=escape_sqlite_table_name(other_table),

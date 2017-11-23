@@ -348,7 +348,6 @@ class Filters:
     }
 
     def __init__(self, pairs):
-        print('pairs = ', pairs)
         self.pairs = pairs
 
     def lookups(self):

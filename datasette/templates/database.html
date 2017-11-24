@@ -26,14 +26,8 @@
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ database }}</h1>
 
-{% if custom_sql %}
-    <p>This data as <a href="{{ url_json }}">.json</a>, <a href="{{ url_jsono }}">.jsono</a></p>
-{% else %}
-    <p><a href="/{{ database }}-{{ database_hash }}.db">download {{ database }}.db</a></p>
-{% endif %}
-
 <form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
-    <h3>Custom SQL query</h3>
+    <h3>Custom SQL query{% if rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(rows|length) }} row{% if rows|length == 1 %}{% else %}s{% endif %}{% endif %}</h3>
     <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_table_name }}{% endif %}</textarea></p>
     {% if named_parameter_values %}
         <h3>Query parameters</h3>
@@ -45,7 +39,7 @@
 </form>
 
 {% if rows %}
-<p>Returned {% if truncated %}more than {% endif %}{{ "{:,}".format(rows|length) }} row{% if rows|length == 1 %}{% else %}s{% endif %}</p>
+<p>This data as <a href="{{ url_json }}">.json</a>, <a href="{{ url_jsono }}">.jsono</a></p>
 <table>
     <thead>
         <tr>
@@ -86,6 +80,8 @@
         {% endfor %}
     </ul>
 {% endif %}
+
+<p>Download SQLite DB: <a href="/{{ database }}-{{ database_hash }}.db">{{ database }}.db</a></p>
 
 <script>
     var editor = CodeMirror.fromTextArea(document.getElementsByName("sql")[0], {

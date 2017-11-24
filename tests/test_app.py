@@ -404,6 +404,23 @@ def test_existing_filter_redirects(app_client):
     assert '?' not in response.headers['Location']
 
 
+def test_empty_search_parameter_gets_removed(app_client):
+    path_base = app_client.get(
+        '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
+    ).headers['Location']
+    path = path_base + '?' + urllib.parse.urlencode({
+        '_search': '',
+        '_filter_column': 'name',
+        '_filter_op': 'exact',
+        '_filter_value': 'chidi',
+    })
+    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    assert response.status == 302
+    assert response.headers['Location'].endswith(
+        '?name__exact=chidi'
+    )
+
+
 TABLES = '''
 CREATE TABLE simple_primary_key (
   pk varchar(30) primary key,

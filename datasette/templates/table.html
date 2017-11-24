@@ -24,13 +24,10 @@
     </h3>
 {% endif %}
 
-{% if supports_search %}
-    <form action="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}" method="get">
-        <p><input type="search" name="_search" value="{{ search }}"> <input type="submit" value="Search"></p>
-    </form>
-{% endif %}
-
 <form class="filters" action="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}" method="get">
+    {% if supports_search %}
+        <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
+    {% endif %}
     {% for column, lookup, value in filters.selections() %}
         <div class="filter-row">
             <div class="select-wrapper">

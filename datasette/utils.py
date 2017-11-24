@@ -359,8 +359,10 @@ class Filters:
         for filter in self._filters:
             yield filter.key, filter.display, filter.no_argument
 
-    def human_description(self):
+    def human_description(self, extra=None):
         bits = []
+        if extra:
+            bits.append(extra)
         for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:

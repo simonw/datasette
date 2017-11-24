@@ -528,12 +528,14 @@ class TableView(RowTableShared):
             fts_table = fts_rows[0][0]
 
         search = special_args.get('_search')
+        search_description = None
         if search and fts_table:
             where_clauses.append(
                 'rowid in (select rowid from [{fts_table}] where [{fts_table}] match :search)'.format(
                     fts_table=fts_table
                 )
             )
+            search_description = 'search matches "{}"'.format(search)
             params['search'] = search
 
         next = special_args.get('_next')
@@ -642,10 +644,13 @@ class TableView(RowTableShared):
                     # Almost certainly hit the timeout
                     pass
 
+        # human_filter_description combines filters AND search, if provided
+        human_description = filters.human_description(extra=search_description)
+
         async def extra_template():
             return {
                 'database_hash': hash,
-                'human_filter_description': filters.human_description(),
+                'human_filter_description': human_description,
                 'supports_search': bool(fts_table),
                 'search': search or '',
                 'use_rowid': use_rowid,

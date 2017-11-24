@@ -1,4 +1,3 @@
-
 body {
     margin: 0 1em;
     font-family: "Helvetica Neue", sans-serif;
@@ -107,11 +106,12 @@ form label {
 form input[type=text],
 form input[type=search] {
     border: 1px solid #ccc;
+    border-radius: 3px;
     width: 60%;
     padding: 9px 4px;
-    font-family: monospace;
     display: inline-block;
-    font-size: 1.1em;
+    font-size: 1em;
+    font-family: Helvetica, sans-serif;
 }
 @media only screen and (max-width: 576px) {
     form.sql textarea {
@@ -136,6 +136,16 @@ form input[type=submit] {
 
 .filter-row {
     margin-bottom: 0.6em;
+}
+.search-row {
+    margin-bottom: 1.8em;
+}
+
+.search-row label {
+    font-size: 1.2em;
+    padding-right: 0.5em;
+    display: inline-block;
+    width: 80px;
 }
 
 .select-wrapper {

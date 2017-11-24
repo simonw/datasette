@@ -210,3 +210,10 @@ form input[type=submit] {
         margin-top: 0.6em;
     }
 }
+
+a.not-underlined {
+    text-decoration: none;
+}
+.not-underlined .underlined {
+    text-decoration: underline;
+}

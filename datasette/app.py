@@ -315,7 +315,7 @@ async def favicon(request):
 
 class DatabaseView(BaseView):
     template = 'database.html'
-    re_named_parameter = re.compile(':([a-zA-Z0-0_]+)')
+    re_named_parameter = re.compile(':([a-zA-Z0-9_]+)')
 
     async def data(self, request, name, hash):
         if request.args.get('sql'):

@@ -287,7 +287,10 @@ def detect_fts_sql(table):
             where rootpage = 0
             and (
                 sql like '%VIRTUAL TABLE%USING FTS%content="{table}"%'
-                or tbl_name = "{table}"
+                or (
+                    tbl_name = "{table}"
+                    and sql not like 'CREATE VIEW%'
+                )
             )
     '''.format(table=table)
 

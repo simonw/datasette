@@ -572,6 +572,7 @@ class TableView(RowTableShared):
         # _group_count=col1&_group_count=col2
         group_count = special_args_lists.get('_group_count') or []
         if group_count:
+            count_sql = None
             sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
                 group_cols=', '.join('"{}"'.format(group_count_col) for group_count_col in group_count),
                 table_name=escape_sqlite_table_name(table),
@@ -579,6 +580,10 @@ class TableView(RowTableShared):
             )
             is_view = True
         else:
+            count_sql = 'select count(*) from {table_name} {where}'.format(
+                table_name=escape_sqlite_table_name(table),
+                where=where_clause,
+            )
             sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
                 select=select,
                 table_name=escape_sqlite_table_name(table),
@@ -620,6 +625,23 @@ class TableView(RowTableShared):
                 '_next': next_value,
             }))
 
+        # Number of filtered rows in whole set:
+        filtered_table_rows = None
+        if not where_clauses and not is_view:
+            # Use the pre-calculated total
+            filtered_table_rows = table_rows
+        elif not truncated and len(rows) < self.page_size:
+            filtered_table_rows = len(rows)
+        else:
+            # Attempt a full count, if we can do it in < X ms
+            if count_sql:
+                try:
+                    count_rows = list(await self.execute(name, count_sql, params))
+                    filtered_table_rows = count_rows[0][0]
+                except sqlite3.OperationalError:
+                    # Almost certainly hit the timeout
+                    pass
+
         async def extra_template():
             return {
                 'database_hash': hash,
@@ -641,6 +663,7 @@ class TableView(RowTableShared):
             'rows': rows[:self.page_size],
             'truncated': truncated,
             'table_rows': table_rows,
+            'filtered_table_rows': filtered_table_rows,
             'columns': columns,
             'primary_keys': pks,
             'query': {

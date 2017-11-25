@@ -442,7 +442,7 @@ class RowTableShared(BaseView):
                         '<a href="/{database}-{database_hash}/{table}/{id}">{label}</a>&nbsp;<em>{id}</em>'.format(
                             database=database,
                             database_hash=database_hash,
-                            table=escape_sqlite_table_name(other_table),
+                            table=urllib.parse.quote_plus(other_table),
                             id=value,
                             label=label,
                         )

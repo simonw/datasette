@@ -10,6 +10,11 @@ Datasette provides an instant, read-only JSON API for any SQLite database. It al
 
 Some examples: https://github.com/simonw/datasette/wiki/Datasettes
 
+## News
+
+* 25th November 2017: [New in Datasette: filters, foreign keys and search](https://simonwillison.net/2017/Nov/25/new-in-datasette/)
+* 13th November 2017: [Datasette: instantly create and publish an API for your SQLite databases](https://simonwillison.net/2017/Nov/13/datasette/)
+
 ## Installation
 
     pip3 install datasette

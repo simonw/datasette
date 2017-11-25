@@ -6,3 +6,12 @@ python:
 
 script:
   - python setup.py test
+
+deploy:
+  provider: pypi
+  user: simonw
+  distributions: bdist_wheel
+  password:
+    secure: Rx6Wl+a2UL+Nr2QQsbtQtrfsZQoC4LmXpDtWyOxFs76aPyC2JmJOb7wYxkmG703LxzZNuUuU9+4WxuA5+/JbyLwT1oQFUBtRfpKIroFa1NKKqQss1RbR+feLufcLT5dJNSkQb+xiKmep5pZnVbRNbmC4z0SFO4/5LJfegSi0pXBbV4IclE7kXSMZS4bYFAb6n9YGfFvwj0o7/GYD6P9MaNwuMqtVsYWZK/S0Bt4wthNc29av8R/jI3++MC3bXs9KC18q5s3x761rWQe/P/u2J++wufqWw9TyrtSVkvQMsaweBuo+0iY4Uiv8m5rPI5xT5rvLC8jdbLnj1FY5xphohEl3/H5vvmW7zBhBFvCSFSirXBkB7fZyX6uoVfe81vNzH/GGNwEi/3E4SVuUk/v2Fm4LBIXfg23O0Gl8aUZnhvcvL5eImadCRCy+dOhLkX9QO7iS6Bu+jjzu5yfqqoIQC96uB9HDn8OZLZ/9W4PlISc1+ARyoCEqeh33mB5IQN41XEbSLbW2STvPS0HYt8mffDDgv/YXjdxUjceGqsUYmksk/6feq2oOdBgwYG1HhOA9dlG7xQsWPCXsaDIZ2olnXnz8AIsZN7jtJiJoUWUF+ZlwLL8zA/wNqLoyohgsKa0Ne4BEpa42XVmhkoWMbl5sJfQzmjS/pQNc9hkv0n1UKYY=
+  on:
+    tags: true

@@ -1,6 +1,127 @@
 Changelog
 =========
 
+0.13 (2017-11-24)
+-----------------
+- Search now applies to current filters.
+
+  Combined search into the same form as filters.
+
+  Closes `#133`_
+
+- Much tidier design for table view header.
+
+  Closes `#147`_
+
+- Added ``?column__not=blah`` filter.
+
+  Closes `#148`_
+
+- Row page now resolves foreign keys.
+
+  Closes `#132`_
+
+- Further tweaks to select/input filter styling.
+
+  Refs `#86`_ - thanks for the help, @natbat!
+
+- Show linked foreign key in table cells.
+
+- Added UI for editing table filters.
+
+  Refs `#86`_
+
+- Hide FTS-created tables on index pages.
+
+  Closes `#129`_
+
+- Add publish to heroku support [Jacob Kaplan-Moss]
+
+  ``datasette publish heroku mydb.db``
+
+  Pull request `#104`_
+
+- Initial implementation of ``?_group_count=column``.
+
+  URL shortcut for counting rows grouped by one or more columns.
+
+  ``?_group_count=column1&_group_count=column2`` works as well.
+
+  SQL generated looks like this::
+
+      select "qSpecies", count(*) as "count"
+      from Street_Tree_List
+      group by "qSpecies"
+      order by "count" desc limit 100
+
+  Or for two columns like this::
+
+      select "qSpecies", "qSiteInfo", count(*) as "count"
+      from Street_Tree_List
+      group by "qSpecies", "qSiteInfo"
+      order by "count" desc limit 100
+
+  Refs `#44`_
+
+- Added ``--build=master`` option to datasette publish and package.
+
+  The ``datasette publish`` and ``datasette package`` commands both now accept an
+  optional ``--build`` argument. If provided, this can be used to specify a branch
+  published to GitHub that should be built into the container.
+
+  This makes it easier to test code that has not yet been officially released to
+  PyPI, e.g.::
+
+      datasette publish now mydb.db --branch=master
+
+- Implemented ``?_search=XXX`` + UI if a FTS table is detected.
+
+  Closes `#131`_
+
+- Added ``datasette --version`` support.
+
+- Table views now show expanded foreign key references, if possible.
+ 
+  If a table has foreign key columns, and those foreign key tables have
+  ``label_columns``, the TableView will now query those other tables for the
+  corresponding values and display those values as links in the corresponding
+  table cells.
+
+  label_columns are currently detected by the ``inspect()`` function, which looks
+  for any table that has just two columns - an ID column and one other - and
+  sets the ``label_column`` to be that second non-ID column.
+
+- Don't prevent tabbing to "Run SQL" button (`#117`_) [Robert Gieseke]
+
+  See comment in `#115`_
+
+- Add keyboard shortcut to execute SQL query (`#115`_) [Robert Gieseke]
+
+- Allow ``--load-extension`` to be set via environment variable.
+
+- Add support for ``?field__isnull=1`` (`#107`_) [Ray N]
+
+- Add spatialite, switch to debian and local build (`#114`_) [Ariel Núñez]
+
+- Added ``--load-extension`` argument to datasette serve.
+
+  Allows loading of SQLite extensions. Refs `#110`_.
+
+.. _#133: https://github.com/simonw/datasette/issues/133
+.. _#147: https://github.com/simonw/datasette/issues/147
+.. _#148: https://github.com/simonw/datasette/issues/148
+.. _#132: https://github.com/simonw/datasette/issues/132
+.. _#86: https://github.com/simonw/datasette/issues/86
+.. _#129: https://github.com/simonw/datasette/issues/129
+.. _#104: https://github.com/simonw/datasette/issues/104
+.. _#44: https://github.com/simonw/datasette/issues/44
+.. _#131: https://github.com/simonw/datasette/issues/131
+.. _#115: https://github.com/simonw/datasette/issues/115
+.. _#117: https://github.com/simonw/datasette/issues/117
+.. _#107: https://github.com/simonw/datasette/issues/107
+.. _#114: https://github.com/simonw/datasette/issues/114
+.. _#110: https://github.com/simonw/datasette/issues/110
+
 0.12 (2017-11-16)
 -----------------
 - Added ``__version__``, now displayed as tooltip in page footer (`#108`_).

@@ -21,8 +21,12 @@ def cli():
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
 @click.option('--inspect-file', default='inspect-data.json')
-def build(files, inspect_file):
-    app = Datasette(files)
+@click.option(
+    'sqlite_extensions', '--load-extension', envvar='SQLITE_EXTENSIONS', multiple=True,
+    type=click.Path(exists=True, resolve_path=True), help='Path to a SQLite extension to load'
+)
+def build(files, inspect_file, sqlite_extensions):
+    app = Datasette(files, sqlite_extensions=sqlite_extensions)
     open(inspect_file, 'w').write(json.dumps(app.inspect(), indent=2))
 
 

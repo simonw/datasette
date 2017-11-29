@@ -25,6 +25,7 @@ from .utils import (
     escape_sqlite_table_name,
     filters_should_redirect,
     get_all_foreign_keys,
+    is_url,
     InvalidSql,
     path_from_row_pks,
     path_with_added_args,
@@ -443,6 +444,10 @@ class RowTableShared(BaseView):
                     )
                 elif value is None:
                     display_value = jinja2.Markup('&nbsp;')
+                elif is_url(str(value).strip()):
+                    display_value = jinja2.Markup(
+                        '<a href="{url}">{url}</a>'.format(url=value.strip())
+                    )
                 else:
                     display_value = str(value)
                 cells.append({

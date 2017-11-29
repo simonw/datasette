@@ -441,3 +441,18 @@ def filters_should_redirect(special_args):
             ('_filter_value_{}'.format(number), None),
         ])
     return redirect_params
+
+
+whitespace_re = re.compile(r'\s')
+
+
+def is_url(value):
+    "Must start with http:// or https:// and contain JUST a URL"
+    if not isinstance(value, str):
+        return False
+    if not value.startswith('http://') and not value.startswith('https://'):
+        return False
+    # Any whitespace at all is invalid
+    if whitespace_re.search(value):
+        return False
+    return True

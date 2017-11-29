@@ -151,3 +151,13 @@ def test_detect_fts():
     assert None is utils.detect_fts(conn, 'Dumb_Table')
     assert None is utils.detect_fts(conn, 'Test_View')
     assert 'Street_Tree_List_fts' == utils.detect_fts(conn, 'Street_Tree_List')
+
+
+@pytest.mark.parametrize('url,expected', [
+    ('http://www.google.com/', True),
+    ('https://example.com/', True),
+    ('www.google.com', False),
+    ('http://www.google.com/ is a search engine', False),
+])
+def test_is_url(url, expected):
+    assert expected == utils.is_url(url)

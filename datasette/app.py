@@ -232,6 +232,8 @@ class BaseView(HTTPMethodView):
                     'url_json': path_with_ext(request, '.json'),
                     'url_jsono': path_with_ext(request, '.jsono'),
                     'metadata': self.ds.metadata,
+                    'extra_css_urls': self.ds.extra_css_urls(),
+                    'extra_js_urls': self.ds.extra_js_urls(),
                     'datasette_version': __version__,
                 }
             }
@@ -296,6 +298,8 @@ class IndexView(HTTPMethodView):
                 databases=databases,
                 metadata=self.ds.metadata,
                 datasette_version=__version__,
+                extra_css_urls=self.ds.extra_css_urls(),
+                extra_js_urls=self.ds.extra_js_urls(),
             )
 
 
@@ -772,6 +776,24 @@ class Datasette:
         self.metadata = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []
+
+    def asset_urls(self, key):
+        for url_or_dict in (self.metadata.get(key) or []):
+            if isinstance(url_or_dict, dict):
+                yield {
+                    'url': url_or_dict['url'],
+                    'sri': url_or_dict.get('sri'),
+                }
+            else:
+                yield {
+                    'url': url_or_dict,
+                }
+
+    def extra_css_urls(self):
+        return self.asset_urls('extra_css_urls')
+
+    def extra_js_urls(self):
+        return self.asset_urls('extra_js_urls')
 
     def prepare_connection(self, conn):
         conn.row_factory = sqlite3.Row

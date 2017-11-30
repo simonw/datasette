@@ -16,6 +16,7 @@ Contents
 .. toctree::
    :maxdepth: 2
 
+   custom_templates
    changelog
 
 Getting started

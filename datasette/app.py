@@ -3,8 +3,7 @@ from sanic import response
 from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 from sanic.request import RequestParameters
-from sanic_jinja2 import SanicJinja2
-from jinja2 import FileSystemLoader
+from jinja2 import Environment, FileSystemLoader
 import re
 import sqlite3
 from pathlib import Path
@@ -43,13 +42,20 @@ HASH_BLOCK_SIZE = 1024 * 1024
 connections = threading.local()
 
 
-class BaseView(HTTPMethodView):
+class RenderMixin(HTTPMethodView):
+    def render(self, template, **context):
+        return response.html(
+            self.jinja_env.get_template(template).render(**context)
+        )
+
+
+class BaseView(RenderMixin):
     template = None
 
     def __init__(self, datasette):
         self.ds = datasette
         self.files = datasette.files
-        self.jinja = datasette.jinja
+        self.jinja_env = datasette.jinja_env
         self.executor = datasette.executor
         self.page_size = datasette.page_size
         self.max_returned_rows = datasette.max_returned_rows
@@ -239,9 +245,8 @@ class BaseView(HTTPMethodView):
                     'datasette_version': __version__,
                 }
             }
-            r = self.jinja.render(
+            r = self.render(
                 template,
-                request,
                 **context,
             )
             r.status = status_code
@@ -253,11 +258,11 @@ class BaseView(HTTPMethodView):
         return r
 
 
-class IndexView(HTTPMethodView):
+class IndexView(RenderMixin):
     def __init__(self, datasette):
         self.ds = datasette
         self.files = datasette.files
-        self.jinja = datasette.jinja
+        self.jinja_env = datasette.jinja_env
         self.executor = datasette.executor
 
     async def get(self, request, as_json):
@@ -294,9 +299,8 @@ class IndexView(HTTPMethodView):
                 }
             )
         else:
-            return self.jinja.render(
+            return self.render(
                 'index.html',
-                request,
                 databases=databases,
                 metadata=self.ds.metadata,
                 datasette_version=__version__,
@@ -888,17 +892,16 @@ class Datasette:
 
     def app(self):
         app = Sanic(__name__)
-        self.jinja = SanicJinja2(
-            app,
+        self.jinja_env = Environment(
             loader=FileSystemLoader([
                 str(app_root / 'datasette' / 'templates')
             ]),
             autoescape=True,
         )
-        self.jinja.add_env('escape_css_string', escape_css_string, 'filters')
-        self.jinja.add_env('quote_plus', lambda u: urllib.parse.quote_plus(u), 'filters')
-        self.jinja.add_env('escape_table_name', escape_sqlite_table_name, 'filters')
-        self.jinja.add_env('to_css_class', to_css_class, 'filters')
+        self.jinja_env.filters['escape_css_string'] = escape_css_string
+        self.jinja_env.filters['quote_plus'] = lambda u: urllib.parse.quote_plus(u)
+        self.jinja_env.filters['escape_table_name'] = escape_sqlite_table_name
+        self.jinja_env.filters['to_css_class'] = to_css_class
         app.add_route(IndexView.as_view(self), '/<as_json:(.jsono?)?$>')
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, '/favicon.ico')

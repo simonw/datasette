@@ -16,7 +16,6 @@ setup(
         'click-default-group==1.2',
         'Sanic==0.6.0',
         'Jinja2==2.10',
-        'sanic-jinja2==0.5.5',
         'hupper==1.0',
     ],
     entry_points='''

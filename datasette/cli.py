@@ -156,7 +156,8 @@ def package(files, tag, metadata, extra_options, branch, **extra_metadata):
 )
 @click.option('--inspect-file', help='Path to JSON file created using "datasette build"')
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
-def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata):
+@click.option('-t', '--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
+def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir):
     """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
@@ -181,6 +182,7 @@ def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, 
         inspect_data=inspect_data,
         metadata=metadata_data,
         sqlite_extensions=sqlite_extensions,
+        template_dir=template_dir,
     )
     # Force initial hashing/table counting
     ds.inspect()

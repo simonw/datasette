@@ -771,7 +771,7 @@ class Datasette:
     def __init__(
             self, files, num_threads=3, cache_headers=True, page_size=100,
             max_returned_rows=1000, sql_time_limit_ms=1000, cors=False,
-            inspect_data=None, metadata=None, sqlite_extensions=None):
+            inspect_data=None, metadata=None, sqlite_extensions=None, template_dir=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -786,6 +786,7 @@ class Datasette:
         self.metadata = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []
+        self.template_dir = template_dir
 
     def asset_urls(self, key):
         for url_or_dict in (self.metadata.get(key) or []):
@@ -892,10 +893,12 @@ class Datasette:
 
     def app(self):
         app = Sanic(__name__)
+        template_paths = []
+        if self.template_dir:
+            template_paths.append(self.template_dir)
+        template_paths.append(str(app_root / 'datasette' / 'templates'))
         self.jinja_env = Environment(
-            loader=FileSystemLoader([
-                str(app_root / 'datasette' / 'templates')
-            ]),
+            loader=FileSystemLoader(template_paths),
             autoescape=True,
         )
         self.jinja_env.filters['escape_css_string'] = escape_css_string

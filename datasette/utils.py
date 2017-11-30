@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 import base64
+import hashlib
 import json
 import os
 import re
@@ -456,3 +457,30 @@ def is_url(value):
     if whitespace_re.search(value):
         return False
     return True
+
+
+css_class_re = re.compile(r'^[a-zA-Z]+[_a-zA-Z0-9-]*$')
+css_invalid_chars_re = re.compile(r'[^a-zA-Z0-9_\-]')
+
+
+def to_css_class(s):
+    """
+    Given a string (e.g. a table name) returns a valid unique CSS class.
+    For simple cases, just returns the string again. If the string is not a
+    valid CSS class (we disallow - and _ prefixes even though they are valid
+    as they may be confused with browser prefixes) we strip invalid characters
+    and add a 6 char md5 sum suffix, to make sure two tables with identical
+    names after stripping characters don't end up with the same CSS class.
+    """
+    if css_class_re.match(s):
+        return s
+    md5_suffix = hashlib.md5(s.encode('utf8')).hexdigest()[:6]
+    # Strip leading _, -
+    s = s.lstrip('_').lstrip('-')
+    # Replace any whitespace with hyphens
+    s = '-'.join(s.split())
+    # Remove any remaining invalid characters
+    s = css_invalid_chars_re.sub('', s)
+    # Attach the md5 suffix
+    bits = [b for b in (s, md5_suffix) if b]
+    return '-'.join(bits)

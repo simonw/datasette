@@ -21,6 +21,8 @@
 </style>
 {% endblock %}
 
+{% block body_class %}db db-{{ database|to_css_class }}{% endblock %}
+
 {% block content %}
 <div class="hd"><a href="/">home</a>{% if query %} / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a>{% endif %}</div>
 

@@ -2,6 +2,8 @@
 
 {% block title %}{{ metadata.title or "Datasette" }}: {% for database in databases %}{{ database.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% endblock %}
 
+{% block body_class %}index{% endblock %}
+
 {% block content %}
 <h1>{{ metadata.title or "Datasette" }}</h1>
 {% if metadata.license or metadata.source_url %}

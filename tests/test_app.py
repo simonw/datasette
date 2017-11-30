@@ -1,6 +1,7 @@
 from datasette.app import Datasette
 import os
 import pytest
+import re
 import sqlite3
 import tempfile
 import time
@@ -419,6 +420,25 @@ def test_empty_search_parameter_gets_removed(app_client):
     assert response.headers['Location'].endswith(
         '?name__exact=chidi'
     )
+
+
+@pytest.mark.parametrize('path,expected_classes', [
+    ('/', ['index']),
+    ('/test_tables', ['db', 'db-test_tables']),
+    ('/test_tables/simple_primary_key', [
+        'table', 'db-test_tables', 'table-simple_primary_key'
+    ]),
+    ('/test_tables/table%2Fwith%2Fslashes.csv', [
+        'table', 'db-test_tables', 'table-tablewithslashescsv-fa7563'
+    ]),
+    ('/test_tables/simple_primary_key/1', [
+        'row', 'db-test_tables', 'table-simple_primary_key'
+    ]),
+])
+def test_css_classes_on_body(app_client, path, expected_classes):
+    response = app_client.get(path, gather_request=False)
+    classes = re.search(r'<body class="(.*)">', response.text).group(1).split()
+    assert classes == expected_classes
 
 
 TABLES = '''

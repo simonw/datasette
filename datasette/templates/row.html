@@ -12,6 +12,8 @@
 </style>
 {% endblock %}
 
+{% block body_class %}row db-{{ database|to_css_class }} table-{{ table|to_css_class }}{% endblock %}
+
 {% block content %}
 <div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a> / <a href="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}">{{ table }}</a></div>
 

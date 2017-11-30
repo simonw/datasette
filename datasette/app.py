@@ -31,6 +31,7 @@ from .utils import (
     path_with_added_args,
     path_with_ext,
     sqlite_timelimit,
+    to_css_class,
     validate_sql_select,
 )
 from .version import __version__
@@ -897,6 +898,7 @@ class Datasette:
         self.jinja.add_env('escape_css_string', escape_css_string, 'filters')
         self.jinja.add_env('quote_plus', lambda u: urllib.parse.quote_plus(u), 'filters')
         self.jinja.add_env('escape_table_name', escape_sqlite_table_name, 'filters')
+        self.jinja.add_env('to_css_class', to_css_class, 'filters')
         app.add_route(IndexView.as_view(self), '/<as_json:(.jsono?)?$>')
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, '/favicon.ico')

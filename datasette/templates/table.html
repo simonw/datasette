@@ -13,6 +13,8 @@
 </style>
 {% endblock %}
 
+{% block body_class %}table db-{{ database|to_css_class }} table-{{ table|to_css_class }}{% endblock %}
+
 {% block content %}
 <div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></div>
 

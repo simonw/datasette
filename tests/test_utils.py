@@ -161,3 +161,16 @@ def test_detect_fts():
 ])
 def test_is_url(url, expected):
     assert expected == utils.is_url(url)
+
+
+@pytest.mark.parametrize('s,expected', [
+    ('simple', 'simple'),
+    ('MixedCase', 'MixedCase'),
+    ('-no-leading-hyphens', 'no-leading-hyphens-65bea6'),
+    ('_no-leading-underscores', 'no-leading-underscores-b921bc'),
+    ('no spaces', 'no-spaces-7088d7'),
+    ('-', '336d5e'),
+    ('no $ characters', 'no--characters-59e024'),
+])
+def test_to_css_class(s, expected):
+    assert expected == utils.to_css_class(s)

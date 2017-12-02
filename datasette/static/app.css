@@ -180,6 +180,7 @@ form input[type=submit] {
     background: transparent;
     background-image: none;
     -webkit-appearance: none;
+    -moz-appearance: none;
     cursor: pointer;
 }
 .select-wrapper select {

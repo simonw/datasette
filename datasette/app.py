@@ -773,7 +773,8 @@ class Datasette:
     def __init__(
             self, files, num_threads=3, cache_headers=True, page_size=100,
             max_returned_rows=1000, sql_time_limit_ms=1000, cors=False,
-            inspect_data=None, metadata=None, sqlite_extensions=None, template_dir=None):
+            inspect_data=None, metadata=None, sqlite_extensions=None,
+            template_dir=None, static_mounts=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -789,6 +790,7 @@ class Datasette:
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []
         self.template_dir = template_dir
+        self.static_mounts = static_mounts or []
 
     def asset_urls(self, key):
         for url_or_dict in (self.metadata.get(key) or []):
@@ -918,6 +920,8 @@ class Datasette:
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, '/favicon.ico')
         app.static('/-/static/', str(app_root / 'datasette' / 'static'))
+        for path, dirname in self.static_mounts:
+            app.static(path, dirname)
         app.add_route(
             DatabaseView.as_view(self),
             '/<db_name:[^/\.]+?><as_json:(.jsono?)?$>'

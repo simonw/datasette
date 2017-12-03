@@ -1,6 +1,7 @@
 import click
 from click_default_group import DefaultGroup
 import json
+import os
 import shutil
 from subprocess import call, check_output
 import sys
@@ -140,6 +141,18 @@ def package(files, tag, metadata, extra_options, branch, **extra_metadata):
         call(args)
 
 
+class StaticMount(click.ParamType):
+    name = 'static mount'
+
+    def convert(self, value, param, ctx):
+        if ':' not in value:
+            self.fail('"%s" should be of format mountpoint:directory' % value, param, ctx)
+        path, dirpath = value.split(':')
+        if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
+            self.fail('%s is not a valid directory path' % value, param, ctx)
+        return path, dirpath
+
+
 @cli.command()
 @click.argument('files', type=click.Path(exists=True), nargs=-1)
 @click.option('-h', '--host', default='127.0.0.1', help='host for server, defaults to 127.0.0.1')
@@ -157,7 +170,8 @@ def package(files, tag, metadata, extra_options, branch, **extra_metadata):
 @click.option('--inspect-file', help='Path to JSON file created using "datasette build"')
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
 @click.option('-t', '--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
-def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir):
+@click.option('-s', '--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)
+def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir, static):
     """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
@@ -183,6 +197,7 @@ def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, 
         metadata=metadata_data,
         sqlite_extensions=sqlite_extensions,
         template_dir=template_dir,
+        static_mounts=static,
     )
     # Force initial hashing/table counting
     ds.inspect()

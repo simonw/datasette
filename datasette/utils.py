@@ -70,12 +70,22 @@ class InvalidSql(Exception):
     pass
 
 
+allowed_sql_res = [
+    re.compile(r'^select\b'),
+    re.compile(r'^with\b'),
+]
+disallawed_sql_res = [
+    (re.compile('pragma'), 'Statement may not contain PRAGMA'),
+]
+
+
 def validate_sql_select(sql):
     sql = sql.strip().lower()
-    if not sql.startswith('select '):
-        raise InvalidSql('Statement must begin with SELECT')
-    if 'pragma' in sql:
-        raise InvalidSql('Statement may not contain PRAGMA')
+    if not any(r.match(sql) for r in allowed_sql_res):
+        raise InvalidSql('Statement must be a SELECT')
+    for r, msg in disallawed_sql_res:
+        if r.search(sql):
+            raise InvalidSql(msg)
 
 
 def path_with_added_args(request, args):

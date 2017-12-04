@@ -181,14 +181,14 @@ def test_invalid_custom_sql(app_client):
         gather_request=False
     )
     assert response.status == 400
-    assert 'Statement must begin with SELECT' in response.text
+    assert 'Statement must be a SELECT' in response.text
     response = app_client.get(
         '/test_tables.json?sql=.schema',
         gather_request=False
     )
     assert response.status == 400
     assert response.json['ok'] is False
-    assert 'Statement must begin with SELECT' == response.json['error']
+    assert 'Statement must be a SELECT' == response.json['error']
 
 
 def test_table_page(app_client):

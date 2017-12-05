@@ -50,9 +50,13 @@ The index template (the top level page at /) gets this::
 
     <body class="index">
 
-The database template (/dbname/) gets this::
+The database template (/dbname) gets this::
 
     <body class="db db-dbname">
+
+The custom SQL template (/dbname?sql=...) gets this::
+
+    <body class="query db-dbname">
 
 The table template (/dbname/tablename) gets::
 
@@ -103,6 +107,10 @@ The lookup rules Datasette uses are as follows::
     Database page (/mydatabase):
         database-mydatabase.html
         database.html
+
+    Custom query page (/mydatabase?sql=...):
+        query-mydatabase.html
+        query.html
 
     Table page (/mydatabase/mytable):
         table-mydatabase-mytable.html

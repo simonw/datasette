@@ -50,6 +50,8 @@ class RenderMixin(HTTPMethodView):
 
 
 class BaseView(RenderMixin):
+    re_named_parameter = re.compile(':([a-zA-Z0-9_]+)')
+
     def __init__(self, datasette):
         self.ds = datasette
         self.files = datasette.files
@@ -258,6 +260,46 @@ class BaseView(RenderMixin):
             )
         return r
 
+    async def custom_sql(self, request, name, hash, sql, editable=True, canned_query=None):
+        params = request.raw_args
+        if 'sql' in params:
+            params.pop('sql')
+        # Extract any :named parameters
+        named_parameters = self.re_named_parameter.findall(sql)
+        named_parameter_values = {
+            named_parameter: params.get(named_parameter) or ''
+            for named_parameter in named_parameters
+        }
+
+        # Set to blank string if missing from params
+        for named_parameter in named_parameters:
+            if named_parameter not in params:
+                params[named_parameter] = ''
+
+        extra_args = {}
+        if params.get('_sql_time_limit_ms'):
+            extra_args['custom_time_limit'] = int(params['_sql_time_limit_ms'])
+        rows, truncated, description = await self.execute(
+            name, sql, params, truncate=True, **extra_args
+        )
+        columns = [r[0] for r in description]
+        return {
+            'database': name,
+            'rows': rows,
+            'truncated': truncated,
+            'columns': columns,
+            'query': {
+                'sql': sql,
+                'params': params,
+            }
+        }, {
+            'database_hash': hash,
+            'custom_sql': True,
+            'named_parameter_values': named_parameter_values,
+            'editable': editable,
+            'canned_query': canned_query,
+        }, ('query-{}.html'.format(to_css_class(name)), 'query.html')
+
 
 class IndexView(RenderMixin):
     def __init__(self, datasette):
@@ -315,12 +357,13 @@ async def favicon(request):
 
 
 class DatabaseView(BaseView):
-    re_named_parameter = re.compile(':([a-zA-Z0-9_]+)')
-
     async def data(self, request, name, hash):
         if request.args.get('sql'):
-            return await self.custom_sql(request, name, hash)
+            sql = request.raw_args.pop('sql')
+            validate_sql_select(sql)
+            return await self.custom_sql(request, name, hash, sql)
         info = self.ds.inspect()[name]
+        metadata = self.ds.metadata.get('databases', {}).get(name, {})
         tables = list(info['tables'].values())
         tables.sort(key=lambda t: (t['hidden'], t['name']))
         return {
@@ -328,48 +371,14 @@ class DatabaseView(BaseView):
             'tables': tables,
             'hidden_count': len([t for t in tables if t['hidden']]),
             'views': info['views'],
+            'queries': [{
+                'name': query_name,
+                'sql': query_sql,
+            } for query_name, query_sql in (metadata.get('queries') or {}).items()],
         }, {
             'database_hash': hash,
             'show_hidden': request.args.get('_show_hidden'),
-        }, ('database-{}.html'.format(to_css_class(name)), 'database.html')
-
-    async def custom_sql(self, request, name, hash):
-        params = request.raw_args
-        sql = params.pop('sql')
-        validate_sql_select(sql)
-
-        # Extract any :named parameters
-        named_parameters = self.re_named_parameter.findall(sql)
-        named_parameter_values = {
-            named_parameter: params.get(named_parameter) or ''
-            for named_parameter in named_parameters
-        }
-
-        # Set to blank string if missing from params
-        for named_parameter in named_parameters:
-            if named_parameter not in params:
-                params[named_parameter] = ''
-
-        extra_args = {}
-        if params.get('_sql_time_limit_ms'):
-            extra_args['custom_time_limit'] = int(params['_sql_time_limit_ms'])
-        rows, truncated, description = await self.execute(
-            name, sql, params, truncate=True, **extra_args
-        )
-        columns = [r[0] for r in description]
-        return {
-            'database': name,
-            'rows': rows,
-            'truncated': truncated,
-            'columns': columns,
-            'query': {
-                'sql': sql,
-                'params': params,
-            }
-        }, {
-            'database_hash': hash,
-            'custom_sql': True,
-            'named_parameter_values': named_parameter_values,
+            'editable': True,
         }, ('database-{}.html'.format(to_css_class(name)), 'database.html')
 
 
@@ -466,6 +475,9 @@ class RowTableShared(BaseView):
 class TableView(RowTableShared):
     async def data(self, request, name, hash, table):
         table = urllib.parse.unquote_plus(table)
+        canned_query = self.ds.get_canned_query(name, table)
+        if canned_query is not None:
+            return await self.custom_sql(request, name, hash, canned_query['sql'], editable=False, canned_query=table)
         pks = await self.pks_for_table(name, table)
         is_view = bool(list(await self.execute(name, "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n", {
             'n': table,
@@ -791,6 +803,20 @@ class Datasette:
         self.sqlite_extensions = sqlite_extensions or []
         self.template_dir = template_dir
         self.static_mounts = static_mounts or []
+
+    def get_canned_query(self, database_name, query_name):
+        query = self.metadata.get(
+            'databases', {}
+        ).get(
+            database_name, {}
+        ).get(
+            'queries', {}
+        ).get(query_name)
+        if query:
+            return {
+                'name': query_name,
+                'sql': query,
+            }
 
     def asset_urls(self, key):
         for url_or_dict in (self.metadata.get(key) or []):

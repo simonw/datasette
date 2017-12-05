@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}{{ database }}{% if query and query.sql %}{{ query.sql }}{% endif %}{% endblock %}
+
+{% block extra_head %}
+{% if columns %}
+<style>
+@media only screen and (max-width: 576px) {
+{% for column in columns %}
+    td:nth-of-type({{ loop.index }}):before { content: "{{ column|escape_css_string }}"; }
+{% endfor %}
+}
+</style>
+{% endif %}
+{% include "_codemirror.html" %}
+{% endblock %}
+
+{% block body_class %}query db-{{ database|to_css_class }}{% endblock %}
+
+{% block content %}
+<div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></div>
+
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ database }}</h1>
+
+<form class="sql" action="/{{ database }}-{{ database_hash }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="get">
+    <h3>Custom SQL query{% if rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(rows|length) }} row{% if rows|length == 1 %}{% else %}s{% endif %}{% endif %}</h3>
+    {% if editable %}
+        <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_table_name }}{% endif %}</textarea></p>
+    {% else %}
+        <pre>{% if query %}{{ query.sql }}{% endif %}</pre>
+    {% endif %}
+    {% if named_parameter_values %}
+        <h3>Query parameters</h3>
+        {% for name, value in named_parameter_values.items() %}
+            <p><label for="qp{{ loop.counter }}">{{ name }}</label> <input type="text" id="qp{{ loop.counter }}" name="{{ name }}" value="{{ value }}"></p>
+        {% endfor %}
+    {% endif %}
+    <p><input type="submit" value="Run SQL"></p>
+</form>
+
+{% if rows %}
+<p>This data as <a href="{{ url_json }}">.json</a>, <a href="{{ url_jsono }}">.jsono</a></p>
+<table>
+    <thead>
+        <tr>
+            {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+        <tr>
+            {% for td in row %}
+                <td>{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% include "_codemirror_foot.html" %}
+
+{% endblock %}

@@ -1,0 +1,13 @@
+<script>
+    var editor = CodeMirror.fromTextArea(document.getElementsByName("sql")[0], {
+      lineNumbers: true,
+      mode: "text/x-sql",
+      lineWrapping: true,
+    });
+    editor.setOption("extraKeys", {
+      "Shift-Enter": function() {
+        document.getElementsByClassName("sql")[0].submit();
+      },
+      Tab: false
+    });
+</script>

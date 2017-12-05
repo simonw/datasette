@@ -3,62 +3,21 @@
 {% block title %}{{ database }}{% endblock %}
 
 {% block extra_head %}
-{% if columns %}
-<style>
-@media only screen and (max-width: 576px) {
-{% for column in columns %}
-    td:nth-of-type({{ loop.index }}):before { content: "{{ column|escape_css_string }}"; }
-{% endfor %}
-}
-</style>
-{% endif %}
-<script src="/-/static/codemirror-5.31.0.js"></script>
-<link rel="stylesheet" href="/-/static/codemirror-5.31.0-min.css" />
-<script src="/-/static/codemirror-5.31.0-sql.min.js"></script>
-<style>
-    .CodeMirror { height: auto; min-height: 70px; width: 80%; border: 1px solid #ddd; }
-    .CodeMirror-scroll { max-height: 200px; }
-</style>
+{% include "_codemirror.html" %}
 {% endblock %}
 
 {% block body_class %}db db-{{ database|to_css_class }}{% endblock %}
 
 {% block content %}
-<div class="hd"><a href="/">home</a>{% if query %} / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a>{% endif %}</div>
+<div class="hd"><a href="/">home</a></div>
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ database }}</h1>
 
 <form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
-    <h3>Custom SQL query{% if rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(rows|length) }} row{% if rows|length == 1 %}{% else %}s{% endif %}{% endif %}</h3>
-    <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_table_name }}{% endif %}</textarea></p>
-    {% if named_parameter_values %}
-        <h3>Query parameters</h3>
-        {% for name, value in named_parameter_values.items() %}
-            <p><label for="qp{{ loop.counter }}">{{ name }}</label> <input type="text" id="qp{{ loop.counter }}" name="{{ name }}" value="{{ value }}"></p>
-        {% endfor %}
-    {% endif %}
+    <h3>Custom SQL query</h3>
+    <p><textarea name="sql">select * from {{ tables[0].name|escape_table_name }}</textarea></p>
     <p><input type="submit" value="Run SQL"></p>
 </form>
-
-{% if rows %}
-<p>This data as <a href="{{ url_json }}">.json</a>, <a href="{{ url_jsono }}">.jsono</a></p>
-<table>
-    <thead>
-        <tr>
-            {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-    {% for row in rows %}
-        <tr>
-            {% for td in row %}
-                <td>{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>
-            {% endfor %}
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
-{% endif %}
 
 {% for table in tables %}
 {% if show_hidden or not table.hidden %}
@@ -83,20 +42,17 @@
     </ul>
 {% endif %}
 
+{% if queries %}
+    <h2>Queries</h2>
+    <ul>
+        {% for query in queries %}
+            <li><a href="/{{ database }}-{{ database_hash }}/{{ query.name|urlencode }}" title="{{ query.sql }}">{{ query.name }}</a></li>
+        {% endfor %}
+    </ul>
+{% endif %}
+
 <p>Download SQLite DB: <a href="/{{ database }}-{{ database_hash }}.db">{{ database }}.db</a></p>
 
-<script>
-    var editor = CodeMirror.fromTextArea(document.getElementsByName("sql")[0], {
-      lineNumbers: true,
-      mode: "text/x-sql",
-      lineWrapping: true,
-    });
-    editor.setOption("extraKeys", {
-      "Shift-Enter": function() {
-        document.getElementsByClassName("sql")[0].submit();
-      },
-      Tab: false
-    });
-</script>
+{% include "_codemirror_foot.html" %}
 
 {% endblock %}

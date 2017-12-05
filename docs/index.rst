@@ -18,6 +18,7 @@ Contents
 
    getting_started
    custom_templates
+   sql_queries
    changelog
 
 .. _Zeit Now: https://zeit.co/now

@@ -8,6 +8,8 @@
 
 Datasette provides an instant, read-only JSON API for any SQLite database. It also provides tools  for packaging the database up as a Docker container and deploying that container to hosting providers such as [Zeit Now](https://zeit.co/now).
 
+Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to convert them to SOLite, then publish them with Datasette.
+
 Some examples: https://github.com/simonw/datasette/wiki/Datasettes
 
 ## News

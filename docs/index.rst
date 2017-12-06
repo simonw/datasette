@@ -17,8 +17,8 @@ Contents
    :maxdepth: 2
 
    getting_started
-   custom_templates
    sql_queries
+   custom_templates
    changelog
 
 .. _Zeit Now: https://zeit.co/now

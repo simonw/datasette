@@ -61,6 +61,18 @@ If this time limit is too short for you, you can customize it using the
 
     datasette mydatabase.db --sql_time_limit_ms=3500
 
+You can optionally set a lower time limit for an individual query using the
+``_sql_time_limit_ms`` query string argument::
+
+    /my-database/my-table?qSpecies=44&_sql_time_limit_ms=100
+
+This would set the time limit to 100ms for that specific query. This feature
+is useful if you are working with databases of unknown size and complexity -
+a query that might make perfect sense for a smaller table could take too long
+to execute on a table with millions of rows. By setting custom time limits you
+can execute queries "optimistically" - e.g. give me an exact count of rows
+matching this query but only if it takes less than 100ms to calculate.
+
 Datasette returns a maximum of 1,000 rows of data at a time. If you execute a
 query that returns more than 1,000 rows, Datasette will return the first 1,000
 and include a warning that the result set has been truncated. You can use

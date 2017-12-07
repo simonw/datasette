@@ -300,7 +300,7 @@ def detect_fts_sql(table):
                 sql like '%VIRTUAL TABLE%USING FTS%content="{table}"%'
                 or (
                     tbl_name = "{table}"
-                    and sql not like 'CREATE VIEW%'
+                    and sql like '%VIRTUAL TABLE%USING FTS%'
                 )
             )
     '''.format(table=table)

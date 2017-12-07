@@ -147,11 +147,13 @@ def test_detect_fts():
     );
     CREATE VIEW Test_View AS SELECT * FROM Dumb_Table;
     CREATE VIRTUAL TABLE "Street_Tree_List_fts" USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content="Street_Tree_List");
+    CREATE VIRTUAL TABLE r USING rtree(a, b, c);
     '''
     conn = sqlite3.connect(':memory:')
     conn.executescript(sql)
     assert None is utils.detect_fts(conn, 'Dumb_Table')
     assert None is utils.detect_fts(conn, 'Test_View')
+    assert None is utils.detect_fts(conn, 'r')
     assert 'Street_Tree_List_fts' == utils.detect_fts(conn, 'Street_Tree_List')
 
 

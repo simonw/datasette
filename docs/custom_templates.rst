@@ -120,6 +120,16 @@ The lookup rules Datasette uses are as follows::
         row-mydatabase-mytable.html
         row.html
 
+    Rows and columns include on table page:
+        _rows_and_columns-table-mydatabase-mytable.html
+        _rows_and_columns-mydatabase-mytable.html
+        _rows_and_columns.html
+
+    Rows and columns include on row page:
+        _rows_and_columns-row-mydatabase-mytable.html
+        _rows_and_columns-mydatabase-mytable.html
+        _rows_and_columns.html
+
 If a table name has spaces or other unexpected characters in it, the template
 filename will follow the same rules as our custom ``<body>`` CSS classes - for
 example, a table called "Food Trucks" will attempt to load the following
@@ -140,5 +150,59 @@ content you can do so by creating a ``row.html`` template like this::
     {{ super() }}
     {% endblock %}
 
-Note the ``default:row.html`` template name, which ensures Jinja will inherit from the
-default template.
+Note the ``default:row.html`` template name, which ensures Jinja will inherit
+from the default template.
+
+The `_rows_and_columns.html` template is included on both the row and the table
+page, and displays the content of the row. The default template looks like this::
+
+    <table>
+        <thead>
+            <tr>
+                {% for column in display_columns %}
+                    <th scope="col">{{ column }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in display_rows %}
+            <tr>
+                {% for cell in row %}
+                    <td>{{ cell.value }}</td>
+                {% endfor %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+You can provide a custom template that applies to all of your databases and
+tables, or you can provide custom templates for specific tables using the
+template naming scheme described above.
+
+Say for example you want to output a certain column as unescaped HTML. You could
+provide a custom ``_rows_and_columns.html`` template like this::
+
+    <table>
+        <thead>
+            <tr>
+                {% for column in display_columns %}
+                    <th scope="col">{{ column }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in display_rows %}
+            <tr>
+                {% for cell in row %}
+                    <td>
+                        {% if cell.column == 'description' %}
+                            !!{{ cell.value|safe }}
+                        {% else %}
+                            {{ cell.value }}
+                        {% endif %}
+                    </td>
+                {% endfor %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>

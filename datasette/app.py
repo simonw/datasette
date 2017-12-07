@@ -682,6 +682,11 @@ class TableView(RowTableShared):
                 'display_columns': display_columns,
                 'filter_columns': filter_columns,
                 'display_rows': await self.make_display_rows(name, hash, table, rows, display_columns, pks, is_view, use_rowid, is_row_display=False),
+                'custom_rows_and_columns_templates': [
+                    '_rows_and_columns-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
+                    '_rows_and_columns-table-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
+                    '_rows_and_columns.html',
+                ]
             }
 
         return {
@@ -741,6 +746,11 @@ class RowView(RowTableShared):
                 'foreign_key_tables': await self.foreign_key_tables(name, table, pk_values),
                 'display_columns': columns,
                 'display_rows': await self.make_display_rows(name, hash, table, rows, columns, pks, is_view=False, use_rowid=use_rowid, is_row_display=True),
+                'custom_rows_and_columns_templates': [
+                    '_rows_and_columns-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
+                    '_rows_and_columns-row-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
+                    '_rows_and_columns.html',
+                ]
             }
 
         data = {

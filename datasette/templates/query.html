@@ -3,6 +3,7 @@
 {% block title %}{{ database }}{% if query and query.sql %}{{ query.sql }}{% endif %}{% endblock %}
 
 {% block extra_head %}
+{{ super() }}
 {% if columns %}
 <style>
 @media only screen and (max-width: 576px) {

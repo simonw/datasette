@@ -4,6 +4,7 @@
     {% if human_filter_description %}where {{ human_filter_description }}{% endif %}{% endblock %}
 
 {% block extra_head %}
+{{ super() }}
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in display_columns %}

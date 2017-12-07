@@ -423,6 +423,7 @@ class RowTableShared(BaseView):
 
         to_return = []
         for row in rows:
+            columns_to_loop = display_columns
             cells = []
             # Unless we are a view, the first column is a link - either to the rowid
             # or to the simple or compound primary key
@@ -443,8 +444,9 @@ class RowTableShared(BaseView):
                         'column': 'rowid' if use_rowid else 'Link',
                         'value': display_value,
                     })
+                    columns_to_loop = columns_to_loop[1:]
 
-            for value, column in zip(row, display_columns):
+            for value, column in zip(row, columns_to_loop):
                 if use_rowid and column == 'rowid':
                     # We already showed this in the linked first column
                     continue

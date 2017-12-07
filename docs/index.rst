@@ -18,6 +18,7 @@ Contents
 
    getting_started
    sql_queries
+   metadata
    custom_templates
    changelog
 

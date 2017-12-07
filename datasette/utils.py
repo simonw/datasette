@@ -150,7 +150,7 @@ FROM python:3
 COPY . /app
 WORKDIR /app
 RUN pip install {install_from}
-RUN datasette build {files} --inspect-file inspect-data.json
+RUN datasette inspect {files} --inspect-file inspect-data.json
 EXPOSE 8001
 CMD [{cmd}]'''.format(
         files=' '.join(files),
@@ -232,7 +232,7 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch=None
 
         open('requirements.txt', 'w').write(install_from)
         os.mkdir('bin')
-        open('bin/post_compile', 'w').write('datasette build --inspect-file inspect-data.json')
+        open('bin/post_compile', 'w').write('datasette inspect --inspect-file inspect-data.json')
 
         quoted_files = " ".join(map(shlex.quote, files))
         procfile_cmd = 'web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json'.format(

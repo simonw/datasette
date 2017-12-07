@@ -105,7 +105,7 @@ http://localhost:8001/History/downloads.jsono will return that data as JSON in a
       --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
       --load-extension TEXT        Path to a SQLite extension to load
       --inspect-file TEXT          Path to JSON file created using "datasette
-                                   build"
+                                   inspect"
       -m, --metadata FILENAME      Path to JSON file containing license/source
                                    metadata
       --help                       Show this message and exit.
@@ -199,7 +199,7 @@ Here's example output for the package command:
     Step 4/7 : RUN pip install datasette
      ---> Using cache
      ---> 340efa82bfd7
-    Step 5/7 : RUN datasette build parlgov.db --inspect-file inspect-data.json
+    Step 5/7 : RUN datasette inspect parlgov.db --inspect-file inspect-data.json
      ---> Using cache
      ---> 5fddbe990314
     Step 6/7 : EXPOSE 8001

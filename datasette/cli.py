@@ -26,7 +26,7 @@ def cli():
     'sqlite_extensions', '--load-extension', envvar='SQLITE_EXTENSIONS', multiple=True,
     type=click.Path(exists=True, resolve_path=True), help='Path to a SQLite extension to load'
 )
-def build(files, inspect_file, sqlite_extensions):
+def inspect(files, inspect_file, sqlite_extensions):
     app = Datasette(files, sqlite_extensions=sqlite_extensions)
     open(inspect_file, 'w').write(json.dumps(app.inspect(), indent=2))
 
@@ -225,7 +225,7 @@ class StaticMount(click.ParamType):
     'sqlite_extensions', '--load-extension', envvar='SQLITE_EXTENSIONS', multiple=True,
     type=click.Path(exists=True, resolve_path=True), help='Path to a SQLite extension to load'
 )
-@click.option('--inspect-file', help='Path to JSON file created using "datasette build"')
+@click.option('--inspect-file', help='Path to JSON file created using "datasette inspect"')
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
 @click.option('-t', '--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
 @click.option('-s', '--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)

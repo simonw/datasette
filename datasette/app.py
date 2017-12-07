@@ -621,8 +621,12 @@ class TableView(RowTableShared):
         rows = list(rows)
 
         display_columns = columns
+        filter_columns = columns
         if not use_rowid and not is_view:
             display_columns = ['Link'] + display_columns
+
+        if use_rowid and filter_columns[0] == 'rowid':
+            filter_columns = filter_columns[1:]
 
         info = self.ds.inspect()
         table_rows = None
@@ -670,6 +674,7 @@ class TableView(RowTableShared):
                 'use_rowid': use_rowid,
                 'filters': filters,
                 'display_columns': display_columns,
+                'filter_columns': filter_columns,
                 'display_rows': await self.make_display_rows(name, hash, table, rows, display_columns, pks, is_view, use_rowid),
             }
 

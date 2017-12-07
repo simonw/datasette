@@ -35,10 +35,8 @@
             <div class="select-wrapper">
                 <select name="_filter_column_{{ loop.index }}">
                     <option value="">- remove filter -</option>
-                    {% for c in display_columns %}
-                        {% if c != 'rowid' %}
-                            <option{% if c == column %} selected{% endif %}>{{ c }}</option>
-                        {% endif %}
+                    {% for c in filter_columns %}
+                          <option{% if c == column %} selected{% endif %}>{{ c }}</option>
                     {% endfor %}
                 </select>
             </div><div class="select-wrapper filter-op">
@@ -54,10 +52,8 @@
         <div class="select-wrapper">
             <select name="_filter_column">
                 <option value="">- column -</option>
-                {% for column in display_columns %}
-                    {% if column != 'rowid' %}
-                        <option>{{ column }}</option>
-                    {% endif %}
+                {% for column in filter_columns %}
+                      <option>{{ column }}</option>
                 {% endfor %}
             </select>
         </div><div class="select-wrapper filter-op">

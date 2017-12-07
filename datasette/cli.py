@@ -233,7 +233,9 @@ def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, 
     """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
-        hupper.start_reloader('datasette.cli.serve')
+        reloader = hupper.start_reloader('datasette.cli.serve')
+        if metadata:
+            reloader.watch_files([metadata.name])
 
     inspect_data = None
     if inspect_file:

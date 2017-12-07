@@ -393,7 +393,7 @@ class DatabaseDownload(BaseView):
 
 
 class RowTableShared(BaseView):
-    async def make_display_rows(self, database, database_hash, table, rows, display_columns, pks, is_view, use_rowid):
+    async def make_display_rows(self, database, database_hash, table, rows, display_columns, pks, is_view, use_rowid, is_row_display):
         # Get fancy with foreign keys
         expanded = {}
         tables = self.ds.inspect()[database]['tables']
@@ -427,18 +427,22 @@ class RowTableShared(BaseView):
             # Unless we are a view, the first column is a link - either to the rowid
             # or to the simple or compound primary key
             if not is_view:
-                display_value = jinja2.Markup(
-                    '<a href="/{database}-{database_hash}/{table}/{flat_pks}">{flat_pks}</a>'.format(
-                        database=database,
-                        database_hash=database_hash,
-                        table=urllib.parse.quote_plus(table),
-                        flat_pks=path_from_row_pks(row, pks, use_rowid),
-                    )
-                )
-                cells.append({
-                    'column': 'rowid' if use_rowid else 'Link',
-                    'value': display_value,
-                })
+                # On row display, only show the extra first column for use_rowid
+                if not is_row_display or (is_row_display and use_rowid):
+                    display_value = path_from_row_pks(row, pks, use_rowid)
+                    if not is_row_display:
+                        display_value = jinja2.Markup(
+                            '<a href="/{database}-{database_hash}/{table}/{flat_pks}">{flat_pks}</a>'.format(
+                                database=database,
+                                database_hash=database_hash,
+                                table=urllib.parse.quote_plus(table),
+                                flat_pks=path_from_row_pks(row, pks, use_rowid),
+                            )
+                        )
+                    cells.append({
+                        'column': 'rowid' if use_rowid else 'Link',
+                        'value': display_value,
+                    })
 
             for value, column in zip(row, display_columns):
                 if use_rowid and column == 'rowid':
@@ -675,7 +679,7 @@ class TableView(RowTableShared):
                 'filters': filters,
                 'display_columns': display_columns,
                 'filter_columns': filter_columns,
-                'display_rows': await self.make_display_rows(name, hash, table, rows, display_columns, pks, is_view, use_rowid),
+                'display_rows': await self.make_display_rows(name, hash, table, rows, display_columns, pks, is_view, use_rowid, is_row_display=False),
             }
 
         return {
@@ -734,7 +738,7 @@ class RowView(RowTableShared):
                 'database_hash': hash,
                 'foreign_key_tables': await self.foreign_key_tables(name, table, pk_values),
                 'display_columns': columns,
-                'display_rows': await self.make_display_rows(name, hash, table, rows, columns, pks, False, use_rowid),
+                'display_rows': await self.make_display_rows(name, hash, table, rows, columns, pks, is_view=False, use_rowid=use_rowid, is_row_display=True),
             }
 
         data = {

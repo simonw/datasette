@@ -19,7 +19,9 @@
 {% block content %}
 <div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></div>
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ table }}{% if is_view %} (view){% endif %}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ metadata.title or table }}{% if is_view %} (view){% endif %}</h1>
+
+{% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% if filtered_table_rows or human_filter_description %}
     <h3>{% if filtered_table_rows or filtered_table_rows == 0 %}{{ "{:,}".format(filtered_table_rows) }} row{% if filtered_table_rows == 1 %}{% else %}s{% endif %}{% endif %}

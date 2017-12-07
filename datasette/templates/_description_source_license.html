@@ -1,0 +1,25 @@
+{% if metadata.description_html or metadata.description %}
+    <div class="metadata-description">
+        {% if metadata.description_html %}
+            {{ metadata.description_html|safe }}
+        {% else %}
+            {{ metadata.description }}
+        {% endif %}
+    </div>
+{% endif %}
+{% if metadata.license or metadata.license_url or metadata.source or metadata.source_url %}
+    <p>
+    {% if metadata.license or metadata.license_url %}Data license:
+        {% if metadata.license_url %}
+            <a href="{{ metadata.license_url }}">{{ metadata.license or metadata.license_url }}</a>
+        {% else %}
+            {{ metadata.license }}
+        {% endif %}
+    {% endif %}
+    {% if metadata.source or metadata.source_url %}{% if metadata.license or metadata.license_url %}&middot;{% endif %}
+        Data source: {% if metadata.source_url %}
+            <a href="{{ metadata.source_url }}">
+        {% endif %}{{ metadata.source or metadata.source_url }}{% if metadata.source_url %}</a>{% endif %}
+    {% endif %}
+    </p>
+{% endif %}

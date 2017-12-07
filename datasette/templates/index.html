@@ -6,24 +6,8 @@
 
 {% block content %}
 <h1>{{ metadata.title or "Datasette" }}</h1>
-{% if metadata.license or metadata.source_url %}
-    <p>
-    {% if metadata.license %}Data license:
-        {% if metadata.license_url %}
-            <a href="{{ metadata.license_url }}">{{ metadata.license }}</a>
-        {% else %}
-            {{ metadata.license }}
-        {% endif %}
-    {% endif %}
-    {% if metadata.source_url %}{% if metadata.license %}&middot;{% endif %}
-        {% if metadata.source %}
-            Data source: <a href="{{ metadata.source_url }}">{{ metadata.source }}</a>
-        {% else %}
-            <a href="{{ metadata.source_url }}">Data source</a>
-        {% endif %}
-    {% endif %}
-    </p>
-{% endif %}
+
+{% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% for database in databases %}
     <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.hash[:6] }}"><a href="{{ database.path }}">{{ database.name }}</a></h2>

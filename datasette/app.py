@@ -242,12 +242,13 @@ class BaseView(RenderMixin):
                 **{
                     'url_json': path_with_ext(request, '.json'),
                     'url_jsono': path_with_ext(request, '.jsono'),
-                    'metadata': self.ds.metadata,
                     'extra_css_urls': self.ds.extra_css_urls(),
                     'extra_js_urls': self.ds.extra_js_urls(),
                     'datasette_version': __version__,
                 }
             }
+            if 'metadata' not in context:
+                context['metadata'] = self.ds.metadata
             r = self.render(
                 templates,
                 **context,
@@ -379,6 +380,9 @@ class DatabaseView(BaseView):
             'database_hash': hash,
             'show_hidden': request.args.get('_show_hidden'),
             'editable': True,
+            'metadata': self.ds.metadata.get(
+                'databases', {}
+            ).get(name, {}),
         }, ('database-{}.html'.format(to_css_class(name)), 'database.html')
 
 
@@ -686,7 +690,10 @@ class TableView(RowTableShared):
                     '_rows_and_columns-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns-table-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns.html',
-                ]
+                ],
+                'metadata': self.ds.metadata.get(
+                    'databases', {}
+                ).get(name, {}).get('tables', {}).get(table, {}),
             }
 
         return {
@@ -750,7 +757,10 @@ class RowView(RowTableShared):
                     '_rows_and_columns-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns-row-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns.html',
-                ]
+                ],
+                'metadata': self.ds.metadata.get(
+                    'databases', {}
+                ).get(name, {}).get('tables', {}).get(table, {}),
             }
 
         data = {

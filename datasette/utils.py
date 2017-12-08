@@ -504,5 +504,4 @@ def link_or_copy(src, dst):
     try:
         os.link(src, dst)
     except OSError as e:
-        print('Got OSError {} linking {} to {}'.format(e, src, dst))
         shutil.copyfile(src, dst)

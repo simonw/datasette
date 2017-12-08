@@ -3,9 +3,12 @@ Tests for various datasette helper functions.
 """
 
 from datasette import utils
+import json
+import os
 import pytest
 import sqlite3
-import json
+import tempfile
+from unittest.mock import patch
 
 
 @pytest.mark.parametrize('path,expected', [
@@ -178,3 +181,40 @@ def test_is_url(url, expected):
 ])
 def test_to_css_class(s, expected):
     assert expected == utils.to_css_class(s)
+
+
+def test_temporary_docker_directory_uses_hard_link():
+    with tempfile.TemporaryDirectory() as td:
+        os.chdir(td)
+        open('hello', 'w').write('world')
+        # Default usage of this should use symlink
+        with utils.temporary_docker_directory(
+            files=['hello'],
+            name='t',
+            metadata=None,
+            extra_options=None
+        ) as temp_docker:
+            hello = os.path.join(temp_docker, 'hello')
+            assert 'world' == open(hello).read()
+            # It should be a hard link
+            assert 2 == os.stat(hello).st_nlink
+
+
+@patch('os.link')
+def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
+    # Copy instead if os.link raises OSError (normally due to different device)
+    mock_link.side_effect = OSError
+    with tempfile.TemporaryDirectory() as td:
+        os.chdir(td)
+        open('hello', 'w').write('world')
+        # Default usage of this should use symlink
+        with utils.temporary_docker_directory(
+            files=['hello'],
+            name='t',
+            metadata=None,
+            extra_options=None
+        ) as temp_docker:
+            hello = os.path.join(temp_docker, 'hello')
+            assert 'world' == open(hello).read()
+            # It should be a copy, not a hard link
+            assert 1 == os.stat(hello).st_nlink

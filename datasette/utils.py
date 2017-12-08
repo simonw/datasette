@@ -8,6 +8,7 @@ import shlex
 import sqlite3
 import tempfile
 import time
+import shutil
 import urllib
 
 
@@ -186,8 +187,8 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch=None
             open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))
         open('Dockerfile', 'w').write(dockerfile)
         for path, filename in zip(file_paths, file_names):
-            os.link(path, os.path.join(datasette_dir, filename))
-        yield
+            link_or_copy(path, os.path.join(datasette_dir, filename))
+        yield datasette_dir
     finally:
         tmp.cleanup()
         os.chdir(saved_cwd)
@@ -241,7 +242,7 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch=None
         open('Procfile', 'w').write(procfile_cmd)
 
         for path, filename in zip(file_paths, file_names):
-            os.link(path, os.path.join(tmp.name, filename))
+            link_or_copy(path, os.path.join(tmp.name, filename))
 
         yield
 
@@ -494,3 +495,14 @@ def to_css_class(s):
     # Attach the md5 suffix
     bits = [b for b in (s, md5_suffix) if b]
     return '-'.join(bits)
+
+
+def link_or_copy(src, dst):
+    # Intended for use in populating a temp directory. We link if possible,
+    # but fall back to copying if the temp directory is on a different device
+    # https://github.com/simonw/datasette/issues/141
+    try:
+        os.link(src, dst)
+    except OSError as e:
+        print('Got OSError {} linking {} to {}'.format(e, src, dst))
+        shutil.copyfile(src, dst)

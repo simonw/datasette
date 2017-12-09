@@ -33,7 +33,7 @@
     {% if named_parameter_values %}
         <h3>Query parameters</h3>
         {% for name, value in named_parameter_values.items() %}
-            <p><label for="qp{{ loop.counter }}">{{ name }}</label> <input type="text" id="qp{{ loop.counter }}" name="{{ name }}" value="{{ value }}"></p>
+            <p><label for="qp{{ loop.index }}">{{ name }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ name }}" value="{{ value }}"></p>
         {% endfor %}
     {% endif %}
     <p><input type="submit" value="Run SQL"></p>

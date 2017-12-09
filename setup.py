@@ -26,6 +26,7 @@ setup(
     tests_require=[
         'pytest==3.2.1',
         'aiohttp==2.3.2',
+        'beautifulsoup4==4.6.0',
     ],
     classifiers=[
         'Development Status :: 3 - Alpha',

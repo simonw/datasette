@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 import os
 import pytest
@@ -89,7 +90,7 @@ def test_database_page(app_client):
     }, {
         'columns': ['pk1', 'pk2', 'content'],
         'name': 'compound_primary_key',
-        'count': 0,
+        'count': 1,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
@@ -441,6 +442,75 @@ def test_css_classes_on_body(app_client, path, expected_classes):
     assert classes == expected_classes
 
 
+def test_table_html_simple_primary_key(app_client):
+    response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
+    table = Soup(response.body, 'html.parser').find('table')
+    assert [
+        'Link', 'pk', 'content'
+    ] == [th.string for th in table.select('thead th')]
+    assert [
+        [
+            '<td><a href="/test_tables-0f4dfa9/simple_primary_key/1">1</a></td>',
+            '<td>1</td>',
+            '<td>hello</td>'
+        ], [
+            '<td><a href="/test_tables-0f4dfa9/simple_primary_key/2">2</a></td>',
+            '<td>2</td>',
+            '<td>world</td>'
+        ], [
+            '<td><a href="/test_tables-0f4dfa9/simple_primary_key/3">3</a></td>',
+            '<td>3</td>',
+            '<td></td>'
+        ]
+    ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_row_html_simple_primary_key(app_client):
+    response = app_client.get('/test_tables/simple_primary_key/1', gather_request=False)
+    table = Soup(response.body, 'html.parser').find('table')
+    assert [
+        'pk', 'content'
+    ] == [th.string for th in table.select('thead th')]
+    assert [
+        [
+            '<td>1</td>',
+            '<td>hello</td>'
+        ]
+    ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_table_html_no_primary_key(app_client):
+    response = app_client.get('/test_tables/no_primary_key', gather_request=False)
+    table = Soup(response.body, 'html.parser').find('table')
+    assert [
+        'rowid', 'content'
+    ] == [th.string for th in table.select('thead th')]
+    expected = [
+        [
+            '<td><a href="/test_tables-0f4dfa9/no_primary_key/{}">{}</a></td>'.format(i, i),
+            '<td>{}</td>'.format(i),
+        ] for i in range(1, 51)
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_table_html_compound_primary_key(app_client):
+    response = app_client.get('/test_tables/compound_primary_key', gather_request=False)
+    table = Soup(response.body, 'html.parser').find('table')
+    assert [
+        'Link', 'pk1', 'pk2', 'content'
+    ] == [th.string for th in table.select('thead th')]
+    expected = [
+        [
+            '<td><a href="/test_tables-0f4dfa9/compound_primary_key/a,b">a,b</a></td>',
+            '<td>a</td>',
+            '<td>b</td>',
+            '<td>c</td>',
+        ]
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
 TABLES = '''
 CREATE TABLE simple_primary_key (
   pk varchar(30) primary key,
@@ -453,6 +523,8 @@ CREATE TABLE compound_primary_key (
   content text,
   PRIMARY KEY (pk1, pk2)
 );
+
+INSERT INTO compound_primary_key VALUES ('a', 'b', 'c');
 
 CREATE TABLE no_primary_key (
   content text

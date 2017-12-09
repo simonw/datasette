@@ -672,6 +672,7 @@ class TableView(RowTableShared):
             next_url = urllib.parse.urljoin(request.url, path_with_added_args(request, {
                 '_next': next_value,
             }))
+            rows = rows[:self.page_size]
 
         # Number of filtered rows in whole set:
         filtered_table_rows = None

@@ -132,12 +132,17 @@ def escape_sqlite_table_name(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files, metadata_file, extra_options='', branch=None):
+def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, static):
     cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
     cmd.append('"' + '", "'.join(files) + '"')
     cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
     if metadata_file:
         cmd.extend(['"--metadata"', '"{}"'.format(metadata_file)])
+    if template_dir:
+        cmd.extend(['"--template-dir"', '"templates/"'])
+    if static:
+        for mount_point, _ in static:
+            cmd.extend(['"--static"', '"{}:{}"'.format(mount_point, mount_point)])
     if extra_options:
         for opt in extra_options.split():
             cmd.append('"{}"'.format(opt))
@@ -161,7 +166,7 @@ CMD [{cmd}]'''.format(
 
 
 @contextmanager
-def temporary_docker_directory(files, name, metadata, extra_options, branch=None, extra_metadata=None):
+def temporary_docker_directory(files, name, metadata, extra_options, branch, template_dir, static, extra_metadata=None):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
     # We create a datasette folder in there to get a nicer now deploy name
@@ -181,13 +186,30 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch=None
         if value:
             metadata_content[key] = value
     try:
-        dockerfile = make_dockerfile(file_names, metadata_content and 'metadata.json', extra_options, branch)
+        dockerfile = make_dockerfile(
+            file_names,
+            metadata_content and 'metadata.json',
+            extra_options,
+            branch,
+            template_dir,
+            static,
+        )
         os.chdir(datasette_dir)
         if metadata_content:
             open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))
         open('Dockerfile', 'w').write(dockerfile)
         for path, filename in zip(file_paths, file_names):
             link_or_copy(path, os.path.join(datasette_dir, filename))
+        if template_dir:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, template_dir),
+                os.path.join(datasette_dir, 'templates')
+            )
+        for mount_point, path in static:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, path),
+                os.path.join(datasette_dir, mount_point)
+            )
         yield datasette_dir
     finally:
         tmp.cleanup()
@@ -195,7 +217,7 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch=None
 
 
 @contextmanager
-def temporary_heroku_directory(files, name, metadata, extra_options, branch=None, extra_metadata=None):
+def temporary_heroku_directory(files, name, metadata, extra_options, branch, template_dir, static, extra_metadata=None):
     # FIXME: lots of duplicated code from above
 
     extra_metadata = extra_metadata or {}
@@ -235,9 +257,24 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch=None
         os.mkdir('bin')
         open('bin/post_compile', 'w').write('datasette inspect --inspect-file inspect-data.json')
 
-        quoted_files = " ".join(map(shlex.quote, files))
-        procfile_cmd = 'web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json'.format(
+        extras = []
+        if template_dir:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, template_dir),
+                os.path.join(tmp.name, 'templates')
+            )
+            extras.extend(['--template-dir', 'templates/'])
+        for mount_point, path in static:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, path),
+                os.path.join(tmp.name, mount_point)
+            )
+            extras.extend(['--static', '{}:{}'.format(mount_point, mount_point)])
+
+        quoted_files = " ".join(map(shlex.quote, file_names))
+        procfile_cmd = 'web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json {extras}'.format(
             quoted_files=quoted_files,
+            extras=' '.join(extras),
         )
         open('Procfile', 'w').write(procfile_cmd)
 
@@ -503,5 +540,12 @@ def link_or_copy(src, dst):
     # https://github.com/simonw/datasette/issues/141
     try:
         os.link(src, dst)
-    except OSError as e:
+    except OSError:
         shutil.copyfile(src, dst)
+
+
+def link_or_copy_directory(src, dst):
+    try:
+        shutil.copytree(src, dst, copy_function=os.link)
+    except OSError:
+        shutil.copytree(src, dst)

@@ -9,6 +9,7 @@ import sqlite3
 from pathlib import Path
 from concurrent import futures
 import asyncio
+import os
 import threading
 import urllib.parse
 import json
@@ -45,7 +46,11 @@ connections = threading.local()
 class RenderMixin(HTTPMethodView):
     def render(self, templates, **context):
         return response.html(
-            self.jinja_env.select_template(templates).render(**context)
+            self.jinja_env.select_template(templates).render({
+                **context, **{
+                    'app_css_hash': self.ds.app_css_hash(),
+                }
+            })
         )
 
 
@@ -834,6 +839,13 @@ class Datasette:
         self.sqlite_extensions = sqlite_extensions or []
         self.template_dir = template_dir
         self.static_mounts = static_mounts or []
+
+    def app_css_hash(self):
+        if not hasattr(self, '_app_css_hash'):
+            self._app_css_hash = hashlib.sha1(
+                open(os.path.join(app_root, 'datasette/static/app.css')).read().encode('utf8')
+            ).hexdigest()[:6]
+        return self._app_css_hash
 
     def get_canned_query(self, database_name, query_name):
         query = self.metadata.get(

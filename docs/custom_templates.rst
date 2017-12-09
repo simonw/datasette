@@ -153,7 +153,7 @@ content you can do so by creating a ``row.html`` template like this::
 Note the ``default:row.html`` template name, which ensures Jinja will inherit
 from the default template.
 
-The `_rows_and_columns.html` template is included on both the row and the table
+The ``_rows_and_columns.html`` template is included on both the row and the table
 page, and displays the content of the row. The default template looks like this::
 
     <table>

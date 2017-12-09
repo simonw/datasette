@@ -143,6 +143,18 @@ templates::
     table-mydatabase-Food-Trucks-399138.html
     table.html
 
+You can find out which templates were considered for a specific page by viewing
+source on that page and looking for an HTML comment at the bottom. The comment
+will look something like this::
+
+    <!-- Templates considered: *query-mydb-tz.html, query-mydb.html, query.html -->
+
+This example is from the canned query page for a query called "tz" in the
+database called "mydb". The asterisk shows which template was selected - so in
+this case, Datasette found a template file called ``query-mydb-tz.html`` and
+used that - but if that template had not been found, it would have tried for
+``query-mydb.html`` or the default ``query.html``.
+
 It is possible to extend the default templates using Jinja template
 inheritance. If you want to customize EVERY row template with some additional
 content you can do so by creating a ``row.html`` template like this::

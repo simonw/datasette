@@ -45,10 +45,16 @@ connections = threading.local()
 
 class RenderMixin(HTTPMethodView):
     def render(self, templates, **context):
+        template = self.jinja_env.select_template(templates)
+        select_templates = ['{}{}'.format(
+            '*' if template_name == template.name else '',
+            template_name
+        ) for template_name in templates]
         return response.html(
-            self.jinja_env.select_template(templates).render({
+            template.render({
                 **context, **{
                     'app_css_hash': self.ds.app_css_hash(),
+                    'select_templates': select_templates,
                 }
             })
         )

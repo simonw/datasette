@@ -33,6 +33,6 @@
         {% endif %}{{ metadata.source or metadata.source_url }}{% if metadata.source_url %}</a>{% endif %}
     {% endif %}
 </div>
-
+{% if select_templates %}<!-- Templates considered: {{ select_templates|join(", ") }} -->{% endif %}
 </body>
 </html>

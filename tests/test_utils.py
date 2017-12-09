@@ -192,7 +192,10 @@ def test_temporary_docker_directory_uses_hard_link():
             files=['hello'],
             name='t',
             metadata=None,
-            extra_options=None
+            extra_options=None,
+            branch=None,
+            template_dir=None,
+            static=[],
         ) as temp_docker:
             hello = os.path.join(temp_docker, 'hello')
             assert 'world' == open(hello).read()
@@ -212,7 +215,10 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             files=['hello'],
             name='t',
             metadata=None,
-            extra_options=None
+            extra_options=None,
+            branch=None,
+            template_dir=None,
+            static=[],
         ) as temp_docker:
             hello = os.path.join(temp_docker, 'hello')
             assert 'world' == open(hello).read()

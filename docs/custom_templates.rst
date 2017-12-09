@@ -46,33 +46,33 @@ matches the content served. You can generate hashes using www.srihash.org
 Every default template includes CSS classes in the body designed to support
 custom styling.
 
-The index template (the top level page at /) gets this::
+The index template (the top level page at ``/``) gets this::
 
     <body class="index">
 
-The database template (/dbname) gets this::
+The database template (``/dbname``) gets this::
 
     <body class="db db-dbname">
 
-The custom SQL template (/dbname?sql=...) gets this::
+The custom SQL template (``/dbname?sql=...``) gets this::
 
     <body class="query db-dbname">
 
-The table template (/dbname/tablename) gets::
+The table template (``/dbname/tablename``) gets::
 
     <body class="table db-dbname table-tablename">
 
-The row template (/dbname/tablename/rowid) gets::
+The row template (``/dbname/tablename/rowid``) gets::
 
     <body class="row db-dbname table-tablename">
 
-The db-x and table-x classes use the database or table names themselves IF
+The ``db-x`` and ``table-x`` classes use the database or table names themselves IF
 they are valid CSS identifiers. If they aren't, we strip any invalid
 characters out and append a 6 character md5 digest of the original name, in
 order to ensure that multiple tables which resolve to the same stripped
 character version still have different CSS classes.
 
-Some examples:
+Some examples::
 
     "simple" => "simple"
     "MixedCase" => "MixedCase"

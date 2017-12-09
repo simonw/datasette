@@ -103,11 +103,14 @@ http://localhost:8001/History/downloads.jsono will return that data as JSON in a
       --max_returned_rows INTEGER  Max allowed rows to return at once - default is
                                    1000. Set to 0 to disable check entirely.
       --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
-      --load-extension TEXT        Path to a SQLite extension to load
+      --load-extension PATH        Path to a SQLite extension to load
       --inspect-file TEXT          Path to JSON file created using "datasette
                                    inspect"
       -m, --metadata FILENAME      Path to JSON file containing license/source
                                    metadata
+      --template-dir DIRECTORY     Path to directory containing custom templates
+      --static STATIC MOUNT        mountpoint:path-to-directory for serving static
+                                   files
       --help                       Show this message and exit.
 
 ## metadata.json
@@ -126,11 +129,15 @@ The license and source information will be displayed on the index page and in th
 
 ## datasette publish
 
-If you have [Zeit Now](https://zeit.co/now) installed, datasette can deploy one or more SQLite databases to the internet with a single command:
+If you have [Zeit Now](https://zeit.co/now) or [Heroku](https://heroku.com/) configured, datasette can deploy one or more SQLite databases to the internet with a single command:
 
     datasette publish now database.db
 
-This will create a docker image containing both the datasette application and the specified SQLite database files. It will then deploy that image to Zeit Now and give you a URL to access the API.
+Or:
+
+    datasette publish heroku database.db
+
+This will create a docker image containing both the datasette application and the specified SQLite database files. It will then deploy that image to Zeit Now or Heroku and give you a URL to access the API.
 
     $ datasette publish --help
     Usage: datasette publish [OPTIONS] PUBLISHER [FILES]...
@@ -138,23 +145,28 @@ This will create a docker image containing both the datasette application and th
       Publish specified SQLite database files to the internet along with a
       datasette API.
 
-      Only current option for PUBLISHER is 'now'. You must have Zeit Now
-      installed: https://zeit.co/now
+      Options for PUBLISHER:     * 'now' - You must have Zeit Now installed:
+      https://zeit.co/now     * 'heroku' - You must have Heroku installed:
+      https://cli.heroku.com/
 
       Example usage: datasette publish now my-database.db
 
     Options:
-      -n, --name TEXT          Application name to use when deploying to Now
-      -m, --metadata FILENAME  Path to JSON file containing metadata to publish
-      --extra-options TEXT     Extra options to pass to datasette serve
-      --force                  Pass --force option to now
-      --branch TEXT            Install datasette from a GitHub branch e.g. master
-      --title TEXT             Title for metadata
-      --license TEXT           License label for metadata
-      --license_url TEXT       License URL for metadata
-      --source TEXT            Source label for metadata
-      --source_url TEXT        Source URL for metadata
-      --help                   Show this message and exit.
+      -n, --name TEXT           Application name to use when deploying to Now
+                                (ignored for Heroku)
+      -m, --metadata FILENAME   Path to JSON file containing metadata to publish
+      --extra-options TEXT      Extra options to pass to datasette serve
+      --force                   Pass --force option to now
+      --branch TEXT             Install datasette from a GitHub branch e.g. master
+      --template-dir DIRECTORY  Path to directory containing custom templates
+      --static STATIC MOUNT     mountpoint:path-to-directory for serving static
+                                files
+      --title TEXT              Title for metadata
+      --license TEXT            License label for metadata
+      --license_url TEXT        License URL for metadata
+      --source TEXT             Source label for metadata
+      --source_url TEXT         Source URL for metadata
+      --help                    Show this message and exit.
 
 ## datasette package
 
@@ -166,17 +178,20 @@ If you have docker installed you can use `datasette package` to create a new Doc
       Package specified SQLite files into a new datasette Docker container
 
     Options:
-      -t, --tag TEXT           Name for the resulting Docker container, can
-                               optionally use name:tag format
-      -m, --metadata FILENAME  Path to JSON file containing metadata to publish
-      --extra-options TEXT     Extra options to pass to datasette serve
-      --branch TEXT            Install datasette from a GitHub branch e.g. master
-      --title TEXT             Title for metadata
-      --license TEXT           License label for metadata
-      --license_url TEXT       License URL for metadata
-      --source TEXT            Source label for metadata
-      --source_url TEXT        Source URL for metadata
-      --help                   Show this message and exit.
+      -t, --tag TEXT            Name for the resulting Docker container, can
+                                optionally use name:tag format
+      -m, --metadata FILENAME   Path to JSON file containing metadata to publish
+      --extra-options TEXT      Extra options to pass to datasette serve
+      --branch TEXT             Install datasette from a GitHub branch e.g. master
+      --template-dir DIRECTORY  Path to directory containing custom templates
+      --static STATIC MOUNT     mountpoint:path-to-directory for serving static
+                                files
+      --title TEXT              Title for metadata
+      --license TEXT            License label for metadata
+      --license_url TEXT        License URL for metadata
+      --source TEXT             Source label for metadata
+      --source_url TEXT         Source URL for metadata
+      --help                    Show this message and exit.
 
 Both publish and package accept an `extra_options` argument option, which will affect how the resulting application is executed. For example, say you want to increase the SQL time limit for a particular container:
 

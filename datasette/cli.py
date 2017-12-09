@@ -227,8 +227,8 @@ class StaticMount(click.ParamType):
 )
 @click.option('--inspect-file', help='Path to JSON file created using "datasette inspect"')
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
-@click.option('-t', '--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
-@click.option('-s', '--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)
+@click.option('--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
+@click.option('--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)
 def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir, static):
     """Serve up specified SQLite database files with a web UI"""
     if reload:

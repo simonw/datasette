@@ -112,6 +112,11 @@ The lookup rules Datasette uses are as follows::
         query-mydatabase.html
         query.html
 
+    Canned query page (/mydatabase/canned-query):
+        query-mydatabase-canned-query.html
+        query-mydatabase.html
+        query.html
+
     Table page (/mydatabase/mytable):
         table-mydatabase-mytable.html
         table.html

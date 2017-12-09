@@ -289,6 +289,13 @@ class BaseView(RenderMixin):
             name, sql, params, truncate=True, **extra_args
         )
         columns = [r[0] for r in description]
+
+        templates = ['query-{}.html'.format(to_css_class(name)), 'query.html']
+        if canned_query:
+            templates.insert(0, 'query-{}-{}.html'.format(
+                to_css_class(name), to_css_class(canned_query)
+            ))
+
         return {
             'database': name,
             'rows': rows,
@@ -304,7 +311,7 @@ class BaseView(RenderMixin):
             'named_parameter_values': named_parameter_values,
             'editable': editable,
             'canned_query': canned_query,
-        }, ('query-{}.html'.format(to_css_class(name)), 'query.html')
+        }, templates
 
 
 class IndexView(RenderMixin):

@@ -419,7 +419,6 @@ class RowTableShared(BaseView):
     async def display_columns_and_rows(self, database, table, description, rows, link_column=False, expand_foreign_keys=True):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         info = self.ds.inspect()[database]
-        database_hash = info['hash'][:HASH_LENGTH]
         columns = [r[0] for r in description]
         tables = info['tables']
         table_info = tables.get(table) or {}
@@ -459,9 +458,8 @@ class RowTableShared(BaseView):
                 cells.append({
                     'column': 'Link',
                     'value': jinja2.Markup(
-                        '<a href="/{database}-{database_hash}/{table}/{flat_pks}">{flat_pks}</a>'.format(
+                        '<a href="/{database}/{table}/{flat_pks}">{flat_pks}</a>'.format(
                             database=database,
-                            database_hash=database_hash,
                             table=urllib.parse.quote_plus(table),
                             flat_pks=path_from_row_pks(row, pks, not pks),
                         )
@@ -471,9 +469,8 @@ class RowTableShared(BaseView):
                 if (column, value) in expanded:
                     other_table, label = expanded[(column, value)]
                     display_value = jinja2.Markup(
-                        '<a href="/{database}-{database_hash}/{table}/{id}">{label}</a>&nbsp;<em>{id}</em>'.format(
+                        '<a href="/{database}/{table}/{id}">{label}</a>&nbsp;<em>{id}</em>'.format(
                             database=database,
-                            database_hash=database_hash,
                             table=urllib.parse.quote_plus(other_table),
                             id=str(jinja2.escape(value)),
                             label=str(jinja2.escape(label)),

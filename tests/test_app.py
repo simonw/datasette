@@ -448,15 +448,15 @@ def test_table_html_simple_primary_key(app_client):
     ] == [th.string for th in table.select('thead th')]
     assert [
         [
-            '<td><a href="/test_tables-c0e2850/simple_primary_key/1">1</a></td>',
+            '<td><a href="/test_tables/simple_primary_key/1">1</a></td>',
             '<td>1</td>',
             '<td>hello</td>'
         ], [
-            '<td><a href="/test_tables-c0e2850/simple_primary_key/2">2</a></td>',
+            '<td><a href="/test_tables/simple_primary_key/2">2</a></td>',
             '<td>2</td>',
             '<td>world</td>'
         ], [
-            '<td><a href="/test_tables-c0e2850/simple_primary_key/3">3</a></td>',
+            '<td><a href="/test_tables/simple_primary_key/3">3</a></td>',
             '<td>3</td>',
             '<td></td>'
         ]
@@ -485,7 +485,7 @@ def test_table_html_no_primary_key(app_client):
     ] == [th.string for th in table.select('thead th')]
     expected = [
         [
-            '<td><a href="/test_tables-c0e2850/no_primary_key/{}">{}</a></td>'.format(i, i),
+            '<td><a href="/test_tables/no_primary_key/{}">{}</a></td>'.format(i, i),
             '<td>{}</td>'.format(i),
             '<td>{}</td>'.format(i),
             '<td>a{}</td>'.format(i),
@@ -522,7 +522,7 @@ def test_table_html_compound_primary_key(app_client):
     ] == [th.string for th in table.select('thead th')]
     expected = [
         [
-            '<td><a href="/test_tables-c0e2850/compound_primary_key/a,b">a,b</a></td>',
+            '<td><a href="/test_tables/compound_primary_key/a,b">a,b</a></td>',
             '<td>a</td>',
             '<td>b</td>',
             '<td>c</td>',

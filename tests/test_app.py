@@ -95,7 +95,7 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
     }, {
-        'columns': ['content'],
+        'columns': ['content', 'a', 'b', 'c'],
         'name': 'no_primary_key',
         'count': 201,
         'hidden': False,
@@ -192,9 +192,7 @@ def test_invalid_custom_sql(app_client):
     assert 'Statement must be a SELECT' == response.json['error']
 
 
-def test_table_page(app_client):
-    response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
-    assert response.status == 200
+def test_table_json(app_client):
     response = app_client.get('/test_tables/simple_primary_key.jsono', gather_request=False)
     assert response.status == 200
     data = response.json
@@ -450,15 +448,15 @@ def test_table_html_simple_primary_key(app_client):
     ] == [th.string for th in table.select('thead th')]
     assert [
         [
-            '<td><a href="/test_tables-0f4dfa9/simple_primary_key/1">1</a></td>',
+            '<td><a href="/test_tables-c0e2850/simple_primary_key/1">1</a></td>',
             '<td>1</td>',
             '<td>hello</td>'
         ], [
-            '<td><a href="/test_tables-0f4dfa9/simple_primary_key/2">2</a></td>',
+            '<td><a href="/test_tables-c0e2850/simple_primary_key/2">2</a></td>',
             '<td>2</td>',
             '<td>world</td>'
         ], [
-            '<td><a href="/test_tables-0f4dfa9/simple_primary_key/3">3</a></td>',
+            '<td><a href="/test_tables-c0e2850/simple_primary_key/3">3</a></td>',
             '<td>3</td>',
             '<td></td>'
         ]
@@ -483,13 +481,35 @@ def test_table_html_no_primary_key(app_client):
     response = app_client.get('/test_tables/no_primary_key', gather_request=False)
     table = Soup(response.body, 'html.parser').find('table')
     assert [
-        'rowid', 'content'
+        'Link', 'rowid', 'content', 'a', 'b', 'c'
     ] == [th.string for th in table.select('thead th')]
     expected = [
         [
-            '<td><a href="/test_tables-0f4dfa9/no_primary_key/{}">{}</a></td>'.format(i, i),
+            '<td><a href="/test_tables-c0e2850/no_primary_key/{}">{}</a></td>'.format(i, i),
             '<td>{}</td>'.format(i),
+            '<td>{}</td>'.format(i),
+            '<td>a{}</td>'.format(i),
+            '<td>b{}</td>'.format(i),
+            '<td>c{}</td>'.format(i),
         ] for i in range(1, 51)
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_row_html_no_primary_key(app_client):
+    response = app_client.get('/test_tables/no_primary_key/1', gather_request=False)
+    table = Soup(response.body, 'html.parser').find('table')
+    assert [
+        'rowid', 'content', 'a', 'b', 'c'
+    ] == [th.string for th in table.select('thead th')]
+    expected = [
+        [
+            '<td>1</td>',
+            '<td>1</td>',
+            '<td>a1</td>',
+            '<td>b1</td>',
+            '<td>c1</td>',
+        ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
@@ -502,10 +522,47 @@ def test_table_html_compound_primary_key(app_client):
     ] == [th.string for th in table.select('thead th')]
     expected = [
         [
-            '<td><a href="/test_tables-0f4dfa9/compound_primary_key/a,b">a,b</a></td>',
+            '<td><a href="/test_tables-c0e2850/compound_primary_key/a,b">a,b</a></td>',
             '<td>a</td>',
             '<td>b</td>',
             '<td>c</td>',
+        ]
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_row_html_compound_primary_key(app_client):
+    response = app_client.get('/test_tables/compound_primary_key/a,b', gather_request=False)
+    table = Soup(response.body, 'html.parser').find('table')
+    assert [
+        'pk1', 'pk2', 'content'
+    ] == [th.string for th in table.select('thead th')]
+    expected = [
+        [
+            '<td>a</td>',
+            '<td>b</td>',
+            '<td>c</td>',
+        ]
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_view_html(app_client):
+    response = app_client.get('/test_tables/simple_view', gather_request=False)
+    table = Soup(response.body, 'html.parser').find('table')
+    assert [
+        'content', 'upper_content'
+    ] == [th.string for th in table.select('thead th')]
+    expected = [
+        [
+            '<td>hello</td>',
+            '<td>HELLO</td>'
+        ], [
+            '<td>world</td>',
+            '<td>WORLD</td>'
+        ], [
+            '<td></td>',
+            '<td></td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -527,7 +584,10 @@ CREATE TABLE compound_primary_key (
 INSERT INTO compound_primary_key VALUES ('a', 'b', 'c');
 
 CREATE TABLE no_primary_key (
-  content text
+  content text,
+  a text,
+  b text,
+  c text
 );
 
 CREATE TABLE [123_starts_with_digits] (
@@ -572,6 +632,6 @@ CREATE VIEW simple_view AS
     SELECT content, upper(content) AS upper_content FROM simple_primary_key;
 
 ''' + '\n'.join([
-    'INSERT INTO no_primary_key VALUES ({});'.format(i + 1)
+    'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(i=i + 1)
     for i in range(201)
 ])

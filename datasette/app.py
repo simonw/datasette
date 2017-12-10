@@ -39,6 +39,7 @@ from .version import __version__
 app_root = Path(__file__).parent.parent
 
 HASH_BLOCK_SIZE = 1024 * 1024
+HASH_LENGTH = 7
 
 connections = threading.local()
 
@@ -118,7 +119,7 @@ class BaseView(RenderMixin):
             info = databases[name]
         except KeyError:
             raise NotFound('Database not found: {}'.format(name))
-        expected = info['hash'][:7]
+        expected = info['hash'][:HASH_LENGTH]
         if expected != hash:
             should_redirect = '/{}-{}'.format(
                 name, expected,
@@ -335,7 +336,7 @@ class IndexView(RenderMixin):
             database = {
                 'name': key,
                 'hash': info['hash'],
-                'path': '{}-{}'.format(key, info['hash'][:7]),
+                'path': '{}-{}'.format(key, info['hash'][:HASH_LENGTH]),
                 'tables_truncated': sorted(
                     tables,
                     key=lambda t: t['count'],
@@ -415,12 +416,18 @@ class DatabaseDownload(BaseView):
 
 
 class RowTableShared(BaseView):
-    async def make_display_rows(self, database, database_hash, table, rows, display_columns, pks, is_view, use_rowid, is_row_display):
-        # Get fancy with foreign keys
-        expanded = {}
-        tables = self.ds.inspect()[database]['tables']
+    async def display_columns_and_rows(self, database, table, description, rows, link_column=False, expand_foreign_keys=True):
+        "Returns columns, rows for specified table - including fancy foreign key treatment"
+        info = self.ds.inspect()[database]
+        database_hash = info['hash'][:HASH_LENGTH]
+        columns = [r[0] for r in description]
+        tables = info['tables']
         table_info = tables.get(table) or {}
-        if table_info and not is_view:
+        pks = await self.pks_for_table(database, table)
+
+        # Prefetch foreign key resolutions for later expansion:
+        expanded = {}
+        if table_info and expand_foreign_keys:
             foreign_keys = table_info['foreign_keys']['outgoing']
             for fk in foreign_keys:
                 label_column = tables.get(fk['other_table'], {}).get('label_column')
@@ -443,52 +450,42 @@ class RowTableShared(BaseView):
                     for id, value in results:
                         expanded[(fk['column'], id)] = (fk['other_table'], value)
 
-        to_return = []
+        cell_rows = []
         for row in rows:
-            columns_to_loop = display_columns
             cells = []
             # Unless we are a view, the first column is a link - either to the rowid
             # or to the simple or compound primary key
-            if not is_view:
-                # On row display, only show the extra first column for use_rowid
-                if not is_row_display or (is_row_display and use_rowid):
-                    display_value = path_from_row_pks(row, pks, use_rowid)
-                    if not is_row_display:
-                        display_value = jinja2.Markup(
-                            '<a href="/{database}-{database_hash}/{table}/{flat_pks}">{flat_pks}</a>'.format(
-                                database=database,
-                                database_hash=database_hash,
-                                table=urllib.parse.quote_plus(table),
-                                flat_pks=path_from_row_pks(row, pks, use_rowid),
-                            )
+            if link_column:
+                cells.append({
+                    'column': 'Link',
+                    'value': jinja2.Markup(
+                        '<a href="/{database}-{database_hash}/{table}/{flat_pks}">{flat_pks}</a>'.format(
+                            database=database,
+                            database_hash=database_hash,
+                            table=urllib.parse.quote_plus(table),
+                            flat_pks=path_from_row_pks(row, pks, not pks),
                         )
-                    cells.append({
-                        'column': 'rowid' if use_rowid else 'Link',
-                        'value': display_value,
-                    })
-                    columns_to_loop = columns_to_loop[1:]
-
-            for value, column in zip(row, columns_to_loop):
-                if use_rowid and column == 'rowid':
-                    # We already showed this in the linked first column
-                    continue
-                elif (column, value) in expanded:
+                    ),
+                })
+            for value, column in zip(row, columns):
+                if (column, value) in expanded:
                     other_table, label = expanded[(column, value)]
                     display_value = jinja2.Markup(
-                        # TODO: Escape id/label/etc so no XSS here
                         '<a href="/{database}-{database_hash}/{table}/{id}">{label}</a>&nbsp;<em>{id}</em>'.format(
                             database=database,
                             database_hash=database_hash,
                             table=urllib.parse.quote_plus(other_table),
-                            id=value,
-                            label=label,
+                            id=str(jinja2.escape(value)),
+                            label=str(jinja2.escape(label)),
                         )
                     )
                 elif value is None:
                     display_value = jinja2.Markup('&nbsp;')
                 elif is_url(str(value).strip()):
                     display_value = jinja2.Markup(
-                        '<a href="{url}">{url}</a>'.format(url=value.strip())
+                        '<a href="{url}">{url}</a>'.format(
+                            url=jinja2.escape(value.strip())
+                        )
                     )
                 else:
                     display_value = str(value)
@@ -496,8 +493,11 @@ class RowTableShared(BaseView):
                     'column': column,
                     'value': display_value,
                 })
-            to_return.append(cells)
-        return to_return
+            cell_rows.append(cells)
+
+        if link_column:
+            columns = ['Link'] + columns
+        return columns, cell_rows
 
 
 class TableView(RowTableShared):
@@ -648,11 +648,7 @@ class TableView(RowTableShared):
         columns = [r[0] for r in description]
         rows = list(rows)
 
-        display_columns = columns
-        filter_columns = columns
-        if not use_rowid and not is_view:
-            display_columns = ['Link'] + display_columns
-
+        filter_columns = columns[:]
         if use_rowid and filter_columns[0] == 'rowid':
             filter_columns = filter_columns[1:]
 
@@ -695,6 +691,9 @@ class TableView(RowTableShared):
         human_description = filters.human_description(extra=search_description)
 
         async def extra_template():
+            display_columns, display_rows = await self.display_columns_and_rows(
+                name, table, description, rows, link_column=not is_view, expand_foreign_keys=True
+            )
             return {
                 'database_hash': hash,
                 'human_filter_description': human_description,
@@ -704,7 +703,7 @@ class TableView(RowTableShared):
                 'filters': filters,
                 'display_columns': display_columns,
                 'filter_columns': filter_columns,
-                'display_rows': await self.make_display_rows(name, hash, table, rows, display_columns, pks, is_view, use_rowid, is_row_display=False),
+                'display_rows': display_rows,
                 'custom_rows_and_columns_templates': [
                     '_rows_and_columns-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns-table-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
@@ -767,11 +766,14 @@ class RowView(RowTableShared):
             raise NotFound('Record not found: {}'.format(pk_values))
 
         async def template_data():
+            display_columns, display_rows = await self.display_columns_and_rows(
+                name, table, description, rows, link_column=False, expand_foreign_keys=True
+            )
             return {
                 'database_hash': hash,
                 'foreign_key_tables': await self.foreign_key_tables(name, table, pk_values),
-                'display_columns': columns,
-                'display_rows': await self.make_display_rows(name, hash, table, rows, columns, pks, is_view=False, use_rowid=use_rowid, is_row_display=True),
+                'display_columns': display_columns,
+                'display_rows': display_rows,
                 'custom_rows_and_columns_templates': [
                     '_rows_and_columns-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns-row-{}-{}.html'.format(to_css_class(name), to_css_class(table)),

@@ -1,6 +1,251 @@
 Changelog
 =========
 
+0.14 (2017-12-09)
+-----------------
+
+The theme of this release is customization: Datasette now allows every aspect
+of its presentation `to be customized <http://datasette.readthedocs.io/en/latest/custom_templates.html>`_
+either using additional CSS or by providing entirely new templates.
+
+Datasette's `metadata.json format <http://datasette.readthedocs.io/en/latest/metadata.html>`_
+has also been expanded, to allow per-database and per-table metadata. A new
+``datasette skeleton`` command can be used to generate a skeleton JSON file
+ready to be filled in with per-database and per-table details.
+
+The ``metadata.json`` file can also be used to define
+`canned queries <http://datasette.readthedocs.io/en/latest/sql_queries.html#canned-queries>`_,
+as a more powerful alternative to SQL views.
+
+- ``extra_css_urls``/``extra_js_urls`` in metadata
+
+  A mechanism in the ``metadata.json`` format for adding custom CSS and JS urls.
+
+  Create a ``metadata.json`` file that looks like this::
+
+      {
+          "extra_css_urls": [
+              "https://simonwillison.net/static/css/all.bf8cd891642c.css"
+          ],
+          "extra_js_urls": [
+              "https://code.jquery.com/jquery-3.2.1.slim.min.js"
+          ]
+      }
+
+  Then start datasette like this::
+
+      datasette mydb.db --metadata=metadata.json
+
+  The CSS and JavaScript files will be linked in the ``<head>`` of every page.
+
+  You can also specify a SRI (subresource integrity hash) for these assets::
+
+      {
+          "extra_css_urls": [
+              {
+                  "url": "https://simonwillison.net/static/css/all.bf8cd891642c.css",
+                  "sri": "sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI"
+              }
+          ],
+          "extra_js_urls": [
+              {
+                  "url": "https://code.jquery.com/jquery-3.2.1.slim.min.js",
+                  "sri": "sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
+              }
+          ]
+      }
+
+  Modern browsers will only execute the stylesheet or JavaScript if the SRI hash
+  matches the content served. You can generate hashes using https://www.srihash.org/
+
+- Auto-link column values that look like URLs (`#153 <https://github.com/simonw/datasette/issues/153>`_)
+
+- CSS styling hooks as classes on the body (`#153 <https://github.com/simonw/datasette/issues/153>`_)
+
+  Every template now gets CSS classes in the body designed to support custom
+  styling.
+
+  The index template (the top level page at ``/``) gets this::
+
+      <body class="index">
+
+  The database template (``/dbname/``) gets this::
+
+      <body class="db db-dbname">
+
+  The table template (``/dbname/tablename``) gets::
+
+      <body class="table db-dbname table-tablename">
+
+  The row template (``/dbname/tablename/rowid``) gets::
+
+      <body class="row db-dbname table-tablename">
+
+  The ``db-x`` and ``table-x`` classes use the database or table names themselves IF
+  they are valid CSS identifiers. If they aren't, we strip any invalid
+  characters out and append a 6 character md5 digest of the original name, in
+  order to ensure that multiple tables which resolve to the same stripped
+  character version still have different CSS classes.
+
+  Some examples (extracted from the unit tests)::
+
+      "simple" => "simple"
+      "MixedCase" => "MixedCase"
+      "-no-leading-hyphens" => "no-leading-hyphens-65bea6"
+      "_no-leading-underscores" => "no-leading-underscores-b921bc"
+      "no spaces" => "no-spaces-7088d7"
+      "-" => "336d5e"
+      "no $ characters" => "no--characters-59e024"
+
+- ``datasette --template-dir=mytemplates/`` argument
+
+  You can now pass an additional argument specifying a directory to look for
+  custom templates in.
+
+  Datasette will fall back on the default templates if a template is not
+  found in that directory.
+
+- Ability to over-ride templates for individual tables/databases.
+
+  It is now possible to over-ride templates on a per-database / per-row or per-
+  table basis.
+
+  When you access e.g. ``/mydatabase/mytable`` Datasette will look for the following::
+
+      - table-mydatabase-mytable.html
+      - table.html
+
+  If you provided a ``--template-dir`` argument to datasette serve it will look in
+  that directory first.
+
+  The lookup rules are as follows::
+
+      Index page (/):
+          index.html
+
+      Database page (/mydatabase):
+          database-mydatabase.html
+          database.html
+
+      Table page (/mydatabase/mytable):
+          table-mydatabase-mytable.html
+          table.html
+
+      Row page (/mydatabase/mytable/id):
+          row-mydatabase-mytable.html
+          row.html
+
+  If a table name has spaces or other unexpected characters in it, the template
+  filename will follow the same rules as our custom ``<body>`` CSS classes
+  - for example, a table called "Food Trucks"
+  will attempt to load the following templates::
+
+      table-mydatabase-Food-Trucks-399138.html
+      table.html
+
+  It is possible to extend the default templates using Jinja template
+  inheritance. If you want to customize EVERY row template with some additional
+  content you can do so by creating a row.html template like this::
+
+      {% extends "default:row.html" %}
+
+      {% block content %}
+      <h1>EXTRA HTML AT THE TOP OF THE CONTENT BLOCK</h1>
+      <p>This line renders the original block:</p>
+      {{ super() }}
+      {% endblock %}
+
+- ``--static`` option for datasette serve (`#160 <https://github.com/simonw/datasette/issues/160>`_)
+
+  You can now tell Datasette to serve static files from a specific location at a
+  specific mountpoint.
+
+  For example::
+
+    datasette serve mydb.db --static extra-css:/tmp/static/css
+
+  Now if you visit this URL::
+
+    http://localhost:8001/extra-css/blah.css
+
+  The following file will be served::
+
+    /tmp/static/css/blah.css
+
+- Canned query support.
+
+  Named canned queries can now be defined in ``metadata.json`` like this::
+
+      {
+          "databases": {
+              "timezones": {
+                  "queries": {
+                      "timezone_for_point": "select tzid from timezones ..."
+                  }
+              }
+          }
+      }
+
+  These will be shown in a new "Queries" section beneath "Views" on the database page.
+
+- New ``datasette skeleton`` command for generating ``metadata.json`` (`#164 <https://github.com/simonw/datasette/issues/164>`_)
+
+- ``metadata.json`` support for per-table/per-database metadata (`#165 <https://github.com/simonw/datasette/issues/165>`_)
+
+  Also added support for descriptions and HTML descriptions.
+
+  Here's an example metadata.json file illustrating custom per-database and per-
+  table metadata::
+
+      {
+          "title": "Overall datasette title",
+          "description_html": "This is a <em>description with HTML</em>.",
+          "databases": {
+              "db1": {
+                  "title": "First database",
+                  "description": "This is a string description & has no HTML",
+                  "license_url": "http://example.com/",
+              "license": "The example license",
+                  "queries": {
+                    "canned_query": "select * from table1 limit 3;"
+                  },
+                  "tables": {
+                      "table1": {
+                          "title": "Custom title for table1",
+                          "description": "Tables can have descriptions too",
+                          "source": "This has a custom source",
+                          "source_url": "http://example.com/"
+                      }
+                  }
+              }
+          }
+      }
+
+- Renamed ``datasette build`` command to ``datasette inspect`` (`#130 <https://github.com/simonw/datasette/issues/130>`_)
+
+- Upgrade to Sanic 0.7.0 (`#168 <https://github.com/simonw/datasette/issues/168>`_)
+
+  https://github.com/channelcat/sanic/releases/tag/0.7.0
+
+- Package and publish commands now accept ``--static`` and ``--template-dir``
+
+  Example usage::
+
+      datasette package --static css:extra-css/ --static js:extra-js/ \
+        sf-trees.db --template-dir templates/ --tag sf-trees --branch master
+
+  This creates a local Docker image that includes copies of the templates/,
+  extra-css/ and extra-js/ directories. You can then run it like this::
+
+    docker run -p 8001:8001 sf-trees
+
+  For publishing to Zeit now::
+
+    datasette publish now --static css:extra-css/ --static js:extra-js/ \
+      sf-trees.db --template-dir templates/ --name sf-trees --branch master
+
+- HTML comment showing which templates were considered for a page (`#171 <https://github.com/simonw/datasette/issues/171>`_)
+
 0.13 (2017-11-24)
 -----------------
 - Search now applies to current filters.
@@ -81,7 +326,7 @@ Changelog
 - Added ``datasette --version`` support.
 
 - Table views now show expanded foreign key references, if possible.
- 
+
   If a table has foreign key columns, and those foreign key tables have
   ``label_columns``, the TableView will now query those other tables for the
   corresponding values and display those values as links in the corresponding

@@ -104,9 +104,12 @@ datasette serve options
       --max_returned_rows INTEGER  Max allowed rows to return at once - default is
                                    1000. Set to 0 to disable check entirely.
       --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
-      --load-extension TEXT        Path to a SQLite extension to load
+      --load-extension PATH        Path to a SQLite extension to load
       --inspect-file TEXT          Path to JSON file created using "datasette
-                                   build"
+                                   inspect"
       -m, --metadata FILENAME      Path to JSON file containing license/source
                                    metadata
+      --template-dir DIRECTORY     Path to directory containing custom templates
+      --static STATIC MOUNT        mountpoint:path-to-directory for serving static
+                                   files
       --help                       Show this message and exit.

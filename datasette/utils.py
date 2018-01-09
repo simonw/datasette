@@ -264,6 +264,8 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch, tem
                 os.path.join(tmp.name, 'templates')
             )
             extras.extend(['--template-dir', 'templates/'])
+        if metadata:
+            extras.extend(['--metadata', 'metadata.json'])
         for mount_point, path in static:
             link_or_copy_directory(
                 os.path.join(saved_cwd, path),

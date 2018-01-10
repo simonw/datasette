@@ -233,7 +233,8 @@ def package(files, tag, metadata, extra_options, branch, template_dir, static, *
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
 @click.option('--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
 @click.option('--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)
-def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir, static):
+@click.option('--memory', type=click.Path(exists=True), help='database files to load into memory', multiple=True)
+def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir, static, memory):
     """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
@@ -262,6 +263,7 @@ def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, 
         sqlite_extensions=sqlite_extensions,
         template_dir=template_dir,
         static_mounts=static,
+        memory=memory,
     )
     # Force initial hashing/table counting
     ds.inspect()

@@ -127,3 +127,29 @@ Canned queries support named parameters, so if you include those in the SQL you
 will then be able to enter them using the form fields on the canned query page
 or by adding them to the URL. This means canned queries can be used to create
 custom JSON APIs based on a carefully designed SQL.
+
+Pagination
+----------
+
+Datasette's default table pagination is designed to be extremely efficient. SQL
+OFFSET/LIMIT pagination can have a significant performance penalty once you get
+into multiple thousands of rows, as each page still requires the database to
+scan through every preceding row to find the correct offset.
+
+When paginating through tables, Datasette instead orders the rows in the table
+by their primary key and performs a WHERE clause against the last seen primary
+key for the previous page. For example::
+
+    select rowid, * from Tree_List where rowid > 200 order by rowid limit 101
+
+This represents page three for this particular table, with a page size of 100.
+
+Note that we request 101 items in the limit clause rather than 100. This allows
+us to detect if we are on the last page of the results: if the query returns
+less than 101 rows we know we have reached the end of the pagination set.
+Datasette will only return the first 100 rows - the 101st is used purely to
+detect if there should be another page.
+
+Since the where clause acts against the index on the primary key, the query is
+extremely fast even for records that are a long way into the overall pagination
+set.

@@ -6,7 +6,7 @@ Datasette
 Datasette provides an instant, read-only JSON API for any SQLite
 database. It also provides tools for packaging the database up as a
 Docker container and deploying that container to hosting providers such
-as `Zeit Now`_.
+as `Zeit Now`_ or `Heroku`_.
 
 Some examples: https://github.com/simonw/datasette/wiki/Datasettes
 
@@ -23,3 +23,4 @@ Contents
    changelog
 
 .. _Zeit Now: https://zeit.co/now
+.. _Heroku: https://www.heroku.com/

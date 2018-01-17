@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ database }}{% if query and query.sql %}{{ query.sql }}{% endif %}{% endblock %}
+{% block title %}{{ database }}{% if query and query.sql %}: {{ query.sql }}{% endif %}{% endblock %}
 
 {% block extra_head %}
 {{ super() }}

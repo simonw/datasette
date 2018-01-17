@@ -36,7 +36,10 @@
             <p><label for="qp{{ loop.index }}">{{ name }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ name }}" value="{{ value }}"></p>
         {% endfor %}
     {% endif %}
-    <p><input type="submit" value="Run SQL"></p>
+    <p>
+      <input type="submit" value="Run SQL">
+      <input type="button" value="Format SQL" id="js-format-button">
+    </p>
 </form>
 
 {% if rows %}

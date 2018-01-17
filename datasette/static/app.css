@@ -118,7 +118,8 @@ form input[type=search] {
         width: 95%;
     }
 }
-form input[type=submit] {
+form input[type=submit],
+form input[type=button]{
     color: #fff;
     background-color: #007bff;
     border-color: #007bff;

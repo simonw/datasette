@@ -10,4 +10,13 @@
       },
       Tab: false
     });
+
+    var format = function() {
+        editor.setValue(window.sqlFormatter.format(editor.getValue()));
+        return;
+    }
+
+    document.getElementById('js-format-button').addEventListener(
+        'click', format, false
+    );
 </script>

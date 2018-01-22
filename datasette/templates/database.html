@@ -20,6 +20,9 @@
     <h3>Custom SQL query</h3>
     <p><textarea name="sql">select * from {{ tables[0].name|escape_sqlite }}</textarea></p>
     <p><input type="submit" value="Run SQL"></p>
+    <p>
+      <input type="button" value="Format SQL" id="js-format-button">
+    </p>
 </form>
 
 {% for table in tables %}

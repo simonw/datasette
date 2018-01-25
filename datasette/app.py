@@ -25,6 +25,7 @@ from .utils import (
     escape_sqlite_table_name,
     filters_should_redirect,
     get_all_foreign_keys,
+    get_size,
     is_url,
     InvalidSql,
     path_from_row_pks,
@@ -388,6 +389,7 @@ class DatabaseView(BaseView):
         tables.sort(key=lambda t: (t['hidden'], t['name']))
         return {
             'database': name,
+            'size': info['size'],
             'tables': tables,
             'hidden_count': len([t for t in tables if t['hidden']]),
             'views': info['views'],
@@ -971,6 +973,7 @@ class Datasette:
                 self._inspect[name] = {
                     'hash': m.hexdigest(),
                     'file': str(path),
+                    'size': get_size(path),
                     'tables': tables,
                     'views': views,
 

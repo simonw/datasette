@@ -323,6 +323,16 @@ def get_all_foreign_keys(conn):
     return table_to_foreign_keys
 
 
+def get_size(path):
+    size = os.stat(path)[6]
+    suffixes = ['B', 'KB', 'MB', 'GB']
+    for s in suffixes:
+        if size < 1024.0:
+            break
+        size /= 1024.0
+    return "{:.2f}{}".format(size, s)
+
+
 def detect_fts(conn, table, return_sql=False):
     "Detect if table has a corresponding FTS virtual table and return it"
     rows = conn.execute(detect_fts_sql(table)).fetchall()

@@ -324,7 +324,7 @@ def get_all_foreign_keys(conn):
 
 
 def get_size(path):
-    size = os.stat(path)[6]
+    size = os.stat(str(path))[6]
     suffixes = ['B', 'KB', 'MB', 'GB']
     for s in suffixes:
         if size < 1024.0:

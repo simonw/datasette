@@ -929,9 +929,14 @@ class Datasette:
                     ]
                     views = [v[0] for v in conn.execute('select name from sqlite_master where type = "view"')]
                     for table in table_names:
-                        count = conn.execute(
-                            'select count(*) from {}'.format(escape_sqlite_table_name(table))
-                        ).fetchone()[0]
+                        try:
+                            count = conn.execute(
+                                'select count(*) from {}'.format(escape_sqlite_table_name(table))
+                            ).fetchone()[0]
+                        except sqlite3.OperationalError:
+                            # This can happen when running against a FTS virtual tables
+                            # e.g. "select count(*) from some_fts;"
+                            count = 0
                         label_column = None
                         # If table has two columns, one of which is ID, then label_column is the other one
                         column_names = [r[1] for r in conn.execute(

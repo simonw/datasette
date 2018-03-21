@@ -833,8 +833,8 @@ class RowView(RowTableShared):
 class Datasette:
     def __init__(
             self, files, num_threads=3, cache_headers=True, page_size=100,
-            max_returned_rows=1000, sql_time_limit_ms=1000, cors=False,
-            inspect_data=None, metadata=None, sqlite_extensions=None,
+            max_returned_rows=1000, sql_time_limit_ms=1000, cache_size=None,
+            cors=False, inspect_data=None, metadata=None, sqlite_extensions=None,
             template_dir=None, static_mounts=None):
         self.files = files
         self.num_threads = num_threads
@@ -845,6 +845,7 @@ class Datasette:
         self.page_size = page_size
         self.max_returned_rows = max_returned_rows
         self.sql_time_limit_ms = sql_time_limit_ms
+        self.cache_size = cache_size
         self.cors = cors
         self._inspect = inspect_data
         self.metadata = metadata or {}
@@ -901,6 +902,8 @@ class Datasette:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
                 conn.execute("SELECT load_extension('{}')".format(extension))
+        if self.cache_size:
+            conn.execute('PRAGMA cache_size=-{}'.format(self.cache_size))
 
     def inspect(self):
         if not self._inspect:

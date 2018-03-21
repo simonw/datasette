@@ -225,6 +225,7 @@ def package(files, tag, metadata, extra_options, branch, template_dir, static, *
 @click.option('--page_size', default=100, help='Page size - default is 100')
 @click.option('--max_returned_rows', default=1000, help='Max allowed rows to return at once - default is 1000. Set to 0 to disable check entirely.')
 @click.option('--sql_time_limit_ms', default=1000, help='Max time allowed for SQL queries in ms')
+@click.option('--cache_size', default=None, help='SQLite per-database cache size in KB')
 @click.option(
     'sqlite_extensions', '--load-extension', envvar='SQLITE_EXTENSIONS', multiple=True,
     type=click.Path(exists=True, resolve_path=True), help='Path to a SQLite extension to load'
@@ -233,7 +234,7 @@ def package(files, tag, metadata, extra_options, branch, template_dir, static, *
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
 @click.option('--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
 @click.option('--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)
-def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir, static):
+def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, cache_size, sqlite_extensions, inspect_file, metadata, template_dir, static):
     """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
@@ -257,6 +258,7 @@ def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, 
         page_size=page_size,
         max_returned_rows=max_returned_rows,
         sql_time_limit_ms=sql_time_limit_ms,
+        cache_size=cache_size,
         inspect_data=inspect_data,
         metadata=metadata_data,
         sqlite_extensions=sqlite_extensions,

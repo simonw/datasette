@@ -384,6 +384,7 @@ class DatabaseView(BaseView):
             return await self.custom_sql(request, name, hash, sql)
         info = self.ds.inspect()[name]
         metadata = self.ds.metadata.get('databases', {}).get(name, {})
+        self.ds.update_with_inherited_metadata(metadata)
         tables = list(info['tables'].values())
         tables.sort(key=lambda t: (t['hidden'], t['name']))
         return {
@@ -399,9 +400,7 @@ class DatabaseView(BaseView):
             'database_hash': hash,
             'show_hidden': request.args.get('_show_hidden'),
             'editable': True,
-            'metadata': self.ds.metadata.get(
-                'databases', {}
-            ).get(name, {}),
+            'metadata': metadata,
         }, ('database-{}.html'.format(to_css_class(name)), 'database.html')
 
 
@@ -691,6 +690,10 @@ class TableView(RowTableShared):
             display_columns, display_rows = await self.display_columns_and_rows(
                 name, table, description, rows, link_column=not is_view, expand_foreign_keys=True
             )
+            metadata = self.ds.metadata.get(
+                'databases', {}
+            ).get(name, {}).get('tables', {}).get(table, {})
+            self.ds.update_with_inherited_metadata(metadata)
             return {
                 'database_hash': hash,
                 'human_filter_description': human_description,
@@ -706,9 +709,7 @@ class TableView(RowTableShared):
                     '_rows_and_columns-table-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns.html',
                 ],
-                'metadata': self.ds.metadata.get(
-                    'databases', {}
-                ).get(name, {}).get('tables', {}).get(table, {}),
+                'metadata': metadata,
             }
 
         return {
@@ -891,6 +892,15 @@ class Datasette:
 
     def extra_js_urls(self):
         return self.asset_urls('extra_js_urls')
+
+    def update_with_inherited_metadata(self, metadata):
+        # Fills in source/license with defaults, if available
+        metadata.update({
+            'source': metadata.get('source') or self.metadata.get('source'),
+            'source_url': metadata.get('source_url') or self.metadata.get('source_url'),
+            'license': metadata.get('license') or self.metadata.get('license'),
+            'license_url': metadata.get('license_url') or self.metadata.get('license_url'),
+        })
 
     def prepare_connection(self, conn):
         conn.row_factory = sqlite3.Row

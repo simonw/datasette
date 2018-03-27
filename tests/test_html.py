@@ -280,3 +280,58 @@ def test_view_html(app_client):
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_index_metadata(app_client):
+    response = app_client.get('/', gather_request=False)
+    soup = Soup(response.body, 'html.parser')
+    assert 'Datasette Title' == soup.find('h1').text
+    assert 'Datasette Description' == inner_html(
+        soup.find('div', {'class': 'metadata-description'})
+    )
+    assert_footer_links(soup)
+
+
+def test_database_metadata(app_client):
+    response = app_client.get('/test_tables', gather_request=False)
+    soup = Soup(response.body, 'html.parser')
+    # Page title should be the default
+    assert 'test_tables' == soup.find('h1').text
+    # Description should be custom
+    assert 'Test tables description' == inner_html(
+        soup.find('div', {'class': 'metadata-description'})
+    )
+    # The source/license should be inherited
+    assert_footer_links(soup)
+
+
+def test_table_metadata(app_client):
+    response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
+    soup = Soup(response.body, 'html.parser')
+    # Page title should be custom and should be HTML escaped
+    assert 'This &lt;em&gt;HTML&lt;/em&gt; is escaped' == inner_html(soup.find('h1'))
+    # Description should be custom and NOT escaped (we used description_html)
+    assert 'Simple <em>primary</em> key' == inner_html(soup.find(
+        'div', {'class': 'metadata-description'})
+    )
+    # The source/license should be inherited
+    assert_footer_links(soup)
+
+
+def assert_footer_links(soup):
+    footer_links = soup.find('div', {'class': 'ft'}).findAll('a')
+    assert 3 == len(footer_links)
+    datasette_link, license_link, source_link = footer_links
+    assert 'Datasette' == datasette_link.text.strip()
+    assert 'Source' == source_link.text.strip()
+    assert 'License' == license_link.text.strip()
+    assert 'https://github.com/simonw/datasette' == datasette_link['href']
+    assert 'http://www.example.com/source' == source_link['href']
+    assert 'http://www.example.com/license' == license_link['href']
+
+
+def inner_html(soup):
+    html = str(soup)
+    # This includes the parent tag - so remove that
+    inner_html = html.split('>', 1)[1].rsplit('<', 1)[0]
+    return inner_html.strip()

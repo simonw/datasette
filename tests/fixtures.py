@@ -16,11 +16,33 @@ def app_client():
             page_size=50,
             max_returned_rows=100,
             sql_time_limit_ms=20,
+            metadata=METADATA,
         )
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),
         )
         yield ds.app().test_client
+
+
+METADATA = {
+    'title': 'Datasette Title',
+    'description': 'Datasette Description',
+    'license': 'License',
+    'license_url': 'http://www.example.com/license',
+    'source': 'Source',
+    'source_url': 'http://www.example.com/source',
+    'databases': {
+        'test_tables': {
+            'description': 'Test tables description',
+            'tables': {
+                'simple_primary_key': {
+                    'description_html': 'Simple <em>primary</em> key',
+                    'title': 'This <em>HTML</em> is escaped',
+                }
+            }
+        }
+    }
+}
 
 
 TABLES = '''

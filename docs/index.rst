@@ -17,6 +17,7 @@ Contents
    :maxdepth: 2
 
    getting_started
+   json_api
    sql_queries
    metadata
    custom_templates

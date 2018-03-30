@@ -593,8 +593,8 @@ class TableView(RowTableShared):
             else:
                 pk_values = compound_pks_from_path(next)
                 if len(pk_values) == len(pks):
-                    where_clauses.append(compound_keys_after_sql(pks))
                     param_len = len(params)
+                    where_clauses.append(compound_keys_after_sql(pks, param_len))
                     for i, pk_value in enumerate(pk_values):
                         params['p{}'.format(param_len + i)] = pk_value
 

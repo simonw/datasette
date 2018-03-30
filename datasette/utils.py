@@ -29,7 +29,7 @@ def path_from_row_pks(row, pks, use_rowid):
     return ','.join(bits)
 
 
-def compound_keys_after_sql(pks):
+def compound_keys_after_sql(pks, start_index=0):
     # Implementation of keyset pagination
     # See https://github.com/simonw/datasette/issues/190
     # For pk1/pk2/pk3 returns:
@@ -46,15 +46,15 @@ def compound_keys_after_sql(pks):
         last = pks_left[-1]
         rest = pks_left[:-1]
         and_clauses = ['[{}] = :p{}'.format(
-            pk, i
+            pk, (i + start_index)
         ) for i, pk in enumerate(rest)]
         and_clauses.append('[{}] > :p{}'.format(
-            last, len(rest)
+            last, (len(rest) + start_index)
         ))
         or_clauses.append('({})'.format(' and '.join(and_clauses)))
         pks_left.pop()
     or_clauses.reverse()
-    return '\n  or\n'.join(or_clauses)
+    return '({})'.format('\n  or\n'.join(or_clauses))
 
 
 class CustomJSONEncoder(json.JSONEncoder):

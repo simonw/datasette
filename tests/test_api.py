@@ -1,4 +1,7 @@
-from .fixtures import app_client
+from .fixtures import (
+    app_client,
+    generate_compound_rows,
+)
 import pytest
 
 pytest.fixture(scope='module')(app_client)
@@ -63,7 +66,7 @@ def test_database_page(app_client):
     }, {
         'columns': ['pk1', 'pk2', 'pk3', 'content'],
         'name': 'compound_three_primary_keys',
-        'count': 301,
+        'count': 1001,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
@@ -211,14 +214,37 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
 def test_paginate_compound_keys(app_client):
     fetched = []
     path = '/test_tables/compound_three_primary_keys.jsono'
+    page = 0
     while path:
+        page += 1
         response = app_client.get(path, gather_request=False)
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
-    assert 301 == len(fetched)
+        assert page < 100
+    assert 1001 == len(fetched)
+    assert 21 == page
     # Should be correctly ordered
     contents = [f['content'] for f in fetched]
-    assert list(sorted(contents)) == contents
+    expected = [r[3] for r in generate_compound_rows(1001)]
+    assert expected == contents
+
+
+def test_paginate_compound_keys_with_extra_filters(app_client):
+    fetched = []
+    path = '/test_tables/compound_three_primary_keys.jsono?content__contains=d'
+    page = 0
+    while path:
+        page += 1
+        assert page < 100
+        response = app_client.get(path, gather_request=False)
+        fetched.extend(response.json['rows'])
+        path = response.json['next_url']
+    assert 2 == page
+    expected = [
+        r[3] for r in generate_compound_rows(1001)
+        if 'd' in r[3]
+    ]
+    assert expected == [f['content'] for f in fetched]
 
 
 @pytest.mark.parametrize('path,expected_rows', [

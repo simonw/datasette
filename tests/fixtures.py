@@ -26,6 +26,13 @@ def app_client():
         yield ds.app().test_client
 
 
+def generate_compound_rows(num):
+    for a, b, c in itertools.islice(
+        itertools.product(string.ascii_lowercase, repeat=3), num
+    ):
+        yield a, b, c, '{}-{}-{}'.format(a, b, c)
+
+
 METADATA = {
     'title': 'Datasette Title',
     'description': 'Datasette Description',
@@ -124,9 +131,7 @@ CREATE VIEW simple_view AS
     'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(i=i + 1)
     for i in range(201)
 ]) + '\n'.join([
-    'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{a}-{b}-{c}");'.format(
-        a=a, b=b, c=c
-    ) for a, b, c in itertools.islice(
-        itertools.product(string.ascii_lowercase, repeat=3), 301
-    )
+    'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
+        a=a, b=b, c=c, content=content
+    ) for a, b, c, content in generate_compound_rows(1001)
 ])

@@ -1,6 +1,8 @@
 from datasette.app import Datasette
+import itertools
 import os
 import sqlite3
+import string
 import tempfile
 import time
 
@@ -60,6 +62,16 @@ CREATE TABLE compound_primary_key (
 
 INSERT INTO compound_primary_key VALUES ('a', 'b', 'c');
 
+
+CREATE TABLE compound_three_primary_keys (
+  pk1 varchar(30),
+  pk2 varchar(30),
+  pk3 varchar(30),
+  content text,
+  PRIMARY KEY (pk1, pk2, pk3)
+);
+
+
 CREATE TABLE no_primary_key (
   content text,
   a text,
@@ -111,4 +123,10 @@ CREATE VIEW simple_view AS
 ''' + '\n'.join([
     'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(i=i + 1)
     for i in range(201)
+]) + '\n'.join([
+    'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{a}-{b}-{c}");'.format(
+        a=a, b=b, c=c
+    ) for a, b, c in itertools.islice(
+        itertools.product(string.ascii_lowercase, repeat=3), 301
+    )
 ])

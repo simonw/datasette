@@ -29,6 +29,34 @@ def path_from_row_pks(row, pks, use_rowid):
     return ','.join(bits)
 
 
+def compound_keys_after_sql(pks):
+    # Implementation of keyset pagination
+    # See https://github.com/simonw/datasette/issues/190
+    # For pk1/pk2/pk3 returns:
+    #
+    # ([pk1] > :p0)
+    #   or
+    # ([pk1] = :p0 and [pk2] > :p1)
+    #   or
+    # ([pk1] = :p0 and [pk2] = :p1 and [pk3] > :p2)
+    or_clauses = []
+    pks_left = pks[:]
+    while pks_left:
+        and_clauses = []
+        last = pks_left[-1]
+        rest = pks_left[:-1]
+        and_clauses = ['[{}] = :p{}'.format(
+            pk, i
+        ) for i, pk in enumerate(rest)]
+        and_clauses.append('[{}] > :p{}'.format(
+            last, len(rest)
+        ))
+        or_clauses.append('({})'.format(' and '.join(and_clauses)))
+        pks_left.pop()
+    or_clauses.reverse()
+    return '\n  or\n'.join(or_clauses)
+
+
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, sqlite3.Row):

@@ -20,6 +20,7 @@ from .utils import (
     Filters,
     compound_pks_from_path,
     CustomJSONEncoder,
+    compound_keys_after_sql,
     detect_fts_sql,
     escape_css_string,
     escape_sqlite_table_name,
@@ -592,15 +593,10 @@ class TableView(RowTableShared):
             else:
                 pk_values = compound_pks_from_path(next)
                 if len(pk_values) == len(pks):
-                    param_counter = len(params)
-                    for pk, value in zip(pks, pk_values):
-                        where_clauses.append(
-                            '"{}" > :p{}'.format(
-                                pk, param_counter,
-                            )
-                        )
-                        params['p{}'.format(param_counter)] = value
-                        param_counter += 1
+                    where_clauses.append(compound_keys_after_sql(pks))
+                    param_len = len(params)
+                    for i, pk_value in enumerate(pk_values):
+                        params['p{}'.format(param_len + i)] = pk_value
 
         where_clause = ''
         if where_clauses:

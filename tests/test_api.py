@@ -10,7 +10,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 7
+    assert d['tables_count'] == 8
 
 
 def test_database_page(app_client):
@@ -57,6 +57,13 @@ def test_database_page(app_client):
         'columns': ['pk1', 'pk2', 'content'],
         'name': 'compound_primary_key',
         'count': 1,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
+    }, {
+        'columns': ['pk1', 'pk2', 'pk3', 'content'],
+        'name': 'compound_three_primary_keys',
+        'count': 301,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
@@ -199,6 +206,19 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
 
     assert expected_rows == len(fetched)
     assert expected_pages == count
+
+
+def test_paginate_compound_keys(app_client):
+    fetched = []
+    path = '/test_tables/compound_three_primary_keys.jsono'
+    while path:
+        response = app_client.get(path, gather_request=False)
+        fetched.extend(response.json['rows'])
+        path = response.json['next_url']
+    assert 301 == len(fetched)
+    # Should be correctly ordered
+    contents = [f['content'] for f in fetched]
+    assert list(sorted(contents)) == contents
 
 
 @pytest.mark.parametrize('path,expected_rows', [

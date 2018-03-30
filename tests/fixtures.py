@@ -1,6 +1,7 @@
 from datasette.app import Datasette
 import itertools
 import os
+import random
 import sqlite3
 import string
 import tempfile
@@ -31,6 +32,25 @@ def generate_compound_rows(num):
         itertools.product(string.ascii_lowercase, repeat=3), num
     ):
         yield a, b, c, '{}-{}-{}'.format(a, b, c)
+
+
+def generate_sortable_rows(num):
+    rand = random.Random(42)
+    for a, b in itertools.islice(
+        itertools.product(string.ascii_lowercase, repeat=2), num
+    ):
+        yield {
+            'pk1': a,
+            'pk2': b,
+            'content': '{}-{}'.format(a, b),
+            'sortable': rand.randint(-100, 100),
+            'sortable_with_nulls': rand.choice([
+                None, rand.random(), rand.random()
+            ]),
+            'sortable_with_nulls_2': rand.choice([
+                None, rand.random(), rand.random()
+            ]),
+        }
 
 
 METADATA = {
@@ -69,7 +89,6 @@ CREATE TABLE compound_primary_key (
 
 INSERT INTO compound_primary_key VALUES ('a', 'b', 'c');
 
-
 CREATE TABLE compound_three_primary_keys (
   pk1 varchar(30),
   pk2 varchar(30),
@@ -78,6 +97,15 @@ CREATE TABLE compound_three_primary_keys (
   PRIMARY KEY (pk1, pk2, pk3)
 );
 
+CREATE TABLE sortable (
+  pk1 varchar(30),
+  pk2 varchar(30),
+  content text,
+  sortable integer,
+  sortable_with_nulls real,
+  sortable_with_nulls_2 real,
+  PRIMARY KEY (pk1, pk2)
+);
 
 CREATE TABLE no_primary_key (
   content text,
@@ -134,4 +162,11 @@ CREATE VIEW simple_view AS
     'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
         a=a, b=b, c=c, content=content
     ) for a, b, c, content in generate_compound_rows(1001)
+]) + '\n'.join([
+    '''INSERT INTO sortable VALUES (
+        "{pk1}", "{pk2}", "{content}", {sortable},
+        {sortable_with_nulls}, {sortable_with_nulls_2});
+    '''.format(
+        **row
+    ).replace('None', 'null') for row in generate_sortable_rows(201)
 ])

@@ -602,6 +602,11 @@ class TableView(RowTableShared):
         if where_clauses:
             where_clause = 'where {} '.format(' and '.join(where_clauses))
 
+        # Allow for custom sort order
+        sort = special_args.get('_sort')
+        if sort:
+            order_by = sort
+
         if order_by:
             order_by = 'order by {} '.format(order_by)
 

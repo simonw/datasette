@@ -1,6 +1,7 @@
 from .fixtures import (
     app_client,
     generate_compound_rows,
+    generate_sortable_rows,
 )
 import pytest
 
@@ -13,7 +14,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 8
+    assert d['tables_count'] == 9
 
 
 def test_database_page(app_client):
@@ -98,6 +99,16 @@ def test_database_page(app_client):
             }],
             'outgoing': [],
         },
+        'label_column': None,
+    }, {
+        'columns': [
+            'pk1', 'pk2', 'content', 'sortable', 'sortable_with_nulls',
+            'sortable_with_nulls_2'
+        ],
+        'name': 'sortable',
+        'count': 201,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
     }, {
         'columns': ['pk', 'content'],
@@ -245,6 +256,30 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
         if 'd' in r[3]
     ]
     assert expected == [f['content'] for f in fetched]
+
+
+@pytest.mark.parametrize('query_string,sort_key', [
+    ('_sort=sortable', lambda row: row['sortable']),
+    ('_sort_desc=sortable', lambda row: -row['sortable']),
+])
+def test_sortable(app_client, query_string, sort_key):
+    path = '/test_tables/sortable.jsono?{}'.format(query_string)
+    fetched = []
+    page = 0
+    while path:
+        page += 1
+        assert page < 100
+        response = app_client.get(path, gather_request=False)
+        fetched.extend(response.json['rows'])
+        path = response.json['next_url']
+    assert 5 == page
+    expected = list(generate_sortable_rows(201))
+    expected.sort(key=sort_key)
+    assert [
+        r['content'] for r in expected
+    ] == [
+        r['content'] for r in fetched
+    ]
 
 
 @pytest.mark.parametrize('path,expected_rows', [

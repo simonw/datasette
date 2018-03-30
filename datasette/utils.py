@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from collections import namedtuple
 import base64
 import hashlib
 import json
@@ -10,6 +11,17 @@ import tempfile
 import time
 import shutil
 import urllib
+
+
+Sort = namedtuple('Sort', ['column', 'desc', 'nulls_last'])
+sort_mapping = {
+    '_sort': Sort('_sort', False, False),
+    '_sort_asc': Sort('_sort', False, False),
+    '_sort_desc': Sort('_sort_desc', True, False),
+    '_sort_nulls_last': Sort('_sort_nulls_last', False, True),
+    '_sort_asc_nulls_last': Sort('_sort_nulls_last', False, True),
+    '_sort_desc_nulls_last': Sort('_sort_desc_nulls_last', True, True),
+}
 
 
 def compound_pks_from_path(path):

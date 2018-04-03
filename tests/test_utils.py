@@ -227,16 +227,16 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
 
 
 def test_compound_keys_after_sql():
-    assert '(([a] > :p0))' == utils.compound_keys_after_sql(['a'])
+    assert '((a > :p0))' == utils.compound_keys_after_sql(['a'])
     assert '''
-(([a] > :p0)
+((a > :p0)
   or
-([a] = :p0 and [b] > :p1))
+(a = :p0 and b > :p1))
     '''.strip() == utils.compound_keys_after_sql(['a', 'b'])
     assert '''
-(([a] > :p0)
+((a > :p0)
   or
-([a] = :p0 and [b] > :p1)
+(a = :p0 and b > :p1)
   or
-([a] = :p0 and [b] = :p1 and [c] > :p2))
+(a = :p0 and b = :p1 and c > :p2))
     '''.strip() == utils.compound_keys_after_sql(['a', 'b', 'c'])

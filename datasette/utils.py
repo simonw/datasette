@@ -12,6 +12,23 @@ import shutil
 import urllib
 
 
+# From https://www.sqlite.org/lang_keywords.html
+reserved_words = set((
+    'abort action add after all alter analyze and as asc attach autoincrement '
+    'before begin between by cascade case cast check collate column commit '
+    'conflict constraint create cross current_date current_time '
+    'current_timestamp database default deferrable deferred delete desc detach '
+    'distinct drop each else end escape except exclusive exists explain fail '
+    'for foreign from full glob group having if ignore immediate in index '
+    'indexed initially inner insert instead intersect into is isnull join key '
+    'left like limit match natural no not notnull null of offset on or order '
+    'outer plan pragma primary query raise recursive references regexp reindex '
+    'release rename replace restrict right rollback row savepoint select set '
+    'table temp temporary then to transaction trigger union unique update using '
+    'vacuum values view virtual when where with without'
+).split())
+
+
 def compound_pks_from_path(path):
     return [
         urllib.parse.unquote_plus(b) for b in path.split(',')
@@ -45,11 +62,11 @@ def compound_keys_after_sql(pks, start_index=0):
         and_clauses = []
         last = pks_left[-1]
         rest = pks_left[:-1]
-        and_clauses = ['[{}] = :p{}'.format(
-            pk, (i + start_index)
+        and_clauses = ['{} = :p{}'.format(
+            escape_sqlite(pk), (i + start_index)
         ) for i, pk in enumerate(rest)]
-        and_clauses.append('[{}] > :p{}'.format(
-            last, (len(rest) + start_index)
+        and_clauses.append('{} > :p{}'.format(
+            escape_sqlite(last), (len(rest) + start_index)
         ))
         or_clauses.append('({})'.format(' and '.join(and_clauses)))
         pks_left.pop()
@@ -146,15 +163,15 @@ def path_with_ext(request, ext):
 
 
 _css_re = re.compile(r'''['"\n\\]''')
-_boring_table_name_re = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+_boring_keyword_re = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
 def escape_css_string(s):
     return _css_re.sub(lambda m: '\\{:X}'.format(ord(m.group())), s)
 
 
-def escape_sqlite_table_name(s):
-    if _boring_table_name_re.match(s):
+def escape_sqlite(s):
+    if _boring_keyword_re.match(s) and (s.lower() not in reserved_words):
         return s
     else:
         return '[{}]'.format(s)

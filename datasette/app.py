@@ -23,7 +23,7 @@ from .utils import (
     compound_keys_after_sql,
     detect_fts_sql,
     escape_css_string,
-    escape_sqlite_table_name,
+    escape_sqlite,
     filters_should_redirect,
     get_all_foreign_keys,
     is_url,
@@ -437,7 +437,7 @@ class RowTableShared(BaseView):
                 sql = 'select "{other_column}", "{label_column}" from {other_table} where "{other_column}" in ({placeholders})'.format(
                     other_column=fk['other_column'],
                     label_column=label_column,
-                    other_table=escape_sqlite_table_name(fk['other_table']),
+                    other_table=escape_sqlite(fk['other_table']),
                     placeholders=', '.join(['?'] * len(ids_to_lookup)),
                 )
                 try:
@@ -611,18 +611,18 @@ class TableView(RowTableShared):
             count_sql = None
             sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
                 group_cols=', '.join('"{}"'.format(group_count_col) for group_count_col in group_count),
-                table_name=escape_sqlite_table_name(table),
+                table_name=escape_sqlite(table),
                 where=where_clause,
             )
             is_view = True
         else:
             count_sql = 'select count(*) from {table_name} {where}'.format(
-                table_name=escape_sqlite_table_name(table),
+                table_name=escape_sqlite(table),
                 where=where_clause,
             )
             sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
                 select=select,
-                table_name=escape_sqlite_table_name(table),
+                table_name=escape_sqlite(table),
                 where=where_clause,
                 order_by=order_by,
                 limit=self.page_size + 1,
@@ -804,7 +804,7 @@ class RowView(RowTableShared):
         foreign_keys = table_info['foreign_keys']['incoming']
         sql = 'select ' + ', '.join([
             '(select count(*) from {table} where "{column}"=:id)'.format(
-                table=escape_sqlite_table_name(fk['other_table']),
+                table=escape_sqlite(fk['other_table']),
                 column=fk['other_column'],
             )
             for fk in foreign_keys
@@ -937,7 +937,7 @@ class Datasette:
                     for table in table_names:
                         try:
                             count = conn.execute(
-                                'select count(*) from {}'.format(escape_sqlite_table_name(table))
+                                'select count(*) from {}'.format(escape_sqlite(table))
                             ).fetchone()[0]
                         except sqlite3.OperationalError:
                             # This can happen when running against a FTS virtual tables
@@ -946,7 +946,7 @@ class Datasette:
                         label_column = None
                         # If table has two columns, one of which is ID, then label_column is the other one
                         column_names = [r[1] for r in conn.execute(
-                            'PRAGMA table_info({});'.format(escape_sqlite_table_name(table))
+                            'PRAGMA table_info({});'.format(escape_sqlite(table))
                         ).fetchall()]
                         if column_names and len(column_names) == 2 and 'id' in column_names:
                             label_column = [c for c in column_names if c != 'id'][0]
@@ -1007,7 +1007,7 @@ class Datasette:
         )
         self.jinja_env.filters['escape_css_string'] = escape_css_string
         self.jinja_env.filters['quote_plus'] = lambda u: urllib.parse.quote_plus(u)
-        self.jinja_env.filters['escape_table_name'] = escape_sqlite_table_name
+        self.jinja_env.filters['escape_sqlite'] = escape_sqlite
         self.jinja_env.filters['to_css_class'] = to_css_class
         app.add_route(IndexView.as_view(self), '/<as_json:(\.jsono?)?$>')
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires

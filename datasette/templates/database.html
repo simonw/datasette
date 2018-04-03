@@ -18,7 +18,7 @@
 
 <form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
     <h3>Custom SQL query</h3>
-    <p><textarea name="sql">select * from {{ tables[0].name|escape_table_name }}</textarea></p>
+    <p><textarea name="sql">select * from {{ tables[0].name|escape_sqlite }}</textarea></p>
     <p><input type="submit" value="Run SQL"></p>
 </form>
 

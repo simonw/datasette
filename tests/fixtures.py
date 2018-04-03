@@ -116,6 +116,13 @@ CREATE TABLE "complex_foreign_keys" (
   FOREIGN KEY ("f3") REFERENCES [simple_primary_key](id)
 );
 
+CREATE TABLE [select] (
+  [group] text,
+  [having] text,
+  [and] text
+);
+INSERT INTO [select] VALUES ('group', 'having', 'and');
+
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');

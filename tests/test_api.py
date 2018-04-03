@@ -13,7 +13,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 8
+    assert d['tables_count'] == 9
 
 
 def test_database_page(app_client):
@@ -74,6 +74,13 @@ def test_database_page(app_client):
         'columns': ['content', 'a', 'b', 'c'],
         'name': 'no_primary_key',
         'count': 201,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
+    }, {
+        'columns': ['group', 'having', 'and'],
+        'name': 'select',
+        'count': 1,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
@@ -187,6 +194,18 @@ def test_table_with_slashes_in_name(app_client):
     assert data['rows'] == [{
         'pk': '3',
         'content': 'hey',
+    }]
+
+
+def test_table_with_reserved_word_name(app_client):
+    response = app_client.get('/test_tables/select.jsono', gather_request=False)
+    assert response.status == 200
+    data = response.json
+    assert data['rows'] == [{
+        'rowid': 1,
+        'group': 'group',
+        'having': 'having',
+        'and': 'and',
     }]
 
 

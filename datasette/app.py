@@ -221,8 +221,20 @@ class BaseView(RenderMixin):
             if value:
                 data[key] = value
         if as_json:
-            # Special case for .jsono extension
+            # Special case for .jsono extension - redirect to _shape=objects
             if as_json == '.jsono':
+                return self.redirect(
+                    request,
+                    path_with_added_args(
+                        request,
+                        {'_shape': 'objects'},
+                        path=request.path.rsplit('.jsono', 1)[0] + '.json'
+                    ),
+                    forward_querystring=False
+                )
+            # Deal with the _shape option
+            shape = request.args.get('_shape', 'lists')
+            if shape in ('objects', 'object'):
                 columns = data.get('columns')
                 rows = data.get('rows')
                 if rows and columns:
@@ -230,6 +242,28 @@ class BaseView(RenderMixin):
                         dict(zip(columns, row))
                         for row in rows
                     ]
+                if shape == 'object':
+                    error = None
+                    if 'primary_keys' not in data:
+                        error = '_shape=object is only available on tables'
+                    else:
+                        pks = data['primary_keys']
+                        if not pks:
+                            error = '_shape=object not available for tables with no primary keys'
+                        else:
+                            object_rows = {}
+                            for row in data['rows']:
+                                pk_string = path_from_row_pks(row, pks, not pks)
+                                object_rows[pk_string] = row
+                            data['rows'] = object_rows
+                    if error:
+                        data = {
+                            'ok': False,
+                            'error': error,
+                            'database': name,
+                            'database_hash': hash,
+                        }
+
             headers = {}
             if self.ds.cors:
                 headers['Access-Control-Allow-Origin'] = '*'
@@ -278,6 +312,8 @@ class BaseView(RenderMixin):
         params = request.raw_args
         if 'sql' in params:
             params.pop('sql')
+        if '_shape' in params:
+            params.pop('_shape')
         # Extract any :named parameters
         named_parameters = self.re_named_parameter.findall(sql)
         named_parameter_values = {

@@ -118,7 +118,7 @@ def test_database_page(app_client):
 
 def test_custom_sql(app_client):
     response = app_client.get(
-        '/test_tables.jsono?sql=select+content+from+simple_primary_key',
+        '/test_tables.json?sql=select+content+from+simple_primary_key&_shape=objects',
         gather_request=False
     )
     data = response.json
@@ -138,7 +138,7 @@ def test_custom_sql(app_client):
 
 def test_sql_time_limit(app_client):
     response = app_client.get(
-        '/test_tables.jsono?sql=select+sleep(0.5)',
+        '/test_tables.json?sql=select+sleep(0.5)',
         gather_request=False
     )
     assert 400 == response.status
@@ -147,12 +147,12 @@ def test_sql_time_limit(app_client):
 
 def test_custom_sql_time_limit(app_client):
     response = app_client.get(
-        '/test_tables.jsono?sql=select+sleep(0.01)',
+        '/test_tables.json?sql=select+sleep(0.01)',
         gather_request=False
     )
     assert 200 == response.status
     response = app_client.get(
-        '/test_tables.jsono?sql=select+sleep(0.01)&_sql_time_limit_ms=5',
+        '/test_tables.json?sql=select+sleep(0.01)&_sql_time_limit_ms=5',
         gather_request=False
     )
     assert 400 == response.status
@@ -170,7 +170,7 @@ def test_invalid_custom_sql(app_client):
 
 
 def test_table_json(app_client):
-    response = app_client.get('/test_tables/simple_primary_key.jsono', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key.json?_shape=objects', gather_request=False)
     assert response.status == 200
     data = response.json
     assert data['query']['sql'] == 'select * from simple_primary_key order by pk limit 51'
@@ -187,8 +187,87 @@ def test_table_json(app_client):
     }]
 
 
+def test_jsono_redirects_to_shape_objects(app_client):
+    response_1 = app_client.get(
+        '/test_tables/simple_primary_key.jsono',
+        allow_redirects=False,
+        gather_request=False
+    )
+    response = app_client.get(
+        response_1.headers['Location'],
+        allow_redirects=False,
+        gather_request=False
+    )
+    assert response.status == 302
+    assert response.headers['Location'].endswith('?_shape=objects')
+
+
+def test_table_shape_lists(app_client):
+    response = app_client.get(
+        '/test_tables/simple_primary_key.json?_shape=lists',
+        gather_request=False
+    )
+    assert [
+        ['1', 'hello'],
+        ['2', 'world'],
+        ['3', ''],
+    ] == response.json['rows']
+
+
+def test_table_shape_objects(app_client):
+    response = app_client.get(
+        '/test_tables/simple_primary_key.json?_shape=objects',
+        gather_request=False
+    )
+    assert [{
+        'pk': '1',
+        'content': 'hello',
+    }, {
+        'pk': '2',
+        'content': 'world',
+    }, {
+        'pk': '3',
+        'content': '',
+    }] == response.json['rows']
+
+
+def test_table_shape_object(app_client):
+    response = app_client.get(
+        '/test_tables/simple_primary_key.json?_shape=object',
+        gather_request=False
+    )
+    assert {
+        '1': {
+            'pk': '1',
+            'content': 'hello',
+        },
+        '2': {
+            'pk': '2',
+            'content': 'world',
+        },
+        '3': {
+            'pk': '3',
+            'content': '',
+        }
+    } == response.json['rows']
+
+
+def test_table_shape_object_compound_primary_Key(app_client):
+    response = app_client.get(
+        '/test_tables/compound_primary_key.json?_shape=object',
+        gather_request=False
+    )
+    assert {
+        'a,b': {
+            'pk1': 'a',
+            'pk2': 'b',
+            'content': 'c',
+        }
+    } == response.json['rows']
+
+
 def test_table_with_slashes_in_name(app_client):
-    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv.jsono', gather_request=False)
+    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv.json?_shape=objects', gather_request=False)
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -198,7 +277,7 @@ def test_table_with_slashes_in_name(app_client):
 
 
 def test_table_with_reserved_word_name(app_client):
-    response = app_client.get('/test_tables/select.jsono', gather_request=False)
+    response = app_client.get('/test_tables/select.json?_shape=objects', gather_request=False)
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -210,9 +289,9 @@ def test_table_with_reserved_word_name(app_client):
 
 
 @pytest.mark.parametrize('path,expected_rows,expected_pages', [
-    ('/test_tables/no_primary_key.jsono', 201, 5),
-    ('/test_tables/paginated_view.jsono', 201, 5),
-    ('/test_tables/123_starts_with_digits.jsono', 0, 1),
+    ('/test_tables/no_primary_key.json', 201, 5),
+    ('/test_tables/paginated_view.json', 201, 5),
+    ('/test_tables/123_starts_with_digits.json', 0, 1),
 ])
 def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
     fetched = []
@@ -232,7 +311,7 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
 
 def test_paginate_compound_keys(app_client):
     fetched = []
-    path = '/test_tables/compound_three_primary_keys.jsono'
+    path = '/test_tables/compound_three_primary_keys.json?_shape=objects'
     page = 0
     while path:
         page += 1
@@ -250,7 +329,7 @@ def test_paginate_compound_keys(app_client):
 
 def test_paginate_compound_keys_with_extra_filters(app_client):
     fetched = []
-    path = '/test_tables/compound_three_primary_keys.jsono?content__contains=d'
+    path = '/test_tables/compound_three_primary_keys.json?content__contains=d&_shape=objects'
     page = 0
     while path:
         page += 1
@@ -289,7 +368,7 @@ def test_table_filter_queries(app_client, path, expected_rows):
 
 def test_max_returned_rows(app_client):
     response = app_client.get(
-        '/test_tables.jsono?sql=select+content+from+no_primary_key',
+        '/test_tables.json?sql=select+content+from+no_primary_key',
         gather_request=False
     )
     data = response.json
@@ -302,7 +381,7 @@ def test_max_returned_rows(app_client):
 
 
 def test_view(app_client):
-    response = app_client.get('/test_tables/simple_view.jsono', gather_request=False)
+    response = app_client.get('/test_tables/simple_view.json?_shape=objects', gather_request=False)
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -318,7 +397,7 @@ def test_view(app_client):
 
 
 def test_row(app_client):
-    response = app_client.get('/test_tables/simple_primary_key/1.jsono', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key/1.json?_shape=objects', gather_request=False)
     assert response.status == 200
     assert [{'pk': '1', 'content': 'hello'}] == response.json['rows']
 

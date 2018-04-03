@@ -2,6 +2,7 @@ from datasette.app import Datasette
 import itertools
 import os
 import sqlite3
+import sys
 import string
 import tempfile
 import time
@@ -142,3 +143,13 @@ CREATE VIEW simple_view AS
         a=a, b=b, c=c, content=content
     ) for a, b, c, content in generate_compound_rows(1001)
 ])
+
+
+if __name__ == '__main__':
+    filename = sys.argv[-1]
+    if filename.endswith('.db'):
+        conn = sqlite3.connect(filename)
+        conn.executescript(TABLES)
+        print('Test tables written to {}'.format(filename))
+    else:
+        print('Usage: {} name_of_file_to_write.db'.format(sys.argv[0]))

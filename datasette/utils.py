@@ -134,7 +134,8 @@ def validate_sql_select(sql):
             raise InvalidSql(msg)
 
 
-def path_with_added_args(request, args):
+def path_with_added_args(request, args, path=None):
+    path = path or request.path
     if isinstance(args, dict):
         args = args.items()
     arg_keys = set(a[0] for a in args)
@@ -151,7 +152,7 @@ def path_with_added_args(request, args):
     query_string = urllib.parse.urlencode(sorted(current))
     if query_string:
         query_string = '?{}'.format(query_string)
-    return request.path + query_string
+    return path + query_string
 
 
 def path_with_ext(request, ext):

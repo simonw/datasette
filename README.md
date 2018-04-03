@@ -73,7 +73,7 @@ http://localhost:8001/History/downloads.json will return that data as JSON:
     }
 
 
-http://localhost:8001/History/downloads.jsono will return that data as JSON in a more convenient but less efficient format:
+http://localhost:8001/History/downloads.json?_shape=objects will return that data as JSON in a more convenient but less efficient format:
 
     {
         ...

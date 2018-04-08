@@ -613,21 +613,40 @@ class TableView(RowTableShared):
             search_description = 'search matches "{}"'.format(search)
             params['search'] = search
 
-        next = special_args.get('_next')
+        count_sql = 'select count(*) from {table_name} {where}'.format(
+            table_name=escape_sqlite(table),
+            where=(
+                'where {} '.format(' and '.join(where_clauses))
+            ) if where_clauses else '',
+        )
+
+        # _group_count=col1&_group_count=col2
+        group_count = special_args_lists.get('_group_count') or []
+        if group_count:
+            sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
+                group_cols=', '.join('"{}"'.format(group_count_col) for group_count_col in group_count),
+                table_name=escape_sqlite(table),
+                where=(
+                    'where {} '.format(' and '.join(where_clauses))
+                ) if where_clauses else '',
+            )
+            return await self.custom_sql(request, name, hash, sql, editable=True)
+
+        _next = special_args.get('_next')
         offset = ''
-        if next:
+        if _next:
             if is_view:
                 # _next is an offset
-                offset = ' offset {}'.format(int(next))
+                offset = ' offset {}'.format(int(_next))
             elif use_rowid:
                 where_clauses.append(
                     'rowid > :p{}'.format(
                         len(params),
                     )
                 )
-                params['p{}'.format(len(params))] = next
+                params['p{}'.format(len(params))] = _next
             else:
-                pk_values = compound_pks_from_path(next)
+                pk_values = compound_pks_from_path(_next)
                 if len(pk_values) == len(pks):
                     param_len = len(params)
                     where_clauses.append(compound_keys_after_sql(pks, param_len))
@@ -650,19 +669,15 @@ class TableView(RowTableShared):
                 where=where_clause,
             )
             return await self.custom_sql(request, name, hash, sql, editable=True)
-        else:
-            count_sql = 'select count(*) from {table_name} {where}'.format(
-                table_name=escape_sqlite(table),
-                where=where_clause,
-            )
-            sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
-                select=select,
-                table_name=escape_sqlite(table),
-                where=where_clause,
-                order_by=order_by,
-                limit=self.page_size + 1,
-                offset=offset,
-            )
+
+        sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
+            select=select,
+            table_name=escape_sqlite(table),
+            where=where_clause,
+            order_by=order_by,
+            limit=self.page_size + 1,
+            offset=offset,
+        )
 
         extra_args = {}
         if request.raw_args.get('_sql_time_limit_ms'):
@@ -689,7 +704,7 @@ class TableView(RowTableShared):
         next_url = None
         if len(rows) > self.page_size:
             if is_view:
-                next_value = int(next or 0) + self.page_size
+                next_value = int(_next or 0) + self.page_size
             else:
                 next_value = path_from_row_pks(rows[-2], pks, use_rowid)
             next_url = urllib.parse.urljoin(request.url, path_with_added_args(request, {
@@ -699,20 +714,13 @@ class TableView(RowTableShared):
 
         # Number of filtered rows in whole set:
         filtered_table_rows = None
-        if not where_clauses and not is_view:
-            # Use the pre-calculated total
-            filtered_table_rows = table_rows
-        elif not truncated and len(rows) < self.page_size:
-            filtered_table_rows = len(rows)
-        else:
-            # Attempt a full count, if we can do it in < X ms
-            if count_sql:
-                try:
-                    count_rows = list(await self.execute(name, count_sql, params))
-                    filtered_table_rows = count_rows[0][0]
-                except sqlite3.OperationalError:
-                    # Almost certainly hit the timeout
-                    pass
+        if count_sql:
+            try:
+                count_rows = list(await self.execute(name, count_sql, params))
+                filtered_table_rows = count_rows[0][0]
+            except sqlite3.OperationalError:
+                # Almost certainly hit the timeout
+                pass
 
         # human_filter_description combines filters AND search, if provided
         human_description = filters.human_description(extra=search_description)

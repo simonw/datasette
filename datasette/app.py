@@ -644,13 +644,12 @@ class TableView(RowTableShared):
         # _group_count=col1&_group_count=col2
         group_count = special_args_lists.get('_group_count') or []
         if group_count:
-            count_sql = None
             sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
                 group_cols=', '.join('"{}"'.format(group_count_col) for group_count_col in group_count),
                 table_name=escape_sqlite(table),
                 where=where_clause,
             )
-            is_view = True
+            return await self.custom_sql(request, name, hash, sql, editable=True)
         else:
             count_sql = 'select count(*) from {table_name} {where}'.format(
                 table_name=escape_sqlite(table),

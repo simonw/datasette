@@ -475,7 +475,10 @@ class Filters:
             and_bits.append(', '.join(commas))
         if tail:
             and_bits.append(tail[0])
-        return ' and '.join(and_bits)
+        s = ' and '.join(and_bits)
+        if not s:
+            return ''
+        return 'where {}'.format(s)
 
     def selections(self):
         "Yields (column, lookup, value) tuples"

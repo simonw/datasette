@@ -838,7 +838,6 @@ class TableView(RowTableShared):
                 'display_rows': display_rows,
                 'path_with_added_args': path_with_added_args,
                 'request': request,
-                'enumerate': enumerate,
                 'sort': sort,
                 'sort_desc': sort_desc,
                 'disable_sort': is_view,
@@ -918,7 +917,6 @@ class RowView(RowTableShared):
                     '_rows_and_columns-row-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns.html',
                 ],
-                'enumerate': enumerate,
                 'metadata': self.ds.metadata.get(
                     'databases', {}
                 ).get(name, {}).get('tables', {}).get(table, {}),

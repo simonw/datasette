@@ -412,10 +412,25 @@ def test_sortable_argument_errors(app_client):
     )
     assert 'Cannot sort table by badcolumn2' == response.json['error']
     response = app_client.get(
-        '/test_tables/sortable.json?_sort=content&_sort_desc=pk2',
+        '/test_tables/sortable.json?_sort=sortable_with_nulls&_sort_desc=sortable',
         gather_request=False
     )
     assert 'Cannot use _sort and _sort_desc at the same time' == response.json['error']
+
+
+def test_sortable_columns_metadata(app_client):
+    response = app_client.get(
+        '/test_tables/sortable.json?_sort=content',
+        gather_request=False
+    )
+    assert 'Cannot sort table by content' == response.json['error']
+    # no_primary_key has ALL sort options disabled
+    for column in ('content', 'a', 'b', 'c'):
+        response = app_client.get(
+            '/test_tables/sortable.json?_sort={}'.format(column),
+            gather_request=False
+        )
+        assert 'Cannot sort table by {}'.format(column) == response.json['error']
 
 
 @pytest.mark.parametrize('path,expected_rows', [

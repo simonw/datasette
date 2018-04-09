@@ -68,9 +68,19 @@ METADATA = {
                 'simple_primary_key': {
                     'description_html': 'Simple <em>primary</em> key',
                     'title': 'This <em>HTML</em> is escaped',
-                }
+                },
+                'sortable': {
+                    'sortable_columns': [
+                        'sortable',
+                        'sortable_with_nulls',
+                        'sortable_with_nulls_2',
+                    ]
+                },
+                'no_primary_key': {
+                    'sortable_columns': [],
+                },
             }
-        }
+        },
     }
 }
 

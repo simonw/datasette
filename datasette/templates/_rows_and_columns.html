@@ -1,15 +1,15 @@
 <table>
     <thead>
         <tr>
-            {% for i, column in enumerate(display_columns) %}
+            {% for column in display_columns %}
                 <th scope="col">
-                    {% if i == 0 or disable_sort %}
-                        {{ column }}
+                    {% if not column.sortable %}
+                        {{ column.name }}
                     {% else %}
-                        {% if column == sort %}
-                            <a href="{{ path_with_added_args(request, {'_sort_desc': column, '_sort': None, '_next': None}) }}" rel="nofollow">{{ column }}&nbsp;▼</a>
+                        {% if column.name == sort %}
+                            <a href="{{ path_with_added_args(request, {'_sort_desc': column.name, '_sort': None, '_next': None}) }}" rel="nofollow">{{ column.name }}&nbsp;▼</a>
                         {% else %}
-                            <a href="{{ path_with_added_args(request, {'_sort': column, '_sort_desc': None, '_next': None}) }}" rel="nofollow">{{ column }}{% if column == sort_desc %}&nbsp;▲{% endif %}</a>
+                            <a href="{{ path_with_added_args(request, {'_sort': column.name, '_sort_desc': None, '_next': None}) }}" rel="nofollow">{{ column.name }}{% if column.name == sort_desc %}&nbsp;▲{% endif %}</a>
                         {% endif %}
                     {% endif %}
                 </th>

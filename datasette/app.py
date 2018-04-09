@@ -616,10 +616,10 @@ class TableView(RowTableShared):
         # Allow for custom sort order
         sort = special_args.get('_sort')
         if sort:
-            order_by = sort
+            order_by = escape_sqlite(sort)
         sort_desc = special_args.get('_sort_desc')
         if sort_desc:
-            order_by = '{} desc'.format(sort_desc)
+            order_by = '{} desc'.format(escape_sqlite(sort_desc))
 
         count_sql = 'select count(*) from {table_name} {where}'.format(
             table_name=escape_sqlite(table),

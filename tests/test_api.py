@@ -388,6 +388,8 @@ def test_sortable_and_filtered(app_client):
     )
     response = app_client.get(path, gather_request=False)
     fetched = response.json['rows']
+    assert 'where content contains "d" sorted by sortable descending' \
+        == response.json['human_description_en']
     expected = [
         row for row in generate_sortable_rows(201)
         if 'd' in row['content']

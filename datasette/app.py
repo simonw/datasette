@@ -456,10 +456,27 @@ class DatabaseDownload(BaseView):
 
 
 class RowTableShared(BaseView):
+    def sortable_columns_for_table(self, name, table, use_rowid):
+        table_metadata = self.ds.metadata.get(
+            'databases', {}
+        ).get(name, {}).get('tables', {}).get(table, {})
+        if 'sortable_columns' in table_metadata:
+            sortable_columns = set(table_metadata['sortable_columns'])
+        else:
+            table_info = self.ds.inspect()[name]['tables'].get(table) or {}
+            sortable_columns = set(table_info.get('columns', []))
+        if use_rowid:
+            sortable_columns.add('rowid')
+        return sortable_columns
+
     async def display_columns_and_rows(self, database, table, description, rows, link_column=False, expand_foreign_keys=True):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         info = self.ds.inspect()[database]
-        columns = [r[0] for r in description]
+        sortable_columns = self.sortable_columns_for_table(database, table, True)
+        columns = [{
+            'name': r[0],
+            'sortable': r[0] in sortable_columns,
+        } for r in description]
         tables = info['tables']
         table_info = tables.get(table) or {}
         pks = await self.pks_for_table(database, table)
@@ -505,7 +522,8 @@ class RowTableShared(BaseView):
                         )
                     ),
                 })
-            for value, column in zip(row, columns):
+            for value, column_dict in zip(row, columns):
+                column = column_dict['name']
                 if (column, value) in expanded:
                     other_table, label = expanded[(column, value)]
                     display_value = jinja2.Markup(
@@ -533,7 +551,10 @@ class RowTableShared(BaseView):
             cell_rows.append(cells)
 
         if link_column:
-            columns = ['Link'] + columns
+            columns = [{
+                'name': 'Link',
+                'sortable': False,
+            }] + columns
         return columns, cell_rows
 
 
@@ -623,7 +644,7 @@ class TableView(RowTableShared):
         if not is_view:
             table_info = info[name]['tables'][table]
             table_rows = table_info['count']
-            sortable_columns = set(table_info['columns'])
+            sortable_columns = self.sortable_columns_for_table(name, table, use_rowid)
 
         # Allow for custom sort order
         sort = special_args.get('_sort')
@@ -885,6 +906,8 @@ class RowView(RowTableShared):
             display_columns, display_rows = await self.display_columns_and_rows(
                 name, table, description, rows, link_column=False, expand_foreign_keys=True
             )
+            for column in display_columns:
+                column['sortable'] = False
             return {
                 'database_hash': hash,
                 'foreign_key_tables': await self.foreign_key_tables(name, table, pk_values),
@@ -895,7 +918,6 @@ class RowView(RowTableShared):
                     '_rows_and_columns-row-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns.html',
                 ],
-                'disable_sort': True,
                 'enumerate': enumerate,
                 'metadata': self.ds.metadata.get(
                     'databases', {}

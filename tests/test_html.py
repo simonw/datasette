@@ -200,14 +200,10 @@ def test_row_html_simple_primary_key(app_client):
 def test_table_html_no_primary_key(app_client):
     response = app_client.get('/test_tables/no_primary_key', gather_request=False)
     table = Soup(response.body, 'html.parser').find('table')
-    ths = table.findAll('th')
-    assert 'Link' == ths[0].string.strip()
-    for expected_col, th in zip(('rowid', 'content', 'a', 'b', 'c'), ths[1:]):
-        a = th.find('a')
-        assert expected_col == a.string
-        assert a['href'].endswith('/no_primary_key?_sort={}'.format(
-            expected_col
-        ))
+    # We have disabled sorting for this table using metadata.json
+    assert [
+        'content', 'a', 'b', 'c'
+    ] == [th.string.strip() for th in table.select('thead th')[2:]]
     expected = [
         [
             '<td><a href="/test_tables/no_primary_key/{}">{}</a></td>'.format(i, i),

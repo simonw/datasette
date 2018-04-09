@@ -55,6 +55,33 @@ You can also provide metadata at the per-database or per-table level, like this:
 
 Each of the top-level metadata fields can be used at the database and table level.
 
+Setting which columns can be used for sorting
+---------------------------------------------
+
+Datasette allows any column to be used for sorting by default. If you need to
+control which columns are available for sorting you can do so using the optional
+``sortable_columns`` key::
+
+    {
+        "databases": {
+            "database1": {
+                "tables": {
+                    "example_table": {
+                        "sortable_columns": [
+                            "height",
+                            "weight"
+                        ]
+                    }
+                }
+            }
+        }
+    }
+
+This will restrict sorting of ``example_table`` to just the ``height`` and
+``weight`` columns.
+
+You can also disable sorting entirely by setting ``"sortable_columns": []``
+
 Generating a metadata skeleton
 ------------------------------
 

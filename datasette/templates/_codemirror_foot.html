@@ -16,7 +16,10 @@
         return;
     }
 
-    document.getElementById('js-format-button').addEventListener(
-        'click', format, false
-    );
+    var input = document.createElement('input');
+    input.id = 'js-format-sql';
+    input.type = 'button'
+    input.value = 'Format SQL';
+    input.addEventListener('click', format, false);
+    document.getElementById('js-run-sql').parentNode.appendChild(input);
 </script>

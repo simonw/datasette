@@ -133,6 +133,7 @@ form input[type=button]{
     line-height: 1;
     border-radius: .25rem;
     -webkit-appearance: button;
+    margin-right: 10px;
 }
 
 .filter-row {

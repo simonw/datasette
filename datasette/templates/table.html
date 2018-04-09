@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}{{ database }}: {{ table }}: {% if filtered_table_rows or filtered_table_rows == 0 %}{{ "{:,}".format(filtered_table_rows) }} row{% if filtered_table_rows == 1 %}{% else %}s{% endif %}{% endif %}
-    {% if human_filter_description %}where {{ human_filter_description }}{% endif %}{% endblock %}
+    {% if human_description_en %}where {{ human_description_en }}{% endif %}{% endblock %}
 
 {% block extra_head %}
 {{ super() }}
@@ -23,9 +23,9 @@
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-{% if filtered_table_rows or human_filter_description %}
+{% if filtered_table_rows or human_description_en %}
     <h3>{% if filtered_table_rows or filtered_table_rows == 0 %}{{ "{:,}".format(filtered_table_rows) }} row{% if filtered_table_rows == 1 %}{% else %}s{% endif %}{% endif %}
-        {% if human_filter_description %}where {{ human_filter_description }}{% endif %}
+        {% if human_description_en %}where {{ human_description_en }}{% endif %}
     </h3>
 {% endif %}
 

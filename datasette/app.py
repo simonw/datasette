@@ -773,8 +773,17 @@ class TableView(RowTableShared):
                 # Almost certainly hit the timeout
                 pass
 
-        # human_filter_description combines filters AND search, if provided
-        human_description = filters.human_description(extra=search_description)
+        # human_description_en combines filters AND search, if provided
+        human_description_en = filters.human_description_en(extra=search_description)
+
+        if sort or sort_desc:
+            sorted_by = 'sorted by {}{}'.format(
+                (sort or sort_desc),
+                ' descending' if sort_desc else '',
+            )
+            human_description_en = ' '.join([
+                b for b in [human_description_en, sorted_by] if b
+            ])
 
         async def extra_template():
             display_columns, display_rows = await self.display_columns_and_rows(
@@ -786,7 +795,6 @@ class TableView(RowTableShared):
             self.ds.update_with_inherited_metadata(metadata)
             return {
                 'database_hash': hash,
-                'human_filter_description': human_description,
                 'supports_search': bool(fts_table),
                 'search': search or '',
                 'use_rowid': use_rowid,
@@ -808,6 +816,7 @@ class TableView(RowTableShared):
             'is_view': is_view,
             'view_definition': view_definition,
             'table_definition': table_definition,
+            'human_description_en': human_description_en,
             'rows': rows[:self.page_size],
             'truncated': truncated,
             'table_rows': table_rows,

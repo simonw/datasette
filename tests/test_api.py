@@ -356,23 +356,43 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
     assert expected == [f['content'] for f in fetched]
 
 
-@pytest.mark.parametrize('query_string,sort_key', [
-    ('_sort=sortable', lambda row: row['sortable']),
-    ('_sort_desc=sortable', lambda row: -row['sortable']),
+@pytest.mark.parametrize('query_string,sort_key,human_description_en', [
+    ('_sort=sortable', lambda row: row['sortable'], 'sorted by sortable'),
+    ('_sort_desc=sortable', lambda row: -row['sortable'], 'sorted by sortable descending'),
 ])
-def test_sortable(app_client, query_string, sort_key):
-    path = '/test_tables/sortable.jsono?{}'.format(query_string)
+def test_sortable(app_client, query_string, sort_key, human_description_en):
+    path = '/test_tables/sortable.json?_shape=objects&{}'.format(query_string)
     fetched = []
     page = 0
     while path:
         page += 1
         assert page < 100
         response = app_client.get(path, gather_request=False)
+        assert human_description_en == response.json['human_description_en']
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
     assert 5 == page
     expected = list(generate_sortable_rows(201))
     expected.sort(key=sort_key)
+    assert [
+        r['content'] for r in expected
+    ] == [
+        r['content'] for r in fetched
+    ]
+
+
+def test_sortable_and_filtered(app_client):
+    path = (
+        '/test_tables/sortable.json'
+        '?content__contains=d&_sort_desc=sortable&_shape=objects'
+    )
+    response = app_client.get(path, gather_request=False)
+    fetched = response.json['rows']
+    expected = [
+        row for row in generate_sortable_rows(201)
+        if 'd' in row['content']
+    ]
+    expected.sort(key=lambda row: -row['sortable'])
     assert [
         r['content'] for r in expected
     ] == [

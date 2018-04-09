@@ -157,9 +157,15 @@ def test_css_classes_on_body(app_client, path, expected_classes):
 def test_table_html_simple_primary_key(app_client):
     response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
     table = Soup(response.body, 'html.parser').find('table')
-    assert [
-        'Link', 'pk', 'content'
-    ] == [th.string for th in table.select('thead th')]
+    ths = table.findAll('th')
+    assert 'Link' == ths[0].string.strip()
+    for expected_col, th in zip(('pk', 'content'), ths[1:]):
+        a = th.find('a')
+        assert expected_col == a.string
+        assert a['href'].endswith('/simple_primary_key?_sort={}'.format(
+            expected_col
+        ))
+        assert ['nofollow'] == a['rel']
     assert [
         [
             '<td><a href="/test_tables/simple_primary_key/1">1</a></td>',
@@ -182,7 +188,7 @@ def test_row_html_simple_primary_key(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     assert [
         'pk', 'content'
-    ] == [th.string for th in table.select('thead th')]
+    ] == [th.string.strip() for th in table.select('thead th')]
     assert [
         [
             '<td>1</td>',
@@ -194,9 +200,14 @@ def test_row_html_simple_primary_key(app_client):
 def test_table_html_no_primary_key(app_client):
     response = app_client.get('/test_tables/no_primary_key', gather_request=False)
     table = Soup(response.body, 'html.parser').find('table')
-    assert [
-        'Link', 'rowid', 'content', 'a', 'b', 'c'
-    ] == [th.string for th in table.select('thead th')]
+    ths = table.findAll('th')
+    assert 'Link' == ths[0].string.strip()
+    for expected_col, th in zip(('rowid', 'content', 'a', 'b', 'c'), ths[1:]):
+        a = th.find('a')
+        assert expected_col == a.string
+        assert a['href'].endswith('/no_primary_key?_sort={}'.format(
+            expected_col
+        ))
     expected = [
         [
             '<td><a href="/test_tables/no_primary_key/{}">{}</a></td>'.format(i, i),
@@ -215,7 +226,7 @@ def test_row_html_no_primary_key(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     assert [
         'rowid', 'content', 'a', 'b', 'c'
-    ] == [th.string for th in table.select('thead th')]
+    ] == [th.string.strip() for th in table.select('thead th')]
     expected = [
         [
             '<td>1</td>',
@@ -231,9 +242,14 @@ def test_row_html_no_primary_key(app_client):
 def test_table_html_compound_primary_key(app_client):
     response = app_client.get('/test_tables/compound_primary_key', gather_request=False)
     table = Soup(response.body, 'html.parser').find('table')
-    assert [
-        'Link', 'pk1', 'pk2', 'content'
-    ] == [th.string for th in table.select('thead th')]
+    ths = table.findAll('th')
+    assert 'Link' == ths[0].string.strip()
+    for expected_col, th in zip(('pk1', 'pk2', 'content'), ths[1:]):
+        a = th.find('a')
+        assert expected_col == a.string
+        assert a['href'].endswith('/compound_primary_key?_sort={}'.format(
+            expected_col
+        ))
     expected = [
         [
             '<td><a href="/test_tables/compound_primary_key/a,b">a,b</a></td>',
@@ -250,7 +266,7 @@ def test_row_html_compound_primary_key(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     assert [
         'pk1', 'pk2', 'content'
-    ] == [th.string for th in table.select('thead th')]
+    ] == [th.string.strip() for th in table.select('thead th')]
     expected = [
         [
             '<td>a</td>',
@@ -266,7 +282,7 @@ def test_view_html(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     assert [
         'content', 'upper_content'
-    ] == [th.string for th in table.select('thead th')]
+    ] == [th.string.strip() for th in table.select('thead th')]
     expected = [
         [
             '<td>hello</td>',

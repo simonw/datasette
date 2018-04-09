@@ -400,6 +400,24 @@ def test_sortable_and_filtered(app_client):
     ]
 
 
+def test_sortable_argument_errors(app_client):
+    response = app_client.get(
+        '/test_tables/sortable.json?_sort=badcolumn',
+        gather_request=False
+    )
+    assert 'Cannot sort table by badcolumn' == response.json['error']
+    response = app_client.get(
+        '/test_tables/sortable.json?_sort_desc=badcolumn2',
+        gather_request=False
+    )
+    assert 'Cannot sort table by badcolumn2' == response.json['error']
+    response = app_client.get(
+        '/test_tables/sortable.json?_sort=content&_sort_desc=pk2',
+        gather_request=False
+    )
+    assert 'Cannot use _sort and _sort_desc at the same time' == response.json['error']
+
+
 @pytest.mark.parametrize('path,expected_rows', [
     ('/test_tables/simple_primary_key.json?content=hello', [
         ['1', 'hello'],

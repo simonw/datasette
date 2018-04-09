@@ -45,6 +45,10 @@ HASH_LENGTH = 7
 connections = threading.local()
 
 
+class DatasetteError(Exception):
+    pass
+
+
 class RenderMixin(HTTPMethodView):
     def render(self, templates, **context):
         template = self.jinja_env.select_template(templates)
@@ -205,7 +209,7 @@ class BaseView(RenderMixin):
                 return response_or_template_contexts
             else:
                 data, extra_template_data, templates = response_or_template_contexts
-        except (sqlite3.OperationalError, InvalidSql) as e:
+        except (sqlite3.OperationalError, InvalidSql, DatasetteError) as e:
             data = {
                 'ok': False,
                 'error': str(e),
@@ -613,12 +617,26 @@ class TableView(RowTableShared):
             search_description = 'search matches "{}"'.format(search)
             params['search'] = search
 
+        info = self.ds.inspect()
+        table_rows = None
+        sortable_columns = set()
+        if not is_view:
+            table_info = info[name]['tables'][table]
+            table_rows = table_info['count']
+            sortable_columns = set(table_info['columns'])
+
         # Allow for custom sort order
         sort = special_args.get('_sort')
         if sort:
+            if sort not in sortable_columns:
+                raise DatasetteError('Cannot sort table by {}'.format(sort))
             order_by = escape_sqlite(sort)
         sort_desc = special_args.get('_sort_desc')
         if sort_desc:
+            if sort_desc not in sortable_columns:
+                raise DatasetteError('Cannot sort table by {}'.format(sort_desc))
+            if sort:
+                raise DatasetteError('Cannot use _sort and _sort_desc at the same time')
             order_by = '{} desc'.format(escape_sqlite(sort_desc))
 
         count_sql = 'select count(*) from {table_name} {where}'.format(
@@ -727,11 +745,6 @@ class TableView(RowTableShared):
         filter_columns = columns[:]
         if use_rowid and filter_columns[0] == 'rowid':
             filter_columns = filter_columns[1:]
-
-        info = self.ds.inspect()
-        table_rows = None
-        if not is_view:
-            table_rows = info[name]['tables'][table]['count']
 
         # Pagination next link
         next_value = None

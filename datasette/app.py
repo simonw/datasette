@@ -18,7 +18,6 @@ import hashlib
 import time
 from .utils import (
     Filters,
-    compound_pks_from_path,
     CustomJSONEncoder,
     compound_keys_after_sql,
     detect_fts_sql,
@@ -33,6 +32,7 @@ from .utils import (
     path_with_ext,
     sqlite_timelimit,
     to_css_class,
+    urlsafe_components,
     validate_sql_select,
 )
 from .version import __version__
@@ -613,6 +613,14 @@ class TableView(RowTableShared):
             search_description = 'search matches "{}"'.format(search)
             params['search'] = search
 
+        # Allow for custom sort order
+        sort = special_args.get('_sort')
+        if sort:
+            order_by = sort
+        sort_desc = special_args.get('_sort_desc')
+        if sort_desc:
+            order_by = '{} desc'.format(sort_desc)
+
         count_sql = 'select count(*) from {table_name} {where}'.format(
             table_name=escape_sqlite(table),
             where=(
@@ -638,20 +646,46 @@ class TableView(RowTableShared):
             if is_view:
                 # _next is an offset
                 offset = ' offset {}'.format(int(_next))
-            elif use_rowid:
-                where_clauses.append(
-                    'rowid > :p{}'.format(
-                        len(params),
-                    )
-                )
-                params['p{}'.format(len(params))] = _next
             else:
-                pk_values = compound_pks_from_path(_next)
-                if len(pk_values) == len(pks):
-                    param_len = len(params)
-                    where_clauses.append(compound_keys_after_sql(pks, param_len))
-                    for i, pk_value in enumerate(pk_values):
-                        params['p{}'.format(param_len + i)] = pk_value
+                components = urlsafe_components(_next)
+                # If a sort order is applied, the first of these is the sort value
+                if sort or sort_desc:
+                    sort_value = components[0]
+                    components = components[1:]
+                    print('sort_varlue = {}, components = {}'.format(
+                        sort_value, components
+                    ))
+
+                # Figure out the SQL for next-based-on-primary-key first
+                next_by_pk_clauses = []
+                if use_rowid:
+                    next_by_pk_clauses.append(
+                        'rowid > :p{}'.format(
+                            len(params),
+                        )
+                    )
+                    params['p{}'.format(len(params))] = components[0]
+                else:
+                    # Apply the tie-breaker based on primary keys
+                    if len(components) == len(pks):
+                        param_len = len(params)
+                        next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
+                        for i, pk_value in enumerate(components):
+                            params['p{}'.format(param_len + i)] = pk_value
+
+                # Now add the sort SQL, which may incorporate next_by_pk_clauses
+                if sort or sort_desc:
+                    where_clauses.append(
+                        '({column} {op} :p{p} or ({column} = :p{p} and {next_clauses}))'.format(
+                            column=escape_sqlite(sort or sort_desc),
+                            op='>' if sort else '<',
+                            p=len(params),
+                            next_clauses=' and '.join(next_by_pk_clauses),
+                        )
+                    )
+                    params['p{}'.format(len(params))] = sort_value
+                else:
+                    where_clauses.extend(next_by_pk_clauses)
 
         where_clause = ''
         if where_clauses:
@@ -707,9 +741,26 @@ class TableView(RowTableShared):
                 next_value = int(_next or 0) + self.page_size
             else:
                 next_value = path_from_row_pks(rows[-2], pks, use_rowid)
-            next_url = urllib.parse.urljoin(request.url, path_with_added_args(request, {
-                '_next': next_value,
-            }))
+            # If there's a sort or sort_desc, add that value as a prefix
+            if (sort or sort_desc) and not is_view:
+                prefix = str(rows[-2][sort or sort_desc])
+                next_value = '{},{}'.format(
+                    urllib.parse.quote_plus(prefix), next_value
+                )
+                added_args = {
+                    '_next': next_value,
+                }
+                if sort:
+                    added_args['_sort'] = sort
+                else:
+                    added_args['_sort_desc'] = sort_desc
+            else:
+                added_args = {
+                    '_next': next_value,
+                }
+            next_url = urllib.parse.urljoin(request.url, path_with_added_args(
+                request, added_args
+            ))
             rows = rows[:self.page_size]
 
         # Number of filtered rows in whole set:
@@ -778,7 +829,7 @@ class TableView(RowTableShared):
 class RowView(RowTableShared):
     async def data(self, request, name, hash, table, pk_path):
         table = urllib.parse.unquote_plus(table)
-        pk_values = compound_pks_from_path(pk_path)
+        pk_values = urlsafe_components(pk_path)
         pks = await self.pks_for_table(name, table)
         use_rowid = not pks
         select = '*'

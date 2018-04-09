@@ -18,8 +18,8 @@ from unittest.mock import patch
     ('123%2C433,112', ['123,433', '112']),
     ('123%2F433%2F112', ['123/433/112']),
 ])
-def test_compound_pks_from_path(path, expected):
-    assert expected == utils.compound_pks_from_path(path)
+def test_urlsafe_components(path, expected):
+    assert expected == utils.urlsafe_components(path)
 
 
 @pytest.mark.parametrize('row,pks,expected_path', [

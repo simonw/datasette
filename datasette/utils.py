@@ -29,9 +29,10 @@ reserved_words = set((
 ).split())
 
 
-def compound_pks_from_path(path):
+def urlsafe_components(token):
+    "Splits token on commas and URL decodes each component"
     return [
-        urllib.parse.unquote_plus(b) for b in path.split(',')
+        urllib.parse.unquote_plus(b) for b in token.split(',')
     ]
 
 

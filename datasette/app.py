@@ -385,8 +385,8 @@ class IndexView(RenderMixin):
                 )[:5],
                 'tables_count': len(tables),
                 'tables_more': len(tables) > 5,
-                'table_rows': sum(t['count'] for t in tables),
-                'hidden_table_rows': sum(t['count'] for t in hidden_tables),
+                'table_rows_sum': sum(t['count'] for t in tables),
+                'hidden_table_rows_sum': sum(t['count'] for t in hidden_tables),
                 'hidden_tables_count': len(hidden_tables),
                 'views_count': len(info['views']),
             }
@@ -639,11 +639,11 @@ class TableView(RowTableShared):
             params['search'] = search
 
         info = self.ds.inspect()
-        table_rows = None
+        table_rows_count = None
         sortable_columns = set()
         if not is_view:
             table_info = info[name]['tables'][table]
-            table_rows = table_info['count']
+            table_rows_count = table_info['count']
             sortable_columns = self.sortable_columns_for_table(name, table, use_rowid)
 
         # Allow for custom sort order
@@ -798,11 +798,11 @@ class TableView(RowTableShared):
             rows = rows[:self.page_size]
 
         # Number of filtered rows in whole set:
-        filtered_table_rows = None
+        filtered_table_rows_count = None
         if count_sql:
             try:
                 count_rows = list(await self.execute(name, count_sql, params))
-                filtered_table_rows = count_rows[0][0]
+                filtered_table_rows_count = count_rows[0][0]
             except sqlite3.OperationalError:
                 # Almost certainly hit the timeout
                 pass
@@ -858,8 +858,8 @@ class TableView(RowTableShared):
             'human_description_en': human_description_en,
             'rows': rows[:self.page_size],
             'truncated': truncated,
-            'table_rows': table_rows,
-            'filtered_table_rows': filtered_table_rows,
+            'table_rows_count': table_rows_count,
+            'filtered_table_rows_count': filtered_table_rows_count,
             'columns': columns,
             'primary_keys': pks,
             'query': {

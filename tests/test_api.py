@@ -394,6 +394,8 @@ def test_sortable_and_filtered(app_client):
         row for row in generate_sortable_rows(201)
         if 'd' in row['content']
     ]
+    assert len(expected) == response.json['filtered_table_rows_count']
+    assert 201 == response.json['table_rows_count']
     expected.sort(key=lambda row: -row['sortable'])
     assert [
         r['content'] for r in expected

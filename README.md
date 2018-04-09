@@ -58,7 +58,7 @@ http://localhost:8001/History/downloads.json will return that data as JSON:
             "total_bytes",
             ...
         ],
-        "table_rows": 576,
+        "table_rows_count": 576,
         "rows": [
             [
                 1,

@@ -460,7 +460,7 @@ class Filters:
         for filter in self._filters:
             yield filter.key, filter.display, filter.no_argument
 
-    def human_description(self, extra=None):
+    def human_description_en(self, extra=None):
         bits = []
         if extra:
             bits.append(extra)

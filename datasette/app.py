@@ -802,6 +802,12 @@ class TableView(RowTableShared):
                 'display_columns': display_columns,
                 'filter_columns': filter_columns,
                 'display_rows': display_rows,
+                'path_with_added_args': path_with_added_args,
+                'request': request,
+                'enumerate': enumerate,
+                'sort': sort,
+                'sort_desc': sort_desc,
+                'disable_sort': is_view,
                 'custom_rows_and_columns_templates': [
                     '_rows_and_columns-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns-table-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
@@ -876,6 +882,8 @@ class RowView(RowTableShared):
                     '_rows_and_columns-row-{}-{}.html'.format(to_css_class(name), to_css_class(table)),
                     '_rows_and_columns.html',
                 ],
+                'disable_sort': True,
+                'enumerate': enumerate,
                 'metadata': self.ds.metadata.get(
                     'databases', {}
                 ).get(name, {}).get('tables', {}).get(table, {}),

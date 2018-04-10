@@ -28,6 +28,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'primary_keys': [],
     }, {
         'columns': ['pk', 'content'],
         'name': 'Table With Space In Name',
@@ -35,6 +36,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'f1', 'f2', 'f3'],
         'name': 'complex_foreign_keys',
@@ -57,6 +59,7 @@ def test_database_page(app_client):
         },
         'hidden': False,
         'label_column': None,
+        'primary_keys': ['pk'],
     }, {
         'columns': ['pk1', 'pk2', 'content'],
         'name': 'compound_primary_key',
@@ -64,6 +67,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'primary_keys': ['pk1', 'pk2'],
     }, {
         'columns': ['pk1', 'pk2', 'pk3', 'content'],
         'name': 'compound_three_primary_keys',
@@ -71,6 +75,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'primary_keys': ['pk1', 'pk2', 'pk3'],
     }, {
         'columns': ['content', 'a', 'b', 'c'],
         'name': 'no_primary_key',
@@ -78,6 +83,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'primary_keys': [],
     }, {
         'columns': ['group', 'having', 'and'],
         'name': 'select',
@@ -85,6 +91,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'primary_keys': [],
     }, {
         'columns': ['pk', 'content'],
         'name': 'simple_primary_key',
@@ -107,6 +114,7 @@ def test_database_page(app_client):
             'outgoing': [],
         },
         'label_column': None,
+        'primary_keys': ['pk'],
     }, {
         'columns': [
             'pk1', 'pk2', 'content', 'sortable', 'sortable_with_nulls',
@@ -117,6 +125,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'primary_keys': ['pk1', 'pk2'],
     }, {
         'columns': ['pk', 'content'],
         'name': 'table/with/slashes.csv',
@@ -124,6 +133,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'primary_keys': ['pk'],
     }] == data['tables']
 
 

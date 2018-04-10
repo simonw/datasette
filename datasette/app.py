@@ -94,17 +94,6 @@ class BaseView(RenderMixin):
             r.headers['Access-Control-Allow-Origin'] = '*'
         return r
 
-    async def pks_for_table(self, name, table):
-        rows = [
-            row for row in await self.execute(
-                name,
-                'PRAGMA table_info("{}")'.format(table)
-            )
-            if row[-1]
-        ]
-        rows.sort(key=lambda row: row[-1])
-        return [str(r[1]) for r in rows]
-
     def resolve_db_name(self, db_name, **kwargs):
         databases = self.ds.inspect()
         hash = None
@@ -479,7 +468,7 @@ class RowTableShared(BaseView):
         } for r in description]
         tables = info['tables']
         table_info = tables.get(table) or {}
-        pks = await self.pks_for_table(database, table)
+        pks = table_info.get('primary_keys') or []
 
         # Prefetch foreign key resolutions for later expansion:
         expanded = {}
@@ -564,7 +553,6 @@ class TableView(RowTableShared):
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
             return await self.custom_sql(request, name, hash, canned_query['sql'], editable=False, canned_query=table)
-        pks = await self.pks_for_table(name, table)
         is_view = bool(list(await self.execute(name, "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n", {
             'n': table,
         }))[0][0])
@@ -578,6 +566,9 @@ class TableView(RowTableShared):
             table_definition = list(await self.execute(name, 'select sql from sqlite_master where name = :n and type="table"', {
                 'n': table,
             }))[0][0]
+        info = self.ds.inspect()
+        table_info = info[name]['tables'].get(table) or {}
+        pks = table_info.get('primary_keys') or []
         use_rowid = not pks and not is_view
         if use_rowid:
             select = 'rowid, *'
@@ -650,11 +641,9 @@ class TableView(RowTableShared):
             search_description = 'search matches "{}"'.format(search)
             params['search'] = search
 
-        info = self.ds.inspect()
         table_rows_count = None
         sortable_columns = set()
         if not is_view:
-            table_info = info[name]['tables'][table]
             table_rows_count = table_info['count']
             sortable_columns = self.sortable_columns_for_table(name, table, use_rowid)
 
@@ -891,7 +880,9 @@ class RowView(RowTableShared):
     async def data(self, request, name, hash, table, pk_path):
         table = urllib.parse.unquote_plus(table)
         pk_values = urlsafe_components(pk_path)
-        pks = await self.pks_for_table(name, table)
+        info = self.ds.inspect()[name]
+        table_info = info['tables'].get(table) or {}
+        pks = table_info.get('primary_keys') or []
         use_rowid = not pks
         select = '*'
         if use_rowid:
@@ -1100,6 +1091,15 @@ class Datasette:
                             # This can happen when running against a FTS virtual tables
                             # e.g. "select count(*) from some_fts;"
                             count = 0
+                        # Figure out primary keys
+                        table_info_rows = [
+                            row for row in conn.execute(
+                                'PRAGMA table_info("{}")'.format(table)
+                            ).fetchall()
+                            if row[-1]
+                        ]
+                        table_info_rows.sort(key=lambda row: row[-1])
+                        primary_keys = [str(r[1]) for r in table_info_rows]
                         label_column = None
                         # If table has two columns, one of which is ID, then label_column is the other one
                         column_names = [r[1] for r in conn.execute(
@@ -1110,6 +1110,7 @@ class Datasette:
                         tables[table] = {
                             'name': table,
                             'columns': column_names,
+                            'primary_keys': primary_keys,
                             'count': count,
                             'label_column': label_column,
                             'hidden': False,

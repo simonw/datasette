@@ -103,6 +103,10 @@ form label {
     display: inline-block;
     width: 15%;
 }
+label.sort_by_desc {
+    width: auto;
+    padding-right: 1em;
+}
 form input[type=text],
 form input[type=search] {
     border: 1px solid #ccc;
@@ -215,10 +219,6 @@ form input[type=submit] {
     }
     .filters input.filter-value {
         width: 140px;
-    }
-    form input[type=submit] {
-        display: block;
-        margin-top: 0.6em;
     }
 }
 

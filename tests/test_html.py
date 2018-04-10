@@ -135,6 +135,19 @@ def test_empty_search_parameter_gets_removed(app_client):
     )
 
 
+def test_sort_by_desc_redirects(app_client):
+    path_base = app_client.get(
+        '/test_tables/sortable', allow_redirects=False, gather_request=False
+    ).headers['Location']
+    path = path_base + '?' + urllib.parse.urlencode({
+        '_sort': 'sortable',
+        '_sort_by_desc': '1',
+    })
+    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    assert response.status == 302
+    assert response.headers['Location'].endswith('?_sort_desc=sortable')
+
+
 @pytest.mark.parametrize('path,expected_classes', [
     ('/', ['index']),
     ('/test_tables', ['db', 'db-test_tables']),

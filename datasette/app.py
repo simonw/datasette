@@ -617,6 +617,18 @@ class TableView(RowTableShared):
                 forward_querystring=False
             )
 
+        # Spot ?_sort_by_desc and redirect to _sort_desc=(_sort)
+        if '_sort_by_desc' in special_args:
+            return self.redirect(
+                request,
+                path_with_added_args(request, {
+                    '_sort_desc': special_args.get('_sort'),
+                    '_sort_by_desc': None,
+                    '_sort': None,
+                }),
+                forward_querystring=False
+            )
+
         filters = Filters(sorted(other_args.items()))
         where_clauses, params = filters.build_where_clauses()
 
@@ -836,6 +848,7 @@ class TableView(RowTableShared):
                 'display_columns': display_columns,
                 'filter_columns': filter_columns,
                 'display_rows': display_rows,
+                'is_sortable': any(c['sortable'] for c in display_columns),
                 'path_with_added_args': path_with_added_args,
                 'request': request,
                 'sort': sort,

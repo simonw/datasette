@@ -119,6 +119,8 @@ class InvalidSql(Exception):
 
 allowed_sql_res = [
     re.compile(r'^select\b'),
+    re.compile(r'^explain select\b'),
+    re.compile(r'^explain query plan select\b'),
     re.compile(r'^with\b'),
 ]
 disallawed_sql_res = [

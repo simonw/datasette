@@ -21,6 +21,7 @@ from .utils import (
     CustomJSONEncoder,
     compound_keys_after_sql,
     detect_fts_sql,
+    detect_spatialite,
     escape_css_string,
     escape_sqlite,
     filters_should_redirect,
@@ -1121,7 +1122,7 @@ class Datasette:
                         tables[table]['foreign_keys'] = info
 
                     # Mark tables 'hidden' if they relate to FTS virtual tables
-                    fts_tables = [
+                    hidden_tables = [
                         r['name']
                         for r in conn.execute(
                             '''
@@ -1131,9 +1132,18 @@ class Datasette:
                             '''
                         )
                     ]
+
+                    if detect_spatialite(conn):
+                        # Also hide Spatialite internal tables
+                        hidden_tables += [
+                            'ElementaryGeometries', 'SpatialIndex', 'geometry_columns',
+                            'spatial_ref_sys', 'spatialite_history', 'sql_statements_log',
+                            'sqlite_sequence', 'views_geometry_columns', 'virts_geometry_columns'
+                        ]
+
                     for t in tables.keys():
-                        for fts_table in fts_tables:
-                            if t == fts_table or t.startswith(fts_table):
+                        for hidden_table in hidden_tables:
+                            if t == hidden_table or t.startswith(hidden_table):
                                 tables[t]['hidden'] = True
                                 continue
 

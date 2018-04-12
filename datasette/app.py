@@ -554,19 +554,23 @@ class TableView(RowTableShared):
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
             return await self.custom_sql(request, name, hash, canned_query['sql'], editable=False, canned_query=table)
-        is_view = bool(list(await self.execute(name, "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n", {
-            'n': table,
-        }))[0][0])
-        view_definition = None
+
         table_definition = None
-        if is_view:
-            view_definition = list(await self.execute(name, 'select sql from sqlite_master where name = :n and type="view"', {
-                'n': table,
-            }))[0][0]
+        view_definition = None
+        is_view = False
+
+        req_type = list(await self.execute(name, "SELECT type, sql from sqlite_master WHERE name=:n AND type IN ('table', 'view')", {
+            'n': table,
+        }))
+        if len(req_type) == 0:
+            raise NotFound("Table not found")
+
+        if req_type[0][0] == 'table':
+            table_definition = req_type[0][1]
         else:
-            table_definition = list(await self.execute(name, 'select sql from sqlite_master where name = :n and type="table"', {
-                'n': table,
-            }))[0][0]
+            is_view = True
+            view_definition = req_type[0][1]
+
         info = self.ds.inspect()
         table_info = info[name]['tables'].get(table) or {}
         pks = table_info.get('primary_keys') or []

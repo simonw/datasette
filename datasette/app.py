@@ -16,6 +16,7 @@ import json
 import jinja2
 import hashlib
 import time
+import pint
 from .utils import (
     Filters,
     CustomJSONEncoder,
@@ -44,6 +45,7 @@ HASH_BLOCK_SIZE = 1024 * 1024
 HASH_LENGTH = 7
 
 connections = threading.local()
+ureg = pint.UnitRegistry()
 
 
 class DatasetteError(Exception):
@@ -447,10 +449,13 @@ class DatabaseDownload(BaseView):
 
 
 class RowTableShared(BaseView):
-    def sortable_columns_for_table(self, name, table, use_rowid):
-        table_metadata = self.ds.metadata.get(
+    def table_metadata(self, database, table):
+        return self.ds.metadata.get(
             'databases', {}
-        ).get(name, {}).get('tables', {}).get(table, {})
+        ).get(database, {}).get('tables', {}).get(table, {})
+
+    def sortable_columns_for_table(self, name, table, use_rowid):
+        table_metadata = self.table_metadata(name, table)
         if 'sortable_columns' in table_metadata:
             sortable_columns = set(table_metadata['sortable_columns'])
         else:
@@ -462,6 +467,7 @@ class RowTableShared(BaseView):
 
     async def display_columns_and_rows(self, database, table, description, rows, link_column=False, expand_foreign_keys=True):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
+        table_metadata = self.table_metadata(database, table)
         info = self.ds.inspect()[database]
         sortable_columns = self.sortable_columns_for_table(database, table, True)
         columns = [{
@@ -534,7 +540,16 @@ class RowTableShared(BaseView):
                         )
                     )
                 else:
-                    display_value = str(value)
+                    if column in table_metadata.get('units', {}) and value != '':
+                        # Interpret units using pint
+                        value = value * ureg(table_metadata['units'][column])
+                        # Pint uses floating point which sometimes introduces errors in the compact
+                        # representation, which we have to round off to avoid ugliness. In the vast
+                        # majority of cases this rounding will be inconsequential. I hope.
+                        value = round(value.to_compact(), 6)
+                        display_value = jinja2.Markup('{:~P}'.format(value).replace(' ', '&nbsp;'))
+                    else:
+                        display_value = str(value)
                 cells.append({
                     'column': column,
                     'value': display_value,

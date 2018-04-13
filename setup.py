@@ -1,10 +1,12 @@
 from setuptools import setup, find_packages
 from datasette import __version__
-from pathlib import Path
+import os
 
 
 def get_long_description():
-    with open(Path(__file__).parent / 'README.md', encoding='utf8') as fp:
+    with open(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'README.md'
+    ), encoding='utf8') as fp:
         return fp.read()
 
 

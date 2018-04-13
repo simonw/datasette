@@ -1,6 +1,24 @@
 Changelog
 =========
 
+0.16 (2018-04-13)
+-----------------
+- Better mechanism for handling errors; 404s for missing table/database
+
+  New error mechanism closes `#193 <https://github.com/simonw/datasette/issues/193>`_
+
+  404s for missing tables/databases closes `#184 <https://github.com/simonw/datasette/issues/184>`_
+
+- long_description in markdown for the new PyPI
+- Hide Spatialite system tables. [Russ Garrett]
+- Allow ``explain select`` / ``explain query plan select`` `#201 <https://github.com/simonw/datasette/issues/201>`_
+- Datasette inspect now finds primary_keys `#195 <https://github.com/simonw/datasette/issues/195>`_
+- Ability to sort using form fields (for mobile portrait mode) `#199 <https://github.com/simonw/datasette/issues/199>`_
+
+  We now display sort options as a select box plus a descending checkbox, which
+  means you can apply sort orders even in portrait mode on a mobile phone where
+  the column headers are hidden.
+
 0.15 (2018-04-09)
 -----------------
 

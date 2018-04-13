@@ -1,9 +1,18 @@
 from setuptools import setup, find_packages
 from datasette import __version__
+from pathlib import Path
+
+
+def get_long_description():
+    with open(Path(__file__).parent / 'README.md', encoding='utf8') as fp:
+        return fp.read()
+
 
 setup(
     name='datasette',
     description='An instant JSON API for your SQLite databases',
+    long_description=get_long_description(),
+    long_description_content_type='text/markdown',
     author='Simon Willison',
     version=__version__,
     license='Apache License, Version 2.0',

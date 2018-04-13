@@ -47,7 +47,11 @@ connections = threading.local()
 
 
 class DatasetteError(Exception):
-    pass
+    def __init__(self, message, title=None, error_dict=None, status=500, template=None):
+        self.message = message
+        self.title = title
+        self.error_dict = error_dict or {}
+        self.status = status
 
 
 class RenderMixin(HTTPMethodView):
@@ -200,14 +204,11 @@ class BaseView(RenderMixin):
             else:
                 data, extra_template_data, templates = response_or_template_contexts
         except (sqlite3.OperationalError, InvalidSql, DatasetteError) as e:
-            data = {
-                'ok': False,
-                'error': str(e),
-                'database': name,
-                'database_hash': hash,
-            }
-            status_code = 400
-            templates = ['error.html']
+            raise DatasetteError(str(e), title='Invalid SQL', status=400)
+        except (sqlite3.OperationalError) as e:
+            raise DatasetteError(str(e))
+        except DatasetteError:
+            raise
         end = time.time()
         data['query_ms'] = (end - start) * 1000
         for key in ('source', 'source_url', 'license', 'license_url'):
@@ -554,19 +555,28 @@ class TableView(RowTableShared):
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
             return await self.custom_sql(request, name, hash, canned_query['sql'], editable=False, canned_query=table)
-        is_view = bool(list(await self.execute(name, "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n", {
-            'n': table,
-        }))[0][0])
+        is_view = bool(list(await self.execute(
+            name,
+            "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n",
+            {'n': table}
+        ))[0][0])
         view_definition = None
         table_definition = None
         if is_view:
-            view_definition = list(await self.execute(name, 'select sql from sqlite_master where name = :n and type="view"', {
-                'n': table,
-            }))[0][0]
+            view_definition = list(await self.execute(
+                name,
+                'select sql from sqlite_master where name = :n and type="view"',
+                {'n': table}
+            ))[0][0]
         else:
-            table_definition = list(await self.execute(name, 'select sql from sqlite_master where name = :n and type="table"', {
-                'n': table,
-            }))[0][0]
+            table_definition_rows = list(await self.execute(
+                name,
+                'select sql from sqlite_master where name = :n and type="table"',
+                {'n': table}
+            ))
+            if not table_definition_rows:
+                raise NotFound('Table not found: {}'.format(table))
+            table_definition = table_definition_rows[0][0]
         info = self.ds.inspect()
         table_info = info[name]['tables'].get(table) or {}
         pks = table_info.get('primary_keys') or []
@@ -1199,4 +1209,36 @@ class Datasette:
             RowView.as_view(self),
             '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(\.jsono?)?$>'
         )
+
+        @app.exception(Exception)
+        def on_exception(request, exception):
+            title = None
+            if isinstance(exception, NotFound):
+                status = 404
+                info = {}
+                message = exception.args[0]
+            elif isinstance(exception, DatasetteError):
+                status = exception.status
+                info = exception.error_dict
+                message = exception.message
+                title = exception.title
+            else:
+                status = 500
+                info = {}
+                message = str(exception)
+            templates = ['500.html']
+            if status != 500:
+                templates = ['{}.html'.format(status)] + templates
+            info.update({
+                'ok': False,
+                'error': message,
+                'status': status,
+                'title': title,
+            })
+            if (request.path.split('?')[0].endswith('.json')):
+                return response.json(info, status=status)
+            else:
+                template = self.jinja_env.select_template(templates)
+                return response.html(template.render(info), status=status)
+
         return app

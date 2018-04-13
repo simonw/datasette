@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}{% if title %}{{ title }}{% else %}Error {{ status }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="hd"><a href="/">home</a></div>
+
+<h1>{% if title %}{{ title }}{% else %}Error {{ status }}{% endif %}</h1>
+
+<div style="padding: 1em; margin: 1em 0; border: 3px solid red;">{{ error }}</div>
+
+{% endblock %}

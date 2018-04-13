@@ -210,6 +210,12 @@ def test_row_html_simple_primary_key(app_client):
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
+def test_table_not_exists(app_client):
+    assert 'Table not found: blah' in app_client.get(
+        '/test_tables/blah', gather_request=False
+    ).body.decode('utf8')
+
+
 def test_table_html_no_primary_key(app_client):
     response = app_client.get('/test_tables/no_primary_key', gather_request=False)
     table = Soup(response.body, 'html.parser').find('table')

@@ -208,6 +208,17 @@ def test_table_json(app_client):
     }]
 
 
+def test_table_not_exists_json(app_client):
+    assert {
+        'ok': False,
+        'error': 'Table not found: blah',
+        'status': 404,
+        'title': None,
+    } == app_client.get(
+        '/test_tables/blah.json', gather_request=False
+    ).json
+
+
 def test_jsono_redirects_to_shape_objects(app_client):
     response_1 = app_client.get(
         '/test_tables/simple_primary_key.jsono',

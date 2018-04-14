@@ -17,6 +17,7 @@ import jinja2
 import hashlib
 import time
 import pint
+import traceback
 from .utils import (
     Filters,
     CustomJSONEncoder,
@@ -171,9 +172,9 @@ class BaseView(RenderMixin):
                     else:
                         rows = cursor.fetchall()
                         truncated = False
-                except Exception:
-                    print('ERROR: conn={}, sql = {}, params = {}'.format(
-                        conn, repr(sql), params
+                except Exception as e:
+                    print('ERROR: conn={}, sql = {}, params = {}: {}'.format(
+                        conn, repr(sql), params, e
                     ))
                     raise
             if truncate:
@@ -480,13 +481,15 @@ class RowTableShared(BaseView):
         pks = table_info.get('primary_keys') or []
 
         # Prefetch foreign key resolutions for later expansion:
-        expanded = {}
+        fks = {}
+        labeled_fks = {}
         if table_info and expand_foreign_keys:
             foreign_keys = table_info['foreign_keys']['outgoing']
             for fk in foreign_keys:
                 label_column = tables.get(fk['other_table'], {}).get('label_column')
                 if not label_column:
-                    # We only link cells to other tables with label columns defined
+                    # No label for this FK
+                    fks[fk['column']] = fk['other_table']
                     continue
                 ids_to_lookup = set([row[fk['column']] for row in rows])
                 sql = 'select "{other_column}", "{label_column}" from {other_table} where "{other_column}" in ({placeholders})'.format(
@@ -502,7 +505,7 @@ class RowTableShared(BaseView):
                     pass
                 else:
                     for id, value in results:
-                        expanded[(fk['column'], id)] = (fk['other_table'], value)
+                        labeled_fks[(fk['column'], id)] = (fk['other_table'], value)
 
         cell_rows = []
         for row in rows:
@@ -522,16 +525,24 @@ class RowTableShared(BaseView):
                 })
             for value, column_dict in zip(row, columns):
                 column = column_dict['name']
-                if (column, value) in expanded:
-                    other_table, label = expanded[(column, value)]
+                if (column, value) in labeled_fks:
+                    other_table, label = labeled_fks[(column, value)]
                     display_value = jinja2.Markup(
-                        '<a href="/{database}/{table}/{id}">{label}</a>&nbsp;<em>{id}</em>'.format(
+                        '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'.format(
                             database=database,
                             table=urllib.parse.quote_plus(other_table),
+                            link_id=urllib.parse.quote_plus(str(value)),
                             id=str(jinja2.escape(value)),
                             label=str(jinja2.escape(label)),
                         )
                     )
+                elif column in fks:
+                    display_value = jinja2.Markup(
+                        '<a href="/{database}/{table}/{link_id}">{id}</a>'.format(
+                            database=database,
+                            table=urllib.parse.quote_plus(fks[column]),
+                            link_id=urllib.parse.quote_plus(str(value)),
+                            id=str(jinja2.escape(value))))
                 elif value is None:
                     display_value = jinja2.Markup('&nbsp;')
                 elif is_url(str(value).strip()):
@@ -978,9 +989,12 @@ class RowView(RowTableShared):
         if len(pk_values) != 1:
             return []
         table_info = self.ds.inspect()[name]['tables'].get(table)
-        if not table:
+        if not table_info:
             return []
         foreign_keys = table_info['foreign_keys']['incoming']
+        if len(foreign_keys) == 0:
+            return []
+
         sql = 'select ' + ', '.join([
             '(select count(*) from {table} where "{column}"=:id)'.format(
                 table=escape_sqlite(fk['other_table']),
@@ -1253,6 +1267,7 @@ class Datasette:
                 status = 500
                 info = {}
                 message = str(exception)
+                traceback.print_exc()
             templates = ['500.html']
             if status != 500:
                 templates = ['{}.html'.format(status)] + templates

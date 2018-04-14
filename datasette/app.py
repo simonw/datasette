@@ -1,6 +1,6 @@
 from sanic import Sanic
 from sanic import response
-from sanic.exceptions import NotFound
+from sanic.exceptions import NotFound, InvalidUsage
 from sanic.views import HTTPMethodView
 from sanic.request import RequestParameters
 from jinja2 import Environment, FileSystemLoader, ChoiceLoader, PrefixLoader
@@ -1256,6 +1256,10 @@ class Datasette:
             title = None
             if isinstance(exception, NotFound):
                 status = 404
+                info = {}
+                message = exception.args[0]
+            elif isinstance(exception, InvalidUsage):
+                status = 405
                 info = {}
                 message = exception.args[0]
             elif isinstance(exception, DatasetteError):

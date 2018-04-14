@@ -160,6 +160,7 @@ def skeleton(files, metadata, sqlite_extensions):
                     'license_url': None,
                     'source': None,
                     'source_url': None,
+                    'units': {}
                 } for table_name in (info.get('tables') or {})
             }
         }

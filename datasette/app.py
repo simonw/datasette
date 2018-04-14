@@ -84,6 +84,12 @@ class BaseView(RenderMixin):
         self.page_size = datasette.page_size
         self.max_returned_rows = datasette.max_returned_rows
 
+    def table_metadata(self, database, table):
+        "Fetch table-specific metadata."
+        return self.ds.metadata.get(
+            'databases', {}
+        ).get(database, {}).get('tables', {}).get(table, {})
+
     def options(self, request, *args, **kwargs):
         r = response.text('ok')
         if self.ds.cors:
@@ -449,11 +455,6 @@ class DatabaseDownload(BaseView):
 
 
 class RowTableShared(BaseView):
-    def table_metadata(self, database, table):
-        return self.ds.metadata.get(
-            'databases', {}
-        ).get(database, {}).get('tables', {}).get(table, {})
-
     def sortable_columns_for_table(self, name, table, use_rowid):
         table_metadata = self.table_metadata(name, table)
         if 'sortable_columns' in table_metadata:
@@ -890,6 +891,7 @@ class TableView(RowTableShared):
             'filtered_table_rows_count': filtered_table_rows_count,
             'columns': columns,
             'primary_keys': pks,
+            'units': self.table_metadata(name, table).get('units', {}),
             'query': {
                 'sql': sql,
                 'params': params,
@@ -959,6 +961,7 @@ class RowView(RowTableShared):
             'columns': columns,
             'primary_keys': pks,
             'primary_key_values': pk_values,
+            'units': self.table_metadata(name, table).get('units', {})
         }
 
         if 'foreign_key_tables' in (request.raw_args.get('_extras') or '').split(','):

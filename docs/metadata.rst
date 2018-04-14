@@ -55,6 +55,35 @@ You can also provide metadata at the per-database or per-table level, like this:
 
 Each of the top-level metadata fields can be used at the database and table level.
 
+Specifying units for a column
+-----------------------------
+
+Datasette supports attaching units to a column, which will be used when displaying
+values from that column. SI prefixes will be used where appropriate.
+
+Column units are configured in the metadata like so::
+
+    {
+        "databases": {
+            "database1": {
+                "tables": {
+                    "example_table": {
+                        "units": {
+                            "column1": "metres",
+                            "column2": "Hz"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+Units are interpreted using Pint_, and you can see the full list of available units in
+Pint's `unit registry`_.
+
+.. _Pint: https://pint.readthedocs.io/
+.. _unit registry: https://github.com/hgrecco/pint/blob/master/pint/default_en.txt
+
 Setting which columns can be used for sorting
 ---------------------------------------------
 
@@ -119,7 +148,8 @@ This will create a ``metadata.json`` file looking something like this::
                         "license": null,
                         "license_url": null,
                         "source": null,
-                        "source_url": null
+                        "source_url": null,
+                        "units": {}
                     }
                 }
             },

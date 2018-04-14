@@ -284,7 +284,7 @@ def test_table_html_foreign_key_links(app_client):
             '<td><a href="/test_tables/foreign_key_references/1">1</a></td>',
             '<td>1</td>',
             '<td><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
-            '<td>1</td>'
+            '<td><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]

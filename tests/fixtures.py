@@ -93,8 +93,14 @@ METADATA = {
 
 TABLES = '''
 CREATE TABLE simple_primary_key (
-  pk varchar(30) primary key,
+  id varchar(30) primary key,
   content text
+);
+
+CREATE TABLE primary_key_multiple_columns (
+  id varchar(30) primary key,
+  content text,
+  content2 text
 );
 
 CREATE TABLE compound_primary_key (
@@ -112,6 +118,14 @@ CREATE TABLE compound_three_primary_keys (
   pk3 varchar(30),
   content text,
   PRIMARY KEY (pk1, pk2, pk3)
+);
+
+CREATE TABLE foreign_key_references (
+  pk varchar(30) primary key,
+  foreign_key_with_label varchar(30),
+  foreign_key_with_no_label varchar(30),
+  FOREIGN KEY (foreign_key_with_label) REFERENCES simple_primary_key(id),
+  FOREIGN KEY (foreign_key_with_no_label) REFERENCES primary_key_multiple_columns(id)
 );
 
 CREATE TABLE sortable (
@@ -181,6 +195,10 @@ INSERT INTO [select] VALUES ('group', 'having', 'and');
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');
+
+INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
+
+INSERT INTO foreign_key_references VALUES (1, 1, 1);
 
 INSERT INTO complex_foreign_keys VALUES (1, 1, 2, 1);
 

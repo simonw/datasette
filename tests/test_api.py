@@ -14,7 +14,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 11
+    assert d['tables_count'] == 13
 
 
 def test_database_page(app_client):
@@ -77,6 +77,25 @@ def test_database_page(app_client):
         'label_column': None,
         'primary_keys': ['pk1', 'pk2', 'pk3'],
     }, {
+        'columns': ['pk', 'foreign_key_with_label', 'foreign_key_with_no_label'],
+        'name': 'foreign_key_references',
+        'count': 1,
+        'hidden': False,
+        'foreign_keys': {
+            'incoming': [],
+            'outgoing':  [{
+                'column': 'foreign_key_with_no_label',
+                'other_column': 'id',
+                'other_table': 'primary_key_multiple_columns'
+            }, {
+                'column': 'foreign_key_with_label',
+                'other_column': 'id',
+                'other_table': 'simple_primary_key',
+            }],
+        },
+        'label_column': None,
+        'primary_keys': ['pk'],
+    }, {
         'columns': ['content', 'a', 'b', 'c'],
         'name': 'no_primary_key',
         'count': 201,
@@ -84,6 +103,21 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
         'primary_keys': [],
+    }, {
+        'columns': ['id', 'content', 'content2'],
+        'name': 'primary_key_multiple_columns',
+        'count': 1,
+        'foreign_keys': {
+            'incoming': [{
+                'column': 'id',
+                'other_column': 'foreign_key_with_no_label',
+                'other_table': 'foreign_key_references'
+            }],
+            'outgoing': []
+        },
+        'hidden': False,
+        'label_column': None,
+        'primary_keys': ['id']
     }, {
         'columns': ['group', 'having', 'and'],
         'name': 'select',
@@ -93,12 +127,16 @@ def test_database_page(app_client):
         'label_column': None,
         'primary_keys': [],
     }, {
-        'columns': ['pk', 'content'],
+        'columns': ['id', 'content'],
         'name': 'simple_primary_key',
         'count': 3,
         'hidden': False,
         'foreign_keys': {
             'incoming': [{
+                'column': 'id',
+                'other_column': 'foreign_key_with_label',
+                'other_table': 'foreign_key_references'
+            }, {
                 'column': 'id',
                 'other_column': 'f3',
                 'other_table': 'complex_foreign_keys'
@@ -113,8 +151,8 @@ def test_database_page(app_client):
             }],
             'outgoing': [],
         },
-        'label_column': None,
-        'primary_keys': ['pk'],
+        'label_column': 'content',
+        'primary_keys': ['id'],
     }, {
         'columns': [
             'pk1', 'pk2', 'content', 'sortable', 'sortable_with_nulls',
@@ -202,16 +240,16 @@ def test_table_json(app_client):
     response = app_client.get('/test_tables/simple_primary_key.json?_shape=objects', gather_request=False)
     assert response.status == 200
     data = response.json
-    assert data['query']['sql'] == 'select * from simple_primary_key order by pk limit 51'
+    assert data['query']['sql'] == 'select * from simple_primary_key order by id limit 51'
     assert data['query']['params'] == {}
     assert data['rows'] == [{
-        'pk': '1',
+        'id': '1',
         'content': 'hello',
     }, {
-        'pk': '2',
+        'id': '2',
         'content': 'world',
     }, {
-        'pk': '3',
+        'id': '3',
         'content': '',
     }]
 
@@ -260,13 +298,13 @@ def test_table_shape_objects(app_client):
         gather_request=False
     )
     assert [{
-        'pk': '1',
+        'id': '1',
         'content': 'hello',
     }, {
-        'pk': '2',
+        'id': '2',
         'content': 'world',
     }, {
-        'pk': '3',
+        'id': '3',
         'content': '',
     }] == response.json['rows']
 
@@ -278,15 +316,15 @@ def test_table_shape_object(app_client):
     )
     assert {
         '1': {
-            'pk': '1',
+            'id': '1',
             'content': 'hello',
         },
         '2': {
-            'pk': '2',
+            'id': '2',
             'content': 'world',
         },
         '3': {
-            'pk': '3',
+            'id': '3',
             'content': '',
         }
     } == response.json['rows']
@@ -520,13 +558,18 @@ def test_view(app_client):
 def test_row(app_client):
     response = app_client.get('/test_tables/simple_primary_key/1.json?_shape=objects', gather_request=False)
     assert response.status == 200
-    assert [{'pk': '1', 'content': 'hello'}] == response.json['rows']
+    assert [{'id': '1', 'content': 'hello'}] == response.json['rows']
 
 
 def test_row_foreign_key_tables(app_client):
     response = app_client.get('/test_tables/simple_primary_key/1.json?_extras=foreign_key_tables', gather_request=False)
     assert response.status == 200
     assert [{
+        'column': 'id',
+        'count': 1,
+        'other_column': 'foreign_key_with_label',
+        'other_table': 'foreign_key_references'
+    }, {
         'column': 'id',
         'count': 1,
         'other_column': 'f3',

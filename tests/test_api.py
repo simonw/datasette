@@ -14,7 +14,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 10
+    assert d['tables_count'] == 11
 
 
 def test_database_page(app_client):
@@ -130,6 +130,14 @@ def test_database_page(app_client):
         'columns': ['pk', 'content'],
         'name': 'table/with/slashes.csv',
         'count': 1,
+        'hidden': False,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
+        'primary_keys': ['pk'],
+    }, {
+        'columns': ['pk', 'distance', 'frequency'],
+        'name': 'units',
+        'count': 3,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
@@ -534,3 +542,16 @@ def test_row_foreign_key_tables(app_client):
         'other_column': 'f1',
         'other_table': 'complex_foreign_keys'
     }] == response.json['foreign_key_tables']
+
+
+def test_unit_filters(app_client):
+    response = app_client.get('/test_tables/units.json?distance__lt=75km&frequency__gt=1kHz',
+                              gather_request=False)
+    assert response.status == 200
+    data = response.json
+
+    assert data['units']['distance'] == 'm'
+    assert data['units']['frequency'] == 'Hz'
+
+    assert len(data['rows']) == 1
+    assert data['rows'][0][0] == 2

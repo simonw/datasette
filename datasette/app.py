@@ -647,7 +647,9 @@ class TableView(RowTableShared):
                 forward_querystring=False
             )
 
-        filters = Filters(sorted(other_args.items()))
+        units = self.table_metadata(name, table).get('units', {})
+
+        filters = Filters(sorted(other_args.items()), units, ureg)
         where_clauses, params = filters.build_where_clauses()
 
         # _search support:
@@ -891,7 +893,7 @@ class TableView(RowTableShared):
             'filtered_table_rows_count': filtered_table_rows_count,
             'columns': columns,
             'primary_keys': pks,
-            'units': self.table_metadata(name, table).get('units', {}),
+            'units': units,
             'query': {
                 'sql': sql,
                 'params': params,

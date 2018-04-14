@@ -10,6 +10,7 @@ import tempfile
 import time
 import shutil
 import urllib
+import numbers
 
 
 # From https://www.sqlite.org/lang_keywords.html
@@ -459,8 +460,10 @@ class Filters:
         f.key: f for f in _filters
     }
 
-    def __init__(self, pairs):
+    def __init__(self, pairs, units={}, ureg=None):
         self.pairs = pairs
+        self.units = units
+        self.ureg = ureg
 
     def lookups(self):
         "Yields (lookup, display, no_argument) pairs"
@@ -500,13 +503,27 @@ class Filters:
     def has_selections(self):
         return bool(self.pairs)
 
+    def convert_unit(self, column, value):
+        "If the user has provided a unit in the quey, convert it into the column unit, if present."
+        if column not in self.units:
+            return value
+
+        # Try to interpret the value as a unit
+        value = self.ureg(value)
+        if isinstance(value, numbers.Number):
+            # It's just a bare number, assume it's the column unit
+            return value
+
+        column_unit = self.ureg(self.units[column])
+        return value.to(column_unit).magnitude
+
     def build_where_clauses(self):
         sql_bits = []
         params = {}
         for i, (column, lookup, value) in enumerate(self.selections()):
             filter = self._filters_by_key.get(lookup, None)
             if filter:
-                sql_bit, param = filter.where_clause(column, value, i)
+                sql_bit, param = filter.where_clause(column, self.convert_unit(column, value), i)
                 sql_bits.append(sql_bit)
                 if param is not None:
                     param_id = 'p{}'.format(i)

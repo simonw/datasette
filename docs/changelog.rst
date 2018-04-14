@@ -1,6 +1,56 @@
 Changelog
 =========
 
+0.18 (2018-04-14)
+-----------------
+
+This release introduces `support for units <http://datasette.readthedocs.io/en/latest/metadata.html#specifying-units-for-a-column>`_,
+contributed by Russ Garrett (`#203 <https://github.com/simonw/datasette/issues/203>`_).
+You can now optionally specify the units for specific columns using ``metadata.json``.
+Once specified, units will be displayed in the HTML view of your table. They also become
+available for use in filters - if a column is configured with a unit of distance, you can
+request all rows where that column is less than 50 meters or more than 20 feet for example.
+
+- Link foreign keys which don't have labels. [Russ Garrett]
+
+  This renders unlabeled FKs as simple links.
+
+  Also includes bonus fixes for two minor issues:
+
+  * In foreign key link hrefs the primary key was escaped using HTML
+    escaping rather than URL escaping. This broke some non-integer PKs.
+  * Print tracebacks to console when handling 500 errors.
+
+- Fix SQLite error when loading rows with no incoming FKs. [Russ
+  Garrett]
+
+  This fixes ``ERROR: conn=<sqlite3.Connection object at 0x10bbb9f10>, sql
+  = 'select ', params = {'id': '1'}`` caused by an invalid query when
+  loading incoming FKs.
+
+  The error was ignored due to async but it still got printed to the
+  console.
+
+- Allow custom units to be registered with Pint. [Russ Garrett]
+- Support units in filters. [Russ Garrett]
+- Tidy up units support. [Russ Garrett]
+
+  * Add units to exported JSON
+  * Units key in metadata skeleton
+  * Docs
+
+- Initial units support. [Russ Garrett]
+
+  Add support for specifying units for a column in ``metadata.json`` and
+  rendering them on display using
+  `pint <https://pint.readthedocs.io/en/latest/>`_
+
+
+0.17 (2018-04-13)
+-----------------
+- Release 0.17 to fix issues with PyPI
+
+
 0.16 (2018-04-13)
 -----------------
 - Better mechanism for handling errors; 404s for missing table/database

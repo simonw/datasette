@@ -172,7 +172,7 @@ def test_table_html_simple_primary_key(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     ths = table.findAll('th')
     assert 'Link' == ths[0].string.strip()
-    for expected_col, th in zip(('pk', 'content'), ths[1:]):
+    for expected_col, th in zip(('id', 'content'), ths[1:]):
         a = th.find('a')
         assert expected_col == a.string
         assert a['href'].endswith('/simple_primary_key?_sort={}'.format(
@@ -200,7 +200,7 @@ def test_row_html_simple_primary_key(app_client):
     response = app_client.get('/test_tables/simple_primary_key/1', gather_request=False)
     table = Soup(response.body, 'html.parser').find('table')
     assert [
-        'pk', 'content'
+        'id', 'content'
     ] == [th.string.strip() for th in table.select('thead th')]
     assert [
         [
@@ -271,6 +271,20 @@ def test_table_html_compound_primary_key(app_client):
             '<td>a</td>',
             '<td>b</td>',
             '<td>c</td>',
+        ]
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_table_html_foreign_key_links(app_client):
+    response = app_client.get('/test_tables/foreign_key_references', gather_request=False)
+    table = Soup(response.body, 'html.parser').find('table')
+    expected = [
+        [
+            '<td><a href="/test_tables/foreign_key_references/1">1</a></td>',
+            '<td>1</td>',
+            '<td><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
+            '<td>1</td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]

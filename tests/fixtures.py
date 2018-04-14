@@ -79,6 +79,12 @@ METADATA = {
                 'no_primary_key': {
                     'sortable_columns': [],
                 },
+                'units': {
+                    'units': {
+                        'distance': 'm',
+                        'frequency': 'Hz'
+                    }
+                },
             }
         },
     }
@@ -169,6 +175,16 @@ CREATE TABLE "complex_foreign_keys" (
   FOREIGN KEY ("f3") REFERENCES [simple_primary_key](id)
 );
 
+CREATE TABLE units (
+  pk integer primary key,
+  distance int,
+  frequency int
+);
+
+INSERT INTO units VALUES (1, 1, 100);
+INSERT INTO units VALUES (2, 5000, 2500);
+INSERT INTO units VALUES (3, 100000, 75000);
+
 CREATE TABLE [select] (
   [group] text,
   [having] text,
@@ -206,7 +222,6 @@ CREATE VIEW simple_view AS
         **row
     ).replace('None', 'null') for row in generate_sortable_rows(201)
 ])
-
 
 if __name__ == '__main__':
     filename = sys.argv[-1]

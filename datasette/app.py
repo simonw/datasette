@@ -85,6 +85,12 @@ class BaseView(RenderMixin):
         self.page_size = datasette.page_size
         self.max_returned_rows = datasette.max_returned_rows
 
+    def table_metadata(self, database, table):
+        "Fetch table-specific metadata."
+        return self.ds.metadata.get(
+            'databases', {}
+        ).get(database, {}).get('tables', {}).get(table, {})
+
     def options(self, request, *args, **kwargs):
         r = response.text('ok')
         if self.ds.cors:
@@ -450,11 +456,6 @@ class DatabaseDownload(BaseView):
 
 
 class RowTableShared(BaseView):
-    def table_metadata(self, database, table):
-        return self.ds.metadata.get(
-            'databases', {}
-        ).get(database, {}).get('tables', {}).get(table, {})
-
     def sortable_columns_for_table(self, name, table, use_rowid):
         table_metadata = self.table_metadata(name, table)
         if 'sortable_columns' in table_metadata:
@@ -657,7 +658,9 @@ class TableView(RowTableShared):
                 forward_querystring=False
             )
 
-        filters = Filters(sorted(other_args.items()))
+        units = self.table_metadata(name, table).get('units', {})
+
+        filters = Filters(sorted(other_args.items()), units, ureg)
         where_clauses, params = filters.build_where_clauses()
 
         # _search support:
@@ -901,6 +904,7 @@ class TableView(RowTableShared):
             'filtered_table_rows_count': filtered_table_rows_count,
             'columns': columns,
             'primary_keys': pks,
+            'units': units,
             'query': {
                 'sql': sql,
                 'params': params,
@@ -970,6 +974,7 @@ class RowView(RowTableShared):
             'columns': columns,
             'primary_keys': pks,
             'primary_key_values': pk_values,
+            'units': self.table_metadata(name, table).get('units', {})
         }
 
         if 'foreign_key_tables' in (request.raw_args.get('_extras') or '').split(','):
@@ -1195,6 +1200,11 @@ class Datasette:
                 }
         return self._inspect
 
+    def register_custom_units(self):
+        "Register any custom units defined in the metadata.json with Pint"
+        for unit in self.metadata.get('custom_units', []):
+            ureg.define(unit)
+
     def app(self):
         app = Sanic(__name__)
         default_templates = str(app_root / 'datasette' / 'templates')
@@ -1238,6 +1248,8 @@ class Datasette:
             RowView.as_view(self),
             '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(\.jsono?)?$>'
         )
+
+        self.register_custom_units()
 
         @app.exception(Exception)
         def on_exception(request, exception):

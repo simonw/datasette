@@ -165,9 +165,9 @@ class BaseView(RenderMixin):
                     else:
                         rows = cursor.fetchall()
                         truncated = False
-                except Exception:
-                    print('ERROR: conn={}, sql = {}, params = {}'.format(
-                        conn, repr(sql), params
+                except Exception as e:
+                    print('ERROR: conn={}, sql = {}, params = {}: {}'.format(
+                        conn, repr(sql), params, e
                     ))
                     raise
             if truncate:
@@ -973,9 +973,12 @@ class RowView(RowTableShared):
         if len(pk_values) != 1:
             return []
         table_info = self.ds.inspect()[name]['tables'].get(table)
-        if not table:
+        if not table_info:
             return []
         foreign_keys = table_info['foreign_keys']['incoming']
+        if len(foreign_keys) == 0:
+            return []
+
         sql = 'select ' + ', '.join([
             '(select count(*) from {table} where "{column}"=:id)'.format(
                 table=escape_sqlite(fk['other_table']),

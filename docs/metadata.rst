@@ -79,7 +79,14 @@ Column units are configured in the metadata like so::
     }
 
 Units are interpreted using Pint_, and you can see the full list of available units in
-Pint's `unit registry`_.
+Pint's `unit registry`_. You can also add custom units to the metadata, which will be
+registered with Pint::
+    
+    {
+        "custom_units": [
+            "decibel = [] = dB"
+        ]
+    }
 
 .. _Pint: https://pint.readthedocs.io/
 .. _unit registry: https://github.com/hgrecco/pint/blob/master/pint/default_en.txt

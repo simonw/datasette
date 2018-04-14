@@ -1186,6 +1186,11 @@ class Datasette:
                 }
         return self._inspect
 
+    def register_custom_units(self):
+        "Register any custom units defined in the metadata.json with Pint"
+        for unit in self.metadata.get('custom_units', []):
+            ureg.define(unit)
+
     def app(self):
         app = Sanic(__name__)
         default_templates = str(app_root / 'datasette' / 'templates')
@@ -1229,6 +1234,8 @@ class Datasette:
             RowView.as_view(self),
             '/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(\.jsono?)?$>'
         )
+
+        self.register_custom_units()
 
         @app.exception(Exception)
         def on_exception(request, exception):

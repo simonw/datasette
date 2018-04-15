@@ -28,7 +28,8 @@ setup(
         'Sanic==0.7.0',
         'Jinja2==2.10',
         'hupper==1.0',
-        'pint==0.8.1'
+        'pint==0.8.1',
+        'pluggy>=0.1.0,<1.0',
     ],
     entry_points='''
         [console_scripts]

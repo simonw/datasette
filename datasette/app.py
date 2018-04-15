@@ -17,6 +17,7 @@ import jinja2
 import hashlib
 import time
 import pint
+import pluggy
 import traceback
 from .utils import (
     Filters,
@@ -38,6 +39,7 @@ from .utils import (
     urlsafe_components,
     validate_sql_select,
 )
+from . import hookspecs
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
@@ -47,6 +49,13 @@ HASH_LENGTH = 7
 
 connections = threading.local()
 ureg = pint.UnitRegistry()
+
+
+pm = pluggy.PluginManager('datasette')
+pm.add_hookspecs(hookspecs)
+import datasette.plugin_demo
+pm.register(datasette.plugin_demo)
+pm.load_setuptools_entrypoints('datasette')
 
 
 class DatasetteError(Exception):
@@ -1100,6 +1109,7 @@ class Datasette:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
                 conn.execute("SELECT load_extension('{}')".format(extension))
+        pm.hook.prepare_connection(conn=conn)
 
     def inspect(self):
         if not self._inspect:
@@ -1226,6 +1236,7 @@ class Datasette:
         self.jinja_env.filters['quote_plus'] = lambda u: urllib.parse.quote_plus(u)
         self.jinja_env.filters['escape_sqlite'] = escape_sqlite
         self.jinja_env.filters['to_css_class'] = to_css_class
+        pm.hook.prepare_jinja2_environment(env=self.jinja_env)
         app.add_route(IndexView.as_view(self), '/<as_json:(\.jsono?)?$>')
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, '/favicon.ico')

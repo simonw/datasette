@@ -524,10 +524,11 @@ class RowTableShared(BaseView):
                 cells.append({
                     'column': 'Link',
                     'value': jinja2.Markup(
-                        '<a href="/{database}/{table}/{flat_pks}">{flat_pks}</a>'.format(
+                        '<a href="/{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                             database=database,
                             table=urllib.parse.quote_plus(table),
-                            flat_pks=path_from_row_pks(row, pks, not pks),
+                            flat_pks=str(jinja2.escape(path_from_row_pks(row, pks, not pks, False))),
+                            flat_pks_quoted=path_from_row_pks(row, pks, not pks)
                         )
                     ),
                 })

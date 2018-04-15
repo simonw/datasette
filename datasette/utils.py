@@ -38,14 +38,19 @@ def urlsafe_components(token):
     ]
 
 
-def path_from_row_pks(row, pks, use_rowid):
+def path_from_row_pks(row, pks, use_rowid, quote=True):
+    """ Generate an optionally URL-quoted unique identifier
+        for a row from its primary keys."""
     if use_rowid:
-        return urllib.parse.quote_plus(str(row['rowid']))
-    bits = []
-    for pk in pks:
-        bits.append(
-            urllib.parse.quote_plus(str(row[pk]))
-        )
+        bits = [row['rowid']]
+    else:
+        bits = [row[pk] for pk in pks]
+
+    if quote:
+        bits = [urllib.parse.quote_plus(str(bit)) for bit in bits]
+    else:
+        bits = [str(bit) for bit in bits]
+
     return ','.join(bits)
 
 

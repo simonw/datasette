@@ -1058,7 +1058,11 @@ class Datasette:
                 filepath = os.path.join(self.plugins_dir, filename)
                 with open(filepath) as f:
                     mod = module_from_path(filepath, name=filename)
-                    pm.register(mod)
+                    try:
+                        pm.register(mod)
+                    except ValueError:
+                        # Plugin already registered
+                        pass
 
     def app_css_hash(self):
         if not hasattr(self, '_app_css_hash'):

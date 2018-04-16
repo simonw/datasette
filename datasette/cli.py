@@ -58,13 +58,14 @@ def inspect(files, inspect_file, sqlite_extensions):
 @click.option('--force', is_flag=True, help='Pass --force option to now')
 @click.option('--branch', help='Install datasette from a GitHub branch e.g. master')
 @click.option('--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
+@click.option('--plugins-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom plugins')
 @click.option('--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)
 @click.option('--title', help='Title for metadata')
 @click.option('--license', help='License label for metadata')
 @click.option('--license_url', help='License URL for metadata')
 @click.option('--source', help='Source label for metadata')
 @click.option('--source_url', help='Source URL for metadata')
-def publish(publisher, files, name, metadata, extra_options, force, branch, template_dir, static, **extra_metadata):
+def publish(publisher, files, name, metadata, extra_options, force, branch, template_dir, plugins_dir, static, **extra_metadata):
     """
     Publish specified SQLite database files to the internet along with a datasette API.
 
@@ -94,7 +95,7 @@ def publish(publisher, files, name, metadata, extra_options, force, branch, temp
 
     if publisher == 'now':
         _fail_if_publish_binary_not_installed('now', 'Zeit Now', 'https://zeit.co/now')
-        with temporary_docker_directory(files, name, metadata, extra_options, branch, template_dir, static, extra_metadata):
+        with temporary_docker_directory(files, name, metadata, extra_options, branch, template_dir, plugins_dir, static, extra_metadata):
             if force:
                 call(['now', '--force'])
             else:
@@ -110,7 +111,7 @@ def publish(publisher, files, name, metadata, extra_options, force, branch, temp
             click.confirm('Install it? (this will run `heroku plugins:install heroku-builds`)', abort=True)
             call(["heroku", "plugins:install", "heroku-builds"])
 
-        with temporary_heroku_directory(files, name, metadata, extra_options, branch, template_dir, static, extra_metadata):
+        with temporary_heroku_directory(files, name, metadata, extra_options, branch, template_dir, plugins_dir, static, extra_metadata):
             create_output = check_output(
                 ['heroku', 'apps:create', '--json']
             ).decode('utf8')
@@ -190,13 +191,14 @@ def skeleton(files, metadata, sqlite_extensions):
 @click.option('--extra-options', help='Extra options to pass to datasette serve')
 @click.option('--branch', help='Install datasette from a GitHub branch e.g. master')
 @click.option('--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
+@click.option('--plugins-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom plugins')
 @click.option('--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)
 @click.option('--title', help='Title for metadata')
 @click.option('--license', help='License label for metadata')
 @click.option('--license_url', help='License URL for metadata')
 @click.option('--source', help='Source label for metadata')
 @click.option('--source_url', help='Source URL for metadata')
-def package(files, tag, metadata, extra_options, branch, template_dir, static, **extra_metadata):
+def package(files, tag, metadata, extra_options, branch, template_dir, plugins_dir, static, **extra_metadata):
     "Package specified SQLite files into a new datasette Docker container"
     if not shutil.which('docker'):
         click.secho(
@@ -207,7 +209,7 @@ def package(files, tag, metadata, extra_options, branch, template_dir, static, *
             err=True,
         )
         sys.exit(1)
-    with temporary_docker_directory(files, 'datasette', metadata, extra_options, branch, template_dir, static, extra_metadata):
+    with temporary_docker_directory(files, 'datasette', metadata, extra_options, branch, template_dir, plugins_dir, static, extra_metadata):
         args = ['docker', 'build']
         if tag:
             args.append('-t')
@@ -233,8 +235,9 @@ def package(files, tag, metadata, extra_options, branch, template_dir, static, *
 @click.option('--inspect-file', help='Path to JSON file created using "datasette inspect"')
 @click.option('-m', '--metadata', type=click.File(mode='r'), help='Path to JSON file containing license/source metadata')
 @click.option('--template-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom templates')
+@click.option('--plugins-dir', type=click.Path(exists=True, file_okay=False, dir_okay=True), help='Path to directory containing custom plugins')
 @click.option('--static', type=StaticMount(), help='mountpoint:path-to-directory for serving static files', multiple=True)
-def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir, static):
+def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, sql_time_limit_ms, sqlite_extensions, inspect_file, metadata, template_dir, plugins_dir, static):
     """Serve up specified SQLite database files with a web UI"""
     if reload:
         import hupper
@@ -262,6 +265,7 @@ def serve(files, host, port, debug, reload, cors, page_size, max_returned_rows, 
         metadata=metadata_data,
         sqlite_extensions=sqlite_extensions,
         template_dir=template_dir,
+        plugins_dir=plugins_dir,
         static_mounts=static,
     )
     # Force initial hashing/table counting

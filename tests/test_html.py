@@ -163,16 +163,18 @@ def test_sort_by_desc_redirects(app_client):
 ])
 def test_css_classes_on_body(app_client, path, expected_classes):
     response = app_client.get(path, gather_request=False)
+    assert response.status == 200
     classes = re.search(r'<body class="(.*)">', response.text).group(1).split()
     assert classes == expected_classes
 
 
 def test_table_html_simple_primary_key(app_client):
     response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
+    assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     ths = table.findAll('th')
-    assert 'Link' == ths[0].string.strip()
-    for expected_col, th in zip(('id', 'content'), ths[1:]):
+    assert 'id' == ths[0].find('a').string.strip()
+    for expected_col, th in zip(('content',), ths[1:]):
         a = th.find('a')
         assert expected_col == a.string
         assert a['href'].endswith('/simple_primary_key?_sort={}'.format(
@@ -182,15 +184,12 @@ def test_table_html_simple_primary_key(app_client):
     assert [
         [
             '<td><a href="/test_tables/simple_primary_key/1">1</a></td>',
-            '<td>1</td>',
             '<td>hello</td>'
         ], [
             '<td><a href="/test_tables/simple_primary_key/2">2</a></td>',
-            '<td>2</td>',
             '<td>world</td>'
         ], [
             '<td><a href="/test_tables/simple_primary_key/3">3</a></td>',
-            '<td>3</td>',
             '<td></td>'
         ]
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -198,6 +197,7 @@ def test_table_html_simple_primary_key(app_client):
 
 def test_row_html_simple_primary_key(app_client):
     response = app_client.get('/test_tables/simple_primary_key/1', gather_request=False)
+    assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
         'id', 'content'
@@ -218,6 +218,7 @@ def test_table_not_exists(app_client):
 
 def test_table_html_no_primary_key(app_client):
     response = app_client.get('/test_tables/no_primary_key', gather_request=False)
+    assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     # We have disabled sorting for this table using metadata.json
     assert [
@@ -238,6 +239,7 @@ def test_table_html_no_primary_key(app_client):
 
 def test_row_html_no_primary_key(app_client):
     response = app_client.get('/test_tables/no_primary_key/1', gather_request=False)
+    assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
         'rowid', 'content', 'a', 'b', 'c'
@@ -256,6 +258,7 @@ def test_row_html_no_primary_key(app_client):
 
 def test_table_html_compound_primary_key(app_client):
     response = app_client.get('/test_tables/compound_primary_key', gather_request=False)
+    assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     ths = table.findAll('th')
     assert 'Link' == ths[0].string.strip()
@@ -278,11 +281,11 @@ def test_table_html_compound_primary_key(app_client):
 
 def test_table_html_foreign_key_links(app_client):
     response = app_client.get('/test_tables/foreign_key_references', gather_request=False)
+    assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
         [
             '<td><a href="/test_tables/foreign_key_references/1">1</a></td>',
-            '<td>1</td>',
             '<td><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
             '<td><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
         ]
@@ -292,6 +295,7 @@ def test_table_html_foreign_key_links(app_client):
 
 def test_row_html_compound_primary_key(app_client):
     response = app_client.get('/test_tables/compound_primary_key/a,b', gather_request=False)
+    assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
         'pk1', 'pk2', 'content'
@@ -308,6 +312,7 @@ def test_row_html_compound_primary_key(app_client):
 
 def test_view_html(app_client):
     response = app_client.get('/test_tables/simple_view', gather_request=False)
+    assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
         'content', 'upper_content'
@@ -329,6 +334,7 @@ def test_view_html(app_client):
 
 def test_index_metadata(app_client):
     response = app_client.get('/', gather_request=False)
+    assert response.status == 200
     soup = Soup(response.body, 'html.parser')
     assert 'Datasette Title' == soup.find('h1').text
     assert 'Datasette Description' == inner_html(
@@ -339,6 +345,7 @@ def test_index_metadata(app_client):
 
 def test_database_metadata(app_client):
     response = app_client.get('/test_tables', gather_request=False)
+    assert response.status == 200
     soup = Soup(response.body, 'html.parser')
     # Page title should be the default
     assert 'test_tables' == soup.find('h1').text
@@ -352,6 +359,7 @@ def test_database_metadata(app_client):
 
 def test_table_metadata(app_client):
     response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
+    assert response.status == 200
     soup = Soup(response.body, 'html.parser')
     # Page title should be custom and should be HTML escaped
     assert 'This &lt;em&gt;HTML&lt;/em&gt; is escaped' == inner_html(soup.find('h1'))

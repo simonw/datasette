@@ -21,6 +21,7 @@ Contents
    sql_queries
    metadata
    custom_templates
+   plugins
    changelog
 
 .. _Zeit Now: https://zeit.co/now

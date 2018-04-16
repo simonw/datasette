@@ -117,6 +117,7 @@ http://localhost:8001/History/downloads.json?_shape=objects will return that dat
       -m, --metadata FILENAME      Path to JSON file containing license/source
                                    metadata
       --template-dir DIRECTORY     Path to directory containing custom templates
+      --plugins-dir DIRECTORY      Path to directory containing custom plugins
       --static STATIC MOUNT        mountpoint:path-to-directory for serving static
                                    files
       --help                       Show this message and exit.
@@ -167,6 +168,7 @@ This will create a docker image containing both the datasette application and th
       --force                   Pass --force option to now
       --branch TEXT             Install datasette from a GitHub branch e.g. master
       --template-dir DIRECTORY  Path to directory containing custom templates
+      --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
       --title TEXT              Title for metadata
@@ -192,6 +194,7 @@ If you have docker installed you can use `datasette package` to create a new Doc
       --extra-options TEXT      Extra options to pass to datasette serve
       --branch TEXT             Install datasette from a GitHub branch e.g. master
       --template-dir DIRECTORY  Path to directory containing custom templates
+      --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
       --title TEXT              Title for metadata

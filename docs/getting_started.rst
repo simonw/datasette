@@ -110,6 +110,7 @@ datasette serve options
       -m, --metadata FILENAME      Path to JSON file containing license/source
                                    metadata
       --template-dir DIRECTORY     Path to directory containing custom templates
+      --plugins-dir DIRECTORY      Path to directory containing custom plugins
       --static STATIC MOUNT        mountpoint:path-to-directory for serving static
                                    files
       --help                       Show this message and exit.

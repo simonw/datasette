@@ -53,8 +53,6 @@ ureg = pint.UnitRegistry()
 
 pm = pluggy.PluginManager('datasette')
 pm.add_hookspecs(hookspecs)
-import datasette.plugin_demo
-pm.register(datasette.plugin_demo)
 pm.load_setuptools_entrypoints('datasette')
 
 

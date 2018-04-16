@@ -740,9 +740,6 @@ class TableView(RowTableShared):
                 if sort or sort_desc:
                     sort_value = components[0]
                     components = components[1:]
-                    print('sort_varlue = {}, components = {}'.format(
-                        sort_value, components
-                    ))
 
                 # Figure out the SQL for next-based-on-primary-key first
                 next_by_pk_clauses = []

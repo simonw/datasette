@@ -15,12 +15,16 @@ def app_client():
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
+        plugins_dir = os.path.join(tmpdir, 'plugins')
+        os.mkdir(plugins_dir)
+        open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN)
         ds = Datasette(
             [filepath],
             page_size=50,
             max_returned_rows=100,
             sql_time_limit_ms=20,
             metadata=METADATA,
+            plugins_dir=plugins_dir,
         )
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),
@@ -90,6 +94,20 @@ METADATA = {
     }
 }
 
+PLUGIN = '''
+from datasette import hookimpl
+import pint
+
+ureg = pint.UnitRegistry()
+
+
+@hookimpl
+def prepare_connection(conn):
+    def convert_units(amount, from_, to_):
+        "select convert_units(100, 'm', 'ft');"
+        return (amount * ureg(from_)).to(to_).to_tuple()[0]
+    conn.create_function('convert_units', 3, convert_units)
+'''
 
 TABLES = '''
 CREATE TABLE simple_primary_key (

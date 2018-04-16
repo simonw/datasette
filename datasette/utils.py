@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import base64
 import hashlib
+import imp
 import json
 import os
 import re
@@ -182,7 +183,7 @@ def escape_sqlite(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, static):
+def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static):
     cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
     cmd.append('"' + '", "'.join(files) + '"')
     cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
@@ -190,6 +191,8 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, s
         cmd.extend(['"--metadata"', '"{}"'.format(metadata_file)])
     if template_dir:
         cmd.extend(['"--template-dir"', '"templates/"'])
+    if plugins_dir:
+        cmd.extend(['"--plugins-dir"', '"plugins/"'])
     if static:
         for mount_point, _ in static:
             cmd.extend(['"--static"', '"{}:{}"'.format(mount_point, mount_point)])
@@ -216,7 +219,7 @@ CMD [{cmd}]'''.format(
 
 
 @contextmanager
-def temporary_docker_directory(files, name, metadata, extra_options, branch, template_dir, static, extra_metadata=None):
+def temporary_docker_directory(files, name, metadata, extra_options, branch, template_dir, plugins_dir, static, extra_metadata=None):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
     # We create a datasette folder in there to get a nicer now deploy name
@@ -242,6 +245,7 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch, tem
             extra_options,
             branch,
             template_dir,
+            plugins_dir,
             static,
         )
         os.chdir(datasette_dir)
@@ -255,6 +259,11 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch, tem
                 os.path.join(saved_cwd, template_dir),
                 os.path.join(datasette_dir, 'templates')
             )
+        if plugins_dir:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, plugins_dir),
+                os.path.join(datasette_dir, 'plugins')
+            )
         for mount_point, path in static:
             link_or_copy_directory(
                 os.path.join(saved_cwd, path),
@@ -267,7 +276,7 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch, tem
 
 
 @contextmanager
-def temporary_heroku_directory(files, name, metadata, extra_options, branch, template_dir, static, extra_metadata=None):
+def temporary_heroku_directory(files, name, metadata, extra_options, branch, template_dir, plugins_dir, static, extra_metadata=None):
     # FIXME: lots of duplicated code from above
 
     extra_metadata = extra_metadata or {}
@@ -314,6 +323,13 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch, tem
                 os.path.join(tmp.name, 'templates')
             )
             extras.extend(['--template-dir', 'templates/'])
+        if plugins_dir:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, plugins_dir),
+                os.path.join(tmp.name, 'plugins')
+            )
+            extras.extend(['--plugins-dir', 'plugins/'])
+
         if metadata:
             extras.extend(['--metadata', 'metadata.json'])
         for mount_point, path in static:
@@ -625,3 +641,13 @@ def link_or_copy_directory(src, dst):
         shutil.copytree(src, dst, copy_function=os.link)
     except OSError:
         shutil.copytree(src, dst)
+
+
+def module_from_path(path, name):
+    # Adapted from http://sayspy.blogspot.com/2011/07/how-to-import-module-from-just-file.html
+    mod = imp.new_module(name)
+    mod.__file__ = path
+    with open(path, 'r') as file:
+        code = compile(file.read(), path, 'exec', dont_inherit=True)
+    exec(code, mod.__dict__)
+    return mod

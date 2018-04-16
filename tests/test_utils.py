@@ -195,6 +195,7 @@ def test_temporary_docker_directory_uses_hard_link():
             extra_options=None,
             branch=None,
             template_dir=None,
+            plugins_dir=None,
             static=[],
         ) as temp_docker:
             hello = os.path.join(temp_docker, 'hello')
@@ -218,6 +219,7 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             extra_options=None,
             branch=None,
             template_dir=None,
+            plugins_dir=None,
             static=[],
         ) as temp_docker:
             hello = os.path.join(temp_docker, 'hello')

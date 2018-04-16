@@ -588,8 +588,10 @@ def test_row_foreign_key_tables(app_client):
 
 
 def test_unit_filters(app_client):
-    response = app_client.get('/test_tables/units.json?distance__lt=75km&frequency__gt=1kHz',
-                              gather_request=False)
+    response = app_client.get(
+        '/test_tables/units.json?distance__lt=75km&frequency__gt=1kHz',
+        gather_request=False
+    )
     assert response.status == 200
     data = response.json
 
@@ -598,3 +600,11 @@ def test_unit_filters(app_client):
 
     assert len(data['rows']) == 1
     assert data['rows'][0][0] == 2
+
+
+def test_plugins_dir_plugin(app_client):
+    response = app_client.get(
+        "/test_tables.json?sql=select+convert_units(100%2C+'m'%2C+'ft')",
+        gather_request=False
+    )
+    assert pytest.approx(328.0839) == response.json['rows'][0][0]

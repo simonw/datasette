@@ -31,6 +31,7 @@ from .utils import (
     get_all_foreign_keys,
     is_url,
     InvalidSql,
+    module_from_path,
     path_from_row_pks,
     path_with_added_args,
     path_with_ext,
@@ -1032,7 +1033,7 @@ class Datasette:
             self, files, num_threads=3, cache_headers=True, page_size=100,
             max_returned_rows=1000, sql_time_limit_ms=1000, cors=False,
             inspect_data=None, metadata=None, sqlite_extensions=None,
-            template_dir=None, static_mounts=None):
+            template_dir=None, plugins_dir=None, static_mounts=None):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(
@@ -1048,7 +1049,20 @@ class Datasette:
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []
         self.template_dir = template_dir
+        self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
+        # Execute plugins in constructor, to ensure they are available
+        # when the rest of `datasette inspect` executes
+        if self.plugins_dir:
+            for filename in os.listdir(self.plugins_dir):
+                filepath = os.path.join(self.plugins_dir, filename)
+                with open(filepath) as f:
+                    mod = module_from_path(filepath, name=filename)
+                    try:
+                        pm.register(mod)
+                    except ValueError:
+                        # Plugin already registered
+                        pass
 
     def app_css_hash(self):
         if not hasattr(self, '_app_css_hash'):

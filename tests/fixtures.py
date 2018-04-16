@@ -55,6 +55,7 @@ def generate_sortable_rows(num):
             'sortable_with_nulls_2': rand.choice([
                 None, rand.random(), rand.random()
             ]),
+            'text': rand.choice(['$null', '$blah']),
         }
 
 
@@ -78,6 +79,7 @@ METADATA = {
                         'sortable',
                         'sortable_with_nulls',
                         'sortable_with_nulls_2',
+                        'text',
                     ]
                 },
                 'no_primary_key': {
@@ -153,6 +155,7 @@ CREATE TABLE sortable (
   sortable integer,
   sortable_with_nulls real,
   sortable_with_nulls_2 real,
+  text text,
   PRIMARY KEY (pk1, pk2)
 );
 
@@ -235,7 +238,7 @@ CREATE VIEW simple_view AS
 ]) + '\n'.join([
     '''INSERT INTO sortable VALUES (
         "{pk1}", "{pk2}", "{content}", {sortable},
-        {sortable_with_nulls}, {sortable_with_nulls_2});
+        {sortable_with_nulls}, {sortable_with_nulls_2}, "{text}");
     '''.format(
         **row
     ).replace('None', 'null') for row in generate_sortable_rows(201)

@@ -1,5 +1,5 @@
 from setuptools import setup, find_packages
-from datasette import __version__
+from datasette.version import __version__
 import os
 
 

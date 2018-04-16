@@ -1,5 +1,4 @@
 from setuptools import setup, find_packages
-from datasette.version import __version__
 import os
 
 
@@ -10,13 +9,22 @@ def get_long_description():
         return fp.read()
 
 
+def get_version():
+    path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), 'datasette', 'version.py'
+    )
+    g = {}
+    exec(open(path).read(), g)
+    return g['__version__']
+
+
 setup(
     name='datasette',
     description='An instant JSON API for your SQLite databases',
     long_description=get_long_description(),
     long_description_content_type='text/markdown',
     author='Simon Willison',
-    version=__version__,
+    version=get_version(),
     license='Apache License, Version 2.0',
     url='https://github.com/simonw/datasette',
     packages=find_packages(),

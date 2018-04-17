@@ -438,7 +438,8 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
         '_sort_desc=sortable_with_nulls',
         lambda row: (
             1 if row['sortable_with_nulls'] is None else 0,
-            -row['sortable_with_nulls'] if row['sortable_with_nulls'] is not None else 0
+            -row['sortable_with_nulls'] if row['sortable_with_nulls'] is not None else 0,
+            row['content']
         ),
         'sorted by sortable_with_nulls descending'
     ),

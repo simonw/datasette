@@ -460,6 +460,9 @@ def test_sortable(app_client, query_string, sort_key, human_description_en):
     assert 5 == page
     expected = list(generate_sortable_rows(201))
     expected.sort(key=sort_key)
+    import json
+    print('expected = {}'.format(json.dumps(expected)))
+    print('fetched = {}'.format(json.dumps(fetched)))
     assert [
         r['content'] for r in expected
     ] == [

@@ -619,9 +619,11 @@ class TableView(RowTableShared):
         if use_rowid:
             select = 'rowid, *'
             order_by = 'rowid'
+            order_by_pks = 'rowid'
         else:
             select = '*'
-            order_by = ', '.join(pks)
+            order_by_pks = ', '.join([escape_sqlite(pk) for pk in pks])
+            order_by = order_by_pks
 
         if is_view:
             order_by = ''
@@ -792,6 +794,9 @@ class TableView(RowTableShared):
                             )
                         )
                         params['p{}'.format(len(params))] = sort_value
+                    order_by = '{}, {}'.format(
+                        order_by, order_by_pks
+                    )
                 else:
                     where_clauses.extend(next_by_pk_clauses)
 

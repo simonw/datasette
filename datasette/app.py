@@ -619,9 +619,11 @@ class TableView(RowTableShared):
         if use_rowid:
             select = 'rowid, *'
             order_by = 'rowid'
+            order_by_pks = 'rowid'
         else:
             select = '*'
-            order_by = ', '.join(pks)
+            order_by_pks = ', '.join([escape_sqlite(pk) for pk in pks])
+            order_by = order_by_pks
 
         if is_view:
             order_by = ''
@@ -739,6 +741,9 @@ class TableView(RowTableShared):
                 # If a sort order is applied, the first of these is the sort value
                 if sort or sort_desc:
                     sort_value = components[0]
+                    # Special case for if non-urlencoded first token was $null
+                    if _next.split(',')[0] == '$null':
+                        sort_value = None
                     components = components[1:]
 
                 # Figure out the SQL for next-based-on-primary-key first
@@ -760,15 +765,38 @@ class TableView(RowTableShared):
 
                 # Now add the sort SQL, which may incorporate next_by_pk_clauses
                 if sort or sort_desc:
-                    where_clauses.append(
-                        '({column} {op} :p{p} or ({column} = :p{p} and {next_clauses}))'.format(
-                            column=escape_sqlite(sort or sort_desc),
-                            op='>' if sort else '<',
-                            p=len(params),
-                            next_clauses=' and '.join(next_by_pk_clauses),
+                    if sort_value is None:
+                        if sort_desc:
+                            # Just items where column is null ordered by pk
+                            where_clauses.append(
+                                '({column} is null and {next_clauses})'.format(
+                                    column=escape_sqlite(sort_desc),
+                                    next_clauses=' and '.join(next_by_pk_clauses),
+                                )
+                            )
+                        else:
+                            where_clauses.append(
+                                '({column} is not null or ({column} is null and {next_clauses}))'.format(
+                                    column=escape_sqlite(sort),
+                                    next_clauses=' and '.join(next_by_pk_clauses),
+                                )
+                            )
+                    else:
+                        where_clauses.append(
+                            '({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))'.format(
+                                column=escape_sqlite(sort or sort_desc),
+                                op='>' if sort else '<',
+                                p=len(params),
+                                extra_desc_only='' if sort else ' or {column2} is null'.format(
+                                    column2=escape_sqlite(sort or sort_desc),
+                                ),
+                                next_clauses=' and '.join(next_by_pk_clauses),
+                            )
                         )
+                        params['p{}'.format(len(params))] = sort_value
+                    order_by = '{}, {}'.format(
+                        order_by, order_by_pks
                     )
-                    params['p{}'.format(len(params))] = sort_value
                 else:
                     where_clauses.extend(next_by_pk_clauses)
 
@@ -823,10 +851,12 @@ class TableView(RowTableShared):
                 next_value = path_from_row_pks(rows[-2], pks, use_rowid)
             # If there's a sort or sort_desc, add that value as a prefix
             if (sort or sort_desc) and not is_view:
-                prefix = str(rows[-2][sort or sort_desc])
-                next_value = '{},{}'.format(
-                    urllib.parse.quote_plus(prefix), next_value
-                )
+                prefix = rows[-2][sort or sort_desc]
+                if prefix is None:
+                    prefix = '$null'
+                else:
+                    prefix = urllib.parse.quote_plus(str(prefix))
+                next_value = '{},{}'.format(prefix, next_value)
                 added_args = {
                     '_next': next_value,
                 }

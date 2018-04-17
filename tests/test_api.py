@@ -156,7 +156,7 @@ def test_database_page(app_client):
     }, {
         'columns': [
             'pk1', 'pk2', 'content', 'sortable', 'sortable_with_nulls',
-            'sortable_with_nulls_2', 'text',
+            'sortable_with_nulls_2'
         ],
         'name': 'sortable',
         'count': 201,
@@ -426,25 +426,6 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
 @pytest.mark.parametrize('query_string,sort_key,human_description_en', [
     ('_sort=sortable', lambda row: row['sortable'], 'sorted by sortable'),
     ('_sort_desc=sortable', lambda row: -row['sortable'], 'sorted by sortable descending'),
-    (
-        '_sort=sortable_with_nulls',
-        lambda row: (
-            1 if row['sortable_with_nulls'] is not None else 0,
-            row['sortable_with_nulls']
-        ),
-        'sorted by sortable_with_nulls'
-    ),
-    (
-        '_sort_desc=sortable_with_nulls',
-        lambda row: (
-            1 if row['sortable_with_nulls'] is None else 0,
-            -row['sortable_with_nulls'] if row['sortable_with_nulls'] is not None else 0,
-            row['content']
-        ),
-        'sorted by sortable_with_nulls descending'
-    ),
-    # text column contains '$null' - ensure it doesn't confuse pagination:
-    ('_sort=text', lambda row: row['text'], 'sorted by text'),
 ])
 def test_sortable(app_client, query_string, sort_key, human_description_en):
     path = '/test_tables/sortable.json?_shape=objects&{}'.format(query_string)

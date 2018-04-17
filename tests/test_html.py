@@ -183,14 +183,14 @@ def test_table_html_simple_primary_key(app_client):
         assert ['nofollow'] == a['rel']
     assert [
         [
-            '<td><a href="/test_tables/simple_primary_key/1">1</a></td>',
-            '<td>hello</td>'
+            '<td class="col-link"><a href="/test_tables/simple_primary_key/1">1</a></td>',
+            '<td class="col-content">hello</td>'
         ], [
-            '<td><a href="/test_tables/simple_primary_key/2">2</a></td>',
-            '<td>world</td>'
+            '<td class="col-link"><a href="/test_tables/simple_primary_key/2">2</a></td>',
+            '<td class="col-content">world</td>'
         ], [
-            '<td><a href="/test_tables/simple_primary_key/3">3</a></td>',
-            '<td></td>'
+            '<td class="col-link"><a href="/test_tables/simple_primary_key/3">3</a></td>',
+            '<td class="col-content"></td>'
         ]
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
@@ -204,8 +204,8 @@ def test_row_html_simple_primary_key(app_client):
     ] == [th.string.strip() for th in table.select('thead th')]
     assert [
         [
-            '<td>1</td>',
-            '<td>hello</td>'
+            '<td class="col-id">1</td>',
+            '<td class="col-content">hello</td>'
         ]
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
@@ -226,12 +226,12 @@ def test_table_html_no_primary_key(app_client):
     ] == [th.string.strip() for th in table.select('thead th')[2:]]
     expected = [
         [
-            '<td><a href="/test_tables/no_primary_key/{}">{}</a></td>'.format(i, i),
-            '<td>{}</td>'.format(i),
-            '<td>{}</td>'.format(i),
-            '<td>a{}</td>'.format(i),
-            '<td>b{}</td>'.format(i),
-            '<td>c{}</td>'.format(i),
+            '<td class="col-link"><a href="/test_tables/no_primary_key/{}">{}</a></td>'.format(i, i),
+            '<td class="col-rowid">{}</td>'.format(i),
+            '<td class="col-content">{}</td>'.format(i),
+            '<td class="col-a">a{}</td>'.format(i),
+            '<td class="col-b">b{}</td>'.format(i),
+            '<td class="col-c">c{}</td>'.format(i),
         ] for i in range(1, 51)
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -246,11 +246,11 @@ def test_row_html_no_primary_key(app_client):
     ] == [th.string.strip() for th in table.select('thead th')]
     expected = [
         [
-            '<td>1</td>',
-            '<td>1</td>',
-            '<td>a1</td>',
-            '<td>b1</td>',
-            '<td>c1</td>',
+            '<td class="col-rowid">1</td>',
+            '<td class="col-content">1</td>',
+            '<td class="col-a">a1</td>',
+            '<td class="col-b">b1</td>',
+            '<td class="col-c">c1</td>',
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -270,10 +270,10 @@ def test_table_html_compound_primary_key(app_client):
         ))
     expected = [
         [
-            '<td><a href="/test_tables/compound_primary_key/a,b">a,b</a></td>',
-            '<td>a</td>',
-            '<td>b</td>',
-            '<td>c</td>',
+            '<td class="col-link"><a href="/test_tables/compound_primary_key/a,b">a,b</a></td>',
+            '<td class="col-pk1">a</td>',
+            '<td class="col-pk2">b</td>',
+            '<td class="col-content">c</td>',
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -285,9 +285,9 @@ def test_table_html_foreign_key_links(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
         [
-            '<td><a href="/test_tables/foreign_key_references/1">1</a></td>',
-            '<td><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
-            '<td><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
+            '<td class="col-link"><a href="/test_tables/foreign_key_references/1">1</a></td>',
+            '<td class="col-foreign_key_with_label"><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_no_label"><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -302,9 +302,9 @@ def test_row_html_compound_primary_key(app_client):
     ] == [th.string.strip() for th in table.select('thead th')]
     expected = [
         [
-            '<td>a</td>',
-            '<td>b</td>',
-            '<td>c</td>',
+            '<td class="col-pk1">a</td>',
+            '<td class="col-pk2">b</td>',
+            '<td class="col-content">c</td>',
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -319,14 +319,14 @@ def test_view_html(app_client):
     ] == [th.string.strip() for th in table.select('thead th')]
     expected = [
         [
-            '<td>hello</td>',
-            '<td>HELLO</td>'
+            '<td class="col-content">hello</td>',
+            '<td class="col-upper_content">HELLO</td>'
         ], [
-            '<td>world</td>',
-            '<td>WORLD</td>'
+            '<td class="col-content">world</td>',
+            '<td class="col-upper_content">WORLD</td>'
         ], [
-            '<td></td>',
-            '<td></td>'
+            '<td class="col-content"></td>',
+            '<td class="col-upper_content"></td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]

@@ -17,6 +17,9 @@ td {
     padding: 4px;
     vertical-align: top;
 }
+td.col-link {
+    font-weight: bold;
+}
 td em {
     font-style: normal;
     font-size: 0.8em;

@@ -5,4 +5,4 @@ python:
   - 3.6
 
 script:
-  - pytest -vv
+  - python setup.py install && pytest -vv

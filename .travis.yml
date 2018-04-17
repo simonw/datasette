@@ -5,4 +5,4 @@ python:
   - 3.6
 
 script:
-  - python setup.py install && pytest -vv
+  - pip install pytest aiohttp beautifulsoup4 && python setup.py install && pytest -vv

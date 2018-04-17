@@ -3,7 +3,8 @@ Plugins
 
 Datasette's plugin system is currently under active development. It allows
 additional features to be implemented as Python code (or, soon, JavaScript)
-which can be wrapped up in a separate Python package.
+which can be wrapped up in a separate Python package. The underlying mechanism
+uses `pluggy <https://pluggy.readthedocs.io/>`_.
 
 You can follow the development of plugins in `issue #14 <https://github.com/simonw/datasette/issues/14>`_.
 
@@ -110,7 +111,6 @@ To learn how to upload your plugin to `PyPI <https://pypi.org/>`_ for use by
 other people, read the PyPA guide to `Packaging and distributing projects
 <https://packaging.python.org/tutorials/distributing-packages/>`_.
 
-
 Plugin hooks
 ------------
 
@@ -154,3 +154,7 @@ example:
     @hookimpl
     def prepare_jinja2_environment(env):
         env.filters['uppercase'] = lambda u: u.upper()
+
+You can now use this filter in your custom templates like so::
+
+    Table name: {{ table|uppercase }}

@@ -1,6 +1,61 @@
 Changelog
 =========
 
+0.19 (2018-04-16)
+-----------------
+
+This is the first preview of the new Datasette plugins mechanism. Only two
+plugin hooks are available so far - for custom SQL functions and custom template
+filters. There's plenty more to come - read `the documentation
+<https://datasette.readthedocs.io/en/latest/plugins.html>`_ and get involved in
+`the tracking ticket <https://github.com/simonw/datasette/issues/14>`_ if you
+have feedback on the direction so far.
+
+- Fix for ``_sort_desc=sortable_with_nulls`` test, refs `#216 <https://github.com/simonw/datasette/issues/216>`_
+
+- Fixed `#216 <https://github.com/simonw/datasette/issues/216>`_ - paginate correctly when sorting by nullable column
+
+- Initial documentation for plugins, closes `#213 <https://github.com/simonw/datasette/issues/213>`_
+
+  https://datasette.readthedocs.io/en/latest/plugins.html
+
+- New ``--plugins-dir=plugins/`` option (`#212 <https://github.com/simonw/datasette/issues/212>`_)
+
+  New option causing Datasette to load and evaluate all of the Python files in
+  the specified directory and register any plugins that are defined in those
+  files.
+
+  This new option is available for the following commands::
+
+      datasette serve mydb.db --plugins-dir=plugins/
+      datasette publish now/heroku mydb.db --plugins-dir=plugins/
+      datasette package mydb.db --plugins-dir=plugins/
+
+- Start of the plugin system, based on pluggy (`#210 <https://github.com/simonw/datasette/issues/14>`_)
+
+  Uses https://pluggy.readthedocs.io/ originally created for the py.test project
+
+  We're starting with two plugin hooks:
+
+  ``prepare_connection(conn)``
+
+  This is called when a new SQLite connection is created. It can be used to register custom SQL functions.
+
+  ``prepare_jinja2_environment(env)``
+
+  This is called with the Jinja2 environment. It can be used to register custom template tags and filters.
+
+  An example plugin which uses these two hooks can be found at https://github.com/simonw/datasette-plugin-demos or installed using ``pip install datasette-plugin-demos``
+
+  Refs `#14 <https://github.com/simonw/datasette/issues/14>`_
+
+- Return HTTP 405 on InvalidUsage rather than 500. [Russ Garrett]
+
+  This also stops it filling up the logs. This happens for HEAD requests
+  at the moment - which perhaps should be handled better, but that's a
+  different issue.
+
+
 0.18 (2018-04-14)
 -----------------
 

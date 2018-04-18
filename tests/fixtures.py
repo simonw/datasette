@@ -9,7 +9,7 @@ import tempfile
 import time
 
 
-def app_client():
+def app_client(sql_time_limit_ms=None):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, 'test_tables.db')
         conn = sqlite3.connect(filepath)
@@ -22,7 +22,7 @@ def app_client():
             [filepath],
             page_size=50,
             max_returned_rows=100,
-            sql_time_limit_ms=20,
+            sql_time_limit_ms=sql_time_limit_ms or 20,
             metadata=METADATA,
             plugins_dir=plugins_dir,
         )
@@ -30,6 +30,10 @@ def app_client():
             ('sleep', 1, lambda n: time.sleep(float(n))),
         )
         yield ds.app().test_client
+
+
+def app_client_longer_time_limit():
+    yield from app_client(200)
 
 
 def generate_compound_rows(num):

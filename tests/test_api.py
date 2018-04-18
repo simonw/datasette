@@ -1,11 +1,13 @@
 from .fixtures import (
     app_client,
+    app_client_longer_time_limit,
     generate_compound_rows,
     generate_sortable_rows,
 )
 import pytest
 
 pytest.fixture(scope='module')(app_client)
+pytest.fixture(scope='module')(app_client_longer_time_limit)
 
 
 def test_homepage(app_client):
@@ -387,13 +389,13 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
     assert expected_pages == count
 
 
-def test_paginate_compound_keys(app_client):
+def test_paginate_compound_keys(app_client_longer_time_limit):
     fetched = []
     path = '/test_tables/compound_three_primary_keys.json?_shape=objects'
     page = 0
     while path:
         page += 1
-        response = app_client.get(path, gather_request=False)
+        response = app_client_longer_time_limit.get(path, gather_request=False)
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
         assert page < 100

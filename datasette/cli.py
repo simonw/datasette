@@ -81,6 +81,11 @@ def inspect(files, inspect_file, sqlite_extensions):
     help="mountpoint:path-to-directory for serving static files",
     multiple=True,
 )
+@click.option(
+    "--install",
+    help="Additional packages (e.g. plugins) to install",
+    multiple=True,
+)
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
 @click.option("--license_url", help="License URL for metadata")
@@ -97,6 +102,7 @@ def publish(
     template_dir,
     plugins_dir,
     static,
+    install,
     **extra_metadata
 ):
     """
@@ -140,6 +146,7 @@ def publish(
             template_dir,
             plugins_dir,
             static,
+            install,
             extra_metadata,
         ):
             if force:
@@ -175,6 +182,7 @@ def publish(
             template_dir,
             plugins_dir,
             static,
+            install,
             extra_metadata,
         ):
             create_output = check_output(["heroku", "apps:create", "--json"]).decode(
@@ -286,6 +294,11 @@ def skeleton(files, metadata, sqlite_extensions):
     help="mountpoint:path-to-directory for serving static files",
     multiple=True,
 )
+@click.option(
+    "--install",
+    help="Additional packages (e.g. plugins) to install",
+    multiple=True,
+)
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
 @click.option("--license_url", help="License URL for metadata")
@@ -300,6 +313,7 @@ def package(
     template_dir,
     plugins_dir,
     static,
+    install,
     **extra_metadata
 ):
     "Package specified SQLite files into a new datasette Docker container"
@@ -321,6 +335,7 @@ def package(
         template_dir,
         plugins_dir,
         static,
+        install,
         extra_metadata,
     ):
         args = ["docker", "build"]

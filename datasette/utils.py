@@ -188,7 +188,7 @@ def escape_sqlite(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static):
+def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install):
     cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
     cmd.append('"' + '", "'.join(files) + '"')
     cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
@@ -204,11 +204,15 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
     if extra_options:
         for opt in extra_options.split():
             cmd.append('"{}"'.format(opt))
+
     install_from = 'datasette'
     if branch:
-        install_from = 'https://github.com/simonw/datasette/archive/{}.zip'.format(
+        install = ['https://github.com/simonw/datasette/archive/{}.zip'.format(
             branch
-        )
+        )] + list(install)
+    else:
+        install = ['datasette'] + list(install)
+
     return '''
 FROM python:3
 COPY . /app
@@ -219,12 +223,23 @@ EXPOSE 8001
 CMD [{cmd}]'''.format(
         files=' '.join(files),
         cmd=', '.join(cmd),
-        install_from=install_from,
+        install_from=' '.join(install),
     ).strip()
 
 
 @contextmanager
-def temporary_docker_directory(files, name, metadata, extra_options, branch, template_dir, plugins_dir, static, extra_metadata=None):
+def temporary_docker_directory(
+    files,
+    name,
+    metadata,
+    extra_options,
+    branch,
+    template_dir,
+    plugins_dir,
+    static,
+    install,
+    extra_metadata=None
+):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
     # We create a datasette folder in there to get a nicer now deploy name
@@ -252,6 +267,7 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch, tem
             template_dir,
             plugins_dir,
             static,
+            install,
         )
         os.chdir(datasette_dir)
         if metadata_content:
@@ -281,7 +297,18 @@ def temporary_docker_directory(files, name, metadata, extra_options, branch, tem
 
 
 @contextmanager
-def temporary_heroku_directory(files, name, metadata, extra_options, branch, template_dir, plugins_dir, static, extra_metadata=None):
+def temporary_heroku_directory(
+    files,
+    name,
+    metadata,
+    extra_options,
+    branch,
+    template_dir,
+    plugins_dir,
+    static,
+    install,
+    extra_metadata=None
+):
     # FIXME: lots of duplicated code from above
 
     extra_metadata = extra_metadata or {}
@@ -311,13 +338,13 @@ def temporary_heroku_directory(files, name, metadata, extra_options, branch, tem
         open('runtime.txt', 'w').write('python-3.6.3')
 
         if branch:
-            install_from = 'https://github.com/simonw/datasette/archive/{branch}.zip'.format(
+            install = ['https://github.com/simonw/datasette/archive/{branch}.zip'.format(
                 branch=branch
-            )
+            )] + list(install)
         else:
-            install_from = 'datasette'
+            install = ['datasette'] + list(install)
 
-        open('requirements.txt', 'w').write(install_from)
+        open('requirements.txt', 'w').write('\n'.join(install))
         os.mkdir('bin')
         open('bin/post_compile', 'w').write('datasette inspect --inspect-file inspect-data.json')
 

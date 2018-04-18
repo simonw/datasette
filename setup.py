@@ -50,12 +50,13 @@ setup(
         'beautifulsoup4==4.6.0',
     ],
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
         'Intended Audience :: End Users/Desktop',
         'Topic :: Database',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.5',
     ],
 )

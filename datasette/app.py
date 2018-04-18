@@ -1308,8 +1308,8 @@ class Datasette:
                     modpath = '/-/static-plugins/{}/'.format(plugin_module.__name__)
                     dirpath = pkg_resources.resource_filename(plugin_module.__name__, 'static')
                     app.static(modpath, dirpath)
-            except ModuleNotFoundError:
-                # Caused by --plugins_dir= plugins
+            except (KeyError, ImportError):
+                # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
                 pass
         app.add_route(
             DatabaseView.as_view(self),

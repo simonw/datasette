@@ -2,7 +2,7 @@ Plugins
 =======
 
 Datasette's plugin system is currently under active development. It allows
-additional features to be implemented as Python code (or, soon, JavaScript)
+additional features to be implemented as Python code (or front-end JavaScript)
 which can be wrapped up in a separate Python package. The underlying mechanism
 uses `pluggy <https://pluggy.readthedocs.io/>`_.
 

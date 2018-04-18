@@ -524,15 +524,21 @@ class RowTableShared(BaseView):
                 cells.append({
                     'column': 'Link',
                     'value': jinja2.Markup(
-                        '<a href="/{database}/{table}/{flat_pks}">{flat_pks}</a>'.format(
+                        '<a href="/{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                             database=database,
                             table=urllib.parse.quote_plus(table),
-                            flat_pks=path_from_row_pks(row, pks, not pks),
+                            flat_pks=str(jinja2.escape(path_from_row_pks(row, pks, not pks, False))),
+                            flat_pks_quoted=path_from_row_pks(row, pks, not pks)
                         )
                     ),
                 })
+
             for value, column_dict in zip(row, columns):
                 column = column_dict['name']
+                if link_column and len(pks) == 1 and column == pks[0]:
+                    # If there's a simple primary key, don't repeat the value as it's
+                    # already shown in the link column.
+                    continue
                 if (column, value) in labeled_fks:
                     other_table, label = labeled_fks[(column, value)]
                     display_value = jinja2.Markup(
@@ -559,17 +565,17 @@ class RowTableShared(BaseView):
                             url=jinja2.escape(value.strip())
                         )
                     )
+                elif column in table_metadata.get('units', {}) and value != '':
+                    # Interpret units using pint
+                    value = value * ureg(table_metadata['units'][column])
+                    # Pint uses floating point which sometimes introduces errors in the compact
+                    # representation, which we have to round off to avoid ugliness. In the vast
+                    # majority of cases this rounding will be inconsequential. I hope.
+                    value = round(value.to_compact(), 6)
+                    display_value = jinja2.Markup('{:~P}'.format(value).replace(' ', '&nbsp;'))
                 else:
-                    if column in table_metadata.get('units', {}) and value != '':
-                        # Interpret units using pint
-                        value = value * ureg(table_metadata['units'][column])
-                        # Pint uses floating point which sometimes introduces errors in the compact
-                        # representation, which we have to round off to avoid ugliness. In the vast
-                        # majority of cases this rounding will be inconsequential. I hope.
-                        value = round(value.to_compact(), 6)
-                        display_value = jinja2.Markup('{:~P}'.format(value).replace(' ', '&nbsp;'))
-                    else:
-                        display_value = str(value)
+                    display_value = str(value)
+
                 cells.append({
                     'column': column,
                     'value': display_value,
@@ -577,9 +583,15 @@ class RowTableShared(BaseView):
             cell_rows.append(cells)
 
         if link_column:
+            # Add the link column header.
+            # If it's a simple primary key, we have to remove and re-add that column name at
+            # the beginning of the header row.
+            if len(pks) == 1:
+                columns = [col for col in columns if col['name'] != pks[0]]
+
             columns = [{
-                'name': 'Link',
-                'sortable': False,
+                'name': pks[0] if len(pks) == 1 else 'Link',
+                'sortable': len(pks) == 1,
             }] + columns
         return columns, cell_rows
 

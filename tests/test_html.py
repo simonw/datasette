@@ -183,13 +183,13 @@ def test_table_html_simple_primary_key(app_client):
         assert ['nofollow'] == a['rel']
     assert [
         [
-            '<td class="col-link"><a href="/test_tables/simple_primary_key/1">1</a></td>',
+            '<td class="col-Link"><a href="/test_tables/simple_primary_key/1">1</a></td>',
             '<td class="col-content">hello</td>'
         ], [
-            '<td class="col-link"><a href="/test_tables/simple_primary_key/2">2</a></td>',
+            '<td class="col-Link"><a href="/test_tables/simple_primary_key/2">2</a></td>',
             '<td class="col-content">world</td>'
         ], [
-            '<td class="col-link"><a href="/test_tables/simple_primary_key/3">3</a></td>',
+            '<td class="col-Link"><a href="/test_tables/simple_primary_key/3">3</a></td>',
             '<td class="col-content"></td>'
         ]
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -226,7 +226,7 @@ def test_table_html_no_primary_key(app_client):
     ] == [th.string.strip() for th in table.select('thead th')[2:]]
     expected = [
         [
-            '<td class="col-link"><a href="/test_tables/no_primary_key/{}">{}</a></td>'.format(i, i),
+            '<td class="col-Link"><a href="/test_tables/no_primary_key/{}">{}</a></td>'.format(i, i),
             '<td class="col-rowid">{}</td>'.format(i),
             '<td class="col-content">{}</td>'.format(i),
             '<td class="col-a">a{}</td>'.format(i),
@@ -270,7 +270,7 @@ def test_table_html_compound_primary_key(app_client):
         ))
     expected = [
         [
-            '<td class="col-link"><a href="/test_tables/compound_primary_key/a,b">a,b</a></td>',
+            '<td class="col-Link"><a href="/test_tables/compound_primary_key/a,b">a,b</a></td>',
             '<td class="col-pk1">a</td>',
             '<td class="col-pk2">b</td>',
             '<td class="col-content">c</td>',
@@ -285,7 +285,7 @@ def test_table_html_foreign_key_links(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
         [
-            '<td class="col-link"><a href="/test_tables/foreign_key_references/1">1</a></td>',
+            '<td class="col-Link"><a href="/test_tables/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label"><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
             '<td class="col-foreign_key_with_no_label"><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
         ]

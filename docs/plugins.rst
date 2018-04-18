@@ -111,6 +111,17 @@ To learn how to upload your plugin to `PyPI <https://pypi.org/>`_ for use by
 other people, read the PyPA guide to `Packaging and distributing projects
 <https://packaging.python.org/tutorials/distributing-packages/>`_.
 
+Static assets
+-------------
+
+If your plugin has a `static/` directory, Datasette will automatically configure
+itself to serve those static assets from the following path::
+
+    /-/static-plugins/NAME_OF_PLUGIN_PACKAGE/yourfile.js
+
+See `the datasette-plugin-demos repository <https://github.com/simonw/datasette-plugin-demos/tree/0ccf9e6189e923046047acd7878d1d19a2cccbb1>`_
+for an example of how to create a package that includes a static folder.
+
 Plugin hooks
 ------------
 

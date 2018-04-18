@@ -16,6 +16,7 @@ import json
 import jinja2
 import hashlib
 import time
+import pkg_resources
 import pint
 import pluggy
 import traceback
@@ -1294,6 +1295,12 @@ class Datasette:
         app.static('/-/static/', str(app_root / 'datasette' / 'static'))
         for path, dirname in self.static_mounts:
             app.static(path, dirname)
+        # Mount any plugin static/ directories
+        for plugin_module in pm.get_plugins():
+            if pkg_resources.resource_isdir(plugin_module.__name__, 'static'):
+                modpath = '/-/static-plugins/{}/'.format(plugin_module.__name__)
+                dirpath = pkg_resources.resource_filename(plugin_module.__name__, 'static')
+                app.static(modpath, dirpath)
         app.add_route(
             DatabaseView.as_view(self),
             '/<db_name:[^/\.]+?><as_json:(\.jsono?)?$>'

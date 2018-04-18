@@ -12,6 +12,7 @@ import asyncio
 import os
 import threading
 import urllib.parse
+import itertools
 import json
 import jinja2
 import hashlib
@@ -1126,7 +1127,12 @@ class Datasette:
             }
 
     def asset_urls(self, key):
-        for url_or_dict in (self.metadata.get(key) or []):
+        urls_or_dicts = (self.metadata.get(key) or [])
+        # Flatten list-of-lists from plugins:
+        urls_or_dicts += list(
+            itertools.chain.from_iterable(getattr(pm.hook, key)())
+        )
+        for url_or_dict in urls_or_dicts:
             if isinstance(url_or_dict, dict):
                 yield {
                     'url': url_or_dict['url'],
@@ -1297,10 +1303,14 @@ class Datasette:
             app.static(path, dirname)
         # Mount any plugin static/ directories
         for plugin_module in pm.get_plugins():
-            if pkg_resources.resource_isdir(plugin_module.__name__, 'static'):
-                modpath = '/-/static-plugins/{}/'.format(plugin_module.__name__)
-                dirpath = pkg_resources.resource_filename(plugin_module.__name__, 'static')
-                app.static(modpath, dirpath)
+            try:
+                if pkg_resources.resource_isdir(plugin_module.__name__, 'static'):
+                    modpath = '/-/static-plugins/{}/'.format(plugin_module.__name__)
+                    dirpath = pkg_resources.resource_filename(plugin_module.__name__, 'static')
+                    app.static(modpath, dirpath)
+            except ModuleNotFoundError:
+                # Caused by --plugins_dir= plugins
+                pass
         app.add_route(
             DatabaseView.as_view(self),
             '/<db_name:[^/\.]+?><as_json:(\.jsono?)?$>'

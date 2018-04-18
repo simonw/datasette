@@ -1,5 +1,7 @@
-Customizing Datasette's appearance
-==================================
+.. _customization:
+
+Customization
+=============
 
 Datasette provides a number of ways of customizing the way data is displayed.
 

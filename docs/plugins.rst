@@ -169,3 +169,65 @@ example:
 You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
+
+extra_css_urls()
+~~~~~~~~~~~~~~~~
+
+Return a list of extra CSS URLs that should be included on every page. These can
+take advantage of the CSS class hooks described in :ref:`customization`.
+
+This can be a list of URLs:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_css_urls():
+        return [
+            'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css'
+        ]
+
+Or a list of dictionaries defining both a URL and an
+`SRI hash <https://www.srihash.org/>`_:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_css_urls():
+        return [{
+            'url': 'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css',
+            'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
+        }]
+
+extra_js_urls()
+~~~~~~~~~~~~~~~
+
+This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
+return either a list of URLs or a list of dictionaries:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_js_urls():
+        return [{
+            'url': 'https://code.jquery.com/jquery-3.3.1.slim.min.js',
+            'sri': 'sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo',
+        }]
+
+You can also return URLs to files from your plugin's ``static/`` directory, if
+you have one:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_js_urls():
+        return [
+            '/-/static-plugins/your_plugin/app.js'
+        ]

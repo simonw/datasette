@@ -394,8 +394,11 @@ def test_paginate_compound_keys(app_client):
     while path:
         page += 1
         response = app_client.get(path, gather_request=False)
-        fetched.extend(response.json['rows'])
-        path = response.json['next_url']
+        data = response.json
+        print(data)
+        assert 'rows' in data
+        fetched.extend(data['rows'])
+        path = data['next_url']
         assert page < 100
     assert 1001 == len(fetched)
     assert 21 == page

@@ -94,7 +94,7 @@ database column they are representing, for example::
         </thead>
         <tbody>
             <tr>
-                <td class="col-Link"><a href="...">1</a></td>
+                <td class="col-id"><a href="...">1</a></td>
                 <td class="col-name">SMITH</td>
             </tr>
         </tbody>

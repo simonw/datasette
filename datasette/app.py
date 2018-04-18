@@ -522,7 +522,7 @@ class RowTableShared(BaseView):
             # or to the simple or compound primary key
             if link_column:
                 cells.append({
-                    'column': 'Link',
+                    'column': pks[0] if len(pks) == 1 else 'Link',
                     'value': jinja2.Markup(
                         '<a href="/{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                             database=database,

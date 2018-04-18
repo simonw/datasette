@@ -66,7 +66,7 @@ The row template (``/dbname/tablename/rowid``) gets::
 
     <body class="row db-dbname table-tablename">
 
-The ``db-x`` and ``table-x`` classes use the database or table names themselves IF
+The ``db-x`` and ``table-x`` classes use the database or table names themselves if
 they are valid CSS identifiers. If they aren't, we strip any invalid
 characters out and append a 6 character md5 digest of the original name, in
 order to ensure that multiple tables which resolve to the same stripped
@@ -82,6 +82,23 @@ Some examples::
     "-" => "336d5e"
     "no $ characters" => "no--characters-59e024"
 
+``<td>`` and ``<th>`` elements also get custom CSS classes reflecting the
+database column they are representing, for example::
+
+    <table>
+        <thead>
+            <tr>
+                <th class="col-id" scope="col">id</th>
+                <th class="col-name" scope="col">name</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="col-Link"><a href="...">1</a></td>
+                <td class="col-name">SMITH</td>
+            </tr>
+        </tbody>
+    </table>
 
 Custom templates
 ----------------

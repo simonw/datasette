@@ -183,13 +183,13 @@ def test_table_html_simple_primary_key(app_client):
         assert ['nofollow'] == a['rel']
     assert [
         [
-            '<td class="col-Link"><a href="/test_tables/simple_primary_key/1">1</a></td>',
+            '<td class="col-id"><a href="/test_tables/simple_primary_key/1">1</a></td>',
             '<td class="col-content">hello</td>'
         ], [
-            '<td class="col-Link"><a href="/test_tables/simple_primary_key/2">2</a></td>',
+            '<td class="col-id"><a href="/test_tables/simple_primary_key/2">2</a></td>',
             '<td class="col-content">world</td>'
         ], [
-            '<td class="col-Link"><a href="/test_tables/simple_primary_key/3">3</a></td>',
+            '<td class="col-id"><a href="/test_tables/simple_primary_key/3">3</a></td>',
             '<td class="col-content"></td>'
         ]
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -265,6 +265,7 @@ def test_table_html_compound_primary_key(app_client):
     for expected_col, th in zip(('pk1', 'pk2', 'content'), ths[1:]):
         a = th.find('a')
         assert expected_col == a.string
+        assert th['class'] == ['col-{}'.format(expected_col)]
         assert a['href'].endswith('/compound_primary_key?_sort={}'.format(
             expected_col
         ))
@@ -285,7 +286,7 @@ def test_table_html_foreign_key_links(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
         [
-            '<td class="col-Link"><a href="/test_tables/foreign_key_references/1">1</a></td>',
+            '<td class="col-pk"><a href="/test_tables/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label"><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
             '<td class="col-foreign_key_with_no_label"><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
         ]

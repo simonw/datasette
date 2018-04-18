@@ -173,6 +173,7 @@ This will create a docker image containing both the datasette application and th
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
+      --install TEXT            Additional packages (e.g. plugins) to install
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata
@@ -199,6 +200,7 @@ If you have docker installed you can use `datasette package` to create a new Doc
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
+      --install TEXT            Additional packages (e.g. plugins) to install
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata

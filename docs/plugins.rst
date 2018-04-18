@@ -19,6 +19,16 @@ You can also define one-off per-project plugins by saving them as
 ``plugin_name.py`` functions in a ``plugins/`` folder and then passing that
 folder to ``datasette serve``.
 
+The ``datasette publish`` and ``datasette package`` commands both take an
+optional ``--install`` argument. You can use this one or more times to tell
+Datasette to ``pip install`` specific plugins as part of the process. You can
+use the name of a package on PyPI or any of the other valid arguments to ``pip
+install`` such as a URL to a ``.zip`` file::
+
+    datasette publish now mydb.db \
+        --install=datasette-plugin-demos \
+        --install=https://url-to-my-package.zip
+
 Writing plugins
 ---------------
 

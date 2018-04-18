@@ -457,9 +457,9 @@ class DatabaseDownload(BaseView):
     async def view_get(self, request, name, hash, **kwargs):
         filepath = self.ds.inspect()[name]['file']
         return await response.file_stream(
-            filepath, headers={
-                'Content-Disposition': 'attachment; filename="{}"'.format(filepath)
-            }
+            filepath,
+            filename=os.path.basename(filepath),
+            mime_type='application/octet-stream',
         )
 
 

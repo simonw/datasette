@@ -114,8 +114,8 @@ other people, read the PyPA guide to `Packaging and distributing projects
 Static assets
 -------------
 
-If your plugin has a `static/` directory, Datasette will automatically configure
-itself to serve those static assets from the following path::
+If your plugin has a ``static/`` directory, Datasette will automatically
+configure itself to serve those static assets from the following path::
 
     /-/static-plugins/NAME_OF_PLUGIN_PACKAGE/yourfile.js
 

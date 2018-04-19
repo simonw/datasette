@@ -79,6 +79,7 @@ class RenderMixin(HTTPMethodView):
                 **context, **{
                     'app_css_hash': self.ds.app_css_hash(),
                     'select_templates': select_templates,
+                    'zip': zip,
                 }
             })
         )

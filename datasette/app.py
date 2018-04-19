@@ -17,7 +17,6 @@ import json
 import jinja2
 import hashlib
 import time
-import pkg_resources
 import pint
 import pluggy
 import traceback
@@ -31,6 +30,7 @@ from .utils import (
     escape_sqlite,
     filters_should_redirect,
     get_all_foreign_keys,
+    get_plugins,
     is_url,
     InvalidSql,
     module_from_path,
@@ -402,15 +402,16 @@ class IndexView(RenderMixin):
             }
             databases.append(database)
         if as_json:
+            headers = {}
+            if self.ds.cors:
+                headers['Access-Control-Allow-Origin'] = '*'
             return response.HTTPResponse(
                 json.dumps(
                     {db['name']: db for db in databases},
                     cls=CustomJSONEncoder
                 ),
                 content_type='application/json',
-                headers={
-                    'Access-Control-Allow-Origin': '*'
-                }
+                headers=headers,
             )
         else:
             return self.render(
@@ -420,6 +421,32 @@ class IndexView(RenderMixin):
                 datasette_version=__version__,
                 extra_css_urls=self.ds.extra_css_urls(),
                 extra_js_urls=self.ds.extra_js_urls(),
+            )
+
+
+class JsonDataView(RenderMixin):
+    def __init__(self, datasette, filename, data_callback):
+        self.ds = datasette
+        self.jinja_env = datasette.jinja_env
+        self.filename = filename
+        self.data_callback = data_callback
+
+    async def get(self, request, as_json):
+        data = self.data_callback()
+        if as_json:
+            headers = {}
+            if self.ds.cors:
+                headers['Access-Control-Allow-Origin'] = '*'
+            return response.HTTPResponse(
+                json.dumps(data),
+                content_type='application/json',
+                headers=headers,
+            )
+        else:
+            return self.render(
+                ['show_json.html'],
+                filename=self.filename,
+                data=data,
             )
 
 
@@ -1302,15 +1329,25 @@ class Datasette:
         for path, dirname in self.static_mounts:
             app.static(path, dirname)
         # Mount any plugin static/ directories
-        for plugin_module in pm.get_plugins():
-            try:
-                if pkg_resources.resource_isdir(plugin_module.__name__, 'static'):
-                    modpath = '/-/static-plugins/{}/'.format(plugin_module.__name__)
-                    dirpath = pkg_resources.resource_filename(plugin_module.__name__, 'static')
-                    app.static(modpath, dirpath)
-            except (KeyError, ImportError):
-                # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
-                pass
+        for plugin in get_plugins(pm):
+            if plugin['static_path']:
+                modpath = '/-/static-plugins/{}/'.format(plugin['name'])
+                app.static(modpath, plugin['static_path'])
+        app.add_route(
+            JsonDataView.as_view(self, 'inspect.json', lambda: self.inspect()),
+            '/-/inspect<as_json:(\.json)?$>'
+        )
+        app.add_route(
+            JsonDataView.as_view(self, 'metadata.json', lambda: self.metadata),
+            '/-/metadata<as_json:(\.json)?$>'
+        )
+        app.add_route(
+            JsonDataView.as_view(self, 'plugins.json', lambda: [{
+                'name': p['name'],
+                'static': p['static_path'] is not None
+            } for p in get_plugins(pm)]),
+            '/-/plugins<as_json:(\.json)?$>'
+        )
         app.add_route(
             DatabaseView.as_view(self),
             '/<db_name:[^/\.]+?><as_json:(\.jsono?)?$>'

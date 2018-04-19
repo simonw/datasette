@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}{{ filename }}{% endblock %}
+
+{% block body_class %}show-json{% endblock %}
+
+{% block content %}
+<h1>{{ filename }}</h1>
+
+<pre>{{ data|tojson(indent=4) }}</pre>
+
+{% endblock %}

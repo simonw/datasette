@@ -3,6 +3,7 @@ from .fixtures import (
     app_client_longer_time_limit,
     generate_compound_rows,
     generate_sortable_rows,
+    METADATA,
 )
 import pytest
 
@@ -629,3 +630,30 @@ def test_plugins_dir_plugin(app_client):
         gather_request=False
     )
     assert pytest.approx(328.0839) == response.json['rows'][0][0]
+
+
+def test_metadata_json(app_client):
+    response = app_client.get(
+        "/-/metadata.json",
+        gather_request=False
+    )
+    assert METADATA == response.json
+
+
+def test_inspect_json(app_client):
+    response = app_client.get(
+        "/-/inspect.json",
+        gather_request=False
+    )
+    assert app_client.ds.inspect() == response.json
+
+
+def test_plugins_json(app_client):
+    response = app_client.get(
+        "/-/plugins.json",
+        gather_request=False
+    )
+    # This will include any plugins that have been installed into the
+    # current virtual environment, so we only check for the presence of
+    # the one we know will definitely be There
+    assert {'name': 'my_plugin.py', 'static': False} in response.json

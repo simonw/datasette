@@ -29,7 +29,9 @@ def app_client(sql_time_limit_ms=None):
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),
         )
-        yield ds.app().test_client
+        client = ds.app().test_client
+        client.ds = ds
+        yield client
 
 
 def app_client_longer_time_limit():

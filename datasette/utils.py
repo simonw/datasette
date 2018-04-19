@@ -4,6 +4,7 @@ import hashlib
 import imp
 import json
 import os
+import pkg_resources
 import re
 import shlex
 import sqlite3
@@ -683,3 +684,20 @@ def module_from_path(path, name):
         code = compile(file.read(), path, 'exec', dont_inherit=True)
     exec(code, mod.__dict__)
     return mod
+
+
+def get_plugins(pm):
+    plugins = []
+    for plugin in pm.get_plugins():
+        static_path = None
+        try:
+            if pkg_resources.resource_isdir(plugin.__name__, 'static'):
+                static_path = pkg_resources.resource_filename(plugin.__name__, 'static')
+        except (KeyError, ImportError):
+            # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
+            pass
+        plugins.append({
+            'name': plugin.__name__,
+            'static_path': static_path,
+        })
+    return plugins

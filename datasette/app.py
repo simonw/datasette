@@ -1303,16 +1303,22 @@ class Datasette:
     def app(self):
         app = Sanic(__name__)
         default_templates = str(app_root / 'datasette' / 'templates')
+        template_paths = []
         if self.template_dir:
-            template_loader = ChoiceLoader([
-                FileSystemLoader([self.template_dir, default_templates]),
-                # Support {% extends "default:table.html" %}:
-                PrefixLoader({
-                    'default': FileSystemLoader(default_templates),
-                }, delimiter=':')
-            ])
-        else:
-            template_loader = FileSystemLoader(default_templates)
+            template_paths.append(self.template_dir)
+        template_paths.extend([
+            plugin['templates_path']
+            for plugin in get_plugins(pm)
+            if plugin['templates_path']
+        ])
+        template_paths.append(default_templates)
+        template_loader = ChoiceLoader([
+            FileSystemLoader(template_paths),
+            # Support {% extends "default:table.html" %}:
+            PrefixLoader({
+                'default': FileSystemLoader(default_templates),
+            }, delimiter=':')
+        ])
         self.jinja_env = Environment(
             loader=template_loader,
             autoescape=True,
@@ -1344,7 +1350,8 @@ class Datasette:
         app.add_route(
             JsonDataView.as_view(self, 'plugins.json', lambda: [{
                 'name': p['name'],
-                'static': p['static_path'] is not None
+                'static': p['static_path'] is not None,
+                'templates': p['templates_path'] is not None,
             } for p in get_plugins(pm)]),
             '/-/plugins<as_json:(\.json)?$>'
         )

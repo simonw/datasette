@@ -132,6 +132,21 @@ configure itself to serve those static assets from the following path::
 See `the datasette-plugin-demos repository <https://github.com/simonw/datasette-plugin-demos/tree/0ccf9e6189e923046047acd7878d1d19a2cccbb1>`_
 for an example of how to create a package that includes a static folder.
 
+Custom templates
+----------------
+
+If your plugin has a ``templates/`` directory, Datasette will attempt to load
+templates from that directory before it uses its own default templates.
+
+The priority order for template loading is:
+
+* templates from the ``--template-dir`` argument, if specified
+* templates from the ``templates/`` directory in any installed plugins
+* default templates that ship with Datasette
+
+See :ref:`customization` for more details on how to write custom templates,
+including which filenames to use to customize which parts of the Datasette UI.
+
 Plugin hooks
 ------------
 

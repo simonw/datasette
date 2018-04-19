@@ -656,4 +656,8 @@ def test_plugins_json(app_client):
     # This will include any plugins that have been installed into the
     # current virtual environment, so we only check for the presence of
     # the one we know will definitely be There
-    assert {'name': 'my_plugin.py', 'static': False} in response.json
+    assert {
+        'name': 'my_plugin.py',
+        'static': False,
+        'templates': False
+    } in response.json

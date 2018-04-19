@@ -690,14 +690,18 @@ def get_plugins(pm):
     plugins = []
     for plugin in pm.get_plugins():
         static_path = None
+        templates_path = None
         try:
             if pkg_resources.resource_isdir(plugin.__name__, 'static'):
                 static_path = pkg_resources.resource_filename(plugin.__name__, 'static')
+            if pkg_resources.resource_isdir(plugin.__name__, 'templates'):
+                templates_path = pkg_resources.resource_filename(plugin.__name__, 'templates')
         except (KeyError, ImportError):
             # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
             pass
         plugins.append({
             'name': plugin.__name__,
             'static_path': static_path,
+            'templates_path': templates_path,
         })
     return plugins

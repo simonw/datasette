@@ -1,6 +1,41 @@
 Changelog
 =========
 
+0.20 (2018-04-20)
+-----------------
+
+Mostly new work on the :ref:`plugins` mechanism: plugins can now bundle static assets and custom templates, and ``datasette publish`` has a new ``--install=name-of-plugin`` option.
+
+- Add col-X classes to HTML table on custom query page
+- Fixed out-dated template in documentation
+- Plugins can now bundle custom templates, `#224 <https://github.com/simonw/datasette/issues/224>`_
+- Added /-/metadata /-/plugins /-/inspect, `#225 <https://github.com/simonw/datasette/issues/225>`_
+- Documentation for --install option, refs `#223 <https://github.com/simonw/datasette/issues/223>`_
+- Datasette publish/package --install option, `#223 <https://github.com/simonw/datasette/issues/223>`_
+- Fix for plugins in Python 3.5, `#222 <https://github.com/simonw/datasette/issues/222>`_
+- New plugin hooks: extra_css_urls() and extra_js_urls(), `#214 <https://github.com/simonw/datasette/issues/214>`_
+- /-/static-plugins/PLUGIN_NAME/ now serves static/ from plugins
+- <th> now gets class="col-X" - plus added col-X documentation
+- Use to_css_class for table cell column classes
+
+  This ensures that columns with spaces in the name will still
+  generate usable CSS class names. Refs `#209 <https://github.com/simonw/datasette/issues/209>`_
+- Add column name classes to <td>s, make PK bold [Russ Garrett]
+- Don't duplicate simple primary keys in the link column [Russ Garrett]
+
+  When there's a simple (single-column) primary key, it looks weird to
+  duplicate it in the link column.
+
+  This change removes the second PK column and treats the link column as
+  if it were the PK column from a header/sorting perspective.
+- Correct escaping for HTML display of row links [Russ Garrett]
+- Longer time limit for test_paginate_compound_keys
+
+  It was failing intermittently in Travis - see `#209 <https://github.com/simonw/datasette/issues/209>`_
+- Use application/octet-stream for downloadable databses
+- Updated PyPI classifiers
+- Updated PyPI link to pypi.org
+
 0.19 (2018-04-16)
 -----------------
 

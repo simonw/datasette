@@ -11,7 +11,7 @@ Datasette provides an instant, read-only JSON API for any SQLite database. It al
 
 Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to convert them to SQLite, then publish them with Datasette. Or try [Datasette Publish](https://publish.datasettes.com), a web app that lets you upload CSV data and deploy it using Datasette without needing to install any software.
 
-Some examples: https://github.com/simonw/datasette/wiki/Datasettes
+Documentation: http://datasette.readthedocs.io/ Examples: https://github.com/simonw/datasette/wiki/Datasettes
 
 ## News
 

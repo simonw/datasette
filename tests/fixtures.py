@@ -97,7 +97,7 @@ METADATA = {
                         'frequency': 'Hz'
                     }
                 },
-                'custom_foreign_key_label': {
+                'primary_key_multiple_columns_explicit_label': {
                     'label_column': 'content2',
                 },
             }
@@ -140,6 +140,12 @@ CREATE TABLE simple_primary_key (
 );
 
 CREATE TABLE primary_key_multiple_columns (
+  id varchar(30) primary key,
+  content text,
+  content2 text
+);
+
+CREATE TABLE primary_key_multiple_columns_explicit_label (
   id varchar(30) primary key,
   content text,
   content2 text
@@ -221,7 +227,7 @@ CREATE TABLE "complex_foreign_keys" (
 CREATE TABLE "custom_foreign_key_label" (
   pk varchar(30) primary key,
   foreign_key_with_custom_label text,
-  FOREIGN KEY ("foreign_key_with_custom_label") REFERENCES [primary_key_multiple_columns](id)
+  FOREIGN KEY ("foreign_key_with_custom_label") REFERENCES [primary_key_multiple_columns_explicit_label](id)
 );
 
 CREATE TABLE units (
@@ -246,6 +252,7 @@ INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');
 
 INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
+INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');
 
 INSERT INTO foreign_key_references VALUES (1, 1, 1);
 

@@ -301,7 +301,7 @@ def test_table_html_foreign_key_custom_label_column(app_client):
     expected = [
         [
             '<td class="col-pk"><a href="/test_tables/custom_foreign_key_label/1">1</a></td>',
-            '<td class="col-foreign_key_with_custom_label"><a href="/test_tables/primary_key_multiple_columns/1">world</a>\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_custom_label"><a href="/test_tables/primary_key_multiple_columns_explicit_label/1">world2</a>\xa0<em>1</em></td>',
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]

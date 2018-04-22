@@ -17,7 +17,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 14
+    assert d['tables_count'] == 15
 
 
 def test_database_page(app_client):
@@ -89,12 +89,12 @@ def test_database_page(app_client):
             'outgoing':  [{
                 'column': 'foreign_key_with_custom_label',
                 'other_column': 'id',
-                'other_table': 'primary_key_multiple_columns'
+                'other_table': 'primary_key_multiple_columns_explicit_label'
             }],
         },
         'label_column': None,
         'primary_keys': ['pk'],
-    },  {
+    }, {
         'columns': ['pk', 'foreign_key_with_label', 'foreign_key_with_no_label'],
         'name': 'foreign_key_references',
         'count': 1,
@@ -130,7 +130,18 @@ def test_database_page(app_client):
                 'column': 'id',
                 'other_column': 'foreign_key_with_no_label',
                 'other_table': 'foreign_key_references'
-            }, {
+            }],
+            'outgoing': []
+        },
+        'hidden': False,
+        'label_column': None,
+        'primary_keys': ['id']
+    }, {
+        'columns': ['id', 'content', 'content2'],
+        'name': 'primary_key_multiple_columns_explicit_label',
+        'count': 1,
+        'foreign_keys': {
+            'incoming': [{
                 'column': 'id',
                 'other_column': 'foreign_key_with_custom_label',
                 'other_table': 'custom_foreign_key_label'

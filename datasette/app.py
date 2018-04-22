@@ -525,8 +525,8 @@ class RowTableShared(BaseView):
             foreign_keys = table_info['foreign_keys']['outgoing']
             for fk in foreign_keys:
                 label_column = (
-                    # First look for metadata.json definition:
-                    table_metadata.get('label_column')
+                    # First look in metadata.json definition for this foreign key table:
+                    self.table_metadata(database, fk['other_table']).get('label_column')
                     # Fall back to label_column from .inspect() detection:
                     or tables.get(fk['other_table'], {}).get('label_column')
                 )

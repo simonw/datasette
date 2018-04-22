@@ -97,6 +97,9 @@ METADATA = {
                         'frequency': 'Hz'
                     }
                 },
+                'custom_foreign_key_label': {
+                    'label_column': 'content2',
+                },
             }
         },
     }
@@ -215,6 +218,12 @@ CREATE TABLE "complex_foreign_keys" (
   FOREIGN KEY ("f3") REFERENCES [simple_primary_key](id)
 );
 
+CREATE TABLE "custom_foreign_key_label" (
+  pk varchar(30) primary key,
+  foreign_key_with_custom_label text,
+  FOREIGN KEY ("foreign_key_with_custom_label") REFERENCES [primary_key_multiple_columns](id)
+);
+
 CREATE TABLE units (
   pk integer primary key,
   distance int,
@@ -241,6 +250,7 @@ INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
 INSERT INTO foreign_key_references VALUES (1, 1, 1);
 
 INSERT INTO complex_foreign_keys VALUES (1, 1, 2, 1);
+INSERT INTO custom_foreign_key_label VALUES (1, 1);
 
 INSERT INTO [table/with/slashes.csv] VALUES (3, 'hey');
 

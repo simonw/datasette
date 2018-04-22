@@ -81,7 +81,7 @@ Column units are configured in the metadata like so::
 Units are interpreted using Pint_, and you can see the full list of available units in
 Pint's `unit registry`_. You can also add `custom units`_ to the metadata, which will be
 registered with Pint::
-    
+
     {
         "custom_units": [
             "decibel = [] = dB"
@@ -118,6 +118,29 @@ This will restrict sorting of ``example_table`` to just the ``height`` and
 ``weight`` columns.
 
 You can also disable sorting entirely by setting ``"sortable_columns": []``
+
+Specifying the label column for a table
+---------------------------------------
+
+Datasette's HTML interface attempts to display foreign key references as
+labelled hyperlinks. By default, it looks for referenced tables that only have
+two columns: a primary key column and one other. It assumes that the second
+column should be used as the link label.
+
+If your table has more than two columns you can specify which column should be
+used for the link label with the ``label_column`` property::
+
+    {
+        "databases": {
+            "database1": {
+                "tables": {
+                    "example_table": {
+                        "label_column": "title"
+                    }
+                }
+            }
+        }
+    }
 
 Generating a metadata skeleton
 ------------------------------

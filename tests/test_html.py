@@ -294,6 +294,19 @@ def test_table_html_foreign_key_links(app_client):
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
+def test_table_html_foreign_key_custom_label_column(app_client):
+    response = app_client.get('/test_tables/custom_foreign_key_label', gather_request=False)
+    assert response.status == 200
+    table = Soup(response.body, 'html.parser').find('table')
+    expected = [
+        [
+            '<td class="col-pk"><a href="/test_tables/custom_foreign_key_label/1">1</a></td>',
+            '<td class="col-foreign_key_with_custom_label"><a href="/test_tables/primary_key_multiple_columns/1">world</a>\xa0<em>1</em></td>',
+        ]
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
 def test_row_html_compound_primary_key(app_client):
     response = app_client.get('/test_tables/compound_primary_key/a,b', gather_request=False)
     assert response.status == 200

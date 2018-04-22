@@ -524,7 +524,12 @@ class RowTableShared(BaseView):
         if table_info and expand_foreign_keys:
             foreign_keys = table_info['foreign_keys']['outgoing']
             for fk in foreign_keys:
-                label_column = tables.get(fk['other_table'], {}).get('label_column')
+                label_column = (
+                    # First look for metadata.json definition:
+                    table_metadata.get('label_column')
+                    # Fall back to label_column from .inspect() detection:
+                    or tables.get(fk['other_table'], {}).get('label_column')
+                )
                 if not label_column:
                     # No label for this FK
                     fks[fk['column']] = fk['other_table']

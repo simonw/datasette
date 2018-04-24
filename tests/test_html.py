@@ -172,6 +172,7 @@ def test_table_html_simple_primary_key(app_client):
     response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
+    assert table['class'] == ['rows-and-columns']
     ths = table.findAll('th')
     assert 'id' == ths[0].find('a').string.strip()
     for expected_col, th in zip(('content',), ths[1:]):

@@ -1,6 +1,7 @@
 from .fixtures import (
     app_client,
     app_client_longer_time_limit,
+    app_client_returend_rows_matches_page_size,
     generate_compound_rows,
     generate_sortable_rows,
     METADATA,
@@ -9,6 +10,7 @@ import pytest
 
 pytest.fixture(scope='module')(app_client)
 pytest.fixture(scope='module')(app_client_longer_time_limit)
+pytest.fixture(scope='module')(app_client_returend_rows_matches_page_size)
 
 
 def test_homepage(app_client):
@@ -691,3 +693,16 @@ def test_plugins_json(app_client):
         'static': False,
         'templates': False
     } in response.json
+
+
+def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_page_size):
+    fetched = []
+    path = '/test_tables/no_primary_key.json'
+    while path:
+        response = app_client_returend_rows_matches_page_size.get(
+            path, gather_request=False
+        )
+        fetched.extend(response.json['rows'])
+        assert len(response.json['rows']) in (1, 50)
+        path = response.json['next_url']
+    assert 201 == len(fetched)

@@ -176,10 +176,13 @@ class BaseView(RenderMixin):
                 try:
                     cursor = conn.cursor()
                     cursor.execute(sql, params or {})
-                    if self.max_returned_rows and truncate:
-                        rows = cursor.fetchmany(self.max_returned_rows + 1)
-                        truncated = len(rows) > self.max_returned_rows
-                        rows = rows[:self.max_returned_rows]
+                    max_returned_rows = self.max_returned_rows
+                    if max_returned_rows == self.page_size:
+                        max_returned_rows += 1
+                    if max_returned_rows and truncate:
+                        rows = cursor.fetchmany(max_returned_rows + 1)
+                        truncated = len(rows) > max_returned_rows
+                        rows = rows[:max_returned_rows]
                     else:
                         rows = cursor.fetchall()
                         truncated = False

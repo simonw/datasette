@@ -1284,6 +1284,15 @@ class Datasette:
                             'ElementaryGeometries', 'SpatialIndex', 'geometry_columns',
                             'spatial_ref_sys', 'spatialite_history', 'sql_statements_log',
                             'sqlite_sequence', 'views_geometry_columns', 'virts_geometry_columns'
+                        ] + [
+                            r['name']
+                            for r in conn.execute(
+                                '''
+                                    select name from sqlite_master
+                                    where name like "idx_%"
+                                    and type = "table"
+                                '''
+                            )
                         ]
 
                     for t in tables.keys():

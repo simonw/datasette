@@ -41,7 +41,7 @@
 
 {% if rows %}
 <p>This data as <a href="{{ url_json }}">.json</a></p>
-<table>
+<table class="rows-and-columns">
     <thead>
         <tr>
             {% for column in columns %}<th class="col-{{ column|to_css_class }}" scope="col">{{ column }}</th>{% endfor %}

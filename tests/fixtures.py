@@ -90,6 +90,7 @@ METADATA = {
                 },
                 'no_primary_key': {
                     'sortable_columns': [],
+                    'hidden': True,
                 },
                 'units': {
                     'units': {

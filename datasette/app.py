@@ -1219,6 +1219,7 @@ class Datasette:
                             break
                         m.update(data)
                 # List tables and their row counts
+                database_metadata = self.metadata.get('databases', {}).get(name, {})
                 tables = {}
                 views = []
                 with sqlite3.connect('file:{}?immutable=1'.format(path), uri=True) as conn:
@@ -1253,13 +1254,14 @@ class Datasette:
                         ).fetchall()]
                         if column_names and len(column_names) == 2 and 'id' in column_names:
                             label_column = [c for c in column_names if c != 'id'][0]
+                        table_metadata = database_metadata.get('tables', {}).get(table, {})
                         tables[table] = {
                             'name': table,
                             'columns': column_names,
                             'primary_keys': primary_keys,
                             'count': count,
                             'label_column': label_column,
-                            'hidden': False,
+                            'hidden': table_metadata.get('hidden') or False,
                         }
 
                     foreign_keys = get_all_foreign_keys(conn)

@@ -142,6 +142,24 @@ used for the link label with the ``label_column`` property::
         }
     }
 
+Hiding tables
+-------------
+
+You can hide tables from the database listing view (in the same way that FTS and
+Spatialite tables are automatically hidden) using ``"hidden": true``::
+
+    {
+        "databases": {
+            "database1": {
+                "tables": {
+                    "example_table": {
+                        "hidden": true
+                    }
+                }
+            }
+        }
+    }
+
 Generating a metadata skeleton
 ------------------------------
 

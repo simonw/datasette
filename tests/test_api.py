@@ -17,7 +17,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 15
+    assert d['tables_count'] == 14
 
 
 def test_database_page(app_client):
@@ -114,14 +114,6 @@ def test_database_page(app_client):
         'label_column': None,
         'primary_keys': ['pk'],
     }, {
-        'columns': ['content', 'a', 'b', 'c'],
-        'name': 'no_primary_key',
-        'count': 201,
-        'hidden': False,
-        'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
-        'primary_keys': [],
-    }, {
         'columns': ['id', 'content', 'content2'],
         'name': 'primary_key_multiple_columns',
         'count': 1,
@@ -213,6 +205,14 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
         'primary_keys': ['pk'],
+    },  {
+        'columns': ['content', 'a', 'b', 'c'],
+        'name': 'no_primary_key',
+        'count': 201,
+        'hidden': True,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
+        'primary_keys': [],
     }] == data['tables']
 
 

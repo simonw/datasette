@@ -404,6 +404,8 @@ def test_table_with_reserved_word_name(app_client):
 @pytest.mark.parametrize('path,expected_rows,expected_pages', [
     ('/test_tables/no_primary_key.json', 201, 5),
     ('/test_tables/paginated_view.json', 201, 5),
+    ('/test_tables/no_primary_key.json?_size=25', 201, 9),
+    ('/test_tables/paginated_view.json?_size=25', 201, 9),
     ('/test_tables/123_starts_with_digits.json', 0, 1),
 ])
 def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
@@ -415,11 +417,34 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
         if path:
-            assert response.json['next'] and path.endswith(response.json['next'])
+            assert response.json['next']
+            assert '_next={}'.format(response.json['next']) in path
         assert count < 10, 'Possible infinite loop detected'
 
     assert expected_rows == len(fetched)
     assert expected_pages == count
+
+
+@pytest.mark.parametrize('path,expected_error', [
+    ('/test_tables/no_primary_key.json?_size=-4', '_size must be a positive integer'),
+    ('/test_tables/no_primary_key.json?_size=dog', '_size must be a positive integer'),
+    ('/test_tables/no_primary_key.json?_size=1001', '_size must be <= 100'),
+])
+def test_validate_page_size(app_client, path, expected_error):
+    response = app_client.get(path, gather_request=False)
+    assert expected_error == response.json['error']
+    assert 400 == response.status
+
+
+def test_page_size_zero(app_client):
+    "For _size=0 we return the counts, empty rows and no continuation token"
+    response = app_client.get('/test_tables/no_primary_key.json?_size=0', gather_request=False)
+    assert 200 == response.status
+    assert [] == response.json['rows']
+    assert 201 == response.json['table_rows_count']
+    assert 201 == response.json['filtered_table_rows_count']
+    assert None is response.json['next']
+    assert None is response.json['next_url']
 
 
 def test_paginate_compound_keys(app_client_longer_time_limit):

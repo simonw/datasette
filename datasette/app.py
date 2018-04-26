@@ -154,8 +154,10 @@ class BaseView(RenderMixin):
             return name, expected, should_redirect
         return name, expected, None
 
-    async def execute(self, db_name, sql, params=None, truncate=False, custom_time_limit=None):
+    async def execute(self, db_name, sql, params=None, truncate=False, custom_time_limit=None, page_size=None):
         """Executes sql against db_name in a thread"""
+        page_size = page_size or self.page_size
+
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
             if not conn:
@@ -177,7 +179,7 @@ class BaseView(RenderMixin):
                     cursor = conn.cursor()
                     cursor.execute(sql, params or {})
                     max_returned_rows = self.max_returned_rows
-                    if max_returned_rows == self.page_size:
+                    if max_returned_rows == page_size:
                         max_returned_rows += 1
                     if max_returned_rows and truncate:
                         rows = cursor.fetchmany(max_returned_rows + 1)
@@ -768,18 +770,6 @@ class TableView(RowTableShared):
             ) if where_clauses else '',
         )
 
-        # _group_count=col1&_group_count=col2
-        group_count = special_args_lists.get('_group_count') or []
-        if group_count:
-            sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
-                group_cols=', '.join('"{}"'.format(group_count_col) for group_count_col in group_count),
-                table_name=escape_sqlite(table),
-                where=(
-                    'where {} '.format(' and '.join(where_clauses))
-                ) if where_clauses else '',
-            )
-            return await self.custom_sql(request, name, hash, sql, editable=True)
-
         _next = special_args.get('_next')
         offset = ''
         if _next:
@@ -867,16 +857,37 @@ class TableView(RowTableShared):
             )
             return await self.custom_sql(request, name, hash, sql, editable=True)
 
+        extra_args = {}
+        # Handle ?_page_size=500
+        page_size = request.raw_args.get('_size')
+        if page_size:
+            try:
+                page_size = int(page_size)
+                if page_size < 0:
+                    raise ValueError
+            except ValueError:
+                raise DatasetteError(
+                    '_size must be a positive integer',
+                    status=400
+                )
+            if page_size > self.max_returned_rows:
+                raise DatasetteError(
+                    '_size must be <= {}'.format(self.max_returned_rows),
+                    status=400
+                )
+            extra_args['page_size'] = page_size
+        else:
+            page_size = self.page_size
+
         sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
             select=select,
             table_name=escape_sqlite(table),
             where=where_clause,
             order_by=order_by,
-            limit=self.page_size + 1,
+            limit=page_size + 1,
             offset=offset,
         )
 
-        extra_args = {}
         if request.raw_args.get('_sql_time_limit_ms'):
             extra_args['custom_time_limit'] = int(request.raw_args['_sql_time_limit_ms'])
 
@@ -894,9 +905,9 @@ class TableView(RowTableShared):
         # Pagination next link
         next_value = None
         next_url = None
-        if len(rows) > self.page_size:
+        if len(rows) > page_size and page_size > 0:
             if is_view:
-                next_value = int(_next or 0) + self.page_size
+                next_value = int(_next or 0) + page_size
             else:
                 next_value = path_from_row_pks(rows[-2], pks, use_rowid)
             # If there's a sort or sort_desc, add that value as a prefix
@@ -921,7 +932,7 @@ class TableView(RowTableShared):
             next_url = urllib.parse.urljoin(request.url, path_with_added_args(
                 request, added_args
             ))
-            rows = rows[:self.page_size]
+            rows = rows[:page_size]
 
         # Number of filtered rows in whole set:
         filtered_table_rows_count = None
@@ -983,7 +994,7 @@ class TableView(RowTableShared):
             'view_definition': view_definition,
             'table_definition': table_definition,
             'human_description_en': human_description_en,
-            'rows': rows[:self.page_size],
+            'rows': rows[:page_size],
             'truncated': truncated,
             'table_rows_count': table_rows_count,
             'filtered_table_rows_count': filtered_table_rows_count,

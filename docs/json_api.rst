@@ -103,3 +103,41 @@ this format.
 
 The ``object`` keys are always strings. If your table has a compound primary
 key, the ``object`` keys will be a comma-separated string.
+
+Special table arguments
+-----------------------
+
+The Datasette table view takes a number of special querystring arguments:
+
+``?_size=1000``
+    Sets a custom page size. This cannot exceed the ``max_returned_rows`` option
+    passed to ``datasette serve``.
+
+``?_sort=COLUMN``
+    Sorts the results by the specified column.
+
+``?_sort_desc=COLUMN``
+    Sorts the results by the specified column in descending order.
+
+``?_search=keywords``
+    For SQLite tables that have been configured for
+    `full-text search <https://www.sqlite.org/fts3.html>`_ executes a search
+    with the provided keywords.
+
+``?_group_count=COLUMN``
+    Executes a SQL query that returns a count of the number of rows matching
+    each unique value in that column, with the most common ordered first.
+
+``?_group_count=COLUMN1&_group_count=column2``
+    You can pass multiple ``_group_count`` columns to return counts against
+    unique combinations of those columns.
+
+``?_sql_time_limit_ms=MS``
+    Sets a custom time limit for the query in ms. You can use this for optimistic
+    queries where you would like Datasette to give up if the query takes too
+    long, for example if you want to implement autocomplete search but only if
+    it can be executed in less than 10ms.
+
+``?_next=TOKEN``
+    Pagination by continuation token - pass the token that was returned in the
+    ``"next"`` property by the previous page.

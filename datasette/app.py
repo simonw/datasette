@@ -24,7 +24,7 @@ from .utils import (
     Filters,
     CustomJSONEncoder,
     compound_keys_after_sql,
-    detect_fts_sql,
+    detect_fts,
     detect_spatialite,
     escape_css_string,
     escape_sqlite,
@@ -726,12 +726,7 @@ class TableView(RowTableShared):
         where_clauses, params = filters.build_where_clauses()
 
         # _search support:
-        fts_table = None
-        fts_sql = detect_fts_sql(table)
-        fts_rows = list(await self.execute(name, fts_sql))
-        if fts_rows:
-            fts_table = fts_rows[0][0]
-
+        fts_table = info[name]['tables'].get(table, {}).get('fts_table')
         search = special_args.get('_search')
         search_description = None
         if search and fts_table:
@@ -1252,6 +1247,9 @@ class Datasette:
                             # This can happen when running against a FTS virtual tables
                             # e.g. "select count(*) from some_fts;"
                             count = 0
+                        # Does this table have a FTS table?
+                        fts_table = detect_fts(conn, table)
+
                         # Figure out primary keys
                         table_info_rows = [
                             row for row in conn.execute(
@@ -1276,6 +1274,7 @@ class Datasette:
                             'count': count,
                             'label_column': label_column,
                             'hidden': table_metadata.get('hidden') or False,
+                            'fts_table': fts_table,
                         }
 
                     foreign_keys = get_all_foreign_keys(conn)

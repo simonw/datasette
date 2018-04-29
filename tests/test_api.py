@@ -33,6 +33,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': [],
     }, {
         'columns': ['pk', 'content'],
@@ -41,6 +42,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'f1', 'f2', 'f3'],
@@ -64,6 +66,7 @@ def test_database_page(app_client):
         },
         'hidden': False,
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk1', 'pk2', 'content'],
@@ -72,6 +75,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk1', 'pk2'],
     }, {
         'columns': ['pk1', 'pk2', 'pk3', 'content'],
@@ -80,6 +84,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk1', 'pk2', 'pk3'],
     }, {
         'columns': ['pk', 'foreign_key_with_custom_label'],
@@ -95,6 +100,7 @@ def test_database_page(app_client):
             }],
         },
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'foreign_key_with_label', 'foreign_key_with_no_label'],
@@ -114,6 +120,7 @@ def test_database_page(app_client):
             }],
         },
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['id', 'content', 'content2'],
@@ -129,6 +136,7 @@ def test_database_page(app_client):
         },
         'hidden': False,
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['id']
     }, {
         'columns': ['id', 'content', 'content2'],
@@ -144,6 +152,7 @@ def test_database_page(app_client):
         },
         'hidden': False,
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['id']
     }, {
         'columns': ['group', 'having', 'and'],
@@ -152,6 +161,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': [],
     }, {
         'columns': ['id', 'content'],
@@ -179,6 +189,7 @@ def test_database_page(app_client):
             'outgoing': [],
         },
         'label_column': 'content',
+        'fts_table': None,
         'primary_keys': ['id'],
     }, {
         'columns': [
@@ -190,6 +201,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk1', 'pk2'],
     }, {
         'columns': ['pk', 'content'],
@@ -198,6 +210,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'distance', 'frequency'],
@@ -206,6 +219,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     },  {
         'columns': ['content', 'a', 'b', 'c'],
@@ -214,6 +228,7 @@ def test_database_page(app_client):
         'hidden': True,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': [],
     }] == data['tables']
 

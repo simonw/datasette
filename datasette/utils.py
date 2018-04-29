@@ -427,7 +427,7 @@ def detect_spatialite(conn):
     return len(rows) > 0
 
 
-def detect_fts(conn, table, return_sql=False):
+def detect_fts(conn, table):
     "Detect if table has a corresponding FTS virtual table and return it"
     rows = conn.execute(detect_fts_sql(table)).fetchall()
     if len(rows) == 0:

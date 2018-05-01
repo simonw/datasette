@@ -254,7 +254,7 @@ class BaseView(RenderMixin):
                 )
             # Deal with the _shape option
             shape = request.args.get('_shape', 'lists')
-            if shape in ('objects', 'object'):
+            if shape in ('objects', 'object', 'array'):
                 columns = data.get('columns')
                 rows = data.get('rows')
                 if rows and columns:
@@ -283,6 +283,8 @@ class BaseView(RenderMixin):
                             'database': name,
                             'database_hash': hash,
                         }
+                if shape == 'array':
+                    data = data['rows']
 
             headers = {}
             if self.ds.cors:

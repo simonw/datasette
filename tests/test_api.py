@@ -330,9 +330,9 @@ def test_jsono_redirects_to_shape_objects(app_client):
     assert response.headers['Location'].endswith('?_shape=objects')
 
 
-def test_table_shape_lists(app_client):
+def test_table_shape_arrays(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=lists',
+        '/test_tables/simple_primary_key.json?_shape=arrays',
         gather_request=False
     )
     assert [
@@ -359,6 +359,36 @@ def test_table_shape_objects(app_client):
     }] == response.json['rows']
 
 
+def test_table_shape_array(app_client):
+    response = app_client.get(
+        '/test_tables/simple_primary_key.json?_shape=array',
+        gather_request=False
+    )
+    assert [{
+        'id': '1',
+        'content': 'hello',
+    }, {
+        'id': '2',
+        'content': 'world',
+    }, {
+        'id': '3',
+        'content': '',
+    }] == response.json
+
+
+def test_table_shape_invalid(app_client):
+    response = app_client.get(
+        '/test_tables/simple_primary_key.json?_shape=invalid',
+        gather_request=False
+    )
+    assert {
+        'ok': False,
+        'error': 'Invalid _shape: invalid',
+        'status': 400,
+        'title': None,
+    } == response.json
+
+
 def test_table_shape_object(app_client):
     response = app_client.get(
         '/test_tables/simple_primary_key.json?_shape=object',
@@ -377,7 +407,7 @@ def test_table_shape_object(app_client):
             'id': '3',
             'content': '',
         }
-    } == response.json['rows']
+    } == response.json
 
 
 def test_table_shape_object_compound_primary_Key(app_client):
@@ -391,7 +421,7 @@ def test_table_shape_object_compound_primary_Key(app_client):
             'pk2': 'b',
             'content': 'c',
         }
-    } == response.json['rows']
+    } == response.json
 
 
 def test_table_with_slashes_in_name(app_client):

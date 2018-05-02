@@ -253,7 +253,7 @@ class BaseView(RenderMixin):
                     forward_querystring=False
                 )
             # Deal with the _shape option
-            shape = request.args.get('_shape', 'lists')
+            shape = request.args.get('_shape', 'arrays')
             if shape in ('objects', 'object', 'array'):
                 columns = data.get('columns')
                 rows = data.get('rows')
@@ -275,7 +275,7 @@ class BaseView(RenderMixin):
                             for row in data['rows']:
                                 pk_string = path_from_row_pks(row, pks, not pks)
                                 object_rows[pk_string] = row
-                            data['rows'] = object_rows
+                            data = object_rows
                     if error:
                         data = {
                             'ok': False,
@@ -283,9 +283,18 @@ class BaseView(RenderMixin):
                             'database': name,
                             'database_hash': hash,
                         }
-                if shape == 'array':
+                elif shape == 'array':
                     data = data['rows']
-
+            elif shape == 'arrays':
+                pass
+            else:
+                status_code = 400
+                data = {
+                    'ok': False,
+                    'error': 'Invalid _shape: {}'.format(shape),
+                    'status': 400,
+                    'title': None,
+                }
             headers = {}
             if self.ds.cors:
                 headers['Access-Control-Allow-Origin'] = '*'

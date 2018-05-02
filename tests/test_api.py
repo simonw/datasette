@@ -453,11 +453,11 @@ def test_table_with_reserved_word_name(app_client):
     ('/test_tables/paginated_view.json?_size=25', 201, 9),
     ('/test_tables/123_starts_with_digits.json', 0, 1),
 ])
-def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
+def test_paginate_tables_and_views(app_client_longer_time_limit, path, expected_rows, expected_pages):
     fetched = []
     count = 0
     while path:
-        response = app_client.get(path, gather_request=False)
+        response = app_client_longer_time_limit.get(path, gather_request=False)
         count += 1
         fetched.extend(response.json['rows'])
         path = response.json['next_url']

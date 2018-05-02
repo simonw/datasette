@@ -59,13 +59,35 @@ The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three
 options:
 
-* ``?_shape=lists`` - the default option, shown above
-* ``?_shape=objects`` - a list of JSON key/value objects
-* ``?_shape=object`` - a JSON object keyed using the primary keys of the rows
+* ``?_shape=arrays`` - ``"rows"`` is the default option, shown above
+* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects
+* ``?_shape=array`` - the entire response is an array of objects
+* ``?_shape=object`` - the entire response is a JSON object keyed using the primary keys of the rows
 
 ``objects`` looks like this::
 
-    "rows": [
+    {
+        "database": "sf-trees",
+        ...
+        "rows": [
+            {
+                "id": 1,
+                "value": "Myoporum laetum :: Myoporum"
+            },
+            {
+                "id": 2,
+                "value": "Metrosideros excelsa :: New Zealand Xmas Tree"
+            },
+            {
+                "id": 3,
+                "value": "Pinus radiata :: Monterey Pine"
+            }
+        ]
+    }
+
+``array`` looks like this::
+
+    [
         {
             "id": 1,
             "value": "Myoporum laetum :: Myoporum"
@@ -82,7 +104,7 @@ options:
 
 ``object`` looks like this::
 
-    "rows": {
+    {
         "1": {
             "id": 1,
             "value": "Myoporum laetum :: Myoporum"

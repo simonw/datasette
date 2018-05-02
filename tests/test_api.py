@@ -269,7 +269,7 @@ def test_custom_sql_time_limit(app_client):
     )
     assert 200 == response.status
     response = app_client.get(
-        '/test_tables.json?sql=select+sleep(0.01)&_sql_time_limit_ms=5',
+        '/test_tables.json?sql=select+sleep(0.01)&_timelimit=5',
         gather_request=False
     )
     assert 400 == response.status

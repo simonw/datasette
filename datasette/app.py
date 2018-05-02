@@ -358,8 +358,8 @@ class BaseView(RenderMixin):
                 params[named_parameter] = ''
 
         extra_args = {}
-        if params.get('_sql_time_limit_ms'):
-            extra_args['custom_time_limit'] = int(params['_sql_time_limit_ms'])
+        if params.get('_timelimit'):
+            extra_args['custom_time_limit'] = int(params['_timelimit'])
         rows, truncated, description = await self.execute(
             name, sql, params, truncate=True, **extra_args
         )
@@ -894,8 +894,8 @@ class TableView(RowTableShared):
             offset=offset,
         )
 
-        if request.raw_args.get('_sql_time_limit_ms'):
-            extra_args['custom_time_limit'] = int(request.raw_args['_sql_time_limit_ms'])
+        if request.raw_args.get('_timelimit'):
+            extra_args['custom_time_limit'] = int(request.raw_args['_timelimit'])
 
         rows, truncated, description = await self.execute(
             name, sql, params, truncate=True, **extra_args

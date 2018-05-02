@@ -154,7 +154,7 @@ The Datasette table view takes a number of special querystring arguments:
     You can pass multiple ``_group_count`` columns to return counts against
     unique combinations of those columns.
 
-``?_sql_time_limit_ms=MS``
+``?_timelimit=MS``
     Sets a custom time limit for the query in ms. You can use this for optimistic
     queries where you would like Datasette to give up if the query takes too
     long, for example if you want to implement autocomplete search but only if

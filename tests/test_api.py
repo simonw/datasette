@@ -765,6 +765,20 @@ def test_plugins_json(app_client):
     } in response.json
 
 
+def test_versions_json(app_client):
+    response = app_client.get(
+        "/-/versions.json",
+        gather_request=False
+    )
+    assert 'python' in response.json
+    assert 'version' in response.json['python']
+    assert 'full' in response.json['python']
+    assert 'datasette' in response.json
+    assert 'version' in response.json['datasette']
+    assert 'sqlite' in response.json
+    assert 'version' in response.json['sqlite']
+
+
 def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_page_size):
     fetched = []
     path = '/test_tables/no_primary_key.json'

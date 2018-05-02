@@ -16,6 +16,7 @@ import itertools
 import json
 import jinja2
 import hashlib
+import sys
 import time
 import pint
 import pluggy
@@ -42,6 +43,7 @@ from .utils import (
     urlsafe_components,
     validate_sql_select,
 )
+from . import __version__
 from . import hookspecs
 from .version import __version__
 
@@ -1341,6 +1343,39 @@ class Datasette:
         for unit in self.metadata.get('custom_units', []):
             ureg.define(unit)
 
+    def versions(self):
+        conn = sqlite3.connect(':memory:')
+        self.prepare_connection(conn)
+        sqlite_version = conn.execute(
+            'select sqlite_version()'
+        ).fetchone()[0]
+        sqlite_extensions = {}
+        for extension, testsql, hasversion in (
+            ('json1', "SELECT json('{}')", False),
+            ('spatialite', "SELECT spatialite_version()", True),
+        ):
+            try:
+                result = conn.execute(testsql)
+                if hasversion:
+                    sqlite_extensions[extension] = result.fetchone()[0]
+                else:
+                    sqlite_extensions[extension] = None
+            except Exception as e:
+                pass
+        return {
+            'python': {
+                'version': '.'.join(map(str, sys.version_info[:3])),
+                'full': sys.version,
+            },
+            'datasette': {
+                'version': __version__,
+            },
+            'sqlite': {
+                'version': sqlite_version,
+                'extensions': sqlite_extensions,
+            }
+        }
+
     def app(self):
         app = Sanic(__name__)
         default_templates = str(app_root / 'datasette' / 'templates')
@@ -1387,6 +1422,10 @@ class Datasette:
         app.add_route(
             JsonDataView.as_view(self, 'metadata.json', lambda: self.metadata),
             '/-/metadata<as_json:(\.json)?$>'
+        )
+        app.add_route(
+            JsonDataView.as_view(self, 'versions.json', self.versions),
+            '/-/versions<as_json:(\.json)?$>'
         )
         app.add_route(
             JsonDataView.as_view(self, 'plugins.json', lambda: [{

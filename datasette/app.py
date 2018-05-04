@@ -869,6 +869,8 @@ class TableView(RowTableShared):
         # Handle ?_page_size=500
         page_size = request.raw_args.get('_size')
         if page_size:
+            if page_size == 'max':
+                page_size = self.max_returned_rows
             try:
                 page_size = int(page_size)
                 if page_size < 0:

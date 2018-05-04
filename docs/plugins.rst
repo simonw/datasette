@@ -1,8 +1,10 @@
+.. _plugins:
+
 Plugins
 =======
 
 Datasette's plugin system is currently under active development. It allows
-additional features to be implemented as Python code (or, soon, JavaScript)
+additional features to be implemented as Python code (or front-end JavaScript)
 which can be wrapped up in a separate Python package. The underlying mechanism
 uses `pluggy <https://pluggy.readthedocs.io/>`_.
 
@@ -18,6 +20,16 @@ environment or Docker container.
 You can also define one-off per-project plugins by saving them as
 ``plugin_name.py`` functions in a ``plugins/`` folder and then passing that
 folder to ``datasette serve``.
+
+The ``datasette publish`` and ``datasette package`` commands both take an
+optional ``--install`` argument. You can use this one or more times to tell
+Datasette to ``pip install`` specific plugins as part of the process. You can
+use the name of a package on PyPI or any of the other valid arguments to ``pip
+install`` such as a URL to a ``.zip`` file::
+
+    datasette publish now mydb.db \
+        --install=datasette-plugin-demos \
+        --install=https://url-to-my-package.zip
 
 Writing plugins
 ---------------
@@ -121,6 +133,21 @@ configure itself to serve those static assets from the following path::
 
 See `the datasette-plugin-demos repository <https://github.com/simonw/datasette-plugin-demos/tree/0ccf9e6189e923046047acd7878d1d19a2cccbb1>`_
 for an example of how to create a package that includes a static folder.
+
+Custom templates
+----------------
+
+If your plugin has a ``templates/`` directory, Datasette will attempt to load
+templates from that directory before it uses its own default templates.
+
+The priority order for template loading is:
+
+* templates from the ``--template-dir`` argument, if specified
+* templates from the ``templates/`` directory in any installed plugins
+* default templates that ship with Datasette
+
+See :ref:`customization` for more details on how to write custom templates,
+including which filenames to use to customize which parts of the Datasette UI.
 
 Plugin hooks
 ------------

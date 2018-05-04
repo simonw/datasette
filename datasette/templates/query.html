@@ -41,17 +41,17 @@
 
 {% if rows %}
 <p>This data as <a href="{{ url_json }}">.json</a></p>
-<table>
+<table class="rows-and-columns">
     <thead>
         <tr>
-            {% for column in columns %}<th scope="col">{{ column }}</th>{% endfor %}
+            {% for column in columns %}<th class="col-{{ column|to_css_class }}" scope="col">{{ column }}</th>{% endfor %}
         </tr>
     </thead>
     <tbody>
     {% for row in rows %}
         <tr>
-            {% for td in row %}
-                <td>{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>
+            {% for column, td in zip(columns, row) %}
+                <td class="col-{{ column|to_css_class }}">{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>
             {% endfor %}
         </tr>
     {% endfor %}

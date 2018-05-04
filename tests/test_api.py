@@ -1,13 +1,16 @@
 from .fixtures import (
     app_client,
     app_client_longer_time_limit,
+    app_client_returend_rows_matches_page_size,
     generate_compound_rows,
     generate_sortable_rows,
+    METADATA,
 )
 import pytest
 
 pytest.fixture(scope='module')(app_client)
 pytest.fixture(scope='module')(app_client_longer_time_limit)
+pytest.fixture(scope='module')(app_client_returend_rows_matches_page_size)
 
 
 def test_homepage(app_client):
@@ -16,7 +19,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 13
+    assert d['tables_count'] == 14
 
 
 def test_database_page(app_client):
@@ -30,6 +33,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': [],
     }, {
         'columns': ['pk', 'content'],
@@ -38,6 +42,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'f1', 'f2', 'f3'],
@@ -61,6 +66,7 @@ def test_database_page(app_client):
         },
         'hidden': False,
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk1', 'pk2', 'content'],
@@ -69,6 +75,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk1', 'pk2'],
     }, {
         'columns': ['pk1', 'pk2', 'pk3', 'content'],
@@ -77,7 +84,24 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk1', 'pk2', 'pk3'],
+    }, {
+        'columns': ['pk', 'foreign_key_with_custom_label'],
+        'name': 'custom_foreign_key_label',
+        'count': 1,
+        'hidden': False,
+        'foreign_keys': {
+            'incoming': [],
+            'outgoing':  [{
+                'column': 'foreign_key_with_custom_label',
+                'other_column': 'id',
+                'other_table': 'primary_key_multiple_columns_explicit_label'
+            }],
+        },
+        'label_column': None,
+        'fts_table': None,
+        'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'foreign_key_with_label', 'foreign_key_with_no_label'],
         'name': 'foreign_key_references',
@@ -96,15 +120,8 @@ def test_database_page(app_client):
             }],
         },
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
-    }, {
-        'columns': ['content', 'a', 'b', 'c'],
-        'name': 'no_primary_key',
-        'count': 201,
-        'hidden': False,
-        'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
-        'primary_keys': [],
     }, {
         'columns': ['id', 'content', 'content2'],
         'name': 'primary_key_multiple_columns',
@@ -119,6 +136,23 @@ def test_database_page(app_client):
         },
         'hidden': False,
         'label_column': None,
+        'fts_table': None,
+        'primary_keys': ['id']
+    }, {
+        'columns': ['id', 'content', 'content2'],
+        'name': 'primary_key_multiple_columns_explicit_label',
+        'count': 1,
+        'foreign_keys': {
+            'incoming': [{
+                'column': 'id',
+                'other_column': 'foreign_key_with_custom_label',
+                'other_table': 'custom_foreign_key_label'
+            }],
+            'outgoing': []
+        },
+        'hidden': False,
+        'label_column': None,
+        'fts_table': None,
         'primary_keys': ['id']
     }, {
         'columns': ['group', 'having', 'and'],
@@ -127,6 +161,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': [],
     }, {
         'columns': ['id', 'content'],
@@ -154,6 +189,7 @@ def test_database_page(app_client):
             'outgoing': [],
         },
         'label_column': 'content',
+        'fts_table': None,
         'primary_keys': ['id'],
     }, {
         'columns': [
@@ -165,6 +201,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk1', 'pk2'],
     }, {
         'columns': ['pk', 'content'],
@@ -173,6 +210,7 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'distance', 'frequency'],
@@ -181,7 +219,17 @@ def test_database_page(app_client):
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'label_column': None,
+        'fts_table': None,
         'primary_keys': ['pk'],
+    },  {
+        'columns': ['content', 'a', 'b', 'c'],
+        'name': 'no_primary_key',
+        'count': 201,
+        'hidden': True,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'label_column': None,
+        'fts_table': None,
+        'primary_keys': [],
     }] == data['tables']
 
 
@@ -221,7 +269,7 @@ def test_custom_sql_time_limit(app_client):
     )
     assert 200 == response.status
     response = app_client.get(
-        '/test_tables.json?sql=select+sleep(0.01)&_sql_time_limit_ms=5',
+        '/test_tables.json?sql=select+sleep(0.01)&_timelimit=5',
         gather_request=False
     )
     assert 400 == response.status
@@ -282,9 +330,9 @@ def test_jsono_redirects_to_shape_objects(app_client):
     assert response.headers['Location'].endswith('?_shape=objects')
 
 
-def test_table_shape_lists(app_client):
+def test_table_shape_arrays(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=lists',
+        '/test_tables/simple_primary_key.json?_shape=arrays',
         gather_request=False
     )
     assert [
@@ -311,6 +359,36 @@ def test_table_shape_objects(app_client):
     }] == response.json['rows']
 
 
+def test_table_shape_array(app_client):
+    response = app_client.get(
+        '/test_tables/simple_primary_key.json?_shape=array',
+        gather_request=False
+    )
+    assert [{
+        'id': '1',
+        'content': 'hello',
+    }, {
+        'id': '2',
+        'content': 'world',
+    }, {
+        'id': '3',
+        'content': '',
+    }] == response.json
+
+
+def test_table_shape_invalid(app_client):
+    response = app_client.get(
+        '/test_tables/simple_primary_key.json?_shape=invalid',
+        gather_request=False
+    )
+    assert {
+        'ok': False,
+        'error': 'Invalid _shape: invalid',
+        'status': 400,
+        'title': None,
+    } == response.json
+
+
 def test_table_shape_object(app_client):
     response = app_client.get(
         '/test_tables/simple_primary_key.json?_shape=object',
@@ -329,7 +407,7 @@ def test_table_shape_object(app_client):
             'id': '3',
             'content': '',
         }
-    } == response.json['rows']
+    } == response.json
 
 
 def test_table_shape_object_compound_primary_Key(app_client):
@@ -343,7 +421,7 @@ def test_table_shape_object_compound_primary_Key(app_client):
             'pk2': 'b',
             'content': 'c',
         }
-    } == response.json['rows']
+    } == response.json
 
 
 def test_table_with_slashes_in_name(app_client):
@@ -371,22 +449,47 @@ def test_table_with_reserved_word_name(app_client):
 @pytest.mark.parametrize('path,expected_rows,expected_pages', [
     ('/test_tables/no_primary_key.json', 201, 5),
     ('/test_tables/paginated_view.json', 201, 5),
+    ('/test_tables/no_primary_key.json?_size=25', 201, 9),
+    ('/test_tables/paginated_view.json?_size=25', 201, 9),
     ('/test_tables/123_starts_with_digits.json', 0, 1),
 ])
-def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
+def test_paginate_tables_and_views(app_client_longer_time_limit, path, expected_rows, expected_pages):
     fetched = []
     count = 0
     while path:
-        response = app_client.get(path, gather_request=False)
+        response = app_client_longer_time_limit.get(path, gather_request=False)
         count += 1
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
         if path:
-            assert response.json['next'] and path.endswith(response.json['next'])
+            assert response.json['next']
+            assert '_next={}'.format(response.json['next']) in path
         assert count < 10, 'Possible infinite loop detected'
 
     assert expected_rows == len(fetched)
     assert expected_pages == count
+
+
+@pytest.mark.parametrize('path,expected_error', [
+    ('/test_tables/no_primary_key.json?_size=-4', '_size must be a positive integer'),
+    ('/test_tables/no_primary_key.json?_size=dog', '_size must be a positive integer'),
+    ('/test_tables/no_primary_key.json?_size=1001', '_size must be <= 100'),
+])
+def test_validate_page_size(app_client, path, expected_error):
+    response = app_client.get(path, gather_request=False)
+    assert expected_error == response.json['error']
+    assert 400 == response.status
+
+
+def test_page_size_zero(app_client):
+    "For _size=0 we return the counts, empty rows and no continuation token"
+    response = app_client.get('/test_tables/no_primary_key.json?_size=0', gather_request=False)
+    assert 200 == response.status
+    assert [] == response.json['rows']
+    assert 201 == response.json['table_rows_count']
+    assert 201 == response.json['filtered_table_rows_count']
+    assert None is response.json['next']
+    assert None is response.json['next_url']
 
 
 def test_paginate_compound_keys(app_client_longer_time_limit):
@@ -629,3 +732,61 @@ def test_plugins_dir_plugin(app_client):
         gather_request=False
     )
     assert pytest.approx(328.0839) == response.json['rows'][0][0]
+
+
+def test_metadata_json(app_client):
+    response = app_client.get(
+        "/-/metadata.json",
+        gather_request=False
+    )
+    assert METADATA == response.json
+
+
+def test_inspect_json(app_client):
+    response = app_client.get(
+        "/-/inspect.json",
+        gather_request=False
+    )
+    assert app_client.ds.inspect() == response.json
+
+
+def test_plugins_json(app_client):
+    response = app_client.get(
+        "/-/plugins.json",
+        gather_request=False
+    )
+    # This will include any plugins that have been installed into the
+    # current virtual environment, so we only check for the presence of
+    # the one we know will definitely be There
+    assert {
+        'name': 'my_plugin.py',
+        'static': False,
+        'templates': False
+    } in response.json
+
+
+def test_versions_json(app_client):
+    response = app_client.get(
+        "/-/versions.json",
+        gather_request=False
+    )
+    assert 'python' in response.json
+    assert 'version' in response.json['python']
+    assert 'full' in response.json['python']
+    assert 'datasette' in response.json
+    assert 'version' in response.json['datasette']
+    assert 'sqlite' in response.json
+    assert 'version' in response.json['sqlite']
+
+
+def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_page_size):
+    fetched = []
+    path = '/test_tables/no_primary_key.json'
+    while path:
+        response = app_client_returend_rows_matches_page_size.get(
+            path, gather_request=False
+        )
+        fetched.extend(response.json['rows'])
+        assert len(response.json['rows']) in (1, 50)
+        path = response.json['next_url']
+    assert 201 == len(fetched)

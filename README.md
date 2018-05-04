@@ -9,12 +9,15 @@
 
 Datasette provides an instant, read-only JSON API for any SQLite database. It also provides tools  for packaging the database up as a Docker container and deploying that container to hosting providers such as [Zeit Now](https://zeit.co/now).
 
-Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to convert them to SOLite, then publish them with Datasette. Or try [Datasette Publish](https://publish.datasettes.com), a web app that lets you upload CSV data and deploy it using Datasette without needing to install any software.
+Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to convert them to SQLite, then publish them with Datasette. Or try [Datasette Publish](https://publish.datasettes.com), a web app that lets you upload CSV data and deploy it using Datasette without needing to install any software.
 
-Some examples: https://github.com/simonw/datasette/wiki/Datasettes
+Documentation: http://datasette.readthedocs.io/ Examples: https://github.com/simonw/datasette/wiki/Datasettes
 
 ## News
 
+* 25th April 2018: [Exploring the UK Register of Members Interests with SQL and Datasette](https://simonwillison.net/2018/Apr/25/register-members-interests/) - a tutorial describing how [register-of-members-interests.datasettes.com](https://register-of-members-interests.datasettes.com/) was built ([source code here](https://github.com/simonw/register-of-members-interests))
+* 20th April 2018: [Datasette plugins, and building a clustered map visualization](https://simonwillison.net/2018/Apr/20/datasette-plugins/) - introducing Datasette's new plugin system and [datasette-cluster-map](https://pypi.org/project/datasette-cluster-map/), a plugin for visualizing data on a map
+* 20th April 2018: [Datasette 0.20: static assets and templates for plugins](https://github.com/simonw/datasette/releases/tag/0.20)
 * 16th April 2018: [Datasette 0.19: plugins preview](https://github.com/simonw/datasette/releases/tag/0.19)
 * 14th April 2018: [Datasette 0.18: units](https://github.com/simonw/datasette/releases/tag/0.18)
 * 9th April 2018: [Datasette 0.15: sort by column](https://github.com/simonw/datasette/releases/tag/0.15)
@@ -173,6 +176,7 @@ This will create a docker image containing both the datasette application and th
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
+      --install TEXT            Additional packages (e.g. plugins) to install
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata
@@ -199,6 +203,7 @@ If you have docker installed you can use `datasette package` to create a new Doc
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
+      --install TEXT            Additional packages (e.g. plugins) to install
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata

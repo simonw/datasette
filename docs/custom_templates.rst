@@ -190,26 +190,8 @@ Note the ``default:row.html`` template name, which ensures Jinja will inherit
 from the default template.
 
 The ``_rows_and_columns.html`` template is included on both the row and the table
-page, and displays the content of the row. The default template looks like this::
-
-    <table>
-        <thead>
-            <tr>
-                {% for column in display_columns %}
-                    <th scope="col">{{ column }}</th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-        {% for row in display_rows %}
-            <tr>
-                {% for cell in row %}
-                    <td>{{ cell.value }}</td>
-                {% endfor %}
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+page, and displays the content of the row. The default ``_rows_and_columns.html`` template
+`can be seen here <https://github.com/simonw/datasette/blob/master/datasette/templates/_rows_and_columns.html>`_.
 
 You can provide a custom template that applies to all of your databases and
 tables, or you can provide custom templates for specific tables using the
@@ -232,7 +214,7 @@ provide a custom ``_rows_and_columns.html`` template like this::
                 {% for cell in row %}
                     <td>
                         {% if cell.column == 'description' %}
-                            !!{{ cell.value|safe }}
+                            {{ cell.value|safe }}
                         {% else %}
                             {{ cell.value }}
                         {% endif %}

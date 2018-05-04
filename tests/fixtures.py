@@ -9,7 +9,7 @@ import tempfile
 import time
 
 
-def app_client(sql_time_limit_ms=None):
+def app_client(sql_time_limit_ms=None, max_returned_rows=None):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, 'test_tables.db')
         conn = sqlite3.connect(filepath)
@@ -21,7 +21,7 @@ def app_client(sql_time_limit_ms=None):
         ds = Datasette(
             [filepath],
             page_size=50,
-            max_returned_rows=100,
+            max_returned_rows=max_returned_rows or 100,
             sql_time_limit_ms=sql_time_limit_ms or 20,
             metadata=METADATA,
             plugins_dir=plugins_dir,
@@ -29,11 +29,17 @@ def app_client(sql_time_limit_ms=None):
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),
         )
-        yield ds.app().test_client
+        client = ds.app().test_client
+        client.ds = ds
+        yield client
 
 
 def app_client_longer_time_limit():
     yield from app_client(200)
+
+
+def app_client_returend_rows_matches_page_size():
+    yield from app_client(max_returned_rows=50)
 
 
 def generate_compound_rows(num):
@@ -88,12 +94,16 @@ METADATA = {
                 },
                 'no_primary_key': {
                     'sortable_columns': [],
+                    'hidden': True,
                 },
                 'units': {
                     'units': {
                         'distance': 'm',
                         'frequency': 'Hz'
                     }
+                },
+                'primary_key_multiple_columns_explicit_label': {
+                    'label_column': 'content2',
                 },
             }
         },
@@ -135,6 +145,12 @@ CREATE TABLE simple_primary_key (
 );
 
 CREATE TABLE primary_key_multiple_columns (
+  id varchar(30) primary key,
+  content text,
+  content2 text
+);
+
+CREATE TABLE primary_key_multiple_columns_explicit_label (
   id varchar(30) primary key,
   content text,
   content2 text
@@ -213,6 +229,12 @@ CREATE TABLE "complex_foreign_keys" (
   FOREIGN KEY ("f3") REFERENCES [simple_primary_key](id)
 );
 
+CREATE TABLE "custom_foreign_key_label" (
+  pk varchar(30) primary key,
+  foreign_key_with_custom_label text,
+  FOREIGN KEY ("foreign_key_with_custom_label") REFERENCES [primary_key_multiple_columns_explicit_label](id)
+);
+
 CREATE TABLE units (
   pk integer primary key,
   distance int,
@@ -235,10 +257,12 @@ INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');
 
 INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
+INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');
 
 INSERT INTO foreign_key_references VALUES (1, 1, 1);
 
 INSERT INTO complex_foreign_keys VALUES (1, 1, 2, 1);
+INSERT INTO custom_foreign_key_label VALUES (1, 1);
 
 INSERT INTO [table/with/slashes.csv] VALUES (3, 'hey');
 

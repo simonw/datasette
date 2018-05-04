@@ -197,6 +197,7 @@ def test_temporary_docker_directory_uses_hard_link():
             template_dir=None,
             plugins_dir=None,
             static=[],
+            install=[],
         ) as temp_docker:
             hello = os.path.join(temp_docker, 'hello')
             assert 'world' == open(hello).read()
@@ -221,6 +222,7 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             template_dir=None,
             plugins_dir=None,
             static=[],
+            install=[],
         ) as temp_docker:
             hello = os.path.join(temp_docker, 'hello')
             assert 'world' == open(hello).read()

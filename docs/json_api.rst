@@ -59,13 +59,35 @@ The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three
 options:
 
-* ``?_shape=lists`` - the default option, shown above
-* ``?_shape=objects`` - a list of JSON key/value objects
-* ``?_shape=object`` - a JSON object keyed using the primary keys of the rows
+* ``?_shape=arrays`` - ``"rows"`` is the default option, shown above
+* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects
+* ``?_shape=array`` - the entire response is an array of objects
+* ``?_shape=object`` - the entire response is a JSON object keyed using the primary keys of the rows
 
 ``objects`` looks like this::
 
-    "rows": [
+    {
+        "database": "sf-trees",
+        ...
+        "rows": [
+            {
+                "id": 1,
+                "value": "Myoporum laetum :: Myoporum"
+            },
+            {
+                "id": 2,
+                "value": "Metrosideros excelsa :: New Zealand Xmas Tree"
+            },
+            {
+                "id": 3,
+                "value": "Pinus radiata :: Monterey Pine"
+            }
+        ]
+    }
+
+``array`` looks like this::
+
+    [
         {
             "id": 1,
             "value": "Myoporum laetum :: Myoporum"
@@ -82,7 +104,7 @@ options:
 
 ``object`` looks like this::
 
-    "rows": {
+    {
         "1": {
             "id": 1,
             "value": "Myoporum laetum :: Myoporum"
@@ -103,3 +125,41 @@ this format.
 
 The ``object`` keys are always strings. If your table has a compound primary
 key, the ``object`` keys will be a comma-separated string.
+
+Special table arguments
+-----------------------
+
+The Datasette table view takes a number of special querystring arguments:
+
+``?_size=1000``
+    Sets a custom page size. This cannot exceed the ``max_returned_rows`` option
+    passed to ``datasette serve``.
+
+``?_sort=COLUMN``
+    Sorts the results by the specified column.
+
+``?_sort_desc=COLUMN``
+    Sorts the results by the specified column in descending order.
+
+``?_search=keywords``
+    For SQLite tables that have been configured for
+    `full-text search <https://www.sqlite.org/fts3.html>`_ executes a search
+    with the provided keywords.
+
+``?_group_count=COLUMN``
+    Executes a SQL query that returns a count of the number of rows matching
+    each unique value in that column, with the most common ordered first.
+
+``?_group_count=COLUMN1&_group_count=column2``
+    You can pass multiple ``_group_count`` columns to return counts against
+    unique combinations of those columns.
+
+``?_timelimit=MS``
+    Sets a custom time limit for the query in ms. You can use this for optimistic
+    queries where you would like Datasette to give up if the query takes too
+    long, for example if you want to implement autocomplete search but only if
+    it can be executed in less than 10ms.
+
+``?_next=TOKEN``
+    Pagination by continuation token - pass the token that was returned in the
+    ``"next"`` property by the previous page.

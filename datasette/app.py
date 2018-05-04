@@ -16,8 +16,8 @@ import itertools
 import json
 import jinja2
 import hashlib
+import sys
 import time
-import pkg_resources
 import pint
 import pluggy
 import traceback
@@ -25,12 +25,13 @@ from .utils import (
     Filters,
     CustomJSONEncoder,
     compound_keys_after_sql,
-    detect_fts_sql,
+    detect_fts,
     detect_spatialite,
     escape_css_string,
     escape_sqlite,
     filters_should_redirect,
     get_all_foreign_keys,
+    get_plugins,
     is_url,
     InvalidSql,
     module_from_path,
@@ -42,6 +43,7 @@ from .utils import (
     urlsafe_components,
     validate_sql_select,
 )
+from . import __version__
 from . import hookspecs
 from .version import __version__
 
@@ -79,6 +81,7 @@ class RenderMixin(HTTPMethodView):
                 **context, **{
                     'app_css_hash': self.ds.app_css_hash(),
                     'select_templates': select_templates,
+                    'zip': zip,
                 }
             })
         )
@@ -153,8 +156,10 @@ class BaseView(RenderMixin):
             return name, expected, should_redirect
         return name, expected, None
 
-    async def execute(self, db_name, sql, params=None, truncate=False, custom_time_limit=None):
+    async def execute(self, db_name, sql, params=None, truncate=False, custom_time_limit=None, page_size=None):
         """Executes sql against db_name in a thread"""
+        page_size = page_size or self.page_size
+
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
             if not conn:
@@ -175,10 +180,13 @@ class BaseView(RenderMixin):
                 try:
                     cursor = conn.cursor()
                     cursor.execute(sql, params or {})
-                    if self.max_returned_rows and truncate:
-                        rows = cursor.fetchmany(self.max_returned_rows + 1)
-                        truncated = len(rows) > self.max_returned_rows
-                        rows = rows[:self.max_returned_rows]
+                    max_returned_rows = self.max_returned_rows
+                    if max_returned_rows == page_size:
+                        max_returned_rows += 1
+                    if max_returned_rows and truncate:
+                        rows = cursor.fetchmany(max_returned_rows + 1)
+                        truncated = len(rows) > max_returned_rows
+                        rows = rows[:max_returned_rows]
                     else:
                         rows = cursor.fetchall()
                         truncated = False
@@ -247,8 +255,8 @@ class BaseView(RenderMixin):
                     forward_querystring=False
                 )
             # Deal with the _shape option
-            shape = request.args.get('_shape', 'lists')
-            if shape in ('objects', 'object'):
+            shape = request.args.get('_shape', 'arrays')
+            if shape in ('objects', 'object', 'array'):
                 columns = data.get('columns')
                 rows = data.get('rows')
                 if rows and columns:
@@ -269,7 +277,7 @@ class BaseView(RenderMixin):
                             for row in data['rows']:
                                 pk_string = path_from_row_pks(row, pks, not pks)
                                 object_rows[pk_string] = row
-                            data['rows'] = object_rows
+                            data = object_rows
                     if error:
                         data = {
                             'ok': False,
@@ -277,7 +285,18 @@ class BaseView(RenderMixin):
                             'database': name,
                             'database_hash': hash,
                         }
-
+                elif shape == 'array':
+                    data = data['rows']
+            elif shape == 'arrays':
+                pass
+            else:
+                status_code = 400
+                data = {
+                    'ok': False,
+                    'error': 'Invalid _shape: {}'.format(shape),
+                    'status': 400,
+                    'title': None,
+                }
             headers = {}
             if self.ds.cors:
                 headers['Access-Control-Allow-Origin'] = '*'
@@ -341,8 +360,8 @@ class BaseView(RenderMixin):
                 params[named_parameter] = ''
 
         extra_args = {}
-        if params.get('_sql_time_limit_ms'):
-            extra_args['custom_time_limit'] = int(params['_sql_time_limit_ms'])
+        if params.get('_timelimit'):
+            extra_args['custom_time_limit'] = int(params['_timelimit'])
         rows, truncated, description = await self.execute(
             name, sql, params, truncate=True, **extra_args
         )
@@ -402,15 +421,16 @@ class IndexView(RenderMixin):
             }
             databases.append(database)
         if as_json:
+            headers = {}
+            if self.ds.cors:
+                headers['Access-Control-Allow-Origin'] = '*'
             return response.HTTPResponse(
                 json.dumps(
                     {db['name']: db for db in databases},
                     cls=CustomJSONEncoder
                 ),
                 content_type='application/json',
-                headers={
-                    'Access-Control-Allow-Origin': '*'
-                }
+                headers=headers,
             )
         else:
             return self.render(
@@ -420,6 +440,32 @@ class IndexView(RenderMixin):
                 datasette_version=__version__,
                 extra_css_urls=self.ds.extra_css_urls(),
                 extra_js_urls=self.ds.extra_js_urls(),
+            )
+
+
+class JsonDataView(RenderMixin):
+    def __init__(self, datasette, filename, data_callback):
+        self.ds = datasette
+        self.jinja_env = datasette.jinja_env
+        self.filename = filename
+        self.data_callback = data_callback
+
+    async def get(self, request, as_json):
+        data = self.data_callback()
+        if as_json:
+            headers = {}
+            if self.ds.cors:
+                headers['Access-Control-Allow-Origin'] = '*'
+            return response.HTTPResponse(
+                json.dumps(data),
+                content_type='application/json',
+                headers=headers,
+            )
+        else:
+            return self.render(
+                ['show_json.html'],
+                filename=self.filename,
+                data=data,
             )
 
 
@@ -496,7 +542,12 @@ class RowTableShared(BaseView):
         if table_info and expand_foreign_keys:
             foreign_keys = table_info['foreign_keys']['outgoing']
             for fk in foreign_keys:
-                label_column = tables.get(fk['other_table'], {}).get('label_column')
+                label_column = (
+                    # First look in metadata.json definition for this foreign key table:
+                    self.table_metadata(database, fk['other_table']).get('label_column')
+                    # Fall back to label_column from .inspect() detection:
+                    or tables.get(fk['other_table'], {}).get('label_column')
+                )
                 if not label_column:
                     # No label for this FK
                     fks[fk['column']] = fk['other_table']
@@ -688,12 +739,7 @@ class TableView(RowTableShared):
         where_clauses, params = filters.build_where_clauses()
 
         # _search support:
-        fts_table = None
-        fts_sql = detect_fts_sql(table)
-        fts_rows = list(await self.execute(name, fts_sql))
-        if fts_rows:
-            fts_table = fts_rows[0][0]
-
+        fts_table = info[name]['tables'].get(table, {}).get('fts_table')
         search = special_args.get('_search')
         search_description = None
         if search and fts_table:
@@ -731,18 +777,6 @@ class TableView(RowTableShared):
                 'where {} '.format(' and '.join(where_clauses))
             ) if where_clauses else '',
         )
-
-        # _group_count=col1&_group_count=col2
-        group_count = special_args_lists.get('_group_count') or []
-        if group_count:
-            sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
-                group_cols=', '.join('"{}"'.format(group_count_col) for group_count_col in group_count),
-                table_name=escape_sqlite(table),
-                where=(
-                    'where {} '.format(' and '.join(where_clauses))
-                ) if where_clauses else '',
-            )
-            return await self.custom_sql(request, name, hash, sql, editable=True)
 
         _next = special_args.get('_next')
         offset = ''
@@ -831,18 +865,39 @@ class TableView(RowTableShared):
             )
             return await self.custom_sql(request, name, hash, sql, editable=True)
 
+        extra_args = {}
+        # Handle ?_page_size=500
+        page_size = request.raw_args.get('_size')
+        if page_size:
+            try:
+                page_size = int(page_size)
+                if page_size < 0:
+                    raise ValueError
+            except ValueError:
+                raise DatasetteError(
+                    '_size must be a positive integer',
+                    status=400
+                )
+            if page_size > self.max_returned_rows:
+                raise DatasetteError(
+                    '_size must be <= {}'.format(self.max_returned_rows),
+                    status=400
+                )
+            extra_args['page_size'] = page_size
+        else:
+            page_size = self.page_size
+
         sql = 'select {select} from {table_name} {where}{order_by}limit {limit}{offset}'.format(
             select=select,
             table_name=escape_sqlite(table),
             where=where_clause,
             order_by=order_by,
-            limit=self.page_size + 1,
+            limit=page_size + 1,
             offset=offset,
         )
 
-        extra_args = {}
-        if request.raw_args.get('_sql_time_limit_ms'):
-            extra_args['custom_time_limit'] = int(request.raw_args['_sql_time_limit_ms'])
+        if request.raw_args.get('_timelimit'):
+            extra_args['custom_time_limit'] = int(request.raw_args['_timelimit'])
 
         rows, truncated, description = await self.execute(
             name, sql, params, truncate=True, **extra_args
@@ -858,9 +913,9 @@ class TableView(RowTableShared):
         # Pagination next link
         next_value = None
         next_url = None
-        if len(rows) > self.page_size:
+        if len(rows) > page_size and page_size > 0:
             if is_view:
-                next_value = int(_next or 0) + self.page_size
+                next_value = int(_next or 0) + page_size
             else:
                 next_value = path_from_row_pks(rows[-2], pks, use_rowid)
             # If there's a sort or sort_desc, add that value as a prefix
@@ -885,7 +940,7 @@ class TableView(RowTableShared):
             next_url = urllib.parse.urljoin(request.url, path_with_added_args(
                 request, added_args
             ))
-            rows = rows[:self.page_size]
+            rows = rows[:page_size]
 
         # Number of filtered rows in whole set:
         filtered_table_rows_count = None
@@ -947,7 +1002,7 @@ class TableView(RowTableShared):
             'view_definition': view_definition,
             'table_definition': table_definition,
             'human_description_en': human_description_en,
-            'rows': rows[:self.page_size],
+            'rows': rows[:page_size],
             'truncated': truncated,
             'table_rows_count': table_rows_count,
             'filtered_table_rows_count': filtered_table_rows_count,
@@ -1186,6 +1241,7 @@ class Datasette:
                             break
                         m.update(data)
                 # List tables and their row counts
+                database_metadata = self.metadata.get('databases', {}).get(name, {})
                 tables = {}
                 views = []
                 with sqlite3.connect('file:{}?immutable=1'.format(path), uri=True) as conn:
@@ -1204,6 +1260,9 @@ class Datasette:
                             # This can happen when running against a FTS virtual tables
                             # e.g. "select count(*) from some_fts;"
                             count = 0
+                        # Does this table have a FTS table?
+                        fts_table = detect_fts(conn, table)
+
                         # Figure out primary keys
                         table_info_rows = [
                             row for row in conn.execute(
@@ -1220,13 +1279,15 @@ class Datasette:
                         ).fetchall()]
                         if column_names and len(column_names) == 2 and 'id' in column_names:
                             label_column = [c for c in column_names if c != 'id'][0]
+                        table_metadata = database_metadata.get('tables', {}).get(table, {})
                         tables[table] = {
                             'name': table,
                             'columns': column_names,
                             'primary_keys': primary_keys,
                             'count': count,
                             'label_column': label_column,
-                            'hidden': False,
+                            'hidden': table_metadata.get('hidden') or False,
+                            'fts_table': fts_table,
                         }
 
                     foreign_keys = get_all_foreign_keys(conn)
@@ -1251,6 +1312,15 @@ class Datasette:
                             'ElementaryGeometries', 'SpatialIndex', 'geometry_columns',
                             'spatial_ref_sys', 'spatialite_history', 'sql_statements_log',
                             'sqlite_sequence', 'views_geometry_columns', 'virts_geometry_columns'
+                        ] + [
+                            r['name']
+                            for r in conn.execute(
+                                '''
+                                    select name from sqlite_master
+                                    where name like "idx_%"
+                                    and type = "table"
+                                '''
+                            )
                         ]
 
                     for t in tables.keys():
@@ -1273,19 +1343,58 @@ class Datasette:
         for unit in self.metadata.get('custom_units', []):
             ureg.define(unit)
 
+    def versions(self):
+        conn = sqlite3.connect(':memory:')
+        self.prepare_connection(conn)
+        sqlite_version = conn.execute(
+            'select sqlite_version()'
+        ).fetchone()[0]
+        sqlite_extensions = {}
+        for extension, testsql, hasversion in (
+            ('json1', "SELECT json('{}')", False),
+            ('spatialite', "SELECT spatialite_version()", True),
+        ):
+            try:
+                result = conn.execute(testsql)
+                if hasversion:
+                    sqlite_extensions[extension] = result.fetchone()[0]
+                else:
+                    sqlite_extensions[extension] = None
+            except Exception as e:
+                pass
+        return {
+            'python': {
+                'version': '.'.join(map(str, sys.version_info[:3])),
+                'full': sys.version,
+            },
+            'datasette': {
+                'version': __version__,
+            },
+            'sqlite': {
+                'version': sqlite_version,
+                'extensions': sqlite_extensions,
+            }
+        }
+
     def app(self):
         app = Sanic(__name__)
         default_templates = str(app_root / 'datasette' / 'templates')
+        template_paths = []
         if self.template_dir:
-            template_loader = ChoiceLoader([
-                FileSystemLoader([self.template_dir, default_templates]),
-                # Support {% extends "default:table.html" %}:
-                PrefixLoader({
-                    'default': FileSystemLoader(default_templates),
-                }, delimiter=':')
-            ])
-        else:
-            template_loader = FileSystemLoader(default_templates)
+            template_paths.append(self.template_dir)
+        template_paths.extend([
+            plugin['templates_path']
+            for plugin in get_plugins(pm)
+            if plugin['templates_path']
+        ])
+        template_paths.append(default_templates)
+        template_loader = ChoiceLoader([
+            FileSystemLoader(template_paths),
+            # Support {% extends "default:table.html" %}:
+            PrefixLoader({
+                'default': FileSystemLoader(default_templates),
+            }, delimiter=':')
+        ])
         self.jinja_env = Environment(
             loader=template_loader,
             autoescape=True,
@@ -1302,15 +1411,30 @@ class Datasette:
         for path, dirname in self.static_mounts:
             app.static(path, dirname)
         # Mount any plugin static/ directories
-        for plugin_module in pm.get_plugins():
-            try:
-                if pkg_resources.resource_isdir(plugin_module.__name__, 'static'):
-                    modpath = '/-/static-plugins/{}/'.format(plugin_module.__name__)
-                    dirpath = pkg_resources.resource_filename(plugin_module.__name__, 'static')
-                    app.static(modpath, dirpath)
-            except (KeyError, ImportError):
-                # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
-                pass
+        for plugin in get_plugins(pm):
+            if plugin['static_path']:
+                modpath = '/-/static-plugins/{}/'.format(plugin['name'])
+                app.static(modpath, plugin['static_path'])
+        app.add_route(
+            JsonDataView.as_view(self, 'inspect.json', lambda: self.inspect()),
+            '/-/inspect<as_json:(\.json)?$>'
+        )
+        app.add_route(
+            JsonDataView.as_view(self, 'metadata.json', lambda: self.metadata),
+            '/-/metadata<as_json:(\.json)?$>'
+        )
+        app.add_route(
+            JsonDataView.as_view(self, 'versions.json', self.versions),
+            '/-/versions<as_json:(\.json)?$>'
+        )
+        app.add_route(
+            JsonDataView.as_view(self, 'plugins.json', lambda: [{
+                'name': p['name'],
+                'static': p['static_path'] is not None,
+                'templates': p['templates_path'] is not None,
+            } for p in get_plugins(pm)]),
+            '/-/plugins<as_json:(\.json)?$>'
+        )
         app.add_route(
             DatabaseView.as_view(self),
             '/<db_name:[^/\.]+?><as_json:(\.jsono?)?$>'

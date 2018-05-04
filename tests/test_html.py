@@ -172,6 +172,7 @@ def test_table_html_simple_primary_key(app_client):
     response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
+    assert table['class'] == ['rows-and-columns']
     ths = table.findAll('th')
     assert 'id' == ths[0].find('a').string.strip()
     for expected_col, th in zip(('content',), ths[1:]):
@@ -289,6 +290,19 @@ def test_table_html_foreign_key_links(app_client):
             '<td class="col-pk"><a href="/test_tables/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label"><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
             '<td class="col-foreign_key_with_no_label"><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
+        ]
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_table_html_foreign_key_custom_label_column(app_client):
+    response = app_client.get('/test_tables/custom_foreign_key_label', gather_request=False)
+    assert response.status == 200
+    table = Soup(response.body, 'html.parser').find('table')
+    expected = [
+        [
+            '<td class="col-pk"><a href="/test_tables/custom_foreign_key_label/1">1</a></td>',
+            '<td class="col-foreign_key_with_custom_label"><a href="/test_tables/primary_key_multiple_columns_explicit_label/1">world2</a>\xa0<em>1</em></td>',
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]

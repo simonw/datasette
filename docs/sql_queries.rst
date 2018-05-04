@@ -62,9 +62,9 @@ If this time limit is too short for you, you can customize it using the
     datasette mydatabase.db --sql_time_limit_ms=3500
 
 You can optionally set a lower time limit for an individual query using the
-``_sql_time_limit_ms`` query string argument::
+``_timelimit`` query string argument::
 
-    /my-database/my-table?qSpecies=44&_sql_time_limit_ms=100
+    /my-database/my-table?qSpecies=44&_timelimit=100
 
 This would set the time limit to 100ms for that specific query. This feature
 is useful if you are working with databases of unknown size and complexity -

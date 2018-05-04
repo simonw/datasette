@@ -18,7 +18,6 @@ import jinja2
 import hashlib
 import sys
 import time
-import pkg_resources
 import pint
 import pluggy
 import traceback
@@ -63,9 +62,8 @@ pm.load_setuptools_entrypoints('datasette')
 
 
 # Read external database connectors
-db_connectors = {}
-for entry_point in pkg_resources.iter_entry_points('datasette.connectors'):
-    db_connectors[entry_point.name] = entry_point.load()
+from . import connectors
+connectors.load_connectors()
 
 
 class DatasetteError(Exception):
@@ -1337,7 +1335,7 @@ class Datasette:
                                     tables[t]['hidden'] = True
                                     continue
                 except:
-                    pass
+                    tables, views = connectors.inspect(path)
 
                 self._inspect[name] = {
                     'hash': m.hexdigest(),

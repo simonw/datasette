@@ -2,10 +2,6 @@ import pkg_resources
 
 db_connectors = {}
 
-def connector_method(func):
-    print(func.__name__)
-    return func
-
 def load_connectors():
     for entry_point in pkg_resources.iter_entry_points('datasette.connectors'):
         db_connectors[entry_point.name] = entry_point.load()
@@ -13,8 +9,7 @@ def load_connectors():
 def inspect(path):
     for connector in db_connectors.values():
         try:
-            conn = connector(path)
-            return conn.inspect()
+            return connector.inspect(path)
         except:
             pass
     else:

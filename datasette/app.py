@@ -1434,6 +1434,7 @@ class Datasette:
                 'name': p['name'],
                 'static': p['static_path'] is not None,
                 'templates': p['templates_path'] is not None,
+                'version': p.get('version'),
             } for p in get_plugins(pm)]),
             '/-/plugins<as_json:(\.json)?$>'
         )

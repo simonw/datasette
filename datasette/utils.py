@@ -688,6 +688,7 @@ def module_from_path(path, name):
 
 def get_plugins(pm):
     plugins = []
+    plugin_to_distinfo = dict(pm.list_plugin_distinfo())
     for plugin in pm.get_plugins():
         static_path = None
         templates_path = None
@@ -699,9 +700,13 @@ def get_plugins(pm):
         except (KeyError, ImportError):
             # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
             pass
-        plugins.append({
+        plugin_info = {
             'name': plugin.__name__,
             'static_path': static_path,
             'templates_path': templates_path,
-        })
+        }
+        distinfo = plugin_to_distinfo.get(plugin)
+        if distinfo:
+            plugin_info['version'] = distinfo.version
+        plugins.append(plugin_info)
     return plugins

@@ -763,7 +763,8 @@ def test_plugins_json(app_client):
     assert {
         'name': 'my_plugin.py',
         'static': False,
-        'templates': False
+        'templates': False,
+        'version': None,
     } in response.json
 
 

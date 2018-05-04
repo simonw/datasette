@@ -18,6 +18,7 @@ import jinja2
 import hashlib
 import sys
 import time
+import pkg_resources
 import pint
 import pluggy
 import traceback
@@ -59,6 +60,12 @@ ureg = pint.UnitRegistry()
 pm = pluggy.PluginManager('datasette')
 pm.add_hookspecs(hookspecs)
 pm.load_setuptools_entrypoints('datasette')
+
+
+# Read external database connectors
+db_connectors = {}
+for entry_point in pkg_resources.iter_entry_points('datasette.connectors'):
+    db_connectors[entry_point.name] = entry_point.load()
 
 
 class DatasetteError(Exception):
@@ -1244,90 +1251,93 @@ class Datasette:
                 database_metadata = self.metadata.get('databases', {}).get(name, {})
                 tables = {}
                 views = []
-                with sqlite3.connect('file:{}?immutable=1'.format(path), uri=True) as conn:
-                    self.prepare_connection(conn)
-                    table_names = [
-                        r['name']
-                        for r in conn.execute('select * from sqlite_master where type="table"')
-                    ]
-                    views = [v[0] for v in conn.execute('select name from sqlite_master where type = "view"')]
-                    for table in table_names:
-                        try:
-                            count = conn.execute(
-                                'select count(*) from {}'.format(escape_sqlite(table))
-                            ).fetchone()[0]
-                        except sqlite3.OperationalError:
-                            # This can happen when running against a FTS virtual tables
-                            # e.g. "select count(*) from some_fts;"
-                            count = 0
-                        # Does this table have a FTS table?
-                        fts_table = detect_fts(conn, table)
-
-                        # Figure out primary keys
-                        table_info_rows = [
-                            row for row in conn.execute(
-                                'PRAGMA table_info("{}")'.format(table)
-                            ).fetchall()
-                            if row[-1]
+                try:
+                    with sqlite3.connect('file:{}?immutable=1'.format(path), uri=True) as conn:
+                        self.prepare_connection(conn)
+                        table_names = [
+                            r['name']
+                            for r in conn.execute('select * from sqlite_master where type="table"')
                         ]
-                        table_info_rows.sort(key=lambda row: row[-1])
-                        primary_keys = [str(r[1]) for r in table_info_rows]
-                        label_column = None
-                        # If table has two columns, one of which is ID, then label_column is the other one
-                        column_names = [r[1] for r in conn.execute(
-                            'PRAGMA table_info({});'.format(escape_sqlite(table))
-                        ).fetchall()]
-                        if column_names and len(column_names) == 2 and 'id' in column_names:
-                            label_column = [c for c in column_names if c != 'id'][0]
-                        table_metadata = database_metadata.get('tables', {}).get(table, {})
-                        tables[table] = {
-                            'name': table,
-                            'columns': column_names,
-                            'primary_keys': primary_keys,
-                            'count': count,
-                            'label_column': label_column,
-                            'hidden': table_metadata.get('hidden') or False,
-                            'fts_table': fts_table,
-                        }
+                        views = [v[0] for v in conn.execute('select name from sqlite_master where type = "view"')]
+                        for table in table_names:
+                            try:
+                                count = conn.execute(
+                                    'select count(*) from {}'.format(escape_sqlite(table))
+                                ).fetchone()[0]
+                            except sqlite3.OperationalError:
+                                # This can happen when running against a FTS virtual tables
+                                # e.g. "select count(*) from some_fts;"
+                                count = 0
+                            # Does this table have a FTS table?
+                            fts_table = detect_fts(conn, table)
 
-                    foreign_keys = get_all_foreign_keys(conn)
-                    for table, info in foreign_keys.items():
-                        tables[table]['foreign_keys'] = info
+                            # Figure out primary keys
+                            table_info_rows = [
+                                row for row in conn.execute(
+                                    'PRAGMA table_info("{}")'.format(table)
+                                ).fetchall()
+                                if row[-1]
+                            ]
+                            table_info_rows.sort(key=lambda row: row[-1])
+                            primary_keys = [str(r[1]) for r in table_info_rows]
+                            label_column = None
+                            # If table has two columns, one of which is ID, then label_column is the other one
+                            column_names = [r[1] for r in conn.execute(
+                                'PRAGMA table_info({});'.format(escape_sqlite(table))
+                            ).fetchall()]
+                            if column_names and len(column_names) == 2 and 'id' in column_names:
+                                label_column = [c for c in column_names if c != 'id'][0]
+                            table_metadata = database_metadata.get('tables', {}).get(table, {})
+                            tables[table] = {
+                                'name': table,
+                                'columns': column_names,
+                                'primary_keys': primary_keys,
+                                'count': count,
+                                'label_column': label_column,
+                                'hidden': table_metadata.get('hidden') or False,
+                                'fts_table': fts_table,
+                            }
 
-                    # Mark tables 'hidden' if they relate to FTS virtual tables
-                    hidden_tables = [
-                        r['name']
-                        for r in conn.execute(
-                            '''
-                                select name from sqlite_master
-                                where rootpage = 0
-                                and sql like '%VIRTUAL TABLE%USING FTS%'
-                            '''
-                        )
-                    ]
+                        foreign_keys = get_all_foreign_keys(conn)
+                        for table, info in foreign_keys.items():
+                            tables[table]['foreign_keys'] = info
 
-                    if detect_spatialite(conn):
-                        # Also hide Spatialite internal tables
-                        hidden_tables += [
-                            'ElementaryGeometries', 'SpatialIndex', 'geometry_columns',
-                            'spatial_ref_sys', 'spatialite_history', 'sql_statements_log',
-                            'sqlite_sequence', 'views_geometry_columns', 'virts_geometry_columns'
-                        ] + [
+                        # Mark tables 'hidden' if they relate to FTS virtual tables
+                        hidden_tables = [
                             r['name']
                             for r in conn.execute(
                                 '''
                                     select name from sqlite_master
-                                    where name like "idx_%"
-                                    and type = "table"
+                                    where rootpage = 0
+                                    and sql like '%VIRTUAL TABLE%USING FTS%'
                                 '''
                             )
                         ]
 
-                    for t in tables.keys():
-                        for hidden_table in hidden_tables:
-                            if t == hidden_table or t.startswith(hidden_table):
-                                tables[t]['hidden'] = True
-                                continue
+                        if detect_spatialite(conn):
+                            # Also hide Spatialite internal tables
+                            hidden_tables += [
+                                'ElementaryGeometries', 'SpatialIndex', 'geometry_columns',
+                                'spatial_ref_sys', 'spatialite_history', 'sql_statements_log',
+                                'sqlite_sequence', 'views_geometry_columns', 'virts_geometry_columns'
+                            ] + [
+                                r['name']
+                                for r in conn.execute(
+                                    '''
+                                        select name from sqlite_master
+                                        where name like "idx_%"
+                                        and type = "table"
+                                    '''
+                                )
+                            ]
+
+                        for t in tables.keys():
+                            for hidden_table in hidden_tables:
+                                if t == hidden_table or t.startswith(hidden_table):
+                                    tables[t]['hidden'] = True
+                                    continue
+                except:
+                    pass
 
                 self._inspect[name] = {
                     'hash': m.hexdigest(),

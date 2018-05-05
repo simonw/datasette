@@ -146,6 +146,10 @@ The Datasette table view takes a number of special querystring arguments:
     `full-text search <https://www.sqlite.org/fts3.html>`_ executes a search
     with the provided keywords.
 
+``?_search_COLUMN=keywords``
+    Like ``_search=`` but allows you to specify the column to be searched, as
+    opposed to searching all columns that have been indexed by FTS.
+
 ``?_group_count=COLUMN``
     Executes a SQL query that returns a count of the number of rows matching
     each unique value in that column, with the most common ordered first.

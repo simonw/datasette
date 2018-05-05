@@ -522,7 +522,7 @@ class Filters:
     def human_description_en(self, extra=None):
         bits = []
         if extra:
-            bits.append(extra)
+            bits.extend(extra)
         for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:

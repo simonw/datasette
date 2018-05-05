@@ -248,16 +248,17 @@ INSERT INTO units VALUES (3, 100000, 75000);
 CREATE TABLE searchable (
   pk integer primary key,
   text1 text,
-  text2 text
+  text2 text,
+  [name with . and spaces] text
 );
 
-INSERT INTO searchable VALUES (1, 'barry cat', 'john dog');
-INSERT INTO searchable VALUES (2, 'terry cat', 'john weasel');
+INSERT INTO searchable VALUES (1, 'barry cat', 'terry dog', 'panther');
+INSERT INTO searchable VALUES (2, 'terry dog', 'sara weasel', 'puma');
 
 CREATE VIRTUAL TABLE "searchable_fts"
-    USING FTS3 (text1, text2, content="searchable");
-INSERT INTO "searchable_fts" (rowid, text1, text2)
-    SELECT rowid, text1, text2 FROM searchable;
+    USING FTS3 (text1, text2, [name with . and spaces], content="searchable");
+INSERT INTO "searchable_fts" (rowid, text1, text2, [name with . and spaces])
+    SELECT rowid, text1, text2, [name with . and spaces] FROM searchable;
 
 CREATE TABLE [select] (
   [group] text,

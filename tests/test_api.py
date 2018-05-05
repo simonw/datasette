@@ -157,7 +157,7 @@ def test_database_page(app_client):
         'fts_table': None,
         'primary_keys': ['id']
     },  {
-        'columns': ['pk', 'text1', 'text2'],
+        'columns': ['pk', 'text1', 'text2', 'name with . and spaces'],
         'name': 'searchable',
         'count': 2,
         'foreign_keys': {'incoming': [], 'outgoing': []},
@@ -242,7 +242,7 @@ def test_database_page(app_client):
         'fts_table': None,
         'primary_keys': [],
     },  {
-        'columns': ['text1', 'text2', 'content'],
+        'columns': ['text1', 'text2', 'name with . and spaces', 'content'],
         'count': 2,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'fts_table': 'searchable_fts',
@@ -251,7 +251,7 @@ def test_database_page(app_client):
         'name': 'searchable_fts',
         'primary_keys': []
     }, {
-        'columns': ['docid', 'c0text1', 'c1text2', 'c2content'],
+        'columns': ['docid', 'c0text1', 'c1text2', 'c2name with . and spaces', 'c3content'],
         'count': 2,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'fts_table': None,
@@ -681,17 +681,37 @@ def test_sortable_columns_metadata(app_client):
 
 
 @pytest.mark.parametrize('path,expected_rows', [
-    ('/test_tables/searchable.json?_search=cat', [
-        [1, 'barry cat', 'john dog'],
-        [2, 'terry cat', 'john weasel'],
+    ('/test_tables/searchable.json?_search=dog', [
+        [1, 'barry cat', 'terry dog', 'panther'],
+        [2, 'terry dog', 'sara weasel', 'puma'],
     ]),
     ('/test_tables/searchable.json?_search=weasel', [
-        [2, 'terry cat', 'john weasel'],
+        [2, 'terry dog', 'sara weasel', 'puma'],
+    ]),
+    ('/test_tables/searchable.json?_search_text2=dog', [
+        [1, 'barry cat', 'terry dog', 'panther'],
+    ]),
+    ('/test_tables/searchable.json?_search_name%20with%20.%20and%20spaces=panther', [
+        [1, 'barry cat', 'terry dog', 'panther'],
     ]),
 ])
 def test_searchable(app_client, path, expected_rows):
     response = app_client.get(path, gather_request=False)
     assert expected_rows == response.json['rows']
+
+
+def test_searchable_invalid_column(app_client):
+    response = app_client.get(
+        '/test_tables/searchable.json?_search_invalid=x',
+        gather_request=False
+    )
+    assert 400 == response.status
+    assert {
+        'ok': False,
+        'error': 'Cannot search by that column',
+        'status': 400,
+        'title': None
+    } == response.json
 
 
 @pytest.mark.parametrize('path,expected_rows', [

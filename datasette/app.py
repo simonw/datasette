@@ -230,7 +230,7 @@ class BaseView(RenderMixin):
                 return response_or_template_contexts
             else:
                 data, extra_template_data, templates = response_or_template_contexts
-        except (sqlite3.OperationalError, InvalidSql, DatasetteError) as e:
+        except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title='Invalid SQL', status=400)
         except (sqlite3.OperationalError) as e:
             raise DatasetteError(str(e))
@@ -740,16 +740,44 @@ class TableView(RowTableShared):
 
         # _search support:
         fts_table = info[name]['tables'].get(table, {}).get('fts_table')
-        search = special_args.get('_search')
-        search_description = None
-        if search and fts_table:
-            where_clauses.append(
-                'rowid in (select rowid from [{fts_table}] where [{fts_table}] match :search)'.format(
-                    fts_table=fts_table
+        search_args = dict(
+            pair for pair in special_args.items()
+            if pair[0].startswith('_search')
+        )
+        search_descriptions = []
+        search = ''
+        if fts_table and search_args:
+            if '_search' in search_args:
+                # Simple ?_search=xxx
+                search = search_args['_search']
+                where_clauses.append(
+                    'rowid in (select rowid from [{fts_table}] where [{fts_table}] match :search)'.format(
+                        fts_table=fts_table
+                    )
                 )
-            )
-            search_description = 'search matches "{}"'.format(search)
-            params['search'] = search
+                search_descriptions.append('search matches "{}"'.format(search))
+                params['search'] = search
+            else:
+                # More complex: search against specific columns
+                valid_columns = set(info[name]['tables'][fts_table]['columns'])
+                for i, (key, search_text) in enumerate(search_args.items()):
+                    search_col = key.split('_search_', 1)[1]
+                    if search_col not in valid_columns:
+                        raise DatasetteError(
+                            'Cannot search by that column',
+                            status=400
+                        )
+                    where_clauses.append(
+                        'rowid in (select rowid from [{fts_table}] where [{search_col}] match :search_{i})'.format(
+                            fts_table=fts_table,
+                            search_col=search_col,
+                            i=i,
+                        )
+                    )
+                    search_descriptions.append(
+                        'search column "{}" matches "{}"'.format(search_col, search_text)
+                    )
+                    params['search_{}'.format(i)] = search_text
 
         table_rows_count = None
         sortable_columns = set()
@@ -955,7 +983,7 @@ class TableView(RowTableShared):
                 pass
 
         # human_description_en combines filters AND search, if provided
-        human_description_en = filters.human_description_en(extra=search_description)
+        human_description_en = filters.human_description_en(extra=search_descriptions)
 
         if sort or sort_desc:
             sorted_by = 'sorted by {}{}'.format(

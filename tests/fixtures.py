@@ -245,6 +245,20 @@ INSERT INTO units VALUES (1, 1, 100);
 INSERT INTO units VALUES (2, 5000, 2500);
 INSERT INTO units VALUES (3, 100000, 75000);
 
+CREATE TABLE searchable (
+  pk integer primary key,
+  text1 text,
+  text2 text
+);
+
+INSERT INTO searchable VALUES (1, 'barry cat', 'john dog');
+INSERT INTO searchable VALUES (2, 'terry cat', 'john weasel');
+
+CREATE VIRTUAL TABLE "searchable_fts"
+    USING FTS3 (text1, text2, content="searchable");
+INSERT INTO "searchable_fts" (rowid, text1, text2)
+    SELECT rowid, text1, text2 FROM searchable;
+
 CREATE TABLE [select] (
   [group] text,
   [having] text,

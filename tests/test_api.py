@@ -19,13 +19,15 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 14
+    assert d['tables_count'] == 15
 
 
 def test_database_page(app_client):
     response = app_client.get('/test_tables.json', gather_request=False)
     data = response.json
     assert 'test_tables' == data['database']
+    from pprint import pprint
+    pprint(data['tables'])
     assert [{
         'columns': ['content'],
         'name': '123_starts_with_digits',
@@ -154,6 +156,15 @@ def test_database_page(app_client):
         'label_column': None,
         'fts_table': None,
         'primary_keys': ['id']
+    },  {
+        'columns': ['pk', 'text1', 'text2'],
+        'name': 'searchable',
+        'count': 2,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': 'searchable_fts',
+        'hidden': False,
+        'label_column': None,
+        'primary_keys': ['pk'],
     }, {
         'columns': ['group', 'having', 'and'],
         'name': 'select',
@@ -230,6 +241,45 @@ def test_database_page(app_client):
         'label_column': None,
         'fts_table': None,
         'primary_keys': [],
+    },  {
+        'columns': ['text1', 'text2', 'content'],
+        'count': 2,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': 'searchable_fts',
+        'hidden': True,
+        'label_column': None,
+        'name': 'searchable_fts',
+        'primary_keys': []
+    }, {
+        'columns': ['docid', 'c0text1', 'c1text2', 'c2content'],
+        'count': 2,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': None,
+        'hidden': True,
+        'label_column': None,
+        'name': 'searchable_fts_content',
+        'primary_keys': ['docid']
+    }, {
+        'columns': [
+            'level', 'idx', 'start_block', 'leaves_end_block',
+            'end_block', 'root'
+        ],
+        'count': 1,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': None,
+        'hidden': True,
+        'label_column': None,
+        'name': 'searchable_fts_segdir',
+        'primary_keys': ['level', 'idx']
+    }, {
+        'columns': ['blockid', 'block'],
+        'count': 0,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': None,
+        'hidden': True,
+        'label_column': None,
+        'name': 'searchable_fts_segments',
+        'primary_keys': ['blockid']
     }] == data['tables']
 
 
@@ -628,6 +678,20 @@ def test_sortable_columns_metadata(app_client):
             gather_request=False
         )
         assert 'Cannot sort table by {}'.format(column) == response.json['error']
+
+
+@pytest.mark.parametrize('path,expected_rows', [
+    ('/test_tables/searchable.json?_search=cat', [
+        [1, 'barry cat', 'john dog'],
+        [2, 'terry cat', 'john weasel'],
+    ]),
+    ('/test_tables/searchable.json?_search=weasel', [
+        [2, 'terry cat', 'john weasel'],
+    ]),
+])
+def test_searchable(app_client, path, expected_rows):
+    response = app_client.get(path, gather_request=False)
+    assert expected_rows == response.json['rows']
 
 
 @pytest.mark.parametrize('path,expected_rows', [

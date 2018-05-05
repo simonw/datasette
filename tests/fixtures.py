@@ -22,7 +22,7 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None):
             [filepath],
             page_size=50,
             max_returned_rows=max_returned_rows or 100,
-            sql_time_limit_ms=sql_time_limit_ms or 20,
+            sql_time_limit_ms=sql_time_limit_ms or 200,
             metadata=METADATA,
             plugins_dir=plugins_dir,
         )
@@ -34,8 +34,8 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None):
         yield client
 
 
-def app_client_longer_time_limit():
-    yield from app_client(200)
+def app_client_shorter_time_limit():
+    yield from app_client(20)
 
 
 def app_client_returend_rows_matches_page_size():

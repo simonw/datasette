@@ -1,6 +1,6 @@
 from .fixtures import (
     app_client,
-    app_client_longer_time_limit,
+    app_client_shorter_time_limit,
     app_client_returend_rows_matches_page_size,
     generate_compound_rows,
     generate_sortable_rows,
@@ -9,7 +9,7 @@ from .fixtures import (
 import pytest
 
 pytest.fixture(scope='module')(app_client)
-pytest.fixture(scope='module')(app_client_longer_time_limit)
+pytest.fixture(scope='module')(app_client_shorter_time_limit)
 pytest.fixture(scope='module')(app_client_returend_rows_matches_page_size)
 
 
@@ -303,8 +303,8 @@ def test_custom_sql(app_client):
     assert not data['truncated']
 
 
-def test_sql_time_limit(app_client):
-    response = app_client.get(
+def test_sql_time_limit(app_client_shorter_time_limit):
+    response = app_client_shorter_time_limit.get(
         '/test_tables.json?sql=select+sleep(0.5)',
         gather_request=False
     )
@@ -504,11 +504,11 @@ def test_table_with_reserved_word_name(app_client):
     ('/test_tables/paginated_view.json?_size=max', 201, 3),
     ('/test_tables/123_starts_with_digits.json', 0, 1),
 ])
-def test_paginate_tables_and_views(app_client_longer_time_limit, path, expected_rows, expected_pages):
+def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
     fetched = []
     count = 0
     while path:
-        response = app_client_longer_time_limit.get(path, gather_request=False)
+        response = app_client.get(path, gather_request=False)
         assert 200 == response.status
         count += 1
         fetched.extend(response.json['rows'])
@@ -544,13 +544,13 @@ def test_page_size_zero(app_client):
     assert None is response.json['next_url']
 
 
-def test_paginate_compound_keys(app_client_longer_time_limit):
+def test_paginate_compound_keys(app_client):
     fetched = []
     path = '/test_tables/compound_three_primary_keys.json?_shape=objects'
     page = 0
     while path:
         page += 1
-        response = app_client_longer_time_limit.get(path, gather_request=False)
+        response = app_client.get(path, gather_request=False)
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
         assert page < 100

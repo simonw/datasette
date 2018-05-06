@@ -1303,16 +1303,32 @@ class Datasette:
                         table_info_rows.sort(key=lambda row: row[-1])
                         primary_keys = [str(r[1]) for r in table_info_rows]
                         label_column = None
-                        # If table has two columns, one of which is ID, then label_column is the other one
                         column_names = [r[1] for r in conn.execute(
                             'PRAGMA table_info({});'.format(escape_sqlite(table))
                         ).fetchall()]
+                        # If table has two columns, one of which is ID, then label_column is the other one
                         if column_names and len(column_names) == 2 and 'id' in column_names:
                             label_column = [c for c in column_names if c != 'id'][0]
+                        # For each column, spend up to 10ms trying to count distinct values
+                        distinct_values_by_column = {}
+                        for column in column_names:
+                            sql = 'select distinct {} from {} limit 21'.format(
+                                escape_sqlite(column), escape_sqlite(table)
+                            )
+                            distinct_values = None
+                            with sqlite_timelimit(conn, 20):
+                                try:
+                                    distinct_values = [r[0] for r in conn.execute(sql).fetchall()]
+                                except sqlite3.OperationalError:
+                                    pass
+                                if distinct_values and len(distinct_values) > 20:
+                                    distinct_values = None
+                            distinct_values_by_column[column] = distinct_values
                         table_metadata = database_metadata.get('tables', {}).get(table, {})
                         tables[table] = {
                             'name': table,
                             'columns': column_names,
+                            'distinct_values_by_column': distinct_values_by_column,
                             'primary_keys': primary_keys,
                             'count': count,
                             'label_column': label_column,

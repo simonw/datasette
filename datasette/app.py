@@ -1446,7 +1446,7 @@ class Datasette:
                 modpath = '/-/static-plugins/{}/'.format(plugin['name'])
                 app.static(modpath, plugin['static_path'])
         app.add_route(
-            JsonDataView.as_view(self, 'inspect.json', lambda: self.inspect()),
+            JsonDataView.as_view(self, 'inspect.json', self.inspect),
             '/-/inspect<as_json:(\.json)?$>'
         )
         app.add_route(

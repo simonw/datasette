@@ -660,28 +660,35 @@ class TableView(RowTableShared):
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
             return await self.custom_sql(request, name, hash, canned_query['sql'], editable=False, canned_query=table)
-        is_view = bool(list(await self.execute(
-            name,
-            "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n",
-            {'n': table}
-        ))[0][0])
+        is_view = False
+        try:
+            is_view = bool(list(await self.execute(
+                name,
+                "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n",
+                {'n': table}
+            ))[0][0])
+        except:
+            pass
         view_definition = None
         table_definition = None
-        if is_view:
-            view_definition = list(await self.execute(
-                name,
-                'select sql from sqlite_master where name = :n and type="view"',
-                {'n': table}
-            ))[0][0]
-        else:
-            table_definition_rows = list(await self.execute(
-                name,
-                'select sql from sqlite_master where name = :n and type="table"',
-                {'n': table}
-            ))
-            if not table_definition_rows:
-                raise NotFound('Table not found: {}'.format(table))
-            table_definition = table_definition_rows[0][0]
+        try:
+            if is_view:
+                view_definition = list(await self.execute(
+                    name,
+                    'select sql from sqlite_master where name = :n and type="view"',
+                    {'n': table}
+                ))[0][0]
+            else:
+                table_definition_rows = list(await self.execute(
+                    name,
+                    'select sql from sqlite_master where name = :n and type="table"',
+                    {'n': table}
+                ))
+                if not table_definition_rows:
+                    raise NotFound('Table not found: {}'.format(table))
+                table_definition = table_definition_rows[0][0]
+        except:
+            pass
         info = self.ds.inspect()
         table_info = info[name]['tables'].get(table) or {}
         pks = table_info.get('primary_keys') or []

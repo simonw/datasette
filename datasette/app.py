@@ -1237,6 +1237,7 @@ class Datasette:
         pm.hook.prepare_connection(conn=conn)
 
     def inspect(self):
+        dtype = 'sqlite3'
         if not self._inspect:
             self._inspect = {}
             for filename in self.files:
@@ -1342,11 +1343,12 @@ class Datasette:
                                     tables[t]['hidden'] = True
                                     continue
                 except:
-                    tables, views = connectors.inspect(path)
+                    tables, views, dtype = connectors.inspect(path)
 
                 self._inspect[name] = {
                     'hash': m.hexdigest(),
                     'file': str(path),
+                    'dtype': dtype,
                     'tables': tables,
                     'views': views,
 

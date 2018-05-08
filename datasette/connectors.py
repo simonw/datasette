@@ -14,3 +14,9 @@ def inspect(path):
             pass
     else:
         raise Exception("No database connector found for %s" % path)
+
+def connect(path, dbtype):
+    try:
+        return db_connectors[dbtype].Connection(path)
+    except:
+        raise Exception("No database connector found for %s" % path)

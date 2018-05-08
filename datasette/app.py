@@ -169,42 +169,47 @@ class BaseView(RenderMixin):
             conn = getattr(connections, db_name, None)
             if not conn:
                 info = self.ds.inspect()[db_name]
-                conn = sqlite3.connect(
-                    'file:{}?immutable=1'.format(info['file']),
-                    uri=True,
-                    check_same_thread=False,
-                )
-                self.ds.prepare_connection(conn)
+                if info['dbtype'] == 'sqlite3':
+                    conn = sqlite3.connect(
+                        'file:{}?immutable=1'.format(info['file']),
+                        uri=True,
+                        check_same_thread=False,
+                    )
+                    self.ds.prepare_connection(conn)
+                else:
+                    conn = connectors.connect(info['file'], info['dbtype'])
                 setattr(connections, db_name, conn)
 
-            time_limit_ms = self.ds.sql_time_limit_ms
-            if custom_time_limit and custom_time_limit < self.ds.sql_time_limit_ms:
-                time_limit_ms = custom_time_limit
+            if isinstance(conn, sqlite3.Connection):
+                time_limit_ms = self.ds.sql_time_limit_ms
+                if custom_time_limit and custom_time_limit < self.ds.sql_time_limit_ms:
+                    time_limit_ms = custom_time_limit
 
-            with sqlite_timelimit(conn, time_limit_ms):
-                try:
-                    cursor = conn.cursor()
-                    cursor.execute(sql, params or {})
-                    max_returned_rows = self.max_returned_rows
-                    if max_returned_rows == page_size:
-                        max_returned_rows += 1
-                    if max_returned_rows and truncate:
-                        rows = cursor.fetchmany(max_returned_rows + 1)
-                        truncated = len(rows) > max_returned_rows
-                        rows = rows[:max_returned_rows]
-                    else:
-                        rows = cursor.fetchall()
-                        truncated = False
-                except Exception as e:
-                    print('ERROR: conn={}, sql = {}, params = {}: {}'.format(
-                        conn, repr(sql), params, e
-                    ))
-                    raise
-            if truncate:
-                return rows, truncated, cursor.description
+                with sqlite_timelimit(conn, time_limit_ms):
+                    try:
+                        cursor = conn.cursor()
+                        cursor.execute(sql, params or {})
+                        max_returned_rows = self.max_returned_rows
+                        if max_returned_rows == page_size:
+                            max_returned_rows += 1
+                        if max_returned_rows and truncate:
+                            rows = cursor.fetchmany(max_returned_rows + 1)
+                            truncated = len(rows) > max_returned_rows
+                            rows = rows[:max_returned_rows]
+                        else:
+                            rows = cursor.fetchall()
+                            truncated = False
+                    except Exception as e:
+                        print('ERROR: conn={}, sql = {}, params = {}: {}'.format(
+                            conn, repr(sql), params, e
+                        ))
+                        raise
+                if truncate:
+                    return rows, truncated, cursor.description
+                else:
+                    return rows
             else:
-                return rows
-
+                return conn.execute(sql, params or {})
         return await asyncio.get_event_loop().run_in_executor(
             self.executor, sql_operation_in_thread
         )
@@ -1237,7 +1242,7 @@ class Datasette:
         pm.hook.prepare_connection(conn=conn)
 
     def inspect(self):
-        dtype = 'sqlite3'
+        dbtype = 'sqlite3'
         if not self._inspect:
             self._inspect = {}
             for filename in self.files:
@@ -1343,12 +1348,12 @@ class Datasette:
                                     tables[t]['hidden'] = True
                                     continue
                 except:
-                    tables, views, dtype = connectors.inspect(path)
+                    tables, views, dbtype = connectors.inspect(path)
 
                 self._inspect[name] = {
                     'hash': m.hexdigest(),
                     'file': str(path),
-                    'dtype': dtype,
+                    'dbtype': dbtype,
                     'tables': tables,
                     'views': views,
 

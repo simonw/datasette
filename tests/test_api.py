@@ -864,6 +864,7 @@ def test_versions_json(app_client):
     assert 'version' in response.json['datasette']
     assert 'sqlite' in response.json
     assert 'version' in response.json['sqlite']
+    assert 'fts_versions' in response.json['sqlite']
 
 
 def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_page_size):

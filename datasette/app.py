@@ -1392,6 +1392,18 @@ class Datasette:
                     sqlite_extensions[extension] = None
             except Exception as e:
                 pass
+        # Figure out supported FTS versions
+        fts_versions = []
+        for fts in ('FTS5', 'FTS4', 'FTS3'):
+            try:
+                conn.execute(
+                    'CREATE VIRTUAL TABLE v{fts} USING {fts} (t TEXT)'.format(
+                        fts=fts
+                    )
+                )
+                fts_versions.append(fts)
+            except sqlite3.OperationalError:
+                continue
         return {
             'python': {
                 'version': '.'.join(map(str, sys.version_info[:3])),
@@ -1402,6 +1414,7 @@ class Datasette:
             },
             'sqlite': {
                 'version': sqlite_version,
+                'fts_versions': fts_versions,
                 'extensions': sqlite_extensions,
             }
         }

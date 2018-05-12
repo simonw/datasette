@@ -150,17 +150,17 @@ def path_with_added_args(request, args, path=None):
     if isinstance(args, dict):
         args = args.items()
     arg_keys = set(a[0] for a in args)
-    current = [
-        (key, value)
-        for key, value in request.raw_args.items()
-        if key not in arg_keys
-    ]
+    current = []
+    for key, values in request.args.items():
+        current.extend(
+            [(key, value) for value in values if key not in arg_keys]
+        )
     current.extend([
         (key, value)
         for key, value in args
         if value is not None
     ])
-    query_string = urllib.parse.urlencode(sorted(current))
+    query_string = urllib.parse.urlencode(current)
     if query_string:
         query_string = '?{}'.format(query_string)
     return path + query_string

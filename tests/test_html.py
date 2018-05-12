@@ -65,7 +65,7 @@ def test_add_filter_redirects(app_client):
     path = path_base + '?foo=bar&' + filter_args
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
-    assert response.headers['Location'].endswith('?content__startswith=x&foo=bar')
+    assert response.headers['Location'].endswith('?foo=bar&content__startswith=x')
 
     # Test that op with a __x suffix overrides the filter value
     path = path_base + '?' + urllib.parse.urlencode({
@@ -100,7 +100,7 @@ def test_existing_filter_redirects(app_client):
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
     assert response.headers['Location'].endswith(
-        '?age__gte=22&age__lt=30&name__contains=hello&name__contains=world'
+        '?name__contains=hello&age__gte=22&age__lt=30&name__contains=world'
     )
 
     # Setting _filter_column_3 to empty string should remove *_3 entirely
@@ -109,7 +109,7 @@ def test_existing_filter_redirects(app_client):
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
     assert response.headers['Location'].endswith(
-        '?age__gte=22&name__contains=hello&name__contains=world'
+        '?name__contains=hello&age__gte=22&name__contains=world'
     )
 
     # ?_filter_op=exact should be removed if unaccompanied by _fiter_column

@@ -99,8 +99,9 @@ def test_existing_filter_redirects(app_client):
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
-    assert response.headers['Location'].endswith(
-        '?name__contains=hello&age__gte=22&age__lt=30&name__contains=world'
+    assert_querystring_equal(
+        'name__contains=hello&age__gte=22&age__lt=30&name__contains=world',
+        response.headers['Location'].split('?')[1],
     )
 
     # Setting _filter_column_3 to empty string should remove *_3 entirely
@@ -108,8 +109,9 @@ def test_existing_filter_redirects(app_client):
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
-    assert response.headers['Location'].endswith(
-        '?name__contains=hello&age__gte=22&name__contains=world'
+    assert_querystring_equal(
+        'name__contains=hello&age__gte=22&name__contains=world',
+        response.headers['Location'].split('?')[1],
     )
 
     # ?_filter_op=exact should be removed if unaccompanied by _fiter_column
@@ -397,6 +399,10 @@ def test_table_metadata(app_client):
     )
     # The source/license should be inherited
     assert_footer_links(soup)
+
+
+def assert_querystring_equal(expected, actual):
+    assert sorted(expected.split('&')) == sorted(actual.split('&'))
 
 
 def assert_footer_links(soup):

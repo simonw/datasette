@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup as Soup
-from collections import OrderedDict
 from .fixtures import app_client
 import pytest
 import re
@@ -80,28 +79,29 @@ def test_add_filter_redirects(app_client):
 
 
 def test_existing_filter_redirects(app_client):
-    filter_args = OrderedDict((
-        ('_filter_column_1', 'name'),
-        ('_filter_op_1', 'contains'),
-        ('_filter_value_1', 'hello'),
-        ('_filter_column_2', 'age'),
-        ('_filter_op_2', 'gte'),
-        ('_filter_value_2', '22'),
-        ('_filter_column_3', 'age'),
-        ('_filter_op_3', 'lt'),
-        ('_filter_value_3', '30'),
-        ('_filter_column_4', 'name'),
-        ('_filter_op_4', 'contains'),
-        ('_filter_value_4', 'world'),
-    ))
+    filter_args = {
+        '_filter_column_1': 'name',
+        '_filter_op_1': 'contains',
+        '_filter_value_1': 'hello',
+        '_filter_column_2': 'age',
+        '_filter_op_2': 'gte',
+        '_filter_value_2': '22',
+        '_filter_column_3': 'age',
+        '_filter_op_3': 'lt',
+        '_filter_value_3': '30',
+        '_filter_column_4': 'name',
+        '_filter_op_4': 'contains',
+        '_filter_value_4': 'world',
+    }
     path_base = app_client.get(
         '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
     ).headers['Location']
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
-    assert response.headers['Location'].endswith(
-        '?name__contains=hello&age__gte=22&age__lt=30&name__contains=world'
+    assert_querystring_equal(
+        'name__contains=hello&age__gte=22&age__lt=30&name__contains=world',
+        response.headers['Location'].split('?')[1],
     )
 
     # Setting _filter_column_3 to empty string should remove *_3 entirely
@@ -109,8 +109,9 @@ def test_existing_filter_redirects(app_client):
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
-    assert response.headers['Location'].endswith(
-        '?name__contains=hello&age__gte=22&name__contains=world'
+    assert_querystring_equal(
+        'name__contains=hello&age__gte=22&name__contains=world',
+        response.headers['Location'].split('?')[1],
     )
 
     # ?_filter_op=exact should be removed if unaccompanied by _fiter_column
@@ -398,6 +399,10 @@ def test_table_metadata(app_client):
     )
     # The source/license should be inherited
     assert_footer_links(soup)
+
+
+def assert_querystring_equal(expected, actual):
+    assert sorted(expected.split('&')) == sorted(actual.split('&'))
 
 
 def assert_footer_links(soup):

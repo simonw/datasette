@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup as Soup
+from collections import OrderedDict
 from .fixtures import app_client
 import pytest
 import re
@@ -79,20 +80,20 @@ def test_add_filter_redirects(app_client):
 
 
 def test_existing_filter_redirects(app_client):
-    filter_args = {
-        '_filter_column_1': 'name',
-        '_filter_op_1': 'contains',
-        '_filter_value_1': 'hello',
-        '_filter_column_2': 'age',
-        '_filter_op_2': 'gte',
-        '_filter_value_2': '22',
-        '_filter_column_3': 'age',
-        '_filter_op_3': 'lt',
-        '_filter_value_3': '30',
-        '_filter_column_4': 'name',
-        '_filter_op_4': 'contains',
-        '_filter_value_4': 'world',
-    }
+    filter_args = OrderedDict((
+        ('_filter_column_1', 'name'),
+        ('_filter_op_1', 'contains'),
+        ('_filter_value_1', 'hello'),
+        ('_filter_column_2', 'age'),
+        ('_filter_op_2', 'gte'),
+        ('_filter_value_2', '22'),
+        ('_filter_column_3', 'age'),
+        ('_filter_op_3', 'lt'),
+        ('_filter_value_3', '30'),
+        ('_filter_column_4', 'name'),
+        ('_filter_op_4', 'contains'),
+        ('_filter_value_4', 'world'),
+    ))
     path_base = app_client.get(
         '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
     ).headers['Location']

@@ -91,6 +91,15 @@
 
 <p>This data as <a href="{{ url_json }}">.json</a></p>
 
+{% for facet_name, facet_values in facet_results.items() %}
+    <p><strong>{{ facet_name }}</strong></p>
+    <ul>
+        {% for facet_value in facet_values %}
+            <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.value }}</a> ({{ facet_value.count }})</li>
+        {% endfor %}
+    </ul>
+{% endfor %}
+
 {% include custom_rows_and_columns_templates %}
 
 {% if next_url %}

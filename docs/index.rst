@@ -19,6 +19,7 @@ Contents
    getting_started
    json_api
    sql_queries
+   facets
    full_text_search
    metadata
    custom_templates

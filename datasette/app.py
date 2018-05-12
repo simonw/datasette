@@ -733,8 +733,8 @@ class TableView(RowTableShared):
                 forward_querystring=False
             )
 
-        units = self.table_metadata(name, table).get('units', {})
-
+        table_metadata = self.table_metadata(name, table)
+        units = table_metadata.get('units', {})
         filters = Filters(sorted(other_args.items()), units, ureg)
         where_clauses, params = filters.build_where_clauses()
 
@@ -799,12 +799,13 @@ class TableView(RowTableShared):
                 raise DatasetteError('Cannot use _sort and _sort_desc at the same time')
             order_by = '{} desc'.format(escape_sqlite(sort_desc))
 
-        count_sql = 'select count(*) from {table_name} {where}'.format(
+        from_sql = 'from {table_name} {where}'.format(
             table_name=escape_sqlite(table),
             where=(
                 'where {} '.format(' and '.join(where_clauses))
             ) if where_clauses else '',
         )
+        count_sql = 'select count(*) {}'.format(from_sql)
 
         _next = special_args.get('_next')
         offset = ''
@@ -933,6 +934,39 @@ class TableView(RowTableShared):
             name, sql, params, truncate=True, **extra_args
         )
 
+        # facets support
+        try:
+            facets = request.args['_facet']
+        except KeyError:
+            facets = table_metadata.get('facets', [])
+        facet_results = {}
+        for column in facets:
+            facet_sql = '''
+                select {col} as value, count(*) as count
+                {from_sql}
+                group by {col} order by count desc limit 20
+            '''.format(col=escape_sqlite(column), from_sql=from_sql)
+            try:
+                facet_rows = await self.execute(
+                    name,
+                    facet_sql,
+                    params,
+                    truncate=False,
+                    custom_time_limit=200
+                )
+                facet_results[column] = [{
+                    'value': row['value'],
+                    'count': row['count'],
+                    'toggle_url': urllib.parse.urljoin(
+                        request.url, path_with_added_args(
+                            request, {column: row['value']}
+                        )
+                    )
+                } for row in facet_rows]
+            except sqlite3.OperationalError:
+                # Hit time limit
+                pass
+
         columns = [r[0] for r in description]
         rows = list(rows)
 
@@ -1043,6 +1077,7 @@ class TableView(RowTableShared):
                 'sql': sql,
                 'params': params,
             },
+            'facet_results': facet_results,
             'next': next_value and str(next_value) or None,
             'next_url': next_url,
         }, extra_template, (

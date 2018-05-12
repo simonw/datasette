@@ -267,6 +267,29 @@ CREATE TABLE [select] (
 );
 INSERT INTO [select] VALUES ('group', 'having', 'and');
 
+CREATE TABLE facetable (
+    pk integer primary key,
+    state text,
+    city text,
+    neighborhood text
+);
+INSERT INTO facetable (state, city, neighborhood) VALUES
+    ('CA', 'San Francisco', 'Mission'),
+    ('CA', 'San Francisco', 'Dogpatch'),
+    ('CA', 'San Francisco', 'SOMA'),
+    ('CA', 'San Francisco', 'Tenderloin'),
+    ('CA', 'San Francisco', 'Bernal Heights'),
+    ('CA', 'San Francisco', 'Hayes Valley'),
+    ('CA', 'Los Angeles', 'Hollywood'),
+    ('CA', 'Los Angeles', 'Downtown'),
+    ('CA', 'Los Angeles', 'Los Feliz'),
+    ('CA', 'Los Angeles', 'Koreatown'),
+    ('MI', 'Detroit', 'Downtown'),
+    ('MI', 'Detroit', 'Greektown'),
+    ('MI', 'Detroit', 'Corktown'),
+    ('MI', 'Detroit', 'Mexicantown')
+;
+
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');

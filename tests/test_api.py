@@ -19,7 +19,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 15
+    assert d['tables_count'] == 16
 
 
 def test_database_page(app_client):
@@ -103,6 +103,15 @@ def test_database_page(app_client):
         },
         'label_column': None,
         'fts_table': None,
+        'primary_keys': ['pk'],
+    }, {
+        'columns': ['pk', 'state', 'city', 'neighborhood'],
+        'name': 'facetable',
+        'count': 14,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': None,
+        'hidden': False,
+        'label_column': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'foreign_key_with_label', 'foreign_key_with_no_label'],
@@ -878,3 +887,67 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
         assert len(response.json['rows']) in (1, 50)
         path = response.json['next_url']
     assert 201 == len(fetched)
+
+
+@pytest.mark.parametrize('path,expected_facet_results', [
+    (
+        "/test_tables/facetable.json?_facet=state&_facet=city",
+        {
+            "state": [
+                {
+                    "value": "CA",
+                    "count": 10,
+                    "toggle_url": "_facet=state&_facet=city&state=CA",
+                },
+                {
+                    "value": "MI",
+                    "count": 4,
+                    "toggle_url": "_facet=state&_facet=city&state=MI",
+                },
+            ],
+            "city": [
+                {
+                    "value": "San Francisco",
+                    "count": 6,
+                    "toggle_url": "_facet=state&_facet=city&city=San+Francisco",
+                },
+                {
+                    "value": "Detroit",
+                    "count": 4,
+                    "toggle_url": "_facet=state&_facet=city&city=Detroit",
+                },
+                {
+                    "value": "Los Angeles",
+                    "count": 4,
+                    "toggle_url": "_facet=state&_facet=city&city=Los+Angeles",
+                },
+            ],
+        },
+    ), (
+        "/test_tables/facetable.json?_facet=state&_facet=city&state=MI",
+        {
+            "state": [
+                {
+                    "value": "MI",
+                    "count": 4,
+                    "toggle_url": "_facet=state&_facet=city&state=MI",
+                },
+            ],
+            "city": [
+                {
+                    "value": "Detroit",
+                    "count": 4,
+                    "toggle_url": "_facet=state&_facet=city&state=MI&city=Detroit",
+                },
+            ],
+        },
+    )
+])
+def test_facets(app_client, path, expected_facet_results):
+    response = app_client.get(path, gather_request=False)
+    facet_results = response.json['facet_results']
+    # We only compare the querystring portion of the taggle_url
+    for facet_name, facet_values in facet_results.items():
+        for facet_value in facet_values:
+            facet_value['toggle_url'] = facet_value['toggle_url'].split('?')[1]
+    assert expected_facet_results == facet_results

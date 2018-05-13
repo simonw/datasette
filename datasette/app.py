@@ -1,33 +1,40 @@
-from sanic import Sanic
-from sanic import response
-from sanic.exceptions import NotFound, InvalidUsage
-from datasette.views.base import RenderMixin, DatasetteError, ureg, HASH_BLOCK_SIZE
-from datasette.views.index import IndexView
-from datasette.views.database import DatabaseView, DatabaseDownload
-from datasette.views.table import TableView, RowView
-from jinja2 import Environment, FileSystemLoader, ChoiceLoader, PrefixLoader
-import sqlite3
-from pathlib import Path
-from concurrent import futures
-import os
-import urllib.parse
+import hashlib
 import itertools
 import json
-import hashlib
+import os
+import sqlite3
 import sys
-import pluggy
 import traceback
+import urllib.parse
+from concurrent import futures
+from pathlib import Path
+
+import pluggy
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+from sanic import Sanic, response
+from sanic.exceptions import InvalidUsage, NotFound
+
+from datasette.views.base import (
+    HASH_BLOCK_SIZE,
+    DatasetteError,
+    RenderMixin,
+    ureg
+)
+from datasette.views.database import DatabaseDownload, DatabaseView
+from datasette.views.index import IndexView
+from datasette.views.table import RowView, TableView
+
+from . import hookspecs
 from .utils import (
     detect_fts,
+    detect_spatialite,
     escape_css_string,
     escape_sqlite,
-    detect_spatialite,
     get_all_foreign_keys,
     get_plugins,
     module_from_path,
-    to_css_class,
+    to_css_class
 )
-from . import hookspecs
 from .version import __version__
 
 app_root = Path(__file__).parent.parent

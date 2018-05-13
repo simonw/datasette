@@ -1,6 +1,15 @@
-from sanic.views import HTTPMethodView
+import asyncio
+import json
+import re
+import sqlite3
+import threading
+import time
+
+import pint
 from sanic import response
 from sanic.exceptions import NotFound
+from sanic.views import HTTPMethodView
+
 from datasette import __version__
 from datasette.utils import (
     CustomJSONEncoder,
@@ -9,15 +18,8 @@ from datasette.utils import (
     path_with_added_args,
     path_with_ext,
     sqlite_timelimit,
-    to_css_class,
+    to_css_class
 )
-import re
-import threading
-import sqlite3
-import asyncio
-import time
-import json
-import pint
 
 connections = threading.local()
 ureg = pint.UnitRegistry()

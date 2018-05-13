@@ -1,8 +1,11 @@
-from .base import RenderMixin, HASH_LENGTH
+import json
+
 from sanic import response
+
 from datasette.utils import CustomJSONEncoder
 from datasette.version import __version__
-import json
+
+from .base import HASH_LENGTH, RenderMixin
 
 
 class IndexView(RenderMixin):

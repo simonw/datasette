@@ -1,7 +1,10 @@
-from .base import BaseView
-from datasette.utils import validate_sql_select, to_css_class
-from sanic import response
 import os
+
+from sanic import response
+
+from datasette.utils import to_css_class, validate_sql_select
+
+from .base import BaseView
 
 
 class DatabaseView(BaseView):

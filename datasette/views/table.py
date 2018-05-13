@@ -1,6 +1,10 @@
-from sanic.request import RequestParameters
-from .base import BaseView, DatasetteError, ureg
+import sqlite3
+import urllib
+
+import jinja2
 from sanic.exceptions import NotFound
+from sanic.request import RequestParameters
+
 from datasette.utils import (
     Filters,
     compound_keys_after_sql,
@@ -10,11 +14,10 @@ from datasette.utils import (
     path_from_row_pks,
     path_with_added_args,
     to_css_class,
-    urlsafe_components,
+    urlsafe_components
 )
-import sqlite3
-import jinja2
-import urllib
+
+from .base import BaseView, DatasetteError, ureg
 
 
 class RowTableShared(BaseView):

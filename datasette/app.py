@@ -366,6 +366,17 @@ class Datasette:
             },
         }
 
+    def plugins(self):
+        return [
+            {
+                "name": p["name"],
+                "static": p["static_path"] is not None,
+                "templates": p["templates_path"] is not None,
+                "version": p.get("version"),
+            }
+            for p in get_plugins(pm)
+        ]
+
     def app(self):
         app = Sanic(__name__)
         default_templates = str(app_root / "datasette" / "templates")
@@ -419,19 +430,7 @@ class Datasette:
             "/-/versions<as_json:(\.json)?$>",
         )
         app.add_route(
-            JsonDataView.as_view(
-                self,
-                "plugins.json",
-                lambda: [
-                    {
-                        "name": p["name"],
-                        "static": p["static_path"] is not None,
-                        "templates": p["templates_path"] is not None,
-                        "version": p.get("version"),
-                    }
-                    for p in get_plugins(pm)
-                ],
-            ),
+            JsonDataView.as_view(self, "plugins.json", self.plugins),
             "/-/plugins<as_json:(\.json)?$>",
         )
         app.add_route(

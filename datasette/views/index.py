@@ -24,7 +24,11 @@ class IndexView(RenderMixin):
             database = {
                 "name": key,
                 "hash": info["hash"],
-                "path": "{}-{}".format(key, info["hash"][:HASH_LENGTH]),
+                "persistent_urls":
+                    self.ds.metadata.get("persistent_urls", "false"),
+                "path": "{}".format(key)
+                if self.ds.metadata.get("persistent_urls", "false") == "true"
+                else "{}-{}".format(key, info["hash"][:HASH_LENGTH]),
                 "tables_truncated": sorted(
                     tables, key=lambda t: t["count"], reverse=True
                 )[

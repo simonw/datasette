@@ -16,7 +16,7 @@
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
+<form class="sql" action="/{{ database_url }}" method="get">
     <h3>Custom SQL query</h3>
     <p><textarea name="sql">select * from {{ tables[0].name|escape_sqlite }}</textarea></p>
     <p><input type="submit" value="Run SQL"></p>
@@ -25,7 +25,7 @@
 {% for table in tables %}
 {% if show_hidden or not table.hidden %}
 <div class="db-table">
-    <h2><a href="/{{ database }}-{{ database_hash }}/{{ table.name|quote_plus }}">{{ table.name }}</a>{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
+    <h2><a href="/{{ database_url }}/{{ table.name|quote_plus }}">{{ table.name }}</a>{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
     <p><em>{% for column in table.columns[:9] %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}{% if table.columns|length > 9 %}...{% endif %}</em></p>
     <p>{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}</p>
 </div>
@@ -33,14 +33,14 @@
 {% endfor %}
 
 {% if hidden_count and not show_hidden %}
-    <p>... and <a href="/{{ database }}-{{ database_hash }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
+    <p>... and <a href="/{{ database_url }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
 {% endif %}
 
 {% if views %}
     <h2>Views</h2>
     <ul>
         {% for view in views %}
-            <li><a href="/{{ database }}-{{ database_hash }}/{{ view|urlencode }}">{{ view }}</a></li>
+            <li><a href="/{{ database_url }}/{{ view|urlencode }}">{{ view }}</a></li>
         {% endfor %}
     </ul>
 {% endif %}
@@ -49,12 +49,12 @@
     <h2>Queries</h2>
     <ul>
         {% for query in queries %}
-            <li><a href="/{{ database }}-{{ database_hash }}/{{ query.name|urlencode }}" title="{{ query.sql }}">{{ query.name }}</a></li>
+            <li><a href="/{{ database_url }}/{{ query.name|urlencode }}" title="{{ query.sql }}">{{ query.name }}</a></li>
         {% endfor %}
     </ul>
 {% endif %}
 
-<p>Download SQLite DB: <a href="/{{ database }}-{{ database_hash }}.db">{{ database }}.db</a></p>
+<p>Download SQLite DB: <a href="/{{ database_url }}.db">{{ database }}.db</a></p>
 
 {% include "_codemirror_foot.html" %}
 

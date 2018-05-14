@@ -17,7 +17,7 @@
 {% block body_class %}table db-{{ database|to_css_class }} table-{{ table|to_css_class }}{% endblock %}
 
 {% block content %}
-<div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></div>
+<div class="hd"><a href="/">home</a> / <a href="/{{ database_url }}">{{ database }}</a></div>
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ metadata.title or table }}{% if is_view %} (view){% endif %}</h1>
 
@@ -29,7 +29,7 @@
     </h3>
 {% endif %}
 
-<form class="filters" action="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}" method="get">
+<form class="filters" action="/{{ database_url }}/{{ table|quote_plus }}" method="get">
     {% if supports_search %}
         <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
     {% endif %}
@@ -86,7 +86,7 @@
 </form>
 
 {% if query.sql %}
-    <p><a class="not-underlined" title="{{ query.sql }}" href="/{{ database }}-{{ database_hash }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
+    <p><a class="not-underlined" title="{{ query.sql }}" href="/{{ database_url }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 
 <p>This data as <a href="{{ url_json }}">.json</a></p>

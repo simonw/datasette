@@ -255,6 +255,7 @@ def skeleton(files, metadata, sqlite_extensions):
                 "license_url": None,
                 "source": None,
                 "source_url": None,
+                "persistent_urls": "false",
                 "databases": databases,
             },
             indent=4,

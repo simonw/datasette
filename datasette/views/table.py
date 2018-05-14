@@ -567,6 +567,9 @@ class TableView(RowTableShared):
 
         # human_description_en combines filters AND search, if provided
         human_description_en = filters.human_description_en(extra=search_descriptions)
+        database_url = "{}".format(name) \
+            if self.ds.metadata.get("persistent_urls","false") == "true" \
+            else "{}-{}".format(name, hash)
 
         if sort or sort_desc:
             sorted_by = "sorted by {}{}".format(
@@ -593,6 +596,9 @@ class TableView(RowTableShared):
             self.ds.update_with_inherited_metadata(metadata)
             return {
                 "database_hash": hash,
+                "database_url": database_url,
+                "persistent_urls":
+                    self.ds.metadata.get("persistent_urls", "false"),
                 "supports_search": bool(fts_table),
                 "search": search or "",
                 "use_rowid": use_rowid,
@@ -620,6 +626,9 @@ class TableView(RowTableShared):
 
         return {
             "database": name,
+            "database_url": database_url,
+            "persistent_urls":
+                self.ds.metadata.get("persistent_urls", "false"),
             "table": table,
             "is_view": is_view,
             "view_definition": view_definition,

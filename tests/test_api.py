@@ -105,9 +105,9 @@ def test_database_page(app_client):
         'fts_table': None,
         'primary_keys': ['pk'],
     }, {
-        'columns': ['pk', 'state', 'city', 'neighborhood'],
+        'columns': ['pk', 'planet_id', 'state', 'city', 'neighborhood'],
         'name': 'facetable',
-        'count': 14,
+        'count': 15,
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'fts_table': None,
         'hidden': False,
@@ -906,6 +906,12 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
                     "selected": False,
                     "toggle_url": "_facet=state&_facet=city&state=MI",
                 },
+                {
+                    "value": "MC",
+                    "count": 1,
+                    "selected": False,
+                    "toggle_url": "_facet=state&_facet=city&state=MC",
+                },
             ],
             "city": [
                 {
@@ -925,6 +931,12 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
                     "count": 4,
                     "selected": False,
                     "toggle_url": "_facet=state&_facet=city&city=Los+Angeles",
+                },
+                {
+                    "value": "Memnonia",
+                    "count": 1,
+                    "selected": False,
+                    "toggle_url": "_facet=state&_facet=city&city=Memnonia",
                 },
             ],
         },
@@ -946,6 +958,37 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
                     "selected": False,
                     "toggle_url": "_facet=state&_facet=city&state=MI&city=Detroit",
                 },
+            ],
+        },
+    ), (
+        "/test_tables/facetable.json?_facet=planet_id",
+        {
+            "planet_id": [
+                {
+                    "value": 1,
+                    "count": 14,
+                    "selected": False,
+                    "toggle_url": "_facet=planet_id&planet_id=1",
+                },
+                {
+                    "value": 2,
+                    "count": 1,
+                    "selected": False,
+                    "toggle_url": "_facet=planet_id&planet_id=2",
+                },
+            ],
+        },
+    ), (
+        # planet_id is an integer field:
+        "/test_tables/facetable.json?_facet=planet_id&planet_id=1",
+        {
+            "planet_id": [
+                {
+                    "value": 1,
+                    "count": 14,
+                    "selected": True,
+                    "toggle_url": "_facet=planet_id",
+                }
             ],
         },
     )

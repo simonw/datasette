@@ -269,25 +269,27 @@ INSERT INTO [select] VALUES ('group', 'having', 'and');
 
 CREATE TABLE facetable (
     pk integer primary key,
+    planet_id integer,
     state text,
     city text,
     neighborhood text
 );
-INSERT INTO facetable (state, city, neighborhood) VALUES
-    ('CA', 'San Francisco', 'Mission'),
-    ('CA', 'San Francisco', 'Dogpatch'),
-    ('CA', 'San Francisco', 'SOMA'),
-    ('CA', 'San Francisco', 'Tenderloin'),
-    ('CA', 'San Francisco', 'Bernal Heights'),
-    ('CA', 'San Francisco', 'Hayes Valley'),
-    ('CA', 'Los Angeles', 'Hollywood'),
-    ('CA', 'Los Angeles', 'Downtown'),
-    ('CA', 'Los Angeles', 'Los Feliz'),
-    ('CA', 'Los Angeles', 'Koreatown'),
-    ('MI', 'Detroit', 'Downtown'),
-    ('MI', 'Detroit', 'Greektown'),
-    ('MI', 'Detroit', 'Corktown'),
-    ('MI', 'Detroit', 'Mexicantown')
+INSERT INTO facetable (planet_id, state, city, neighborhood) VALUES
+    (1, 'CA', 'San Francisco', 'Mission'),
+    (1, 'CA', 'San Francisco', 'Dogpatch'),
+    (1, 'CA', 'San Francisco', 'SOMA'),
+    (1, 'CA', 'San Francisco', 'Tenderloin'),
+    (1, 'CA', 'San Francisco', 'Bernal Heights'),
+    (1, 'CA', 'San Francisco', 'Hayes Valley'),
+    (1, 'CA', 'Los Angeles', 'Hollywood'),
+    (1, 'CA', 'Los Angeles', 'Downtown'),
+    (1, 'CA', 'Los Angeles', 'Los Feliz'),
+    (1, 'CA', 'Los Angeles', 'Koreatown'),
+    (1, 'MI', 'Detroit', 'Downtown'),
+    (1, 'MI', 'Detroit', 'Greektown'),
+    (1, 'MI', 'Detroit', 'Corktown'),
+    (1, 'MI', 'Detroit', 'Mexicantown'),
+    (2, 'MC', 'Memnonia', 'Arcadia Planitia')
 ;
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');

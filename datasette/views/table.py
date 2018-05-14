@@ -508,7 +508,7 @@ class TableView(RowTableShared):
                 )
                 facet_results[column] = []
                 for row in facet_rows:
-                    selected = other_args.get(column) == row["value"]
+                    selected = str(other_args.get(column)) == str(row["value"])
                     if selected:
                         toggle_path = path_with_removed_args(
                             request, {column: row["value"]}

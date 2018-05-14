@@ -149,10 +149,10 @@ def path_with_added_args(request, args, path=None):
     path = path or request.path
     if isinstance(args, dict):
         args = args.items()
-    arg_keys = set(a[0] for a in args)
+    args_to_remove = {k for k, v in args if v is None}
     current = []
     for key, value in urllib.parse.parse_qsl(request.query_string):
-        if key not in arg_keys:
+        if key not in args_to_remove:
             current.append((key, value))
     current.extend([
         (key, value)

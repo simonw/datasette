@@ -497,10 +497,12 @@ class TableView(RowTableShared):
         for column in facets:
             facet_sql = """
                 select {col} as value, count(*) as count
-                {from_sql}
+                {from_sql} {and_or_where} {col} is not null
                 group by {col} order by count desc limit 20
             """.format(
-                col=escape_sqlite(column), from_sql=from_sql
+                col=escape_sqlite(column),
+                from_sql=from_sql,
+                and_or_where='and' if where_clauses else 'where',
             )
             try:
                 facet_rows = await self.execute(
@@ -580,11 +582,17 @@ class TableView(RowTableShared):
             for facet_column in columns:
                 if facet_column in facets:
                     continue
-                suggested_facet_sql = 'select distinct {column} {from_sql} limit {limit}'.format(
+                suggested_facet_sql = '''
+                    select distinct {column} {from_sql}
+                    {and_or_where} {column} is not null
+                    limit {limit}
+                '''.format(
                     column=escape_sqlite(facet_column),
                     from_sql=from_sql,
+                    and_or_where='and' if where_clauses else 'where',
                     limit=FACET_LIMIT+1
                 )
+                print(suggested_facet_sql)
                 distinct_values = None
                 try:
                     distinct_values = await self.execute(

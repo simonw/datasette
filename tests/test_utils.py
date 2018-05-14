@@ -35,6 +35,9 @@ def test_urlsafe_components(path, expected):
     ('/?_facet=state&_facet=city&state=MI', (
         ('city', 'Detroit'),
     ), '/?_facet=state&_facet=city&state=MI&city=Detroit'),
+    ('/?_facet=state&_facet=city', (
+        ('_facet', 'planet_id'),
+    ), '/?_facet=state&_facet=city&_facet=planet_id'),
 ])
 def test_path_with_added_args(path, added_args, expected):
     request = Request(

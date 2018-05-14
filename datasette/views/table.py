@@ -574,6 +574,37 @@ class TableView(RowTableShared):
                 # Almost certainly hit the timeout
                 pass
 
+            # Detect suggested facets
+            FACET_LIMIT = 30
+            suggested_facets = []
+            for facet_column in columns:
+                if facet_column in facets:
+                    continue
+                suggested_facet_sql = 'select distinct {column} {from_sql} limit {limit}'.format(
+                    column=escape_sqlite(facet_column),
+                    from_sql=from_sql,
+                    limit=FACET_LIMIT+1
+                )
+                distinct_values = None
+                try:
+                    distinct_values = await self.execute(
+                        name, suggested_facet_sql, params,
+                        truncate=False, custom_time_limit=50
+                    )
+                    if (
+                        distinct_values and
+                        len(distinct_values) <= FACET_LIMIT and
+                        len(distinct_values) < filtered_table_rows_count
+                    ):
+                        suggested_facets.append({
+                            'name': facet_column,
+                            'toggle_url': path_with_added_args(
+                                request, {'_facet': facet_column}
+                            ),
+                        })
+                except sqlite3.OperationalError:
+                    pass
+
         # human_description_en combines filters AND search, if provided
         human_description_en = filters.human_description_en(extra=search_descriptions)
 
@@ -643,6 +674,7 @@ class TableView(RowTableShared):
             "units": units,
             "query": {"sql": sql, "params": params},
             "facet_results": facet_results,
+            "suggested_facets": suggested_facets,
             "next": next_value and str(next_value) or None,
             "next_url": next_url,
         }, extra_template, (

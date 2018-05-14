@@ -897,11 +897,13 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
                 {
                     "value": "CA",
                     "count": 10,
+                    "selected": False,
                     "toggle_url": "_facet=state&_facet=city&state=CA",
                 },
                 {
                     "value": "MI",
                     "count": 4,
+                    "selected": False,
                     "toggle_url": "_facet=state&_facet=city&state=MI",
                 },
             ],
@@ -909,16 +911,19 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
                 {
                     "value": "San Francisco",
                     "count": 6,
+                    "selected": False,
                     "toggle_url": "_facet=state&_facet=city&city=San+Francisco",
                 },
                 {
                     "value": "Detroit",
                     "count": 4,
+                    "selected": False,
                     "toggle_url": "_facet=state&_facet=city&city=Detroit",
                 },
                 {
                     "value": "Los Angeles",
                     "count": 4,
+                    "selected": False,
                     "toggle_url": "_facet=state&_facet=city&city=Los+Angeles",
                 },
             ],
@@ -930,13 +935,15 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
                 {
                     "value": "MI",
                     "count": 4,
-                    "toggle_url": "_facet=state&_facet=city&state=MI",
+                    "selected": True,
+                    "toggle_url": "_facet=state&_facet=city",
                 },
             ],
             "city": [
                 {
                     "value": "Detroit",
                     "count": 4,
+                    "selected": False,
                     "toggle_url": "_facet=state&_facet=city&state=MI&city=Detroit",
                 },
             ],

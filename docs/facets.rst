@@ -23,11 +23,13 @@ This works for both the HTML interface and the ``.json`` view. When enabled, fac
         {
           "value": "CA",
           "count": 10,
+          "selected": false,
           "toggle_url": "http://...&state=CA"
         },
         {
           "value": "MI",
           "count": 4,
+          "selected": false,
           "toggle_url": "http://...&state=MI"
         }
       ],
@@ -35,16 +37,19 @@ This works for both the HTML interface and the ``.json`` view. When enabled, fac
         {
           "value": "San Francisco",
           "count": 6,
+          "selected": false,
           "toggle_url": "http://...=San+Francisco"
         },
         {
           "value": "Detroit",
           "count": 4,
+          "selected": false,
           "toggle_url": "http://...&city=Detroit"
         },
         {
           "value": "Los Angeles",
           "count": 4,
+          "selected": false,
           "toggle_url": "http://...=Los+Angeles"
         }
       ]

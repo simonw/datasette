@@ -29,9 +29,12 @@ def test_urlsafe_components(path, expected):
     ('/foo?bar=1&bar=2', {'baz': 3}, '/foo?bar=1&bar=2&baz=3'),
     ('/foo?bar=1', {'bar': None}, '/foo'),
     # Test order is preserved
-    ('/?_facet=prim_state&_facet=area_name', {
-        'prim_state': 'GA'
-    }, '/?_facet=prim_state&_facet=area_name&prim_state=GA'),
+    ('/?_facet=prim_state&_facet=area_name', (
+        ('prim_state', 'GA'),
+    ), '/?_facet=prim_state&_facet=area_name&prim_state=GA'),
+    ('/?_facet=state&_facet=city&state=MI', (
+        ('city', 'Detroit'),
+    ), '/?_facet=state&_facet=city&state=MI&city=Detroit'),
 ])
 def test_path_with_added_args(path, added_args, expected):
     request = Request(

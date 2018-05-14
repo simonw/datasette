@@ -13,6 +13,7 @@ from datasette.utils import (
     is_url,
     path_from_row_pks,
     path_with_added_args,
+    path_with_removed_args,
     to_css_class,
     urlsafe_components
 )
@@ -505,17 +506,25 @@ class TableView(RowTableShared):
                 facet_rows = await self.execute(
                     name, facet_sql, params, truncate=False, custom_time_limit=200
                 )
-                facet_results[column] = [
-                    {
+                facet_results[column] = []
+                for row in facet_rows:
+                    selected = other_args.get(column) == row["value"]
+                    if selected:
+                        toggle_path = path_with_removed_args(
+                            request, {column: row["value"]}
+                        )
+                    else:
+                        toggle_path = path_with_added_args(
+                            request, {column: row["value"]}
+                        )
+                    facet_results[column].append({
                         "value": row["value"],
                         "count": row["count"],
                         "toggle_url": urllib.parse.urljoin(
-                            request.url,
-                            path_with_added_args(request, {column: row["value"]}),
+                            request.url, toggle_path
                         ),
-                    }
-                    for row in facet_rows
-                ]
+                        "selected": selected,
+                    })
             except sqlite3.OperationalError:
                 # Hit time limit
                 pass

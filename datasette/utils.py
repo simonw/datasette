@@ -165,6 +165,18 @@ def path_with_added_args(request, args, path=None):
     return path + query_string
 
 
+def path_with_removed_args(request, args, path=None):
+    path = path or request.path
+    current = []
+    for key, value in urllib.parse.parse_qsl(request.query_string):
+        if key not in args:
+            current.append((key, value))
+    query_string = urllib.parse.urlencode(current)
+    if query_string:
+        query_string = '?{}'.format(query_string)
+    return path + query_string
+
+
 def path_with_ext(request, ext):
     path = request.path
     path += ext

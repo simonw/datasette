@@ -151,10 +151,9 @@ def path_with_added_args(request, args, path=None):
         args = args.items()
     arg_keys = set(a[0] for a in args)
     current = []
-    for key, values in request.args.items():
-        current.extend(
-            [(key, value) for value in values if key not in arg_keys]
-        )
+    for key, value in urllib.parse.parse_qsl(request.query_string):
+        if key not in arg_keys:
+            current.append((key, value))
     current.extend([
         (key, value)
         for key, value in args

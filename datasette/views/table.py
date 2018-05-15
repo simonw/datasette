@@ -200,11 +200,7 @@ class TableView(RowTableShared):
                     "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n",
                     {"n": table},
                 )
-            )[
-                0
-            ][
-                0
-            ]
+            )[0][0]
         )
         view_definition = None
         table_definition = None
@@ -215,11 +211,7 @@ class TableView(RowTableShared):
                     'select sql from sqlite_master where name = :n and type="view"',
                     {"n": table},
                 )
-            )[
-                0
-            ][
-                0
-            ]
+            )[0][0]
         else:
             table_definition_rows = list(
                 await self.execute(

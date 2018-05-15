@@ -35,6 +35,54 @@ class RowTableShared(BaseView):
             sortable_columns.add("rowid")
         return sortable_columns
 
+    async def expand_foreign_keys(self, database, table, column, values):
+        "Returns dict mapping (column, value) -> label"
+        labeled_fks = {}
+        tables_info = self.ds.inspect()[database]["tables"]
+        table_info = tables_info.get(table) or {}
+        if not table_info:
+            return {}
+        foreign_keys = table_info["foreign_keys"]["outgoing"]
+        # Find the foreign_key for this column
+        try:
+            fk = [
+                foreign_key for foreign_key in foreign_keys
+                if foreign_key["column"] == column
+            ][0]
+        except IndexError:
+            return {}
+        label_column = (
+            # First look in metadata.json for this foreign key table:
+            self.table_metadata(
+                database, fk["other_table"]
+            ).get("label_column")
+            or tables_info.get(fk["other_table"], {}).get("label_column")
+        )
+        if not label_column:
+            return {}
+        labeled_fks = {}
+        sql = '''
+            select {other_column}, {label_column}
+            from {other_table}
+            where {other_column} in ({placeholders})
+        '''.format(
+            other_column=escape_sqlite(fk["other_column"]),
+            label_column=escape_sqlite(label_column),
+            other_table=escape_sqlite(fk["other_table"]),
+            placeholders=", ".join(["?"] * len(set(values))),
+        )
+        try:
+            results = await self.execute(
+                database, sql, list(set(values))
+            )
+        except sqlite3.OperationalError:
+            # Probably hit the timelimit
+            pass
+        else:
+            for id, value in results:
+                labeled_fks[(fk["column"], id)] = value
+        return labeled_fks
+
     async def display_columns_and_rows(
         self,
         database,
@@ -514,7 +562,11 @@ class TableView(RowTableShared):
                     "results": [],
                     "truncated": len(facet_rows) > FACET_SIZE,
                 }
-                for row in facet_rows[:FACET_SIZE]:
+                facet_rows = facet_rows[:FACET_SIZE]
+                # Attempt to expand foreign keys into labels
+                values = [row["value"] for row in facet_rows]
+                expanded = (await self.expand_foreign_keys(name, table, column, values))
+                for row in facet_rows:
                     selected = str(other_args.get(column)) == str(row["value"])
                     if selected:
                         toggle_path = path_with_removed_args(
@@ -526,6 +578,10 @@ class TableView(RowTableShared):
                         )
                     facet_results[column]["results"].append({
                         "value": row["value"],
+                        "label": expanded.get(
+                            (column, row["value"]),
+                            row["value"]
+                        ),
                         "count": row["count"],
                         "toggle_url": urllib.parse.urljoin(
                             request.url, toggle_path

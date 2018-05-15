@@ -150,6 +150,57 @@ def test_sort_by_desc_redirects(app_client):
     assert response.headers['Location'].endswith('?_sort_desc=sortable')
 
 
+def test_sort_links(app_client):
+    response = app_client.get(
+        '/test_tables/sortable?_sort=sortable',
+        gather_request=False
+    )
+    assert response.status == 200
+    ths = Soup(response.body, 'html.parser').findAll('th')
+    attrs_and_link_attrs = [{
+        'attrs': th.attrs,
+        'a_href': (
+            th.find('a')['href'].split('/')[-1]
+            if th.find('a')
+            else None
+        ),
+    } for th in ths]
+    assert [
+        {
+            "attrs": {"class": ["col-Link"], "scope": "col"},
+            "a_href": None
+        },
+        {
+            "attrs": {"class": ["col-pk1"], "scope": "col"},
+            "a_href": None
+        },
+        {
+            "attrs": {"class": ["col-pk2"], "scope": "col"},
+            "a_href": None
+        },
+        {
+            "attrs": {"class": ["col-content"], "scope": "col"},
+            "a_href": None
+        },
+        {
+            "attrs": {"class": ["col-sortable"], "scope": "col"},
+            "a_href": "sortable?_sort_desc=sortable",
+        },
+        {
+            "attrs": {"class": ["col-sortable_with_nulls"], "scope": "col"},
+            "a_href": "sortable?_sort=sortable_with_nulls",
+        },
+        {
+            "attrs": {"class": ["col-sortable_with_nulls_2"], "scope": "col"},
+            "a_href": "sortable?_sort=sortable_with_nulls_2",
+        },
+        {
+            "attrs": {"class": ["col-text"], "scope": "col"},
+            "a_href": "sortable?_sort=text",
+        },
+    ] == attrs_and_link_attrs
+
+
 @pytest.mark.parametrize('path,expected_classes', [
     ('/', ['index']),
     ('/test_tables', ['db', 'db-test_tables']),

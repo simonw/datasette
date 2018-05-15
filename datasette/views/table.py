@@ -14,6 +14,7 @@ from datasette.utils import (
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
+    path_with_replaced_args,
     to_css_class,
     urlsafe_components
 )
@@ -562,7 +563,7 @@ class TableView(RowTableShared):
             else:
                 added_args = {"_next": next_value}
             next_url = urllib.parse.urljoin(
-                request.url, path_with_added_args(request, added_args)
+                request.url, path_with_replaced_args(request, added_args)
             )
             rows = rows[:page_size]
 
@@ -650,7 +651,7 @@ class TableView(RowTableShared):
                 "filter_columns": filter_columns,
                 "display_rows": display_rows,
                 "is_sortable": any(c["sortable"] for c in display_columns),
-                "path_with_added_args": path_with_added_args,
+                "path_with_replaced_args": path_with_replaced_args,
                 "request": request,
                 "sort": sort,
                 "sort_desc": sort_desc,

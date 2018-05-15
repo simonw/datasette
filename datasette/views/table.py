@@ -73,9 +73,13 @@ class RowTableShared(BaseView):
                     continue
 
                 ids_to_lookup = set([row[fk["column"]] for row in rows])
-                sql = 'select "{other_column}", "{label_column}" from {other_table} where "{other_column}" in ({placeholders})'.format(
-                    other_column=fk["other_column"],
-                    label_column=label_column,
+                sql = '''
+                    select {other_column}, {label_column}
+                    from {other_table}
+                    where {other_column} in ({placeholders})
+                '''.format(
+                    other_column=escape_sqlite(fk["other_column"]),
+                    label_column=escape_sqlite(label_column),
                     other_table=escape_sqlite(fk["other_table"]),
                     placeholders=", ".join(["?"] * len(ids_to_lookup)),
                 )
@@ -300,8 +304,8 @@ class TableView(RowTableShared):
                 # Simple ?_search=xxx
                 search = search_args["_search"]
                 where_clauses.append(
-                    "rowid in (select rowid from [{fts_table}] where [{fts_table}] match :search)".format(
-                        fts_table=fts_table
+                    "rowid in (select rowid from {fts_table} where {fts_table} match :search)".format(
+                        fts_table=escape_sqlite(fts_table),
                     )
                 )
                 search_descriptions.append('search matches "{}"'.format(search))
@@ -315,8 +319,10 @@ class TableView(RowTableShared):
                         raise DatasetteError("Cannot search by that column", status=400)
 
                     where_clauses.append(
-                        "rowid in (select rowid from [{fts_table}] where [{search_col}] match :search_{i})".format(
-                            fts_table=fts_table, search_col=search_col, i=i
+                        "rowid in (select rowid from {fts_table} where {search_col} match :search_{i})".format(
+                            fts_table=escape_sqlite(fts_table),
+                            search_col=escape_sqlite(search_col),
+                            i=i
                         )
                     )
                     search_descriptions.append(
@@ -786,8 +792,9 @@ class RowView(RowTableShared):
 
         sql = "select " + ", ".join(
             [
-                '(select count(*) from {table} where "{column}"=:id)'.format(
-                    table=escape_sqlite(fk["other_table"]), column=fk["other_column"]
+                '(select count(*) from {table} where {column}=:id)'.format(
+                    table=escape_sqlite(fk["other_table"]),
+                    column=escape_sqlite(fk["other_column"]),
                 )
                 for fk in foreign_keys
             ]

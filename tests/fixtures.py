@@ -267,29 +267,41 @@ CREATE TABLE [select] (
 );
 INSERT INTO [select] VALUES ('group', 'having', 'and');
 
+CREATE TABLE facet_cities (
+    id integer primary key,
+    name text
+);
+INSERT INTO facet_cities (id, name) VALUES
+    (1, 'San Francisco'),
+    (2, 'Los Angeles'),
+    (3, 'Detroit'),
+    (4, 'Memnonia')
+;
+
 CREATE TABLE facetable (
     pk integer primary key,
-    planet_id integer,
+    planet_int integer,
     state text,
-    city text,
-    neighborhood text
+    city_id integer,
+    neighborhood text,
+    FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
-INSERT INTO facetable (planet_id, state, city, neighborhood) VALUES
-    (1, 'CA', 'San Francisco', 'Mission'),
-    (1, 'CA', 'San Francisco', 'Dogpatch'),
-    (1, 'CA', 'San Francisco', 'SOMA'),
-    (1, 'CA', 'San Francisco', 'Tenderloin'),
-    (1, 'CA', 'San Francisco', 'Bernal Heights'),
-    (1, 'CA', 'San Francisco', 'Hayes Valley'),
-    (1, 'CA', 'Los Angeles', 'Hollywood'),
-    (1, 'CA', 'Los Angeles', 'Downtown'),
-    (1, 'CA', 'Los Angeles', 'Los Feliz'),
-    (1, 'CA', 'Los Angeles', 'Koreatown'),
-    (1, 'MI', 'Detroit', 'Downtown'),
-    (1, 'MI', 'Detroit', 'Greektown'),
-    (1, 'MI', 'Detroit', 'Corktown'),
-    (1, 'MI', 'Detroit', 'Mexicantown'),
-    (2, 'MC', 'Memnonia', 'Arcadia Planitia')
+INSERT INTO facetable (planet_int, state, city_id, neighborhood) VALUES
+    (1, 'CA', 1, 'Mission'),
+    (1, 'CA', 1, 'Dogpatch'),
+    (1, 'CA', 1, 'SOMA'),
+    (1, 'CA', 1, 'Tenderloin'),
+    (1, 'CA', 1, 'Bernal Heights'),
+    (1, 'CA', 1, 'Hayes Valley'),
+    (1, 'CA', 2, 'Hollywood'),
+    (1, 'CA', 2, 'Downtown'),
+    (1, 'CA', 2, 'Los Feliz'),
+    (1, 'CA', 2, 'Koreatown'),
+    (1, 'MI', 3, 'Downtown'),
+    (1, 'MI', 3, 'Greektown'),
+    (1, 'MI', 3, 'Corktown'),
+    (1, 'MI', 3, 'Mexicantown'),
+    (2, 'MC', 4, 'Arcadia Planitia')
 ;
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');

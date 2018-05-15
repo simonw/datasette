@@ -19,7 +19,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 16
+    assert d['tables_count'] == 17
 
 
 def test_database_page(app_client):
@@ -103,10 +103,33 @@ def test_database_page(app_client):
         'fts_table': None,
         'primary_keys': ['pk'],
     }, {
-        'columns': ['pk', 'planet_id', 'state', 'city', 'neighborhood'],
+        'columns': ['id', 'name'],
+        'name': 'facet_cities',
+        'count': 4,
+        'foreign_keys': {
+            'incoming': [{
+                'column': 'id',
+                'other_column': 'city_id',
+                'other_table': 'facetable',
+            }],
+            'outgoing': []
+        },
+        'fts_table': None,
+        'hidden': False,
+        'label_column': 'name',
+        'primary_keys': ['id'],
+    }, {
+        'columns': ['pk', 'planet_int', 'state', 'city_id', 'neighborhood'],
         'name': 'facetable',
         'count': 15,
-        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'foreign_keys': {
+            'incoming': [],
+            'outgoing': [{
+                'column': 'city_id',
+                'other_column': 'id',
+                'other_table': 'facet_cities'
+            }],
+        },
         'fts_table': None,
         'hidden': False,
         'label_column': None,
@@ -889,57 +912,64 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
 
 @pytest.mark.parametrize('path,expected_facet_results', [
     (
-        "/test_tables/facetable.json?_facet=state&_facet=city",
+        "/test_tables/facetable.json?_facet=state&_facet=city_id",
         {
             "state": {
                 "name": "state",
                 "results": [
                     {
                         "value": "CA",
+                        "label": "CA",
                         "count": 10,
-                        "toggle_url": "_facet=state&_facet=city&state=CA",
+                        "toggle_url": "_facet=state&_facet=city_id&state=CA",
                         "selected": False,
                     },
                     {
                         "value": "MI",
+                        "label": "MI",
                         "count": 4,
-                        "toggle_url": "_facet=state&_facet=city&state=MI",
+                        "toggle_url": "_facet=state&_facet=city_id&state=MI",
                         "selected": False,
                     },
                     {
                         "value": "MC",
+                        "label": "MC",
                         "count": 1,
-                        "toggle_url": "_facet=state&_facet=city&state=MC",
+                        "toggle_url": "_facet=state&_facet=city_id&state=MC",
                         "selected": False,
                     }
                 ],
                 "truncated": False,
             },
-            "city": {
-                "name": "city",
+            "city_id": {
+                "name": "city_id",
                 "results": [
                     {
-                        "value": "San Francisco",
+                        "value": 1,
+                        "label": "San Francisco",
                         "count": 6,
-                        "toggle_url": "_facet=state&_facet=city&city=San+Francisco",
+                        "toggle_url": "_facet=state&_facet=city_id&city_id=1",
                         "selected": False,
                     },
                     {
-                        "value": "Detroit",
+                        "value": 2,
+                        "label": "Los Angeles",
                         "count": 4,
-                        "toggle_url": "_facet=state&_facet=city&city=Detroit",
+                        "toggle_url": "_facet=state&_facet=city_id&city_id=2",
                         "selected": False,
                     },
                     {
-                        "value": "Los Angeles",
+                        "value": 3,
+                        "label": "Detroit",
                         "count": 4,
-                        "toggle_url": "_facet=state&_facet=city&city=Los+Angeles",
+                        "toggle_url": "_facet=state&_facet=city_id&city_id=3",
                         "selected": False,
                     },
                     {
-                        "value": "Memnonia",
+                        "value": 4,
+                        "label": "Memnonia",
                         "count": 1,
-                        "toggle_url": "_facet=state&_facet=city&city=Memnonia",
+                        "toggle_url": "_facet=state&_facet=city_id&city_id=4",
                         "selected": False,
                     }
                 ],
@@ -947,67 +977,72 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
             }
         }
     ), (
-        "/test_tables/facetable.json?_facet=state&_facet=city&state=MI",
+        "/test_tables/facetable.json?_facet=state&_facet=city_id&state=MI",
         {
             "state": {
                 "name": "state",
                 "results": [
                     {
                         "value": "MI",
+                        "label": "MI",
                         "count": 4,
                         "selected": True,
-                        "toggle_url": "_facet=state&_facet=city",
+                        "toggle_url": "_facet=state&_facet=city_id",
                     },
                 ],
                 "truncated": False,
             },
-            "city": {
-                "name": "city",
+            "city_id": {
+                "name": "city_id",
                 "results": [
                     {
-                        "value": "Detroit",
+                        "value": 3,
+                        "label": "Detroit",
                         "count": 4,
                         "selected": False,
-                        "toggle_url": "_facet=state&_facet=city&state=MI&city=Detroit",
+                        "toggle_url": "_facet=state&_facet=city_id&state=MI&city_id=3",
                     },
                 ],
                 "truncated": False,
             },
         },
     ), (
-        "/test_tables/facetable.json?_facet=planet_id",
+        "/test_tables/facetable.json?_facet=planet_int",
         {
-            "planet_id": {
-                "name": "planet_id",
+            "planet_int": {
+                "name": "planet_int",
                 "results": [
                     {
                         "value": 1,
+                        "label": 1,
                         "count": 14,
                         "selected": False,
-                        "toggle_url": "_facet=planet_id&planet_id=1",
+                        "toggle_url": "_facet=planet_int&planet_int=1",
                     },
                     {
                         "value": 2,
+                        "label": 2,
                         "count": 1,
                         "selected": False,
-                        "toggle_url": "_facet=planet_id&planet_id=2",
+                        "toggle_url": "_facet=planet_int&planet_int=2",
                     },
                 ],
                 "truncated": False,
             }
         },
     ), (
-        # planet_id is an integer field:
-        "/test_tables/facetable.json?_facet=planet_id&planet_id=1",
+        # planet_int is an integer field:
+        "/test_tables/facetable.json?_facet=planet_int&planet_int=1",
         {
-            "planet_id": {
-                "name": "planet_id",
+            "planet_int": {
+                "name": "planet_int",
                 "results": [
                     {
                         "value": 1,
+                        "label": 1,
                         "count": 14,
                         "selected": True,
-                        "toggle_url": "_facet=planet_id",
+                        "toggle_url": "_facet=planet_int",
                     }
                 ],
                 "truncated": False,

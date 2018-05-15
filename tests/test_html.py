@@ -203,15 +203,15 @@ def test_sort_links(app_client):
 
 def test_facets_persist_through_filter_form(app_client):
     response = app_client.get(
-        '/test_tables/facetable?_facet=planet_id&_facet=city',
+        '/test_tables/facetable?_facet=planet_int&_facet=city_id',
         gather_request=False
     )
     assert response.status == 200
     inputs = Soup(response.body, 'html.parser').find('form').findAll('input')
     hiddens = [i for i in inputs if i['type'] == 'hidden']
     assert [
-        ('_facet', 'planet_id'),
-        ('_facet', 'city'),
+        ('_facet', 'planet_int'),
+        ('_facet', 'city_id'),
     ] == [
         (hidden['name'], hidden['value']) for hidden in hiddens
     ]

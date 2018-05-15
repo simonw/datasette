@@ -102,7 +102,7 @@
     <p><strong><a href="{{ path_with_removed_args(request, {'_facet': facet_name}) }}">{{ facet_name }}</a></strong></p>
     <ul>
         {% for facet_value in facet_info.results %}
-            <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.value }}</a> {{ "{:,}".format(facet_value.count) }}</li>
+            <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.label }}</a> {{ "{:,}".format(facet_value.count) }}</li>
         {% endfor %}
         {% if facet_info.truncated %}
             <li>...</li>

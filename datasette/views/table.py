@@ -592,17 +592,18 @@ class TableView(RowTableShared):
                     and_or_where='and' if where_clauses else 'where',
                     limit=FACET_LIMIT+1
                 )
-                print(suggested_facet_sql)
                 distinct_values = None
                 try:
                     distinct_values = await self.execute(
                         name, suggested_facet_sql, params,
                         truncate=False, custom_time_limit=50
                     )
+                    num_distinct_values = len(distinct_values)
                     if (
-                        distinct_values and
-                        len(distinct_values) <= FACET_LIMIT and
-                        len(distinct_values) < filtered_table_rows_count
+                        num_distinct_values and
+                        num_distinct_values > 1 and
+                        num_distinct_values <= FACET_LIMIT and
+                        num_distinct_values < filtered_table_rows_count
                     ):
                         suggested_facets.append({
                             'name': facet_column,

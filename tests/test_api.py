@@ -26,8 +26,6 @@ def test_database_page(app_client):
     response = app_client.get('/test_tables.json', gather_request=False)
     data = response.json
     assert 'test_tables' == data['database']
-    from pprint import pprint
-    pprint(data['tables'])
     assert [{
         'columns': ['content'],
         'name': '123_starts_with_digits',
@@ -893,103 +891,127 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
     (
         "/test_tables/facetable.json?_facet=state&_facet=city",
         {
-            "state": [
-                {
-                    "value": "CA",
-                    "count": 10,
-                    "selected": False,
-                    "toggle_url": "_facet=state&_facet=city&state=CA",
-                },
-                {
-                    "value": "MI",
-                    "count": 4,
-                    "selected": False,
-                    "toggle_url": "_facet=state&_facet=city&state=MI",
-                },
-                {
-                    "value": "MC",
-                    "count": 1,
-                    "selected": False,
-                    "toggle_url": "_facet=state&_facet=city&state=MC",
-                },
-            ],
-            "city": [
-                {
-                    "value": "San Francisco",
-                    "count": 6,
-                    "selected": False,
-                    "toggle_url": "_facet=state&_facet=city&city=San+Francisco",
-                },
-                {
-                    "value": "Detroit",
-                    "count": 4,
-                    "selected": False,
-                    "toggle_url": "_facet=state&_facet=city&city=Detroit",
-                },
-                {
-                    "value": "Los Angeles",
-                    "count": 4,
-                    "selected": False,
-                    "toggle_url": "_facet=state&_facet=city&city=Los+Angeles",
-                },
-                {
-                    "value": "Memnonia",
-                    "count": 1,
-                    "selected": False,
-                    "toggle_url": "_facet=state&_facet=city&city=Memnonia",
-                },
-            ],
-        },
+            "state": {
+                "name": "state",
+                "results": [
+                    {
+                        "value": "CA",
+                        "count": 10,
+                        "toggle_url": "_facet=state&_facet=city&state=CA",
+                        "selected": False,
+                    },
+                    {
+                        "value": "MI",
+                        "count": 4,
+                        "toggle_url": "_facet=state&_facet=city&state=MI",
+                        "selected": False,
+                    },
+                    {
+                        "value": "MC",
+                        "count": 1,
+                        "toggle_url": "_facet=state&_facet=city&state=MC",
+                        "selected": False,
+                    }
+                ],
+                "truncated": False,
+            },
+            "city": {
+                "name": "city",
+                "results": [
+                    {
+                        "value": "San Francisco",
+                        "count": 6,
+                        "toggle_url": "_facet=state&_facet=city&city=San+Francisco",
+                        "selected": False,
+                    },
+                    {
+                        "value": "Detroit",
+                        "count": 4,
+                        "toggle_url": "_facet=state&_facet=city&city=Detroit",
+                        "selected": False,
+                    },
+                    {
+                        "value": "Los Angeles",
+                        "count": 4,
+                        "toggle_url": "_facet=state&_facet=city&city=Los+Angeles",
+                        "selected": False,
+                    },
+                    {
+                        "value": "Memnonia",
+                        "count": 1,
+                        "toggle_url": "_facet=state&_facet=city&city=Memnonia",
+                        "selected": False,
+                    }
+                ],
+                "truncated": False,
+            }
+        }
     ), (
         "/test_tables/facetable.json?_facet=state&_facet=city&state=MI",
         {
-            "state": [
-                {
-                    "value": "MI",
-                    "count": 4,
-                    "selected": True,
-                    "toggle_url": "_facet=state&_facet=city",
-                },
-            ],
-            "city": [
-                {
-                    "value": "Detroit",
-                    "count": 4,
-                    "selected": False,
-                    "toggle_url": "_facet=state&_facet=city&state=MI&city=Detroit",
-                },
-            ],
+            "state": {
+                "name": "state",
+                "results": [
+                    {
+                        "value": "MI",
+                        "count": 4,
+                        "selected": True,
+                        "toggle_url": "_facet=state&_facet=city",
+                    },
+                ],
+                "truncated": False,
+            },
+            "city": {
+                "name": "city",
+                "results": [
+                    {
+                        "value": "Detroit",
+                        "count": 4,
+                        "selected": False,
+                        "toggle_url": "_facet=state&_facet=city&state=MI&city=Detroit",
+                    },
+                ],
+                "truncated": False,
+            },
         },
     ), (
         "/test_tables/facetable.json?_facet=planet_id",
         {
-            "planet_id": [
-                {
-                    "value": 1,
-                    "count": 14,
-                    "selected": False,
-                    "toggle_url": "_facet=planet_id&planet_id=1",
-                },
-                {
-                    "value": 2,
-                    "count": 1,
-                    "selected": False,
-                    "toggle_url": "_facet=planet_id&planet_id=2",
-                },
-            ],
+            "planet_id": {
+                "name": "planet_id",
+                "results": [
+                    {
+                        "value": 1,
+                        "count": 14,
+                        "selected": False,
+                        "toggle_url": "_facet=planet_id&planet_id=1",
+                    },
+                    {
+                        "value": 2,
+                        "count": 1,
+                        "selected": False,
+                        "toggle_url": "_facet=planet_id&planet_id=2",
+                    },
+                ],
+                "truncated": False,
+            }
         },
     ), (
         # planet_id is an integer field:
         "/test_tables/facetable.json?_facet=planet_id&planet_id=1",
         {
-            "planet_id": [
-                {
-                    "value": 1,
-                    "count": 14,
-                    "selected": True,
-                    "toggle_url": "_facet=planet_id",
-                }
-            ],
+            "planet_id": {
+                "name": "planet_id",
+                "results": [
+                    {
+                        "value": 1,
+                        "count": 14,
+                        "selected": True,
+                        "toggle_url": "_facet=planet_id",
+                    }
+                ],
+                "truncated": False,
+            },
         },
     )
 ])
@@ -997,7 +1019,9 @@ def test_facets(app_client, path, expected_facet_results):
     response = app_client.get(path, gather_request=False)
     facet_results = response.json['facet_results']
     # We only compare the querystring portion of the taggle_url
-    for facet_name, facet_values in facet_results.items():
-        for facet_value in facet_values:
+    for facet_name, facet_info in facet_results.items():
+        assert facet_name == facet_info["name"]
+        assert False is facet_info["truncated"]
+        for facet_value in facet_info["results"]:
             facet_value['toggle_url'] = facet_value['toggle_url'].split('?')[1]
     assert expected_facet_results == facet_results

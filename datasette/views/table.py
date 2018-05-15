@@ -490,6 +490,7 @@ class TableView(RowTableShared):
         )
 
         # facets support
+        FACET_SIZE = 20
         try:
             facets = request.args["_facet"]
         except KeyError:
@@ -499,18 +500,23 @@ class TableView(RowTableShared):
             facet_sql = """
                 select {col} as value, count(*) as count
                 {from_sql} {and_or_where} {col} is not null
-                group by {col} order by count desc limit 20
+                group by {col} order by count desc limit {limit}
             """.format(
                 col=escape_sqlite(column),
                 from_sql=from_sql,
                 and_or_where='and' if where_clauses else 'where',
+                limit=FACET_SIZE+1,
             )
             try:
                 facet_rows = await self.execute(
                     name, facet_sql, params, truncate=False, custom_time_limit=200
                 )
-                facet_results[column] = []
-                for row in facet_rows:
+                facet_results[column] = {
+                    "name": column,
+                    "results": [],
+                    "truncated": len(facet_rows) > FACET_SIZE,
+                }
+                for row in facet_rows[:FACET_SIZE]:
                     selected = str(other_args.get(column)) == str(row["value"])
                     if selected:
                         toggle_path = path_with_removed_args(
@@ -520,7 +526,7 @@ class TableView(RowTableShared):
                         toggle_path = path_with_added_args(
                             request, {column: row["value"]}
                         )
-                    facet_results[column].append({
+                    facet_results[column]["results"].append({
                         "value": row["value"],
                         "count": row["count"],
                         "toggle_url": urllib.parse.urljoin(

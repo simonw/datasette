@@ -177,6 +177,22 @@ def path_with_removed_args(request, args, path=None):
     return path + query_string
 
 
+def path_with_replaced_args(request, args, path=None):
+    path = path or request.path
+    if isinstance(args, dict):
+        args = args.items()
+    keys_to_replace = {p[0] for p in args}
+    current = []
+    for key, value in urllib.parse.parse_qsl(request.query_string):
+        if key not in keys_to_replace:
+            current.append((key, value))
+    current.extend([p for p in args if p[1] is not None])
+    query_string = urllib.parse.urlencode(current)
+    if query_string:
+        query_string = '?{}'.format(query_string)
+    return path + query_string
+
+
 def path_with_ext(request, ext):
     path = request.path
     path += ext

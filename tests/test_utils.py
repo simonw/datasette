@@ -61,6 +61,19 @@ def test_path_with_removed_args(path, args, expected):
     assert expected == actual
 
 
+@pytest.mark.parametrize('path,args,expected', [
+    ('/foo?bar=1', {'bar': 2}, '/foo?bar=2'),
+    ('/foo?bar=1&baz=2', {'bar': None}, '/foo?baz=2'),
+])
+def test_path_with_replaced_args(path, args, expected):
+    request = Request(
+        path.encode('utf8'),
+        {}, '1.1', 'GET', None
+    )
+    actual = utils.path_with_replaced_args(request, args)
+    assert expected == actual
+
+
 @pytest.mark.parametrize('row,pks,expected_path', [
     ({'A': 'foo', 'B': 'bar'}, ['A', 'B'], 'foo,bar'),
     ({'A': 'f,o', 'B': 'bar'}, ['A', 'B'], 'f%2Co,bar'),

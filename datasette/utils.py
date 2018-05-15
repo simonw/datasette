@@ -166,10 +166,18 @@ def path_with_added_args(request, args, path=None):
 
 
 def path_with_removed_args(request, args, path=None):
+    # args can be a dict or a set
     path = path or request.path
     current = []
+    if isinstance(args, set):
+        def should_remove(key, value):
+            return key in args
+    elif isinstance(args, dict):
+        # Must match key AND value
+        def should_remove(key, value):
+            return args.get(key) == value
     for key, value in urllib.parse.parse_qsl(request.query_string):
-        if key not in args:
+        if not should_remove(key, value):
             current.append((key, value))
     query_string = urllib.parse.urlencode(current)
     if query_string:

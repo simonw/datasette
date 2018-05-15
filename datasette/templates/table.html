@@ -92,11 +92,11 @@
 <p>This data as <a href="{{ url_json }}">.json</a></p>
 
 {% if suggested_facets %}
-    <p>Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}">{{ facet.name }}</a> {% endfor %}
+    <p>Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
 {% endif %}
 
 {% for facet_name, facet_info in facet_results.items() %}
-    <p><strong>{{ facet_name }}</strong></p>
+    <p><strong><a href="{{ path_with_removed_args(request, {'_facet': facet_name}) }}">{{ facet_name }}</a></strong></p>
     <ul>
         {% for facet_value in facet_info.results %}
             <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.value }}</a> ({{ facet_value.count }})</li>

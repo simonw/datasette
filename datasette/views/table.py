@@ -658,6 +658,7 @@ class TableView(RowTableShared):
                 "display_rows": display_rows,
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "path_with_replaced_args": path_with_replaced_args,
+                "path_with_removed_args": path_with_removed_args,
                 "request": request,
                 "sort": sort,
                 "sort_desc": sort_desc,

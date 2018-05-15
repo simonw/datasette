@@ -81,6 +81,9 @@
             </div>
             <label class="sort_by_desc"><input type="checkbox" name="_sort_by_desc"{% if sort_desc %} checked{% endif %}> descending</label>
         {% endif %}
+        {% for facet in facet_results %}
+            <input type="hidden" name="_facet" value="{{ facet }}">
+        {% endfor %}
         <input type="submit" value="Apply">
     </div>
 </form>

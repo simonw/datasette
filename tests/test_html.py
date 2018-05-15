@@ -201,6 +201,22 @@ def test_sort_links(app_client):
     ] == attrs_and_link_attrs
 
 
+def test_facets_persist_through_filter_form(app_client):
+    response = app_client.get(
+        '/test_tables/facetable?_facet=planet_id&_facet=city',
+        gather_request=False
+    )
+    assert response.status == 200
+    inputs = Soup(response.body, 'html.parser').find('form').findAll('input')
+    hiddens = [i for i in inputs if i['type'] == 'hidden']
+    assert [
+        ('_facet', 'planet_id'),
+        ('_facet', 'city'),
+    ] == [
+        (hidden['name'], hidden['value']) for hidden in hiddens
+    ]
+
+
 @pytest.mark.parametrize('path,expected_classes', [
     ('/', ['index']),
     ('/test_tables', ['db', 'db-test_tables']),

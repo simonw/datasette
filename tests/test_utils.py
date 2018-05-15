@@ -51,6 +51,7 @@ def test_path_with_added_args(path, added_args, expected):
 @pytest.mark.parametrize('path,args,expected', [
     ('/foo?bar=1', {'bar'}, '/foo'),
     ('/foo?bar=1&baz=2', {'bar'}, '/foo?baz=2'),
+    ('/foo?bar=1&bar=2&bar=3', {'bar': '2'}, '/foo?bar=1&bar=3'),
 ])
 def test_path_with_removed_args(path, args, expected):
     request = Request(

@@ -520,7 +520,7 @@ class TableView(RowTableShared):
                     selected = str(other_args.get(column)) == str(row["value"])
                     if selected:
                         toggle_path = path_with_removed_args(
-                            request, {column: row["value"]}
+                            request, {column: str(row["value"])}
                         )
                     else:
                         toggle_path = path_with_added_args(

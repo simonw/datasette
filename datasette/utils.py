@@ -233,7 +233,6 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
         for opt in extra_options.split():
             cmd.append('"{}"'.format(opt))
 
-    install_from = 'datasette'
     if branch:
         install = ['https://github.com/simonw/datasette/archive/{}.zip'.format(
             branch

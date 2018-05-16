@@ -95,7 +95,9 @@
 <p>This data as <a href="{{ url_json }}">.json</a></p>
 
 {% if suggested_facets %}
-    <p>Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+    <p class="suggested-facets">
+        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+    </p>
 {% endif %}
 
 {% if facet_results %}

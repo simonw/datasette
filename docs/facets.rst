@@ -80,7 +80,7 @@ This works for both the HTML interface and the ``.json`` view. When enabled, fac
       }
     }
 
-If Datasette detects that a column is a foreign key, the ``"label"`` proper will be automatically derived from the detected label column on the referenced table.
+If Datasette detects that a column is a foreign key, the ``"label"`` property will be automatically derived from the detected label column on the referenced table.
 
 Facets in metadata.json
 -----------------------

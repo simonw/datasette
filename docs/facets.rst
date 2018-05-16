@@ -5,6 +5,8 @@ Facets
 
 Datasette facets can be used to add a faceted browse interface to any Datasette table. With facets, tables are displayed along with a summary showing the most common values in specified columns. These values can be selected to further filter the table.
 
+.. image:: facets.png
+
 Facets can be specified in two ways: using queryset parameters, or in ``metadata.json`` configuration for the table.
 
 Facets in querystrings

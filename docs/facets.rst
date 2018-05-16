@@ -12,9 +12,9 @@ Facets can be specified in two ways: using queryset parameters, or in ``metadata
 Facets in querystrings
 ----------------------
 
-To turn on faceting for specific columns on a Datasette table view, add one or more ``_facet=COLUMN`` parameters to the URL. For example, if you want to turn on facets for the ``city`` and ``state`` columns, construct a URL that looks like this::
+To turn on faceting for specific columns on a Datasette table view, add one or more ``_facet=COLUMN`` parameters to the URL. For example, if you want to turn on facets for the ``city_id`` and ``state`` columns, construct a URL that looks like this::
 
-    /dbname/tablename?_facet=state&_facet=city
+    /dbname/tablename?_facet=state&_facet=city_id
 
 This works for both the HTML interface and the ``.json`` view. When enabled, facets will cause a ``facet_results`` block to be added to the JSON output, looking something like this::
 
@@ -92,15 +92,15 @@ You can turn facets on by default for specific tables by adding them to a ``"fac
 Here's an example that turns on faceting by default for the ``qLegalStatus`` column in the ``Street_Tree_List`` table in the ``sf-trees`` database::
 
     {
-        "databases": {
-            "sf-trees": {
-                "tables": {
-                    "Street_Tree_List": {
-                        "facets": ["qLegalStatus"]
-                    }
-                }
+      "databases": {
+        "sf-trees": {
+          "tables": {
+            "Street_Tree_List": {
+              "facets": ["qLegalStatus"]
             }
+          }
         }
+      }
     }
 
 Facets defined in this way will always be shown in the interface and returned in the API, regardless of the ``_facet`` arguments passed to the view.

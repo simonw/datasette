@@ -716,7 +716,7 @@ class TableView(RowTableShared):
                 "display_rows": display_rows,
                 "sorted_facet_results": sorted(
                     facet_results.values(),
-                    key=lambda f: len(f["results"]),
+                    key=lambda f: (len(f["results"]), f["name"]),
                     reverse=True
                 ),
                 "is_sortable": any(c["sortable"] for c in display_columns),

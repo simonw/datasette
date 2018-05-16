@@ -98,17 +98,23 @@
     <p>Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
 {% endif %}
 
-{% for facet_name, facet_info in facet_results.items() %}
-    <p><strong><a href="{{ path_with_removed_args(request, {'_facet': facet_name}) }}">{{ facet_name }}</a></strong></p>
-    <ul>
-        {% for facet_value in facet_info.results %}
-            <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.label }}</a> {{ "{:,}".format(facet_value.count) }}</li>
+{% if facet_results %}
+    <div class="facet-results">
+        {% for facet_info in sorted_facet_results %}
+            <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}">
+                <p><strong>{{ facet_info.name }}</strong> (<a href="{{ path_with_removed_args(request, {'_facet': facet_info['name']}) }}">-</a>)</p>
+                <ul>
+                    {% for facet_value in facet_info.results %}
+                        <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.label }}</a> {{ "{:,}".format(facet_value.count) }}</li>
+                    {% endfor %}
+                    {% if facet_info.truncated %}
+                        <li>...</li>
+                    {% endif %}
+                </ul>
+            </div>
         {% endfor %}
-        {% if facet_info.truncated %}
-            <li>...</li>
-        {% endif %}
-    </ul>
-{% endfor %}
+    </div>
+{% endif %}
 
 {% include custom_rows_and_columns_templates %}
 

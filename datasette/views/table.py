@@ -555,17 +555,21 @@ class TableView(RowTableShared):
             )
             try:
                 facet_rows = await self.execute(
-                    name, facet_sql, params, truncate=False, custom_time_limit=200
+                    name, facet_sql, params,
+                    truncate=False, custom_time_limit=200
                 )
+                facet_results_values = []
                 facet_results[column] = {
                     "name": column,
-                    "results": [],
+                    "results": facet_results_values,
                     "truncated": len(facet_rows) > FACET_SIZE,
                 }
                 facet_rows = facet_rows[:FACET_SIZE]
                 # Attempt to expand foreign keys into labels
                 values = [row["value"] for row in facet_rows]
-                expanded = (await self.expand_foreign_keys(name, table, column, values))
+                expanded = (await self.expand_foreign_keys(
+                    name, table, column, values
+                ))
                 for row in facet_rows:
                     selected = str(other_args.get(column)) == str(row["value"])
                     if selected:
@@ -576,7 +580,7 @@ class TableView(RowTableShared):
                         toggle_path = path_with_added_args(
                             request, {column: row["value"]}
                         )
-                    facet_results[column]["results"].append({
+                    facet_results_values.append({
                         "value": row["value"],
                         "label": expanded.get(
                             (column, row["value"]),
@@ -710,6 +714,11 @@ class TableView(RowTableShared):
                 "display_columns": display_columns,
                 "filter_columns": filter_columns,
                 "display_rows": display_rows,
+                "sorted_facet_results": sorted(
+                    facet_results.values(),
+                    key=lambda f: len(f["results"]),
+                    reverse=True
+                ),
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "path_with_replaced_args": path_with_replaced_args,
                 "path_with_removed_args": path_with_removed_args,

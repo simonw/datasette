@@ -239,7 +239,7 @@ a.not-underlined {
 }
 .facet-info {
     width: 250px;
-    margin-right: 20px;
+    margin-right: 15px;
 }
 .facet-info li,
 .facet-info ul {
@@ -249,4 +249,11 @@ a.not-underlined {
 .facet-info ul {
     padding-left: 1.25em;
     margin-bottom: 1em;
+}
+.facet-info-name a:link,
+.facet-info-name a:visited,
+.facet-info-name a:hover,
+.facet-info-name a:focus,
+.facet-info-name a:active {
+    text-decoration: none;
 }

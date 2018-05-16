@@ -104,7 +104,7 @@
     <div class="facet-results">
         {% for facet_info in sorted_facet_results %}
             <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}">
-                <p><strong>{{ facet_info.name }}</strong> (<a href="{{ path_with_removed_args(request, {'_facet': facet_info['name']}) }}">-</a>)</p>
+                <p class="facet-info-name"><strong>{{ facet_info.name }}</strong> <a href="{{ path_with_removed_args(request, {'_facet': facet_info['name']}) }}">&#x2716;</a></p>
                 <ul>
                     {% for facet_value in facet_info.results %}
                         <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.label }}</a> {{ "{:,}".format(facet_value.count) }}</li>

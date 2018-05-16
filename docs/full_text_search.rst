@@ -5,6 +5,8 @@ Full-text search
 
 SQLite includes `a powerful mechanism for enabling full-text search <https://www.sqlite.org/fts3.html>`_ against SQLite records. Datasette can detect if a table has had full-text search configured for it in the underlying database and       display a search interface for filtering that table.
 
+.. image:: full_text_search.png
+
 Datasette detects which tables have been configured for full-text search when it first inspects the database on startup (or via the ``datasette inspect`` command). You can visit the ``/-/inspect`` page on your Datasette instance to see the results of this inspection. Tables that have been configured for full-text search will have their ``fts_table`` property set to the name of another table (tables without full-text search will have this property set to ``null``).
 
 FTS versions

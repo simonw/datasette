@@ -537,10 +537,12 @@ class TableView(RowTableShared):
 
         # facets support
         FACET_SIZE = 20
+        metadata_facets = table_metadata.get("facets", [])
+        facets = metadata_facets[:]
         try:
-            facets = request.args["_facet"]
+            facets.extend(request.args["_facet"])
         except KeyError:
-            facets = table_metadata.get("facets", [])
+            pass
         facet_results = {}
         for column in facets:
             facet_sql = """
@@ -719,6 +721,7 @@ class TableView(RowTableShared):
                     key=lambda f: (len(f["results"]), f["name"]),
                     reverse=True
                 ),
+                "facet_hideable": lambda facet: facet not in metadata_facets,
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "path_with_replaced_args": path_with_replaced_args,
                 "path_with_removed_args": path_with_removed_args,

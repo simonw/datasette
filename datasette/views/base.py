@@ -199,7 +199,40 @@ class BaseView(RenderMixin):
 
         return await self.view_get(request, name, hash, **kwargs)
 
+    async def as_csv_stream(self, request, name, hash, **kwargs):
+        assert not request.args.get("_next") # TODO: real error
+        kwargs['_size'] = 'max'
+
+        async def stream_fn(r):
+            first = True
+            next = None
+            writer = csv.writer(r)
+            while first or next:
+                if next:
+                    kwargs['_next'] = next
+                data, extra_template_data, templates = await self.data(
+                    request, name, hash, **kwargs
+                )
+                if first:
+                    writer.writerow(data["columns"])
+                    first = False
+                next = data["next"]
+                for row in data["rows"]:
+                    writer.writerow(row)
+
+        return response.stream(
+            stream_fn,
+            # headers={
+            #     "Content-Disposition": 'attachment; filename="{}.csv"'.format(
+            #         name
+            #     )
+            # },
+            content_type="text/plain; charset=utf-8"
+        )
+
     async def as_csv(self, request, name, hash, **kwargs):
+        if request.args.get("_stream"):
+            return await self.as_csv_stream(request, name, hash, **kwargs)
         try:
             response_or_template_contexts = await self.data(
                 request, name, hash, **kwargs
@@ -226,12 +259,13 @@ class BaseView(RenderMixin):
 
         return response.stream(
             stream_fn,
-            headers={
-                "Content-Disposition": 'attachment; filename="{}.csv"'.format(
-                    name
-                )
-            },
-            content_type="text/csv; charset=utf-8"
+            # headers={
+            #     "Content-Disposition": 'attachment; filename="{}.csv"'.format(
+            #         name
+            #     )
+            # },
+            content_type="text/plain; charset=utf-8"
+            #content_type="text/csv; charset=utf-8"
         )
 
     async def view_get(self, request, name, hash, **kwargs):

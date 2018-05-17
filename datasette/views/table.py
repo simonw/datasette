@@ -232,7 +232,7 @@ class RowTableShared(BaseView):
 
 class TableView(RowTableShared):
 
-    async def data(self, request, name, hash, table):
+    async def data(self, request, name, hash, table, _next=None, _size=None):
         table = urllib.parse.unquote_plus(table)
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
@@ -411,7 +411,7 @@ class TableView(RowTableShared):
         )
         count_sql = "select count(*) {}".format(from_sql)
 
-        _next = special_args.get("_next")
+        _next = _next or special_args.get("_next")
         offset = ""
         if _next:
             if is_view:
@@ -498,7 +498,7 @@ class TableView(RowTableShared):
 
         extra_args = {}
         # Handle ?_page_size=500
-        page_size = request.raw_args.get("_size")
+        page_size = _size or request.raw_args.get("_size")
         if page_size:
             if page_size == "max":
                 page_size = self.max_returned_rows
@@ -545,6 +545,8 @@ class TableView(RowTableShared):
             pass
         facet_results = {}
         for column in facets:
+            if _next:
+                continue
             facet_sql = """
                 select {col} as value, count(*) as count
                 {from_sql} {and_or_where} {col} is not null
@@ -648,6 +650,8 @@ class TableView(RowTableShared):
             suggested_facets = []
             for facet_column in columns:
                 if facet_column in facets:
+                    continue
+                if _next:
                     continue
                 suggested_facet_sql = '''
                     select distinct {column} {from_sql}

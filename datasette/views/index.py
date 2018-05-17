@@ -16,7 +16,7 @@ class IndexView(RenderMixin):
         self.jinja_env = datasette.jinja_env
         self.executor = datasette.executor
 
-    async def get(self, request, as_json):
+    async def get(self, request, as_ext):
         databases = []
         for key, info in sorted(self.ds.inspect().items()):
             tables = [t for t in info["tables"].values() if not t["hidden"]]
@@ -38,7 +38,7 @@ class IndexView(RenderMixin):
                 "views_count": len(info["views"]),
             }
             databases.append(database)
-        if as_json:
+        if as_ext:
             headers = {}
             if self.ds.cors:
                 headers["Access-Control-Allow-Origin"] = "*"

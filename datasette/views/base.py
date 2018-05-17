@@ -1,4 +1,5 @@
 import asyncio
+import csv
 import json
 import re
 import sqlite3
@@ -120,8 +121,8 @@ class BaseView(RenderMixin):
                 should_redirect += "/" + kwargs["table"]
             if "pk_path" in kwargs:
                 should_redirect += "/" + kwargs["pk_path"]
-            if "as_json" in kwargs:
-                should_redirect += kwargs["as_json"]
+            if "as_ext" in kwargs:
+                should_redirect += kwargs["as_ext"]
             if "as_db" in kwargs:
                 should_redirect += kwargs["as_db"]
             return name, expected, should_redirect
@@ -198,11 +199,49 @@ class BaseView(RenderMixin):
 
         return await self.view_get(request, name, hash, **kwargs)
 
+    async def as_csv(self, request, name, hash, **kwargs):
+        try:
+            response_or_template_contexts = await self.data(
+                request, name, hash, **kwargs
+            )
+            if isinstance(response_or_template_contexts, response.HTTPResponse):
+                return response_or_template_contexts
+
+            else:
+                data, extra_template_data, templates = response_or_template_contexts
+        except (sqlite3.OperationalError, InvalidSql) as e:
+            raise DatasetteError(str(e), title="Invalid SQL", status=400)
+
+        except (sqlite3.OperationalError) as e:
+            raise DatasetteError(str(e))
+
+        except DatasetteError:
+            raise
+        # Convert rows and columns to CSV
+        async def stream_fn(r):
+            writer = csv.writer(r)
+            writer.writerow(data["columns"])
+            for row in data["rows"]:
+                writer.writerow(row)
+
+        return response.stream(
+            stream_fn,
+            headers={
+                "Content-Disposition": 'attachment; filename="{}.csv"'.format(
+                    name
+                )
+            },
+            content_type="text/csv; charset=utf-8"
+        )
+
     async def view_get(self, request, name, hash, **kwargs):
         try:
-            as_json = kwargs.pop("as_json")
+            as_ext = kwargs.pop("as_ext")
         except KeyError:
-            as_json = False
+            as_ext = False
+        if as_ext == ".csv":
+            return await self.as_csv(request, name, hash, **kwargs)
+
         extra_template_data = {}
         start = time.time()
         status_code = 200
@@ -231,9 +270,9 @@ class BaseView(RenderMixin):
             value = self.ds.metadata.get(key)
             if value:
                 data[key] = value
-        if as_json:
+        if as_ext:
             # Special case for .jsono extension - redirect to _shape=objects
-            if as_json == ".jsono":
+            if as_ext == ".jsono":
                 return self.redirect(
                     request,
                     path_with_added_args(

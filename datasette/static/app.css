@@ -250,10 +250,10 @@ a.not-underlined {
     padding-left: 1.25em;
     margin-bottom: 1em;
 }
-.facet-info-name a:link,
-.facet-info-name a:visited,
-.facet-info-name a:hover,
-.facet-info-name a:focus,
-.facet-info-name a:active {
+.facet-info a.cross:link,
+.facet-info a.cross:visited,
+.facet-info a.cross:hover,
+.facet-info a.cross:focus,
+.facet-info a.cross:active {
     text-decoration: none;
 }

@@ -118,3 +118,13 @@ For the currently filtered data are there any columns which, if applied as a fac
 * And the query used to evaluate this criteria can be completed in under 20ms
 
 That last point is particularly important: Datasette runs a query for every column that is displayed on a page, which could get expensive - so to avoid slow load times it sets a time limit of just 20ms for each of those queries. This means suggested facets are unlikely to appear for tables with millions of records in them.
+
+Speeding up facets with indexes
+-------------------------------
+
+The performance of facets can be greatly improved by adding indexes on the columns you wish to facet by. Adding indexes can be performed using the ``sqlite3`` command-line utility. Here's how to add an index on the ``state`` column in a table called ``Food_Trucks``::
+
+    $ sqlite3 mydatabase.db
+    SQLite version 3.19.3 2017-06-27 16:48:08
+    Enter ".help" for usage hints.
+    sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");

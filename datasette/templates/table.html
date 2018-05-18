@@ -96,7 +96,7 @@
 
 {% if suggested_facets %}
     <p class="suggested-facets">
-        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
     </p>
 {% endif %}
 
@@ -107,7 +107,7 @@
 {% if facet_results %}
     <div class="facet-results">
         {% for facet_info in sorted_facet_results %}
-            <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}">
+            <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}" id="facet-{{ facet_info.name|to_css_class }}">
                 <p class="facet-info-name">
                     <strong>{{ facet_info.name }}</strong>
                     {% if facet_hideable(facet_info.name) %}

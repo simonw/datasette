@@ -897,6 +897,20 @@ def test_versions_json(app_client):
     assert 'fts_versions' in response.json['sqlite']
 
 
+def test_limits_json(app_client):
+    response = app_client.get(
+        "/-/limits.json",
+        gather_request=False
+    )
+    assert {
+        "default_facet_size": 30,
+        "facet_suggest_time_limit_ms": 50,
+        "facet_time_limit_ms": 200,
+        "max_returned_rows": 100,
+        "sql_time_limit_ms": 200,
+    } == response.json
+
+
 def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_page_size):
     fetched = []
     path = '/test_tables/no_primary_key.json'

@@ -443,6 +443,10 @@ class Datasette:
             "/-/plugins<as_json:(\.json)?$>",
         )
         app.add_route(
+            JsonDataView.as_view(self, "limits.json", lambda: self.limits),
+            "/-/limits<as_json:(\.json)?$>",
+        )
+        app.add_route(
             DatabaseView.as_view(self), "/<db_name:[^/\.]+?><as_json:(\.jsono?)?$>"
         )
         app.add_route(

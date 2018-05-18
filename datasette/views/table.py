@@ -536,7 +536,7 @@ class TableView(RowTableShared):
         )
 
         # facets support
-        FACET_SIZE = 20
+        facet_size = self.ds.limits["default_facet_size"]
         metadata_facets = table_metadata.get("facets", [])
         facets = metadata_facets[:]
         try:
@@ -553,20 +553,21 @@ class TableView(RowTableShared):
                 col=escape_sqlite(column),
                 from_sql=from_sql,
                 and_or_where='and' if where_clauses else 'where',
-                limit=FACET_SIZE+1,
+                limit=facet_size+1,
             )
             try:
                 facet_rows = await self.execute(
                     name, facet_sql, params,
-                    truncate=False, custom_time_limit=200
+                    truncate=False,
+                    custom_time_limit=self.ds.limits["facet_time_limit_ms"],
                 )
                 facet_results_values = []
                 facet_results[column] = {
                     "name": column,
                     "results": facet_results_values,
-                    "truncated": len(facet_rows) > FACET_SIZE,
+                    "truncated": len(facet_rows) > facet_size,
                 }
-                facet_rows = facet_rows[:FACET_SIZE]
+                facet_rows = facet_rows[:facet_size]
                 # Attempt to expand foreign keys into labels
                 values = [row["value"] for row in facet_rows]
                 expanded = (await self.expand_foreign_keys(
@@ -644,7 +645,6 @@ class TableView(RowTableShared):
                 pass
 
             # Detect suggested facets
-            FACET_LIMIT = 30
             suggested_facets = []
             for facet_column in columns:
                 if facet_column in facets:
@@ -657,19 +657,20 @@ class TableView(RowTableShared):
                     column=escape_sqlite(facet_column),
                     from_sql=from_sql,
                     and_or_where='and' if where_clauses else 'where',
-                    limit=FACET_LIMIT+1
+                    limit=facet_size+1
                 )
                 distinct_values = None
                 try:
                     distinct_values = await self.execute(
                         name, suggested_facet_sql, params,
-                        truncate=False, custom_time_limit=50
+                        truncate=False,
+                        custom_time_limit=self.ds.limits["facet_suggest_time_limit_ms"],
                     )
                     num_distinct_values = len(distinct_values)
                     if (
                         num_distinct_values and
                         num_distinct_values > 1 and
-                        num_distinct_values <= FACET_LIMIT and
+                        num_distinct_values <= facet_size and
                         num_distinct_values < filtered_table_rows_count
                     ):
                         suggested_facets.append({

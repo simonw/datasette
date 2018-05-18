@@ -114,9 +114,6 @@ http://localhost:8001/History/downloads.json?_shape=objects will return that dat
       --cors                       Enable CORS by serving Access-Control-Allow-
                                    Origin: *
       --page_size INTEGER          Page size - default is 100
-      --max_returned_rows INTEGER  Max allowed rows to return at once - default is
-                                   1000. Set to 0 to disable check entirely.
-      --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
       --load-extension PATH        Path to a SQLite extension to load
       --inspect-file TEXT          Path to JSON file created using "datasette
                                    inspect"
@@ -126,6 +123,8 @@ http://localhost:8001/History/downloads.json?_shape=objects will return that dat
       --plugins-dir DIRECTORY      Path to directory containing custom plugins
       --static STATIC MOUNT        mountpoint:path-to-directory for serving static
                                    files
+      --limit LIMIT                Set a limit using limitname:integer
+                                   datasette.readthedocs.io/en/latest/limits.html
       --help                       Show this message and exit.
 
 ## metadata.json
@@ -214,13 +213,13 @@ If you have docker installed you can use `datasette package` to create a new Doc
 
 Both publish and package accept an `extra_options` argument option, which will affect how the resulting application is executed. For example, say you want to increase the SQL time limit for a particular container:
 
-    datasette package parlgov.db --extra-options="--sql_time_limit_ms=2500 --page_size=10"
+    datasette package parlgov.db --extra-options="--limit sql_time_limit_ms:2500 --page_size=10"
 
 The resulting container will run the application with those options.
 
 Here's example output for the package command:
 
-    $ datasette package parlgov.db --extra-options="--sql_time_limit_ms=2500 --page_size=10"
+    $ datasette package parlgov.db --extra-options="--limit sql_time_limit_ms:2500 --page_size=10"
     Sending build context to Docker daemon  4.459MB
     Step 1/7 : FROM python:3
      ---> 79e1dc9af1c1
@@ -239,7 +238,7 @@ Here's example output for the package command:
     Step 6/7 : EXPOSE 8001
      ---> Using cache
      ---> 8e83844b0fed
-    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --sql_time_limit_ms=2500 --page_size=10
+    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --limit sql_time_limit_ms:2500 --page_size=10
      ---> Using cache
      ---> 1bd380ea8af3
     Successfully built 1bd380ea8af3

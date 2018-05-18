@@ -22,6 +22,7 @@ Contents
    facets
    full_text_search
    metadata
+   limits
    custom_templates
    plugins
    changelog

@@ -132,7 +132,7 @@ Special table arguments
 The Datasette table view takes a number of special querystring arguments:
 
 ``?_size=1000`` or ``?_size=max``
-    Sets a custom page size. This cannot exceed the ``max_returned_rows`` option
+    Sets a custom page size. This cannot exceed the ``max_returned_rows`` limit
     passed to ``datasette serve``. Use ``max`` to get ``max_returned_rows``.
 
 ``?_sort=COLUMN``

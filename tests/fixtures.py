@@ -21,10 +21,12 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None):
         ds = Datasette(
             [filepath],
             page_size=50,
-            max_returned_rows=max_returned_rows or 100,
-            sql_time_limit_ms=sql_time_limit_ms or 200,
             metadata=METADATA,
             plugins_dir=plugins_dir,
+            limits={
+                'max_returned_rows': max_returned_rows or 100,
+                'sql_time_limit_ms': sql_time_limit_ms or 200,
+            }
         )
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),

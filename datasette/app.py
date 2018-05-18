@@ -45,6 +45,15 @@ pm.add_hookspecs(hookspecs)
 pm.load_setuptools_entrypoints("datasette")
 
 
+DEFAULT_LIMITS = {
+    "max_returned_rows": 1000,
+    "sql_time_limit_ms": 1000,
+    "default_facet_size": 30,
+    "facet_time_limit_ms": 200,
+    "facet_suggest_time_limit_ms": 50,
+}
+
+
 class JsonDataView(RenderMixin):
 
     def __init__(self, datasette, filename, data_callback):
@@ -79,8 +88,6 @@ class Datasette:
         num_threads=3,
         cache_headers=True,
         page_size=100,
-        max_returned_rows=1000,
-        sql_time_limit_ms=1000,
         cors=False,
         inspect_data=None,
         metadata=None,
@@ -88,14 +95,13 @@ class Datasette:
         template_dir=None,
         plugins_dir=None,
         static_mounts=None,
+        limits=None,
     ):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(max_workers=num_threads)
         self.cache_headers = cache_headers
         self.page_size = page_size
-        self.max_returned_rows = max_returned_rows
-        self.sql_time_limit_ms = sql_time_limit_ms
         self.cors = cors
         self._inspect = inspect_data
         self.metadata = metadata or {}
@@ -104,6 +110,9 @@ class Datasette:
         self.template_dir = template_dir
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
+        self.limits = dict(DEFAULT_LIMITS, **(limits or {}))
+        self.max_returned_rows = self.limits["max_returned_rows"]
+        self.sql_time_limit_ms = self.limits["sql_time_limit_ms"]
         # Execute plugins in constructor, to ensure they are available
         # when the rest of `datasette inspect` executes
         if self.plugins_dir:

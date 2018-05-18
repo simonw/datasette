@@ -112,12 +112,12 @@ Datasette's table UI will suggest facets for the user to apply, based on the fol
 
 For the currently filtered data are there any columns which, if applied as a facet...
 
-* Will return 20 or less unique options
+* Will return 30 or less unique options
 * Will return more than one unique option
 * Will return less unique options than the total number of filtered rows
-* And the query used to evaluate this criteria can be completed in under 20ms
+* And the query used to evaluate this criteria can be completed in under 50ms
 
-That last point is particularly important: Datasette runs a query for every column that is displayed on a page, which could get expensive - so to avoid slow load times it sets a time limit of just 20ms for each of those queries. This means suggested facets are unlikely to appear for tables with millions of records in them.
+That last point is particularly important: Datasette runs a query for every column that is displayed on a page, which could get expensive - so to avoid slow load times it sets a time limit of just 50ms for each of those queries. This means suggested facets are unlikely to appear for tables with millions of records in them.
 
 Speeding up facets with indexes
 -------------------------------

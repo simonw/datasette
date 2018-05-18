@@ -7,6 +7,7 @@ from sanic.request import RequestParameters
 
 from datasette.utils import (
     Filters,
+    InterruptedError,
     compound_keys_after_sql,
     escape_sqlite,
     filters_should_redirect,
@@ -16,7 +17,7 @@ from datasette.utils import (
     path_with_removed_args,
     path_with_replaced_args,
     to_css_class,
-    urlsafe_components
+    urlsafe_components,
 )
 
 from .base import BaseView, DatasetteError, ureg
@@ -75,8 +76,7 @@ class RowTableShared(BaseView):
             results = await self.execute(
                 database, sql, list(set(values))
             )
-        except sqlite3.OperationalError:
-            # Probably hit the timelimit
+        except InterruptedError:
             pass
         else:
             for id, value in results:
@@ -135,8 +135,7 @@ class RowTableShared(BaseView):
                     results = await self.execute(
                         database, sql, list(set(ids_to_lookup))
                     )
-                except sqlite3.OperationalError:
-                    # Probably hit the timelimit
+                except InterruptedError:
                     pass
                 else:
                     for id, value in results:
@@ -409,6 +408,10 @@ class TableView(RowTableShared):
                 "where {} ".format(" and ".join(where_clauses))
             ) if where_clauses else "",
         )
+        # Store current params and where_clauses for later:
+        from_sql_params = dict(**params)
+        from_sql_where_clauses = where_clauses[:]
+
         count_sql = "select count(*) {}".format(from_sql)
 
         _next = special_args.get("_next")
@@ -544,6 +547,7 @@ class TableView(RowTableShared):
         except KeyError:
             pass
         facet_results = {}
+        facets_timed_out = []
         for column in facets:
             facet_sql = """
                 select {col} as value, count(*) as count
@@ -552,7 +556,7 @@ class TableView(RowTableShared):
             """.format(
                 col=escape_sqlite(column),
                 from_sql=from_sql,
-                and_or_where='and' if where_clauses else 'where',
+                and_or_where='and' if where_clause else 'where',
                 limit=facet_size+1,
             )
             try:
@@ -595,9 +599,8 @@ class TableView(RowTableShared):
                         ),
                         "selected": selected,
                     })
-            except sqlite3.OperationalError:
-                # Hit time limit
-                pass
+            except InterruptedError:
+                facets_timed_out.append(column)
 
         columns = [r[0] for r in description]
         rows = list(rows)
@@ -638,10 +641,11 @@ class TableView(RowTableShared):
         filtered_table_rows_count = None
         if count_sql:
             try:
-                count_rows = list(await self.execute(name, count_sql, params))
+                count_rows = list(await self.execute(
+                    name, count_sql, from_sql_params
+                ))
                 filtered_table_rows_count = count_rows[0][0]
-            except sqlite3.OperationalError:
-                # Almost certainly hit the timeout
+            except InterruptedError:
                 pass
 
             # Detect suggested facets
@@ -656,13 +660,13 @@ class TableView(RowTableShared):
                 '''.format(
                     column=escape_sqlite(facet_column),
                     from_sql=from_sql,
-                    and_or_where='and' if where_clauses else 'where',
+                    and_or_where='and' if from_sql_where_clauses else 'where',
                     limit=facet_size+1
                 )
                 distinct_values = None
                 try:
                     distinct_values = await self.execute(
-                        name, suggested_facet_sql, params,
+                        name, suggested_facet_sql, from_sql_params,
                         truncate=False,
                         custom_time_limit=self.ds.limits["facet_suggest_time_limit_ms"],
                     )
@@ -679,7 +683,7 @@ class TableView(RowTableShared):
                                 request, {'_facet': facet_column}
                             ),
                         })
-                except sqlite3.OperationalError:
+                except InterruptedError:
                     pass
 
         # human_description_en combines filters AND search, if provided
@@ -717,6 +721,7 @@ class TableView(RowTableShared):
                 "display_columns": display_columns,
                 "filter_columns": filter_columns,
                 "display_rows": display_rows,
+                "facets_timed_out": facets_timed_out,
                 "sorted_facet_results": sorted(
                     facet_results.values(),
                     key=lambda f: (len(f["results"]), f["name"]),

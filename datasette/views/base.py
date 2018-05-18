@@ -13,6 +13,7 @@ from sanic.views import HTTPMethodView
 from datasette import __version__
 from datasette.utils import (
     CustomJSONEncoder,
+    InterruptedError,
     InvalidSql,
     path_from_row_pks,
     path_with_added_args,
@@ -170,7 +171,9 @@ class BaseView(RenderMixin):
                     else:
                         rows = cursor.fetchall()
                         truncated = False
-                except Exception as e:
+                except sqlite3.OperationalError as e:
+                    if e.args == ('interrupted',):
+                        raise InterruptedError(e)
                     print(
                         "ERROR: conn={}, sql = {}, params = {}: {}".format(
                             conn, repr(sql), params, e
@@ -216,6 +219,8 @@ class BaseView(RenderMixin):
 
             else:
                 data, extra_template_data, templates = response_or_template_contexts
+        except InterruptedError as e:
+            raise DatasetteError(str(e), title="SQL Interrupted", status=400)
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 

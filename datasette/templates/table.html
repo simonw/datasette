@@ -100,6 +100,10 @@
     </p>
 {% endif %}
 
+{% if facets_timed_out %}
+    <p class="facets-timed-out">These facets timed out: {{ ", ".join(facets_timed_out) }}</p>
+{% endif %}
+
 {% if facet_results %}
     <div class="facet-results">
         {% for facet_info in sorted_facet_results %}

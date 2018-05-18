@@ -32,6 +32,10 @@ reserved_words = set((
 ).split())
 
 
+class InterruptedError(Exception):
+    pass
+
+
 def urlsafe_components(token):
     "Splits token on commas and URL decodes each component"
     return [

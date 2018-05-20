@@ -23,6 +23,7 @@ Contents
    full_text_search
    metadata
    config
+   introspection
    custom_templates
    plugins
    changelog

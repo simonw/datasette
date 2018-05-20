@@ -1,5 +1,7 @@
-Config
-======
+.. _config:
+
+Configuration
+=============
 
 Datasette provides a number of configuration options. These can be set using the ``--config name:value`` option to ``datasette serve``.
 

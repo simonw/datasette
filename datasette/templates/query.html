@@ -8,7 +8,7 @@
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in columns %}
-    td:nth-of-type({{ loop.index }}):before { content: "{{ column|escape_css_string }}"; }
+    .rows-and-columns td:nth-of-type({{ loop.index }}):before { content: "{{ column|escape_css_string }}"; }
 {% endfor %}
 }
 </style>

@@ -1,6 +1,46 @@
 Changelog
 =========
 
+0.22 (2018-05-20)
+-----------------
+
+The big new feature in this release is :ref:`facets`. Datasette can now apply faceted browse to any column in any table. It will also suggest possible facets. See the `Datasette Facets <https://simonwillison.net/2018/May/20/datasette-facets/>`_ announcement post for more details.
+
+In addition to the work on facets:
+
+- Added `docs for introspection endpoints <https://datasette.readthedocs.io/en/latest/introspection.html>`_
+
+- New ``--config`` option, added ``--help-config``, closes `#274 <https://github.com/simonw/datasette/issues/274>`_
+
+  Removed the ``--page_size=`` argument to ``datasette serve`` in favour of::
+
+      datasette serve --config default_page_size:50 mydb.db
+
+  Added new help section::
+
+      $ datasette --help-config
+      Config options:
+        default_page_size            Default page size for the table view
+                                     (default=100)
+        max_returned_rows            Maximum rows that can be returned from a table
+                                     or custom query (default=1000)
+        sql_time_limit_ms            Time limit for a SQL query in milliseconds
+                                     (default=1000)
+        default_facet_size           Number of values to return for requested facets
+                                     (default=30)
+        facet_time_limit_ms          Time limit for calculating a requested facet
+                                     (default=200)
+        facet_suggest_time_limit_ms  Time limit for calculating a suggested facet
+                                     (default=50)
+- Only apply responsive table styles to ``.rows-and-column``
+
+  Otherwise they interfere with tables in the description, e.g. on
+  https://fivethirtyeight.datasettes.com/fivethirtyeight/nba-elo%2Fnbaallelo
+
+- Refactored views into new ``views/`` modules, refs `#256 <https://github.com/simonw/datasette/issues/256>`_
+- `Documentation for SQLite full-text search <http://datasette.readthedocs.io/en/latest/full_text_search.html>`_ support, closes `#253 <https://github.com/simonw/datasette/issues/253>`_
+- ``/-/versions`` now includes SQLite ``fts_versions``, closes `#252 <https://github.com/simonw/datasette/issues/252>`_
+
 0.21 (2018-05-05)
 -----------------
 

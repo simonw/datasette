@@ -1,7 +1,7 @@
 Introspection
 =============
 
-Datasette includes some pages and JSON API endpoints for introspecting the current index. These can be used to understand some of the internals of Datasette and to see how a particular instance has been configured.
+Datasette includes some pages and JSON API endpoints for introspecting the current instance. These can be used to understand some of the internals of Datasette and to see how a particular instance has been configured.
 
 Each of these pages can be viewed in your browser. Add ``.json`` to the URL to get back the contents as JSON.
 

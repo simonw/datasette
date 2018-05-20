@@ -20,10 +20,10 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None):
         open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN)
         ds = Datasette(
             [filepath],
-            page_size=50,
             metadata=METADATA,
             plugins_dir=plugins_dir,
-            limits={
+            config={
+                'default_page_size': 50,
                 'max_returned_rows': max_returned_rows or 100,
                 'sql_time_limit_ms': sql_time_limit_ms or 200,
             }

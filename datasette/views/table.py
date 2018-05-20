@@ -500,7 +500,7 @@ class TableView(RowTableShared):
             return await self.custom_sql(request, name, hash, sql, editable=True)
 
         extra_args = {}
-        # Handle ?_page_size=500
+        # Handle ?_size=500
         page_size = request.raw_args.get("_size")
         if page_size:
             if page_size == "max":
@@ -539,7 +539,7 @@ class TableView(RowTableShared):
         )
 
         # facets support
-        facet_size = self.ds.limits["default_facet_size"]
+        facet_size = self.ds.config["default_facet_size"]
         metadata_facets = table_metadata.get("facets", [])
         facets = metadata_facets[:]
         try:
@@ -563,7 +563,7 @@ class TableView(RowTableShared):
                 facet_rows = await self.execute(
                     name, facet_sql, params,
                     truncate=False,
-                    custom_time_limit=self.ds.limits["facet_time_limit_ms"],
+                    custom_time_limit=self.ds.config["facet_time_limit_ms"],
                 )
                 facet_results_values = []
                 facet_results[column] = {
@@ -668,7 +668,7 @@ class TableView(RowTableShared):
                     distinct_values = await self.execute(
                         name, suggested_facet_sql, from_sql_params,
                         truncate=False,
-                        custom_time_limit=self.ds.limits["facet_suggest_time_limit_ms"],
+                        custom_time_limit=self.ds.config["facet_suggest_time_limit_ms"],
                     )
                     num_distinct_values = len(distinct_values)
                     if (

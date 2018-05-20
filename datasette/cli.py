@@ -1,11 +1,12 @@
 import click
+from click import formatting
 from click_default_group import DefaultGroup
 import json
 import os
 import shutil
 from subprocess import call, check_output
 import sys
-from .app import Datasette, DEFAULT_LIMITS
+from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS
 from .utils import temporary_docker_directory, temporary_heroku_directory
 
 
@@ -24,8 +25,8 @@ class StaticMount(click.ParamType):
         return path, dirpath
 
 
-class Limit(click.ParamType):
-    name = "limit"
+class Config(click.ParamType):
+    name = "config"
 
     def convert(self, value, param, ctx):
         ok = True
@@ -39,7 +40,7 @@ class Limit(click.ParamType):
                 '"{}" should be of format name:integer'.format(value),
                 param, ctx
             )
-        if name not in DEFAULT_LIMITS:
+        if name not in DEFAULT_CONFIG:
             self.fail("{} is not a valid limit".format(name), param, ctx)
         return name, int(intvalue)
 
@@ -384,7 +385,6 @@ def package(
 @click.option(
     "--cors", is_flag=True, help="Enable CORS by serving Access-Control-Allow-Origin: *"
 )
-@click.option("--page_size", default=100, help="Page size - default is 100")
 @click.option(
     "sqlite_extensions",
     "--load-extension",
@@ -419,10 +419,15 @@ def package(
     multiple=True,
 )
 @click.option(
-    "--limit",
-    type=Limit(),
-    help="Set a limit using limitname:integer datasette.readthedocs.io/en/latest/limits.html",
+    "--config",
+    type=Config(),
+    help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
     multiple=True,
+)
+@click.option(
+    "--help-config",
+    is_flag=True,
+    help="Show available config options",
 )
 def serve(
     files,
@@ -431,16 +436,27 @@ def serve(
     debug,
     reload,
     cors,
-    page_size,
     sqlite_extensions,
     inspect_file,
     metadata,
     template_dir,
     plugins_dir,
     static,
-    limit,
+    config,
+    help_config,
 ):
     """Serve up specified SQLite database files with a web UI"""
+    if help_config:
+        formatter = formatting.HelpFormatter()
+        with formatter.section("Config options"):
+            formatter.write_dl([
+                (option.name, '{} (default={})'.format(
+                    option.help, option.default
+                ))
+                for option in CONFIG_OPTIONS
+            ])
+        click.echo(formatter.getvalue())
+        sys.exit(0)
     if reload:
         import hupper
 
@@ -461,14 +477,13 @@ def serve(
         files,
         cache_headers=not debug and not reload,
         cors=cors,
-        page_size=page_size,
         inspect_data=inspect_data,
         metadata=metadata_data,
         sqlite_extensions=sqlite_extensions,
         template_dir=template_dir,
         plugins_dir=plugins_dir,
         static_mounts=static,
-        limits=dict(limit),
+        config=dict(config),
     )
     # Force initial hashing/table counting
     ds.inspect()

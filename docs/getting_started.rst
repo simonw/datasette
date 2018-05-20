@@ -100,7 +100,6 @@ datasette serve options
                                    useful for development
       --cors                       Enable CORS by serving Access-Control-Allow-
                                    Origin: *
-      --page_size INTEGER          Page size - default is 100
       --load-extension PATH        Path to a SQLite extension to load
       --inspect-file TEXT          Path to JSON file created using "datasette
                                    inspect"
@@ -110,6 +109,7 @@ datasette serve options
       --plugins-dir DIRECTORY      Path to directory containing custom plugins
       --static STATIC MOUNT        mountpoint:path-to-directory for serving static
                                    files
-      --limit LIMIT                Set a limit using limitname:integer
-                                   datasette.readthedocs.io/en/latest/limits.html
+      --config CONFIG              Set config option using configname:value
+                                   datasette.readthedocs.io/en/latest/config.html
+      --help-config                Show available config options
       --help                       Show this message and exit.

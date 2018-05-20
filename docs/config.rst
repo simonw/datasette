@@ -1,7 +1,17 @@
-Limits
+Config
 ======
 
-To prevent rogue, long-running queries from making a Datasette instance inaccessible to other users, Datasette imposes some limits on the SQL that you can execute.
+Datasette provides a number of configuration options. These can be set using the ``--config name:value`` option to ``datasette serve``.
+
+To prevent rogue, long-running queries from making a Datasette instance inaccessible to other users, Datasette imposes some limits on the SQL that you can execute. These are exposed as config options which you can over-ride.
+
+default_page_size
+-----------------
+
+The default number of rows returned by the table page. You can over-ride this on a per-page basis using the ``?_size=80`` querystring parameter, provided you do not specify a value higher than the ``max_returned_rows`` setting. You can set this default using ``--config`` like so::
+
+    datasette mydatabase.db --config default_page_size:50
+
 
 sql_time_limit_ms
 -----------------
@@ -10,9 +20,9 @@ By default, queries have a time limit of one second. If a query takes longer tha
 
 If this time limit is too short for you, you can customize it using the ``sql_time_limit_ms`` limit - for example, to increase it to 3.5 seconds::
 
-    datasette mydatabase.db --limit sql_time_limit_ms:3500
+    datasette mydatabase.db --config sql_time_limit_ms:3500
 
-You can optionally set a lower time limit for an individual query using the ``_timelimit`` query string argument::
+You can optionally set a lower time limit for an individual query using the ``?_timelimit=100`` query string argument::
 
     /my-database/my-table?qSpecies=44&_timelimit=100
 
@@ -25,21 +35,21 @@ Datasette returns a maximum of 1,000 rows of data at a time. If you execute a qu
 
 You can increase or decrease this limit like so::
 
-    datasette mydatabase.db --limit max_returned_rows:2000
+    datasette mydatabase.db --config max_returned_rows:2000
 
 default_facet_size
 ------------------
 
 The default number of unique rows returned by :ref:`facets` is 30. You can customize it like this::
 
-    datasette mydatabase.db --limit default_facet_size:50
+    datasette mydatabase.db --config default_facet_size:50
 
 facet_time_limit_ms
 -------------------
 
 This is the time limit Datasette allows for calculating a facet, which defaults to 200ms::
 
-    datasette mydatabase.db --limit facet_time_limit_ms:1000
+    datasette mydatabase.db --config facet_time_limit_ms:1000
 
 facet_suggest_time_limit_ms
 ---------------------------
@@ -48,4 +58,4 @@ When Datasette calculates suggested facets it needs to run a SQL query for every
 
 You can increase this time limit like so::
 
-    datasette mydatabase.db --limit facet_suggest_time_limit_ms:500
+    datasette mydatabase.db --config facet_suggest_time_limit_ms:500

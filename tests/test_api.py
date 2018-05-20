@@ -897,12 +897,13 @@ def test_versions_json(app_client):
     assert 'fts_versions' in response.json['sqlite']
 
 
-def test_limits_json(app_client):
+def test_config_json(app_client):
     response = app_client.get(
-        "/-/limits.json",
+        "/-/config.json",
         gather_request=False
     )
     assert {
+        "default_page_size": 50,
         "default_facet_size": 30,
         "facet_suggest_time_limit_ms": 50,
         "facet_time_limit_ms": 200,

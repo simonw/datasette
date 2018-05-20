@@ -1,3 +1,4 @@
+import collections
 import hashlib
 import itertools
 import json
@@ -45,12 +46,32 @@ pm.add_hookspecs(hookspecs)
 pm.load_setuptools_entrypoints("datasette")
 
 
-DEFAULT_LIMITS = {
-    "max_returned_rows": 1000,
-    "sql_time_limit_ms": 1000,
-    "default_facet_size": 30,
-    "facet_time_limit_ms": 200,
-    "facet_suggest_time_limit_ms": 50,
+ConfigOption = collections.namedtuple(
+    "ConfigOption", ("name", "default", "help")
+)
+CONFIG_OPTIONS = (
+    ConfigOption("default_page_size", 100, """
+        Default page size for the table view
+    """.strip()),
+    ConfigOption("max_returned_rows", 1000, """
+        Maximum rows that can be returned from a table or custom query
+    """.strip()),
+    ConfigOption("sql_time_limit_ms", 1000, """
+        Time limit for a SQL query in milliseconds
+    """.strip()),
+    ConfigOption("default_facet_size", 30, """
+        Number of values to return for requested facets
+    """.strip()),
+    ConfigOption("facet_time_limit_ms", 200, """
+        Time limit for calculating a requested facet
+    """.strip()),
+    ConfigOption("facet_suggest_time_limit_ms", 50, """
+        Time limit for calculating a suggested facet
+    """.strip()),
+)
+DEFAULT_CONFIG = {
+    option.name: option.default
+    for option in CONFIG_OPTIONS
 }
 
 
@@ -87,7 +108,6 @@ class Datasette:
         files,
         num_threads=3,
         cache_headers=True,
-        page_size=100,
         cors=False,
         inspect_data=None,
         metadata=None,
@@ -95,13 +115,12 @@ class Datasette:
         template_dir=None,
         plugins_dir=None,
         static_mounts=None,
-        limits=None,
+        config=None,
     ):
         self.files = files
         self.num_threads = num_threads
         self.executor = futures.ThreadPoolExecutor(max_workers=num_threads)
         self.cache_headers = cache_headers
-        self.page_size = page_size
         self.cors = cors
         self._inspect = inspect_data
         self.metadata = metadata or {}
@@ -110,9 +129,10 @@ class Datasette:
         self.template_dir = template_dir
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
-        self.limits = dict(DEFAULT_LIMITS, **(limits or {}))
-        self.max_returned_rows = self.limits["max_returned_rows"]
-        self.sql_time_limit_ms = self.limits["sql_time_limit_ms"]
+        self.config = dict(DEFAULT_CONFIG, **(config or {}))
+        self.max_returned_rows = self.config["max_returned_rows"]
+        self.sql_time_limit_ms = self.config["sql_time_limit_ms"]
+        self.page_size = self.config["default_page_size"]
         # Execute plugins in constructor, to ensure they are available
         # when the rest of `datasette inspect` executes
         if self.plugins_dir:
@@ -443,8 +463,8 @@ class Datasette:
             "/-/plugins<as_json:(\.json)?$>",
         )
         app.add_route(
-            JsonDataView.as_view(self, "limits.json", lambda: self.limits),
-            "/-/limits<as_json:(\.json)?$>",
+            JsonDataView.as_view(self, "config.json", lambda: self.config),
+            "/-/config<as_json:(\.json)?$>",
         )
         app.add_route(
             DatabaseView.as_view(self), "/<db_name:[^/\.]+?><as_json:(\.jsono?)?$>"

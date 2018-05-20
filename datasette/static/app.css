@@ -37,23 +37,28 @@ table a:visited {
 }
 @media only screen and (max-width: 576px) {
     /* Force table to not be like tables anymore */
-    table, thead, tbody, th, td, tr {
+    table.rows-and-columns,
+    .rows-and-columns thead,
+    .rows-and-columns tbody,
+    .rows-and-columns th,
+    .rows-and-columns td,
+    .rows-and-columns tr {
         display: block;
     }
 
     /* Hide table headers (but not display: none;, for accessibility) */
-    thead tr {
+    .rows-and-columns thead tr {
         position: absolute;
         top: -9999px;
         left: -9999px;
     }
 
-    tr {
+    .rows-and-columns tr {
         border: 1px solid #ccc;
         margin-bottom: 1em;
     }
 
-    td {
+    .rows-and-columns td {
         /* Behave  like a "row" */
         border: none;
         border-bottom: 1px solid #eee;
@@ -61,7 +66,7 @@ table a:visited {
         padding-left: 10%;
     }
 
-    td:before {
+    .rows-and-columns td:before {
         display: block;
         margin-left: -10%;
         font-size: 0.8em;

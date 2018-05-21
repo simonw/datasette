@@ -1,6 +1,103 @@
 Changelog
 =========
 
+0.22 (2018-05-20)
+-----------------
+
+The big new feature in this release is :ref:`facets`. Datasette can now apply faceted browse to any column in any table. It will also suggest possible facets. See the `Datasette Facets <https://simonwillison.net/2018/May/20/datasette-facets/>`_ announcement post for more details.
+
+In addition to the work on facets:
+
+- Added `docs for introspection endpoints <https://datasette.readthedocs.io/en/latest/introspection.html>`_
+
+- New ``--config`` option, added ``--help-config``, closes `#274 <https://github.com/simonw/datasette/issues/274>`_
+
+  Removed the ``--page_size=`` argument to ``datasette serve`` in favour of::
+
+      datasette serve --config default_page_size:50 mydb.db
+
+  Added new help section::
+
+      $ datasette --help-config
+      Config options:
+        default_page_size            Default page size for the table view
+                                     (default=100)
+        max_returned_rows            Maximum rows that can be returned from a table
+                                     or custom query (default=1000)
+        sql_time_limit_ms            Time limit for a SQL query in milliseconds
+                                     (default=1000)
+        default_facet_size           Number of values to return for requested facets
+                                     (default=30)
+        facet_time_limit_ms          Time limit for calculating a requested facet
+                                     (default=200)
+        facet_suggest_time_limit_ms  Time limit for calculating a suggested facet
+                                     (default=50)
+- Only apply responsive table styles to ``.rows-and-column``
+
+  Otherwise they interfere with tables in the description, e.g. on
+  https://fivethirtyeight.datasettes.com/fivethirtyeight/nba-elo%2Fnbaallelo
+
+- Refactored views into new ``views/`` modules, refs `#256 <https://github.com/simonw/datasette/issues/256>`_
+- `Documentation for SQLite full-text search <http://datasette.readthedocs.io/en/latest/full_text_search.html>`_ support, closes `#253 <https://github.com/simonw/datasette/issues/253>`_
+- ``/-/versions`` now includes SQLite ``fts_versions``, closes `#252 <https://github.com/simonw/datasette/issues/252>`_
+
+0.21 (2018-05-05)
+-----------------
+
+New JSON ``_shape=`` options, the ability to set table ``_size=`` and a mechanism for searching within specific columns.
+
+- Default tests to using a longer timelimit
+
+  Every now and then a test will fail in Travis CI on Python 3.5 because it hit
+  the default 20ms SQL time limit.
+
+  Test fixtures now default to a 200ms time limit, and we only use the 20ms time
+  limit for the specific test that tests query interruption. This should make
+  our tests on Python 3.5 in Travis much more stable.
+- Support ``_search_COLUMN=text`` searches, closes `#237 <https://github.com/simonw/datasette/issues/237>`_
+- Show version on ``/-/plugins`` page, closes `#248 <https://github.com/simonw/datasette/issues/248>`_
+- ``?_size=max`` option, closes `#249 <https://github.com/simonw/datasette/issues/249>`_
+- Added ``/-/versions`` and ``/-/versions.json``, closes `#244 <https://github.com/simonw/datasette/issues/244>`_
+
+  Sample output::
+
+      {
+        "python": {
+          "version": "3.6.3",
+          "full": "3.6.3 (default, Oct  4 2017, 06:09:38) \n[GCC 4.2.1 Compatible Apple LLVM 9.0.0 (clang-900.0.37)]"
+        },
+        "datasette": {
+          "version": "0.20"
+        },
+        "sqlite": {
+          "version": "3.23.1",
+          "extensions": {
+            "json1": null,
+            "spatialite": "4.3.0a"
+          }
+        }
+      }
+- Renamed ``?_sql_time_limit_ms=`` to ``?_timelimit``, closes `#242 <https://github.com/simonw/datasette/issues/242>`_
+- New ``?_shape=array`` option + tweaks to ``_shape``, closes `#245 <https://github.com/simonw/datasette/issues/245>`_
+
+  * Default is now ``?_shape=arrays`` (renamed from ``lists``)
+  * New ``?_shape=array`` returns an array of objects as the root object
+  * Changed ``?_shape=object`` to return the object as the root
+  * Updated docs
+
+- FTS tables now detected by ``inspect()``, closes `#240 <https://github.com/simonw/datasette/issues/240>`_
+- New ``?_size=XXX`` querystring parameter for table view, closes `#229 <https://github.com/simonw/datasette/issues/229>`_
+
+  Also added documentation for all of the ``_special`` arguments.
+
+  Plus deleted some duplicate logic implementing ``_group_count``.
+- If ``max_returned_rows==page_size``, increment ``max_returned_rows`` - fixes `#230 <https://github.com/simonw/datasette/issues/230>`_
+- New ``hidden: True`` option for table metadata, closes `#239 <https://github.com/simonw/datasette/issues/239>`_
+- Hide ``idx_*`` tables if spatialite detected, closes `#228 <https://github.com/simonw/datasette/issues/228>`_
+- Added ``class=rows-and-columns`` to custom query results table
+- Added CSS class ``rows-and-columns`` to main table
+- ``label_column`` option in ``metadata.json`` - closes `#234 <https://github.com/simonw/datasette/issues/234>`_
+
 0.20 (2018-04-20)
 -----------------
 

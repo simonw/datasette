@@ -20,11 +20,13 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None):
         open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN)
         ds = Datasette(
             [filepath],
-            page_size=50,
-            max_returned_rows=max_returned_rows or 100,
-            sql_time_limit_ms=sql_time_limit_ms or 20,
             metadata=METADATA,
             plugins_dir=plugins_dir,
+            config={
+                'default_page_size': 50,
+                'max_returned_rows': max_returned_rows or 100,
+                'sql_time_limit_ms': sql_time_limit_ms or 200,
+            }
         )
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),
@@ -34,8 +36,8 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None):
         yield client
 
 
-def app_client_longer_time_limit():
-    yield from app_client(200)
+def app_client_shorter_time_limit():
+    yield from app_client(20)
 
 
 def app_client_returend_rows_matches_page_size():
@@ -245,12 +247,64 @@ INSERT INTO units VALUES (1, 1, 100);
 INSERT INTO units VALUES (2, 5000, 2500);
 INSERT INTO units VALUES (3, 100000, 75000);
 
+CREATE TABLE searchable (
+  pk integer primary key,
+  text1 text,
+  text2 text,
+  [name with . and spaces] text
+);
+
+INSERT INTO searchable VALUES (1, 'barry cat', 'terry dog', 'panther');
+INSERT INTO searchable VALUES (2, 'terry dog', 'sara weasel', 'puma');
+
+CREATE VIRTUAL TABLE "searchable_fts"
+    USING FTS3 (text1, text2, [name with . and spaces], content="searchable");
+INSERT INTO "searchable_fts" (rowid, text1, text2, [name with . and spaces])
+    SELECT rowid, text1, text2, [name with . and spaces] FROM searchable;
+
 CREATE TABLE [select] (
   [group] text,
   [having] text,
   [and] text
 );
 INSERT INTO [select] VALUES ('group', 'having', 'and');
+
+CREATE TABLE facet_cities (
+    id integer primary key,
+    name text
+);
+INSERT INTO facet_cities (id, name) VALUES
+    (1, 'San Francisco'),
+    (2, 'Los Angeles'),
+    (3, 'Detroit'),
+    (4, 'Memnonia')
+;
+
+CREATE TABLE facetable (
+    pk integer primary key,
+    planet_int integer,
+    state text,
+    city_id integer,
+    neighborhood text,
+    FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
+);
+INSERT INTO facetable (planet_int, state, city_id, neighborhood) VALUES
+    (1, 'CA', 1, 'Mission'),
+    (1, 'CA', 1, 'Dogpatch'),
+    (1, 'CA', 1, 'SOMA'),
+    (1, 'CA', 1, 'Tenderloin'),
+    (1, 'CA', 1, 'Bernal Heights'),
+    (1, 'CA', 1, 'Hayes Valley'),
+    (1, 'CA', 2, 'Hollywood'),
+    (1, 'CA', 2, 'Downtown'),
+    (1, 'CA', 2, 'Los Feliz'),
+    (1, 'CA', 2, 'Koreatown'),
+    (1, 'MI', 3, 'Downtown'),
+    (1, 'MI', 3, 'Greektown'),
+    (1, 'MI', 3, 'Corktown'),
+    (1, 'MI', 3, 'Mexicantown'),
+    (2, 'MC', 4, 'Arcadia Planitia')
+;
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');

@@ -46,39 +46,6 @@ statements can be used to change database settings at runtime. If you need to
 include the string "pragma" in a query you can do so safely using a named
 parameter.
 
-Query limits
-------------
-
-To prevent rogue, long-running queries from making a Datasette instance
-inaccessible to other users, Datasette imposes some limits on the SQL that you
-can execute.
-
-By default, queries have a time limit of one second. If a query takes longer
-than this to run Datasette will terminate the query and return an error.
-
-If this time limit is too short for you, you can customize it using the
-``sql_time_limit_ms`` option - for example, to increase it to 3.5 seconds::
-
-    datasette mydatabase.db --sql_time_limit_ms=3500
-
-You can optionally set a lower time limit for an individual query using the
-``_timelimit`` query string argument::
-
-    /my-database/my-table?qSpecies=44&_timelimit=100
-
-This would set the time limit to 100ms for that specific query. This feature
-is useful if you are working with databases of unknown size and complexity -
-a query that might make perfect sense for a smaller table could take too long
-to execute on a table with millions of rows. By setting custom time limits you
-can execute queries "optimistically" - e.g. give me an exact count of rows
-matching this query but only if it takes less than 100ms to calculate.
-
-Datasette returns a maximum of 1,000 rows of data at a time. If you execute a
-query that returns more than 1,000 rows, Datasette will return the first 1,000
-and include a warning that the result set has been truncated. You can use
-OFFSET/LIMIT or other methods in your SQL to implement pagination if you need to
-return more than 1,000 rows.
-
 Views
 -----
 

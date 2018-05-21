@@ -1,11 +1,12 @@
 import click
+from click import formatting
 from click_default_group import DefaultGroup
 import json
 import os
 import shutil
 from subprocess import call, check_output
 import sys
-from .app import Datasette
+from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS
 from .utils import temporary_docker_directory, temporary_heroku_directory
 
 
@@ -15,12 +16,33 @@ class StaticMount(click.ParamType):
     def convert(self, value, param, ctx):
         if ":" not in value:
             self.fail(
-                '"%s" should be of format mountpoint:directory' % value, param, ctx
+                '"{}" should be of format mountpoint:directory'.format(value),
+                param, ctx
             )
         path, dirpath = value.split(":")
         if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
             self.fail("%s is not a valid directory path" % value, param, ctx)
         return path, dirpath
+
+
+class Config(click.ParamType):
+    name = "config"
+
+    def convert(self, value, param, ctx):
+        ok = True
+        if ":" not in value:
+            ok = False
+        else:
+            name, intvalue = value.split(":")
+            ok = intvalue.isdigit()
+        if not ok:
+            self.fail(
+                '"{}" should be of format name:integer'.format(value),
+                param, ctx
+            )
+        if name not in DEFAULT_CONFIG:
+            self.fail("{} is not a valid limit".format(name), param, ctx)
+        return name, int(intvalue)
 
 
 @click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)
@@ -363,15 +385,6 @@ def package(
 @click.option(
     "--cors", is_flag=True, help="Enable CORS by serving Access-Control-Allow-Origin: *"
 )
-@click.option("--page_size", default=100, help="Page size - default is 100")
-@click.option(
-    "--max_returned_rows",
-    default=1000,
-    help="Max allowed rows to return at once - default is 1000. Set to 0 to disable check entirely.",
-)
-@click.option(
-    "--sql_time_limit_ms", default=1000, help="Max time allowed for SQL queries in ms"
-)
 @click.option(
     "sqlite_extensions",
     "--load-extension",
@@ -405,6 +418,17 @@ def package(
     help="mountpoint:path-to-directory for serving static files",
     multiple=True,
 )
+@click.option(
+    "--config",
+    type=Config(),
+    help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
+    multiple=True,
+)
+@click.option(
+    "--help-config",
+    is_flag=True,
+    help="Show available config options",
+)
 def serve(
     files,
     host,
@@ -412,17 +436,27 @@ def serve(
     debug,
     reload,
     cors,
-    page_size,
-    max_returned_rows,
-    sql_time_limit_ms,
     sqlite_extensions,
     inspect_file,
     metadata,
     template_dir,
     plugins_dir,
     static,
+    config,
+    help_config,
 ):
     """Serve up specified SQLite database files with a web UI"""
+    if help_config:
+        formatter = formatting.HelpFormatter()
+        with formatter.section("Config options"):
+            formatter.write_dl([
+                (option.name, '{} (default={})'.format(
+                    option.help, option.default
+                ))
+                for option in CONFIG_OPTIONS
+            ])
+        click.echo(formatter.getvalue())
+        sys.exit(0)
     if reload:
         import hupper
 
@@ -443,15 +477,13 @@ def serve(
         files,
         cache_headers=not debug and not reload,
         cors=cors,
-        page_size=page_size,
-        max_returned_rows=max_returned_rows,
-        sql_time_limit_ms=sql_time_limit_ms,
         inspect_data=inspect_data,
         metadata=metadata_data,
         sqlite_extensions=sqlite_extensions,
         template_dir=template_dir,
         plugins_dir=plugins_dir,
         static_mounts=static,
+        config=dict(config),
     )
     # Force initial hashing/table counting
     ds.inspect()

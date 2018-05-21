@@ -32,6 +32,10 @@ reserved_words = set((
 ).split())
 
 
+class InterruptedError(Exception):
+    pass
+
+
 def urlsafe_components(token):
     "Splits token on commas and URL decodes each component"
     return [
@@ -149,18 +153,53 @@ def path_with_added_args(request, args, path=None):
     path = path or request.path
     if isinstance(args, dict):
         args = args.items()
-    arg_keys = set(a[0] for a in args)
-    current = [
-        (key, value)
-        for key, value in request.raw_args.items()
-        if key not in arg_keys
-    ]
+    args_to_remove = {k for k, v in args if v is None}
+    current = []
+    for key, value in urllib.parse.parse_qsl(request.query_string):
+        if key not in args_to_remove:
+            current.append((key, value))
     current.extend([
         (key, value)
         for key, value in args
         if value is not None
     ])
-    query_string = urllib.parse.urlencode(sorted(current))
+    query_string = urllib.parse.urlencode(current)
+    if query_string:
+        query_string = '?{}'.format(query_string)
+    return path + query_string
+
+
+def path_with_removed_args(request, args, path=None):
+    # args can be a dict or a set
+    path = path or request.path
+    current = []
+    if isinstance(args, set):
+        def should_remove(key, value):
+            return key in args
+    elif isinstance(args, dict):
+        # Must match key AND value
+        def should_remove(key, value):
+            return args.get(key) == value
+    for key, value in urllib.parse.parse_qsl(request.query_string):
+        if not should_remove(key, value):
+            current.append((key, value))
+    query_string = urllib.parse.urlencode(current)
+    if query_string:
+        query_string = '?{}'.format(query_string)
+    return path + query_string
+
+
+def path_with_replaced_args(request, args, path=None):
+    path = path or request.path
+    if isinstance(args, dict):
+        args = args.items()
+    keys_to_replace = {p[0] for p in args}
+    current = []
+    for key, value in urllib.parse.parse_qsl(request.query_string):
+        if key not in keys_to_replace:
+            current.append((key, value))
+    current.extend([p for p in args if p[1] is not None])
+    query_string = urllib.parse.urlencode(current)
     if query_string:
         query_string = '?{}'.format(query_string)
     return path + query_string
@@ -206,7 +245,6 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
         for opt in extra_options.split():
             cmd.append('"{}"'.format(opt))
 
-    install_from = 'datasette'
     if branch:
         install = ['https://github.com/simonw/datasette/archive/{}.zip'.format(
             branch
@@ -522,7 +560,7 @@ class Filters:
     def human_description_en(self, extra=None):
         bits = []
         if extra:
-            bits.append(extra)
+            bits.extend(extra)
         for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:
@@ -688,6 +726,7 @@ def module_from_path(path, name):
 
 def get_plugins(pm):
     plugins = []
+    plugin_to_distinfo = dict(pm.list_plugin_distinfo())
     for plugin in pm.get_plugins():
         static_path = None
         templates_path = None
@@ -699,9 +738,13 @@ def get_plugins(pm):
         except (KeyError, ImportError):
             # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
             pass
-        plugins.append({
+        plugin_info = {
             'name': plugin.__name__,
             'static_path': static_path,
             'templates_path': templates_path,
-        })
+        }
+        distinfo = plugin_to_distinfo.get(plugin)
+        if distinfo:
+            plugin_info['version'] = distinfo.version
+        plugins.append(plugin_info)
     return plugins

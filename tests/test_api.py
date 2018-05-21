@@ -1,6 +1,6 @@
 from .fixtures import (
     app_client,
-    app_client_longer_time_limit,
+    app_client_shorter_time_limit,
     app_client_returend_rows_matches_page_size,
     generate_compound_rows,
     generate_sortable_rows,
@@ -9,7 +9,7 @@ from .fixtures import (
 import pytest
 
 pytest.fixture(scope='module')(app_client)
-pytest.fixture(scope='module')(app_client_longer_time_limit)
+pytest.fixture(scope='module')(app_client_shorter_time_limit)
 pytest.fixture(scope='module')(app_client_returend_rows_matches_page_size)
 
 
@@ -19,7 +19,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
     assert d['name'] == 'test_tables'
-    assert d['tables_count'] == 14
+    assert d['tables_count'] == 17
 
 
 def test_database_page(app_client):
@@ -103,6 +103,38 @@ def test_database_page(app_client):
         'fts_table': None,
         'primary_keys': ['pk'],
     }, {
+        'columns': ['id', 'name'],
+        'name': 'facet_cities',
+        'count': 4,
+        'foreign_keys': {
+            'incoming': [{
+                'column': 'id',
+                'other_column': 'city_id',
+                'other_table': 'facetable',
+            }],
+            'outgoing': []
+        },
+        'fts_table': None,
+        'hidden': False,
+        'label_column': 'name',
+        'primary_keys': ['id'],
+    }, {
+        'columns': ['pk', 'planet_int', 'state', 'city_id', 'neighborhood'],
+        'name': 'facetable',
+        'count': 15,
+        'foreign_keys': {
+            'incoming': [],
+            'outgoing': [{
+                'column': 'city_id',
+                'other_column': 'id',
+                'other_table': 'facet_cities'
+            }],
+        },
+        'fts_table': None,
+        'hidden': False,
+        'label_column': None,
+        'primary_keys': ['pk'],
+    }, {
         'columns': ['pk', 'foreign_key_with_label', 'foreign_key_with_no_label'],
         'name': 'foreign_key_references',
         'count': 1,
@@ -154,6 +186,15 @@ def test_database_page(app_client):
         'label_column': None,
         'fts_table': None,
         'primary_keys': ['id']
+    },  {
+        'columns': ['pk', 'text1', 'text2', 'name with . and spaces'],
+        'name': 'searchable',
+        'count': 2,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': 'searchable_fts',
+        'hidden': False,
+        'label_column': None,
+        'primary_keys': ['pk'],
     }, {
         'columns': ['group', 'having', 'and'],
         'name': 'select',
@@ -230,6 +271,45 @@ def test_database_page(app_client):
         'label_column': None,
         'fts_table': None,
         'primary_keys': [],
+    },  {
+        'columns': ['text1', 'text2', 'name with . and spaces', 'content'],
+        'count': 2,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': 'searchable_fts',
+        'hidden': True,
+        'label_column': None,
+        'name': 'searchable_fts',
+        'primary_keys': []
+    }, {
+        'columns': ['docid', 'c0text1', 'c1text2', 'c2name with . and spaces', 'c3content'],
+        'count': 2,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': None,
+        'hidden': True,
+        'label_column': None,
+        'name': 'searchable_fts_content',
+        'primary_keys': ['docid']
+    }, {
+        'columns': [
+            'level', 'idx', 'start_block', 'leaves_end_block',
+            'end_block', 'root'
+        ],
+        'count': 1,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': None,
+        'hidden': True,
+        'label_column': None,
+        'name': 'searchable_fts_segdir',
+        'primary_keys': ['level', 'idx']
+    }, {
+        'columns': ['blockid', 'block'],
+        'count': 0,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': None,
+        'hidden': True,
+        'label_column': None,
+        'name': 'searchable_fts_segments',
+        'primary_keys': ['blockid']
     }] == data['tables']
 
 
@@ -253,8 +333,8 @@ def test_custom_sql(app_client):
     assert not data['truncated']
 
 
-def test_sql_time_limit(app_client):
-    response = app_client.get(
+def test_sql_time_limit(app_client_shorter_time_limit):
+    response = app_client_shorter_time_limit.get(
         '/test_tables.json?sql=select+sleep(0.5)',
         gather_request=False
     )
@@ -451,13 +531,15 @@ def test_table_with_reserved_word_name(app_client):
     ('/test_tables/paginated_view.json', 201, 5),
     ('/test_tables/no_primary_key.json?_size=25', 201, 9),
     ('/test_tables/paginated_view.json?_size=25', 201, 9),
+    ('/test_tables/paginated_view.json?_size=max', 201, 3),
     ('/test_tables/123_starts_with_digits.json', 0, 1),
 ])
-def test_paginate_tables_and_views(app_client_longer_time_limit, path, expected_rows, expected_pages):
+def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
     fetched = []
     count = 0
     while path:
-        response = app_client_longer_time_limit.get(path, gather_request=False)
+        response = app_client.get(path, gather_request=False)
+        assert 200 == response.status
         count += 1
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
@@ -492,13 +574,13 @@ def test_page_size_zero(app_client):
     assert None is response.json['next_url']
 
 
-def test_paginate_compound_keys(app_client_longer_time_limit):
+def test_paginate_compound_keys(app_client):
     fetched = []
     path = '/test_tables/compound_three_primary_keys.json?_shape=objects'
     page = 0
     while path:
         page += 1
-        response = app_client_longer_time_limit.get(path, gather_request=False)
+        response = app_client.get(path, gather_request=False)
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
         assert page < 100
@@ -626,6 +708,40 @@ def test_sortable_columns_metadata(app_client):
             gather_request=False
         )
         assert 'Cannot sort table by {}'.format(column) == response.json['error']
+
+
+@pytest.mark.parametrize('path,expected_rows', [
+    ('/test_tables/searchable.json?_search=dog', [
+        [1, 'barry cat', 'terry dog', 'panther'],
+        [2, 'terry dog', 'sara weasel', 'puma'],
+    ]),
+    ('/test_tables/searchable.json?_search=weasel', [
+        [2, 'terry dog', 'sara weasel', 'puma'],
+    ]),
+    ('/test_tables/searchable.json?_search_text2=dog', [
+        [1, 'barry cat', 'terry dog', 'panther'],
+    ]),
+    ('/test_tables/searchable.json?_search_name%20with%20.%20and%20spaces=panther', [
+        [1, 'barry cat', 'terry dog', 'panther'],
+    ]),
+])
+def test_searchable(app_client, path, expected_rows):
+    response = app_client.get(path, gather_request=False)
+    assert expected_rows == response.json['rows']
+
+
+def test_searchable_invalid_column(app_client):
+    response = app_client.get(
+        '/test_tables/searchable.json?_search_invalid=x',
+        gather_request=False
+    )
+    assert 400 == response.status
+    assert {
+        'ok': False,
+        'error': 'Cannot search by that column',
+        'status': 400,
+        'title': None
+    } == response.json
 
 
 @pytest.mark.parametrize('path,expected_rows', [
@@ -761,7 +877,8 @@ def test_plugins_json(app_client):
     assert {
         'name': 'my_plugin.py',
         'static': False,
-        'templates': False
+        'templates': False,
+        'version': None,
     } in response.json
 
 
@@ -777,6 +894,22 @@ def test_versions_json(app_client):
     assert 'version' in response.json['datasette']
     assert 'sqlite' in response.json
     assert 'version' in response.json['sqlite']
+    assert 'fts_versions' in response.json['sqlite']
+
+
+def test_config_json(app_client):
+    response = app_client.get(
+        "/-/config.json",
+        gather_request=False
+    )
+    assert {
+        "default_page_size": 50,
+        "default_facet_size": 30,
+        "facet_suggest_time_limit_ms": 50,
+        "facet_time_limit_ms": 200,
+        "max_returned_rows": 100,
+        "sql_time_limit_ms": 200,
+    } == response.json
 
 
 def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_page_size):
@@ -790,3 +923,155 @@ def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_p
         assert len(response.json['rows']) in (1, 50)
         path = response.json['next_url']
     assert 201 == len(fetched)
+
+
+@pytest.mark.parametrize('path,expected_facet_results', [
+    (
+        "/test_tables/facetable.json?_facet=state&_facet=city_id",
+        {
+            "state": {
+                "name": "state",
+                "results": [
+                    {
+                        "value": "CA",
+                        "label": "CA",
+                        "count": 10,
+                        "toggle_url": "_facet=state&_facet=city_id&state=CA",
+                        "selected": False,
+                    },
+                    {
+                        "value": "MI",
+                        "label": "MI",
+                        "count": 4,
+                        "toggle_url": "_facet=state&_facet=city_id&state=MI",
+                        "selected": False,
+                    },
+                    {
+                        "value": "MC",
+                        "label": "MC",
+                        "count": 1,
+                        "toggle_url": "_facet=state&_facet=city_id&state=MC",
+                        "selected": False,
+                    }
+                ],
+                "truncated": False,
+            },
+            "city_id": {
+                "name": "city_id",
+                "results": [
+                    {
+                        "value": 1,
+                        "label": "San Francisco",
+                        "count": 6,
+                        "toggle_url": "_facet=state&_facet=city_id&city_id=1",
+                        "selected": False,
+                    },
+                    {
+                        "value": 2,
+                        "label": "Los Angeles",
+                        "count": 4,
+                        "toggle_url": "_facet=state&_facet=city_id&city_id=2",
+                        "selected": False,
+                    },
+                    {
+                        "value": 3,
+                        "label": "Detroit",
+                        "count": 4,
+                        "toggle_url": "_facet=state&_facet=city_id&city_id=3",
+                        "selected": False,
+                    },
+                    {
+                        "value": 4,
+                        "label": "Memnonia",
+                        "count": 1,
+                        "toggle_url": "_facet=state&_facet=city_id&city_id=4",
+                        "selected": False,
+                    }
+                ],
+                "truncated": False,
+            }
+        }
+    ), (
+        "/test_tables/facetable.json?_facet=state&_facet=city_id&state=MI",
+        {
+            "state": {
+                "name": "state",
+                "results": [
+                    {
+                        "value": "MI",
+                        "label": "MI",
+                        "count": 4,
+                        "selected": True,
+                        "toggle_url": "_facet=state&_facet=city_id",
+                    },
+                ],
+                "truncated": False,
+            },
+            "city_id": {
+                "name": "city_id",
+                "results": [
+                    {
+                        "value": 3,
+                        "label": "Detroit",
+                        "count": 4,
+                        "selected": False,
+                        "toggle_url": "_facet=state&_facet=city_id&state=MI&city_id=3",
+                    },
+                ],
+                "truncated": False,
+            },
+        },
+    ), (
+        "/test_tables/facetable.json?_facet=planet_int",
+        {
+            "planet_int": {
+                "name": "planet_int",
+                "results": [
+                    {
+                        "value": 1,
+                        "label": 1,
+                        "count": 14,
+                        "selected": False,
+                        "toggle_url": "_facet=planet_int&planet_int=1",
+                    },
+                    {
+                        "value": 2,
+                        "label": 2,
+                        "count": 1,
+                        "selected": False,
+                        "toggle_url": "_facet=planet_int&planet_int=2",
+                    },
+                ],
+                "truncated": False,
+            }
+        },
+    ), (
+        # planet_int is an integer field:
+        "/test_tables/facetable.json?_facet=planet_int&planet_int=1",
+        {
+            "planet_int": {
+                "name": "planet_int",
+                "results": [
+                    {
+                        "value": 1,
+                        "label": 1,
+                        "count": 14,
+                        "selected": True,
+                        "toggle_url": "_facet=planet_int",
+                    }
+                ],
+                "truncated": False,
+            },
+        },
+    )
+])
+def test_facets(app_client, path, expected_facet_results):
+    response = app_client.get(path, gather_request=False)
+    facet_results = response.json['facet_results']
+    # We only compare the querystring portion of the taggle_url
+    for facet_name, facet_info in facet_results.items():
+        assert facet_name == facet_info["name"]
+        assert False is facet_info["truncated"]
+        for facet_value in facet_info["results"]:
+            facet_value['toggle_url'] = facet_value['toggle_url'].split('?')[1]
+    assert expected_facet_results == facet_results

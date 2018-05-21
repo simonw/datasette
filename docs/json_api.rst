@@ -131,9 +131,9 @@ Special table arguments
 
 The Datasette table view takes a number of special querystring arguments:
 
-``?_size=1000``
-    Sets a custom page size. This cannot exceed the ``max_returned_rows`` option
-    passed to ``datasette serve``.
+``?_size=1000`` or ``?_size=max``
+    Sets a custom page size. This cannot exceed the ``max_returned_rows`` limit
+    passed to ``datasette serve``. Use ``max`` to get ``max_returned_rows``.
 
 ``?_sort=COLUMN``
     Sorts the results by the specified column.
@@ -145,6 +145,10 @@ The Datasette table view takes a number of special querystring arguments:
     For SQLite tables that have been configured for
     `full-text search <https://www.sqlite.org/fts3.html>`_ executes a search
     with the provided keywords.
+
+``?_search_COLUMN=keywords``
+    Like ``_search=`` but allows you to specify the column to be searched, as
+    opposed to searching all columns that have been indexed by FTS.
 
 ``?_group_count=COLUMN``
     Executes a SQL query that returns a count of the number of rows matching

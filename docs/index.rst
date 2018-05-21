@@ -19,7 +19,11 @@ Contents
    getting_started
    json_api
    sql_queries
+   facets
+   full_text_search
    metadata
+   config
+   introspection
    custom_templates
    plugins
    changelog

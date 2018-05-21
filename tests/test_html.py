@@ -65,7 +65,7 @@ def test_add_filter_redirects(app_client):
     path = path_base + '?foo=bar&' + filter_args
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
-    assert response.headers['Location'].endswith('?content__startswith=x&foo=bar')
+    assert response.headers['Location'].endswith('?foo=bar&content__startswith=x')
 
     # Test that op with a __x suffix overrides the filter value
     path = path_base + '?' + urllib.parse.urlencode({
@@ -99,8 +99,9 @@ def test_existing_filter_redirects(app_client):
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
-    assert response.headers['Location'].endswith(
-        '?age__gte=22&age__lt=30&name__contains=hello&name__contains=world'
+    assert_querystring_equal(
+        'name__contains=hello&age__gte=22&age__lt=30&name__contains=world',
+        response.headers['Location'].split('?')[1],
     )
 
     # Setting _filter_column_3 to empty string should remove *_3 entirely
@@ -108,8 +109,9 @@ def test_existing_filter_redirects(app_client):
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
-    assert response.headers['Location'].endswith(
-        '?age__gte=22&name__contains=hello&name__contains=world'
+    assert_querystring_equal(
+        'name__contains=hello&age__gte=22&name__contains=world',
+        response.headers['Location'].split('?')[1],
     )
 
     # ?_filter_op=exact should be removed if unaccompanied by _fiter_column
@@ -146,6 +148,73 @@ def test_sort_by_desc_redirects(app_client):
     response = app_client.get(path, allow_redirects=False, gather_request=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?_sort_desc=sortable')
+
+
+def test_sort_links(app_client):
+    response = app_client.get(
+        '/test_tables/sortable?_sort=sortable',
+        gather_request=False
+    )
+    assert response.status == 200
+    ths = Soup(response.body, 'html.parser').findAll('th')
+    attrs_and_link_attrs = [{
+        'attrs': th.attrs,
+        'a_href': (
+            th.find('a')['href'].split('/')[-1]
+            if th.find('a')
+            else None
+        ),
+    } for th in ths]
+    assert [
+        {
+            "attrs": {"class": ["col-Link"], "scope": "col"},
+            "a_href": None
+        },
+        {
+            "attrs": {"class": ["col-pk1"], "scope": "col"},
+            "a_href": None
+        },
+        {
+            "attrs": {"class": ["col-pk2"], "scope": "col"},
+            "a_href": None
+        },
+        {
+            "attrs": {"class": ["col-content"], "scope": "col"},
+            "a_href": None
+        },
+        {
+            "attrs": {"class": ["col-sortable"], "scope": "col"},
+            "a_href": "sortable?_sort_desc=sortable",
+        },
+        {
+            "attrs": {"class": ["col-sortable_with_nulls"], "scope": "col"},
+            "a_href": "sortable?_sort=sortable_with_nulls",
+        },
+        {
+            "attrs": {"class": ["col-sortable_with_nulls_2"], "scope": "col"},
+            "a_href": "sortable?_sort=sortable_with_nulls_2",
+        },
+        {
+            "attrs": {"class": ["col-text"], "scope": "col"},
+            "a_href": "sortable?_sort=text",
+        },
+    ] == attrs_and_link_attrs
+
+
+def test_facets_persist_through_filter_form(app_client):
+    response = app_client.get(
+        '/test_tables/facetable?_facet=planet_int&_facet=city_id',
+        gather_request=False
+    )
+    assert response.status == 200
+    inputs = Soup(response.body, 'html.parser').find('form').findAll('input')
+    hiddens = [i for i in inputs if i['type'] == 'hidden']
+    assert [
+        ('_facet', 'city_id'),
+        ('_facet', 'planet_int'),
+    ] == [
+        (hidden['name'], hidden['value']) for hidden in hiddens
+    ]
 
 
 @pytest.mark.parametrize('path,expected_classes', [
@@ -397,6 +466,10 @@ def test_table_metadata(app_client):
     )
     # The source/license should be inherited
     assert_footer_links(soup)
+
+
+def assert_querystring_equal(expected, actual):
+    assert sorted(expected.split('&')) == sorted(actual.split('&'))
 
 
 def assert_footer_links(soup):

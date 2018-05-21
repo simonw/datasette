@@ -15,6 +15,8 @@ Documentation: http://datasette.readthedocs.io/ Examples: https://github.com/si
 
 ## News
 
+* 20th May 2018: [Datasette 0.22: Datasette Facets](https://simonwillison.net/2018/May/20/datasette-facets)
+* 5th May 2018: [Datasette 0.21: New _shape=, new _size=, search within columns](https://github.com/simonw/datasette/releases/tag/0.21)
 * 25th April 2018: [Exploring the UK Register of Members Interests with SQL and Datasette](https://simonwillison.net/2018/Apr/25/register-members-interests/) - a tutorial describing how [register-of-members-interests.datasettes.com](https://register-of-members-interests.datasettes.com/) was built ([source code here](https://github.com/simonw/register-of-members-interests))
 * 20th April 2018: [Datasette plugins, and building a clustered map visualization](https://simonwillison.net/2018/Apr/20/datasette-plugins/) - introducing Datasette's new plugin system and [datasette-cluster-map](https://pypi.org/project/datasette-cluster-map/), a plugin for visualizing data on a map
 * 20th April 2018: [Datasette 0.20: static assets and templates for plugins](https://github.com/simonw/datasette/releases/tag/0.20)
@@ -112,10 +114,6 @@ http://localhost:8001/History/downloads.json?_shape=objects will return that dat
                                    useful for development
       --cors                       Enable CORS by serving Access-Control-Allow-
                                    Origin: *
-      --page_size INTEGER          Page size - default is 100
-      --max_returned_rows INTEGER  Max allowed rows to return at once - default is
-                                   1000. Set to 0 to disable check entirely.
-      --sql_time_limit_ms INTEGER  Max time allowed for SQL queries in ms
       --load-extension PATH        Path to a SQLite extension to load
       --inspect-file TEXT          Path to JSON file created using "datasette
                                    inspect"
@@ -125,6 +123,9 @@ http://localhost:8001/History/downloads.json?_shape=objects will return that dat
       --plugins-dir DIRECTORY      Path to directory containing custom plugins
       --static STATIC MOUNT        mountpoint:path-to-directory for serving static
                                    files
+      --config CONFIG              Set config option using configname:value
+                                   datasette.readthedocs.io/en/latest/config.html
+      --help-config                Show available config options
       --help                       Show this message and exit.
 
 ## metadata.json
@@ -213,13 +214,14 @@ If you have docker installed you can use `datasette package` to create a new Doc
 
 Both publish and package accept an `extra_options` argument option, which will affect how the resulting application is executed. For example, say you want to increase the SQL time limit for a particular container:
 
-    datasette package parlgov.db --extra-options="--sql_time_limit_ms=2500 --page_size=10"
+    datasette package parlgov.db \
+        --extra-options="--config sql_time_limit_ms:2500 --config default_page_size:10"
 
 The resulting container will run the application with those options.
 
 Here's example output for the package command:
 
-    $ datasette package parlgov.db --extra-options="--sql_time_limit_ms=2500 --page_size=10"
+    $ datasette package parlgov.db --extra-options="--config sql_time_limit_ms:2500"
     Sending build context to Docker daemon  4.459MB
     Step 1/7 : FROM python:3
      ---> 79e1dc9af1c1
@@ -238,7 +240,7 @@ Here's example output for the package command:
     Step 6/7 : EXPOSE 8001
      ---> Using cache
      ---> 8e83844b0fed
-    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --sql_time_limit_ms=2500 --page_size=10
+    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --config sql_time_limit_ms:2500
      ---> Using cache
      ---> 1bd380ea8af3
     Successfully built 1bd380ea8af3

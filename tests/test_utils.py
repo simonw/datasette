@@ -6,6 +6,7 @@ from datasette import utils
 import json
 import os
 import pytest
+from sanic.request import Request
 import sqlite3
 import tempfile
 from unittest.mock import patch
@@ -20,6 +21,58 @@ from unittest.mock import patch
 ])
 def test_urlsafe_components(path, expected):
     assert expected == utils.urlsafe_components(path)
+
+
+@pytest.mark.parametrize('path,added_args,expected', [
+    ('/foo', {'bar': 1}, '/foo?bar=1'),
+    ('/foo?bar=1', {'baz': 2}, '/foo?bar=1&baz=2'),
+    ('/foo?bar=1&bar=2', {'baz': 3}, '/foo?bar=1&bar=2&baz=3'),
+    ('/foo?bar=1', {'bar': None}, '/foo'),
+    # Test order is preserved
+    ('/?_facet=prim_state&_facet=area_name', (
+        ('prim_state', 'GA'),
+    ), '/?_facet=prim_state&_facet=area_name&prim_state=GA'),
+    ('/?_facet=state&_facet=city&state=MI', (
+        ('city', 'Detroit'),
+    ), '/?_facet=state&_facet=city&state=MI&city=Detroit'),
+    ('/?_facet=state&_facet=city', (
+        ('_facet', 'planet_int'),
+    ), '/?_facet=state&_facet=city&_facet=planet_int'),
+])
+def test_path_with_added_args(path, added_args, expected):
+    request = Request(
+        path.encode('utf8'),
+        {}, '1.1', 'GET', None
+    )
+    actual = utils.path_with_added_args(request, added_args)
+    assert expected == actual
+
+
+@pytest.mark.parametrize('path,args,expected', [
+    ('/foo?bar=1', {'bar'}, '/foo'),
+    ('/foo?bar=1&baz=2', {'bar'}, '/foo?baz=2'),
+    ('/foo?bar=1&bar=2&bar=3', {'bar': '2'}, '/foo?bar=1&bar=3'),
+])
+def test_path_with_removed_args(path, args, expected):
+    request = Request(
+        path.encode('utf8'),
+        {}, '1.1', 'GET', None
+    )
+    actual = utils.path_with_removed_args(request, args)
+    assert expected == actual
+
+
+@pytest.mark.parametrize('path,args,expected', [
+    ('/foo?bar=1', {'bar': 2}, '/foo?bar=2'),
+    ('/foo?bar=1&baz=2', {'bar': None}, '/foo?baz=2'),
+])
+def test_path_with_replaced_args(path, args, expected):
+    request = Request(
+        path.encode('utf8'),
+        {}, '1.1', 'GET', None
+    )
+    actual = utils.path_with_replaced_args(request, args)
+    assert expected == actual
 
 
 @pytest.mark.parametrize('row,pks,expected_path', [

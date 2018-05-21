@@ -25,7 +25,6 @@ from datasette.utils import (
 connections = threading.local()
 ureg = pint.UnitRegistry()
 
-HASH_BLOCK_SIZE = 1024 * 1024
 HASH_LENGTH = 7
 
 

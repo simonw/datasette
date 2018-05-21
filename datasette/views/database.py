@@ -31,6 +31,10 @@ class DatabaseView(BaseView):
             ],
         }, {
             "database_hash": hash,
+            "database_url": "{}".format(name)
+            if self.ds.metadata.get("persistent_urls", "false") == "true"
+            else "{}-{}".format(name, hash),
+            "persistent_urls": metadata.get("persistent_urls", "false"),
             "show_hidden": request.args.get("_show_hidden"),
             "editable": True,
             "metadata": metadata,

@@ -115,17 +115,18 @@ class BaseView(RenderMixin):
             raise NotFound("Database not found: {}".format(name))
 
         expected = info["hash"][:HASH_LENGTH]
-        if expected != hash:
-            should_redirect = "/{}-{}".format(name, expected)
-            if "table" in kwargs:
-                should_redirect += "/" + kwargs["table"]
-            if "pk_path" in kwargs:
-                should_redirect += "/" + kwargs["pk_path"]
-            if "as_json" in kwargs:
-                should_redirect += kwargs["as_json"]
-            if "as_db" in kwargs:
-                should_redirect += kwargs["as_db"]
-            return name, expected, should_redirect
+        if self.ds.metadata.get("persistent_urls", "false") == "false":
+            if expected != hash:
+                should_redirect = "/{}-{}".format(name, expected)
+                if "table" in kwargs:
+                    should_redirect += "/" + kwargs["table"]
+                if "pk_path" in kwargs:
+                    should_redirect += "/" + kwargs["pk_path"]
+                if "as_json" in kwargs:
+                    should_redirect += kwargs["as_json"]
+                if "as_db" in kwargs:
+                    should_redirect += kwargs["as_db"]
+                return name, expected, should_redirect
 
         return name, expected, None
 

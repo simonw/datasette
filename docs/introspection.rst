@@ -81,7 +81,7 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://fi
 /-/plugins
 ----------
 
-Shows a list of currently installed plugins and their versions. Example::
+Shows a list of currently installed plugins and their versions. `Plugins example <https://san-francisco.datasettes.com/-/plugins>`_::
 
     [
         {
@@ -89,12 +89,6 @@ Shows a list of currently installed plugins and their versions. Example::
             "static": true,
             "templates": false,
             "version": "0.4"
-        },
-        {
-            "name": "datasette_plugin_demos",
-            "static": false,
-            "templates": true,
-            "version": "0.3"
         }
     ]
 

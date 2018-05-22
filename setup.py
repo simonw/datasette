@@ -38,6 +38,7 @@ setup(
         'hupper==1.0',
         'pint==0.8.1',
         'pluggy>=0.1.0,<1.0',
+        'pysqlite3==0.1.4',
     ],
     entry_points='''
         [console_scripts]

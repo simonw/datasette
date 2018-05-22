@@ -1,6 +1,8 @@
 from setuptools import setup, find_packages
 import os
 
+import versioneer
+
 
 def get_long_description():
     with open(os.path.join(
@@ -20,11 +22,12 @@ def get_version():
 
 setup(
     name='datasette',
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     description='An instant JSON API for your SQLite databases',
     long_description=get_long_description(),
     long_description_content_type='text/markdown',
     author='Simon Willison',
-    version=get_version(),
     license='Apache License, Version 2.0',
     url='https://github.com/simonw/datasette',
     packages=find_packages(),

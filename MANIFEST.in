@@ -1,1 +1,3 @@
 recursive-include datasette/static *
+include versioneer.py
+include datasette/_version.py

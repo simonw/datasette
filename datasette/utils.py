@@ -828,3 +828,56 @@ def value_as_boolean(value):
 
 class ValueAsBooleanError(ValueError):
     pass
+
+
+class Querystring:
+    def __init__(self, qs=None):
+        self.prev = None
+        self.data = []
+        if qs:
+            self.data = urllib.parse.parse_qsl(qs)
+
+    def first(self, key):
+        for item in self.data:
+            if item[0] == key:
+                return item[1]
+        raise KeyError
+
+    def last(self, key):
+        for item in reversed(self.data):
+            if item[0] == key:
+                return item[1]
+        raise KeyError
+
+    def getlist(self, key):
+        result = []
+        for item in self.data:
+            if item[0] == key:
+                result.append(item[1])
+        if not result:
+            raise KeyError
+        return result
+
+    def append(self, key, value):
+        self.data.append((key, value))
+
+    def remove(self, key):
+        self.data = [item for item in self.data if item[0] != key]
+
+    def replace(self, **kwargs):
+        for key, values in kwargs.items():
+            if not isinstance(values, list):
+                kwargs[key] = [values]
+        new_data = []
+        for key, value in self.data:
+            if key in kwargs:
+                new_data.append((key, kwargs[key]))
+            else:
+                new_data.append((key, value))
+        self.data = new_data
+
+    def __str__(self):
+        return urllib.parse.urlencode(self.data)
+
+    def __repr__(self):
+        return str(self)

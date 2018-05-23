@@ -1,21 +1,22 @@
-FROM python:3.6-slim-stretch as build
-
+FROM python:3.6-alpine as base
+FROM base as builder
 # Setup build dependencies
-RUN apt update
-RUN apt install -y python3-dev gcc libsqlite3-mod-spatialite
+RUN apk add --no-cache --virtual build-base python3-dev gcc libsqlite3-mod-spatialite
 # Add local code to the image instead of fetching from pypi.
 ADD . /datasette
 
-RUN pip install /datasette
+RUN mkdir /install
 
-FROM python:3.6-slim-stretch
+RUN pip install --install-option="--prefix=/install" /datasette
+
+WORKDIR /install
+
+FROM base
 
 # Copy python dependencies
-COPY --from=build /usr/local/lib/python3.6/site-packages /usr/local/lib/python3.6/site-packages
-# Copy executables
-COPY --from=build /usr/local/bin /usr/local/bin
-# Copy spatial extensions
-COPY --from=build /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
+COPY --from=builder /install /usr
+
+ENV PYTHONPATH=/usr/local/lib/python3.6/:/usr/lib/python3.6/site-packages
 
 EXPOSE 8001
 CMD ["datasette"]

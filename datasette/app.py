@@ -377,7 +377,7 @@ class Datasette:
         for fts in ("FTS5", "FTS4", "FTS3"):
             try:
                 conn.execute(
-                    "CREATE VIRTUAL TABLE v{fts} USING {fts} (t TEXT)".format(fts=fts)
+                    "CREATE VIRTUAL TABLE v{fts} USING {fts} (data)".format(fts=fts)
                 )
                 fts_versions.append(fts)
             except sqlite3.OperationalError:

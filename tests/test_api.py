@@ -7,6 +7,7 @@ from .fixtures import (
     METADATA,
 )
 import pytest
+import urllib
 
 pytest.fixture(scope='module')(app_client)
 pytest.fixture(scope='module')(app_client_shorter_time_limit)
@@ -533,6 +534,8 @@ def test_table_with_reserved_word_name(app_client):
     ('/test_tables/paginated_view.json?_size=25', 201, 9),
     ('/test_tables/paginated_view.json?_size=max', 201, 3),
     ('/test_tables/123_starts_with_digits.json', 0, 1),
+    # Ensure faceting doesn't break pagination:
+    ('/test_tables/compound_three_primary_keys.json?_facet=pk1', 1001, 21),
 ])
 def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
     fetched = []
@@ -545,8 +548,10 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
         path = response.json['next_url']
         if path:
             assert response.json['next']
-            assert '_next={}'.format(response.json['next']) in path
-        assert count < 10, 'Possible infinite loop detected'
+            assert urllib.parse.urlencode({
+                '_next': response.json['next']
+            }) in path
+        assert count < 30, 'Possible infinite loop detected'
 
     assert expected_rows == len(fetched)
     assert expected_pages == count

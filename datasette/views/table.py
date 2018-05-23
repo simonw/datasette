@@ -556,7 +556,7 @@ class TableView(RowTableShared):
             """.format(
                 col=escape_sqlite(column),
                 from_sql=from_sql,
-                and_or_where='and' if where_clause else 'where',
+                and_or_where='and' if from_sql_where_clauses else 'where',
                 limit=facet_size+1,
             )
             try:

@@ -194,7 +194,7 @@ class BaseView(RenderMixin):
                     return rows
 
             else:
-                return conn.execute(sql, params or {}, truncate=truncate)
+                return conn.execute(sql, params or {}, truncate=truncate, page_size=page_size)
 
         return await asyncio.get_event_loop().run_in_executor(
             self.executor, sql_operation_in_thread

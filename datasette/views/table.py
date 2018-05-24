@@ -244,44 +244,37 @@ class TableView(RowTableShared):
                 canned_query=table,
             )
 
-        is_view = False
-        try:
-            is_view = bool(
-                list(
-                    await self.execute(
-                        name,
-                        "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n",
-                        {"n": table},
-                    )
-                )[0][0]
-            )
-        except:
-            pass
+        is_view = bool(
+            list(
+                await self.execute(
+                    name,
+                    "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n",
+                    {"n": table},
+                )
+            )[0][0]
+        )
         view_definition = None
         table_definition = None
-        try:
-            if is_view:
-                view_definition = list(
-                    await self.execute(
-                        name,
-                        'select sql from sqlite_master where name = :n and type="view"',
-                        {"n": table},
-                    )
-                )[0][0]
-            else:
-                table_definition_rows = list(
-                    await self.execute(
-                        name,
-                        'select sql from sqlite_master where name = :n and type="table"',
-                        {"n": table},
-                    )
+        if is_view:
+            view_definition = list(
+                await self.execute(
+                    name,
+                    'select sql from sqlite_master where name = :n and type="view"',
+                    {"n": table},
                 )
-                if not table_definition_rows:
-                    raise NotFound("Table not found: {}".format(table))
+            )[0][0]
+        else:
+            table_definition_rows = list(
+                await self.execute(
+                    name,
+                    'select sql from sqlite_master where name = :n and type="table"',
+                    {"n": table},
+                )
+            )
+            if not table_definition_rows:
+                raise NotFound("Table not found: {}".format(table))
 
-                table_definition = table_definition_rows[0][0]
-        except:
-            pass
+            table_definition = table_definition_rows[0][0]
         info = self.ds.inspect()
         table_info = info[name]["tables"].get(table) or {}
         pks = table_info.get("primary_keys") or []

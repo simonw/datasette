@@ -107,6 +107,8 @@ class BaseView(RenderMixin):
                 hash = None
         else:
             name = db_name
+        if name == "memory":
+            return "memory", "", None
         # Verify the hash
         try:
             info = databases[name]
@@ -143,14 +145,25 @@ class BaseView(RenderMixin):
         def sql_operation_in_thread():
             conn = getattr(connections, db_name, None)
             if not conn:
-                info = self.ds.inspect()[db_name]
+                if db_name == "memory":
+                    filename = ":memory:"
+                else:
+                    info = self.ds.inspect()[db_name]
+                    filename = info["file"]
                 conn = sqlite3.connect(
-                    "file:{}?immutable=1".format(info["file"]),
+                    "file:{}?immutable=1".format(filename),
                     uri=True,
                     check_same_thread=False,
                 )
                 self.ds.prepare_connection(conn)
                 setattr(connections, db_name, conn)
+                if db_name == "memory":
+                    # Loop through and attach all the other DBs
+                    for dbname, dbinfo in self.ds.inspect().items():
+                        sql2 = 'ATTACH DATABASE "file:{}?immutable=1" AS [{}];'.format(
+                            dbinfo["file"], dbname
+                        )
+                        conn.execute(sql2)
 
             time_limit_ms = self.ds.sql_time_limit_ms
             if custom_time_limit and custom_time_limit < self.ds.sql_time_limit_ms:

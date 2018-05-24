@@ -16,7 +16,7 @@
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
+<form class="sql" action="/{{ database }}{% if database_hash %}-{{ database_hash }}{% endif %}" method="get">
     <h3>Custom SQL query</h3>
     <p><textarea name="sql">select * from {{ tables[0].name|escape_sqlite }}</textarea></p>
     <p><input type="submit" value="Run SQL"></p>

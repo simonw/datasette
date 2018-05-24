@@ -23,7 +23,7 @@
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ database }}</h1>
 
-<form class="sql" action="/{{ database }}-{{ database_hash }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="get">
+<form class="sql" action="/{{ database }}{% if database_hash %}-{{ database_hash }}{% endif %}{% if canned_query %}/{{ canned_query }}{% endif %}" method="get">
     <h3>Custom SQL query{% if rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(rows|length) }} row{% if rows|length == 1 %}{% else %}s{% endif %}{% endif %}</h3>
     {% if editable %}
         <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>

@@ -15,7 +15,17 @@ class DatabaseView(BaseView):
             validate_sql_select(sql)
             return await self.custom_sql(request, name, hash, sql)
 
-        info = self.ds.inspect()[name]
+        if name == "memory":
+            info = {"tables": {
+                "sqlite_master": {
+                    "name": "sqlite_master",
+                    "hidden": False,
+                    "columns": [],
+                    "count": 0,
+                }
+            }, "views": []}
+        else:
+            info = self.ds.inspect()[name]
         metadata = self.ds.metadata.get("databases", {}).get(name, {})
         self.ds.update_with_inherited_metadata(metadata)
         tables = list(info["tables"].values())

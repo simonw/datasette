@@ -367,6 +367,16 @@ def test_invalid_custom_sql(app_client):
     assert 'Statement must be a SELECT' == response.json['error']
 
 
+def test_allow_sql_off():
+    for client in app_client(config={
+        'allow_sql': False,
+    }):
+        assert 400 == client.get(
+            "/test_tables.json?sql=select+sleep(0.01)",
+            gather_request=False
+        ).status
+
+
 def test_table_json(app_client):
     response = app_client.get('/test_tables/simple_primary_key.json?_shape=objects', gather_request=False)
     assert response.status == 200
@@ -916,7 +926,8 @@ def test_config_json(app_client):
         "sql_time_limit_ms": 200,
         "allow_download": True,
         "allow_facet": True,
-        "suggest_facets": True
+        "suggest_facets": True,
+        "allow_sql": True,
     } == response.json
 
 

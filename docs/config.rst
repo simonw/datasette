@@ -85,3 +85,10 @@ allow_download
 Should users be able to download the original SQLite database using a link on the database index page? This is turned on by default - to disable database downloads, use the following::
 
     datasette mydatabase.db --config allow_download:off
+
+allow_sql
+---------
+
+Enable/disable the ability for users to run custom SQL directly against a database. To disable this feature, run::
+
+    datasette mydatabase.db --config allow_sql:off

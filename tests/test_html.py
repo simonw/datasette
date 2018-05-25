@@ -495,6 +495,27 @@ def test_allow_download_off():
         assert 403 == response.status
 
 
+def test_allow_sql_on(app_client):
+    response = app_client.get(
+        "/test_tables",
+        gather_request=False
+    )
+    soup = Soup(response.body, 'html.parser')
+    assert len(soup.findAll('textarea', {'name': 'sql'}))
+
+
+def test_allow_sql_off():
+    for client in app_client(config={
+        'allow_sql': False,
+    }):
+        response = client.get(
+            "/test_tables",
+            gather_request=False
+        )
+        soup = Soup(response.body, 'html.parser')
+        assert not len(soup.findAll('textarea', {'name': 'sql'}))
+
+
 def assert_querystring_equal(expected, actual):
     assert sorted(expected.split('&')) == sorted(actual.split('&'))
 

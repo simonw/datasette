@@ -80,6 +80,9 @@ CONFIG_OPTIONS = (
     ConfigOption("suggest_facets", True, """
         Calculate and display suggested facets
     """.strip()),
+    ConfigOption("allow_sql", True, """
+        Allow arbitrary SQL queries via ?sql= parameter
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default

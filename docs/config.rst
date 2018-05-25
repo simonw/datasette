@@ -14,7 +14,6 @@ The default number of rows returned by the table page. You can over-ride this on
 
     datasette mydatabase.db --config default_page_size:50
 
-
 sql_time_limit_ms
 -----------------
 
@@ -39,6 +38,17 @@ You can increase or decrease this limit like so::
 
     datasette mydatabase.db --config max_returned_rows:2000
 
+allow_facet
+-----------
+
+Allow users to specify columns they would like to facet on using the ``?_facet=COLNAME`` URL parameter to the table view.
+
+This is enabled by default. If disabled, facets will still be displayed if they have been specifically enabled in ``metadata.json`` configuration for the table.
+
+Here's how to disable this feature::
+
+    datasette mydatabase.db --config allow_facet:off
+
 default_facet_size
 ------------------
 
@@ -61,3 +71,17 @@ When Datasette calculates suggested facets it needs to run a SQL query for every
 You can increase this time limit like so::
 
     datasette mydatabase.db --config facet_suggest_time_limit_ms:500
+
+suggest_facets
+--------------
+
+Should Datasette calculate suggested facets? On by default, turn this off like so::
+
+    datasette mydatabase.db --config suggest_facets:off
+
+allow_download
+--------------
+
+Should users be able to download the original SQLite database using a link on the database index page? This is turned on by default - to disable database downloads, use the following::
+
+    datasette mydatabase.db --config allow_download:off

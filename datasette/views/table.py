@@ -542,6 +542,8 @@ class TableView(RowTableShared):
         facet_size = self.ds.config["default_facet_size"]
         metadata_facets = table_metadata.get("facets", [])
         facets = metadata_facets[:]
+        if request.args.get("_facet") and not self.ds.config["allow_facet"]:
+            raise DatasetteError("_facet= is not allowed", status=400)
         try:
             facets.extend(request.args["_facet"])
         except KeyError:
@@ -650,41 +652,44 @@ class TableView(RowTableShared):
 
             # Detect suggested facets
             suggested_facets = []
-            for facet_column in columns:
-                if facet_column in facets:
-                    continue
-                suggested_facet_sql = '''
-                    select distinct {column} {from_sql}
-                    {and_or_where} {column} is not null
-                    limit {limit}
-                '''.format(
-                    column=escape_sqlite(facet_column),
-                    from_sql=from_sql,
-                    and_or_where='and' if from_sql_where_clauses else 'where',
-                    limit=facet_size+1
-                )
-                distinct_values = None
-                try:
-                    distinct_values = await self.ds.execute(
-                        name, suggested_facet_sql, from_sql_params,
-                        truncate=False,
-                        custom_time_limit=self.ds.config["facet_suggest_time_limit_ms"],
+            if self.ds.config["suggest_facets"] and self.ds.config["allow_facet"]:
+                for facet_column in columns:
+                    if facet_column in facets:
+                        continue
+                    if not self.ds.config["suggest_facets"]:
+                        continue
+                    suggested_facet_sql = '''
+                        select distinct {column} {from_sql}
+                        {and_or_where} {column} is not null
+                        limit {limit}
+                    '''.format(
+                        column=escape_sqlite(facet_column),
+                        from_sql=from_sql,
+                        and_or_where='and' if from_sql_where_clauses else 'where',
+                        limit=facet_size+1
                     )
-                    num_distinct_values = len(distinct_values)
-                    if (
-                        num_distinct_values and
-                        num_distinct_values > 1 and
-                        num_distinct_values <= facet_size and
-                        num_distinct_values < filtered_table_rows_count
-                    ):
-                        suggested_facets.append({
-                            'name': facet_column,
-                            'toggle_url': path_with_added_args(
-                                request, {'_facet': facet_column}
-                            ),
-                        })
-                except InterruptedError:
-                    pass
+                    distinct_values = None
+                    try:
+                        distinct_values = await self.ds.execute(
+                            name, suggested_facet_sql, from_sql_params,
+                            truncate=False,
+                            custom_time_limit=self.ds.config["facet_suggest_time_limit_ms"],
+                        )
+                        num_distinct_values = len(distinct_values)
+                        if (
+                            num_distinct_values and
+                            num_distinct_values > 1 and
+                            num_distinct_values <= facet_size and
+                            num_distinct_values < filtered_table_rows_count
+                        ):
+                            suggested_facets.append({
+                                'name': facet_column,
+                                'toggle_url': path_with_added_args(
+                                    request, {'_facet': facet_column}
+                                ),
+                            })
+                    except InterruptedError:
+                        pass
 
         # human_description_en combines filters AND search, if provided
         human_description_en = filters.human_description_en(extra=search_descriptions)

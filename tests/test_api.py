@@ -914,6 +914,9 @@ def test_config_json(app_client):
         "facet_time_limit_ms": 200,
         "max_returned_rows": 100,
         "sql_time_limit_ms": 200,
+        "allow_download": True,
+        "allow_facet": True,
+        "suggest_facets": True
     } == response.json
 
 
@@ -1080,3 +1083,36 @@ def test_facets(app_client, path, expected_facet_results):
         for facet_value in facet_info["results"]:
             facet_value['toggle_url'] = facet_value['toggle_url'].split('?')[1]
     assert expected_facet_results == facet_results
+
+
+def test_suggested_facets(app_client):
+    assert len(app_client.get(
+        "/test_tables/facetable.json",
+        gather_request=False
+    ).json["suggested_facets"]) > 0
+
+
+def test_allow_facet_off():
+    for client in app_client(config={
+        'allow_facet': False,
+    }):
+        assert 400 == client.get(
+            "/test_tables/facetable.json?_facet=planet_int",
+            gather_request=False
+        ).status
+        # Should not suggest any facets either:
+        assert [] == client.get(
+            "/test_tables/facetable.json",
+            gather_request=False
+        ).json["suggested_facets"]
+
+
+def test_suggest_facets_off():
+    for client in app_client(config={
+        'suggest_facets': False,
+    }):
+        # Now suggested_facets should be []
+        assert [] == client.get(
+            "/test_tables/facetable.json",
+            gather_request=False
+        ).json["suggested_facets"]

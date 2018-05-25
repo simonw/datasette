@@ -4,7 +4,7 @@ from sanic import response
 
 from datasette.utils import to_css_class, validate_sql_select
 
-from .base import BaseView
+from .base import BaseView, DatasetteError
 
 
 class DatabaseView(BaseView):
@@ -29,6 +29,7 @@ class DatabaseView(BaseView):
                 {"name": query_name, "sql": query_sql}
                 for query_name, query_sql in (metadata.get("queries") or {}).items()
             ],
+            "config": self.ds.config,
         }, {
             "database_hash": hash,
             "show_hidden": request.args.get("_show_hidden"),
@@ -42,6 +43,8 @@ class DatabaseView(BaseView):
 class DatabaseDownload(BaseView):
 
     async def view_get(self, request, name, hash, **kwargs):
+        if not self.ds.config["allow_download"]:
+            raise DatasetteError("Database download is forbidden", status=403)
         filepath = self.ds.inspect()[name]["file"]
         return await response.file_stream(
             filepath,

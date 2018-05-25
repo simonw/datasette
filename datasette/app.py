@@ -71,6 +71,15 @@ CONFIG_OPTIONS = (
     ConfigOption("facet_suggest_time_limit_ms", 50, """
         Time limit for calculating a suggested facet
     """.strip()),
+    ConfigOption("allow_facet", True, """
+        Allow users to specify columns to facet using ?_facet= parameter
+    """.strip()),
+    ConfigOption("allow_download", True, """
+        Allow users to download the original SQLite database files
+    """.strip()),
+    ConfigOption("suggest_facets", True, """
+        Calculate and display suggested facets
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default

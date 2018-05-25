@@ -468,6 +468,33 @@ def test_table_metadata(app_client):
     assert_footer_links(soup)
 
 
+def test_allow_download_on(app_client):
+    response = app_client.get(
+        "/test_tables",
+        gather_request=False
+    )
+    soup = Soup(response.body, 'html.parser')
+    assert len(soup.findAll('a', {'href': re.compile('\.db$')}))
+
+
+def test_allow_download_off():
+    for client in app_client(config={
+        'allow_download': False,
+    }):
+        response = client.get(
+            "/test_tables",
+            gather_request=False
+        )
+        soup = Soup(response.body, 'html.parser')
+        assert not len(soup.findAll('a', {'href': re.compile('\.db$')}))
+        # Accessing URL directly should 403
+        response = client.get(
+            "/test_tables.db",
+            gather_request=False
+        )
+        assert 403 == response.status
+
+
 def assert_querystring_equal(expected, actual):
     assert sorted(expected.split('&')) == sorted(actual.split('&'))
 

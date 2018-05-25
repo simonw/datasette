@@ -309,4 +309,5 @@ class BaseView(RenderMixin):
             "named_parameter_values": named_parameter_values,
             "editable": editable,
             "canned_query": canned_query,
+            "config": self.ds.config,
         }, templates

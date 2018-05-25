@@ -1,3 +1,4 @@
+import asyncio
 import collections
 import hashlib
 import itertools
@@ -5,6 +6,7 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 import traceback
 import urllib.parse
 from concurrent import futures
@@ -26,10 +28,13 @@ from .views.table import RowView, TableView
 
 from . import hookspecs
 from .utils import (
+    InterruptedError,
+    Results,
     escape_css_string,
     escape_sqlite,
     get_plugins,
     module_from_path,
+    sqlite_timelimit,
     to_css_class
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
@@ -37,6 +42,7 @@ from .version import __version__
 
 app_root = Path(__file__).parent.parent
 
+connections = threading.local()
 
 pm = pluggy.PluginManager("datasette")
 pm.add_hookspecs(hookspecs)
@@ -284,6 +290,68 @@ class Datasette:
             }
             for p in get_plugins(pm)
         ]
+
+    async def execute(
+        self,
+        db_name,
+        sql,
+        params=None,
+        truncate=False,
+        custom_time_limit=None,
+        page_size=None,
+    ):
+        """Executes sql against db_name in a thread"""
+        page_size = page_size or self.page_size
+
+        def sql_operation_in_thread():
+            conn = getattr(connections, db_name, None)
+            if not conn:
+                info = self.inspect()[db_name]
+                conn = sqlite3.connect(
+                    "file:{}?immutable=1".format(info["file"]),
+                    uri=True,
+                    check_same_thread=False,
+                )
+                self.prepare_connection(conn)
+                setattr(connections, db_name, conn)
+
+            time_limit_ms = self.sql_time_limit_ms
+            if custom_time_limit and custom_time_limit < time_limit_ms:
+                time_limit_ms = custom_time_limit
+
+            with sqlite_timelimit(conn, time_limit_ms):
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(sql, params or {})
+                    max_returned_rows = self.max_returned_rows
+                    if max_returned_rows == page_size:
+                        max_returned_rows += 1
+                    if max_returned_rows and truncate:
+                        rows = cursor.fetchmany(max_returned_rows + 1)
+                        truncated = len(rows) > max_returned_rows
+                        rows = rows[:max_returned_rows]
+                    else:
+                        rows = cursor.fetchall()
+                        truncated = False
+                except sqlite3.OperationalError as e:
+                    if e.args == ('interrupted',):
+                        raise InterruptedError(e)
+                    print(
+                        "ERROR: conn={}, sql = {}, params = {}: {}".format(
+                            conn, repr(sql), params, e
+                        )
+                    )
+                    raise
+
+            if truncate:
+                return Results(rows, truncated, cursor.description)
+
+            else:
+                return Results(rows, False, cursor.description)
+
+        return await asyncio.get_event_loop().run_in_executor(
+            self.executor, sql_operation_in_thread
+        )
 
     def app(self):
         app = Sanic(__name__)

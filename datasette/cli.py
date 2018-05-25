@@ -41,12 +41,12 @@ class Config(click.ParamType):
         # Type checking
         default = DEFAULT_CONFIG[name]
         if isinstance(default, bool):
-            if value not in ('on', 'off', 'true', 'false', '1', '0'):
+            if value.lower() not in ('on', 'off', 'true', 'false', '1', '0'):
                 self.fail(
                     '"{}" should be on/off/true/false'.format(name), param, ctx
                 )
                 return
-            return name, value in ('on', 'true', '1')
+            return name, value.lower() in ('on', 'true', '1')
         elif isinstance(default, int):
             if not value.isdigit():
                 self.fail(

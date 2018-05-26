@@ -164,6 +164,10 @@ The Datasette table view takes a number of special querystring arguments:
     long, for example if you want to implement autocomplete search but only if
     it can be executed in less than 10ms.
 
+``?_ttl=SECONDS``
+    For how many seconds should this response be cached by HTTP proxies? Use
+    ``?_ttl=0`` to disable HTTP caching entirely for this request.
+
 ``?_next=TOKEN``
     Pagination by continuation token - pass the token that was returned in the
     ``"next"`` property by the previous page.

@@ -928,6 +928,7 @@ def test_config_json(app_client):
         "allow_facet": True,
         "suggest_facets": True,
         "allow_sql": True,
+        "default_cache_ttl": 365 * 24 * 60 * 60,
     } == response.json
 
 
@@ -1127,3 +1128,14 @@ def test_suggest_facets_off():
             "/test_tables/facetable.json",
             gather_request=False
         ).json["suggested_facets"]
+
+
+@pytest.mark.parametrize('path,expected_cache_control', [
+    ("/test_tables/facetable.json", "max-age=31536000"),
+    ("/test_tables/facetable.json?_ttl=invalid", "max-age=31536000"),
+    ("/test_tables/facetable.json?_ttl=10", "max-age=10"),
+    ("/test_tables/facetable.json?_ttl=0", "no-cache"),
+])
+def test_ttl_parameter(app_client, path, expected_cache_control):
+    response = app_client.get(path, gather_request=False)
+    assert expected_cache_control == response.headers['Cache-Control']

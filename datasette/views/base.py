@@ -257,7 +257,17 @@ class BaseView(RenderMixin):
             r.status = status_code
         # Set far-future cache expiry
         if self.ds.cache_headers:
-            r.headers["Cache-Control"] = "max-age={}".format(365 * 24 * 60 * 60)
+            ttl = request.args.get("_ttl", None)
+            if ttl is None or not ttl.isdigit():
+                ttl = self.ds.config["default_cache_ttl"]
+            else:
+                ttl = int(ttl)
+            if ttl == 0:
+                ttl_header = 'no-cache'
+            else:
+                ttl_header = 'max-age={}'.format(ttl)
+            r.headers["Cache-Control"] = ttl_header
+        r.headers["Referrer-Policy"] = "no-referrer"
         return r
 
     async def custom_sql(

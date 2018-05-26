@@ -83,6 +83,9 @@ CONFIG_OPTIONS = (
     ConfigOption("allow_sql", True, """
         Allow arbitrary SQL queries via ?sql= parameter
     """.strip()),
+    ConfigOption("default_cache_ttl", 365 * 24 * 60 * 60, """
+        Default HTTP cache TTL (used in Cache-Control: max-age= header)
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default

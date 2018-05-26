@@ -92,3 +92,12 @@ allow_sql
 Enable/disable the ability for users to run custom SQL directly against a database. To disable this feature, run::
 
     datasette mydatabase.db --config allow_sql:off
+
+default_cache_ttl
+-----------------
+
+Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-age=X``. Can be over-ridden on a per-request basis using the ``?_ttl=`` querystring parameter. Set this to ``0`` to disable HTTP caching entirely. Defaults to 365 days (31536000 seconds).
+
+::
+
+    datasette mydatabase.db --config default_cache_ttl:10

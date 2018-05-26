@@ -34,6 +34,6 @@ SpatiaLite is packaged for most Linux distributions.
 
 Depending on your distribution, you should be able to run Datasette something like this::
 
-    datasette --load-extenison=/usr/lib/x86_64-linux-gnu/mod_spatialite.so
+    datasette --load-extension=/usr/lib/x86_64-linux-gnu/mod_spatialite.so
 
 If you are unsure of the location of the module, try running ``locate mod_spatialite`` and see what comes back.

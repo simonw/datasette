@@ -43,7 +43,7 @@ You can also specify a SRI (subresource integrity hash) for these assets::
     }
 
 Modern browsers will only execute the stylesheet or JavaScript if the SRI hash
-matches the content served. You can generate hashes using www.srihash.org
+matches the content served. You can generate hashes using `www.srihash.org <https://www.srihash.org/>`_
 
 Every default template includes CSS classes in the body designed to support
 custom styling.

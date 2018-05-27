@@ -59,6 +59,9 @@ CONFIG_OPTIONS = (
     ConfigOption("max_returned_rows", 1000, """
         Maximum rows that can be returned from a table or custom query
     """.strip()),
+    ConfigOption("num_sql_threads", 3, """
+        Number of threads in the thread pool for executing SQLite queries
+    """.strip()),
     ConfigOption("sql_time_limit_ms", 1000, """
         Time limit for a SQL query in milliseconds
     """.strip()),
@@ -124,7 +127,6 @@ class Datasette:
     def __init__(
         self,
         files,
-        num_threads=3,
         cache_headers=True,
         cors=False,
         inspect_data=None,
@@ -136,8 +138,6 @@ class Datasette:
         config=None,
     ):
         self.files = files
-        self.num_threads = num_threads
-        self.executor = futures.ThreadPoolExecutor(max_workers=num_threads)
         self.cache_headers = cache_headers
         self.cors = cors
         self._inspect = inspect_data
@@ -148,6 +148,9 @@ class Datasette:
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
         self.config = dict(DEFAULT_CONFIG, **(config or {}))
+        self.executor = futures.ThreadPoolExecutor(
+            max_workers=self.config["num_sql_threads"]
+        )
         self.max_returned_rows = self.config["max_returned_rows"]
         self.sql_time_limit_ms = self.config["sql_time_limit_ms"]
         self.page_size = self.config["default_page_size"]

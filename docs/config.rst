@@ -38,6 +38,15 @@ You can increase or decrease this limit like so::
 
     datasette mydatabase.db --config max_returned_rows:2000
 
+num_sql_threads
+---------------
+
+Maximum number of threads in the thread pool Datasette uses to execute SQLite queries. Defaults to 3.
+
+::
+
+    datasette mydatabase.db --config num_sql_threads:10
+
 allow_facet
 -----------
 

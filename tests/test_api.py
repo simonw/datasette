@@ -940,6 +940,7 @@ def test_config_json(app_client):
         "suggest_facets": True,
         "allow_sql": True,
         "default_cache_ttl": 365 * 24 * 60 * 60,
+        "num_sql_threads": 3,
     } == response.json
 
 

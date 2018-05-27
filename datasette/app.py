@@ -189,15 +189,25 @@ class Datasette:
             return {"name": query_name, "sql": query}
 
     def asset_urls(self, key):
-        urls_or_dicts = (self.metadata.get(key) or [])
         # Flatten list-of-lists from plugins:
-        urls_or_dicts += list(itertools.chain.from_iterable(getattr(pm.hook, key)()))
-        for url_or_dict in urls_or_dicts:
+        seen_urls = set()
+        for url_or_dict in itertools.chain(
+            itertools.chain.from_iterable(getattr(pm.hook, key)()),
+            (self.metadata.get(key) or [])
+        ):
             if isinstance(url_or_dict, dict):
-                yield {"url": url_or_dict["url"], "sri": url_or_dict.get("sri")}
-
+                url = url_or_dict["url"]
+                sri = url_or_dict.get("sri")
             else:
-                yield {"url": url_or_dict}
+                url = url_or_dict
+                sri = None
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            if sri:
+                yield {"url": url, "sri": sri}
+            else:
+                yield {"url": url}
 
     def extra_css_urls(self):
         return self.asset_urls("extra_css_urls")

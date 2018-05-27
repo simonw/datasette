@@ -277,16 +277,50 @@ class TableView(RowTableShared):
             table_definition = table_definition_rows[0][0]
         info = self.ds.inspect()
         table_info = info[name]["tables"].get(table) or {}
+        table_metadata = self.table_metadata(name, table)
         pks = table_info.get("primary_keys") or []
         use_rowid = not pks and not is_view
+
+        # Figure out which columns to select and how
+        meta_columns = table_metadata.get("columns") or []
+        meta_column_selects = table_metadata.get("column_selects") or {}
+        columns_for_faceting = []
+        if not meta_columns:
+            meta_columns = table_info.get("columns", [])
+        if not meta_columns:
+            select_fragments = ['*']
+        else:
+            # Totally failed to detect event inspected columns
+            select_fragments = []
+            meta_column_selects_seen = set()
+            for col in meta_columns:
+                fragment = escape_sqlite(col)
+                if col in meta_column_selects:
+                    fragment = '{} as {}'.format(
+                        meta_column_selects[col], escape_sqlite(col)
+                    )
+                    meta_column_selects_seen.add(col)
+                    columns_for_faceting.append(meta_column_selects[col])
+                else:
+                    columns_for_faceting.append(col)
+                select_fragments.append(fragment)
+            # Anything left in meta_column_selects should be tagged on the end
+            for col, fragment in meta_column_selects.items():
+                if col not in meta_column_selects_seen:
+                    meta_column_selects_seen.add(col)
+                    select_fragments.append('{} as {}'.format(
+                        fragment, escape_sqlite(col)
+                    ))
+                    columns_for_faceting.append(fragment)
+
         if use_rowid:
-            select = "rowid, *"
+            select_fragments.insert(0, 'rowid')
             order_by = "rowid"
             order_by_pks = "rowid"
         else:
-            select = "*"
             order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
             order_by = order_by_pks
+        select = ', '.join(select_fragments)
 
         if is_view:
             order_by = ""
@@ -334,7 +368,6 @@ class TableView(RowTableShared):
                 forward_querystring=False,
             )
 
-        table_metadata = self.table_metadata(name, table)
         units = table_metadata.get("units", {})
         filters = Filters(sorted(other_args.items()), units, ureg)
         where_clauses, params = filters.build_where_clauses()
@@ -653,7 +686,7 @@ class TableView(RowTableShared):
             # Detect suggested facets
             suggested_facets = []
             if self.ds.config["suggest_facets"] and self.ds.config["allow_facet"]:
-                for facet_column in columns:
+                for facet_column in (columns_for_faceting or columns):
                     if facet_column in facets:
                         continue
                     if not self.ds.config["suggest_facets"]:
@@ -663,7 +696,7 @@ class TableView(RowTableShared):
                         {and_or_where} {column} is not null
                         limit {limit}
                     '''.format(
-                        column=escape_sqlite(facet_column),
+                        column=columns_for_faceting and facet_column or escape_sqlite(facet_column),
                         from_sql=from_sql,
                         and_or_where='and' if from_sql_where_clauses else 'where',
                         limit=facet_size+1

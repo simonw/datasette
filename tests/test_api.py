@@ -433,6 +433,17 @@ def test_table_shape_arrays(app_client):
     ] == response.json['rows']
 
 
+def test_table_shape_arrayfirst(app_client):
+    response = app_client.get(
+        '/test_tables.json?' + urllib.parse.urlencode({
+            'sql': 'select content from simple_primary_key order by id',
+            '_shape': 'arrayfirst'
+        }),
+        gather_request=False
+    )
+    assert ['hello', 'world', ''] == response.json
+
+
 def test_table_shape_objects(app_client):
     response = app_client.get(
         '/test_tables/simple_primary_key.json?_shape=objects',

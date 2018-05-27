@@ -62,6 +62,7 @@ options:
 * ``?_shape=arrays`` - ``"rows"`` is the default option, shown above
 * ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects
 * ``?_shape=array`` - the entire response is an array of objects
+* ``?_shape=arrayfirst`` - the entire response is a flat JSON array containing just the first value from each row
 * ``?_shape=object`` - the entire response is a JSON object keyed using the primary keys of the rows
 
 ``objects`` looks like this::
@@ -101,6 +102,10 @@ options:
             "value": "Pinus radiata :: Monterey Pine"
         }
     ]
+
+``arrayfirst`` looks like this::
+
+    [1, 2, 3]
 
 ``object`` looks like this::
 

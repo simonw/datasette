@@ -185,7 +185,9 @@ class BaseView(RenderMixin):
 
             # Deal with the _shape option
             shape = request.args.get("_shape", "arrays")
-            if shape in ("objects", "object", "array"):
+            if shape == "arrayfirst":
+                data = [row[0] for row in data["rows"]]
+            elif shape in ("objects", "object", "array"):
                 columns = data.get("columns")
                 rows = data.get("rows")
                 if rows and columns:

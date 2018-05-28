@@ -17,7 +17,8 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
         os.chdir(os.path.dirname(filepath))
         plugins_dir = os.path.join(tmpdir, 'plugins')
         os.mkdir(plugins_dir)
-        open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN)
+        open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN1)
+        open(os.path.join(plugins_dir, 'my_plugin_2.py'), 'w').write(PLUGIN2)
         config = config or {}
         config.update({
             'default_page_size': 50,
@@ -114,7 +115,7 @@ METADATA = {
     }
 }
 
-PLUGIN = '''
+PLUGIN1 = '''
 from datasette import hookimpl
 import pint
 
@@ -137,9 +138,21 @@ def extra_css_urls():
 @hookimpl
 def extra_js_urls():
     return [{
-        'url': 'https://example.com/app.js',
+        'url': 'https://example.com/jquery.js',
         'sri': 'SRIHASH',
-    }]
+    }, 'https://example.com/plugin1.js']
+'''
+
+PLUGIN2 = '''
+from datasette import hookimpl
+
+
+@hookimpl
+def extra_js_urls():
+    return [{
+        'url': 'https://example.com/jquery.js',
+        'sri': 'SRIHASH',
+    }, 'https://example.com/plugin2.js']
 '''
 
 TABLES = '''

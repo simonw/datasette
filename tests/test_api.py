@@ -9,9 +9,9 @@ from .fixtures import (
 import pytest
 import urllib
 
-pytest.fixture(scope='module')(app_client)
-pytest.fixture(scope='module')(app_client_shorter_time_limit)
-pytest.fixture(scope='module')(app_client_returend_rows_matches_page_size)
+pytest.fixture(scope='session')(app_client)
+pytest.fixture(scope='session')(app_client_shorter_time_limit)
+pytest.fixture(scope='session')(app_client_returend_rows_matches_page_size)
 
 
 def test_homepage(app_client):

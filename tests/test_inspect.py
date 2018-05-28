@@ -35,7 +35,7 @@ CREATE TABLE "office" (
 '''
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='session')
 def ds_instance():
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, 'test_tables.db')

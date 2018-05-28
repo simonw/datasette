@@ -4,7 +4,7 @@ import pytest
 import re
 import urllib.parse
 
-pytest.fixture(scope='module')(app_client)
+pytest.fixture(scope='session')(app_client)
 
 
 def test_homepage(app_client):

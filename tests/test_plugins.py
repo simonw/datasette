@@ -15,6 +15,31 @@ def test_plugins_dir_plugin(app_client):
     assert pytest.approx(328.0839) == response.json['rows'][0][0]
 
 
+def test_plugin_extra_css_urls(app_client):
+    response = app_client.get('/', gather_request=False)
+    links = Soup(response.body, 'html.parser').findAll('link')
+    assert [
+        l for l in links
+        if l.attrs == {
+            'rel': ['stylesheet'],
+            'href': 'https://example.com/app.css'
+        }
+    ]
+
+
+def test_plugin_extra_js_urls(app_client):
+    response = app_client.get('/', gather_request=False)
+    scripts = Soup(response.body, 'html.parser').findAll('script')
+    assert [
+        s for s in scripts
+        if s.attrs == {
+            'integrity': 'SRIHASH',
+            'crossorigin': 'anonymous',
+            'src': 'https://example.com/jquery.js'
+        }
+    ]
+
+
 def test_plugins_with_duplicate_js_urls(app_client):
     # If two plugins both require jQuery, jQuery should be loaded only once
     response = app_client.get(

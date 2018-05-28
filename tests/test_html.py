@@ -416,19 +416,6 @@ def test_view_html(app_client):
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
-def test_plugin_extra_css_urls(app_client):
-    response = app_client.get('/', gather_request=False)
-    assert b'<link rel="stylesheet" href="https://example.com/app.css">' in response.body
-
-
-def test_plugin_extra_js_urls(app_client):
-    response = app_client.get('/', gather_request=False)
-    assert (
-        b'<script src="https://example.com/app.js" integrity="SRIHASH" crossorigin="anonymous"></script>'
-        in response.body
-    )
-
-
 def test_index_metadata(app_client):
     response = app_client.get('/', gather_request=False)
     assert response.status == 200

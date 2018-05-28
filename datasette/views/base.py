@@ -27,11 +27,12 @@ HASH_LENGTH = 7
 
 class DatasetteError(Exception):
 
-    def __init__(self, message, title=None, error_dict=None, status=500, template=None):
+    def __init__(self, message, title=None, error_dict=None, status=500, template=None, messagge_is_html=False):
         self.message = message
         self.title = title
         self.error_dict = error_dict or {}
         self.status = status
+        self.messagge_is_html = messagge_is_html
 
 
 class RenderMixin(HTTPMethodView):
@@ -154,7 +155,11 @@ class BaseView(RenderMixin):
             else:
                 data, extra_template_data, templates = response_or_template_contexts
         except InterruptedError as e:
-            raise DatasetteError(str(e), title="SQL Interrupted", status=400)
+            raise DatasetteError("""
+                SQL query took too long. The time limit is controlled by the
+                <a href="https://datasette.readthedocs.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
+                configuration option.
+            """, title="SQL Interrupted", status=400, messagge_is_html=True)
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 

@@ -12,6 +12,7 @@ import urllib.parse
 from concurrent import futures
 from pathlib import Path
 
+from markupsafe import Markup
 import pluggy
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from sanic import Sanic, response
@@ -461,6 +462,7 @@ class Datasette:
         @app.exception(Exception)
         def on_exception(request, exception):
             title = None
+            help = None
             if isinstance(exception, NotFound):
                 status = 404
                 info = {}
@@ -473,6 +475,8 @@ class Datasette:
                 status = exception.status
                 info = exception.error_dict
                 message = exception.message
+                if exception.messagge_is_html:
+                    message = Markup(message)
                 title = exception.title
             else:
                 status = 500

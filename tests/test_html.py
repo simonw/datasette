@@ -1,10 +1,11 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client
+from .fixtures import app_client, app_client_shorter_time_limit
 import pytest
 import re
 import urllib.parse
 
 pytest.fixture(scope='session')(app_client)
+pytest.fixture(scope='session')(app_client_shorter_time_limit)
 
 
 def test_homepage(app_client):
@@ -27,6 +28,18 @@ def test_invalid_custom_sql(app_client):
     )
     assert response.status == 400
     assert 'Statement must be a SELECT' in response.text
+
+
+def test_sql_time_limit(app_client_shorter_time_limit):
+    response = app_client_shorter_time_limit.get(
+        '/test_tables?sql=select+sleep(0.5)',
+        gather_request=False
+    )
+    assert 400 == response.status
+    expected_html_fragment = """
+        <a href="https://datasette.readthedocs.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
+    """.strip()
+    assert expected_html_fragment in response.text
 
 
 def test_view(app_client):

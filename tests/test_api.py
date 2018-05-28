@@ -1151,3 +1151,39 @@ def test_suggest_facets_off():
 def test_ttl_parameter(app_client, path, expected_cache_control):
     response = app_client.get(path, gather_request=False)
     assert expected_cache_control == response.headers['Cache-Control']
+
+
+test_json_columns_default_expected = [{
+    "intval": 1,
+    "strval": "s",
+    "floatval": 0.5,
+    "jsonval": "{\"foo\": \"bar\"}"
+}]
+
+
+@pytest.mark.parametrize("extra_args,expected", [
+    ("", test_json_columns_default_expected),
+    ("&_json=intval", test_json_columns_default_expected),
+    ("&_json=strval", test_json_columns_default_expected),
+    ("&_json=floatval", test_json_columns_default_expected),
+    ("&_json=jsonval", [{
+        "intval": 1,
+        "strval": "s",
+        "floatval": 0.5,
+        "jsonval": {
+            "foo": "bar"
+        }
+    }])
+])
+def test_json_columns(app_client, extra_args, expected):
+    sql = '''
+        select 1 as intval, "s" as strval, 0.5 as floatval,
+        '{"foo": "bar"}' as jsonval
+    '''
+    path = "/test_tables.json?" + urllib.parse.urlencode({
+        "sql": sql,
+        "_shape": "array"
+    })
+    path += extra_args
+    response = app_client.get(path, gather_request=False)
+    assert expected == response.json

@@ -183,6 +183,15 @@ class BaseView(RenderMixin):
                     forward_querystring=False,
                 )
 
+            # Handle the _json= parameter which may modify data["rows"]
+            json_cols = []
+            if "_json" in request.args:
+                json_cols = request.args["_json"]
+            if json_cols and "rows" in data and "columns" in data:
+                data["rows"] = convert_specific_columns_to_json(
+                    data["rows"], data["columns"], json_cols,
+                )
+
             # Deal with the _shape option
             shape = request.args.get("_shape", "arrays")
             if shape == "arrayfirst":
@@ -323,3 +332,22 @@ class BaseView(RenderMixin):
             "canned_query": canned_query,
             "config": self.ds.config,
         }, templates
+
+
+def convert_specific_columns_to_json(rows, columns, json_cols):
+    json_cols = set(json_cols)
+    if not json_cols.intersection(columns):
+        return rows
+    new_rows = []
+    for row in rows:
+        new_row = []
+        for value, column in zip(row, columns):
+            if column in json_cols:
+                try:
+                    value = json.loads(value)
+                except (TypeError, ValueError) as e:
+                    print(e)
+                    pass
+            new_row.append(value)
+        new_rows.append(new_row)
+    return new_rows

@@ -131,6 +131,33 @@ this format.
 The ``object`` keys are always strings. If your table has a compound primary
 key, the ``object`` keys will be a comma-separated string.
 
+Special JSON arguments
+----------------------
+
+Every Datasette endpoint that can return JSON also accepts the following
+querystring arguments:
+
+``?_shape=SHAPE``
+    The shape of the JSON to return, documented above.
+
+``?_json=COLUMN1&_json=COLUMN2``
+    If any of your SQLite columns contain JSON values, you can use one or more
+    ``_json=`` parameters to request that those columns be returned as regular
+    JSON. Without this argument those columns will be returned as JSON objects
+    that have been double-encoded into a JSON string value.
+
+    Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
+
+``?_timelimit=MS``
+    Sets a custom time limit for the query in ms. You can use this for optimistic
+    queries where you would like Datasette to give up if the query takes too
+    long, for example if you want to implement autocomplete search but only if
+    it can be executed in less than 10ms.
+
+``?_ttl=SECONDS``
+    For how many seconds should this response be cached by HTTP proxies? Use
+    ``?_ttl=0`` to disable HTTP caching entirely for this request.
+
 Special table arguments
 -----------------------
 
@@ -162,16 +189,6 @@ The Datasette table view takes a number of special querystring arguments:
 ``?_group_count=COLUMN1&_group_count=column2``
     You can pass multiple ``_group_count`` columns to return counts against
     unique combinations of those columns.
-
-``?_timelimit=MS``
-    Sets a custom time limit for the query in ms. You can use this for optimistic
-    queries where you would like Datasette to give up if the query takes too
-    long, for example if you want to implement autocomplete search but only if
-    it can be executed in less than 10ms.
-
-``?_ttl=SECONDS``
-    For how many seconds should this response be cached by HTTP proxies? Use
-    ``?_ttl=0`` to disable HTTP caching entirely for this request.
 
 ``?_next=TOKEN``
     Pagination by continuation token - pass the token that was returned in the

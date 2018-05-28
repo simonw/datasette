@@ -36,6 +36,19 @@ class InterruptedError(Exception):
     pass
 
 
+class Results:
+    def __init__(self, rows, truncated, description):
+        self.rows = rows
+        self.truncated = truncated
+        self.description = description
+
+    def __iter__(self):
+        return iter(self.rows)
+
+    def __len__(self):
+        return len(self.rows)
+
+
 def urlsafe_components(token):
     "Splits token on commas and URL decodes each component"
     return [

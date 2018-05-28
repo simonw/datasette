@@ -21,6 +21,7 @@ Contents
    sql_queries
    facets
    full_text_search
+   spatialite
    metadata
    config
    introspection

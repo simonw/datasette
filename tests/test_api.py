@@ -7,6 +7,7 @@ from .fixtures import (
     METADATA,
 )
 import pytest
+import urllib
 
 pytest.fixture(scope='module')(app_client)
 pytest.fixture(scope='module')(app_client_shorter_time_limit)
@@ -366,6 +367,16 @@ def test_invalid_custom_sql(app_client):
     assert 'Statement must be a SELECT' == response.json['error']
 
 
+def test_allow_sql_off():
+    for client in app_client(config={
+        'allow_sql': False,
+    }):
+        assert 400 == client.get(
+            "/test_tables.json?sql=select+sleep(0.01)",
+            gather_request=False
+        ).status
+
+
 def test_table_json(app_client):
     response = app_client.get('/test_tables/simple_primary_key.json?_shape=objects', gather_request=False)
     assert response.status == 200
@@ -420,6 +431,17 @@ def test_table_shape_arrays(app_client):
         ['2', 'world'],
         ['3', ''],
     ] == response.json['rows']
+
+
+def test_table_shape_arrayfirst(app_client):
+    response = app_client.get(
+        '/test_tables.json?' + urllib.parse.urlencode({
+            'sql': 'select content from simple_primary_key order by id',
+            '_shape': 'arrayfirst'
+        }),
+        gather_request=False
+    )
+    assert ['hello', 'world', ''] == response.json
 
 
 def test_table_shape_objects(app_client):
@@ -533,6 +555,8 @@ def test_table_with_reserved_word_name(app_client):
     ('/test_tables/paginated_view.json?_size=25', 201, 9),
     ('/test_tables/paginated_view.json?_size=max', 201, 3),
     ('/test_tables/123_starts_with_digits.json', 0, 1),
+    # Ensure faceting doesn't break pagination:
+    ('/test_tables/compound_three_primary_keys.json?_facet=pk1', 1001, 21),
 ])
 def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
     fetched = []
@@ -545,8 +569,10 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
         path = response.json['next_url']
         if path:
             assert response.json['next']
-            assert '_next={}'.format(response.json['next']) in path
-        assert count < 10, 'Possible infinite loop detected'
+            assert urllib.parse.urlencode({
+                '_next': response.json['next']
+            }) in path
+        assert count < 30, 'Possible infinite loop detected'
 
     assert expected_rows == len(fetched)
     assert expected_pages == count
@@ -909,6 +935,12 @@ def test_config_json(app_client):
         "facet_time_limit_ms": 200,
         "max_returned_rows": 100,
         "sql_time_limit_ms": 200,
+        "allow_download": True,
+        "allow_facet": True,
+        "suggest_facets": True,
+        "allow_sql": True,
+        "default_cache_ttl": 365 * 24 * 60 * 60,
+        "num_sql_threads": 3,
     } == response.json
 
 
@@ -1075,3 +1107,47 @@ def test_facets(app_client, path, expected_facet_results):
         for facet_value in facet_info["results"]:
             facet_value['toggle_url'] = facet_value['toggle_url'].split('?')[1]
     assert expected_facet_results == facet_results
+
+
+def test_suggested_facets(app_client):
+    assert len(app_client.get(
+        "/test_tables/facetable.json",
+        gather_request=False
+    ).json["suggested_facets"]) > 0
+
+
+def test_allow_facet_off():
+    for client in app_client(config={
+        'allow_facet': False,
+    }):
+        assert 400 == client.get(
+            "/test_tables/facetable.json?_facet=planet_int",
+            gather_request=False
+        ).status
+        # Should not suggest any facets either:
+        assert [] == client.get(
+            "/test_tables/facetable.json",
+            gather_request=False
+        ).json["suggested_facets"]
+
+
+def test_suggest_facets_off():
+    for client in app_client(config={
+        'suggest_facets': False,
+    }):
+        # Now suggested_facets should be []
+        assert [] == client.get(
+            "/test_tables/facetable.json",
+            gather_request=False
+        ).json["suggested_facets"]
+
+
+@pytest.mark.parametrize('path,expected_cache_control', [
+    ("/test_tables/facetable.json", "max-age=31536000"),
+    ("/test_tables/facetable.json?_ttl=invalid", "max-age=31536000"),
+    ("/test_tables/facetable.json?_ttl=10", "max-age=10"),
+    ("/test_tables/facetable.json?_ttl=0", "no-cache"),
+])
+def test_ttl_parameter(app_client, path, expected_cache_control):
+    response = app_client.get(path, gather_request=False)
+    assert expected_cache_control == response.headers['Cache-Control']

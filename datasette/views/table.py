@@ -73,7 +73,7 @@ class RowTableShared(BaseView):
             placeholders=", ".join(["?"] * len(set(values))),
         )
         try:
-            results = await self.execute(
+            results = await self.ds.execute(
                 database, sql, list(set(values))
             )
         except InterruptedError:
@@ -132,7 +132,7 @@ class RowTableShared(BaseView):
                     placeholders=", ".join(["?"] * len(ids_to_lookup)),
                 )
                 try:
-                    results = await self.execute(
+                    results = await self.ds.execute(
                         database, sql, list(set(ids_to_lookup))
                     )
                 except InterruptedError:
@@ -246,7 +246,7 @@ class TableView(RowTableShared):
 
         is_view = bool(
             list(
-                await self.execute(
+                await self.ds.execute(
                     name,
                     "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n",
                     {"n": table},
@@ -257,7 +257,7 @@ class TableView(RowTableShared):
         table_definition = None
         if is_view:
             view_definition = list(
-                await self.execute(
+                await self.ds.execute(
                     name,
                     'select sql from sqlite_master where name = :n and type="view"',
                     {"n": table},
@@ -265,7 +265,7 @@ class TableView(RowTableShared):
             )[0][0]
         else:
             table_definition_rows = list(
-                await self.execute(
+                await self.ds.execute(
                     name,
                     'select sql from sqlite_master where name = :n and type="table"',
                     {"n": table},
@@ -534,7 +534,7 @@ class TableView(RowTableShared):
         if request.raw_args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.raw_args["_timelimit"])
 
-        rows, truncated, description = await self.execute(
+        results = await self.ds.execute(
             name, sql, params, truncate=True, **extra_args
         )
 
@@ -542,6 +542,8 @@ class TableView(RowTableShared):
         facet_size = self.ds.config["default_facet_size"]
         metadata_facets = table_metadata.get("facets", [])
         facets = metadata_facets[:]
+        if request.args.get("_facet") and not self.ds.config["allow_facet"]:
+            raise DatasetteError("_facet= is not allowed", status=400)
         try:
             facets.extend(request.args["_facet"])
         except KeyError:
@@ -556,11 +558,11 @@ class TableView(RowTableShared):
             """.format(
                 col=escape_sqlite(column),
                 from_sql=from_sql,
-                and_or_where='and' if where_clause else 'where',
+                and_or_where='and' if from_sql_where_clauses else 'where',
                 limit=facet_size+1,
             )
             try:
-                facet_rows = await self.execute(
+                facet_rows_results = await self.ds.execute(
                     name, facet_sql, params,
                     truncate=False,
                     custom_time_limit=self.ds.config["facet_time_limit_ms"],
@@ -569,9 +571,9 @@ class TableView(RowTableShared):
                 facet_results[column] = {
                     "name": column,
                     "results": facet_results_values,
-                    "truncated": len(facet_rows) > facet_size,
+                    "truncated": len(facet_rows_results) > facet_size,
                 }
-                facet_rows = facet_rows[:facet_size]
+                facet_rows = facet_rows_results.rows[:facet_size]
                 # Attempt to expand foreign keys into labels
                 values = [row["value"] for row in facet_rows]
                 expanded = (await self.expand_foreign_keys(
@@ -602,8 +604,8 @@ class TableView(RowTableShared):
             except InterruptedError:
                 facets_timed_out.append(column)
 
-        columns = [r[0] for r in description]
-        rows = list(rows)
+        columns = [r[0] for r in results.description]
+        rows = list(results.rows)
 
         filter_columns = columns[:]
         if use_rowid and filter_columns[0] == "rowid":
@@ -641,7 +643,7 @@ class TableView(RowTableShared):
         filtered_table_rows_count = None
         if count_sql:
             try:
-                count_rows = list(await self.execute(
+                count_rows = list(await self.ds.execute(
                     name, count_sql, from_sql_params
                 ))
                 filtered_table_rows_count = count_rows[0][0]
@@ -650,41 +652,44 @@ class TableView(RowTableShared):
 
             # Detect suggested facets
             suggested_facets = []
-            for facet_column in columns:
-                if facet_column in facets:
-                    continue
-                suggested_facet_sql = '''
-                    select distinct {column} {from_sql}
-                    {and_or_where} {column} is not null
-                    limit {limit}
-                '''.format(
-                    column=escape_sqlite(facet_column),
-                    from_sql=from_sql,
-                    and_or_where='and' if from_sql_where_clauses else 'where',
-                    limit=facet_size+1
-                )
-                distinct_values = None
-                try:
-                    distinct_values = await self.execute(
-                        name, suggested_facet_sql, from_sql_params,
-                        truncate=False,
-                        custom_time_limit=self.ds.config["facet_suggest_time_limit_ms"],
+            if self.ds.config["suggest_facets"] and self.ds.config["allow_facet"]:
+                for facet_column in columns:
+                    if facet_column in facets:
+                        continue
+                    if not self.ds.config["suggest_facets"]:
+                        continue
+                    suggested_facet_sql = '''
+                        select distinct {column} {from_sql}
+                        {and_or_where} {column} is not null
+                        limit {limit}
+                    '''.format(
+                        column=escape_sqlite(facet_column),
+                        from_sql=from_sql,
+                        and_or_where='and' if from_sql_where_clauses else 'where',
+                        limit=facet_size+1
                     )
-                    num_distinct_values = len(distinct_values)
-                    if (
-                        num_distinct_values and
-                        num_distinct_values > 1 and
-                        num_distinct_values <= facet_size and
-                        num_distinct_values < filtered_table_rows_count
-                    ):
-                        suggested_facets.append({
-                            'name': facet_column,
-                            'toggle_url': path_with_added_args(
-                                request, {'_facet': facet_column}
-                            ),
-                        })
-                except InterruptedError:
-                    pass
+                    distinct_values = None
+                    try:
+                        distinct_values = await self.ds.execute(
+                            name, suggested_facet_sql, from_sql_params,
+                            truncate=False,
+                            custom_time_limit=self.ds.config["facet_suggest_time_limit_ms"],
+                        )
+                        num_distinct_values = len(distinct_values)
+                        if (
+                            num_distinct_values and
+                            num_distinct_values > 1 and
+                            num_distinct_values <= facet_size and
+                            num_distinct_values < filtered_table_rows_count
+                        ):
+                            suggested_facets.append({
+                                'name': facet_column,
+                                'toggle_url': path_with_added_args(
+                                    request, {'_facet': facet_column}
+                                ),
+                            })
+                    except InterruptedError:
+                        pass
 
         # human_description_en combines filters AND search, if provided
         human_description_en = filters.human_description_en(extra=search_descriptions)
@@ -701,7 +706,7 @@ class TableView(RowTableShared):
             display_columns, display_rows = await self.display_columns_and_rows(
                 name,
                 table,
-                description,
+                results.description,
                 rows,
                 link_column=not is_view,
                 expand_foreign_keys=True,
@@ -755,7 +760,7 @@ class TableView(RowTableShared):
             "table_definition": table_definition,
             "human_description_en": human_description_en,
             "rows": rows[:page_size],
-            "truncated": truncated,
+            "truncated": results.truncated,
             "table_rows_count": table_rows_count,
             "filtered_table_rows_count": filtered_table_rows_count,
             "columns": columns,
@@ -790,12 +795,11 @@ class RowView(RowTableShared):
         params = {}
         for i, pk_value in enumerate(pk_values):
             params["p{}".format(i)] = pk_value
-        # rows, truncated, description = await self.execute(name, sql, params, truncate=True)
-        rows, truncated, description = await self.execute(
+        results = await self.ds.execute(
             name, sql, params, truncate=True
         )
-        columns = [r[0] for r in description]
-        rows = list(rows)
+        columns = [r[0] for r in results.description]
+        rows = list(results.rows)
         if not rows:
             raise NotFound("Record not found: {}".format(pk_values))
 
@@ -803,7 +807,7 @@ class RowView(RowTableShared):
             display_columns, display_rows = await self.display_columns_and_rows(
                 name,
                 table,
-                description,
+                results.description,
                 rows,
                 link_column=False,
                 expand_foreign_keys=True,
@@ -874,7 +878,7 @@ class RowView(RowTableShared):
             ]
         )
         try:
-            rows = list(await self.execute(name, sql, {"id": pk_values[0]}))
+            rows = list(await self.ds.execute(name, sql, {"id": pk_values[0]}))
         except sqlite3.OperationalError:
             # Almost certainly hit the timeout
             return []

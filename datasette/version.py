@@ -1,2 +1,6 @@
-__version_info__ = (0, 22)
-__version__ = '.'.join(map(str, __version_info__))
+from ._version import get_versions
+
+__version__ = get_versions()['version']
+del get_versions
+
+__version_info__ = tuple(__version__.split("."))

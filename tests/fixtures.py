@@ -9,7 +9,7 @@ import tempfile
 import time
 
 
-def app_client(sql_time_limit_ms=None, max_returned_rows=None):
+def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, 'test_tables.db')
         conn = sqlite3.connect(filepath)
@@ -18,15 +18,17 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None):
         plugins_dir = os.path.join(tmpdir, 'plugins')
         os.mkdir(plugins_dir)
         open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN)
+        config = config or {}
+        config.update({
+            'default_page_size': 50,
+            'max_returned_rows': max_returned_rows or 100,
+            'sql_time_limit_ms': sql_time_limit_ms or 200,
+        })
         ds = Datasette(
             [filepath],
             metadata=METADATA,
             plugins_dir=plugins_dir,
-            config={
-                'default_page_size': 50,
-                'max_returned_rows': max_returned_rows or 100,
-                'sql_time_limit_ms': sql_time_limit_ms or 200,
-            }
+            config=config,
         )
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),

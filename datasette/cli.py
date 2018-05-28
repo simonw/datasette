@@ -28,21 +28,35 @@ class StaticMount(click.ParamType):
 class Config(click.ParamType):
     name = "config"
 
-    def convert(self, value, param, ctx):
-        ok = True
-        if ":" not in value:
-            ok = False
-        else:
-            name, intvalue = value.split(":")
-            ok = intvalue.isdigit()
-        if not ok:
+    def convert(self, config, param, ctx):
+        if ":" not in config:
             self.fail(
-                '"{}" should be of format name:integer'.format(value),
-                param, ctx
+                '"{}" should be name:value'.format(config), param, ctx
             )
+            return
+        name, value = config.split(":")
         if name not in DEFAULT_CONFIG:
-            self.fail("{} is not a valid limit".format(name), param, ctx)
-        return name, int(intvalue)
+            self.fail("{} is not a valid option".format(name), param, ctx)
+            return
+        # Type checking
+        default = DEFAULT_CONFIG[name]
+        if isinstance(default, bool):
+            if value.lower() not in ('on', 'off', 'true', 'false', '1', '0'):
+                self.fail(
+                    '"{}" should be on/off/true/false'.format(name), param, ctx
+                )
+                return
+            return name, value.lower() in ('on', 'true', '1')
+        elif isinstance(default, int):
+            if not value.isdigit():
+                self.fail(
+                    '"{}" should be an integer'.format(name), param, ctx
+                )
+                return
+            return name, int(value)
+        else:
+            # Should never happen:
+            self.fail('Invalid option')
 
 
 @click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)

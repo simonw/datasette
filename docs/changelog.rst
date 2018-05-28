@@ -1,6 +1,24 @@
 Changelog
 =========
 
+0.22.1 (2018-05-23)
+-------------------
+
+Bugfix release, plus we now use `versioneer <https://github.com/warner/python-versioneer>`_ for our version numbers.
+
+- Faceting no longer breaks pagination, fixes `#282 <https://github.com/simonw/datasette/issues/282>`_
+- Add ``__version_info__`` derived from `__version__` [Robert Gieseke]
+
+  This might be tuple of more than two values (major and minor
+  version) if commits have been made after a release.
+- Add version number support with Versioneer. [Robert Gieseke]
+
+  Versioneer Licence:
+  Public Domain (CC0-1.0)
+
+  Closes `#273 <https://github.com/simonw/datasette/issues/273>`_
+- Refactor inspect logic [Russ Garrett]
+
 0.22 (2018-05-20)
 -----------------
 

@@ -2,7 +2,6 @@ import asyncio
 import json
 import re
 import sqlite3
-import threading
 import time
 
 import pint
@@ -18,16 +17,13 @@ from datasette.utils import (
     path_from_row_pks,
     path_with_added_args,
     path_with_ext,
-    sqlite_timelimit,
     to_css_class
 )
 
 from datasette import connectors
 
-connections = threading.local()
 ureg = pint.UnitRegistry()
 
-HASH_BLOCK_SIZE = 1024 * 1024
 HASH_LENGTH = 7
 
 
@@ -131,81 +127,6 @@ class BaseView(RenderMixin):
 
         return name, expected, None
 
-    async def execute(
-        self,
-        db_name,
-        sql,
-        params=None,
-        truncate=False,
-        custom_time_limit=None,
-        page_size=None,
-    ):
-        """Executes sql against db_name in a thread"""
-        page_size = page_size or self.page_size
-
-        def sql_operation_in_thread():
-            conn = getattr(connections, db_name, None)
-            if not conn:
-                info = self.ds.inspect()[db_name]
-                if info['dbtype'] == 'sqlite3':
-                    conn = sqlite3.connect(
-                        "file:{}?immutable=1".format(info["file"]),
-                        uri=True,
-                        check_same_thread=False,
-                    )
-                    self.ds.prepare_connection(conn)
-                else:
-                    conn = connectors.connect(info['file'], info['dbtype'])
-                setattr(connections, db_name, conn)
-
-            if isinstance(conn, sqlite3.Connection):
-                time_limit_ms = self.ds.sql_time_limit_ms
-                if custom_time_limit and custom_time_limit < self.ds.sql_time_limit_ms:
-                    time_limit_ms = custom_time_limit
-
-                with sqlite_timelimit(conn, time_limit_ms):
-                    try:
-                        cursor = conn.cursor()
-                        cursor.execute(sql, params or {})
-                        max_returned_rows = self.max_returned_rows
-                        if max_returned_rows == page_size:
-                            max_returned_rows += 1
-                        if max_returned_rows and truncate:
-                            rows = cursor.fetchmany(max_returned_rows + 1)
-                            truncated = len(rows) > max_returned_rows
-                            rows = rows[:max_returned_rows]
-                        else:
-                            rows = cursor.fetchall()
-                            truncated = False
-                    except sqlite3.OperationalError as e:
-                        if e.args == ('interrupted',):
-                            raise InterruptedError(e)
-                        print(
-                            "ERROR: conn={}, sql = {}, params = {}: {}".format(
-                                conn, repr(sql), params, e
-                            )
-                        )
-                        raise
-
-                if truncate:
-                    return rows, truncated, cursor.description
-
-                else:
-                    return rows
-
-            else:
-                return conn.execute(
-                    sql,
-                    params or {},
-                    truncate=truncate,
-                    page_size=page_size,
-                    max_returned_rows=self.max_returned_rows,
-                )
-
-        return await asyncio.get_event_loop().run_in_executor(
-            self.executor, sql_operation_in_thread
-        )
-
     def get_templates(self, database, table=None):
         assert NotImplemented
 
@@ -266,7 +187,9 @@ class BaseView(RenderMixin):
 
             # Deal with the _shape option
             shape = request.args.get("_shape", "arrays")
-            if shape in ("objects", "object", "array"):
+            if shape == "arrayfirst":
+                data = [row[0] for row in data["rows"]]
+            elif shape in ("objects", "object", "array"):
                 columns = data.get("columns")
                 rows = data.get("rows")
                 if rows and columns:
@@ -338,7 +261,17 @@ class BaseView(RenderMixin):
             r.status = status_code
         # Set far-future cache expiry
         if self.ds.cache_headers:
-            r.headers["Cache-Control"] = "max-age={}".format(365 * 24 * 60 * 60)
+            ttl = request.args.get("_ttl", None)
+            if ttl is None or not ttl.isdigit():
+                ttl = self.ds.config["default_cache_ttl"]
+            else:
+                ttl = int(ttl)
+            if ttl == 0:
+                ttl_header = 'no-cache'
+            else:
+                ttl_header = 'max-age={}'.format(ttl)
+            r.headers["Cache-Control"] = ttl_header
+        r.headers["Referrer-Policy"] = "no-referrer"
         return r
 
     async def custom_sql(
@@ -364,10 +297,10 @@ class BaseView(RenderMixin):
         extra_args = {}
         if params.get("_timelimit"):
             extra_args["custom_time_limit"] = int(params["_timelimit"])
-        rows, truncated, description = await self.execute(
+        results = await self.ds.execute(
             name, sql, params, truncate=True, **extra_args
         )
-        columns = [r[0] for r in description]
+        columns = [r[0] for r in results.description]
 
         templates = ["query-{}.html".format(to_css_class(name)), "query.html"]
         if canned_query:
@@ -380,8 +313,8 @@ class BaseView(RenderMixin):
 
         return {
             "database": name,
-            "rows": rows,
-            "truncated": truncated,
+            "rows": results.rows,
+            "truncated": results.truncated,
             "columns": columns,
             "query": {"sql": sql, "params": params},
         }, {
@@ -390,4 +323,5 @@ class BaseView(RenderMixin):
             "named_parameter_values": named_parameter_values,
             "editable": editable,
             "canned_query": canned_query,
+            "config": self.ds.config,
         }, templates

@@ -20,8 +20,6 @@ from datasette.utils import (
     to_css_class
 )
 
-from datasette import connectors
-
 ureg = pint.UnitRegistry()
 
 HASH_LENGTH = 7

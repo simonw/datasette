@@ -47,6 +47,70 @@ Building SpatiaLite from source
 
 The packaged versions of SpatiaLite usually provide SpatiaLite 4.3.0a. For an example of how to build the most recent unstable version, 4.4.0-RC0 (which includes the powerful `VirtualKNN module <https://www.gaia-gis.it/fossil/libspatialite/wiki?name=KNN>`_), take a look at the `Datasette Dockerfile <https://github.com/simonw/datasette/blob/master/Dockerfile>`_.
 
+Spatial indexing latitude/longitude columns
+===========================================
+
+Here's a recipe for taking a table with existing latitude and longitude columns, adding a SpatiaLite POINT geometry column to that table, populating the new column and then populating a spatial index::
+
+    import sqlite3
+    conn = sqlite3.connect('museums.db')
+    # Lead the spatialite extension:
+    conn.enable_load_extension(True)
+    conn.load_extension('/usr/local/lib/mod_spatialite.dylib')
+    # Initialize spatial metadata for this database:
+    conn.execute('select InitSpatialMetadata(1)')
+    # Add a geometry column called point_geom to our museums table:
+    conn.execute("SELECT AddGeometryColumn('museums', 'point_geom', 4326, 'POINT', 2);")
+    # Now update that geometry column with the lat/lon points
+    conn.execute('''
+        UPDATE events SET
+        point_geom = GeomFromText('POINT('||"longitude"||' '||"latitude"||')',4326);
+    ''')
+    # If you don't commit your changes will not be persisted:
+    conn.commit()
+    conn.close()
+
+Making use of a spatial index
+=============================
+
+SpatiaLite spatial indexes are R*Trees. They allow you to run efficient bounding box queries using a sub-select, with a similar pattern to that used for :ref:`_full_text_search_custom_sql`.
+
+In the above example, the resulting index will be called ``idx_museums_point_geom``. This takes the form of a SQLite virtual table. You can inspect its contents using the following query::
+
+    select * from idx_museums_point_geom limit 10;
+
+Here's a live example: `timezones-api.now.sh/timezones/idx_timezones_Geometry <https://timezones-api.now.sh/timezones/idx_timezones_Geometry>`_
+
++--------+----------------------+----------------------+---------------------+---------------------+
+|  pkid  |  xmin                |  xmax                |  ymin               |  ymax               |
++========+======================+======================+=====================+=====================+
+| 1      |  -8.601725578308105  |  -2.4930307865142822 |  4.162120819091797  |  10.74019718170166  |
++--------+----------------------+----------------------+---------------------+---------------------+
+| 2      |  -3.2607860565185547 |  1.27329421043396    |  4.539252281188965  |  11.174856185913086 |
++--------+----------------------+----------------------+---------------------+---------------------+
+| 3      |  32.997581481933594  |  47.98238754272461   |  3.3974475860595703 |  14.894054412841797 |
++--------+----------------------+----------------------+---------------------+---------------------+
+| 4      |  -8.66890811920166   |  11.997337341308594  |  18.9681453704834   |  37.296207427978516 |
++--------+----------------------+----------------------+---------------------+---------------------+
+| 5      |  36.43336486816406   |  43.300174713134766  |  12.354820251464844 |  18.070993423461914 |
++--------+----------------------+----------------------+---------------------+---------------------+
+
+You can now construct efficient bounding box queries that will make use of the index like this::
+
+    select * from museums where museums.rowid in (
+        SELECT pkid FROM idx_museums_point_geom
+        -- left-hand-edge of point > left-hand-edge of bbox (minx)
+        where xmin > :bbox_minx
+        -- right-hand-edge of point < right-hand-edge of bbox (maxx)
+        and xmax < :bbox_maxx
+        -- bottom-edge of point > bottom-edge of bbox (miny)
+        and ymin > :bbox_miny
+        -- top-edge of point < top-edge of bbox (maxy)
+        and ymax < :bbox_maxy
+    );
+
+Spatial indexes can be created against polygon columns as well as point columns, in which case they will represent the minimum bounding rectangle of that polygon. This is useful for accelerating ``within`` queries, as seen in the Timezones API example.
+
 Importing shapefiles into SpatiaLite
 ====================================
 
@@ -88,3 +152,73 @@ Now try the following query::
 
     select *, AsGeoJSON(Geometry) from rivers
     order by length(Geometry) desc limit 10;
+
+Importing GeoJSON polygons using Shapely
+========================================
+
+Another common form of polygon data is the GeoJSON format. This can be imported into SpatiaLite directly, or by using the `Shapely <https://pypi.org/project/Shapely/>`_ Python library.
+
+`Who's On First <https://whosonfirst.org/>`_ is an excellent source of openly licensed GeoJSON polygons. Let's import the geographical polygon for Wales. First, we can use the Who's On First Spelunker tool to find the record for Wales:
+
+`spelunker.whosonfirst.org/id/404227475 <https://spelunker.whosonfirst.org/id/404227475/>`_
+
+That page includes a link to the GeoJSON record, which can be accessed here:
+
+`data.whosonfirst.org/404/227/475/404227475.geojson <https://data.whosonfirst.org/404/227/475/404227475.geojson>`_
+
+Here's Python code to create a SQLite database, enable SpatiaLite, create a places table and then add a record for Wales::
+
+    import sqlite3
+    conn = sqlite3.connect('places.db')
+    # Enable SpatialLite extension
+    conn.enable_load_extension(True)
+    conn.load_extension('/usr/local/lib/mod_spatialite.dylib')
+    # Create the masic countries table
+    conn.execute('select InitSpatialMetadata(1)')
+    conn.execute('create table places (id integer primary key, name text);')
+    # Add a MULTIPOLYGON Geometry column
+    conn.execute("SELECT AddGeometryColumn('places', 'geom', 4326, 'MULTIPOLYGON', 2);")
+    # Add a spatial index against the new column
+    conn.execute("SELECT CreateSpatialIndex('places', 'geom');")
+    # Now populate the table
+    from shapely.geometry.multipolygon import MultiPolygon
+    from shapely.geometry import shape
+    import requests
+    geojson = requests.get('https://data.whosonfirst.org/404/227/475/404227475.geojson').json()
+    # Convert to "Well Known Text" format
+    wkt = shape(geojson['geometry']).wkt
+    # Insert and commit the record
+    conn.execute("INSERT INTO places (id, name, geom) VALUES(null, ?, GeomFromText(?, 4326))", (
+       "Wales", wkt
+    ))
+    conn.commit()
+
+Querying polygons using within()
+================================
+
+The ``within()`` SQL function can be used to check if a point is within a geometry::
+
+    select
+        name
+    from
+        places
+    where
+       within(GeomFromText('POINT(-3.1724366 51.4704448)'), places.geom);
+
+The ``GeomFromText()`` function takes a string of well-known text. Note that the order used here is ``longitude`` then  ``latitude``.
+
+To run that same ``within()`` query in a way that benefits from the spatial index, use the following::
+
+    select
+        name
+    from
+        places
+    where
+        within(GeomFromText('POINT(-3.1724366 51.4704448)'), places.geom)
+        and rowid in (
+            SELECT pkid FROM idx_places_geom
+            where xmin < -3.1724366
+            and xmax > -3.1724366
+            and ymin < 51.4704448
+            and ymax > 51.4704448
+        );

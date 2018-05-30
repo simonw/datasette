@@ -83,6 +83,8 @@ You can also run searches against just the content of a specific named column by
 
     /dbname/tablename/?_search_name=Sarah
 
+.. _full_text_search_custom_sql:
+
 Searches using custom SQL
 -------------------------
 

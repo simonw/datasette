@@ -73,7 +73,7 @@ Here's a recipe for taking a table with existing latitude and longitude columns,
 Making use of a spatial index
 =============================
 
-SpatiaLite spatial indexes are R*Trees. They allow you to run efficient bounding box queries using a sub-select, with a similar pattern to that used for :ref:`_full_text_search_custom_sql`.
+SpatiaLite spatial indexes are R*Trees. They allow you to run efficient bounding box queries using a sub-select, with a similar pattern to that used for :ref:`full_text_search_custom_sql`.
 
 In the above example, the resulting index will be called ``idx_museums_point_geom``. This takes the form of a SQLite virtual table. You can inspect its contents using the following query::
 

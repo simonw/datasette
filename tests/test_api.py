@@ -340,7 +340,7 @@ def test_sql_time_limit(app_client_shorter_time_limit):
         gather_request=False
     )
     assert 400 == response.status
-    assert 'interrupted' == response.json['error']
+    assert 'SQL Interrupted' == response.json['title']
 
 
 def test_custom_sql_time_limit(app_client):
@@ -354,7 +354,7 @@ def test_custom_sql_time_limit(app_client):
         gather_request=False
     )
     assert 400 == response.status
-    assert 'interrupted' == response.json['error']
+    assert 'SQL Interrupted' == response.json['title']
 
 
 def test_invalid_custom_sql(app_client):

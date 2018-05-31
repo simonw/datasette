@@ -26,7 +26,9 @@ To set up full-text search for a table, you need to do two things:
 * Create a new FTS virtual table associated with your table
 * Populate that FTS table with the data that you would like to be able to run searches against
 
-To enable full-text search for a table called ``items`` that works against the ``name`` and ``description`` columns, you would run the following SQL to create a new ``items_fts`` FTS virtual table::
+To enable full-text search for a table called ``items`` that works against the ``name`` and ``description`` columns, you would run the following SQL to create a new ``items_fts`` FTS virtual table:
+
+.. code-block:: sql
 
     CREATE VIRTUAL TABLE "items_fts" USING FTS4 (
         name,
@@ -36,12 +38,16 @@ To enable full-text search for a table called ``items`` that works against the `
 
 This creates a set of tables to power full-text search against ``items``. The new ``items_fts`` table will be detected by Datasette as the ``fts_table`` for the ``items`` table.
 
-Creating the table is not enough: you also need to populate it with a copy of the data that you wish to make searchable. You can do that using the following SQL::
+Creating the table is not enough: you also need to populate it with a copy of the data that you wish to make searchable. You can do that using the following SQL:
+
+.. code-block:: sql
 
     INSERT INTO "items_fts" (rowid, name, description)
         SELECT rowid, name, description FROM items;
 
-If your table has columns that are foreign key references to other tables you can include that data in your full-text search index using a join. Imagine the ``items`` table has a foreign key column called ``category_id`` which refers to a ``categories`` table - you could create a full-text search table like this::
+If your table has columns that are foreign key references to other tables you can include that data in your full-text search index using a join. Imagine the ``items`` table has a foreign key column called ``category_id`` which refers to a ``categories`` table - you could create a full-text search table like this:
+
+.. code-block:: sql
 
     CREATE VIRTUAL TABLE "items_fts" USING FTS4 (
         name,
@@ -50,7 +56,9 @@ If your table has columns that are foreign key references to other tables you ca
         content="items"
     );
 
-And then populate it like this::
+And then populate it like this:
+
+.. code-block:: sql
 
     INSERT INTO "items_fts" (rowid, name, description, category_name)
         SELECT items.rowid,
@@ -94,7 +102,9 @@ You can see the syntax for a basic search by running that search on a table page
 
     /sf-trees/Street_Tree_List?_search=cherry
 
-If you click `View and edit SQL <https://san-francisco.datasettes.com/sf-trees?sql=select+rowid%2C+*+from+Street_Tree_List+where+rowid+in+(select+rowid+from+[Street_Tree_List_fts]+where+[Street_Tree_List_fts]+match+%3Asearch)+order+by+rowid+limit+101&search=cherry>`_ you'll see that the underlying SQL looks like this::
+If you click `View and edit SQL <https://san-francisco.datasettes.com/sf-trees?sql=select+rowid%2C+*+from+Street_Tree_List+where+rowid+in+(select+rowid+from+[Street_Tree_List_fts]+where+[Street_Tree_List_fts]+match+%3Asearch)+order+by+rowid+limit+101&search=cherry>`_ you'll see that the underlying SQL looks like this:
+
+.. code-block:: sql
 
     select rowid, * from Street_Tree_List
     where rowid in (

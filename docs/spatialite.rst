@@ -50,7 +50,9 @@ The packaged versions of SpatiaLite usually provide SpatiaLite 4.3.0a. For an ex
 Spatial indexing latitude/longitude columns
 ===========================================
 
-Here's a recipe for taking a table with existing latitude and longitude columns, adding a SpatiaLite POINT geometry column to that table, populating the new column and then populating a spatial index::
+Here's a recipe for taking a table with existing latitude and longitude columns, adding a SpatiaLite POINT geometry column to that table, populating the new column and then populating a spatial index:
+
+.. code-block:: python
 
     import sqlite3
     conn = sqlite3.connect('museums.db')
@@ -75,7 +77,9 @@ Making use of a spatial index
 
 SpatiaLite spatial indexes are R*Trees. They allow you to run efficient bounding box queries using a sub-select, with a similar pattern to that used for :ref:`full_text_search_custom_sql`.
 
-In the above example, the resulting index will be called ``idx_museums_point_geom``. This takes the form of a SQLite virtual table. You can inspect its contents using the following query::
+In the above example, the resulting index will be called ``idx_museums_point_geom``. This takes the form of a SQLite virtual table. You can inspect its contents using the following query:
+
+.. code-block:: sql
 
     select * from idx_museums_point_geom limit 10;
 
@@ -95,7 +99,9 @@ Here's a live example: `timezones-api.now.sh/timezones/idx_timezones_Geometry <h
 | 5      |  36.43336486816406   |  43.300174713134766  |  12.354820251464844 |  18.070993423461914 |
 +--------+----------------------+----------------------+---------------------+---------------------+
 
-You can now construct efficient bounding box queries that will make use of the index like this::
+You can now construct efficient bounding box queries that will make use of the index like this:
+
+.. code-block:: sql
 
     select * from museums where museums.rowid in (
         SELECT pkid FROM idx_museums_point_geom
@@ -136,7 +142,9 @@ Exit out of ``spatialite`` (using ``Ctrl+D``) and run Datasette against your new
 
 If you browse to ``http://localhost:8001/rivers-database/rivers`` you will see the new table... but the ``Geometry`` column will contain unreadable binary data (SpatiaLite uses `a custom format based on WKB <https://www.gaia-gis.it/gaia-sins/BLOB-Geometry.html>`_).
 
-The easiest way to turn this into semi-readable data is to use the SpatiaLite ``AsGeoJSON`` function. Try the following using the SQL query interface at ``http://localhost:8001/rivers-database``::
+The easiest way to turn this into semi-readable data is to use the SpatiaLite ``AsGeoJSON`` function. Try the following using the SQL query interface at ``http://localhost:8001/rivers-database``:
+
+.. code-block:: sql
 
     select *, AsGeoJSON(Geometry) from rivers limit 10;
 
@@ -148,7 +156,9 @@ To see a more interesting example, try ordering the records with the longest geo
         --load-extension=/usr/local/lib/mod_spatialite.dylib \
         --config sql_time_limit_ms:10000
 
-Now try the following query::
+Now try the following query:
+
+.. code-block:: sql
 
     select *, AsGeoJSON(Geometry) from rivers
     order by length(Geometry) desc limit 10;
@@ -166,7 +176,9 @@ That page includes a link to the GeoJSON record, which can be accessed here:
 
 `data.whosonfirst.org/404/227/475/404227475.geojson <https://data.whosonfirst.org/404/227/475/404227475.geojson>`_
 
-Here's Python code to create a SQLite database, enable SpatiaLite, create a places table and then add a record for Wales::
+Here's Python code to create a SQLite database, enable SpatiaLite, create a places table and then add a record for Wales:
+
+.. code-block:: python
 
     import sqlite3
     conn = sqlite3.connect('places.db')
@@ -196,7 +208,9 @@ Here's Python code to create a SQLite database, enable SpatiaLite, create a plac
 Querying polygons using within()
 ================================
 
-The ``within()`` SQL function can be used to check if a point is within a geometry::
+The ``within()`` SQL function can be used to check if a point is within a geometry:
+
+.. code-block:: sql
 
     select
         name
@@ -207,7 +221,9 @@ The ``within()`` SQL function can be used to check if a point is within a geomet
 
 The ``GeomFromText()`` function takes a string of well-known text. Note that the order used here is ``longitude`` then  ``latitude``.
 
-To run that same ``within()`` query in a way that benefits from the spatial index, use the following::
+To run that same ``within()`` query in a way that benefits from the spatial index, use the following:
+
+.. code-block:: sql
 
     select
         name

@@ -1,10 +1,8 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import (
+from .fixtures import ( # noqa
     app_client,
 )
 import pytest
-
-pytest.fixture(scope='session')(app_client)
 
 
 def test_plugins_dir_plugin(app_client):

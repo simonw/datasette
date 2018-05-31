@@ -1,6 +1,7 @@
 from datasette.app import Datasette
 import itertools
 import os
+import pytest
 import random
 import sqlite3
 import sys
@@ -9,6 +10,7 @@ import tempfile
 import time
 
 
+@pytest.fixture(scope='session')
 def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, 'test_tables.db')
@@ -39,11 +41,13 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
         yield client
 
 
+@pytest.fixture(scope='session')
 def app_client_shorter_time_limit():
     yield from app_client(20)
 
 
-def app_client_returend_rows_matches_page_size():
+@pytest.fixture(scope='session')
+def app_client_returned_rows_matches_page_size():
     yield from app_client(max_returned_rows=50)
 
 

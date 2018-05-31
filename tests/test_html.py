@@ -1,11 +1,11 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client, app_client_shorter_time_limit
+from .fixtures import ( # noqa
+    app_client,
+    app_client_shorter_time_limit,
+)
 import pytest
 import re
 import urllib.parse
-
-pytest.fixture(scope='session')(app_client)
-pytest.fixture(scope='session')(app_client_shorter_time_limit)
 
 
 def test_homepage(app_client):

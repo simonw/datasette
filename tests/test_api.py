@@ -1,17 +1,13 @@
-from .fixtures import (
+from .fixtures import ( # noqa
     app_client,
     app_client_shorter_time_limit,
-    app_client_returend_rows_matches_page_size,
+    app_client_returned_rows_matches_page_size,
     generate_compound_rows,
     generate_sortable_rows,
     METADATA,
 )
 import pytest
 import urllib
-
-pytest.fixture(scope='session')(app_client)
-pytest.fixture(scope='session')(app_client_shorter_time_limit)
-pytest.fixture(scope='session')(app_client_returend_rows_matches_page_size)
 
 
 def test_homepage(app_client):
@@ -936,11 +932,11 @@ def test_config_json(app_client):
     } == response.json
 
 
-def test_page_size_matching_max_returned_rows(app_client_returend_rows_matches_page_size):
+def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_page_size):
     fetched = []
     path = '/test_tables/no_primary_key.json'
     while path:
-        response = app_client_returend_rows_matches_page_size.get(
+        response = app_client_returned_rows_matches_page_size.get(
             path, gather_request=False
         )
         fetched.extend(response.json['rows'])

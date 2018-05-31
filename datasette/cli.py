@@ -199,6 +199,19 @@ def publish(
         _fail_if_publish_binary_not_installed(
             "heroku", "Heroku", "https://cli.heroku.com"
         )
+        if spatialite:
+            click.secho(
+                "The --spatialite option is not yet supported for Heroku",
+                bg="red",
+                fg="white",
+                bold=True,
+                err=True,
+            )
+            click.echo(
+                "See https://github.com/simonw/datasette/issues/301",
+                err=True,
+            )
+            sys.exit(1)
 
         # Check for heroku-builds plugin
         plugins = [

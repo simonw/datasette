@@ -69,7 +69,7 @@
     </div>
     <div class="filter-row">
         {% if is_sortable %}
-            <div class="select-wrapper">
+            <div class="select-wrapper small-screen-only">
                 <select name="_sort" id="sort_by">
                     <option value="">Sort...</option>
                     {% for column in display_columns %}
@@ -79,7 +79,7 @@
                     {% endfor %}
                 </select>
             </div>
-            <label class="sort_by_desc"><input type="checkbox" name="_sort_by_desc"{% if sort_desc %} checked{% endif %}> descending</label>
+            <label class="sort_by_desc small-screen-only"><input type="checkbox" name="_sort_by_desc"{% if sort_desc %} checked{% endif %}> descending</label>
         {% endif %}
         {% for facet in sorted_facet_results %}
             <input type="hidden" name="_facet" value="{{ facet.name }}">

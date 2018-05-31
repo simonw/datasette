@@ -122,6 +122,9 @@ def inspect(files, inspect_file, sqlite_extensions):
     help="Additional packages (e.g. plugins) to install",
     multiple=True,
 )
+@click.option(
+    "--spatialite", is_flag=True, help="Enable SpatialLite extension"
+)
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
 @click.option("--license_url", help="License URL for metadata")
@@ -139,6 +142,7 @@ def publish(
     plugins_dir,
     static,
     install,
+    spatialite,
     **extra_metadata
 ):
     """
@@ -183,6 +187,7 @@ def publish(
             plugins_dir,
             static,
             install,
+            spatialite,
             extra_metadata,
         ):
             if force:
@@ -335,6 +340,9 @@ def skeleton(files, metadata, sqlite_extensions):
     help="Additional packages (e.g. plugins) to install",
     multiple=True,
 )
+@click.option(
+    "--spatialite", is_flag=True, help="Enable SpatialLite extension"
+)
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
 @click.option("--license_url", help="License URL for metadata")
@@ -350,6 +358,7 @@ def package(
     plugins_dir,
     static,
     install,
+    spatialite,
     **extra_metadata
 ):
     "Package specified SQLite files into a new datasette Docker container"
@@ -372,6 +381,7 @@ def package(
         plugins_dir,
         static,
         install,
+        spatialite,
         extra_metadata,
     ):
         args = ["docker", "build"]

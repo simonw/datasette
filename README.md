@@ -179,6 +179,7 @@ This will create a docker image containing both the datasette application and th
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
       --install TEXT            Additional packages (e.g. plugins) to install
+      --spatialite              Enable SpatialLite extension
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata
@@ -206,6 +207,7 @@ If you have docker installed you can use `datasette package` to create a new Doc
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
       --install TEXT            Additional packages (e.g. plugins) to install
+      --spatialite              Enable SpatialLite extension
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata

@@ -31,6 +31,13 @@ reserved_words = set((
     'vacuum values view virtual when where with without'
 ).split())
 
+SPATIALITE_DOCKERFILE_EXTRAS = r'''
+RUN apt-get update && \
+    apt-get install -y python3-dev gcc libsqlite3-mod-spatialite && \
+    rm -rf /var/lib/apt/lists/*
+ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
+'''
+
 
 class InterruptedError(Exception):
     pass
@@ -241,7 +248,7 @@ def escape_sqlite(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install):
+def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install, spatialite):
     cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
     cmd.append('"' + '", "'.join(files) + '"')
     cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
@@ -266,9 +273,10 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
         install = ['datasette'] + list(install)
 
     return '''
-FROM python:3
+FROM python:3.6-slim-stretch
 COPY . /app
 WORKDIR /app
+{spatialite_extras}
 RUN pip install {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
 EXPOSE 8001
@@ -276,6 +284,7 @@ CMD [{cmd}]'''.format(
         files=' '.join(files),
         cmd=', '.join(cmd),
         install_from=' '.join(install),
+        spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else '',
     ).strip()
 
 
@@ -290,6 +299,7 @@ def temporary_docker_directory(
     plugins_dir,
     static,
     install,
+    spatialite,
     extra_metadata=None
 ):
     extra_metadata = extra_metadata or {}
@@ -320,6 +330,7 @@ def temporary_docker_directory(
             plugins_dir,
             static,
             install,
+            spatialite,
         )
         os.chdir(datasette_dir)
         if metadata_content:

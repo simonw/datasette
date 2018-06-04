@@ -51,6 +51,13 @@ def app_client_returned_rows_matches_page_size():
     yield from app_client(max_returned_rows=50)
 
 
+@pytest.fixture(scope='session')
+def app_client_larger_cache_size():
+    yield from app_client(config={
+        'cache_size_kb': 2500,
+    })
+
+
 def generate_compound_rows(num):
     for a, b, c in itertools.islice(
         itertools.product(string.ascii_lowercase, repeat=3), num
@@ -114,6 +121,9 @@ METADATA = {
                 'primary_key_multiple_columns_explicit_label': {
                     'label_column': 'content2',
                 },
+            },
+            'queries': {
+                'pragma_cache_size': 'PRAGMA cache_size;'
             }
         },
     }

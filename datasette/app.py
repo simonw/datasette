@@ -90,6 +90,9 @@ CONFIG_OPTIONS = (
     ConfigOption("default_cache_ttl", 365 * 24 * 60 * 60, """
         Default HTTP cache TTL (used in Cache-Control: max-age= header)
     """.strip()),
+    ConfigOption("cache_size_kb", 0, """
+        SQLite cache size in KB (0 == use SQLite default)
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default
@@ -238,6 +241,8 @@ class Datasette:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
                 conn.execute("SELECT load_extension('{}')".format(extension))
+        if self.config["cache_size_kb"]:
+            conn.execute('PRAGMA cache_size=-{}'.format(self.config["cache_size_kb"]))
         pm.hook.prepare_connection(conn=conn)
 
     def inspect(self):

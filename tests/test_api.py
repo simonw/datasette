@@ -1,6 +1,7 @@
 from .fixtures import ( # noqa
     app_client,
     app_client_shorter_time_limit,
+    app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
     generate_compound_rows,
     generate_sortable_rows,
@@ -929,6 +930,7 @@ def test_config_json(app_client):
         "allow_sql": True,
         "default_cache_ttl": 365 * 24 * 60 * 60,
         "num_sql_threads": 3,
+        "cache_size_kb": 0,
     } == response.json
 
 
@@ -1175,3 +1177,10 @@ def test_json_columns(app_client, extra_args, expected):
     path += extra_args
     response = app_client.get(path, gather_request=False)
     assert expected == response.json
+
+
+def test_config_cache_size(app_client_larger_cache_size):
+    response = app_client_larger_cache_size.get(
+        '/test_tables/pragma_cache_size.json', gather_request=False
+    )
+    assert [[-2500]] == response.json['rows']

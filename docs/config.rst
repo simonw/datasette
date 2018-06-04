@@ -110,3 +110,12 @@ Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-ag
 ::
 
     datasette mydatabase.db --config default_cache_ttl:10
+
+cache_size_kb
+-------------
+
+Sets the amount of memory SQLite uses for its `per-connection cache <https://www.sqlite.org/pragma.html#pragma_cache_size>`_, in KB.
+
+::
+
+    datasette mydatabase.db --config cache_size_kb:5000

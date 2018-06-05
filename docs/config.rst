@@ -5,6 +5,12 @@ Configuration
 
 Datasette provides a number of configuration options. These can be set using the ``--config name:value`` option to ``datasette serve``.
 
+You can set multiple configuration options at once like this::
+
+    datasette mydatabase.db --config default_page_size:50 \
+        --config sql_time_limit_ms:3500 \
+        --config max_returned_rows:2000
+
 To prevent rogue, long-running queries from making a Datasette instance inaccessible to other users, Datasette imposes some limits on the SQL that you can execute. These are exposed as config options which you can over-ride.
 
 default_page_size

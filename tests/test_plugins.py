@@ -7,14 +7,13 @@ import pytest
 
 def test_plugins_dir_plugin(app_client):
     response = app_client.get(
-        "/test_tables.json?sql=select+convert_units(100%2C+'m'%2C+'ft')",
-        gather_request=False
+        "/test_tables.json?sql=select+convert_units(100%2C+'m'%2C+'ft')"
     )
     assert pytest.approx(328.0839) == response.json['rows'][0][0]
 
 
 def test_plugin_extra_css_urls(app_client):
-    response = app_client.get('/', gather_request=False)
+    response = app_client.get('/')
     links = Soup(response.body, 'html.parser').findAll('link')
     assert [
         l for l in links
@@ -26,7 +25,7 @@ def test_plugin_extra_css_urls(app_client):
 
 
 def test_plugin_extra_js_urls(app_client):
-    response = app_client.get('/', gather_request=False)
+    response = app_client.get('/')
     scripts = Soup(response.body, 'html.parser').findAll('script')
     assert [
         s for s in scripts
@@ -41,8 +40,7 @@ def test_plugin_extra_js_urls(app_client):
 def test_plugins_with_duplicate_js_urls(app_client):
     # If two plugins both require jQuery, jQuery should be loaded only once
     response = app_client.get(
-        "/test_tables",
-        gather_request=False
+        "/test_tables"
     )
     # This test is a little tricky, as if the user has any other plugins in
     # their current virtual environment those may affect what comes back too.

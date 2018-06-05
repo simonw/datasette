@@ -9,22 +9,21 @@ import urllib.parse
 
 
 def test_homepage(app_client):
-    response = app_client.get('/', gather_request=False)
+    response = app_client.get('/')
     assert response.status == 200
     assert 'test_tables' in response.text
 
 
 def test_database_page(app_client):
-    response = app_client.get('/test_tables', allow_redirects=False, gather_request=False)
+    response = app_client.get('/test_tables', allow_redirects=False)
     assert response.status == 302
-    response = app_client.get('/test_tables', gather_request=False)
+    response = app_client.get('/test_tables')
     assert 'test_tables' in response.text
 
 
 def test_invalid_custom_sql(app_client):
     response = app_client.get(
-        '/test_tables?sql=.schema',
-        gather_request=False
+        '/test_tables?sql=.schema'
     )
     assert response.status == 400
     assert 'Statement must be a SELECT' in response.text
@@ -32,8 +31,7 @@ def test_invalid_custom_sql(app_client):
 
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get(
-        '/test_tables?sql=select+sleep(0.5)',
-        gather_request=False
+        '/test_tables?sql=select+sleep(0.5)'
     )
     assert 400 == response.status
     expected_html_fragment = """
@@ -43,19 +41,18 @@ def test_sql_time_limit(app_client_shorter_time_limit):
 
 
 def test_view(app_client):
-    response = app_client.get('/test_tables/simple_view', gather_request=False)
+    response = app_client.get('/test_tables/simple_view')
     assert response.status == 200
 
 
 def test_row(app_client):
     response = app_client.get(
         '/test_tables/simple_primary_key/1',
-        allow_redirects=False,
-        gather_request=False
+        allow_redirects=False
     )
     assert response.status == 302
     assert response.headers['Location'].endswith('/1')
-    response = app_client.get('/test_tables/simple_primary_key/1', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key/1')
     assert response.status == 200
 
 
@@ -67,16 +64,16 @@ def test_add_filter_redirects(app_client):
     })
     # First we need to resolve the correct path before testing more redirects
     path_base = app_client.get(
-        '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
+        '/test_tables/simple_primary_key', allow_redirects=False
     ).headers['Location']
     path = path_base + '?' + filter_args
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?content__startswith=x')
 
     # Adding a redirect to an existing querystring:
     path = path_base + '?foo=bar&' + filter_args
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?foo=bar&content__startswith=x')
 
@@ -86,7 +83,7 @@ def test_add_filter_redirects(app_client):
         '_filter_op': 'isnull__5',
         '_filter_value': 'x'
     })
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?content__isnull=5')
 
@@ -107,10 +104,10 @@ def test_existing_filter_redirects(app_client):
         '_filter_value_4': 'world',
     }
     path_base = app_client.get(
-        '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
+        '/test_tables/simple_primary_key', allow_redirects=False
     ).headers['Location']
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert_querystring_equal(
         'name__contains=hello&age__gte=22&age__lt=30&name__contains=world',
@@ -120,7 +117,7 @@ def test_existing_filter_redirects(app_client):
     # Setting _filter_column_3 to empty string should remove *_3 entirely
     filter_args['_filter_column_3'] = ''
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert_querystring_equal(
         'name__contains=hello&age__gte=22&name__contains=world',
@@ -128,14 +125,14 @@ def test_existing_filter_redirects(app_client):
     )
 
     # ?_filter_op=exact should be removed if unaccompanied by _fiter_column
-    response = app_client.get(path_base + '?_filter_op=exact', allow_redirects=False, gather_request=False)
+    response = app_client.get(path_base + '?_filter_op=exact', allow_redirects=False)
     assert response.status == 302
     assert '?' not in response.headers['Location']
 
 
 def test_empty_search_parameter_gets_removed(app_client):
     path_base = app_client.get(
-        '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
+        '/test_tables/simple_primary_key', allow_redirects=False
     ).headers['Location']
     path = path_base + '?' + urllib.parse.urlencode({
         '_search': '',
@@ -143,7 +140,7 @@ def test_empty_search_parameter_gets_removed(app_client):
         '_filter_op': 'exact',
         '_filter_value': 'chidi',
     })
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith(
         '?name__exact=chidi'
@@ -152,21 +149,21 @@ def test_empty_search_parameter_gets_removed(app_client):
 
 def test_sort_by_desc_redirects(app_client):
     path_base = app_client.get(
-        '/test_tables/sortable', allow_redirects=False, gather_request=False
+        '/test_tables/sortable', allow_redirects=False
     ).headers['Location']
     path = path_base + '?' + urllib.parse.urlencode({
         '_sort': 'sortable',
         '_sort_by_desc': '1',
     })
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?_sort_desc=sortable')
 
 
 def test_sort_links(app_client):
     response = app_client.get(
-        '/test_tables/sortable?_sort=sortable',
-        gather_request=False
+        '/test_tables/sortable?_sort=sortable'
+
     )
     assert response.status == 200
     ths = Soup(response.body, 'html.parser').findAll('th')
@@ -216,8 +213,7 @@ def test_sort_links(app_client):
 
 def test_facets_persist_through_filter_form(app_client):
     response = app_client.get(
-        '/test_tables/facetable?_facet=planet_int&_facet=city_id',
-        gather_request=False
+        '/test_tables/facetable?_facet=planet_int&_facet=city_id'
     )
     assert response.status == 200
     inputs = Soup(response.body, 'html.parser').find('form').findAll('input')
@@ -244,14 +240,14 @@ def test_facets_persist_through_filter_form(app_client):
     ]),
 ])
 def test_css_classes_on_body(app_client, path, expected_classes):
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     assert response.status == 200
     classes = re.search(r'<body class="(.*)">', response.text).group(1).split()
     assert classes == expected_classes
 
 
 def test_table_html_simple_primary_key(app_client):
-    response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert table['class'] == ['rows-and-columns']
@@ -279,7 +275,7 @@ def test_table_html_simple_primary_key(app_client):
 
 
 def test_row_html_simple_primary_key(app_client):
-    response = app_client.get('/test_tables/simple_primary_key/1', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key/1')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
@@ -295,12 +291,12 @@ def test_row_html_simple_primary_key(app_client):
 
 def test_table_not_exists(app_client):
     assert 'Table not found: blah' in app_client.get(
-        '/test_tables/blah', gather_request=False
+        '/test_tables/blah'
     ).body.decode('utf8')
 
 
 def test_table_html_no_primary_key(app_client):
-    response = app_client.get('/test_tables/no_primary_key', gather_request=False)
+    response = app_client.get('/test_tables/no_primary_key')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     # We have disabled sorting for this table using metadata.json
@@ -321,7 +317,7 @@ def test_table_html_no_primary_key(app_client):
 
 
 def test_row_html_no_primary_key(app_client):
-    response = app_client.get('/test_tables/no_primary_key/1', gather_request=False)
+    response = app_client.get('/test_tables/no_primary_key/1')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
@@ -340,7 +336,7 @@ def test_row_html_no_primary_key(app_client):
 
 
 def test_table_html_compound_primary_key(app_client):
-    response = app_client.get('/test_tables/compound_primary_key', gather_request=False)
+    response = app_client.get('/test_tables/compound_primary_key')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     ths = table.findAll('th')
@@ -364,7 +360,7 @@ def test_table_html_compound_primary_key(app_client):
 
 
 def test_table_html_foreign_key_links(app_client):
-    response = app_client.get('/test_tables/foreign_key_references', gather_request=False)
+    response = app_client.get('/test_tables/foreign_key_references')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
@@ -378,7 +374,7 @@ def test_table_html_foreign_key_links(app_client):
 
 
 def test_table_html_foreign_key_custom_label_column(app_client):
-    response = app_client.get('/test_tables/custom_foreign_key_label', gather_request=False)
+    response = app_client.get('/test_tables/custom_foreign_key_label')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
@@ -391,7 +387,7 @@ def test_table_html_foreign_key_custom_label_column(app_client):
 
 
 def test_row_html_compound_primary_key(app_client):
-    response = app_client.get('/test_tables/compound_primary_key/a,b', gather_request=False)
+    response = app_client.get('/test_tables/compound_primary_key/a,b')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
@@ -408,7 +404,7 @@ def test_row_html_compound_primary_key(app_client):
 
 
 def test_view_html(app_client):
-    response = app_client.get('/test_tables/simple_view', gather_request=False)
+    response = app_client.get('/test_tables/simple_view')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
@@ -430,7 +426,7 @@ def test_view_html(app_client):
 
 
 def test_index_metadata(app_client):
-    response = app_client.get('/', gather_request=False)
+    response = app_client.get('/')
     assert response.status == 200
     soup = Soup(response.body, 'html.parser')
     assert 'Datasette Title' == soup.find('h1').text
@@ -441,7 +437,7 @@ def test_index_metadata(app_client):
 
 
 def test_database_metadata(app_client):
-    response = app_client.get('/test_tables', gather_request=False)
+    response = app_client.get('/test_tables')
     assert response.status == 200
     soup = Soup(response.body, 'html.parser')
     # Page title should be the default
@@ -455,7 +451,7 @@ def test_database_metadata(app_client):
 
 
 def test_table_metadata(app_client):
-    response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key')
     assert response.status == 200
     soup = Soup(response.body, 'html.parser')
     # Page title should be custom and should be HTML escaped
@@ -470,8 +466,7 @@ def test_table_metadata(app_client):
 
 def test_allow_download_on(app_client):
     response = app_client.get(
-        "/test_tables",
-        gather_request=False
+        "/test_tables"
     )
     soup = Soup(response.body, 'html.parser')
     assert len(soup.findAll('a', {'href': re.compile('\.db$')}))
@@ -483,22 +478,21 @@ def test_allow_download_off():
     }):
         response = client.get(
             "/test_tables",
-            gather_request=False
+
         )
         soup = Soup(response.body, 'html.parser')
         assert not len(soup.findAll('a', {'href': re.compile('\.db$')}))
         # Accessing URL directly should 403
         response = client.get(
             "/test_tables.db",
-            gather_request=False
+
         )
         assert 403 == response.status
 
 
 def test_allow_sql_on(app_client):
     response = app_client.get(
-        "/test_tables",
-        gather_request=False
+        "/test_tables"
     )
     soup = Soup(response.body, 'html.parser')
     assert len(soup.findAll('textarea', {'name': 'sql'}))
@@ -509,8 +503,7 @@ def test_allow_sql_off():
         'allow_sql': False,
     }):
         response = client.get(
-            "/test_tables",
-            gather_request=False
+            "/test_tables"
         )
         soup = Soup(response.body, 'html.parser')
         assert not len(soup.findAll('textarea', {'name': 'sql'}))

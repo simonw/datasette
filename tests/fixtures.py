@@ -10,6 +10,18 @@ import tempfile
 import time
 
 
+class TestClient:
+    def __init__(self, sanic_test_client):
+        self.sanic_test_client = sanic_test_client
+
+    def get(self, path, allow_redirects=True):
+        return self.sanic_test_client.get(
+            path,
+            allow_redirects=allow_redirects,
+            gather_request=False
+        )
+
+
 @pytest.fixture(scope='session')
 def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -36,7 +48,7 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),
         )
-        client = ds.app().test_client
+        client = TestClient(ds.app().test_client)
         client.ds = ds
         yield client
 

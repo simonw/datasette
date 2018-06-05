@@ -12,7 +12,7 @@ import urllib
 
 
 def test_homepage(app_client):
-    _, response = app_client.get('/.json')
+    response = app_client.get('/.json')
     assert response.status == 200
     assert response.json.keys() == {'test_tables': 0}.keys()
     d = response.json['test_tables']
@@ -21,7 +21,7 @@ def test_homepage(app_client):
 
 
 def test_database_page(app_client):
-    response = app_client.get('/test_tables.json', gather_request=False)
+    response = app_client.get('/test_tables.json')
     data = response.json
     assert 'test_tables' == data['database']
     assert [{
@@ -313,8 +313,7 @@ def test_database_page(app_client):
 
 def test_custom_sql(app_client):
     response = app_client.get(
-        '/test_tables.json?sql=select+content+from+simple_primary_key&_shape=objects',
-        gather_request=False
+        '/test_tables.json?sql=select+content+from+simple_primary_key&_shape=objects'
     )
     data = response.json
     assert {
@@ -333,8 +332,7 @@ def test_custom_sql(app_client):
 
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get(
-        '/test_tables.json?sql=select+sleep(0.5)',
-        gather_request=False
+        '/test_tables.json?sql=select+sleep(0.5)'
     )
     assert 400 == response.status
     assert 'SQL Interrupted' == response.json['title']
@@ -342,13 +340,11 @@ def test_sql_time_limit(app_client_shorter_time_limit):
 
 def test_custom_sql_time_limit(app_client):
     response = app_client.get(
-        '/test_tables.json?sql=select+sleep(0.01)',
-        gather_request=False
+        '/test_tables.json?sql=select+sleep(0.01)'
     )
     assert 200 == response.status
     response = app_client.get(
-        '/test_tables.json?sql=select+sleep(0.01)&_timelimit=5',
-        gather_request=False
+        '/test_tables.json?sql=select+sleep(0.01)&_timelimit=5'
     )
     assert 400 == response.status
     assert 'SQL Interrupted' == response.json['title']
@@ -356,8 +352,7 @@ def test_custom_sql_time_limit(app_client):
 
 def test_invalid_custom_sql(app_client):
     response = app_client.get(
-        '/test_tables.json?sql=.schema',
-        gather_request=False
+        '/test_tables.json?sql=.schema'
     )
     assert response.status == 400
     assert response.json['ok'] is False
@@ -369,13 +364,12 @@ def test_allow_sql_off():
         'allow_sql': False,
     }):
         assert 400 == client.get(
-            "/test_tables.json?sql=select+sleep(0.01)",
-            gather_request=False
+            "/test_tables.json?sql=select+sleep(0.01)"
         ).status
 
 
 def test_table_json(app_client):
-    response = app_client.get('/test_tables/simple_primary_key.json?_shape=objects', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key.json?_shape=objects')
     assert response.status == 200
     data = response.json
     assert data['query']['sql'] == 'select * from simple_primary_key order by id limit 51'
@@ -398,21 +392,17 @@ def test_table_not_exists_json(app_client):
         'error': 'Table not found: blah',
         'status': 404,
         'title': None,
-    } == app_client.get(
-        '/test_tables/blah.json', gather_request=False
-    ).json
+    } == app_client.get('/test_tables/blah.json').json
 
 
 def test_jsono_redirects_to_shape_objects(app_client):
     response_1 = app_client.get(
         '/test_tables/simple_primary_key.jsono',
-        allow_redirects=False,
-        gather_request=False
+        allow_redirects=False
     )
     response = app_client.get(
         response_1.headers['Location'],
-        allow_redirects=False,
-        gather_request=False
+        allow_redirects=False
     )
     assert response.status == 302
     assert response.headers['Location'].endswith('?_shape=objects')
@@ -420,8 +410,7 @@ def test_jsono_redirects_to_shape_objects(app_client):
 
 def test_table_shape_arrays(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=arrays',
-        gather_request=False
+        '/test_tables/simple_primary_key.json?_shape=arrays'
     )
     assert [
         ['1', 'hello'],
@@ -435,16 +424,14 @@ def test_table_shape_arrayfirst(app_client):
         '/test_tables.json?' + urllib.parse.urlencode({
             'sql': 'select content from simple_primary_key order by id',
             '_shape': 'arrayfirst'
-        }),
-        gather_request=False
+        })
     )
     assert ['hello', 'world', ''] == response.json
 
 
 def test_table_shape_objects(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=objects',
-        gather_request=False
+        '/test_tables/simple_primary_key.json?_shape=objects'
     )
     assert [{
         'id': '1',
@@ -460,8 +447,7 @@ def test_table_shape_objects(app_client):
 
 def test_table_shape_array(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=array',
-        gather_request=False
+        '/test_tables/simple_primary_key.json?_shape=array'
     )
     assert [{
         'id': '1',
@@ -477,8 +463,7 @@ def test_table_shape_array(app_client):
 
 def test_table_shape_invalid(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=invalid',
-        gather_request=False
+        '/test_tables/simple_primary_key.json?_shape=invalid'
     )
     assert {
         'ok': False,
@@ -490,8 +475,7 @@ def test_table_shape_invalid(app_client):
 
 def test_table_shape_object(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=object',
-        gather_request=False
+        '/test_tables/simple_primary_key.json?_shape=object'
     )
     assert {
         '1': {
@@ -511,8 +495,7 @@ def test_table_shape_object(app_client):
 
 def test_table_shape_object_compound_primary_Key(app_client):
     response = app_client.get(
-        '/test_tables/compound_primary_key.json?_shape=object',
-        gather_request=False
+        '/test_tables/compound_primary_key.json?_shape=object'
     )
     assert {
         'a,b': {
@@ -524,7 +507,7 @@ def test_table_shape_object_compound_primary_Key(app_client):
 
 
 def test_table_with_slashes_in_name(app_client):
-    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv.json?_shape=objects', gather_request=False)
+    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv.json?_shape=objects')
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -534,7 +517,7 @@ def test_table_with_slashes_in_name(app_client):
 
 
 def test_table_with_reserved_word_name(app_client):
-    response = app_client.get('/test_tables/select.json?_shape=objects', gather_request=False)
+    response = app_client.get('/test_tables/select.json?_shape=objects')
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -559,7 +542,7 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
     fetched = []
     count = 0
     while path:
-        response = app_client.get(path, gather_request=False)
+        response = app_client.get(path)
         assert 200 == response.status
         count += 1
         fetched.extend(response.json['rows'])
@@ -581,14 +564,14 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
     ('/test_tables/no_primary_key.json?_size=1001', '_size must be <= 100'),
 ])
 def test_validate_page_size(app_client, path, expected_error):
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     assert expected_error == response.json['error']
     assert 400 == response.status
 
 
 def test_page_size_zero(app_client):
     "For _size=0 we return the counts, empty rows and no continuation token"
-    response = app_client.get('/test_tables/no_primary_key.json?_size=0', gather_request=False)
+    response = app_client.get('/test_tables/no_primary_key.json?_size=0')
     assert 200 == response.status
     assert [] == response.json['rows']
     assert 201 == response.json['table_rows_count']
@@ -603,7 +586,7 @@ def test_paginate_compound_keys(app_client):
     page = 0
     while path:
         page += 1
-        response = app_client.get(path, gather_request=False)
+        response = app_client.get(path)
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
         assert page < 100
@@ -622,7 +605,7 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
     while path:
         page += 1
         assert page < 100
-        response = app_client.get(path, gather_request=False)
+        response = app_client.get(path)
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
     assert 2 == page
@@ -663,7 +646,7 @@ def test_sortable(app_client, query_string, sort_key, human_description_en):
     while path:
         page += 1
         assert page < 100
-        response = app_client.get(path, gather_request=False)
+        response = app_client.get(path)
         assert human_description_en == response.json['human_description_en']
         fetched.extend(response.json['rows'])
         path = response.json['next_url']
@@ -682,7 +665,7 @@ def test_sortable_and_filtered(app_client):
         '/test_tables/sortable.json'
         '?content__contains=d&_sort_desc=sortable&_shape=objects'
     )
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     fetched = response.json['rows']
     assert 'where content contains "d" sorted by sortable descending' \
         == response.json['human_description_en']
@@ -702,33 +685,28 @@ def test_sortable_and_filtered(app_client):
 
 def test_sortable_argument_errors(app_client):
     response = app_client.get(
-        '/test_tables/sortable.json?_sort=badcolumn',
-        gather_request=False
+        '/test_tables/sortable.json?_sort=badcolumn'
     )
     assert 'Cannot sort table by badcolumn' == response.json['error']
     response = app_client.get(
-        '/test_tables/sortable.json?_sort_desc=badcolumn2',
-        gather_request=False
+        '/test_tables/sortable.json?_sort_desc=badcolumn2'
     )
     assert 'Cannot sort table by badcolumn2' == response.json['error']
     response = app_client.get(
-        '/test_tables/sortable.json?_sort=sortable_with_nulls&_sort_desc=sortable',
-        gather_request=False
+        '/test_tables/sortable.json?_sort=sortable_with_nulls&_sort_desc=sortable'
     )
     assert 'Cannot use _sort and _sort_desc at the same time' == response.json['error']
 
 
 def test_sortable_columns_metadata(app_client):
     response = app_client.get(
-        '/test_tables/sortable.json?_sort=content',
-        gather_request=False
+        '/test_tables/sortable.json?_sort=content'
     )
     assert 'Cannot sort table by content' == response.json['error']
     # no_primary_key has ALL sort options disabled
     for column in ('content', 'a', 'b', 'c'):
         response = app_client.get(
-            '/test_tables/sortable.json?_sort={}'.format(column),
-            gather_request=False
+            '/test_tables/sortable.json?_sort={}'.format(column)
         )
         assert 'Cannot sort table by {}'.format(column) == response.json['error']
 
@@ -749,14 +727,13 @@ def test_sortable_columns_metadata(app_client):
     ]),
 ])
 def test_searchable(app_client, path, expected_rows):
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     assert expected_rows == response.json['rows']
 
 
 def test_searchable_invalid_column(app_client):
     response = app_client.get(
-        '/test_tables/searchable.json?_search_invalid=x',
-        gather_request=False
+        '/test_tables/searchable.json?_search_invalid=x'
     )
     assert 400 == response.status
     assert {
@@ -784,14 +761,13 @@ def test_searchable_invalid_column(app_client):
     ]),
 ])
 def test_table_filter_queries(app_client, path, expected_rows):
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     assert expected_rows == response.json['rows']
 
 
 def test_max_returned_rows(app_client):
     response = app_client.get(
-        '/test_tables.json?sql=select+content+from+no_primary_key',
-        gather_request=False
+        '/test_tables.json?sql=select+content+from+no_primary_key'
     )
     data = response.json
     assert {
@@ -803,7 +779,7 @@ def test_max_returned_rows(app_client):
 
 
 def test_view(app_client):
-    response = app_client.get('/test_tables/simple_view.json?_shape=objects', gather_request=False)
+    response = app_client.get('/test_tables/simple_view.json?_shape=objects')
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -819,13 +795,13 @@ def test_view(app_client):
 
 
 def test_row(app_client):
-    response = app_client.get('/test_tables/simple_primary_key/1.json?_shape=objects', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key/1.json?_shape=objects')
     assert response.status == 200
     assert [{'id': '1', 'content': 'hello'}] == response.json['rows']
 
 
 def test_row_foreign_key_tables(app_client):
-    response = app_client.get('/test_tables/simple_primary_key/1.json?_extras=foreign_key_tables', gather_request=False)
+    response = app_client.get('/test_tables/simple_primary_key/1.json?_extras=foreign_key_tables')
     assert response.status == 200
     assert [{
         'column': 'id',
@@ -852,8 +828,7 @@ def test_row_foreign_key_tables(app_client):
 
 def test_unit_filters(app_client):
     response = app_client.get(
-        '/test_tables/units.json?distance__lt=75km&frequency__gt=1kHz',
-        gather_request=False
+        '/test_tables/units.json?distance__lt=75km&frequency__gt=1kHz'
     )
     assert response.status == 200
     data = response.json
@@ -867,24 +842,21 @@ def test_unit_filters(app_client):
 
 def test_metadata_json(app_client):
     response = app_client.get(
-        "/-/metadata.json",
-        gather_request=False
+        "/-/metadata.json"
     )
     assert METADATA == response.json
 
 
 def test_inspect_json(app_client):
     response = app_client.get(
-        "/-/inspect.json",
-        gather_request=False
+        "/-/inspect.json"
     )
     assert app_client.ds.inspect() == response.json
 
 
 def test_plugins_json(app_client):
     response = app_client.get(
-        "/-/plugins.json",
-        gather_request=False
+        "/-/plugins.json"
     )
     # This will include any plugins that have been installed into the
     # current virtual environment, so we only check for the presence of
@@ -899,8 +871,7 @@ def test_plugins_json(app_client):
 
 def test_versions_json(app_client):
     response = app_client.get(
-        "/-/versions.json",
-        gather_request=False
+        "/-/versions.json"
     )
     assert 'python' in response.json
     assert 'version' in response.json['python']
@@ -914,8 +885,7 @@ def test_versions_json(app_client):
 
 def test_config_json(app_client):
     response = app_client.get(
-        "/-/config.json",
-        gather_request=False
+        "/-/config.json"
     )
     assert {
         "default_page_size": 50,
@@ -938,9 +908,7 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
     fetched = []
     path = '/test_tables/no_primary_key.json'
     while path:
-        response = app_client_returned_rows_matches_page_size.get(
-            path, gather_request=False
-        )
+        response = app_client_returned_rows_matches_page_size.get(path)
         fetched.extend(response.json['rows'])
         assert len(response.json['rows']) in (1, 50)
         path = response.json['next_url']
@@ -1088,7 +1056,7 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
     )
 ])
 def test_facets(app_client, path, expected_facet_results):
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     facet_results = response.json['facet_results']
     # We only compare the querystring portion of the taggle_url
     for facet_name, facet_info in facet_results.items():
@@ -1101,8 +1069,7 @@ def test_facets(app_client, path, expected_facet_results):
 
 def test_suggested_facets(app_client):
     assert len(app_client.get(
-        "/test_tables/facetable.json",
-        gather_request=False
+        "/test_tables/facetable.json"
     ).json["suggested_facets"]) > 0
 
 
@@ -1111,13 +1078,11 @@ def test_allow_facet_off():
         'allow_facet': False,
     }):
         assert 400 == client.get(
-            "/test_tables/facetable.json?_facet=planet_int",
-            gather_request=False
+            "/test_tables/facetable.json?_facet=planet_int"
         ).status
         # Should not suggest any facets either:
         assert [] == client.get(
-            "/test_tables/facetable.json",
-            gather_request=False
+            "/test_tables/facetable.json"
         ).json["suggested_facets"]
 
 
@@ -1127,8 +1092,7 @@ def test_suggest_facets_off():
     }):
         # Now suggested_facets should be []
         assert [] == client.get(
-            "/test_tables/facetable.json",
-            gather_request=False
+            "/test_tables/facetable.json"
         ).json["suggested_facets"]
 
 
@@ -1139,7 +1103,7 @@ def test_suggest_facets_off():
     ("/test_tables/facetable.json?_ttl=0", "no-cache"),
 ])
 def test_ttl_parameter(app_client, path, expected_cache_control):
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     assert expected_cache_control == response.headers['Cache-Control']
 
 
@@ -1175,12 +1139,12 @@ def test_json_columns(app_client, extra_args, expected):
         "_shape": "array"
     })
     path += extra_args
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     assert expected == response.json
 
 
 def test_config_cache_size(app_client_larger_cache_size):
     response = app_client_larger_cache_size.get(
-        '/test_tables/pragma_cache_size.json', gather_request=False
+        '/test_tables/pragma_cache_size.json'
     )
     assert [[-2500]] == response.json['rows']

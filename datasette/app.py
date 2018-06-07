@@ -25,6 +25,7 @@ from .views.base import (
 )
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
+from .views.special import JsonDataView
 from .views.table import RowView, TableView
 
 from . import hookspecs
@@ -98,28 +99,6 @@ DEFAULT_CONFIG = {
     option.name: option.default
     for option in CONFIG_OPTIONS
 }
-
-
-class JsonDataView(RenderMixin):
-
-    def __init__(self, datasette, filename, data_callback):
-        self.ds = datasette
-        self.jinja_env = datasette.jinja_env
-        self.filename = filename
-        self.data_callback = data_callback
-
-    async def get(self, request, as_json):
-        data = self.data_callback()
-        if as_json:
-            headers = {}
-            if self.ds.cors:
-                headers["Access-Control-Allow-Origin"] = "*"
-            return response.HTTPResponse(
-                json.dumps(data), content_type="application/json", headers=headers
-            )
-
-        else:
-            return self.render(["show_json.html"], filename=self.filename, data=data)
 
 
 async def favicon(request):

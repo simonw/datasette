@@ -92,7 +92,7 @@
     <p><a class="not-underlined" title="{{ query.sql }}" href="/{{ database }}-{{ database_hash }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 
-<p>This data as <a href="{{ url_json }}">.json</a></p>
+<p class="export-links">This data as <a href="{{ url_json }}">JSON</a>, <a href="{{ url_csv }}">CSV</a> (<a href="{{ url_csv_dl }}">download CSV</a>)</p>
 
 {% if suggested_facets %}
     <p class="suggested-facets">

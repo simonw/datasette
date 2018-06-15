@@ -225,14 +225,6 @@ def path_with_replaced_args(request, args, path=None):
     return path + query_string
 
 
-def path_with_ext(request, ext):
-    path = request.path
-    path += ext
-    if request.query_string:
-        path += '?' + request.query_string
-    return path
-
-
 _css_re = re.compile(r'''['"\n\\]''')
 _boring_keyword_re = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
@@ -772,3 +764,39 @@ def get_plugins(pm):
             plugin_info['version'] = distinfo.version
         plugins.append(plugin_info)
     return plugins
+
+
+FORMATS = ('csv', 'json', 'jsono')
+
+
+def resolve_table_and_format(table_and_format, table_exists):
+    if '.' in table_and_format:
+        # Check if a table exists with this exact name
+        if table_exists(table_and_format):
+            return table_and_format, None
+    # Check if table ends with a known format
+    for _format in FORMATS:
+        if table_and_format.endswith(".{}".format(_format)):
+            table = table_and_format[:-(len(_format) + 1)]
+            return table, _format
+    return table_and_format, None
+
+
+def path_with_format(request, format, extra_qs=None):
+    qs = extra_qs or {}
+    path = request.path
+    if "." in request.path:
+        qs["_format"] = format
+    else:
+        path = "{}.{}".format(path, format)
+    if qs:
+        extra = urllib.parse.urlencode(sorted(qs.items()))
+        if request.query_string:
+            path = "{}?{}&{}".format(
+                path, request.query_string, extra
+            )
+        else:
+            path = "{}?{}".format(path, extra)
+    elif request.query_string:
+        path = "{}?{}".format(path, request.query_string)
+    return path

@@ -299,3 +299,54 @@ def test_compound_keys_after_sql():
   or
 (a = :p0 and b = :p1 and c > :p2))
     '''.strip() == utils.compound_keys_after_sql(['a', 'b', 'c'])
+
+
+def table_exists(table):
+    return table == "exists.csv"
+
+
+@pytest.mark.parametrize(
+    "table_and_format,expected_table,expected_format",
+    [
+        ("blah", "blah", None),
+        ("blah.csv", "blah", "csv"),
+        ("blah.json", "blah", "json"),
+        ("blah.baz", "blah.baz", None),
+        ("exists.csv", "exists.csv", None),
+    ],
+)
+def test_resolve_table_and_format(
+    table_and_format, expected_table, expected_format
+):
+    actual_table, actual_format = utils.resolve_table_and_format(
+        table_and_format, table_exists
+    )
+    assert expected_table == actual_table
+    assert expected_format == actual_format
+
+
+@pytest.mark.parametrize(
+    "path,format,extra_qs,expected",
+    [
+        ("/foo?sql=select+1", "csv", {}, "/foo.csv?sql=select+1"),
+        ("/foo?sql=select+1", "json", {}, "/foo.json?sql=select+1"),
+        ("/foo/bar", "json", {}, "/foo/bar.json"),
+        ("/foo/bar", "csv", {}, "/foo/bar.csv"),
+        ("/foo/bar.csv", "json", {}, "/foo/bar.csv?_format=json"),
+        ("/foo/bar", "csv", {"_dl": 1}, "/foo/bar.csv?_dl=1"),
+        ("/foo/b.csv", "json", {"_dl": 1}, "/foo/b.csv?_dl=1&_format=json"),
+        (
+            "/sf-trees/Street_Tree_List?_search=cherry&_size=1000",
+            "csv",
+            {"_dl": 1},
+            "/sf-trees/Street_Tree_List.csv?_search=cherry&_size=1000&_dl=1",
+        ),
+    ],
+)
+def test_path_with_format(path, format, extra_qs, expected):
+    request = Request(
+        path.encode('utf8'),
+        {}, '1.1', 'GET', None
+    )
+    actual = utils.path_with_format(request, format, extra_qs)
+    assert expected == actual

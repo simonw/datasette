@@ -1,8 +1,10 @@
 import asyncio
+import csv
 import json
 import re
 import sqlite3
 import time
+import urllib
 
 import pint
 from sanic import response
@@ -16,7 +18,8 @@ from datasette.utils import (
     InvalidSql,
     path_from_row_pks,
     path_with_added_args,
-    path_with_ext,
+    path_with_format,
+    resolve_table_and_format,
     to_css_class
 )
 
@@ -113,13 +116,23 @@ class BaseView(RenderMixin):
 
         expected = info["hash"][:HASH_LENGTH]
         if expected != hash:
+            if "table_and_format" in kwargs:
+                table, _format = resolve_table_and_format(
+                    table_and_format=urllib.parse.unquote_plus(
+                        kwargs["table_and_format"]
+                    ),
+                    table_exists=lambda t: self.ds.table_exists(name, t)
+                )
+                kwargs["table"] = table
+                if _format:
+                    kwargs["as_format"] = ".{}".format(_format)
             should_redirect = "/{}-{}".format(name, expected)
             if "table" in kwargs:
-                should_redirect += "/" + kwargs["table"]
+                should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
             if "pk_path" in kwargs:
                 should_redirect += "/" + kwargs["pk_path"]
-            if "as_json" in kwargs:
-                should_redirect += kwargs["as_json"]
+            if "as_format" in kwargs:
+                should_redirect += kwargs["as_format"]
             if "as_db" in kwargs:
                 should_redirect += kwargs["as_db"]
             return name, expected, should_redirect
@@ -136,11 +149,65 @@ class BaseView(RenderMixin):
 
         return await self.view_get(request, name, hash, **kwargs)
 
-    async def view_get(self, request, name, hash, **kwargs):
+    async def as_csv(self, request, name, hash, **kwargs):
         try:
-            as_json = kwargs.pop("as_json")
-        except KeyError:
-            as_json = False
+            response_or_template_contexts = await self.data(
+                request, name, hash, **kwargs
+            )
+            if isinstance(response_or_template_contexts, response.HTTPResponse):
+                return response_or_template_contexts
+
+            else:
+                data, extra_template_data, templates = response_or_template_contexts
+        except (sqlite3.OperationalError, InvalidSql) as e:
+            raise DatasetteError(str(e), title="Invalid SQL", status=400)
+
+        except (sqlite3.OperationalError) as e:
+            raise DatasetteError(str(e))
+
+        except DatasetteError:
+            raise
+        # Convert rows and columns to CSV
+        async def stream_fn(r):
+            writer = csv.writer(r)
+            writer.writerow(data["columns"])
+            for row in data["rows"]:
+                writer.writerow(row)
+
+        content_type = "text/plain; charset=utf-8"
+        headers = {}
+        if request.args.get("_dl", None):
+            content_type = "text/csv; charset=utf-8"
+            disposition = 'attachment; filename="{}.csv"'.format(
+                kwargs.get('table', name)
+            )
+            headers["Content-Disposition"] = disposition
+
+        return response.stream(
+            stream_fn,
+            headers=headers,
+            content_type=content_type
+        )
+
+    async def view_get(self, request, name, hash, **kwargs):
+        # If ?_format= is provided, use that as the format
+        _format = request.args.get("_format", None)
+        if not _format:
+            _format = (kwargs.pop("as_format", None) or "").lstrip(".")
+        if "table_and_format" in kwargs:
+            table, _ext_format = resolve_table_and_format(
+                table_and_format=urllib.parse.unquote_plus(
+                    kwargs["table_and_format"]
+                ),
+                table_exists=lambda t: self.ds.table_exists(name, t)
+            )
+            _format = _format or _ext_format
+            kwargs["table"] = table
+            del kwargs["table_and_format"]
+
+        if _format == "csv":
+            return await self.as_csv(request, name, hash, **kwargs)
+
         extra_template_data = {}
         start = time.time()
         status_code = 200
@@ -175,9 +242,9 @@ class BaseView(RenderMixin):
             value = self.ds.metadata.get(key)
             if value:
                 data[key] = value
-        if as_json:
+        if _format in ("json", "jsono"):
             # Special case for .jsono extension - redirect to _shape=objects
-            if as_json == ".jsono":
+            if _format == "jsono":
                 return self.redirect(
                     request,
                     path_with_added_args(
@@ -260,8 +327,14 @@ class BaseView(RenderMixin):
                 **data,
                 **extras,
                 **{
-                    "url_json": path_with_ext(request, ".json"),
-                    "url_jsono": path_with_ext(request, ".jsono"),
+                    "url_json": path_with_format(request, "json"),
+                    "url_csv": path_with_format(request, "csv", {
+                        "_size": "max"
+                    }),
+                    "url_csv_dl": path_with_format(request, "csv", {
+                        "_dl": "1",
+                        "_size": "max"
+                    }),
                     "extra_css_urls": self.ds.extra_css_urls(),
                     "extra_js_urls": self.ds.extra_js_urls(),
                     "datasette_version": __version__,

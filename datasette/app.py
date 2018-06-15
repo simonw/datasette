@@ -224,6 +224,9 @@ class Datasette:
             conn.execute('PRAGMA cache_size=-{}'.format(self.config["cache_size_kb"]))
         pm.hook.prepare_connection(conn=conn)
 
+    def table_exists(self, database, table):
+        return table in self.inspect().get(database, {}).get("tables")
+
     def inspect(self):
         " Inspect the database and return a dictionary of table metadata "
         if self._inspect:
@@ -395,7 +398,7 @@ class Datasette:
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
-        app.add_route(IndexView.as_view(self), "/<as_json:(\.jsono?)?$>")
+        app.add_route(IndexView.as_view(self), "/<as_format:(\.jsono?)?$>")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, "/favicon.ico")
         app.static("/-/static/", str(app_root / "datasette" / "static"))
@@ -408,37 +411,37 @@ class Datasette:
                 app.static(modpath, plugin["static_path"])
         app.add_route(
             JsonDataView.as_view(self, "inspect.json", self.inspect),
-            "/-/inspect<as_json:(\.json)?$>",
+            "/-/inspect<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "metadata.json", lambda: self.metadata),
-            "/-/metadata<as_json:(\.json)?$>",
+            "/-/metadata<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "versions.json", self.versions),
-            "/-/versions<as_json:(\.json)?$>",
+            "/-/versions<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "plugins.json", self.plugins),
-            "/-/plugins<as_json:(\.json)?$>",
+            "/-/plugins<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "config.json", lambda: self.config),
-            "/-/config<as_json:(\.json)?$>",
+            "/-/config<as_format:(\.json)?$>",
         )
         app.add_route(
-            DatabaseView.as_view(self), "/<db_name:[^/\.]+?><as_json:(\.jsono?)?$>"
+            DatabaseView.as_view(self), "/<db_name:[^/\.]+?><as_format:(\.jsono?|\.csv)?$>"
         )
         app.add_route(
             DatabaseDownload.as_view(self), "/<db_name:[^/]+?><as_db:(\.db)$>"
         )
         app.add_route(
             TableView.as_view(self),
-            "/<db_name:[^/]+>/<table:[^/]+?><as_json:(\.jsono?)?$>",
+            "/<db_name:[^/]+>/<table_and_format:[^/]+?$>",
         )
         app.add_route(
             RowView.as_view(self),
-            "/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(\.jsono?)?$>",
+            "/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(\.jsono?)?$>",
         )
 
         self.register_custom_units()

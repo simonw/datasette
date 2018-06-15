@@ -507,7 +507,7 @@ def test_table_shape_object_compound_primary_Key(app_client):
 
 
 def test_table_with_slashes_in_name(app_client):
-    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv.json?_shape=objects')
+    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv?_shape=objects&_format=json')
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{

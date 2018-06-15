@@ -274,6 +274,21 @@ def test_table_html_simple_primary_key(app_client):
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
+def test_table_csv_json_export_links(app_client):
+    response = app_client.get('/test_tables/simple_primary_key')
+    assert response.status == 200
+    links = Soup(response.body, "html.parser").find("p", {
+        "class": "export-links"
+    }).findAll("a")
+    actual = [l["href"].split("/")[-1] for l in links]
+    expected = [
+        "simple_primary_key.json",
+        "simple_primary_key.csv?_size=max",
+        "simple_primary_key.csv?_dl=1&_size=max"
+    ]
+    assert expected == actual
+
+
 def test_row_html_simple_primary_key(app_client):
     response = app_client.get('/test_tables/simple_primary_key/1')
     assert response.status == 200

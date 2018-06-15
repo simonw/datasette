@@ -10,9 +10,9 @@ class JsonDataView(RenderMixin):
         self.filename = filename
         self.data_callback = data_callback
 
-    async def get(self, request, as_json):
+    async def get(self, request, as_format):
         data = self.data_callback()
-        if as_json:
+        if as_format:
             headers = {}
             if self.ds.cors:
                 headers["Access-Control-Allow-Origin"] = "*"

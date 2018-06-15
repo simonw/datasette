@@ -232,7 +232,6 @@ class RowTableShared(BaseView):
 class TableView(RowTableShared):
 
     async def data(self, request, name, hash, table):
-        table = urllib.parse.unquote_plus(table)
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
             return await self.custom_sql(
@@ -780,7 +779,6 @@ class TableView(RowTableShared):
 class RowView(RowTableShared):
 
     async def data(self, request, name, hash, table, pk_path):
-        table = urllib.parse.unquote_plus(table)
         pk_values = urlsafe_components(pk_path)
         info = self.ds.inspect()[name]
         table_info = info["tables"].get(table) or {}

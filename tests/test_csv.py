@@ -9,7 +9,6 @@ EXPECTED_TABLE_CSV = '''id,content
 EXPECTED_CUSTOM_CSV = '''content
 hello
 world
-""
 '''.replace('\n', '\r\n')
 
 
@@ -22,7 +21,7 @@ def test_table_csv(app_client):
 
 def test_custom_sql_csv(app_client):
     response = app_client.get(
-        '/test_tables.csv?sql=select+content+from+simple_primary_key'
+        '/test_tables.csv?sql=select+content+from+simple_primary_key+limit+2'
     )
     assert response.status == 200
     assert 'text/plain; charset=utf-8' == response.headers['Content-Type']

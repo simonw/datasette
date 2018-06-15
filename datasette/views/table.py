@@ -1,3 +1,4 @@
+from collections import namedtuple
 import sqlite3
 import urllib
 
@@ -6,6 +7,7 @@ from sanic.exceptions import NotFound
 from sanic.request import RequestParameters
 
 from datasette.utils import (
+    CustomRow,
     Filters,
     InterruptedError,
     compound_keys_after_sql,
@@ -25,16 +27,34 @@ from .base import BaseView, DatasetteError, ureg
 
 class RowTableShared(BaseView):
 
-    def sortable_columns_for_table(self, name, table, use_rowid):
-        table_metadata = self.table_metadata(name, table)
+    def sortable_columns_for_table(self, database, table, use_rowid):
+        table_metadata = self.table_metadata(database, table)
         if "sortable_columns" in table_metadata:
             sortable_columns = set(table_metadata["sortable_columns"])
         else:
-            table_info = self.ds.inspect()[name]["tables"].get(table) or {}
+            table_info = self.ds.inspect()[database]["tables"].get(table) or {}
             sortable_columns = set(table_info.get("columns", []))
         if use_rowid:
             sortable_columns.add("rowid")
         return sortable_columns
+
+    def expandable_columns(self, database, table):
+        # Returns list of (fk_dict, label_column) pairs for that table
+        tables = self.ds.inspect()[database].get("tables", {})
+        table_info = tables.get(table)
+        if not table_info:
+            return []
+        expandables = []
+        for fk in table_info["foreign_keys"]["outgoing"]:
+            label_column = (
+                self.table_metadata(
+                    database, fk["other_table"]
+                ).get("label_column")
+                or tables.get(fk["other_table"], {}).get("label_column")
+            )
+            if label_column:
+                expandables.append((fk, label_column))
+        return expandables
 
     async def expand_foreign_keys(self, database, table, column, values):
         "Returns dict mapping (column, value) -> label"
@@ -610,6 +630,38 @@ class TableView(RowTableShared):
         if use_rowid and filter_columns[0] == "rowid":
             filter_columns = filter_columns[1:]
 
+        # Expand labeled columns if requested
+        labeled_columns = []
+        if request.raw_args.get("_labels", None):
+            expandable_columns = self.expandable_columns(name, table)
+            expanded_labels = {}
+            for fk, label_column in expandable_columns:
+                column = fk["column"]
+                labeled_columns.append(column)
+                # Gather the values
+                column_index = columns.index(column)
+                values = [row[column_index] for row in rows]
+                # Expand them
+                expanded_labels.update(await self.expand_foreign_keys(
+                    name, table, column, values
+                ))
+            if expanded_labels:
+                # Rewrite the rows
+                new_rows = []
+                for row in rows:
+                    new_row = CustomRow(columns)
+                    for column in row.keys():
+                        value = row[column]
+                        if (column, value) in expanded_labels:
+                            new_row[column] = {
+                                'value': value,
+                                'label': expanded_labels[(column, value)]
+                            }
+                        else:
+                            new_row[column] = value
+                    new_rows.append(new_row)
+                rows = new_rows
+
         # Pagination next link
         next_value = None
         next_url = None
@@ -762,6 +814,7 @@ class TableView(RowTableShared):
             "truncated": results.truncated,
             "table_rows_count": table_rows_count,
             "filtered_table_rows_count": filtered_table_rows_count,
+            "labeled_columns": labeled_columns,
             "columns": columns,
             "primary_keys": pks,
             "units": units,

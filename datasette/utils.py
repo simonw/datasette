@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from collections import OrderedDict
 import base64
 import hashlib
 import imp
@@ -800,3 +801,20 @@ def path_with_format(request, format, extra_qs=None):
     elif request.query_string:
         path = "{}?{}".format(path, request.query_string)
     return path
+
+
+class CustomRow(OrderedDict):
+    # Loose imitation of sqlite3.Row which offers
+    # both index-based AND key-based lookups
+    def __init__(self, columns):
+        self.columns = columns
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return super().__getitem__(self.columns[key])
+        else:
+            return super().__getitem__(key)
+
+    def __iter__(self):
+        for column in self.columns:
+            yield self[column]

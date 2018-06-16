@@ -800,3 +800,13 @@ def path_with_format(request, format, extra_qs=None):
     elif request.query_string:
         path = "{}?{}".format(path, request.query_string)
     return path
+
+
+def value_as_boolean(value):
+    if value.lower() not in ('on', 'off', 'true', 'false', '1', '0'):
+        raise ValueAsBooleanError
+    return value.lower() in ('on', 'true', '1')
+
+
+class ValueAsBooleanError(ValueError):
+    pass

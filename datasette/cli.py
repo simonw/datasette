@@ -7,7 +7,12 @@ import shutil
 from subprocess import call, check_output
 import sys
 from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS
-from .utils import temporary_docker_directory, temporary_heroku_directory
+from .utils import (
+    temporary_docker_directory,
+    temporary_heroku_directory,
+    value_as_boolean,
+    ValueAsBooleanError,
+)
 
 
 class StaticMount(click.ParamType):
@@ -36,17 +41,22 @@ class Config(click.ParamType):
             return
         name, value = config.split(":")
         if name not in DEFAULT_CONFIG:
-            self.fail("{} is not a valid option".format(name), param, ctx)
+            self.fail(
+                "{} is not a valid option (--help-config to see all)".format(
+                    name
+                ), param, ctx
+            )
             return
         # Type checking
         default = DEFAULT_CONFIG[name]
         if isinstance(default, bool):
-            if value.lower() not in ('on', 'off', 'true', 'false', '1', '0'):
+            try:
+                return name, value_as_boolean(value)
+            except ValueAsBooleanError:
                 self.fail(
-                    '"{}" should be on/off/true/false'.format(name), param, ctx
+                    '"{}" should be on/off/true/false/1/0'.format(name), param, ctx
                 )
                 return
-            return name, value.lower() in ('on', 'true', '1')
         elif isinstance(default, int):
             if not value.isdigit():
                 self.fail(

@@ -193,3 +193,7 @@ The Datasette table view takes a number of special querystring arguments:
 ``?_next=TOKEN``
     Pagination by continuation token - pass the token that was returned in the
     ``"next"`` property by the previous page.
+
+``?_labels=1``
+    Indicates that you would like to expand any foreign key references. These
+    will be exposed in the JSON as ``{"value": 3, "label": "Monterey"}``.

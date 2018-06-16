@@ -163,6 +163,12 @@ Special table arguments
 
 The Datasette table view takes a number of special querystring arguments:
 
+``?_labels=on/off``
+    Expand foreign key references for every possible column. See below.
+
+``?_label=COLUMN1&_label=COLUMN2``
+    Expand foreign key references for one or more specified columns.
+
 ``?_size=1000`` or ``?_size=max``
     Sets a custom page size. This cannot exceed the ``max_returned_rows`` limit
     passed to ``datasette serve``. Use ``max`` to get ``max_returned_rows``.
@@ -197,3 +203,34 @@ The Datasette table view takes a number of special querystring arguments:
 ``?_labels=1``
     Indicates that you would like to expand any foreign key references. These
     will be exposed in the JSON as ``{"value": 3, "label": "Monterey"}``.
+
+Expanding foreign key references
+--------------------------------
+
+Datasette can detect foreign key relationships and resolve those references into
+labels. The HTML interface does this by default for every detected foreign key
+column - you can turn that off using ``?_labels=off``.
+
+You can request foreign keys be expanded in JSON using the ``_labels=on`` or
+``_label=COLUMN`` special querystring parameters. Here's what an expanded row
+looks like::
+
+    [
+        {
+            "rowid": 1,
+            "TreeID": 141565,
+            "qLegalStatus": {
+                "value": 1,
+                "label": "Permitted Site"
+            },
+            "qSpecies": {
+                "value": 1,
+                "label": "Myoporum laetum :: Myoporum"
+            },
+            "qAddress": "501X Baker St",
+            "SiteOrder": 1
+        }
+    ]
+
+The column in the foreign key table that is used for the label can be specified
+in ``metadata.json`` - see :ref:`label_columns`.

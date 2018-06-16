@@ -28,7 +28,7 @@ pk,planet_int,state,city_id,city_id_label,neighborhood
 13,1,MI,3,Detroit,Corktown
 14,1,MI,3,Detroit,Mexicantown
 15,2,MC,4,Memnonia,Arcadia Planitia
-'''.strip().replace('\n', '\r\n')
+'''.lstrip().replace('\n', '\r\n')
 
 def test_table_csv(app_client):
     response = app_client.get('/test_tables/simple_primary_key.csv')

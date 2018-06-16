@@ -20,9 +20,13 @@ from datasette.utils import (
     path_with_replaced_args,
     to_css_class,
     urlsafe_components,
+    value_as_boolean,
 )
 
 from .base import BaseView, DatasetteError, ureg
+
+LINK_WITH_LABEL = '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
+LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
 
 
 class RowTableShared(BaseView):
@@ -39,7 +43,7 @@ class RowTableShared(BaseView):
         return sortable_columns
 
     def expandable_columns(self, database, table):
-        # Returns list of (fk_dict, label_column) pairs for that table
+        # Returns list of (fk_dict, label_column-or-None) pairs for that table
         tables = self.ds.inspect()[database].get("tables", {})
         table_info = tables.get(table)
         if not table_info:
@@ -51,9 +55,8 @@ class RowTableShared(BaseView):
                     database, fk["other_table"]
                 ).get("label_column")
                 or tables.get(fk["other_table"], {}).get("label_column")
-            )
-            if label_column:
-                expandables.append((fk, label_column))
+            ) or None
+            expandables.append((fk, label_column))
         return expandables
 
     async def expand_foreign_keys(self, database, table, column, values):
@@ -80,7 +83,10 @@ class RowTableShared(BaseView):
             or tables_info.get(fk["other_table"], {}).get("label_column")
         )
         if not label_column:
-            return {}
+            return {
+                (fk["column"], value): str(value)
+                for value in values
+            }
         labeled_fks = {}
         sql = '''
             select {other_column}, {label_column}
@@ -110,7 +116,6 @@ class RowTableShared(BaseView):
         description,
         rows,
         link_column=False,
-        expand_foreign_keys=True,
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         table_metadata = self.table_metadata(database, table)
@@ -122,44 +127,12 @@ class RowTableShared(BaseView):
         tables = info["tables"]
         table_info = tables.get(table) or {}
         pks = table_info.get("primary_keys") or []
-
-        # Prefetch foreign key resolutions for later expansion:
-        fks = {}
-        labeled_fks = {}
-        if table_info and expand_foreign_keys:
-            foreign_keys = table_info["foreign_keys"]["outgoing"]
-            for fk in foreign_keys:
-                label_column = (
-                    # First look in metadata.json definition for this foreign key table:
-                    self.table_metadata(database, fk["other_table"]).get("label_column")
-                    # Fall back to label_column from .inspect() detection:
-                    or tables.get(fk["other_table"], {}).get("label_column")
-                )
-                if not label_column:
-                    # No label for this FK
-                    fks[fk["column"]] = fk["other_table"]
-                    continue
-
-                ids_to_lookup = set([row[fk["column"]] for row in rows])
-                sql = '''
-                    select {other_column}, {label_column}
-                    from {other_table}
-                    where {other_column} in ({placeholders})
-                '''.format(
-                    other_column=escape_sqlite(fk["other_column"]),
-                    label_column=escape_sqlite(label_column),
-                    other_table=escape_sqlite(fk["other_table"]),
-                    placeholders=", ".join(["?"] * len(ids_to_lookup)),
-                )
-                try:
-                    results = await self.ds.execute(
-                        database, sql, list(set(ids_to_lookup))
-                    )
-                except InterruptedError:
-                    pass
-                else:
-                    for id, value in results:
-                        labeled_fks[(fk["column"], id)] = (fk["other_table"], value)
+        column_to_foreign_key_table = {
+            fk["column"]: fk["other_table"]
+            for fk in table_info.get(
+                "foreign_keys", {}
+            ).get("outgoing", None) or []
+        }
 
         cell_rows = []
         for row in rows:
@@ -192,26 +165,22 @@ class RowTableShared(BaseView):
                     # already shown in the link column.
                     continue
 
-                if (column, value) in labeled_fks:
-                    other_table, label = labeled_fks[(column, value)]
-                    display_value = jinja2.Markup(
-                        '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'.format(
-                            database=database,
-                            table=urllib.parse.quote_plus(other_table),
-                            link_id=urllib.parse.quote_plus(str(value)),
-                            id=str(jinja2.escape(value)),
-                            label=str(jinja2.escape(label)),
-                        )
+                if isinstance(value, dict):
+                    # It's an expanded foreign key - display link to other row
+                    label = value["label"]
+                    value = value["value"]
+                    # The table we link to depends on the column
+                    other_table = column_to_foreign_key_table[column]
+                    link_template = (
+                        LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
                     )
-                elif column in fks:
-                    display_value = jinja2.Markup(
-                        '<a href="/{database}/{table}/{link_id}">{id}</a>'.format(
-                            database=database,
-                            table=urllib.parse.quote_plus(fks[column]),
-                            link_id=urllib.parse.quote_plus(str(value)),
-                            id=str(jinja2.escape(value)),
-                        )
-                    )
+                    display_value = jinja2.Markup(link_template.format(
+                        database=database,
+                        table=urllib.parse.quote_plus(other_table),
+                        link_id=urllib.parse.quote_plus(str(value)),
+                        id=str(jinja2.escape(value)),
+                        label=str(jinja2.escape(label)),
+                    ))
                 elif value is None:
                     display_value = jinja2.Markup("&nbsp;")
                 elif is_url(str(value).strip()):
@@ -251,7 +220,7 @@ class RowTableShared(BaseView):
 
 class TableView(RowTableShared):
 
-    async def data(self, request, name, hash, table):
+    async def data(self, request, name, hash, table, default_labels=False):
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
             return await self.custom_sql(
@@ -604,13 +573,29 @@ class TableView(RowTableShared):
             filter_columns = filter_columns[1:]
 
         # Expand labeled columns if requested
-        labeled_columns = []
-        if request.raw_args.get("_labels", None):
-            expandable_columns = self.expandable_columns(name, table)
+        columns_expanded = []
+        expandable_columns = self.expandable_columns(name, table)
+        columns_to_expand = None
+        try:
+            all_labels = value_as_boolean(special_args.get("_labels", ""))
+        except ValueError:
+            all_labels = default_labels
+        # Check for explicit _label=
+        if "_label" in request.args:
+            columns_to_expand = request.args["_label"]
+        if columns_to_expand is None and all_labels:
+            # expand all columns with foreign keys
+            columns_to_expand = [
+                fk["column"] for fk, _ in expandable_columns
+            ]
+
+        if columns_to_expand:
             expanded_labels = {}
             for fk, label_column in expandable_columns:
                 column = fk["column"]
-                labeled_columns.append(column)
+                if column not in columns_to_expand:
+                    continue
+                columns_expanded.append(column)
                 # Gather the values
                 column_index = columns.index(column)
                 values = [row[column_index] for row in rows]
@@ -733,7 +718,6 @@ class TableView(RowTableShared):
                 results.description,
                 rows,
                 link_column=not is_view,
-                expand_foreign_keys=True,
             )
             metadata = self.ds.metadata.get("databases", {}).get(name, {}).get(
                 "tables", {}
@@ -787,7 +771,7 @@ class TableView(RowTableShared):
             "truncated": results.truncated,
             "table_rows_count": table_rows_count,
             "filtered_table_rows_count": filtered_table_rows_count,
-            "labeled_columns": labeled_columns,
+            "columns_expanded": columns_expanded,
             "columns": columns,
             "primary_keys": pks,
             "units": units,
@@ -804,7 +788,7 @@ class TableView(RowTableShared):
 
 class RowView(RowTableShared):
 
-    async def data(self, request, name, hash, table, pk_path):
+    async def data(self, request, name, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
         info = self.ds.inspect()[name]
         table_info = info["tables"].get(table) or {}
@@ -834,7 +818,6 @@ class RowView(RowTableShared):
                 results.description,
                 rows,
                 link_column=False,
-                expand_foreign_keys=True,
             )
             for column in display_columns:
                 column["sortable"] = False

@@ -394,9 +394,9 @@ def test_table_html_disable_foreign_key_links_with_labels(app_client):
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
         [
-            '<td no class="col-pk"><a href="/test_tables/foreign_key_references/1">1</a></td>',
-            '<td class="col-foreign_key_with_label"><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
-            '<td class="col-foreign_key_with_no_label"><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
+            '<td class="col-pk"><a href="/test_tables/foreign_key_references/1">1</a></td>',
+            '<td class="col-foreign_key_with_label">1</td>',
+            '<td class="col-foreign_key_with_no_label">1</td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]

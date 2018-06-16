@@ -388,6 +388,20 @@ def test_table_html_foreign_key_links(app_client):
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
+def test_table_html_disable_foreign_key_links_with_labels(app_client):
+    response = app_client.get('/test_tables/foreign_key_references?_labels=off')
+    assert response.status == 200
+    table = Soup(response.body, 'html.parser').find('table')
+    expected = [
+        [
+            '<td no class="col-pk"><a href="/test_tables/foreign_key_references/1">1</a></td>',
+            '<td class="col-foreign_key_with_label"><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_no_label"><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
+        ]
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
 def test_table_html_foreign_key_custom_label_column(app_client):
     response = app_client.get('/test_tables/custom_foreign_key_label')
     assert response.status == 200

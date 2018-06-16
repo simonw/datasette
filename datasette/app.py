@@ -171,6 +171,21 @@ class Datasette:
         if query:
             return {"name": query_name, "sql": query}
 
+    async def get_table_definition(self, database_name, table, type_="table"):
+        table_definition_rows = list(
+            await self.execute(
+                database_name,
+                'select sql from sqlite_master where name = :n and type=:t',
+                {"n": table, "t": type_},
+            )
+        )
+        if not table_definition_rows:
+            return None
+        return table_definition_rows[0][0]
+
+    def get_view_definition(self, database_name, view):
+        return self.get_table_definition(database_name, view, 'view')
+
     def asset_urls(self, key):
         # Flatten list-of-lists from plugins:
         seen_urls = set()

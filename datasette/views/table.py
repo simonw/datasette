@@ -243,39 +243,12 @@ class TableView(RowTableShared):
                 canned_query=table,
             )
 
-        is_view = bool(
-            list(
-                await self.ds.execute(
-                    name,
-                    "SELECT count(*) from sqlite_master WHERE type = 'view' and name=:n",
-                    {"n": table},
-                )
-            )[0][0]
-        )
-        view_definition = None
-        table_definition = None
-        if is_view:
-            view_definition = list(
-                await self.ds.execute(
-                    name,
-                    'select sql from sqlite_master where name = :n and type="view"',
-                    {"n": table},
-                )
-            )[0][0]
-        else:
-            table_definition_rows = list(
-                await self.ds.execute(
-                    name,
-                    'select sql from sqlite_master where name = :n and type="table"',
-                    {"n": table},
-                )
-            )
-            if not table_definition_rows:
-                raise NotFound("Table not found: {}".format(table))
-
-            table_definition = table_definition_rows[0][0]
+        is_view = bool(await self.ds.get_view_definition(name, table))
         info = self.ds.inspect()
         table_info = info[name]["tables"].get(table) or {}
+        if not is_view and not table_info:
+            raise NotFound("Table not found: {}".format(table))
+
         pks = table_info.get("primary_keys") or []
         use_rowid = not pks and not is_view
         if use_rowid:
@@ -749,14 +722,14 @@ class TableView(RowTableShared):
                     "_rows_and_columns.html",
                 ],
                 "metadata": metadata,
+                "view_definition": await self.ds.get_view_definition(name, table),
+                "table_definition": await self.ds.get_table_definition(name, table),
             }
 
         return {
             "database": name,
             "table": table,
             "is_view": is_view,
-            "view_definition": view_definition,
-            "table_definition": table_definition,
             "human_description_en": human_description_en,
             "rows": rows[:page_size],
             "truncated": results.truncated,

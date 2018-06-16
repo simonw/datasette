@@ -265,7 +265,7 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
         install = ['datasette'] + list(install)
 
     return '''
-FROM python:3.6-slim-stretch
+FROM python:3.6
 COPY . /app
 WORKDIR /app
 {spatialite_extras}

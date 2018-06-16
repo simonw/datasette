@@ -168,11 +168,33 @@ class BaseView(RenderMixin):
         except DatasetteError:
             raise
         # Convert rows and columns to CSV
+        headings = data["columns"]
+        # if there are columns_expanded we need to add additional headings
+        columns_expanded = set(data.get("columns_expanded") or [])
+        if columns_expanded:
+            headings = []
+            for column in data["columns"]:
+                headings.append(column)
+                if column in columns_expanded:
+                    headings.append("{}_label".format(column))
+
         async def stream_fn(r):
             writer = csv.writer(r)
-            writer.writerow(data["columns"])
+            writer.writerow(headings)
             for row in data["rows"]:
-                writer.writerow(row)
+                if not columns_expanded:
+                    # Simple path
+                    writer.writerow(row)
+                else:
+                    # Look for {"value": "label": } dicts and expand
+                    new_row = []
+                    for cell in row:
+                        if isinstance(cell, dict):
+                            new_row.append(cell["value"])
+                            new_row.append(cell["label"])
+                        else:
+                            new_row.append(cell)
+                    writer.writerow(new_row)
 
         content_type = "text/plain; charset=utf-8"
         headers = {}
@@ -207,6 +229,10 @@ class BaseView(RenderMixin):
 
         if _format == "csv":
             return await self.as_csv(request, name, hash, **kwargs)
+
+        if _format is None:
+            # HTML views default to expanding all forign key labels
+            kwargs['default_labels'] = True
 
         extra_template_data = {}
         start = time.time()

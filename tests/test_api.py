@@ -1096,6 +1096,52 @@ def test_suggest_facets_off():
         ).json["suggested_facets"]
 
 
+def test_expand_labels(app_client):
+    response = app_client.get(
+        "/test_tables/facetable.json?_shape=object&_labels=1&_size=2"
+        "&neighborhood__contains=c"
+    )
+    assert {
+        "2": {
+            "pk": 2,
+            "planet_int": 1,
+            "state": "CA",
+            "city_id": {
+                "value": 1,
+                "label": "San Francisco"
+            },
+            "neighborhood": "Dogpatch"
+        },
+        "13": {
+            "pk": 13,
+            "planet_int": 1,
+            "state": "MI",
+            "city_id": {
+                "value": 3,
+                "label": "Detroit"
+            },
+            "neighborhood": "Corktown"
+        }
+    } == response.json
+
+
+def test_expand_label(app_client):
+    response = app_client.get(
+        "/test_tables/foreign_key_references.json?_shape=object"
+        "&_label=foreign_key_with_label"
+    )
+    assert {
+        "1": {
+            "pk": "1",
+            "foreign_key_with_label": {
+                "value": "1",
+                "label": "hello"
+            },
+            "foreign_key_with_no_label": "1"
+        }
+    } == response.json
+
+
 @pytest.mark.parametrize('path,expected_cache_control', [
     ("/test_tables/facetable.json", "max-age=31536000"),
     ("/test_tables/facetable.json?_ttl=invalid", "max-age=31536000"),

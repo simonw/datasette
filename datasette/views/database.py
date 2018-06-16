@@ -9,7 +9,7 @@ from .base import BaseView, DatasetteError
 
 class DatabaseView(BaseView):
 
-    async def data(self, request, name, hash):
+    async def data(self, request, name, hash, default_labels=False):
         if request.args.get("sql"):
             if not self.ds.config["allow_sql"]:
                 raise DatasetteError("sql= is not allowed", status=400)

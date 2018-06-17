@@ -119,6 +119,7 @@ class Datasette:
         plugins_dir=None,
         static_mounts=None,
         config=None,
+        version_note=None,
     ):
         self.files = files
         self.cache_headers = cache_headers
@@ -131,6 +132,7 @@ class Datasette:
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
         self.config = dict(DEFAULT_CONFIG, **(config or {}))
+        self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
             max_workers=self.config["num_sql_threads"]
         )
@@ -298,12 +300,14 @@ class Datasette:
                 fts_versions.append(fts)
             except sqlite3.OperationalError:
                 continue
-
+        datasette_version = {"version": __version__}
+        if self.version_note:
+            datasette_version["note"] = self.version_note
         return {
             "python": {
                 "version": ".".join(map(str, sys.version_info[:3])), "full": sys.version
             },
-            "datasette": {"version": __version__},
+            "datasette": datasette_version,
             "sqlite": {
                 "version": sqlite_version,
                 "fts_versions": fts_versions,

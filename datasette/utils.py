@@ -241,7 +241,7 @@ def escape_sqlite(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install, spatialite):
+def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install, spatialite, version_note):
     cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
     cmd.append('"' + '", "'.join(files) + '"')
     cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
@@ -251,6 +251,8 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
         cmd.extend(['"--template-dir"', '"templates/"'])
     if plugins_dir:
         cmd.extend(['"--plugins-dir"', '"plugins/"'])
+    if version_note:
+        cmd.extend(['"--version-note"', '"{}"'.format(version_note)])
     if static:
         for mount_point, _ in static:
             cmd.extend(['"--static"', '"{}:{}"'.format(mount_point, mount_point)])
@@ -293,6 +295,7 @@ def temporary_docker_directory(
     static,
     install,
     spatialite,
+    version_note,
     extra_metadata=None
 ):
     extra_metadata = extra_metadata or {}
@@ -324,6 +327,7 @@ def temporary_docker_directory(
             static,
             install,
             spatialite,
+            version_note,
         )
         os.chdir(datasette_dir)
         if metadata_content:

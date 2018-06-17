@@ -1,8 +1,26 @@
 language: python
 
+# 3.6 is listed first so it gets used for the later build stages
 python:
-  - 3.5
   - 3.6
+  - 3.5
 
+# Executed for 3.5 AND 3.5 as the first "test" stage:
 script:
   - python setup.py test
+
+# This defines further stages that execute after the tests
+jobs:
+  include:
+    - stage: deploy latest.datasette.io
+      script:
+        - pip install .
+        - npm install -g now
+        - python tests/fixtures.py fixtures.db fixtures.json
+        - echo '{"name":"datasette-latest","alias":"latest.datasette.io"}' > now.json
+        - datasette publish now fixtures.db -m fixtures.json --token=$NOW_TOKEN --branch=$TRAVIS_COMMIT --version-note=$TRAVIS_COMMIT
+        - now alias --token=$NOW_TOKEN
+        - export ALIAS=`echo $TRAVIS_COMMIT | cut -c 1-7`
+        - echo "{\"name\":\"datasette-latest\",\"alias\":\"$ALIAS.datasette.io\"}" > now.json
+        - now alias --token=$NOW_TOKEN
+      on: master

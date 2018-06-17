@@ -181,6 +181,7 @@ This will create a docker image containing both the datasette application and th
                                 files
       --install TEXT            Additional packages (e.g. plugins) to install
       --spatialite              Enable SpatialLite extension
+      --version-note TEXT       Additional note to show on /-/versions
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata
@@ -209,6 +210,7 @@ If you have docker installed you can use `datasette package` to create a new Doc
                                 files
       --install TEXT            Additional packages (e.g. plugins) to install
       --spatialite              Enable SpatialLite extension
+      --version-note TEXT       Additional note to show on /-/versions
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata

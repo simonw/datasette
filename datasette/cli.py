@@ -136,6 +136,7 @@ def inspect(files, inspect_file, sqlite_extensions):
 @click.option(
     "--spatialite", is_flag=True, help="Enable SpatialLite extension"
 )
+@click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
 @click.option("--license_url", help="License URL for metadata")
@@ -155,6 +156,7 @@ def publish(
     static,
     install,
     spatialite,
+    version_note,
     **extra_metadata
 ):
     """
@@ -200,6 +202,7 @@ def publish(
             static,
             install,
             spatialite,
+            version_note,
             extra_metadata,
         ):
             args = []
@@ -373,6 +376,7 @@ def skeleton(files, metadata, sqlite_extensions):
 @click.option(
     "--spatialite", is_flag=True, help="Enable SpatialLite extension"
 )
+@click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
 @click.option("--license_url", help="License URL for metadata")
@@ -389,6 +393,7 @@ def package(
     static,
     install,
     spatialite,
+    version_note,
     **extra_metadata
 ):
     "Package specified SQLite files into a new datasette Docker container"
@@ -412,6 +417,7 @@ def package(
         static,
         install,
         spatialite,
+        version_note,
         extra_metadata,
     ):
         args = ["docker", "build"]
@@ -478,6 +484,7 @@ def package(
     help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
     multiple=True,
 )
+@click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option(
     "--help-config",
     is_flag=True,
@@ -497,6 +504,7 @@ def serve(
     plugins_dir,
     static,
     config,
+    version_note,
     help_config,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -538,6 +546,7 @@ def serve(
         plugins_dir=plugins_dir,
         static_mounts=static,
         config=dict(config),
+        version_note=version_note,
     )
     # Force initial hashing/table counting
     ds.inspect()

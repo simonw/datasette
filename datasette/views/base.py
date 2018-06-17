@@ -169,20 +169,20 @@ class BaseView(RenderMixin):
             raise
         # Convert rows and columns to CSV
         headings = data["columns"]
-        # if there are columns_expanded we need to add additional headings
-        columns_expanded = set(data.get("columns_expanded") or [])
-        if columns_expanded:
+        # if there are expanded_columns we need to add additional headings
+        expanded_columns = set(data.get("expanded_columns") or [])
+        if expanded_columns:
             headings = []
             for column in data["columns"]:
                 headings.append(column)
-                if column in columns_expanded:
+                if column in expanded_columns:
                     headings.append("{}_label".format(column))
 
         async def stream_fn(r):
             writer = csv.writer(r)
             writer.writerow(headings)
             for row in data["rows"]:
-                if not columns_expanded:
+                if not expanded_columns:
                     # Simple path
                     writer.writerow(row)
                 else:
@@ -349,17 +349,24 @@ class BaseView(RenderMixin):
                     extras = await extras
             else:
                 extras = extra_template_data
+            url_labels_extra = {}
+            if data.get("expandable_columns"):
+                url_labels_extra = {"_labels": "on"}
             context = {
                 **data,
                 **extras,
                 **{
-                    "url_json": path_with_format(request, "json"),
+                    "url_json": path_with_format(request, "json", {
+                        **url_labels_extra,
+                    }),
                     "url_csv": path_with_format(request, "csv", {
-                        "_size": "max"
+                        "_size": "max",
+                        **url_labels_extra
                     }),
                     "url_csv_dl": path_with_format(request, "csv", {
                         "_dl": "1",
-                        "_size": "max"
+                        "_size": "max",
+                        **url_labels_extra
                     }),
                     "extra_css_urls": self.ds.extra_css_urls(),
                     "extra_js_urls": self.ds.extra_js_urls(),

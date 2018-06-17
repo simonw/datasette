@@ -289,6 +289,21 @@ def test_table_csv_json_export_links(app_client):
     assert expected == actual
 
 
+def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
+    response = app_client.get('/fixtures/facetable')
+    assert response.status == 200
+    links = Soup(response.body, "html.parser").find("p", {
+        "class": "export-links"
+    }).findAll("a")
+    actual = [l["href"].split("/")[-1] for l in links]
+    expected = [
+        "facetable.json?_labels=on",
+        "facetable.csv?_labels=on&_size=max",
+        "facetable.csv?_dl=1&_labels=on&_size=max"
+    ]
+    assert expected == actual
+
+
 def test_row_html_simple_primary_key(app_client):
     response = app_client.get('/fixtures/simple_primary_key/1')
     assert response.status == 200

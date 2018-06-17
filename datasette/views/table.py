@@ -573,7 +573,7 @@ class TableView(RowTableShared):
             filter_columns = filter_columns[1:]
 
         # Expand labeled columns if requested
-        columns_expanded = []
+        expanded_columns = []
         expandable_columns = self.expandable_columns(name, table)
         columns_to_expand = None
         try:
@@ -595,7 +595,7 @@ class TableView(RowTableShared):
                 column = fk["column"]
                 if column not in columns_to_expand:
                     continue
-                columns_expanded.append(column)
+                expanded_columns.append(column)
                 # Gather the values
                 column_index = columns.index(column)
                 values = [row[column_index] for row in rows]
@@ -771,7 +771,8 @@ class TableView(RowTableShared):
             "truncated": results.truncated,
             "table_rows_count": table_rows_count,
             "filtered_table_rows_count": filtered_table_rows_count,
-            "columns_expanded": columns_expanded,
+            "expanded_columns": expanded_columns,
+            "expandable_columns": expandable_columns,
             "columns": columns,
             "primary_keys": pks,
             "units": units,

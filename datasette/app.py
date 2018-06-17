@@ -16,6 +16,7 @@ from markupsafe import Markup
 import pluggy
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from sanic import Sanic, response
+from sanic.request import Request as SanicRequest
 from sanic.exceptions import InvalidUsage, NotFound
 
 from .views.base import (
@@ -497,5 +498,38 @@ class Datasette:
             else:
                 template = self.jinja_env.select_template(templates)
                 return response.html(template.render(info), status=status)
+
+        class AsgiApp():
+            def __init__(self, scope):
+                self.scope = scope
+
+            async def __call__(self, receive, send):
+                # Create Sanic request from scope
+                path = self.scope["path"].encode("utf8")
+                if self.scope["query_string"]:
+                    path = b"{}?{}".format(path, self.scope["query_string"])
+                request = SanicRequest(
+                    path,
+                    {}, '1.1', 'GET', None
+                )
+                async def write_callback(response):
+                    await send({
+                        'type': 'http.response.start',
+                        'status': 200,
+                        'headers': [
+                            [key.encode("utf-8"), value.encode("utf-8")]
+                            for key, value in response.headers.items()
+                        ],
+                    })
+                    await send({
+                        'type': 'http.response.body',
+                        'body': response.body,
+                    })
+
+                # TODO: Fix this
+                stream_callback = write_callback
+                await app.handle_request(request, write_callback, stream_callback)
+
+        app.AsgiApp = AsgiApp
 
         return app

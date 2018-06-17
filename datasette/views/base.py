@@ -143,6 +143,31 @@ class BaseView(RenderMixin):
     def get_templates(self, database, table=None):
         assert NotImplemented
 
+    async def asgi_get(self, receive, send):
+        kwargs = self.scope["url_route"]["kwargs"]
+        db_name = kwargs.pop("db_name")
+        name, hash, should_redirect = self.resolve_db_name(db_name, **kwargs)
+        qs = Querystring(
+            self.scope["path"], self.scope["query_string"].decode("utf-8")
+        )
+        if should_redirect:
+            response = self.redirect(qs, should_redirect)
+        else:
+            response = await self.view_get(qs, name, hash, **kwargs)
+        # Send response over send() channel
+        await send({
+            'type': 'http.response.start',
+            'status': 200,
+            'headers': [
+                [key.encode("utf-8"), value.encode("utf-8")]
+                for key, value in response.headers.items()
+            ],
+        })
+        await send({
+            'type': 'http.response.body',
+            'body': response.body,
+        })
+
     async def get(self, request, db_name, **kwargs):
         name, hash, should_redirect = self.resolve_db_name(db_name, **kwargs)
         qs = Querystring(request.path, request.query_string)

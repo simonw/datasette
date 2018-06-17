@@ -20,6 +20,7 @@ jobs:
         - echo '{"name":"datasette-latest","alias":"latest.datasette.io"}' > now.json
         - datasette publish now fixtures.db -m fixtures.json --token=$NOW_TOKEN --branch=$TRAVIS_COMMIT --version-note=$TRAVIS_COMMIT
         - now alias --token=$NOW_TOKEN
-        - echo "{\"name\":\"datasette-latest\",\"alias\":\"$TRAVIS_COMMIT.datasette.io\"}" > now.json
+        - export ALIAS=`echo $TRAVIS_COMMIT | cut -c 1-7`
+        - echo "{\"name\":\"datasette-latest\",\"alias\":\"$ALIAS.datasette.io\"}" > now.json
         - now alias --token=$NOW_TOKEN
       on: travis-deploy-now

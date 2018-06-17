@@ -19,7 +19,7 @@ jobs:
         - python tests/fixtures.py fixtures.db fixtures.json
         - export ALIAS=`echo $TRAVIS_COMMIT | cut -c 1-7`
         - echo "{\"name\":\"datasette-latest-$ALIAS\",\"alias\":\"latest.datasette.io\"}" > now.json
-        - datasette publish now fixtures.db -m fixtures.json --token=$NOW_TOKEN --branch=$TRAVIS_COMMIT --version-note=$TRAVIS_COMMIT
+        - datasette publish now fixtures.db -m fixtures.json --token=$NOW_TOKEN --branch=$TRAVIS_COMMIT --version-note=$TRAVIS_COMMIT --name=datasette-latest-$ALIAS
         - now alias --token=$NOW_TOKEN
         - echo "{\"name\":\"datasette-latest-$ALIAS\",\"alias\":\"$ALIAS.datasette.io\"}" > now.json
         - now alias --token=$NOW_TOKEN

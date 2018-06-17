@@ -174,6 +174,7 @@ This will create a docker image containing both the datasette application and th
       --extra-options TEXT      Extra options to pass to datasette serve
       --force                   Pass --force option to now
       --branch TEXT             Install datasette from a GitHub branch e.g. master
+      --token TEXT              Auth token to use for deploy (Now only)
       --template-dir DIRECTORY  Path to directory containing custom templates
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static

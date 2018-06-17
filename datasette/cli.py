@@ -111,6 +111,7 @@ def inspect(files, inspect_file, sqlite_extensions):
 @click.option("--extra-options", help="Extra options to pass to datasette serve")
 @click.option("--force", is_flag=True, help="Pass --force option to now")
 @click.option("--branch", help="Install datasette from a GitHub branch e.g. master")
+@click.option("--token", help="Auth token to use for deploy (Now only)")
 @click.option(
     "--template-dir",
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
@@ -148,6 +149,7 @@ def publish(
     extra_options,
     force,
     branch,
+    token,
     template_dir,
     plugins_dir,
     static,
@@ -200,8 +202,13 @@ def publish(
             spatialite,
             extra_metadata,
         ):
+            args = []
             if force:
-                call(["now", "--force"])
+                args.append("--force")
+            if token:
+                args.append("--token={}".format(token))
+            if args:
+                call(["now"] + args)
             else:
                 call("now")
 

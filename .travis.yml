@@ -1,5 +1,6 @@
 language: python
 
+# 3.6 is listed first so it gets used for the later build stages
 python:
   - 3.6
   - 3.5
@@ -18,7 +19,7 @@ jobs:
         - python tests/fixtures.py fixtures.db fixtures.json
         - echo '{"name":"datasette-latest","alias":"latest.datasette.io"}' > now.json
         - datasette publish now fixtures.db -m fixtures.json --token=$NOW_TOKEN --branch=$TRAVIS_COMMIT --version-note=$TRAVIS_COMMIT
-        - now alias
+        - now alias --token=$NOW_TOKEN
         - echo "{\"name\":\"datasette-latest\",\"alias\":\"$TRAVIS_COMMIT.datasette.io\"}" > now.json
-        - now alias
+        - now alias --token=$NOW_TOKEN
       on: travis-deploy-now

@@ -14,16 +14,16 @@ import urllib
 def test_homepage(app_client):
     response = app_client.get('/.json')
     assert response.status == 200
-    assert response.json.keys() == {'test_tables': 0}.keys()
-    d = response.json['test_tables']
-    assert d['name'] == 'test_tables'
+    assert response.json.keys() == {'fixtures': 0}.keys()
+    d = response.json['fixtures']
+    assert d['name'] == 'fixtures'
     assert d['tables_count'] == 17
 
 
 def test_database_page(app_client):
-    response = app_client.get('/test_tables.json')
+    response = app_client.get('/fixtures.json')
     data = response.json
-    assert 'test_tables' == data['database']
+    assert 'fixtures' == data['database']
     assert [{
         'columns': ['content'],
         'name': '123_starts_with_digits',
@@ -313,7 +313,7 @@ def test_database_page(app_client):
 
 def test_custom_sql(app_client):
     response = app_client.get(
-        '/test_tables.json?sql=select+content+from+simple_primary_key&_shape=objects'
+        '/fixtures.json?sql=select+content+from+simple_primary_key&_shape=objects'
     )
     data = response.json
     assert {
@@ -326,13 +326,13 @@ def test_custom_sql(app_client):
         {'content': ''}
     ] == data['rows']
     assert ['content'] == data['columns']
-    assert 'test_tables' == data['database']
+    assert 'fixtures' == data['database']
     assert not data['truncated']
 
 
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get(
-        '/test_tables.json?sql=select+sleep(0.5)'
+        '/fixtures.json?sql=select+sleep(0.5)'
     )
     assert 400 == response.status
     assert 'SQL Interrupted' == response.json['title']
@@ -340,11 +340,11 @@ def test_sql_time_limit(app_client_shorter_time_limit):
 
 def test_custom_sql_time_limit(app_client):
     response = app_client.get(
-        '/test_tables.json?sql=select+sleep(0.01)'
+        '/fixtures.json?sql=select+sleep(0.01)'
     )
     assert 200 == response.status
     response = app_client.get(
-        '/test_tables.json?sql=select+sleep(0.01)&_timelimit=5'
+        '/fixtures.json?sql=select+sleep(0.01)&_timelimit=5'
     )
     assert 400 == response.status
     assert 'SQL Interrupted' == response.json['title']
@@ -352,7 +352,7 @@ def test_custom_sql_time_limit(app_client):
 
 def test_invalid_custom_sql(app_client):
     response = app_client.get(
-        '/test_tables.json?sql=.schema'
+        '/fixtures.json?sql=.schema'
     )
     assert response.status == 400
     assert response.json['ok'] is False
@@ -364,12 +364,12 @@ def test_allow_sql_off():
         'allow_sql': False,
     }):
         assert 400 == client.get(
-            "/test_tables.json?sql=select+sleep(0.01)"
+            "/fixtures.json?sql=select+sleep(0.01)"
         ).status
 
 
 def test_table_json(app_client):
-    response = app_client.get('/test_tables/simple_primary_key.json?_shape=objects')
+    response = app_client.get('/fixtures/simple_primary_key.json?_shape=objects')
     assert response.status == 200
     data = response.json
     assert data['query']['sql'] == 'select * from simple_primary_key order by id limit 51'
@@ -392,12 +392,12 @@ def test_table_not_exists_json(app_client):
         'error': 'Table not found: blah',
         'status': 404,
         'title': None,
-    } == app_client.get('/test_tables/blah.json').json
+    } == app_client.get('/fixtures/blah.json').json
 
 
 def test_jsono_redirects_to_shape_objects(app_client):
     response_1 = app_client.get(
-        '/test_tables/simple_primary_key.jsono',
+        '/fixtures/simple_primary_key.jsono',
         allow_redirects=False
     )
     response = app_client.get(
@@ -410,7 +410,7 @@ def test_jsono_redirects_to_shape_objects(app_client):
 
 def test_table_shape_arrays(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=arrays'
+        '/fixtures/simple_primary_key.json?_shape=arrays'
     )
     assert [
         ['1', 'hello'],
@@ -421,7 +421,7 @@ def test_table_shape_arrays(app_client):
 
 def test_table_shape_arrayfirst(app_client):
     response = app_client.get(
-        '/test_tables.json?' + urllib.parse.urlencode({
+        '/fixtures.json?' + urllib.parse.urlencode({
             'sql': 'select content from simple_primary_key order by id',
             '_shape': 'arrayfirst'
         })
@@ -431,7 +431,7 @@ def test_table_shape_arrayfirst(app_client):
 
 def test_table_shape_objects(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=objects'
+        '/fixtures/simple_primary_key.json?_shape=objects'
     )
     assert [{
         'id': '1',
@@ -447,7 +447,7 @@ def test_table_shape_objects(app_client):
 
 def test_table_shape_array(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=array'
+        '/fixtures/simple_primary_key.json?_shape=array'
     )
     assert [{
         'id': '1',
@@ -463,7 +463,7 @@ def test_table_shape_array(app_client):
 
 def test_table_shape_invalid(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=invalid'
+        '/fixtures/simple_primary_key.json?_shape=invalid'
     )
     assert {
         'ok': False,
@@ -475,7 +475,7 @@ def test_table_shape_invalid(app_client):
 
 def test_table_shape_object(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key.json?_shape=object'
+        '/fixtures/simple_primary_key.json?_shape=object'
     )
     assert {
         '1': {
@@ -495,7 +495,7 @@ def test_table_shape_object(app_client):
 
 def test_table_shape_object_compound_primary_Key(app_client):
     response = app_client.get(
-        '/test_tables/compound_primary_key.json?_shape=object'
+        '/fixtures/compound_primary_key.json?_shape=object'
     )
     assert {
         'a,b': {
@@ -507,7 +507,7 @@ def test_table_shape_object_compound_primary_Key(app_client):
 
 
 def test_table_with_slashes_in_name(app_client):
-    response = app_client.get('/test_tables/table%2Fwith%2Fslashes.csv?_shape=objects&_format=json')
+    response = app_client.get('/fixtures/table%2Fwith%2Fslashes.csv?_shape=objects&_format=json')
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -517,7 +517,7 @@ def test_table_with_slashes_in_name(app_client):
 
 
 def test_table_with_reserved_word_name(app_client):
-    response = app_client.get('/test_tables/select.json?_shape=objects')
+    response = app_client.get('/fixtures/select.json?_shape=objects')
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -529,14 +529,14 @@ def test_table_with_reserved_word_name(app_client):
 
 
 @pytest.mark.parametrize('path,expected_rows,expected_pages', [
-    ('/test_tables/no_primary_key.json', 201, 5),
-    ('/test_tables/paginated_view.json', 201, 5),
-    ('/test_tables/no_primary_key.json?_size=25', 201, 9),
-    ('/test_tables/paginated_view.json?_size=25', 201, 9),
-    ('/test_tables/paginated_view.json?_size=max', 201, 3),
-    ('/test_tables/123_starts_with_digits.json', 0, 1),
+    ('/fixtures/no_primary_key.json', 201, 5),
+    ('/fixtures/paginated_view.json', 201, 5),
+    ('/fixtures/no_primary_key.json?_size=25', 201, 9),
+    ('/fixtures/paginated_view.json?_size=25', 201, 9),
+    ('/fixtures/paginated_view.json?_size=max', 201, 3),
+    ('/fixtures/123_starts_with_digits.json', 0, 1),
     # Ensure faceting doesn't break pagination:
-    ('/test_tables/compound_three_primary_keys.json?_facet=pk1', 1001, 21),
+    ('/fixtures/compound_three_primary_keys.json?_facet=pk1', 1001, 21),
 ])
 def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):
     fetched = []
@@ -559,9 +559,9 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
 
 
 @pytest.mark.parametrize('path,expected_error', [
-    ('/test_tables/no_primary_key.json?_size=-4', '_size must be a positive integer'),
-    ('/test_tables/no_primary_key.json?_size=dog', '_size must be a positive integer'),
-    ('/test_tables/no_primary_key.json?_size=1001', '_size must be <= 100'),
+    ('/fixtures/no_primary_key.json?_size=-4', '_size must be a positive integer'),
+    ('/fixtures/no_primary_key.json?_size=dog', '_size must be a positive integer'),
+    ('/fixtures/no_primary_key.json?_size=1001', '_size must be <= 100'),
 ])
 def test_validate_page_size(app_client, path, expected_error):
     response = app_client.get(path)
@@ -571,7 +571,7 @@ def test_validate_page_size(app_client, path, expected_error):
 
 def test_page_size_zero(app_client):
     "For _size=0 we return the counts, empty rows and no continuation token"
-    response = app_client.get('/test_tables/no_primary_key.json?_size=0')
+    response = app_client.get('/fixtures/no_primary_key.json?_size=0')
     assert 200 == response.status
     assert [] == response.json['rows']
     assert 201 == response.json['table_rows_count']
@@ -582,7 +582,7 @@ def test_page_size_zero(app_client):
 
 def test_paginate_compound_keys(app_client):
     fetched = []
-    path = '/test_tables/compound_three_primary_keys.json?_shape=objects'
+    path = '/fixtures/compound_three_primary_keys.json?_shape=objects'
     page = 0
     while path:
         page += 1
@@ -600,7 +600,7 @@ def test_paginate_compound_keys(app_client):
 
 def test_paginate_compound_keys_with_extra_filters(app_client):
     fetched = []
-    path = '/test_tables/compound_three_primary_keys.json?content__contains=d&_shape=objects'
+    path = '/fixtures/compound_three_primary_keys.json?content__contains=d&_shape=objects'
     page = 0
     while path:
         page += 1
@@ -640,7 +640,7 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
     ('_sort=text', lambda row: row['text'], 'sorted by text'),
 ])
 def test_sortable(app_client, query_string, sort_key, human_description_en):
-    path = '/test_tables/sortable.json?_shape=objects&{}'.format(query_string)
+    path = '/fixtures/sortable.json?_shape=objects&{}'.format(query_string)
     fetched = []
     page = 0
     while path:
@@ -662,7 +662,7 @@ def test_sortable(app_client, query_string, sort_key, human_description_en):
 
 def test_sortable_and_filtered(app_client):
     path = (
-        '/test_tables/sortable.json'
+        '/fixtures/sortable.json'
         '?content__contains=d&_sort_desc=sortable&_shape=objects'
     )
     response = app_client.get(path)
@@ -685,44 +685,44 @@ def test_sortable_and_filtered(app_client):
 
 def test_sortable_argument_errors(app_client):
     response = app_client.get(
-        '/test_tables/sortable.json?_sort=badcolumn'
+        '/fixtures/sortable.json?_sort=badcolumn'
     )
     assert 'Cannot sort table by badcolumn' == response.json['error']
     response = app_client.get(
-        '/test_tables/sortable.json?_sort_desc=badcolumn2'
+        '/fixtures/sortable.json?_sort_desc=badcolumn2'
     )
     assert 'Cannot sort table by badcolumn2' == response.json['error']
     response = app_client.get(
-        '/test_tables/sortable.json?_sort=sortable_with_nulls&_sort_desc=sortable'
+        '/fixtures/sortable.json?_sort=sortable_with_nulls&_sort_desc=sortable'
     )
     assert 'Cannot use _sort and _sort_desc at the same time' == response.json['error']
 
 
 def test_sortable_columns_metadata(app_client):
     response = app_client.get(
-        '/test_tables/sortable.json?_sort=content'
+        '/fixtures/sortable.json?_sort=content'
     )
     assert 'Cannot sort table by content' == response.json['error']
     # no_primary_key has ALL sort options disabled
     for column in ('content', 'a', 'b', 'c'):
         response = app_client.get(
-            '/test_tables/sortable.json?_sort={}'.format(column)
+            '/fixtures/sortable.json?_sort={}'.format(column)
         )
         assert 'Cannot sort table by {}'.format(column) == response.json['error']
 
 
 @pytest.mark.parametrize('path,expected_rows', [
-    ('/test_tables/searchable.json?_search=dog', [
+    ('/fixtures/searchable.json?_search=dog', [
         [1, 'barry cat', 'terry dog', 'panther'],
         [2, 'terry dog', 'sara weasel', 'puma'],
     ]),
-    ('/test_tables/searchable.json?_search=weasel', [
+    ('/fixtures/searchable.json?_search=weasel', [
         [2, 'terry dog', 'sara weasel', 'puma'],
     ]),
-    ('/test_tables/searchable.json?_search_text2=dog', [
+    ('/fixtures/searchable.json?_search_text2=dog', [
         [1, 'barry cat', 'terry dog', 'panther'],
     ]),
-    ('/test_tables/searchable.json?_search_name%20with%20.%20and%20spaces=panther', [
+    ('/fixtures/searchable.json?_search_name%20with%20.%20and%20spaces=panther', [
         [1, 'barry cat', 'terry dog', 'panther'],
     ]),
 ])
@@ -733,7 +733,7 @@ def test_searchable(app_client, path, expected_rows):
 
 def test_searchable_invalid_column(app_client):
     response = app_client.get(
-        '/test_tables/searchable.json?_search_invalid=x'
+        '/fixtures/searchable.json?_search_invalid=x'
     )
     assert 400 == response.status
     assert {
@@ -745,17 +745,17 @@ def test_searchable_invalid_column(app_client):
 
 
 @pytest.mark.parametrize('path,expected_rows', [
-    ('/test_tables/simple_primary_key.json?content=hello', [
+    ('/fixtures/simple_primary_key.json?content=hello', [
         ['1', 'hello'],
     ]),
-    ('/test_tables/simple_primary_key.json?content__contains=o', [
+    ('/fixtures/simple_primary_key.json?content__contains=o', [
         ['1', 'hello'],
         ['2', 'world'],
     ]),
-    ('/test_tables/simple_primary_key.json?content__exact=', [
+    ('/fixtures/simple_primary_key.json?content__exact=', [
         ['3', ''],
     ]),
-    ('/test_tables/simple_primary_key.json?content__not=world', [
+    ('/fixtures/simple_primary_key.json?content__not=world', [
         ['1', 'hello'],
         ['3', ''],
     ]),
@@ -767,7 +767,7 @@ def test_table_filter_queries(app_client, path, expected_rows):
 
 def test_max_returned_rows(app_client):
     response = app_client.get(
-        '/test_tables.json?sql=select+content+from+no_primary_key'
+        '/fixtures.json?sql=select+content+from+no_primary_key'
     )
     data = response.json
     assert {
@@ -779,7 +779,7 @@ def test_max_returned_rows(app_client):
 
 
 def test_view(app_client):
-    response = app_client.get('/test_tables/simple_view.json?_shape=objects')
+    response = app_client.get('/fixtures/simple_view.json?_shape=objects')
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -795,13 +795,13 @@ def test_view(app_client):
 
 
 def test_row(app_client):
-    response = app_client.get('/test_tables/simple_primary_key/1.json?_shape=objects')
+    response = app_client.get('/fixtures/simple_primary_key/1.json?_shape=objects')
     assert response.status == 200
     assert [{'id': '1', 'content': 'hello'}] == response.json['rows']
 
 
 def test_row_foreign_key_tables(app_client):
-    response = app_client.get('/test_tables/simple_primary_key/1.json?_extras=foreign_key_tables')
+    response = app_client.get('/fixtures/simple_primary_key/1.json?_extras=foreign_key_tables')
     assert response.status == 200
     assert [{
         'column': 'id',
@@ -828,7 +828,7 @@ def test_row_foreign_key_tables(app_client):
 
 def test_unit_filters(app_client):
     response = app_client.get(
-        '/test_tables/units.json?distance__lt=75km&frequency__gt=1kHz'
+        '/fixtures/units.json?distance__lt=75km&frequency__gt=1kHz'
     )
     assert response.status == 200
     data = response.json
@@ -906,7 +906,7 @@ def test_config_json(app_client):
 
 def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_page_size):
     fetched = []
-    path = '/test_tables/no_primary_key.json'
+    path = '/fixtures/no_primary_key.json'
     while path:
         response = app_client_returned_rows_matches_page_size.get(path)
         fetched.extend(response.json['rows'])
@@ -917,7 +917,7 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
 
 @pytest.mark.parametrize('path,expected_facet_results', [
     (
-        "/test_tables/facetable.json?_facet=state&_facet=city_id",
+        "/fixtures/facetable.json?_facet=state&_facet=city_id",
         {
             "state": {
                 "name": "state",
@@ -982,7 +982,7 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             }
         }
     ), (
-        "/test_tables/facetable.json?_facet=state&_facet=city_id&state=MI",
+        "/fixtures/facetable.json?_facet=state&_facet=city_id&state=MI",
         {
             "state": {
                 "name": "state",
@@ -1012,7 +1012,7 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             },
         },
     ), (
-        "/test_tables/facetable.json?_facet=planet_int",
+        "/fixtures/facetable.json?_facet=planet_int",
         {
             "planet_int": {
                 "name": "planet_int",
@@ -1037,7 +1037,7 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         },
     ), (
         # planet_int is an integer field:
-        "/test_tables/facetable.json?_facet=planet_int&planet_int=1",
+        "/fixtures/facetable.json?_facet=planet_int&planet_int=1",
         {
             "planet_int": {
                 "name": "planet_int",
@@ -1069,7 +1069,7 @@ def test_facets(app_client, path, expected_facet_results):
 
 def test_suggested_facets(app_client):
     assert len(app_client.get(
-        "/test_tables/facetable.json"
+        "/fixtures/facetable.json"
     ).json["suggested_facets"]) > 0
 
 
@@ -1078,11 +1078,11 @@ def test_allow_facet_off():
         'allow_facet': False,
     }):
         assert 400 == client.get(
-            "/test_tables/facetable.json?_facet=planet_int"
+            "/fixtures/facetable.json?_facet=planet_int"
         ).status
         # Should not suggest any facets either:
         assert [] == client.get(
-            "/test_tables/facetable.json"
+            "/fixtures/facetable.json"
         ).json["suggested_facets"]
 
 
@@ -1092,13 +1092,13 @@ def test_suggest_facets_off():
     }):
         # Now suggested_facets should be []
         assert [] == client.get(
-            "/test_tables/facetable.json"
+            "/fixtures/facetable.json"
         ).json["suggested_facets"]
 
 
 def test_expand_labels(app_client):
     response = app_client.get(
-        "/test_tables/facetable.json?_shape=object&_labels=1&_size=2"
+        "/fixtures/facetable.json?_shape=object&_labels=1&_size=2"
         "&neighborhood__contains=c"
     )
     assert {
@@ -1127,7 +1127,7 @@ def test_expand_labels(app_client):
 
 def test_expand_label(app_client):
     response = app_client.get(
-        "/test_tables/foreign_key_references.json?_shape=object"
+        "/fixtures/foreign_key_references.json?_shape=object"
         "&_label=foreign_key_with_label"
     )
     assert {
@@ -1143,10 +1143,10 @@ def test_expand_label(app_client):
 
 
 @pytest.mark.parametrize('path,expected_cache_control', [
-    ("/test_tables/facetable.json", "max-age=31536000"),
-    ("/test_tables/facetable.json?_ttl=invalid", "max-age=31536000"),
-    ("/test_tables/facetable.json?_ttl=10", "max-age=10"),
-    ("/test_tables/facetable.json?_ttl=0", "no-cache"),
+    ("/fixtures/facetable.json", "max-age=31536000"),
+    ("/fixtures/facetable.json?_ttl=invalid", "max-age=31536000"),
+    ("/fixtures/facetable.json?_ttl=10", "max-age=10"),
+    ("/fixtures/facetable.json?_ttl=0", "no-cache"),
 ])
 def test_ttl_parameter(app_client, path, expected_cache_control):
     response = app_client.get(path)
@@ -1180,7 +1180,7 @@ def test_json_columns(app_client, extra_args, expected):
         select 1 as intval, "s" as strval, 0.5 as floatval,
         '{"foo": "bar"}' as jsonval
     '''
-    path = "/test_tables.json?" + urllib.parse.urlencode({
+    path = "/fixtures.json?" + urllib.parse.urlencode({
         "sql": sql,
         "_shape": "array"
     })
@@ -1191,6 +1191,6 @@ def test_json_columns(app_client, extra_args, expected):
 
 def test_config_cache_size(app_client_larger_cache_size):
     response = app_client_larger_cache_size.get(
-        '/test_tables/pragma_cache_size.json'
+        '/fixtures/pragma_cache_size.json'
     )
     assert [[-2500]] == response.json['rows']

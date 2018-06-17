@@ -25,7 +25,7 @@ class TestClient:
 @pytest.fixture(scope='session')
 def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
     with tempfile.TemporaryDirectory() as tmpdir:
-        filepath = os.path.join(tmpdir, 'test_tables.db')
+        filepath = os.path.join(tmpdir, 'fixtures.db')
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
@@ -105,7 +105,7 @@ METADATA = {
     'source': 'Source',
     'source_url': 'http://www.example.com/source',
     'databases': {
-        'test_tables': {
+        'fixtures': {
             'description': 'Test tables description',
             'tables': {
                 'simple_primary_key': {

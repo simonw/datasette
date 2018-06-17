@@ -31,14 +31,14 @@ pk,planet_int,state,city_id,city_id_label,neighborhood
 '''.lstrip().replace('\n', '\r\n')
 
 def test_table_csv(app_client):
-    response = app_client.get('/test_tables/simple_primary_key.csv')
+    response = app_client.get('/fixtures/simple_primary_key.csv')
     assert response.status == 200
     assert 'text/plain; charset=utf-8' == response.headers['Content-Type']
     assert EXPECTED_TABLE_CSV == response.text
 
 
 def test_table_csv_with_labels(app_client):
-    response = app_client.get('/test_tables/facetable.csv?_labels=1')
+    response = app_client.get('/fixtures/facetable.csv?_labels=1')
     assert response.status == 200
     assert 'text/plain; charset=utf-8' == response.headers['Content-Type']
     assert EXPECTED_TABLE_WITH_LABELS_CSV == response.text
@@ -46,7 +46,7 @@ def test_table_csv_with_labels(app_client):
 
 def test_custom_sql_csv(app_client):
     response = app_client.get(
-        '/test_tables.csv?sql=select+content+from+simple_primary_key+limit+2'
+        '/fixtures.csv?sql=select+content+from+simple_primary_key+limit+2'
     )
     assert response.status == 200
     assert 'text/plain; charset=utf-8' == response.headers['Content-Type']
@@ -54,7 +54,7 @@ def test_custom_sql_csv(app_client):
 
 
 def test_table_csv_download(app_client):
-    response = app_client.get('/test_tables/simple_primary_key.csv?_dl=1')
+    response = app_client.get('/fixtures/simple_primary_key.csv?_dl=1')
     assert response.status == 200
     assert 'text/csv; charset=utf-8' == response.headers['Content-Type']
     expected_disposition = 'attachment; filename="simple_primary_key.csv"'

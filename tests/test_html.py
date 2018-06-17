@@ -458,8 +458,8 @@ def test_index_metadata(app_client):
     response = app_client.get('/')
     assert response.status == 200
     soup = Soup(response.body, 'html.parser')
-    assert 'Datasette Title' == soup.find('h1').text
-    assert 'Datasette Description' == inner_html(
+    assert 'Datasette Fixtures' == soup.find('h1').text
+    assert 'An example SQLite database demonstrating Datasette' == inner_html(
         soup.find('div', {'class': 'metadata-description'})
     )
     assert_footer_links(soup)
@@ -547,11 +547,11 @@ def assert_footer_links(soup):
     assert 3 == len(footer_links)
     datasette_link, license_link, source_link = footer_links
     assert 'Datasette' == datasette_link.text.strip()
-    assert 'Source' == source_link.text.strip()
-    assert 'License' == license_link.text.strip()
+    assert 'tests/fixtures.py' == source_link.text.strip()
+    assert 'Apache License 2.0' == license_link.text.strip()
     assert 'https://github.com/simonw/datasette' == datasette_link['href']
-    assert 'http://www.example.com/source' == source_link['href']
-    assert 'http://www.example.com/license' == license_link['href']
+    assert 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py' == source_link['href']
+    assert 'https://github.com/simonw/datasette/blob/master/LICENSE' == license_link['href']
 
 
 def inner_html(soup):

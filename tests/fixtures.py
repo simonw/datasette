@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 import itertools
+import json
 import os
 import pytest
 import random
@@ -98,12 +99,12 @@ def generate_sortable_rows(num):
 
 
 METADATA = {
-    'title': 'Datasette Title',
-    'description': 'Datasette Description',
-    'license': 'License',
-    'license_url': 'http://www.example.com/license',
-    'source': 'Source',
-    'source_url': 'http://www.example.com/source',
+    'title': 'Datasette Fixtures',
+    'description': 'An example SQLite database demonstrating Datasette',
+    'license': 'Apache License 2.0',
+    'license_url': 'https://github.com/simonw/datasette/blob/master/LICENSE',
+    'source': 'tests/fixtures.py',
+    'source_url': 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py',
     'databases': {
         'fixtures': {
             'description': 'Test tables description',
@@ -381,10 +382,20 @@ CREATE VIEW simple_view AS
 ])
 
 if __name__ == '__main__':
-    filename = sys.argv[-1]
-    if filename.endswith('.db'):
-        conn = sqlite3.connect(filename)
+    # Can be called with data.db OR data.db metadata.json
+    db_filename = sys.argv[-1]
+    metadata_filename = None
+    if db_filename.endswith(".json"):
+        metadata_filename = db_filename
+        db_filename = sys.argv[-2]
+    if db_filename.endswith(".db"):
+        conn = sqlite3.connect(db_filename)
         conn.executescript(TABLES)
-        print('Test tables written to {}'.format(filename))
+        print("Test tables written to {}".format(db_filename))
+        if metadata_filename:
+            open(metadata_filename, 'w').write(json.dumps(METADATA))
+            print("- metadata written to {}".format(metadata_filename))
     else:
-        print('Usage: {} name_of_file_to_write.db'.format(sys.argv[0]))
+        print("Usage: {} db_to_write.db [metadata_to_write.json]".format(
+            sys.argv[0]
+        ))

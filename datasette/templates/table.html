@@ -111,7 +111,7 @@
                 <p class="facet-info-name">
                     <strong>{{ facet_info.name }}</strong>
                     {% if facet_hideable(facet_info.name) %}
-                        <a href="{{ path_with_removed_args(request, {'_facet': facet_info['name']}) }}" class="cross">&#x2716;</a>
+                        <a href="{{ path_with_removed_args(qs, {'_facet': facet_info['name']}) }}" class="cross">&#x2716;</a>
                     {% endif %}
                 </p>
                 <ul>

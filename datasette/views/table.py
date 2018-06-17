@@ -1,4 +1,3 @@
-from collections import namedtuple
 import sqlite3
 import urllib
 
@@ -220,11 +219,11 @@ class RowTableShared(BaseView):
 
 class TableView(RowTableShared):
 
-    async def data(self, request, name, hash, table, default_labels=False):
+    async def data(self, qs, name, hash, table, default_labels=False):
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
             return await self.custom_sql(
-                request,
+                qs,
                 name,
                 hash,
                 canned_query["sql"],
@@ -255,7 +254,7 @@ class TableView(RowTableShared):
         # We roll our own query_string decoder because by default Sanic
         # drops anything with an empty value e.g. ?name__exact=
         args = RequestParameters(
-            urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
+            urllib.parse.parse_qs(str(qs), keep_blank_values=True)
         )
 
         # Special args start with _ and do not contain a __
@@ -275,17 +274,17 @@ class TableView(RowTableShared):
         redirect_params = filters_should_redirect(special_args)
         if redirect_params:
             return self.redirect(
-                request,
-                path_with_added_args(request, redirect_params),
+                qs,
+                path_with_added_args(qs, redirect_params),
                 forward_querystring=False,
             )
 
         # Spot ?_sort_by_desc and redirect to _sort_desc=(_sort)
         if "_sort_by_desc" in special_args:
             return self.redirect(
-                request,
+                qs,
                 path_with_added_args(
-                    request,
+                    qs,
                     {
                         "_sort_desc": special_args.get("_sort"),
                         "_sort_by_desc": None,
@@ -458,11 +457,11 @@ class TableView(RowTableShared):
                 table_name=escape_sqlite(table),
                 where=where_clause,
             )
-            return await self.custom_sql(request, name, hash, sql, editable=True)
+            return await self.custom_sql(qs, name, hash, sql, editable=True)
 
         extra_args = {}
         # Handle ?_size=500
-        page_size = request.raw_args.get("_size")
+        page_size = qs.first_or_none("_size")
         if page_size:
             if page_size == "max":
                 page_size = self.max_returned_rows
@@ -492,8 +491,8 @@ class TableView(RowTableShared):
             offset=offset,
         )
 
-        if request.raw_args.get("_timelimit"):
-            extra_args["custom_time_limit"] = int(request.raw_args["_timelimit"])
+        if qs.first_or_none("_timelimit"):
+            extra_args["custom_time_limit"] = int(qs.first("_timelimit"))
 
         results = await self.ds.execute(
             name, sql, params, truncate=True, **extra_args
@@ -503,10 +502,10 @@ class TableView(RowTableShared):
         facet_size = self.ds.config["default_facet_size"]
         metadata_facets = table_metadata.get("facets", [])
         facets = metadata_facets[:]
-        if request.args.get("_facet") and not self.ds.config["allow_facet"]:
+        if qs.first_or_none("_facet") and not self.ds.config["allow_facet"]:
             raise DatasetteError("_facet= is not allowed", status=400)
         try:
-            facets.extend(request.args["_facet"])
+            facets.extend(qs.getlist("_facet"))
         except KeyError:
             pass
         facet_results = {}
@@ -544,11 +543,11 @@ class TableView(RowTableShared):
                     selected = str(other_args.get(column)) == str(row["value"])
                     if selected:
                         toggle_path = path_with_removed_args(
-                            request, {column: str(row["value"])}
+                            qs, {column: str(row["value"])}
                         )
                     else:
                         toggle_path = path_with_added_args(
-                            request, {column: row["value"]}
+                            qs, {column: row["value"]}
                         )
                     facet_results_values.append({
                         "value": row["value"],
@@ -558,7 +557,7 @@ class TableView(RowTableShared):
                         ),
                         "count": row["count"],
                         "toggle_url": urllib.parse.urljoin(
-                            request.url, toggle_path
+                            qs.path, toggle_path
                         ),
                         "selected": selected,
                     })
@@ -581,8 +580,8 @@ class TableView(RowTableShared):
         except ValueError:
             all_labels = default_labels
         # Check for explicit _label=
-        if "_label" in request.args:
-            columns_to_expand = request.args["_label"]
+        if qs.first_or_none("_label"):
+            columns_to_expand = qs.first("_label")
         if columns_to_expand is None and all_labels:
             # expand all columns with foreign keys
             columns_to_expand = [
@@ -644,7 +643,7 @@ class TableView(RowTableShared):
             else:
                 added_args = {"_next": next_value}
             next_url = urllib.parse.urljoin(
-                request.url, path_with_replaced_args(request, added_args)
+                qs.path, path_with_replaced_args(qs, added_args)
             )
             rows = rows[:page_size]
 
@@ -694,7 +693,7 @@ class TableView(RowTableShared):
                             suggested_facets.append({
                                 'name': facet_column,
                                 'toggle_url': path_with_added_args(
-                                    request, {'_facet': facet_column}
+                                    qs, {'_facet': facet_column}
                                 ),
                             })
                     except InterruptedError:
@@ -744,7 +743,7 @@ class TableView(RowTableShared):
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "path_with_replaced_args": path_with_replaced_args,
                 "path_with_removed_args": path_with_removed_args,
-                "request": request,
+                "qs": qs,
                 "sort": sort,
                 "sort_desc": sort_desc,
                 "disable_sort": is_view,
@@ -788,7 +787,7 @@ class TableView(RowTableShared):
 
 class RowView(RowTableShared):
 
-    async def data(self, request, name, hash, table, pk_path, default_labels=False):
+    async def data(self, qs, name, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
         info = self.ds.inspect()[name]
         table_info = info["tables"].get(table) or {}
@@ -854,7 +853,7 @@ class RowView(RowTableShared):
             "units": self.table_metadata(name, table).get("units", {}),
         }
 
-        if "foreign_key_tables" in (request.raw_args.get("_extras") or "").split(","):
+        if "foreign_key_tables" in (qs.first_or_none("_extras") or "").split(","):
             data["foreign_key_tables"] = await self.foreign_key_tables(
                 name, table, pk_values
             )

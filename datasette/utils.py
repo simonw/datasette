@@ -170,13 +170,13 @@ def validate_sql_select(sql):
             raise InvalidSql(msg)
 
 
-def path_with_added_args(request, args, path=None):
-    path = path or request.path
+def path_with_added_args(qs, args, path=None):
+    path = path or qs.path
     if isinstance(args, dict):
         args = args.items()
     args_to_remove = {k for k, v in args if v is None}
     current = []
-    for key, value in urllib.parse.parse_qsl(request.query_string):
+    for key, value in urllib.parse.parse_qsl(str(qs)):
         if key not in args_to_remove:
             current.append((key, value))
     current.extend([
@@ -190,9 +190,9 @@ def path_with_added_args(request, args, path=None):
     return path + query_string
 
 
-def path_with_removed_args(request, args, path=None):
+def path_with_removed_args(qs, args, path=None):
     # args can be a dict or a set
-    path = path or request.path
+    path = path or qs.path
     current = []
     if isinstance(args, set):
         def should_remove(key, value):
@@ -201,7 +201,7 @@ def path_with_removed_args(request, args, path=None):
         # Must match key AND value
         def should_remove(key, value):
             return args.get(key) == value
-    for key, value in urllib.parse.parse_qsl(request.query_string):
+    for key, value in urllib.parse.parse_qsl(str(qs)):
         if not should_remove(key, value):
             current.append((key, value))
     query_string = urllib.parse.urlencode(current)
@@ -210,13 +210,13 @@ def path_with_removed_args(request, args, path=None):
     return path + query_string
 
 
-def path_with_replaced_args(request, args, path=None):
-    path = path or request.path
+def path_with_replaced_args(qs, args, path=None):
+    path = path or qs.path
     if isinstance(args, dict):
         args = args.items()
     keys_to_replace = {p[0] for p in args}
     current = []
-    for key, value in urllib.parse.parse_qsl(request.query_string):
+    for key, value in urllib.parse.parse_qsl(str(qs)):
         if key not in keys_to_replace:
             current.append((key, value))
     current.extend([p for p in args if p[1] is not None])
@@ -783,23 +783,23 @@ def resolve_table_and_format(table_and_format, table_exists):
     return table_and_format, None
 
 
-def path_with_format(request, format, extra_qs=None):
-    qs = extra_qs or {}
-    path = request.path
-    if "." in request.path:
-        qs["_format"] = format
+def path_with_format(qs, format, extra_qs=None):
+    new_qs = extra_qs or {}
+    path = qs.path
+    if "." in qs.path:
+        new_qs["_format"] = format
     else:
         path = "{}.{}".format(path, format)
-    if qs:
-        extra = urllib.parse.urlencode(sorted(qs.items()))
-        if request.query_string:
+    if new_qs:
+        extra = urllib.parse.urlencode(sorted(new_qs.items()))
+        if qs.data:
             path = "{}?{}&{}".format(
-                path, request.query_string, extra
+                path, str(qs), extra
             )
         else:
             path = "{}?{}".format(path, extra)
-    elif request.query_string:
-        path = "{}?{}".format(path, request.query_string)
+    elif qs.data:
+        path = "{}?{}".format(path, str(qs))
     return path
 
 
@@ -831,17 +831,24 @@ class ValueAsBooleanError(ValueError):
 
 
 class Querystring:
-    def __init__(self, qs=None):
+    def __init__(self, path, qs=None):
+        self.path = path
         self.prev = None
         self.data = []
         if qs:
-            self.data = urllib.parse.parse_qsl(qs)
+            self.data = urllib.parse.parse_qsl(qs, keep_blank_values=True)
 
     def first(self, key):
         for item in self.data:
             if item[0] == key:
                 return item[1]
         raise KeyError
+
+    def first_or_none(self, key):
+        try:
+            return self.first(key)
+        except KeyError:
+            return None
 
     def last(self, key):
         for item in reversed(self.data):
@@ -854,9 +861,10 @@ class Querystring:
         for item in self.data:
             if item[0] == key:
                 result.append(item[1])
-        if not result:
-            raise KeyError
         return result
+
+    def first_dict(self):
+        return {k: v[0] for k, v in self.data}
 
     def append(self, key, value):
         self.data.append((key, value))

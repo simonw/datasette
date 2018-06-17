@@ -6,7 +6,6 @@ from datasette import utils
 import json
 import os
 import pytest
-from sanic.request import Request
 import sqlite3
 import tempfile
 from unittest.mock import patch
@@ -40,11 +39,12 @@ def test_urlsafe_components(path, expected):
     ), '/?_facet=state&_facet=city&_facet=planet_int'),
 ])
 def test_path_with_added_args(path, added_args, expected):
-    request = Request(
-        path.encode('utf8'),
-        {}, '1.1', 'GET', None
-    )
-    actual = utils.path_with_added_args(request, added_args)
+    try:
+        path, qsbits = path.split('?', 1)
+    except ValueError:
+        qsbits = ''
+    qs = utils.Querystring(path, qsbits)
+    actual = utils.path_with_added_args(qs, added_args)
     assert expected == actual
 
 
@@ -54,11 +54,12 @@ def test_path_with_added_args(path, added_args, expected):
     ('/foo?bar=1&bar=2&bar=3', {'bar': '2'}, '/foo?bar=1&bar=3'),
 ])
 def test_path_with_removed_args(path, args, expected):
-    request = Request(
-        path.encode('utf8'),
-        {}, '1.1', 'GET', None
-    )
-    actual = utils.path_with_removed_args(request, args)
+    try:
+        path, qsbits = path.split('?', 1)
+    except ValueError:
+        qsbits = ''
+    qs = utils.Querystring(path, qsbits)
+    actual = utils.path_with_removed_args(qs, args)
     assert expected == actual
 
 
@@ -67,11 +68,12 @@ def test_path_with_removed_args(path, args, expected):
     ('/foo?bar=1&baz=2', {'bar': None}, '/foo?baz=2'),
 ])
 def test_path_with_replaced_args(path, args, expected):
-    request = Request(
-        path.encode('utf8'),
-        {}, '1.1', 'GET', None
-    )
-    actual = utils.path_with_replaced_args(request, args)
+    try:
+        path, qsbits = path.split('?', 1)
+    except ValueError:
+        qsbits = ''
+    qs = utils.Querystring(path, qsbits)
+    actual = utils.path_with_replaced_args(qs, args)
     assert expected == actual
 
 
@@ -344,9 +346,10 @@ def test_resolve_table_and_format(
     ],
 )
 def test_path_with_format(path, format, extra_qs, expected):
-    request = Request(
-        path.encode('utf8'),
-        {}, '1.1', 'GET', None
-    )
-    actual = utils.path_with_format(request, format, extra_qs)
+    try:
+        path, qsbits = path.split('?', 1)
+    except ValueError:
+        qsbits = ''
+    qs = utils.Querystring(path, qsbits)
+    actual = utils.path_with_format(qs, format, extra_qs)
     assert expected == actual

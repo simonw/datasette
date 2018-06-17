@@ -16,6 +16,7 @@ from datasette.utils import (
     CustomJSONEncoder,
     InterruptedError,
     InvalidSql,
+    Querystring,
     path_from_row_pks,
     path_with_added_args,
     path_with_format,
@@ -85,9 +86,9 @@ class BaseView(RenderMixin):
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
 
-    def redirect(self, request, path, forward_querystring=True):
-        if request.query_string and "?" not in path and forward_querystring:
-            path = "{}?{}".format(path, request.query_string)
+    def redirect(self, qs, path, forward_querystring=True):
+        if qs.data and "?" not in qs.path and forward_querystring:
+            path = "{}?{}".format(path, str(qs))
         r = response.redirect(path)
         r.headers["Link"] = "<{}>; rel=preload".format(path)
         if self.ds.cors:
@@ -144,15 +145,15 @@ class BaseView(RenderMixin):
 
     async def get(self, request, db_name, **kwargs):
         name, hash, should_redirect = self.resolve_db_name(db_name, **kwargs)
+        qs = Querystring(request.path, request.query_string)
         if should_redirect:
-            return self.redirect(request, should_redirect)
+            return self.redirect(qs, should_redirect)
+        return await self.view_get(qs, name, hash, **kwargs)
 
-        return await self.view_get(request, name, hash, **kwargs)
-
-    async def as_csv(self, request, name, hash, **kwargs):
+    async def as_csv(self, qs, name, hash, **kwargs):
         try:
             response_or_template_contexts = await self.data(
-                request, name, hash, **kwargs
+                qs, name, hash, **kwargs
             )
             if isinstance(response_or_template_contexts, response.HTTPResponse):
                 return response_or_template_contexts
@@ -198,7 +199,7 @@ class BaseView(RenderMixin):
 
         content_type = "text/plain; charset=utf-8"
         headers = {}
-        if request.args.get("_dl", None):
+        if qs.first_or_none("_dl"):
             content_type = "text/csv; charset=utf-8"
             disposition = 'attachment; filename="{}.csv"'.format(
                 kwargs.get('table', name)
@@ -211,9 +212,9 @@ class BaseView(RenderMixin):
             content_type=content_type
         )
 
-    async def view_get(self, request, name, hash, **kwargs):
+    async def view_get(self, qs, name, hash, **kwargs):
         # If ?_format= is provided, use that as the format
-        _format = request.args.get("_format", None)
+        _format = qs.first_or_none("_format")
         if not _format:
             _format = (kwargs.pop("as_format", None) or "").lstrip(".")
         if "table_and_format" in kwargs:
@@ -228,7 +229,7 @@ class BaseView(RenderMixin):
             del kwargs["table_and_format"]
 
         if _format == "csv":
-            return await self.as_csv(request, name, hash, **kwargs)
+            return await self.as_csv(qs, name, hash, **kwargs)
 
         if _format is None:
             # HTML views default to expanding all forign key labels
@@ -240,7 +241,7 @@ class BaseView(RenderMixin):
         templates = []
         try:
             response_or_template_contexts = await self.data(
-                request, name, hash, **kwargs
+                qs, name, hash, **kwargs
             )
             if isinstance(response_or_template_contexts, response.HTTPResponse):
                 return response_or_template_contexts
@@ -272,26 +273,25 @@ class BaseView(RenderMixin):
             # Special case for .jsono extension - redirect to _shape=objects
             if _format == "jsono":
                 return self.redirect(
-                    request,
+                    qs,
                     path_with_added_args(
-                        request,
+                        qs,
                         {"_shape": "objects"},
-                        path=request.path.rsplit(".jsono", 1)[0] + ".json",
+                        path=qs.path.rsplit(".jsono", 1)[0] + ".json",
                     ),
                     forward_querystring=False,
                 )
 
             # Handle the _json= parameter which may modify data["rows"]
             json_cols = []
-            if "_json" in request.args:
-                json_cols = request.args["_json"]
+            json_cols = qs.getlist("_json")
             if json_cols and "rows" in data and "columns" in data:
                 data["rows"] = convert_specific_columns_to_json(
                     data["rows"], data["columns"], json_cols,
                 )
 
             # Deal with the _shape option
-            shape = request.args.get("_shape", "arrays")
+            shape = qs.first_or_none("_shape") or "arrays"
             if shape == "arrayfirst":
                 data = [row[0] for row in data["rows"]]
             elif shape in ("objects", "object", "array"):
@@ -353,11 +353,11 @@ class BaseView(RenderMixin):
                 **data,
                 **extras,
                 **{
-                    "url_json": path_with_format(request, "json"),
-                    "url_csv": path_with_format(request, "csv", {
+                    "url_json": path_with_format(qs, "json"),
+                    "url_csv": path_with_format(qs, "csv", {
                         "_size": "max"
                     }),
-                    "url_csv_dl": path_with_format(request, "csv", {
+                    "url_csv_dl": path_with_format(qs, "csv", {
                         "_dl": "1",
                         "_size": "max"
                     }),
@@ -372,7 +372,7 @@ class BaseView(RenderMixin):
             r.status = status_code
         # Set far-future cache expiry
         if self.ds.cache_headers:
-            ttl = request.args.get("_ttl", None)
+            ttl = qs.first_or_none("_ttl")
             if ttl is None or not ttl.isdigit():
                 ttl = self.ds.config["default_cache_ttl"]
             else:
@@ -386,9 +386,9 @@ class BaseView(RenderMixin):
         return r
 
     async def custom_sql(
-        self, request, name, hash, sql, editable=True, canned_query=None
+        self, qs, name, hash, sql, editable=True, canned_query=None
     ):
-        params = request.raw_args
+        params = qs.first_dict()
         if "sql" in params:
             params.pop("sql")
         if "_shape" in params:

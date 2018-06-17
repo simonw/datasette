@@ -9,13 +9,13 @@ from .base import BaseView, DatasetteError
 
 class DatabaseView(BaseView):
 
-    async def data(self, request, name, hash, default_labels=False):
-        if request.args.get("sql"):
+    async def data(self, qs, name, hash, default_labels=False):
+        if qs.first_or_none("sql"):
             if not self.ds.config["allow_sql"]:
                 raise DatasetteError("sql= is not allowed", status=400)
-            sql = request.raw_args.pop("sql")
+            sql = qs.first("sql")
             validate_sql_select(sql)
-            return await self.custom_sql(request, name, hash, sql)
+            return await self.custom_sql(qs, name, hash, sql)
 
         info = self.ds.inspect()[name]
         metadata = self.ds.metadata.get("databases", {}).get(name, {})
@@ -34,7 +34,7 @@ class DatabaseView(BaseView):
             "config": self.ds.config,
         }, {
             "database_hash": hash,
-            "show_hidden": request.args.get("_show_hidden"),
+            "show_hidden": qs.first_or_none("_show_hidden"),
             "editable": True,
             "metadata": metadata,
         }, (
@@ -44,7 +44,7 @@ class DatabaseView(BaseView):
 
 class DatabaseDownload(BaseView):
 
-    async def view_get(self, request, name, hash, **kwargs):
+    async def view_get(self, qs, name, hash, **kwargs):
         if not self.ds.config["allow_download"]:
             raise DatasetteError("Database download is forbidden", status=403)
         filepath = self.ds.inspect()[name]["file"]

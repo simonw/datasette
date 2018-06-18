@@ -401,6 +401,7 @@ class BaseView(RenderMixin):
                     "extra_css_urls": self.ds.extra_css_urls(),
                     "extra_js_urls": self.ds.extra_js_urls(),
                     "datasette_version": __version__,
+                    "config": self.ds.config,
                 }
             }
             if "metadata" not in context:

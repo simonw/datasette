@@ -31,7 +31,6 @@ class DatabaseView(BaseView):
                 {"name": query_name, "sql": query_sql}
                 for query_name, query_sql in (metadata.get("queries") or {}).items()
             ],
-            "config": self.ds.config,
         }, {
             "database_hash": hash,
             "show_hidden": request.args.get("_show_hidden"),

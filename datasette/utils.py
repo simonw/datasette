@@ -170,6 +170,13 @@ def validate_sql_select(sql):
             raise InvalidSql(msg)
 
 
+def append_querystring(url, querystring):
+    op = "&" if ("?" in url) else "?"
+    return "{}{}{}".format(
+        url, op, querystring
+    )
+
+
 def path_with_added_args(request, args, path=None):
     path = path or request.path
     if isinstance(args, dict):

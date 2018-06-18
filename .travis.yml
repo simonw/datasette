@@ -13,6 +13,7 @@ script:
 jobs:
   include:
     - stage: deploy latest.datasette.io
+      if: branch = master AND type = push
       script:
         - pip install .
         - npm install -g now
@@ -23,7 +24,6 @@ jobs:
         - now alias --token=$NOW_TOKEN
         - echo "{\"name\":\"datasette-latest-$ALIAS\",\"alias\":\"$ALIAS.datasette.io\"}" > now.json
         - now alias --token=$NOW_TOKEN
-      on: master
     - stage: release tagged version
       if: tag IS present
       python: 3.6

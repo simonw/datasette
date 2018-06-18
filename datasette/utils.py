@@ -832,3 +832,22 @@ def value_as_boolean(value):
 
 class ValueAsBooleanError(ValueError):
     pass
+
+
+class WriteLimitExceeded(Exception):
+    pass
+
+
+class LimitedWriter:
+    def __init__(self, writer, limit_mb):
+        self.writer = writer
+        self.limit_bytes = limit_mb * 1024 * 1024
+        self.bytes_count = 0
+
+    def write(self, bytes):
+        self.bytes_count += len(bytes)
+        if self.limit_bytes and (self.bytes_count > self.limit_bytes):
+            raise WriteLimitExceeded("CSV contains more than {} bytes".format(
+                self.limit_bytes
+            ))
+        self.writer.write(bytes)

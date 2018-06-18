@@ -1,4 +1,4 @@
-from .fixtures import app_client # noqa
+from .fixtures import app_client, app_client_csv_max_mb_one # noqa
 
 EXPECTED_TABLE_CSV = '''id,content
 1,hello
@@ -59,3 +59,28 @@ def test_table_csv_download(app_client):
     assert 'text/csv; charset=utf-8' == response.headers['Content-Type']
     expected_disposition = 'attachment; filename="simple_primary_key.csv"'
     assert expected_disposition == response.headers['Content-Disposition']
+
+
+def test_max_csv_mb(app_client_csv_max_mb_one):
+    response = app_client_csv_max_mb_one.get(
+        "/fixtures.csv?sql=select+randomblob(10000)+"
+        "from+compound_three_primary_keys&_stream=1&_size=max"
+    )
+    # It's a 200 because we started streaming before we knew the error
+    assert response.status == 200
+    # Last line should be an error message
+    last_line = [line for line in response.body.split(b"\r\n") if line][-1]
+    assert last_line.startswith(b"CSV contains more than")
+
+
+def test_table_csv_stream(app_client):
+    # Without _stream should return header + 100 rows:
+    response = app_client.get(
+        "/fixtures/compound_three_primary_keys.csv?_size=max"
+    )
+    assert 101 == len([b for b in response.body.split(b"\r\n") if b])
+    # With _stream=1 should return header + 1001 rows
+    response = app_client.get(
+        "/fixtures/compound_three_primary_keys.csv?_stream=1"
+    )
+    assert 1002 == len([b for b in response.body.split(b"\r\n") if b])

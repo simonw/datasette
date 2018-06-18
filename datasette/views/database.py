@@ -9,13 +9,13 @@ from .base import BaseView, DatasetteError
 
 class DatabaseView(BaseView):
 
-    async def data(self, request, name, hash, default_labels=False):
+    async def data(self, request, name, hash, default_labels=False, _size=None):
         if request.args.get("sql"):
             if not self.ds.config["allow_sql"]:
                 raise DatasetteError("sql= is not allowed", status=400)
             sql = request.raw_args.pop("sql")
             validate_sql_select(sql)
-            return await self.custom_sql(request, name, hash, sql)
+            return await self.custom_sql(request, name, hash, sql, _size=_size)
 
         info = self.ds.inspect()[name]
         metadata = self.ds.metadata.get("databases", {}).get(name, {})

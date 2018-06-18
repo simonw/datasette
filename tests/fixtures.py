@@ -71,6 +71,13 @@ def app_client_larger_cache_size():
     })
 
 
+@pytest.fixture(scope='session')
+def app_client_csv_max_mb_one():
+    yield from app_client(config={
+        'max_csv_mb': 1,
+    })
+
+
 def generate_compound_rows(num):
     for a, b, c in itertools.islice(
         itertools.product(string.ascii_lowercase, repeat=3), num

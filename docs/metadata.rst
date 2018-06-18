@@ -122,6 +122,7 @@ This will restrict sorting of ``example_table`` to just the ``height`` and
 You can also disable sorting entirely by setting ``"sortable_columns": []``
 
 .. _label_columns:
+
 Specifying the label column for a table
 ---------------------------------------
 

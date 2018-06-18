@@ -901,6 +901,8 @@ def test_config_json(app_client):
         "default_cache_ttl": 365 * 24 * 60 * 60,
         "num_sql_threads": 3,
         "cache_size_kb": 0,
+        "allow_csv_stream": True,
+        "max_csv_mb": 100,
     } == response.json
 
 

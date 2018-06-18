@@ -274,9 +274,10 @@ def test_table_html_simple_primary_key(app_client):
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
-def test_table_csv_json_export_links(app_client):
+def test_table_csv_json_export_interface(app_client):
     response = app_client.get('/fixtures/simple_primary_key')
     assert response.status == 200
+    # The links at the top of the page
     links = Soup(response.body, "html.parser").find("p", {
         "class": "export-links"
     }).findAll("a")
@@ -284,9 +285,28 @@ def test_table_csv_json_export_links(app_client):
     expected = [
         "simple_primary_key.json",
         "simple_primary_key.csv?_size=max",
-        "simple_primary_key.csv?_dl=1&_size=max"
+        "#export"
     ]
     assert expected == actual
+    # And the advaced export box at the bottom:
+    div = Soup(response.body, "html.parser").find("div", {
+        "class": "advanced-export"
+    })
+    json_links = [a["href"].split("/")[-1] for a in div.find("p").findAll("a")]
+    assert [
+        "simple_primary_key.json",
+        "simple_primary_key.json?_shape=array",
+        "simple_primary_key.json?_shape=object"
+    ] == json_links
+    # And the CSV form
+    form = div.find("form")
+    assert form["action"].endswith("/simple_primary_key.csv")
+    inputs = [str(input) for input in form.findAll("input")]
+    assert [
+        '<input name="_dl" type="checkbox"/>',
+        '<input type="submit" value="Export CSV"/>',
+        '<input name="_size" type="hidden" value="max"/>'
+    ] == inputs
 
 
 def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
@@ -299,7 +319,7 @@ def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
     expected = [
         "facetable.json?_labels=on",
         "facetable.csv?_labels=on&_size=max",
-        "facetable.csv?_dl=1&_labels=on&_size=max"
+        "#export"
     ]
     assert expected == actual
 

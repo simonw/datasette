@@ -382,6 +382,12 @@ class BaseView(RenderMixin):
             url_labels_extra = {}
             if data.get("expandable_columns"):
                 url_labels_extra = {"_labels": "on"}
+            url_csv_args = {
+                "_size": "max",
+                **url_labels_extra
+            }
+            url_csv = path_with_format(request, "csv", url_csv_args)
+            url_csv_path = url_csv.split('?')[0]
             context = {
                 **data,
                 **extras,
@@ -389,15 +395,9 @@ class BaseView(RenderMixin):
                     "url_json": path_with_format(request, "json", {
                         **url_labels_extra,
                     }),
-                    "url_csv": path_with_format(request, "csv", {
-                        "_size": "max",
-                        **url_labels_extra
-                    }),
-                    "url_csv_dl": path_with_format(request, "csv", {
-                        "_dl": "1",
-                        "_size": "max",
-                        **url_labels_extra
-                    }),
+                    "url_csv": url_csv,
+                    "url_csv_path": url_csv_path,
+                    "url_csv_args": url_csv_args,
                     "extra_css_urls": self.ds.extra_css_urls(),
                     "extra_js_urls": self.ds.extra_js_urls(),
                     "datasette_version": __version__,

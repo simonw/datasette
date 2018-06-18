@@ -92,7 +92,7 @@
     <p><a class="not-underlined" title="{{ query.sql }}" href="/{{ database }}-{{ database_hash }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 
-<p class="export-links">This data as <a href="{{ url_json }}">JSON</a>, <a href="{{ url_csv }}">CSV</a> (<a href="{{ url_csv_dl }}">download CSV</a>)</p>
+<p class="export-links">This data as <a href="{{ url_json }}">JSON</a>{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
 
 {% if suggested_facets %}
     <p class="suggested-facets">
@@ -135,6 +135,27 @@
 
 {% if next_url %}
      <p><a href="{{ next_url }}">Next page</a></p>
+{% endif %}
+
+{% if display_rows %}
+    <div id="export" class="advanced-export">
+        <h3>Advanced export</h3>
+        <p>JSON shape: <a href="{{ url_json }}">default</a>, <a href="{{ append_querystring(url_json, '_shape=array') }}">array</a>{% if primary_keys %}, <a href="{{ append_querystring(url_json, '_shape=object') }}">object</a>{% endif %}</p>
+        <form action="{{ url_csv_path }}" method="get">
+            <p>
+                CSV options:
+                <label><input type="checkbox" name="_dl"> download file</label>
+                {% if expandable_columns %}<label><input type="checkbox" name="_labels"> expand labels</label>{% endif %}
+                {% if next_url %}<label><input type="checkbox" name="_stream"> stream all records</label>{% endif %}
+                <input type="submit" value="Export CSV">
+                {% for key, value in url_csv_args.items() %}
+                    {% if key != "_labels" %}
+                        <input type="hidden" name="{{ key }}" value="{{ value }}">
+                    {% endif %}
+                {% endfor %}
+            </p>
+        </form>
+    </div>
 {% endif %}
 
 {% if table_definition %}

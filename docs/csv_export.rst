@@ -22,7 +22,7 @@ file, which looks like this and has the following options:
   <https://latest.datasette.io/fixtures/facetable.csv?_labels=on&_size=max>`_
   the ``city_id`` column is accompanied by a ``city_id_label`` column.
 
-* **stream all records** - by default CSV files only contain the first
+* **stream all rows** - by default CSV files only contain the first
   :ref:`config_max_returned_rows` records. This option will cause Datasette to
   loop through every matching record and return them as a single CSV file.
 
@@ -31,7 +31,7 @@ You can try that out on https://latest.datasette.io/fixtures/facetable?_size=4
 Streaming all records
 ---------------------
 
-The *stream all records* option is designed to be as efficient as possible -
+The *stream all rows* option is designed to be as efficient as possible -
 under the hood it takes advantage of Python 3 asyncio capabilities and
 Datasette's efficient :ref:`pagination <pagination>` to stream back the full
 CSV file.

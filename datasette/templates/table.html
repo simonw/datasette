@@ -146,7 +146,7 @@
                 CSV options:
                 <label><input type="checkbox" name="_dl"> download file</label>
                 {% if expandable_columns %}<label><input type="checkbox" name="_labels"> expand labels</label>{% endif %}
-                {% if next_url %}<label><input type="checkbox" name="_stream"> stream all records</label>{% endif %}
+                {% if next_url %}<label><input type="checkbox" name="_stream"> stream all rows</label>{% endif %}
                 <input type="submit" value="Export CSV">
                 {% for key, value in url_csv_args.items() %}
                     {% if key != "_labels" %}

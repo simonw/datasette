@@ -1,5 +1,125 @@
+=========
 Changelog
 =========
+
+.. _v0_23:
+
+0.23 (2018-06-18)
+-----------------
+
+This release features CSV export, improved options for foreign key expansions,
+new configuration settings and improved support for SpatiaLite.
+
+See `datasette/compare/0.22.1...0.23
+<https://github.com/simonw/datasette/compare/0.22.1...0.23>`_ for a full list of
+commits added since the last release.
+
+CSV export
+~~~~~~~~~~
+
+Any Datasette table, view or custom SQL query can now be exported as CSV.
+
+.. image:: advanced_export.png
+
+Check out the :ref:`CSV export documentation <csv_export>` for more details, or
+try the feature out on
+https://fivethirtyeight.datasettes.com/fivethirtyeight/bechdel%2Fmovies
+
+If your table has more than :ref:`config_max_returned_rows` (default 1,000)
+Datasette provides the option to *stream all rows*. This option takes advantage
+of async Python and Datasette's efficient :ref:`pagination <pagination>` to
+iterate through the entire matching result set and stream it back as a
+downloadable CSV file.
+
+Foreign key expansions
+~~~~~~~~~~~~~~~~~~~~~~
+
+When Datasette detects a foreign key reference it attempts to resolve a label
+for that reference (automatically or using the :ref:`label_columns` metadata
+option) so it can display a link to the associated row.
+
+This expansion is now also available for JSON and CSV representations of the
+table, using the new ``_labels=on`` querystring option. See
+:ref:`expand_foreign_keys` for more details.
+
+New configuration settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette's :ref:`config` now also supports boolean settings. A number of new
+configuration options have been added:
+
+* ``num_sql_threads`` - the number of threads used to execute SQLite queries. Defaults to 3.
+* ``allow_facet`` - enable or disable custom :ref:`facets` using the `_facet=` parameter. Defaults to on.
+* ``suggest_facets`` - should Datasette suggest facets? Defaults to on.
+* ``allow_download`` - should users be allowed to download the entire SQLite database? Defaults to on.
+* ``allow_sql`` - should users be allowed to execute custom SQL queries? Defaults to on.
+* ``default_cache_ttl`` - Default HTTP caching max-age header in seconds. Defaults to 365 days - caching can be disabled entirely by settings this to 0.
+* ``cache_size_kb`` - Set the amount of memory SQLite uses for its `per-connection cache <https://www.sqlite.org/pragma.html#pragma_cache_size>`_, in KB.
+* ``allow_csv_stream`` - allow users to stream entire result sets as a single CSV file. Defaults to on.
+* ``max_csv_mb`` - maximum size of a returned CSV file in MB. Defaults to 100MB, set to 0 to disable this limit.
+
+Control HTTP caching with ?_ttl=
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can now customize the HTTP max-age header that is sent on a per-URL basis, using the new ``?_ttl=`` querystring parameter.
+
+You can set this to any value in seconds, or you can set it to 0 to disable HTTP caching entirely.
+
+Consider for example this query which returns a randomly selected member of the Avengers::
+
+    select * from [avengers/avengers] order by random() limit 1
+
+If you hit the following page repeatedly you will get the same result, due to HTTP caching:
+
+`/fivethirtyeight?sql=select+*+from+%5Bavengers%2Favengers%5D+order+by+random%28%29+limit+1 <https://fivethirtyeight.datasettes.com/fivethirtyeight?sql=select+*+from+%5Bavengers%2Favengers%5D+order+by+random%28%29+limit+1>`_
+
+By adding `?_ttl=0` to the zero you can ensure the page will not be cached and get back a different super hero every time:
+
+`/fivethirtyeight?sql=select+*+from+%5Bavengers%2Favengers%5D+order+by+random%28%29+limit+1&_ttl=0 <https://fivethirtyeight.datasettes.com/fivethirtyeight?sql=select+*+from+%5Bavengers%2Favengers%5D+order+by+random%28%29+limit+1&_ttl=0>`_
+
+Improved support for SpatiaLite
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `SpatiaLite module <https://www.gaia-gis.it/fossil/libspatialite/index>`_
+for SQLite adds robust geospatial features to the database.
+
+Getting SpatiaLite working can be tricky, especially if you want to use the most
+recent alpha version (with support for K-nearest neighbor).
+
+Datasette now includes :ref:`extensive documentation on SpatiaLite
+<spatialite>`, and thanks to `Ravi Kotecha <https://github.com/r4vi>`_ our GitHub
+repo includes a `Dockerfile
+<https://github.com/simonw/datasette/blob/master/Dockerfile>`_ that can build
+the latest SpatiaLite and configure it for use with Datasette.
+
+The ``datasette publish`` and ``datasette package`` commands now accept a new
+``--spatialite`` argument which causes them to install and configure SpatiaLite
+as part of the container they deploy.
+
+latest.datasette.io
+~~~~~~~~~~~~~~~~~~~
+
+Every commit to Datasette master is now automatically deployed by Travis CI to
+https://latest.datasette.io/ - ensuring there is always a live demo of the
+latest version of the software.
+
+The demo uses `the fixtures
+<https://github.com/simonw/datasette/blob/master/tests/fixtures.py>`_ from our
+unit tests, ensuring it demonstrates the same range of functionality that is
+covered by the tests.
+
+You can see how the deployment mechanism works in our `.travis.yml
+<https://github.com/simonw/datasette/blob/master/.travis.yml>`_ file.
+
+Miscellaneous
+~~~~~~~~~~~~~
+
+* Got JSON data in one of your columns? Use the new ``?_json=COLNAME`` argument
+  to tell Datasette to return that JSON value directly rather than encoding it
+  as a string.
+* If you just want an array of the first value of each row, use the new
+  ``?_shape=arrayfirst`` option - `example
+  <https://latest.datasette.io/fixtures.json?sql=select+neighborhood+from+facetable+order+by+pk+limit+101&_shape=arrayfirst>`_.
 
 0.22.1 (2018-05-23)
 -------------------

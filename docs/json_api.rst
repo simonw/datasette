@@ -1,5 +1,5 @@
-The Datasette JSON API
-======================
+JSON API
+========
 
 Datasette provides a JSON API for your SQLite databases. Anything you can do
 through the Datasette user interface can also be accessed as JSON via the API.

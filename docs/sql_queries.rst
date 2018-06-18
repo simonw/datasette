@@ -95,6 +95,8 @@ will then be able to enter them using the form fields on the canned query page
 or by adding them to the URL. This means canned queries can be used to create
 custom JSON APIs based on a carefully designed SQL.
 
+.. _pagination:
+
 Pagination
 ----------
 

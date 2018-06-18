@@ -19,6 +19,7 @@ Contents
    getting_started
    json_api
    sql_queries
+   csv_export
    facets
    full_text_search
    spatialite

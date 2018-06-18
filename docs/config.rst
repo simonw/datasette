@@ -35,6 +35,8 @@ You can optionally set a lower time limit for an individual query using the ``?_
 
 This would set the time limit to 100ms for that specific query. This feature is useful if you are working with databases of unknown size and complexity - a query that might make perfect sense for a smaller table could take too long to execute on a table with millions of rows. By setting custom time limits you can execute queries "optimistically" - e.g. give me an exact count of rows matching this query but only if it takes less than 100ms to calculate.
 
+.. _config_max_returned_rows:
+
 max_returned_rows
 -----------------
 
@@ -126,23 +128,27 @@ Sets the amount of memory SQLite uses for its `per-connection cache <https://www
 
     datasette mydatabase.db --config cache_size_kb:5000
 
+.. _config_allow_csv_stream:
 
 allow_csv_stream
 ----------------
 
-Enables the feature where an entire table (potentially hundreds of thousands of
-rows) can be exported as a single CSV file. This is turned on by default - you
-can turn it off like this::
+Enables :ref:`the CSV export feature <csv_export>` where an entire table
+(potentially hundreds of thousands of rows) can be exported as a single CSV
+file. This is turned on by default - you can turn it off like this:
 
 ::
 
     datasette mydatabase.db --config allow_csv_stream:off
 
+.. _config_max_csv_mb:
 
 max_csv_mb
 ----------
 
 The maximum size of CSV that can be exported, in megabytes. Defaults to 100MB.
-You can disable the limit entirely by settings this to 0::
+You can disable the limit entirely by settings this to 0:
+
+::
 
     datasette mydatabase.db --config max_csv_mb:0

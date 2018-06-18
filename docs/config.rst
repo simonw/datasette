@@ -137,3 +137,12 @@ can turn it off like this::
 ::
 
     datasette mydatabase.db --config allow_csv_stream:off
+
+
+max_csv_mb
+----------
+
+The maximum size of CSV that can be exported, in megabytes. Defaults to 100MB.
+You can disable the limit entirely by settings this to 0::
+
+    datasette mydatabase.db --config max_csv_mb:0

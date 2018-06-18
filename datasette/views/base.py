@@ -16,6 +16,7 @@ from datasette.utils import (
     CustomJSONEncoder,
     InterruptedError,
     InvalidSql,
+    LimitedWriter,
     path_from_row_pks,
     path_with_added_args,
     path_with_format,
@@ -191,34 +192,39 @@ class BaseView(RenderMixin):
 
         async def stream_fn(r):
             nonlocal data
-            writer = csv.writer(r)
+            writer = csv.writer(LimitedWriter(r, self.ds.config["max_csv_mb"]))
             first = True
             next = None
             while first or (next and stream):
-                if next:
-                    kwargs["_next"] = next
-                if not first:
-                    data, extra_template_data, templates = await self.data(
-                        request, name, hash, **kwargs
-                    )
-                if first:
-                    writer.writerow(headings)
-                    first = False
-                next = data.get("next")
-                for row in data["rows"]:
-                    if not expanded_columns:
-                        # Simple path
-                        writer.writerow(row)
-                    else:
-                        # Look for {"value": "label": } dicts and expand
-                        new_row = []
-                        for cell in row:
-                            if isinstance(cell, dict):
-                                new_row.append(cell["value"])
-                                new_row.append(cell["label"])
-                            else:
-                                new_row.append(cell)
-                        writer.writerow(new_row)
+                try:
+                    if next:
+                        kwargs["_next"] = next
+                    if not first:
+                        data, extra_template_data, templates = await self.data(
+                            request, name, hash, **kwargs
+                        )
+                    if first:
+                        writer.writerow(headings)
+                        first = False
+                    next = data.get("next")
+                    for row in data["rows"]:
+                        if not expanded_columns:
+                            # Simple path
+                            writer.writerow(row)
+                        else:
+                            # Look for {"value": "label": } dicts and expand
+                            new_row = []
+                            for cell in row:
+                                if isinstance(cell, dict):
+                                    new_row.append(cell["value"])
+                                    new_row.append(cell["label"])
+                                else:
+                                    new_row.append(cell)
+                            writer.writerow(new_row)
+                except Exception as e:
+                    print('caught this', e)
+                    r.write(str(e))
+                    return
 
         content_type = "text/plain; charset=utf-8"
         headers = {}
@@ -417,7 +423,8 @@ class BaseView(RenderMixin):
         return r
 
     async def custom_sql(
-        self, request, name, hash, sql, editable=True, canned_query=None
+        self, request, name, hash, sql, editable=True, canned_query=None,
+        _size=None
     ):
         params = request.raw_args
         if "sql" in params:
@@ -439,6 +446,8 @@ class BaseView(RenderMixin):
         extra_args = {}
         if params.get("_timelimit"):
             extra_args["custom_time_limit"] = int(params["_timelimit"])
+        if _size:
+            extra_args["page_size"] = _size
         results = await self.ds.execute(
             name, sql, params, truncate=True, **extra_args
         )

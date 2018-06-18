@@ -97,6 +97,9 @@ CONFIG_OPTIONS = (
     ConfigOption("allow_csv_stream", True, """
         Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)
     """.strip()),
+    ConfigOption("max_csv_mb", 100, """
+        Maximum size allowed for CSV export in MB. Set 0 to disable this limit.
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default

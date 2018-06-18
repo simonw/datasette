@@ -94,6 +94,9 @@ CONFIG_OPTIONS = (
     ConfigOption("cache_size_kb", 0, """
         SQLite cache size in KB (0 == use SQLite default)
     """.strip()),
+    ConfigOption("allow_csv_stream", True, """
+        Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default

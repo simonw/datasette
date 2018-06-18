@@ -59,3 +59,16 @@ def test_table_csv_download(app_client):
     assert 'text/csv; charset=utf-8' == response.headers['Content-Type']
     expected_disposition = 'attachment; filename="simple_primary_key.csv"'
     assert expected_disposition == response.headers['Content-Disposition']
+
+
+def test_table_csv_stream(app_client):
+    # Without _stream should return header + 100 rows:
+    response = app_client.get(
+        "/fixtures/compound_three_primary_keys.csv?_size=max"
+    )
+    assert 101 == len([b for b in response.body.split(b"\r\n") if b])
+    # With _stream=1 should return header + 1001 rows
+    response = app_client.get(
+        "/fixtures/compound_three_primary_keys.csv?_stream=1"
+    )
+    assert 1002 == len([b for b in response.body.split(b"\r\n") if b])

@@ -125,3 +125,15 @@ Sets the amount of memory SQLite uses for its `per-connection cache <https://www
 ::
 
     datasette mydatabase.db --config cache_size_kb:5000
+
+
+allow_csv_stream
+----------------
+
+Enables the feature where an entire table (potentially hundreds of thousands of
+rows) can be exported as a single CSV file. This is turned on by default - you
+can turn it off like this::
+
+::
+
+    datasette mydatabase.db --config allow_csv_stream:off

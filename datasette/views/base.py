@@ -21,7 +21,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_format,
     resolve_table_and_format,
-    to_css_class
+    to_css_class,
 )
 
 ureg = pint.UnitRegistry()
@@ -30,8 +30,15 @@ HASH_LENGTH = 7
 
 
 class DatasetteError(Exception):
-
-    def __init__(self, message, title=None, error_dict=None, status=500, template=None, messagge_is_html=False):
+    def __init__(
+        self,
+        message,
+        title=None,
+        error_dict=None,
+        status=500,
+        template=None,
+        messagge_is_html=False,
+    ):
         self.message = message
         self.title = title
         self.error_dict = error_dict or {}
@@ -40,7 +47,6 @@ class DatasetteError(Exception):
 
 
 class RenderMixin(HTTPMethodView):
-
     def render(self, templates, **context):
         template = self.jinja_env.select_template(templates)
         select_templates = [
@@ -55,7 +61,7 @@ class RenderMixin(HTTPMethodView):
                         "app_css_hash": self.ds.app_css_hash(),
                         "select_templates": select_templates,
                         "zip": zip,
-                    }
+                    },
                 }
             )
         )
@@ -74,10 +80,11 @@ class BaseView(RenderMixin):
 
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."
-        return self.ds.metadata.get("databases", {}).get(database, {}).get(
-            "tables", {}
-        ).get(
-            table, {}
+        return (
+            self.ds.metadata.get("databases", {})
+            .get(database, {})
+            .get("tables", {})
+            .get(table, {})
         )
 
     def options(self, request, *args, **kwargs):
@@ -122,7 +129,7 @@ class BaseView(RenderMixin):
                     table_and_format=urllib.parse.unquote_plus(
                         kwargs["table_and_format"]
                     ),
-                    table_exists=lambda t: self.ds.table_exists(name, t)
+                    table_exists=lambda t: self.ds.table_exists(name, t),
                 )
                 kwargs["table"] = table
                 if _format:
@@ -157,9 +164,7 @@ class BaseView(RenderMixin):
             if not self.ds.config["allow_csv_stream"]:
                 raise DatasetteError("CSV streaming is disabled", status=400)
             if request.args.get("_next"):
-                raise DatasetteError(
-                    "_next not allowed for CSV streaming", status=400
-                )
+                raise DatasetteError("_next not allowed for CSV streaming", status=400)
             kwargs["_size"] = "max"
         # Fetch the first page
         try:
@@ -222,7 +227,7 @@ class BaseView(RenderMixin):
                                     new_row.append(cell)
                             writer.writerow(new_row)
                 except Exception as e:
-                    print('caught this', e)
+                    print("caught this", e)
                     r.write(str(e))
                     return
 
@@ -231,15 +236,11 @@ class BaseView(RenderMixin):
         if request.args.get("_dl", None):
             content_type = "text/csv; charset=utf-8"
             disposition = 'attachment; filename="{}.csv"'.format(
-                kwargs.get('table', name)
+                kwargs.get("table", name)
             )
             headers["Content-Disposition"] = disposition
 
-        return response.stream(
-            stream_fn,
-            headers=headers,
-            content_type=content_type
-        )
+        return response.stream(stream_fn, headers=headers, content_type=content_type)
 
     async def view_get(self, request, name, hash, **kwargs):
         # If ?_format= is provided, use that as the format
@@ -248,10 +249,8 @@ class BaseView(RenderMixin):
             _format = (kwargs.pop("as_format", None) or "").lstrip(".")
         if "table_and_format" in kwargs:
             table, _ext_format = resolve_table_and_format(
-                table_and_format=urllib.parse.unquote_plus(
-                    kwargs["table_and_format"]
-                ),
-                table_exists=lambda t: self.ds.table_exists(name, t)
+                table_and_format=urllib.parse.unquote_plus(kwargs["table_and_format"]),
+                table_exists=lambda t: self.ds.table_exists(name, t),
             )
             _format = _format or _ext_format
             kwargs["table"] = table
@@ -262,7 +261,7 @@ class BaseView(RenderMixin):
 
         if _format is None:
             # HTML views default to expanding all forign key labels
-            kwargs['default_labels'] = True
+            kwargs["default_labels"] = True
 
         extra_template_data = {}
         start = time.time()
@@ -278,11 +277,16 @@ class BaseView(RenderMixin):
             else:
                 data, extra_template_data, templates = response_or_template_contexts
         except InterruptedError as e:
-            raise DatasetteError("""
+            raise DatasetteError(
+                """
                 SQL query took too long. The time limit is controlled by the
                 <a href="https://datasette.readthedocs.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
                 configuration option.
-            """, title="SQL Interrupted", status=400, messagge_is_html=True)
+            """,
+                title="SQL Interrupted",
+                status=400,
+                messagge_is_html=True,
+            )
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
@@ -317,7 +321,7 @@ class BaseView(RenderMixin):
                 json_cols = request.args["_json"]
             if json_cols and "rows" in data and "columns" in data:
                 data["rows"] = convert_specific_columns_to_json(
-                    data["rows"], data["columns"], json_cols,
+                    data["rows"], data["columns"], json_cols
                 )
 
             # Deal with the _shape option
@@ -382,19 +386,14 @@ class BaseView(RenderMixin):
             url_labels_extra = {}
             if data.get("expandable_columns"):
                 url_labels_extra = {"_labels": "on"}
-            url_csv_args = {
-                "_size": "max",
-                **url_labels_extra
-            }
+            url_csv_args = {"_size": "max", **url_labels_extra}
             url_csv = path_with_format(request, "csv", url_csv_args)
-            url_csv_path = url_csv.split('?')[0]
+            url_csv_path = url_csv.split("?")[0]
             context = {
                 **data,
                 **extras,
                 **{
-                    "url_json": path_with_format(request, "json", {
-                        **url_labels_extra,
-                    }),
+                    "url_json": path_with_format(request, "json", {**url_labels_extra}),
                     "url_csv": url_csv,
                     "url_csv_path": url_csv_path,
                     "url_csv_args": url_csv_args,
@@ -402,7 +401,7 @@ class BaseView(RenderMixin):
                     "extra_js_urls": self.ds.extra_js_urls(),
                     "datasette_version": __version__,
                     "config": self.ds.config,
-                }
+                },
             }
             if "metadata" not in context:
                 context["metadata"] = self.ds.metadata
@@ -416,16 +415,15 @@ class BaseView(RenderMixin):
             else:
                 ttl = int(ttl)
             if ttl == 0:
-                ttl_header = 'no-cache'
+                ttl_header = "no-cache"
             else:
-                ttl_header = 'max-age={}'.format(ttl)
+                ttl_header = "max-age={}".format(ttl)
             r.headers["Cache-Control"] = ttl_header
         r.headers["Referrer-Policy"] = "no-referrer"
         return r
 
     async def custom_sql(
-        self, request, name, hash, sql, editable=True, canned_query=None,
-        _size=None
+        self, request, name, hash, sql, editable=True, canned_query=None, _size=None
     ):
         params = request.raw_args
         if "sql" in params:
@@ -449,9 +447,7 @@ class BaseView(RenderMixin):
             extra_args["custom_time_limit"] = int(params["_timelimit"])
         if _size:
             extra_args["page_size"] = _size
-        results = await self.ds.execute(
-            name, sql, params, truncate=True, **extra_args
-        )
+        results = await self.ds.execute(name, sql, params, truncate=True, **extra_args)
         columns = [r[0] for r in results.description]
 
         templates = ["query-{}.html".format(to_css_class(name)), "query.html"]
@@ -463,20 +459,24 @@ class BaseView(RenderMixin):
                 ),
             )
 
-        return {
-            "database": name,
-            "rows": results.rows,
-            "truncated": results.truncated,
-            "columns": columns,
-            "query": {"sql": sql, "params": params},
-        }, {
-            "database_hash": hash,
-            "custom_sql": True,
-            "named_parameter_values": named_parameter_values,
-            "editable": editable,
-            "canned_query": canned_query,
-            "config": self.ds.config,
-        }, templates
+        return (
+            {
+                "database": name,
+                "rows": results.rows,
+                "truncated": results.truncated,
+                "columns": columns,
+                "query": {"sql": sql, "params": params},
+            },
+            {
+                "database_hash": hash,
+                "custom_sql": True,
+                "named_parameter_values": named_parameter_values,
+                "editable": editable,
+                "canned_query": canned_query,
+                "config": self.ds.config,
+            },
+            templates,
+        )
 
 
 def convert_specific_columns_to_json(rows, columns, json_cols):

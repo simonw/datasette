@@ -17,72 +17,63 @@ class TestClient:
 
     def get(self, path, allow_redirects=True):
         return self.sanic_test_client.get(
-            path,
-            allow_redirects=allow_redirects,
-            gather_request=False
+            path, allow_redirects=allow_redirects, gather_request=False
         )
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
     with tempfile.TemporaryDirectory() as tmpdir:
-        filepath = os.path.join(tmpdir, 'fixtures.db')
+        filepath = os.path.join(tmpdir, "fixtures.db")
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
-        plugins_dir = os.path.join(tmpdir, 'plugins')
+        plugins_dir = os.path.join(tmpdir, "plugins")
         os.mkdir(plugins_dir)
-        open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN1)
-        open(os.path.join(plugins_dir, 'my_plugin_2.py'), 'w').write(PLUGIN2)
+        open(os.path.join(plugins_dir, "my_plugin.py"), "w").write(PLUGIN1)
+        open(os.path.join(plugins_dir, "my_plugin_2.py"), "w").write(PLUGIN2)
         config = config or {}
-        config.update({
-            'default_page_size': 50,
-            'max_returned_rows': max_returned_rows or 100,
-            'sql_time_limit_ms': sql_time_limit_ms or 200,
-        })
+        config.update(
+            {
+                "default_page_size": 50,
+                "max_returned_rows": max_returned_rows or 100,
+                "sql_time_limit_ms": sql_time_limit_ms or 200,
+            }
+        )
         ds = Datasette(
-            [filepath],
-            metadata=METADATA,
-            plugins_dir=plugins_dir,
-            config=config,
+            [filepath], metadata=METADATA, plugins_dir=plugins_dir, config=config
         )
-        ds.sqlite_functions.append(
-            ('sleep', 1, lambda n: time.sleep(float(n))),
-        )
+        ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         client = TestClient(ds.app().test_client)
         client.ds = ds
         yield client
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_shorter_time_limit():
     yield from app_client(20)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_returned_rows_matches_page_size():
     yield from app_client(max_returned_rows=50)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_larger_cache_size():
-    yield from app_client(config={
-        'cache_size_kb': 2500,
-    })
+    yield from app_client(config={"cache_size_kb": 2500})
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_csv_max_mb_one():
-    yield from app_client(config={
-        'max_csv_mb': 1,
-    })
+    yield from app_client(config={"max_csv_mb": 1})
 
 
 def generate_compound_rows(num):
     for a, b, c in itertools.islice(
         itertools.product(string.ascii_lowercase, repeat=3), num
     ):
-        yield a, b, c, '{}-{}-{}'.format(a, b, c)
+        yield a, b, c, "{}-{}-{}".format(a, b, c)
 
 
 def generate_sortable_rows(num):
@@ -91,65 +82,51 @@ def generate_sortable_rows(num):
         itertools.product(string.ascii_lowercase, repeat=2), num
     ):
         yield {
-            'pk1': a,
-            'pk2': b,
-            'content': '{}-{}'.format(a, b),
-            'sortable': rand.randint(-100, 100),
-            'sortable_with_nulls': rand.choice([
-                None, rand.random(), rand.random()
-            ]),
-            'sortable_with_nulls_2': rand.choice([
-                None, rand.random(), rand.random()
-            ]),
-            'text': rand.choice(['$null', '$blah']),
+            "pk1": a,
+            "pk2": b,
+            "content": "{}-{}".format(a, b),
+            "sortable": rand.randint(-100, 100),
+            "sortable_with_nulls": rand.choice([None, rand.random(), rand.random()]),
+            "sortable_with_nulls_2": rand.choice([None, rand.random(), rand.random()]),
+            "text": rand.choice(["$null", "$blah"]),
         }
 
 
 METADATA = {
-    'title': 'Datasette Fixtures',
-    'description': 'An example SQLite database demonstrating Datasette',
-    'license': 'Apache License 2.0',
-    'license_url': 'https://github.com/simonw/datasette/blob/master/LICENSE',
-    'source': 'tests/fixtures.py',
-    'source_url': 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py',
-    'databases': {
-        'fixtures': {
-            'description': 'Test tables description',
-            'tables': {
-                'simple_primary_key': {
-                    'description_html': 'Simple <em>primary</em> key',
-                    'title': 'This <em>HTML</em> is escaped',
+    "title": "Datasette Fixtures",
+    "description": "An example SQLite database demonstrating Datasette",
+    "license": "Apache License 2.0",
+    "license_url": "https://github.com/simonw/datasette/blob/master/LICENSE",
+    "source": "tests/fixtures.py",
+    "source_url": "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
+    "databases": {
+        "fixtures": {
+            "description": "Test tables description",
+            "tables": {
+                "simple_primary_key": {
+                    "description_html": "Simple <em>primary</em> key",
+                    "title": "This <em>HTML</em> is escaped",
                 },
-                'sortable': {
-                    'sortable_columns': [
-                        'sortable',
-                        'sortable_with_nulls',
-                        'sortable_with_nulls_2',
-                        'text',
+                "sortable": {
+                    "sortable_columns": [
+                        "sortable",
+                        "sortable_with_nulls",
+                        "sortable_with_nulls_2",
+                        "text",
                     ]
                 },
-                'no_primary_key': {
-                    'sortable_columns': [],
-                    'hidden': True,
-                },
-                'units': {
-                    'units': {
-                        'distance': 'm',
-                        'frequency': 'Hz'
-                    }
-                },
-                'primary_key_multiple_columns_explicit_label': {
-                    'label_column': 'content2',
+                "no_primary_key": {"sortable_columns": [], "hidden": True},
+                "units": {"units": {"distance": "m", "frequency": "Hz"}},
+                "primary_key_multiple_columns_explicit_label": {
+                    "label_column": "content2"
                 },
             },
-            'queries': {
-                'pragma_cache_size': 'PRAGMA cache_size;'
-            }
-        },
-    }
+            "queries": {"pragma_cache_size": "PRAGMA cache_size;"},
+        }
+    },
 }
 
-PLUGIN1 = '''
+PLUGIN1 = """
 from datasette import hookimpl
 import pint
 
@@ -175,9 +152,9 @@ def extra_js_urls():
         'url': 'https://example.com/jquery.js',
         'sri': 'SRIHASH',
     }, 'https://example.com/plugin1.js']
-'''
+"""
 
-PLUGIN2 = '''
+PLUGIN2 = """
 from datasette import hookimpl
 
 
@@ -187,9 +164,10 @@ def extra_js_urls():
         'url': 'https://example.com/jquery.js',
         'sri': 'SRIHASH',
     }, 'https://example.com/plugin2.js']
-'''
+"""
 
-TABLES = '''
+TABLES = (
+    """
 CREATE TABLE simple_primary_key (
   id varchar(30) primary key,
   content text
@@ -372,23 +350,39 @@ INSERT INTO [table/with/slashes.csv] VALUES (3, 'hey');
 CREATE VIEW simple_view AS
     SELECT content, upper(content) AS upper_content FROM simple_primary_key;
 
-''' + '\n'.join([
-    'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(i=i + 1)
-    for i in range(201)
-]) + '\n'.join([
-    'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
-        a=a, b=b, c=c, content=content
-    ) for a, b, c, content in generate_compound_rows(1001)
-]) + '\n'.join([
-    '''INSERT INTO sortable VALUES (
+"""
+    + "\n".join(
+        [
+            'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(
+                i=i + 1
+            )
+            for i in range(201)
+        ]
+    )
+    + "\n".join(
+        [
+            'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
+                a=a, b=b, c=c, content=content
+            )
+            for a, b, c, content in generate_compound_rows(1001)
+        ]
+    )
+    + "\n".join(
+        [
+            """INSERT INTO sortable VALUES (
         "{pk1}", "{pk2}", "{content}", {sortable},
         {sortable_with_nulls}, {sortable_with_nulls_2}, "{text}");
-    '''.format(
-        **row
-    ).replace('None', 'null') for row in generate_sortable_rows(201)
-])
+    """.format(
+                **row
+            ).replace(
+                "None", "null"
+            )
+            for row in generate_sortable_rows(201)
+        ]
+    )
+)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Can be called with data.db OR data.db metadata.json
     db_filename = sys.argv[-1]
     metadata_filename = None
@@ -400,9 +394,7 @@ if __name__ == '__main__':
         conn.executescript(TABLES)
         print("Test tables written to {}".format(db_filename))
         if metadata_filename:
-            open(metadata_filename, 'w').write(json.dumps(METADATA))
+            open(metadata_filename, "w").write(json.dumps(METADATA))
             print("- metadata written to {}".format(metadata_filename))
     else:
-        print("Usage: {} db_to_write.db [metadata_to_write.json]".format(
-            sys.argv[0]
-        ))
+        print("Usage: {} db_to_write.db [metadata_to_write.json]".format(sys.argv[0]))

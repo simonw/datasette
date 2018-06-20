@@ -9,7 +9,6 @@ from .base import HASH_LENGTH, RenderMixin
 
 
 class IndexView(RenderMixin):
-
     def __init__(self, datasette):
         self.ds = datasette
         self.files = datasette.files
@@ -27,9 +26,7 @@ class IndexView(RenderMixin):
                 "path": "{}-{}".format(key, info["hash"][:HASH_LENGTH]),
                 "tables_truncated": sorted(
                     tables, key=lambda t: t["count"], reverse=True
-                )[
-                    :5
-                ],
+                )[:5],
                 "tables_count": len(tables),
                 "tables_more": len(tables) > 5,
                 "table_rows_sum": sum(t["count"] for t in tables),

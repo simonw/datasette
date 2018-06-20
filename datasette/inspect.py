@@ -22,7 +22,9 @@ def inspect_hash(path):
 
 def inspect_views(conn):
     " List views in a database. "
-    return [v[0] for v in conn.execute('select name from sqlite_master where type = "view"')]
+    return [
+        v[0] for v in conn.execute('select name from sqlite_master where type = "view"')
+    ]
 
 
 def detect_label_column(column_names):
@@ -30,7 +32,7 @@ def detect_label_column(column_names):
 
         If a table has two columns, one of which is ID, then label_column is the other one.
     """
-    if (column_names and len(column_names) == 2 and "id" in column_names):
+    if column_names and len(column_names) == 2 and "id" in column_names:
         return [c for c in column_names if c != "id"][0]
 
     return None
@@ -40,9 +42,7 @@ def detect_primary_keys(conn, table):
     " Figure out primary keys for a table. "
     table_info_rows = [
         row
-        for row in conn.execute(
-            'PRAGMA table_info("{}")'.format(table)
-        ).fetchall()
+        for row in conn.execute('PRAGMA table_info("{}")'.format(table)).fetchall()
         if row[-1]
     ]
     table_info_rows.sort(key=lambda row: row[-1])
@@ -54,15 +54,11 @@ def inspect_tables(conn, database_metadata):
     tables = {}
     table_names = [
         r["name"]
-        for r in conn.execute(
-            'select * from sqlite_master where type="table"'
-        )
+        for r in conn.execute('select * from sqlite_master where type="table"')
     ]
 
     for table in table_names:
-        table_metadata = database_metadata.get("tables", {}).get(
-            table, {}
-        )
+        table_metadata = database_metadata.get("tables", {}).get(table, {})
 
         try:
             count = conn.execute(

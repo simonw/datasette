@@ -26,12 +26,13 @@ from datasette.utils import (
 
 from .base import BaseView, DatasetteError, ureg
 
-LINK_WITH_LABEL = '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
+LINK_WITH_LABEL = (
+    '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
+)
 LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
 
 
 class RowTableShared(BaseView):
-
     def sortable_columns_for_table(self, database, table, use_rowid):
         table_metadata = self.table_metadata(database, table)
         if "sortable_columns" in table_metadata:
@@ -52,9 +53,7 @@ class RowTableShared(BaseView):
         expandables = []
         for fk in table_info["foreign_keys"]["outgoing"]:
             label_column = (
-                self.table_metadata(
-                    database, fk["other_table"]
-                ).get("label_column")
+                self.table_metadata(database, fk["other_table"]).get("label_column")
                 or tables.get(fk["other_table"], {}).get("label_column")
             ) or None
             expandables.append((fk, label_column))
@@ -71,38 +70,32 @@ class RowTableShared(BaseView):
         # Find the foreign_key for this column
         try:
             fk = [
-                foreign_key for foreign_key in foreign_keys
+                foreign_key
+                for foreign_key in foreign_keys
                 if foreign_key["column"] == column
             ][0]
         except IndexError:
             return {}
         label_column = (
             # First look in metadata.json for this foreign key table:
-            self.table_metadata(
-                database, fk["other_table"]
-            ).get("label_column")
+            self.table_metadata(database, fk["other_table"]).get("label_column")
             or tables_info.get(fk["other_table"], {}).get("label_column")
         )
         if not label_column:
-            return {
-                (fk["column"], value): str(value)
-                for value in values
-            }
+            return {(fk["column"], value): str(value) for value in values}
         labeled_fks = {}
-        sql = '''
+        sql = """
             select {other_column}, {label_column}
             from {other_table}
             where {other_column} in ({placeholders})
-        '''.format(
+        """.format(
             other_column=escape_sqlite(fk["other_column"]),
             label_column=escape_sqlite(label_column),
             other_table=escape_sqlite(fk["other_table"]),
             placeholders=", ".join(["?"] * len(set(values))),
         )
         try:
-            results = await self.ds.execute(
-                database, sql, list(set(values))
-            )
+            results = await self.ds.execute(database, sql, list(set(values)))
         except InterruptedError:
             pass
         else:
@@ -111,12 +104,7 @@ class RowTableShared(BaseView):
         return labeled_fks
 
     async def display_columns_and_rows(
-        self,
-        database,
-        table,
-        description,
-        rows,
-        link_column=False,
+        self, database, table, description, rows, link_column=False
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         table_metadata = self.table_metadata(database, table)
@@ -130,9 +118,7 @@ class RowTableShared(BaseView):
         pks = table_info.get("primary_keys") or []
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
-            for fk in table_info.get(
-                "foreign_keys", {}
-            ).get("outgoing", None) or []
+            for fk in table_info.get("foreign_keys", {}).get("outgoing", None) or []
         }
 
         cell_rows = []
@@ -175,13 +161,15 @@ class RowTableShared(BaseView):
                     link_template = (
                         LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
                     )
-                    display_value = jinja2.Markup(link_template.format(
-                        database=database,
-                        table=urllib.parse.quote_plus(other_table),
-                        link_id=urllib.parse.quote_plus(str(value)),
-                        id=str(jinja2.escape(value)),
-                        label=str(jinja2.escape(label)),
-                    ))
+                    display_value = jinja2.Markup(
+                        link_template.format(
+                            database=database,
+                            table=urllib.parse.quote_plus(other_table),
+                            link_id=urllib.parse.quote_plus(str(value)),
+                            id=str(jinja2.escape(value)),
+                            label=str(jinja2.escape(label)),
+                        )
+                    )
                 elif value is None:
                     display_value = jinja2.Markup("&nbsp;")
                 elif is_url(str(value).strip()):
@@ -220,8 +208,9 @@ class RowTableShared(BaseView):
 
 
 class TableView(RowTableShared):
-
-    async def data(self, request, name, hash, table, default_labels=False,  _next=None, _size=None):
+    async def data(
+        self, request, name, hash, table, default_labels=False, _next=None, _size=None
+    ):
         canned_query = self.ds.get_canned_query(name, table)
         if canned_query is not None:
             return await self.custom_sql(
@@ -314,7 +303,7 @@ class TableView(RowTableShared):
                 search = search_args["_search"]
                 where_clauses.append(
                     "rowid in (select rowid from {fts_table} where {fts_table} match :search)".format(
-                        fts_table=escape_sqlite(fts_table),
+                        fts_table=escape_sqlite(fts_table)
                     )
                 )
                 search_descriptions.append('search matches "{}"'.format(search))
@@ -331,7 +320,7 @@ class TableView(RowTableShared):
                         "rowid in (select rowid from {fts_table} where {search_col} match :search_{i})".format(
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
-                            i=i
+                            i=i,
                         )
                     )
                     search_descriptions.append(
@@ -366,9 +355,9 @@ class TableView(RowTableShared):
 
         from_sql = "from {table_name} {where}".format(
             table_name=escape_sqlite(table),
-            where=(
-                "where {} ".format(" and ".join(where_clauses))
-            ) if where_clauses else "",
+            where=("where {} ".format(" and ".join(where_clauses)))
+            if where_clauses
+            else "",
         )
         # Store current params and where_clauses for later:
         from_sql_params = dict(**params)
@@ -431,7 +420,9 @@ class TableView(RowTableShared):
                                 column=escape_sqlite(sort or sort_desc),
                                 op=">" if sort else "<",
                                 p=len(params),
-                                extra_desc_only="" if sort else " or {column2} is null".format(
+                                extra_desc_only=""
+                                if sort
+                                else " or {column2} is null".format(
                                     column2=escape_sqlite(sort or sort_desc)
                                 ),
                                 next_clauses=" and ".join(next_by_pk_clauses),
@@ -496,9 +487,7 @@ class TableView(RowTableShared):
         if request.raw_args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.raw_args["_timelimit"])
 
-        results = await self.ds.execute(
-            name, sql, params, truncate=True, **extra_args
-        )
+        results = await self.ds.execute(name, sql, params, truncate=True, **extra_args)
 
         # facets support
         facet_size = self.ds.config["default_facet_size"]
@@ -522,12 +511,14 @@ class TableView(RowTableShared):
             """.format(
                 col=escape_sqlite(column),
                 from_sql=from_sql,
-                and_or_where='and' if from_sql_where_clauses else 'where',
-                limit=facet_size+1,
+                and_or_where="and" if from_sql_where_clauses else "where",
+                limit=facet_size + 1,
             )
             try:
                 facet_rows_results = await self.ds.execute(
-                    name, facet_sql, params,
+                    name,
+                    facet_sql,
+                    params,
                     truncate=False,
                     custom_time_limit=self.ds.config["facet_time_limit_ms"],
                 )
@@ -540,9 +531,7 @@ class TableView(RowTableShared):
                 facet_rows = facet_rows_results.rows[:facet_size]
                 # Attempt to expand foreign keys into labels
                 values = [row["value"] for row in facet_rows]
-                expanded = (await self.expand_foreign_keys(
-                    name, table, column, values
-                ))
+                expanded = await self.expand_foreign_keys(name, table, column, values)
                 for row in facet_rows:
                     selected = str(other_args.get(column)) == str(row["value"])
                     if selected:
@@ -553,18 +542,17 @@ class TableView(RowTableShared):
                         toggle_path = path_with_added_args(
                             request, {column: row["value"]}
                         )
-                    facet_results_values.append({
-                        "value": row["value"],
-                        "label": expanded.get(
-                            (column, row["value"]),
-                            row["value"]
-                        ),
-                        "count": row["count"],
-                        "toggle_url": urllib.parse.urljoin(
-                            request.url, toggle_path
-                        ),
-                        "selected": selected,
-                    })
+                    facet_results_values.append(
+                        {
+                            "value": row["value"],
+                            "label": expanded.get((column, row["value"]), row["value"]),
+                            "count": row["count"],
+                            "toggle_url": urllib.parse.urljoin(
+                                request.url, toggle_path
+                            ),
+                            "selected": selected,
+                        }
+                    )
             except InterruptedError:
                 facets_timed_out.append(column)
 
@@ -588,9 +576,7 @@ class TableView(RowTableShared):
             columns_to_expand = request.args["_label"]
         if columns_to_expand is None and all_labels:
             # expand all columns with foreign keys
-            columns_to_expand = [
-                fk["column"] for fk, _ in expandable_columns
-            ]
+            columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
 
         if columns_to_expand:
             expanded_labels = {}
@@ -603,9 +589,9 @@ class TableView(RowTableShared):
                 column_index = columns.index(column)
                 values = [row[column_index] for row in rows]
                 # Expand them
-                expanded_labels.update(await self.expand_foreign_keys(
-                    name, table, column, values
-                ))
+                expanded_labels.update(
+                    await self.expand_foreign_keys(name, table, column, values)
+                )
             if expanded_labels:
                 # Rewrite the rows
                 new_rows = []
@@ -615,8 +601,8 @@ class TableView(RowTableShared):
                         value = row[column]
                         if (column, value) in expanded_labels:
                             new_row[column] = {
-                                'value': value,
-                                'label': expanded_labels[(column, value)]
+                                "value": value,
+                                "label": expanded_labels[(column, value)],
                             }
                         else:
                             new_row[column] = value
@@ -655,9 +641,9 @@ class TableView(RowTableShared):
         filtered_table_rows_count = None
         if count_sql:
             try:
-                count_rows = list(await self.ds.execute(
-                    name, count_sql, from_sql_params
-                ))
+                count_rows = list(
+                    await self.ds.execute(name, count_sql, from_sql_params)
+                )
                 filtered_table_rows_count = count_rows[0][0]
             except InterruptedError:
                 pass
@@ -672,36 +658,42 @@ class TableView(RowTableShared):
                         continue
                     if not self.ds.config["suggest_facets"]:
                         continue
-                    suggested_facet_sql = '''
+                    suggested_facet_sql = """
                         select distinct {column} {from_sql}
                         {and_or_where} {column} is not null
                         limit {limit}
-                    '''.format(
+                    """.format(
                         column=escape_sqlite(facet_column),
                         from_sql=from_sql,
-                        and_or_where='and' if from_sql_where_clauses else 'where',
-                        limit=facet_size+1
+                        and_or_where="and" if from_sql_where_clauses else "where",
+                        limit=facet_size + 1,
                     )
                     distinct_values = None
                     try:
                         distinct_values = await self.ds.execute(
-                            name, suggested_facet_sql, from_sql_params,
+                            name,
+                            suggested_facet_sql,
+                            from_sql_params,
                             truncate=False,
-                            custom_time_limit=self.ds.config["facet_suggest_time_limit_ms"],
+                            custom_time_limit=self.ds.config[
+                                "facet_suggest_time_limit_ms"
+                            ],
                         )
                         num_distinct_values = len(distinct_values)
                         if (
-                            num_distinct_values and
-                            num_distinct_values > 1 and
-                            num_distinct_values <= facet_size and
-                            num_distinct_values < filtered_table_rows_count
+                            num_distinct_values
+                            and num_distinct_values > 1
+                            and num_distinct_values <= facet_size
+                            and num_distinct_values < filtered_table_rows_count
                         ):
-                            suggested_facets.append({
-                                'name': facet_column,
-                                'toggle_url': path_with_added_args(
-                                    request, {'_facet': facet_column}
-                                ),
-                            })
+                            suggested_facets.append(
+                                {
+                                    "name": facet_column,
+                                    "toggle_url": path_with_added_args(
+                                        request, {"_facet": facet_column}
+                                    ),
+                                }
+                            )
                     except InterruptedError:
                         pass
 
@@ -718,16 +710,13 @@ class TableView(RowTableShared):
 
         async def extra_template():
             display_columns, display_rows = await self.display_columns_and_rows(
-                name,
-                table,
-                results.description,
-                rows,
-                link_column=not is_view,
+                name, table, results.description, rows, link_column=not is_view
             )
-            metadata = self.ds.metadata.get("databases", {}).get(name, {}).get(
-                "tables", {}
-            ).get(
-                table, {}
+            metadata = (
+                self.ds.metadata.get("databases", {})
+                .get(name, {})
+                .get("tables", {})
+                .get(table, {})
             )
             self.ds.update_with_inherited_metadata(metadata)
             return {
@@ -743,7 +732,7 @@ class TableView(RowTableShared):
                 "sorted_facet_results": sorted(
                     facet_results.values(),
                     key=lambda f: (len(f["results"]), f["name"]),
-                    reverse=True
+                    reverse=True,
                 ),
                 "facet_hideable": lambda facet: facet not in metadata_facets,
                 "is_sortable": any(c["sortable"] for c in display_columns),
@@ -768,33 +757,36 @@ class TableView(RowTableShared):
                 "table_definition": await self.ds.get_table_definition(name, table),
             }
 
-        return {
-            "database": name,
-            "table": table,
-            "is_view": is_view,
-            "human_description_en": human_description_en,
-            "rows": rows[:page_size],
-            "truncated": results.truncated,
-            "table_rows_count": table_rows_count,
-            "filtered_table_rows_count": filtered_table_rows_count,
-            "expanded_columns": expanded_columns,
-            "expandable_columns": expandable_columns,
-            "columns": columns,
-            "primary_keys": pks,
-            "units": units,
-            "query": {"sql": sql, "params": params},
-            "facet_results": facet_results,
-            "suggested_facets": suggested_facets,
-            "next": next_value and str(next_value) or None,
-            "next_url": next_url,
-        }, extra_template, (
-            "table-{}-{}.html".format(to_css_class(name), to_css_class(table)),
-            "table.html",
+        return (
+            {
+                "database": name,
+                "table": table,
+                "is_view": is_view,
+                "human_description_en": human_description_en,
+                "rows": rows[:page_size],
+                "truncated": results.truncated,
+                "table_rows_count": table_rows_count,
+                "filtered_table_rows_count": filtered_table_rows_count,
+                "expanded_columns": expanded_columns,
+                "expandable_columns": expandable_columns,
+                "columns": columns,
+                "primary_keys": pks,
+                "units": units,
+                "query": {"sql": sql, "params": params},
+                "facet_results": facet_results,
+                "suggested_facets": suggested_facets,
+                "next": next_value and str(next_value) or None,
+                "next_url": next_url,
+            },
+            extra_template,
+            (
+                "table-{}-{}.html".format(to_css_class(name), to_css_class(table)),
+                "table.html",
+            ),
         )
 
 
 class RowView(RowTableShared):
-
     async def data(self, request, name, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
         info = self.ds.inspect()[name]
@@ -810,9 +802,7 @@ class RowView(RowTableShared):
         params = {}
         for i, pk_value in enumerate(pk_values):
             params["p{}".format(i)] = pk_value
-        results = await self.ds.execute(
-            name, sql, params, truncate=True
-        )
+        results = await self.ds.execute(name, sql, params, truncate=True)
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
@@ -820,11 +810,7 @@ class RowView(RowTableShared):
 
         async def template_data():
             display_columns, display_rows = await self.display_columns_and_rows(
-                name,
-                table,
-                results.description,
-                rows,
-                link_column=False,
+                name, table, results.description, rows, link_column=False
             )
             for column in display_columns:
                 column["sortable"] = False
@@ -844,11 +830,10 @@ class RowView(RowTableShared):
                     ),
                     "_rows_and_columns.html",
                 ],
-                "metadata": self.ds.metadata.get("databases", {}).get(name, {}).get(
-                    "tables", {}
-                ).get(
-                    table, {}
-                ),
+                "metadata": self.ds.metadata.get("databases", {})
+                .get(name, {})
+                .get("tables", {})
+                .get(table, {}),
             }
 
         data = {
@@ -866,8 +851,13 @@ class RowView(RowTableShared):
                 name, table, pk_values
             )
 
-        return data, template_data, (
-            "row-{}-{}.html".format(to_css_class(name), to_css_class(table)), "row.html"
+        return (
+            data,
+            template_data,
+            (
+                "row-{}-{}.html".format(to_css_class(name), to_css_class(table)),
+                "row.html",
+            ),
         )
 
     async def foreign_key_tables(self, name, table, pk_values):
@@ -884,7 +874,7 @@ class RowView(RowTableShared):
 
         sql = "select " + ", ".join(
             [
-                '(select count(*) from {table} where {column}=:id)'.format(
+                "(select count(*) from {table} where {column}=:id)".format(
                     table=escape_sqlite(fk["other_table"]),
                     column=escape_sqlite(fk["other_column"]),
                 )
@@ -905,8 +895,8 @@ class RowView(RowTableShared):
         )
         foreign_key_tables = []
         for fk in foreign_keys:
-            count = foreign_table_counts.get(
-                (fk["other_table"], fk["other_column"])
-            ) or 0
+            count = (
+                foreign_table_counts.get((fk["other_table"], fk["other_column"])) or 0
+            )
             foreign_key_tables.append({**fk, **{"count": count}})
         return foreign_key_tables

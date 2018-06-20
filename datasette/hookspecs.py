@@ -1,8 +1,8 @@
 from pluggy import HookimplMarker
 from pluggy import HookspecMarker
 
-hookspec = HookspecMarker('datasette')
-hookimpl = HookimplMarker('datasette')
+hookspec = HookspecMarker("datasette")
+hookimpl = HookimplMarker("datasette")
 
 
 @hookspec

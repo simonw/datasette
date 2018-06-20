@@ -1,17 +1,21 @@
-from .fixtures import app_client, app_client_csv_max_mb_one # noqa
+from .fixtures import app_client, app_client_csv_max_mb_one  # noqa
 
-EXPECTED_TABLE_CSV = '''id,content
+EXPECTED_TABLE_CSV = """id,content
 1,hello
 2,world
 3,
-'''.replace('\n', '\r\n')
+""".replace(
+    "\n", "\r\n"
+)
 
-EXPECTED_CUSTOM_CSV = '''content
+EXPECTED_CUSTOM_CSV = """content
 hello
 world
-'''.replace('\n', '\r\n')
+""".replace(
+    "\n", "\r\n"
+)
 
-EXPECTED_TABLE_WITH_LABELS_CSV = '''
+EXPECTED_TABLE_WITH_LABELS_CSV = """
 pk,planet_int,state,city_id,city_id_label,neighborhood
 1,1,CA,1,San Francisco,Mission
 2,1,CA,1,San Francisco,Dogpatch
@@ -28,37 +32,40 @@ pk,planet_int,state,city_id,city_id_label,neighborhood
 13,1,MI,3,Detroit,Corktown
 14,1,MI,3,Detroit,Mexicantown
 15,2,MC,4,Memnonia,Arcadia Planitia
-'''.lstrip().replace('\n', '\r\n')
+""".lstrip().replace(
+    "\n", "\r\n"
+)
+
 
 def test_table_csv(app_client):
-    response = app_client.get('/fixtures/simple_primary_key.csv')
+    response = app_client.get("/fixtures/simple_primary_key.csv")
     assert response.status == 200
-    assert 'text/plain; charset=utf-8' == response.headers['Content-Type']
+    assert "text/plain; charset=utf-8" == response.headers["Content-Type"]
     assert EXPECTED_TABLE_CSV == response.text
 
 
 def test_table_csv_with_labels(app_client):
-    response = app_client.get('/fixtures/facetable.csv?_labels=1')
+    response = app_client.get("/fixtures/facetable.csv?_labels=1")
     assert response.status == 200
-    assert 'text/plain; charset=utf-8' == response.headers['Content-Type']
+    assert "text/plain; charset=utf-8" == response.headers["Content-Type"]
     assert EXPECTED_TABLE_WITH_LABELS_CSV == response.text
 
 
 def test_custom_sql_csv(app_client):
     response = app_client.get(
-        '/fixtures.csv?sql=select+content+from+simple_primary_key+limit+2'
+        "/fixtures.csv?sql=select+content+from+simple_primary_key+limit+2"
     )
     assert response.status == 200
-    assert 'text/plain; charset=utf-8' == response.headers['Content-Type']
+    assert "text/plain; charset=utf-8" == response.headers["Content-Type"]
     assert EXPECTED_CUSTOM_CSV == response.text
 
 
 def test_table_csv_download(app_client):
-    response = app_client.get('/fixtures/simple_primary_key.csv?_dl=1')
+    response = app_client.get("/fixtures/simple_primary_key.csv?_dl=1")
     assert response.status == 200
-    assert 'text/csv; charset=utf-8' == response.headers['Content-Type']
+    assert "text/csv; charset=utf-8" == response.headers["Content-Type"]
     expected_disposition = 'attachment; filename="simple_primary_key.csv"'
-    assert expected_disposition == response.headers['Content-Disposition']
+    assert expected_disposition == response.headers["Content-Disposition"]
 
 
 def test_max_csv_mb(app_client_csv_max_mb_one):
@@ -75,12 +82,8 @@ def test_max_csv_mb(app_client_csv_max_mb_one):
 
 def test_table_csv_stream(app_client):
     # Without _stream should return header + 100 rows:
-    response = app_client.get(
-        "/fixtures/compound_three_primary_keys.csv?_size=max"
-    )
+    response = app_client.get("/fixtures/compound_three_primary_keys.csv?_size=max")
     assert 101 == len([b for b in response.body.split(b"\r\n") if b])
     # With _stream=1 should return header + 1001 rows
-    response = app_client.get(
-        "/fixtures/compound_three_primary_keys.csv?_stream=1"
-    )
+    response = app_client.get("/fixtures/compound_three_primary_keys.csv?_stream=1")
     assert 1002 == len([b for b in response.body.split(b"\r\n") if b])

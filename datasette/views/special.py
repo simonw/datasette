@@ -17,14 +17,8 @@ class JsonDataView(RenderMixin):
             if self.ds.cors:
                 headers["Access-Control-Allow-Origin"] = "*"
             return response.HTTPResponse(
-                json.dumps(data),
-                content_type="application/json",
-                headers=headers
+                json.dumps(data), content_type="application/json", headers=headers
             )
 
         else:
-            return self.render(
-                ["show_json.html"],
-                filename=self.filename,
-                data=data
-            )
+            return self.render(["show_json.html"], filename=self.filename, data=data)

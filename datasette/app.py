@@ -18,11 +18,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from sanic import Sanic, response
 from sanic.exceptions import InvalidUsage, NotFound
 
-from .views.base import (
-    DatasetteError,
-    RenderMixin,
-    ureg
-)
+from .views.base import DatasetteError, RenderMixin, ureg
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
 from .views.special import JsonDataView
@@ -37,7 +33,7 @@ from .utils import (
     get_plugins,
     module_from_path,
     sqlite_timelimit,
-    to_css_class
+    to_css_class,
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
 from .version import __version__
@@ -51,60 +47,115 @@ pm.add_hookspecs(hookspecs)
 pm.load_setuptools_entrypoints("datasette")
 
 
-ConfigOption = collections.namedtuple(
-    "ConfigOption", ("name", "default", "help")
-)
+ConfigOption = collections.namedtuple("ConfigOption", ("name", "default", "help"))
 CONFIG_OPTIONS = (
-    ConfigOption("default_page_size", 100, """
+    ConfigOption(
+        "default_page_size",
+        100,
+        """
         Default page size for the table view
-    """.strip()),
-    ConfigOption("max_returned_rows", 1000, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "max_returned_rows",
+        1000,
+        """
         Maximum rows that can be returned from a table or custom query
-    """.strip()),
-    ConfigOption("num_sql_threads", 3, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "num_sql_threads",
+        3,
+        """
         Number of threads in the thread pool for executing SQLite queries
-    """.strip()),
-    ConfigOption("sql_time_limit_ms", 1000, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "sql_time_limit_ms",
+        1000,
+        """
         Time limit for a SQL query in milliseconds
-    """.strip()),
-    ConfigOption("default_facet_size", 30, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "default_facet_size",
+        30,
+        """
         Number of values to return for requested facets
-    """.strip()),
-    ConfigOption("facet_time_limit_ms", 200, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "facet_time_limit_ms",
+        200,
+        """
         Time limit for calculating a requested facet
-    """.strip()),
-    ConfigOption("facet_suggest_time_limit_ms", 50, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "facet_suggest_time_limit_ms",
+        50,
+        """
         Time limit for calculating a suggested facet
-    """.strip()),
-    ConfigOption("allow_facet", True, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "allow_facet",
+        True,
+        """
         Allow users to specify columns to facet using ?_facet= parameter
-    """.strip()),
-    ConfigOption("allow_download", True, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "allow_download",
+        True,
+        """
         Allow users to download the original SQLite database files
-    """.strip()),
-    ConfigOption("suggest_facets", True, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "suggest_facets",
+        True,
+        """
         Calculate and display suggested facets
-    """.strip()),
-    ConfigOption("allow_sql", True, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "allow_sql",
+        True,
+        """
         Allow arbitrary SQL queries via ?sql= parameter
-    """.strip()),
-    ConfigOption("default_cache_ttl", 365 * 24 * 60 * 60, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "default_cache_ttl",
+        365 * 24 * 60 * 60,
+        """
         Default HTTP cache TTL (used in Cache-Control: max-age= header)
-    """.strip()),
-    ConfigOption("cache_size_kb", 0, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "cache_size_kb",
+        0,
+        """
         SQLite cache size in KB (0 == use SQLite default)
-    """.strip()),
-    ConfigOption("allow_csv_stream", True, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "allow_csv_stream",
+        True,
+        """
         Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)
-    """.strip()),
-    ConfigOption("max_csv_mb", 100, """
+    """.strip(),
+    ),
+    ConfigOption(
+        "max_csv_mb",
+        100,
+        """
         Maximum size allowed for CSV export in MB. Set 0 to disable this limit.
-    """.strip()),
+    """.strip(),
+    ),
 )
-DEFAULT_CONFIG = {
-    option.name: option.default
-    for option in CONFIG_OPTIONS
-}
+DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
 
 
 async def favicon(request):
@@ -112,7 +163,6 @@ async def favicon(request):
 
 
 class Datasette:
-
     def __init__(
         self,
         files,
@@ -160,21 +210,18 @@ class Datasette:
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):
             self._app_css_hash = hashlib.sha1(
-                open(
-                    os.path.join(str(app_root), "datasette/static/app.css")
-                ).read().encode(
-                    "utf8"
-                )
-            ).hexdigest()[
-                :6
-            ]
+                open(os.path.join(str(app_root), "datasette/static/app.css"))
+                .read()
+                .encode("utf8")
+            ).hexdigest()[:6]
         return self._app_css_hash
 
     def get_canned_query(self, database_name, query_name):
-        query = self.metadata.get("databases", {}).get(database_name, {}).get(
-            "queries", {}
-        ).get(
-            query_name
+        query = (
+            self.metadata.get("databases", {})
+            .get(database_name, {})
+            .get("queries", {})
+            .get(query_name)
         )
         if query:
             return {"name": query_name, "sql": query}
@@ -183,7 +230,7 @@ class Datasette:
         table_definition_rows = list(
             await self.execute(
                 database_name,
-                'select sql from sqlite_master where name = :n and type=:t',
+                "select sql from sqlite_master where name = :n and type=:t",
                 {"n": table, "t": type_},
             )
         )
@@ -192,14 +239,14 @@ class Datasette:
         return table_definition_rows[0][0]
 
     def get_view_definition(self, database_name, view):
-        return self.get_table_definition(database_name, view, 'view')
+        return self.get_table_definition(database_name, view, "view")
 
     def asset_urls(self, key):
         # Flatten list-of-lists from plugins:
         seen_urls = set()
         for url_or_dict in itertools.chain(
             itertools.chain.from_iterable(getattr(pm.hook, key)()),
-            (self.metadata.get(key) or [])
+            (self.metadata.get(key) or []),
         ):
             if isinstance(url_or_dict, dict):
                 url = url_or_dict["url"]
@@ -244,7 +291,7 @@ class Datasette:
             for extension in self.sqlite_extensions:
                 conn.execute("SELECT load_extension('{}')".format(extension))
         if self.config["cache_size_kb"]:
-            conn.execute('PRAGMA cache_size=-{}'.format(self.config["cache_size_kb"]))
+            conn.execute("PRAGMA cache_size=-{}".format(self.config["cache_size_kb"]))
         pm.hook.prepare_connection(conn=conn)
 
     def table_exists(self, database, table):
@@ -262,15 +309,15 @@ class Datasette:
             if name in self._inspect:
                 raise Exception("Multiple files with same stem %s" % name)
 
-            with sqlite3.connect(
-                "file:{}?immutable=1".format(path), uri=True
-            ) as conn:
+            with sqlite3.connect("file:{}?immutable=1".format(path), uri=True) as conn:
                 self.prepare_connection(conn)
                 self._inspect[name] = {
                     "hash": inspect_hash(path),
                     "file": str(path),
                     "views": inspect_views(conn),
-                    "tables": inspect_tables(conn, self.metadata.get("databases", {}).get(name, {}))
+                    "tables": inspect_tables(
+                        conn, self.metadata.get("databases", {}).get(name, {})
+                    ),
                 }
         return self._inspect
 
@@ -311,7 +358,8 @@ class Datasette:
             datasette_version["note"] = self.version_note
         return {
             "python": {
-                "version": ".".join(map(str, sys.version_info[:3])), "full": sys.version
+                "version": ".".join(map(str, sys.version_info[:3])),
+                "full": sys.version,
             },
             "datasette": datasette_version,
             "sqlite": {
@@ -375,7 +423,7 @@ class Datasette:
                         rows = cursor.fetchall()
                         truncated = False
                 except sqlite3.OperationalError as e:
-                    if e.args == ('interrupted',):
+                    if e.args == ("interrupted",):
                         raise InterruptedError(e)
                     print(
                         "ERROR: conn={}, sql = {}, params = {}: {}".format(
@@ -455,14 +503,14 @@ class Datasette:
             "/-/config<as_format:(\.json)?$>",
         )
         app.add_route(
-            DatabaseView.as_view(self), "/<db_name:[^/\.]+?><as_format:(\.jsono?|\.csv)?$>"
+            DatabaseView.as_view(self),
+            "/<db_name:[^/\.]+?><as_format:(\.jsono?|\.csv)?$>",
         )
         app.add_route(
             DatabaseDownload.as_view(self), "/<db_name:[^/]+?><as_db:(\.db)$>"
         )
         app.add_route(
-            TableView.as_view(self),
-            "/<db_name:[^/]+>/<table_and_format:[^/]+?$>",
+            TableView.as_view(self), "/<db_name:[^/]+>/<table_and_format:[^/]+?$>"
         )
         app.add_route(
             RowView.as_view(self),

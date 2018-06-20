@@ -154,6 +154,13 @@ def test_custom_json_encoder(obj, expected):
         ['"bar" > :p0', '"baz" is null', '"foo" is null'],
         [10]
     ),
+    (
+        {
+            'foo__in': 'RZ',
+        },
+        ['foo IN (\'RZ\')'],
+        []
+    )
 ])
 def test_build_where(args, expected_where, expected_params):
     f = utils.Filters(sorted(args.items()))

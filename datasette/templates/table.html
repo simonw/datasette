@@ -117,7 +117,7 @@
                 <ul>
                     {% for facet_value in facet_info.results %}
                         {% if not facet_value.selected %}
-                            <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.label or "_" }}</a> {{ "{:,}".format(facet_value.count) }}</li>
+                            <li><a href="{{ facet_value.toggle_url }}">{{ (facet_value.label if facet_value.label is not none else "_") }}</a> {{ "{:,}".format(facet_value.count) }}</li>
                         {% else %}
                             <li>{{ facet_value.label }} &middot; {{ "{:,}".format(facet_value.count) }} <a href="{{ facet_value.toggle_url }}" class="cross">&#x2716;</a></li>
                         {% endif %}
@@ -145,7 +145,7 @@
             <p>
                 CSV options:
                 <label><input type="checkbox" name="_dl"> download file</label>
-                {% if expandable_columns %}<label><input type="checkbox" name="_labels"> expand labels</label>{% endif %}
+                {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> expand labels</label>{% endif %}
                 {% if next_url and config.allow_csv_stream %}<label><input type="checkbox" name="_stream"> stream all rows</label>{% endif %}
                 <input type="submit" value="Export CSV">
                 {% for key, value in url_csv_args.items() %}

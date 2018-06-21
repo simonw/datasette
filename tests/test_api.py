@@ -3,6 +3,7 @@ from .fixtures import ( # noqa
     app_client_shorter_time_limit,
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
+    app_client_with_dot,
     generate_compound_rows,
     generate_sortable_rows,
     METADATA,
@@ -17,7 +18,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'fixtures': 0}.keys()
     d = response.json['fixtures']
     assert d['name'] == 'fixtures'
-    assert d['tables_count'] == 17
+    assert d['tables_count'] == 19
 
 
 def test_database_page(app_client):
@@ -117,7 +118,7 @@ def test_database_page(app_client):
         'label_column': 'name',
         'primary_keys': ['id'],
     }, {
-        'columns': ['pk', 'planet_int', 'state', 'city_id', 'neighborhood'],
+        'columns': ['pk', 'planet_int', 'on_earth', 'state', 'city_id', 'neighborhood'],
         'name': 'facetable',
         'count': 15,
         'foreign_keys': {
@@ -188,11 +189,38 @@ def test_database_page(app_client):
         'columns': ['pk', 'text1', 'text2', 'name with . and spaces'],
         'name': 'searchable',
         'count': 2,
-        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'foreign_keys': {'incoming': [{
+            "other_table": "searchable_tags",
+            "column": "pk",
+            "other_column": "searchable_id"
+        }], 'outgoing': []},
         'fts_table': 'searchable_fts',
         'hidden': False,
         'label_column': None,
         'primary_keys': ['pk'],
+    }, {
+        "name": "searchable_tags",
+        "columns": ["searchable_id", "tag"],
+        "primary_keys": ["searchable_id", "tag"],
+        "count": 2,
+        "label_column": None,
+        "hidden": False,
+        "fts_table": None,
+        "foreign_keys": {
+            "incoming": [],
+            "outgoing": [
+                {
+                    "other_table": "tags",
+                    "column": "tag",
+                    "other_column": "tag",
+                },
+                {
+                    "other_table": "searchable",
+                    "column": "searchable_id",
+                    "other_column": "pk",
+                },
+            ],
+        },
     }, {
         'columns': ['group', 'having', 'and'],
         'name': 'select',
@@ -251,6 +279,24 @@ def test_database_page(app_client):
         'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
+    }, {
+        "name": "tags",
+        "columns": ["tag"],
+        "primary_keys": ["tag"],
+        "count": 2,
+        "label_column": None,
+        "hidden": False,
+        "fts_table": None,
+        "foreign_keys": {
+            "incoming": [
+                {
+                    "other_table": "searchable_tags",
+                    "column": "tag",
+                    "other_column": "tag",
+                }
+            ],
+            "outgoing": [],
+        },
     }, {
         'columns': ['pk', 'distance', 'frequency'],
         'name': 'units',
@@ -311,6 +357,11 @@ def test_database_page(app_client):
     }] == data['tables']
 
 
+def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
+    response = app_client_with_dot.get("/fixtures.dot.json")
+    assert 200 == response.status
+
+
 def test_custom_sql(app_client):
     response = app_client.get(
         '/fixtures.json?sql=select+content+from+simple_primary_key&_shape=objects'
@@ -328,6 +379,20 @@ def test_custom_sql(app_client):
     assert ['content'] == data['columns']
     assert 'fixtures' == data['database']
     assert not data['truncated']
+
+
+def test_canned_query_with_named_parameter(app_client):
+    response = app_client.get(
+        "/fixtures/neighborhood_search.json?text=town"
+    )
+    assert [
+        ["Corktown", "Detroit", "MI"],
+        ["Downtown", "Los Angeles", "CA"],
+        ["Downtown", "Detroit", "MI"],
+        ["Greektown", "Detroit", "MI"],
+        ["Koreatown", "Los Angeles", "CA"],
+        ["Mexicantown", "Detroit", "MI"],
+    ] == response.json["rows"]
 
 
 def test_sql_time_limit(app_client_shorter_time_limit):
@@ -1107,6 +1172,7 @@ def test_expand_labels(app_client):
         "2": {
             "pk": 2,
             "planet_int": 1,
+            "on_earth": 1,
             "state": "CA",
             "city_id": {
                 "value": 1,
@@ -1117,6 +1183,7 @@ def test_expand_labels(app_client):
         "13": {
             "pk": 13,
             "planet_int": 1,
+            "on_earth": 1,
             "state": "MI",
             "city_id": {
                 "value": 3,

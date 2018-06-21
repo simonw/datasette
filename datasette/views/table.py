@@ -182,7 +182,7 @@ class RowTableShared(BaseView):
                         id=str(jinja2.escape(value)),
                         label=str(jinja2.escape(label)),
                     ))
-                elif value is None:
+                elif value in ("", None):
                     display_value = jinja2.Markup("&nbsp;")
                 elif is_url(str(value).strip()):
                     display_value = jinja2.Markup(

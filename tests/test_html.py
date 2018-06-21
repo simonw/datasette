@@ -211,6 +211,89 @@ def test_sort_links(app_client):
     ] == attrs_and_link_attrs
 
 
+def test_facet_display(app_client):
+    response = app_client.get(
+        "/fixtures/facetable?_facet=planet_int&_facet=city_id&_facet=on_earth"
+    )
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    divs = soup.find(
+        "div", {"class": "facet-results"}
+    ).findAll("div")
+    actual = []
+    for div in divs:
+        actual.append(
+            {
+                "name": div.find("strong").text,
+                "items": [
+                    {
+                        "name": a.text,
+                        "qs": a["href"].split("?")[-1],
+                        "count": int(str(a.parent).split("</a>")[1].split("<")[0]),
+                    }
+                    for a in div.find("ul").findAll("a")
+                ],
+            }
+        )
+    assert [
+        {
+            "name": "city_id",
+            "items": [
+                {
+                    "name": "San Francisco",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=1",
+                    "count": 6,
+                },
+                {
+                    "name": "Los Angeles",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=2",
+                    "count": 4,
+                },
+                {
+                    "name": "Detroit",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=3",
+                    "count": 4,
+                },
+                {
+                    "name": "Memnonia",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=4",
+                    "count": 1,
+                },
+            ],
+        },
+        {
+            "name": "planet_int",
+            "items": [
+                {
+                    "name": "1",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&planet_int=1",
+                    "count": 14,
+                },
+                {
+                    "name": "2",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&planet_int=2",
+                    "count": 1,
+                },
+            ],
+        },
+        {
+            "name": "on_earth",
+            "items": [
+                {
+                    "name": "1",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&on_earth=1",
+                    "count": 14,
+                },
+                {
+                    "name": "0",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&on_earth=0",
+                    "count": 1,
+                },
+            ],
+        },
+    ] == actual
+
+
 def test_facets_persist_through_filter_form(app_client):
     response = app_client.get(
         '/fixtures/facetable?_facet=planet_int&_facet=city_id'
@@ -269,7 +352,7 @@ def test_table_html_simple_primary_key(app_client):
             '<td class="col-content">world</td>'
         ], [
             '<td class="col-id"><a href="/fixtures/simple_primary_key/3">3</a></td>',
-            '<td class="col-content"></td>'
+            '<td class="col-content">\xa0</td>'
         ]
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
@@ -467,6 +550,26 @@ def test_row_html_compound_primary_key(app_client):
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
+def test_compound_primary_key_with_foreign_key_references(app_client):
+    # e.g. a many-to-many table with a compound primary key on the two columns
+    response = app_client.get('/fixtures/searchable_tags')
+    assert response.status == 200
+    table = Soup(response.body, 'html.parser').find('table')
+    expected = [
+        [
+            '<td class="col-Link"><a href="/fixtures/searchable_tags/1,feline">1,feline</a></td>',
+            '<td class="col-searchable_id"><a href="/fixtures/searchable/1">1</a>\xa0<em>1</em></td>',
+            '<td class="col-tag"><a href="/fixtures/tags/feline">feline</a></td>',
+        ],
+        [
+            '<td class="col-Link"><a href="/fixtures/searchable_tags/2,canine">2,canine</a></td>',
+            '<td class="col-searchable_id"><a href="/fixtures/searchable/2">2</a>\xa0<em>2</em></td>',
+            '<td class="col-tag"><a href="/fixtures/tags/canine">canine</a></td>',
+        ],
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
 def test_view_html(app_client):
     response = app_client.get('/fixtures/simple_view')
     assert response.status == 200
@@ -482,8 +585,8 @@ def test_view_html(app_client):
             '<td class="col-content">world</td>',
             '<td class="col-upper_content">WORLD</td>'
         ], [
-            '<td class="col-content"></td>',
-            '<td class="col-upper_content"></td>'
+            '<td class="col-content">\xa0</td>',
+            '<td class="col-upper_content">\xa0</td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
@@ -594,3 +697,13 @@ def inner_html(soup):
     # This includes the parent tag - so remove that
     inner_html = html.split('>', 1)[1].rsplit('<', 1)[0]
     return inner_html.strip()
+
+
+@pytest.mark.parametrize('path,expected_redirect', [
+    ('/fixtures/', '/fixtures'),
+    ('/fixtures/simple_view/', '/fixtures/simple_view'),
+])
+def test_404_trailing_slash_redirect(app_client, path, expected_redirect):
+    response = app_client.get(path, allow_redirects=False)
+    assert 302 == response.status
+    assert expected_redirect == response.headers["Location"]

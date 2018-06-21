@@ -2,6 +2,22 @@
 Changelog
 =========
 
+.. _v0_23_1:
+
+0.23.1 (2018-06-21)
+-------------------
+
+Minor bugfix release.
+
+- Correctly display empty strings in HTML table, closes `#314 <https://github.com/simonw/datasette/issues/314>`_
+- Allow "." in database filenames, closes `#302 <https://github.com/simonw/datasette/issues/302>`_
+- 404s ending in slash redirect to remove that slash, closes `#309 <https://github.com/simonw/datasette/issues/309>`_
+- Fixed incorrect display of compound primary keys with foreign key
+  references. Closes `#319 <https://github.com/simonw/datasette/issues/319>`_
+- Docs + example of canned SQL query using || concatenation. Closes `#321 <https://github.com/simonw/datasette/issues/321>`_
+- Correctly display facets with value of 0 - closes `#318 <https://github.com/simonw/datasette/issues/318>`_
+- Default 'expand labels' to checked in CSV advanced export
+
 .. _v0_23:
 
 0.23 (2018-06-18)

@@ -70,8 +70,10 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
     if use_rowid:
         bits = [row['rowid']]
     else:
-        bits = [row[pk] for pk in pks]
-
+        bits = [
+            row[pk]["value"] if isinstance(row[pk], dict) else row[pk]
+            for pk in pks
+        ]
     if quote:
         bits = [urllib.parse.quote_plus(str(bit)) for bit in bits]
     else:
@@ -828,8 +830,10 @@ def path_with_format(request, format, extra_qs=None):
 class CustomRow(OrderedDict):
     # Loose imitation of sqlite3.Row which offers
     # both index-based AND key-based lookups
-    def __init__(self, columns):
+    def __init__(self, columns, values=None):
         self.columns = columns
+        if values:
+            self.update(values)
 
     def __getitem__(self, key):
         if isinstance(key, int):

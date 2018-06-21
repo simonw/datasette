@@ -24,9 +24,9 @@ class TestClient:
 
 
 @pytest.fixture(scope='session')
-def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
+def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None, filename="fixtures.db"):
     with tempfile.TemporaryDirectory() as tmpdir:
-        filepath = os.path.join(tmpdir, 'fixtures.db')
+        filepath = os.path.join(tmpdir, filename)
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
@@ -76,6 +76,11 @@ def app_client_csv_max_mb_one():
     yield from app_client(config={
         'max_csv_mb': 1,
     })
+
+
+@pytest.fixture(scope="session")
+def app_client_with_dot():
+    yield from app_client(filename="fixtures.dot.db")
 
 
 def generate_compound_rows(num):
@@ -143,7 +148,14 @@ METADATA = {
                 },
             },
             'queries': {
-                'pragma_cache_size': 'PRAGMA cache_size;'
+                'pragma_cache_size': 'PRAGMA cache_size;',
+                'neighborhood_search': '''
+                    select neighborhood, facet_cities.name, state
+                    from facetable
+                        join facet_cities on facetable.city_id = facet_cities.id
+                    where neighborhood like '%' || :text || '%'
+                    order by neighborhood;
+                '''
             }
         },
     }
@@ -296,6 +308,10 @@ INSERT INTO units VALUES (1, 1, 100);
 INSERT INTO units VALUES (2, 5000, 2500);
 INSERT INTO units VALUES (3, 100000, 75000);
 
+CREATE TABLE tags (
+    tag TEXT PRIMARY KEY
+);
+
 CREATE TABLE searchable (
   pk integer primary key,
   text1 text,
@@ -303,8 +319,24 @@ CREATE TABLE searchable (
   [name with . and spaces] text
 );
 
+CREATE TABLE searchable_tags (
+    searchable_id integer,
+    tag text,
+    PRIMARY KEY (searchable_id, tag),
+    FOREIGN KEY (searchable_id) REFERENCES searchable(pk),
+    FOREIGN KEY (tag) REFERENCES tags(tag)
+);
+
 INSERT INTO searchable VALUES (1, 'barry cat', 'terry dog', 'panther');
 INSERT INTO searchable VALUES (2, 'terry dog', 'sara weasel', 'puma');
+
+INSERT INTO tags VALUES ("canine");
+INSERT INTO tags VALUES ("feline");
+
+INSERT INTO searchable_tags (searchable_id, tag) VALUES
+    (1, "feline"),
+    (2, "canine")
+;
 
 CREATE VIRTUAL TABLE "searchable_fts"
     USING FTS3 (text1, text2, [name with . and spaces], content="searchable");
@@ -332,27 +364,30 @@ INSERT INTO facet_cities (id, name) VALUES
 CREATE TABLE facetable (
     pk integer primary key,
     planet_int integer,
+    on_earth integer,
     state text,
     city_id integer,
     neighborhood text,
     FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
-INSERT INTO facetable (planet_int, state, city_id, neighborhood) VALUES
-    (1, 'CA', 1, 'Mission'),
-    (1, 'CA', 1, 'Dogpatch'),
-    (1, 'CA', 1, 'SOMA'),
-    (1, 'CA', 1, 'Tenderloin'),
-    (1, 'CA', 1, 'Bernal Heights'),
-    (1, 'CA', 1, 'Hayes Valley'),
-    (1, 'CA', 2, 'Hollywood'),
-    (1, 'CA', 2, 'Downtown'),
-    (1, 'CA', 2, 'Los Feliz'),
-    (1, 'CA', 2, 'Koreatown'),
-    (1, 'MI', 3, 'Downtown'),
-    (1, 'MI', 3, 'Greektown'),
-    (1, 'MI', 3, 'Corktown'),
-    (1, 'MI', 3, 'Mexicantown'),
-    (2, 'MC', 4, 'Arcadia Planitia')
+INSERT INTO facetable
+    (planet_int, on_earth, state, city_id, neighborhood)
+VALUES
+    (1, 1, 'CA', 1, 'Mission'),
+    (1, 1, 'CA', 1, 'Dogpatch'),
+    (1, 1, 'CA', 1, 'SOMA'),
+    (1, 1, 'CA', 1, 'Tenderloin'),
+    (1, 1, 'CA', 1, 'Bernal Heights'),
+    (1, 1, 'CA', 1, 'Hayes Valley'),
+    (1, 1, 'CA', 2, 'Hollywood'),
+    (1, 1, 'CA', 2, 'Downtown'),
+    (1, 1, 'CA', 2, 'Los Feliz'),
+    (1, 1, 'CA', 2, 'Koreatown'),
+    (1, 1, 'MI', 3, 'Downtown'),
+    (1, 1, 'MI', 3, 'Greektown'),
+    (1, 1, 'MI', 3, 'Corktown'),
+    (1, 1, 'MI', 3, 'Mexicantown'),
+    (2, 0, 'MC', 4, 'Arcadia Planitia')
 ;
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');

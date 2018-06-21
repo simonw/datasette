@@ -75,11 +75,34 @@ def test_path_with_replaced_args(path, args, expected):
     assert expected == actual
 
 
-@pytest.mark.parametrize('row,pks,expected_path', [
-    ({'A': 'foo', 'B': 'bar'}, ['A', 'B'], 'foo,bar'),
-    ({'A': 'f,o', 'B': 'bar'}, ['A', 'B'], 'f%2Co,bar'),
-    ({'A': 123}, ['A'], '123'),
-])
+@pytest.mark.parametrize(
+    "row,pks,expected_path",
+    [
+        ({"A": "foo", "B": "bar"}, ["A", "B"], "foo,bar"),
+        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f%2Co,bar"),
+        ({"A": 123}, ["A"], "123"),
+        (
+            utils.CustomRow(
+                ["searchable_id", "tag"],
+                [
+                    (
+                        "searchable_id",
+                        {"value": 1, "label": "1"},
+                    ),
+                    (
+                        "tag",
+                        {
+                            "value": "feline",
+                            "label": "feline",
+                        },
+                    ),
+                ],
+            ),
+            ["searchable_id", "tag"],
+            "1,feline",
+        ),
+    ],
+)
 def test_path_from_row_pks(row, pks, expected_path):
     actual_path = utils.path_from_row_pks(row, pks, False)
     assert expected_path == actual_path

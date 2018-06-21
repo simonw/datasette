@@ -352,7 +352,7 @@ def test_table_html_simple_primary_key(app_client):
             '<td class="col-content">world</td>'
         ], [
             '<td class="col-id"><a href="/fixtures/simple_primary_key/3">3</a></td>',
-            '<td class="col-content"></td>'
+            '<td class="col-content">\xa0</td>'
         ]
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
@@ -585,8 +585,8 @@ def test_view_html(app_client):
             '<td class="col-content">world</td>',
             '<td class="col-upper_content">WORLD</td>'
         ], [
-            '<td class="col-content"></td>',
-            '<td class="col-upper_content"></td>'
+            '<td class="col-content">\xa0</td>',
+            '<td class="col-upper_content">\xa0</td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]

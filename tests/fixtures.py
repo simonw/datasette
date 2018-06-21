@@ -24,9 +24,9 @@ class TestClient:
 
 
 @pytest.fixture(scope='session')
-def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
+def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None, filename="fixtures.db"):
     with tempfile.TemporaryDirectory() as tmpdir:
-        filepath = os.path.join(tmpdir, 'fixtures.db')
+        filepath = os.path.join(tmpdir, filename)
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
@@ -76,6 +76,11 @@ def app_client_csv_max_mb_one():
     yield from app_client(config={
         'max_csv_mb': 1,
     })
+
+
+@pytest.fixture(scope="session")
+def app_client_with_dot():
+    yield from app_client(filename="fixtures.dot.db")
 
 
 def generate_compound_rows(num):

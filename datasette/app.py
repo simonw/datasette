@@ -455,10 +455,10 @@ class Datasette:
             "/-/config<as_format:(\.json)?$>",
         )
         app.add_route(
-            DatabaseView.as_view(self), "/<db_name:[^/\.]+?><as_format:(\.jsono?|\.csv)?$>"
+            DatabaseDownload.as_view(self), "/<db_name:[^/]+?><as_db:(\.db)$>"
         )
         app.add_route(
-            DatabaseDownload.as_view(self), "/<db_name:[^/]+?><as_db:(\.db)$>"
+            DatabaseView.as_view(self), "/<db_name:[^/]+?><as_format:(\.jsono?|\.csv)?$>"
         )
         app.add_route(
             TableView.as_view(self),

@@ -3,6 +3,7 @@ from .fixtures import ( # noqa
     app_client_shorter_time_limit,
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
+    app_client_with_dot,
     generate_compound_rows,
     generate_sortable_rows,
     METADATA,
@@ -354,6 +355,11 @@ def test_database_page(app_client):
         'name': 'searchable_fts_segments',
         'primary_keys': ['blockid']
     }] == data['tables']
+
+
+def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
+    response = app_client_with_dot.get("/fixtures.dot.json")
+    assert 200 == response.status
 
 
 def test_custom_sql(app_client):

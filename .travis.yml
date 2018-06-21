@@ -38,7 +38,7 @@ jobs:
           user: simonw
           distributions: bdist_wheel
           password:
-            secure: Rx6Wl+a2UL+Nr2QQsbtQtrfsZQoC4LmXpDtWyOxFs76aPyC2JmJOb7wYxkmG703LxzZNuUuU9+4WxuA5+/JbyLwT1oQFUBtRfpKIroFa1NKKqQss1RbR+feLufcLT5dJNSkQb+xiKmep5pZnVbRNbmC4z0SFO4/5LJfegSi0pXBbV4IclE7kXSMZS4bYFAb6n9YGfFvwj0o7/GYD6P9MaNwuMqtVsYWZK/S0Bt4wthNc29av8R/jI3++MC3bXs9KC18q5s3x761rWQe/P/u2J++wufqWw9TyrtSVkvQMsaweBuo+0iY4Uiv8m5rPI5xT5rvLC8jdbLnj1FY5xphohEl3/H5vvmW7zBhBFvCSFSirXBkB7fZyX6uoVfe81vNzH/GGNwEi/3E4SVuUk/v2Fm4LBIXfg23O0Gl8aUZnhvcvL5eImadCRCy+dOhLkX9QO7iS6Bu+jjzu5yfqqoIQC96uB9HDn8OZLZ/9W4PlISc1+ARyoCEqeh33mB5IQN41XEbSLbW2STvPS0HYt8mffDDgv/YXjdxUjceGqsUYmksk/6feq2oOdBgwYG1HhOA9dlG7xQsWPCXsaDIZ2olnXnz8AIsZN7jtJiJoUWUF+ZlwLL8zA/wNqLoyohgsKa0Ne4BEpa42XVmhkoWMbl5sJfQzmjS/pQNc9hkv0n1UKYY=
+            secure: ikY6iF+/2AxFlwcun35iAEz7Wbrnp0Fp7b32Z7uob5RsGpIDCYYDa3T/qNhiyNsg5fecGp01rBf1F+dL357b0rWEeaoONtsDrTKFeBUB6bMnzNtr3QbHq/TeQ1f+Vn6FWpY9360Ihbz0pKPzWWYHJxOjXPM793rGWmPu7siCc4oQZOpwLK28GZeFP803wq/QG81hFRWR8IiMlqljkecEGhaM6ftxzizk1LBoTZCw3DdL2xDwzrLvF3Hg1jXX08pJm9WrLJNS6i+LRhiLv9IJ5KxRDwNHJhrvblRrZn0CKVbiWR/8985r4R7CXaeG68uJ505RcVoXYRsq9D7mAcYAB3U5AzU9TsPQlvUgwJlFpKOsZlCw+5AHFIYUXvlP2Qo5kfXUYC9KKdJwbWjcW7isUqWpzInGfnmRNMJGzmIm2q65ua0FNLV4vK1wl98O60HFSyhXJi84YmCAPgidJ22sEA6sHAdMEFiWglhap12zPc6i7trXKC8aLjW/3qGXhUq3BK8vQcbutGer+Q3z9UM7kthB76FtCUVc8eqljtdAcGt5kXoHIEPwGb50ikOxo/qpXsXVH36Z6plbELbayXb3ocUrMdhWP5+kfnrdLEmx+X4IpUauxGUqLGliYSQpfjp8XyA87ASCjsSqUEjr/4t4YztW5a3mWBYZ+IjjYXW6PQg=
           on:
             branch: master
             tags: true

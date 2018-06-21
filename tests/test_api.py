@@ -117,7 +117,7 @@ def test_database_page(app_client):
         'label_column': 'name',
         'primary_keys': ['id'],
     }, {
-        'columns': ['pk', 'planet_int', 'state', 'city_id', 'neighborhood'],
+        'columns': ['pk', 'planet_int', 'on_earth', 'state', 'city_id', 'neighborhood'],
         'name': 'facetable',
         'count': 15,
         'foreign_keys': {
@@ -1107,6 +1107,7 @@ def test_expand_labels(app_client):
         "2": {
             "pk": 2,
             "planet_int": 1,
+            "on_earth": 1,
             "state": "CA",
             "city_id": {
                 "value": 1,
@@ -1117,6 +1118,7 @@ def test_expand_labels(app_client):
         "13": {
             "pk": 13,
             "planet_int": 1,
+            "on_earth": 1,
             "state": "MI",
             "city_id": {
                 "value": 3,

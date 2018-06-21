@@ -211,6 +211,89 @@ def test_sort_links(app_client):
     ] == attrs_and_link_attrs
 
 
+def test_facet_display(app_client):
+    response = app_client.get(
+        "/fixtures/facetable?_facet=planet_int&_facet=city_id&_facet=on_earth"
+    )
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    divs = soup.find(
+        "div", {"class": "facet-results"}
+    ).findAll("div")
+    actual = []
+    for div in divs:
+        actual.append(
+            {
+                "name": div.find("strong").text,
+                "items": [
+                    {
+                        "name": a.text,
+                        "qs": a["href"].split("?")[-1],
+                        "count": int(str(a.parent).split("</a>")[1].split("<")[0]),
+                    }
+                    for a in div.find("ul").findAll("a")
+                ],
+            }
+        )
+    assert [
+        {
+            "name": "city_id",
+            "items": [
+                {
+                    "name": "San Francisco",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=1",
+                    "count": 6,
+                },
+                {
+                    "name": "Los Angeles",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=2",
+                    "count": 4,
+                },
+                {
+                    "name": "Detroit",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=3",
+                    "count": 4,
+                },
+                {
+                    "name": "Memnonia",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=4",
+                    "count": 1,
+                },
+            ],
+        },
+        {
+            "name": "planet_int",
+            "items": [
+                {
+                    "name": "1",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&planet_int=1",
+                    "count": 14,
+                },
+                {
+                    "name": "2",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&planet_int=2",
+                    "count": 1,
+                },
+            ],
+        },
+        {
+            "name": "on_earth",
+            "items": [
+                {
+                    "name": "1",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&on_earth=1",
+                    "count": 14,
+                },
+                {
+                    "name": "0",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&on_earth=0",
+                    "count": 1,
+                },
+            ],
+        },
+    ] == actual
+
+
 def test_facets_persist_through_filter_form(app_client):
     response = app_client.get(
         '/fixtures/facetable?_facet=planet_int&_facet=city_id'

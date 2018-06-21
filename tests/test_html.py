@@ -697,3 +697,13 @@ def inner_html(soup):
     # This includes the parent tag - so remove that
     inner_html = html.split('>', 1)[1].rsplit('<', 1)[0]
     return inner_html.strip()
+
+
+@pytest.mark.parametrize('path,expected_redirect', [
+    ('/fixtures/', '/fixtures'),
+    ('/fixtures/simple_view/', '/fixtures/simple_view'),
+])
+def test_404_trailing_slash_redirect(app_client, path, expected_redirect):
+    response = app_client.get(path, allow_redirects=False)
+    assert 302 == response.status
+    assert expected_redirect == response.headers["Location"]

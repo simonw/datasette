@@ -468,8 +468,16 @@ class Datasette:
             RowView.as_view(self),
             "/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(\.jsono?)?$>",
         )
-
         self.register_custom_units()
+        # On 404 with a trailing slash redirect to path without that slash:
+        @app.middleware("response")
+        def redirect_on_404_with_trailing_slash(request, original_response):
+            print("redirect_on_404_with_trailing_slash", request, original_response)
+            if original_response.status == 404 and request.path.endswith("/"):
+                path = request.path.rstrip("/")
+                if request.query_string:
+                    path = "{}?{}".format(path, request.query_string)
+                return response.redirect(path)
 
         @app.exception(Exception)
         def on_exception(request, exception):

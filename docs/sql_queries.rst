@@ -23,7 +23,9 @@ Named parameters
 ----------------
 
 Datasette has special support for SQLite named parameters. Consider a SQL query
-like this::
+like this:
+
+.. code-block:: sql
 
     select * from Street_Tree_List
     where "PermitNotes" like :notes
@@ -93,7 +95,33 @@ For the above example, that URL would be::
 Canned queries support named parameters, so if you include those in the SQL you
 will then be able to enter them using the form fields on the canned query page
 or by adding them to the URL. This means canned queries can be used to create
-custom JSON APIs based on a carefully designed SQL.
+custom JSON APIs based on a carefully designed SQL statement.
+
+Here's an example of a canned query with a named parameter:
+
+.. code-block:: sql
+
+    select neighborhood, facet_cities.name, state
+    from facetable join facet_cities on facetable.city_id = facet_cities.id
+    where neighborhood like '%' || :text || '%' order by neighborhood;
+
+In the canned query JSON it looks like this::
+
+    {
+        "databases": {
+           "fixtures": {
+               "queries": {
+                   "neighborhood_search": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;"
+               }
+           }
+        }
+    }
+
+You can try this canned query out here:
+https://latest.datasette.io/fixtures/neighborhood_search?text=town
+
+Note that we are using SQLite string concatenation here - the ``||`` operator -
+to add wildcard ``%`` characters to the string provided by the user.
 
 .. _pagination:
 
@@ -107,7 +135,9 @@ scan through every preceding row to find the correct offset.
 
 When paginating through tables, Datasette instead orders the rows in the table
 by their primary key and performs a WHERE clause against the last seen primary
-key for the previous page. For example::
+key for the previous page. For example:
+
+.. code-block:: sql
 
     select rowid, * from Tree_List where rowid > 200 order by rowid limit 101
 

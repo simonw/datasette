@@ -303,6 +303,10 @@ INSERT INTO units VALUES (1, 1, 100);
 INSERT INTO units VALUES (2, 5000, 2500);
 INSERT INTO units VALUES (3, 100000, 75000);
 
+CREATE TABLE tags (
+    tag TEXT PRIMARY KEY
+);
+
 CREATE TABLE searchable (
   pk integer primary key,
   text1 text,
@@ -310,8 +314,24 @@ CREATE TABLE searchable (
   [name with . and spaces] text
 );
 
+CREATE TABLE searchable_tags (
+    searchable_id integer,
+    tag text,
+    PRIMARY KEY (searchable_id, tag),
+    FOREIGN KEY (searchable_id) REFERENCES searchable(pk),
+    FOREIGN KEY (tag) REFERENCES tags(tag)
+);
+
 INSERT INTO searchable VALUES (1, 'barry cat', 'terry dog', 'panther');
 INSERT INTO searchable VALUES (2, 'terry dog', 'sara weasel', 'puma');
+
+INSERT INTO tags VALUES ("canine");
+INSERT INTO tags VALUES ("feline");
+
+INSERT INTO searchable_tags (searchable_id, tag) VALUES
+    (1, "feline"),
+    (2, "canine")
+;
 
 CREATE VIRTUAL TABLE "searchable_fts"
     USING FTS3 (text1, text2, [name with . and spaces], content="searchable");

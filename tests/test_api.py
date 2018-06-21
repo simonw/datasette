@@ -17,7 +17,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'fixtures': 0}.keys()
     d = response.json['fixtures']
     assert d['name'] == 'fixtures'
-    assert d['tables_count'] == 17
+    assert d['tables_count'] == 19
 
 
 def test_database_page(app_client):
@@ -188,11 +188,38 @@ def test_database_page(app_client):
         'columns': ['pk', 'text1', 'text2', 'name with . and spaces'],
         'name': 'searchable',
         'count': 2,
-        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'foreign_keys': {'incoming': [{
+            "other_table": "searchable_tags",
+            "column": "pk",
+            "other_column": "searchable_id"
+        }], 'outgoing': []},
         'fts_table': 'searchable_fts',
         'hidden': False,
         'label_column': None,
         'primary_keys': ['pk'],
+    }, {
+        "name": "searchable_tags",
+        "columns": ["searchable_id", "tag"],
+        "primary_keys": ["searchable_id", "tag"],
+        "count": 2,
+        "label_column": None,
+        "hidden": False,
+        "fts_table": None,
+        "foreign_keys": {
+            "incoming": [],
+            "outgoing": [
+                {
+                    "other_table": "tags",
+                    "column": "tag",
+                    "other_column": "tag",
+                },
+                {
+                    "other_table": "searchable",
+                    "column": "searchable_id",
+                    "other_column": "pk",
+                },
+            ],
+        },
     }, {
         'columns': ['group', 'having', 'and'],
         'name': 'select',
@@ -251,6 +278,24 @@ def test_database_page(app_client):
         'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
+    }, {
+        "name": "tags",
+        "columns": ["tag"],
+        "primary_keys": ["tag"],
+        "count": 2,
+        "label_column": None,
+        "hidden": False,
+        "fts_table": None,
+        "foreign_keys": {
+            "incoming": [
+                {
+                    "other_table": "searchable_tags",
+                    "column": "tag",
+                    "other_column": "tag",
+                }
+            ],
+            "outgoing": [],
+        },
     }, {
         'columns': ['pk', 'distance', 'frequency'],
         'name': 'units',

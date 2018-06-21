@@ -111,3 +111,4 @@ ENV/
 
 # macOS files
 .DS_Store
+.pytest_cache

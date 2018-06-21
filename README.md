@@ -1,9 +1,4 @@
-# Datasette
-
-[![PyPI](https://img.shields.io/pypi/v/datasette.svg)](https://pypi.org/project/datasette/)
-[![Travis CI](https://travis-ci.org/simonw/datasette.svg?branch=master)](https://travis-ci.org/simonw/datasette)
-[![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](http://datasette.readthedocs.io/en/latest/?badge=latest)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/master/LICENSE)
+# README
 
 *An instant JSON API for your SQLite databases*
 
@@ -14,6 +9,10 @@ Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to 
 * Documentation: http://datasette.readthedocs.io/
 * Examples: https://github.com/simonw/datasette/wiki/Datasettes
 * Live demo of current master: https://latest.datasette.io/
+
+## Run tests
+
+    python setup.py test
 
 ## News
 

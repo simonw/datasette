@@ -554,11 +554,16 @@ class Filter:
         else:
             return template.format(c=column, v=value)
 
+    @property
+    def is_in_filter(self):
+        return self.key == 'in'
+
 
 class Filters:
     _filters = [
         Filter('exact', '=', '"{c}" = :{p}', lambda c, v: '{c} = {v}' if v.isdigit() else '{c} = "{v}"'),
         Filter('not', '!=', '"{c}" != :{p}', lambda c, v: '{c} != {v}' if v.isdigit() else '{c} != "{v}"'),
+        Filter('in', 'in', '"{c}" IN ({v})', '{c} IN ({v})'),
         Filter('contains', 'contains', '"{c}" like :{p}', '{c} contains "{v}"', format='%{}%'),
         Filter('endswith', 'ends with', '"{c}" like :{p}', '{c} ends with "{v}"', format='%{}'),
         Filter('startswith', 'starts with', '"{c}" like :{p}', '{c} starts with "{v}"', format='{}%'),
@@ -640,11 +645,17 @@ class Filters:
         for i, (column, lookup, value) in enumerate(self.selections()):
             filter = self._filters_by_key.get(lookup, None)
             if filter:
-                sql_bit, param = filter.where_clause(column, self.convert_unit(column, value), i)
-                sql_bits.append(sql_bit)
-                if param is not None:
-                    param_id = 'p{}'.format(i)
-                    params[param_id] = param
+                if filter.is_in_filter:
+                    #sql_bit, param = filter.where_clause(column, self.convert_unit(column, value), i)
+                    values = [ x.strip() for x in value.split(",") ]
+                    sql_bit = column + " IN ('" + "','".join(values) + "')"
+                    sql_bits.append(sql_bit)
+                else:
+                    sql_bit, param = filter.where_clause(column, self.convert_unit(column, value), i)
+                    sql_bits.append(sql_bit)
+                    if param is not None:
+                        param_id = 'p{}'.format(i)
+                        params[param_id] = param
         return sql_bits, params
 
 

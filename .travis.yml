@@ -8,8 +8,8 @@ python:
 # Executed for 3.5 AND 3.5 as the first "test" stage:
 script:
   - pip install -U pip wheel
-  - pip install .
-  - python setup.py test
+  - pip install .[test]
+  - pytest
 
 cache:
     directories:

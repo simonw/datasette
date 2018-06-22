@@ -47,10 +47,15 @@ setup(
         datasette=datasette.cli:cli
     ''',
     setup_requires=['pytest-runner'],
+    extras_require={
+        'test': [
+            'pytest==3.6.0',
+            'aiohttp==2.3.2',
+            'beautifulsoup4==4.6.0',
+        ]
+    },
     tests_require=[
-        'pytest==3.6.0',
-        'aiohttp==2.3.2',
-        'beautifulsoup4==4.6.0',
+        'datasette[test]',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',

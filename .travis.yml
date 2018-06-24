@@ -7,7 +7,13 @@ python:
 
 # Executed for 3.5 AND 3.5 as the first "test" stage:
 script:
-  - python setup.py test
+  - pip install -U pip wheel
+  - pip install .[test]
+  - pytest
+
+cache:
+    directories:
+        - $HOME/.cache/pip
 
 # This defines further stages that execute after the tests
 jobs:

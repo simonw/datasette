@@ -1,4 +1,8 @@
-from .fixtures import app_client, app_client_csv_max_mb_one # noqa
+from .fixtures import ( # noqa
+    app_client,
+    app_client_csv_max_mb_one,
+    app_client_with_cors
+)
 
 EXPECTED_TABLE_CSV = '''id,content
 1,hello
@@ -30,11 +34,19 @@ pk,planet_int,on_earth,state,city_id,city_id_label,neighborhood
 15,2,0,MC,4,Memnonia,Arcadia Planitia
 '''.lstrip().replace('\n', '\r\n')
 
+
 def test_table_csv(app_client):
     response = app_client.get('/fixtures/simple_primary_key.csv')
     assert response.status == 200
+    assert not response.headers.get("Access-Control-Allow-Origin")
     assert 'text/plain; charset=utf-8' == response.headers['Content-Type']
     assert EXPECTED_TABLE_CSV == response.text
+
+
+def test_table_csv_cors_headers(app_client_with_cors):
+    response = app_client_with_cors.get('/fixtures/simple_primary_key.csv')
+    assert response.status == 200
+    assert "*" == response.headers["Access-Control-Allow-Origin"]
 
 
 def test_table_csv_with_labels(app_client):

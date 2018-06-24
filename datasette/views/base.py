@@ -228,6 +228,8 @@ class BaseView(RenderMixin):
 
         content_type = "text/plain; charset=utf-8"
         headers = {}
+        if self.ds.cors:
+            headers["Access-Control-Allow-Origin"] = "*"
         if request.args.get("_dl", None):
             content_type = "text/csv; charset=utf-8"
             disposition = 'attachment; filename="{}.csv"'.format(

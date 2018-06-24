@@ -23,32 +23,39 @@ class TestClient:
         )
 
 
-@pytest.fixture(scope='session')
-def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None, filename="fixtures.db"):
+@pytest.fixture(scope="session")
+def app_client(
+    sql_time_limit_ms=None,
+    max_returned_rows=None,
+    cors=False,
+    config=None,
+    filename="fixtures.db",
+):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
-        plugins_dir = os.path.join(tmpdir, 'plugins')
+        plugins_dir = os.path.join(tmpdir, "plugins")
         os.mkdir(plugins_dir)
-        open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN1)
-        open(os.path.join(plugins_dir, 'my_plugin_2.py'), 'w').write(PLUGIN2)
+        open(os.path.join(plugins_dir, "my_plugin.py"), "w").write(PLUGIN1)
+        open(os.path.join(plugins_dir, "my_plugin_2.py"), "w").write(PLUGIN2)
         config = config or {}
-        config.update({
-            'default_page_size': 50,
-            'max_returned_rows': max_returned_rows or 100,
-            'sql_time_limit_ms': sql_time_limit_ms or 200,
-        })
+        config.update(
+            {
+                "default_page_size": 50,
+                "max_returned_rows": max_returned_rows or 100,
+                "sql_time_limit_ms": sql_time_limit_ms or 200,
+            }
+        )
         ds = Datasette(
             [filepath],
+            cors=cors,
             metadata=METADATA,
             plugins_dir=plugins_dir,
             config=config,
         )
-        ds.sqlite_functions.append(
-            ('sleep', 1, lambda n: time.sleep(float(n))),
-        )
+        ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         client = TestClient(ds.app().test_client)
         client.ds = ds
         yield client
@@ -81,6 +88,11 @@ def app_client_csv_max_mb_one():
 @pytest.fixture(scope="session")
 def app_client_with_dot():
     yield from app_client(filename="fixtures.dot.db")
+
+
+@pytest.fixture(scope='session')
+def app_client_with_cors():
+    yield from app_client(cors=True)
 
 
 def generate_compound_rows(num):

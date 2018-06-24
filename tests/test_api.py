@@ -1,5 +1,6 @@
 from .fixtures import ( # noqa
     app_client,
+    app_client_factory,
     app_client_shorter_time_limit,
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
@@ -424,8 +425,8 @@ def test_invalid_custom_sql(app_client):
     assert 'Statement must be a SELECT' == response.json['error']
 
 
-def test_allow_sql_off():
-    for client in app_client(config={
+def test_allow_sql_off(worker_id):
+    for client in app_client(worker_id, config={
         'allow_sql': False,
     }):
         assert 400 == client.get(
@@ -971,11 +972,12 @@ def test_config_json(app_client):
     } == response.json
 
 
-def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_page_size):
+def test_page_size_matching_max_returned_rows(app_client_factory):
+    app_client = app_client_factory(max_returned_rows=50)
     fetched = []
     path = '/fixtures/no_primary_key.json'
     while path:
-        response = app_client_returned_rows_matches_page_size.get(path)
+        response = app_client.get(path)
         fetched.extend(response.json['rows'])
         assert len(response.json['rows']) in (1, 50)
         path = response.json['next_url']
@@ -1140,8 +1142,8 @@ def test_suggested_facets(app_client):
     ).json["suggested_facets"]) > 0
 
 
-def test_allow_facet_off():
-    for client in app_client(config={
+def test_allow_facet_off(worker_id):
+    for client in app_client(worker_id, config={
         'allow_facet': False,
     }):
         assert 400 == client.get(
@@ -1153,8 +1155,8 @@ def test_allow_facet_off():
         ).json["suggested_facets"]
 
 
-def test_suggest_facets_off():
-    for client in app_client(config={
+def test_suggest_facets_off(worker_id):
+    for client in app_client(worker_id, config={
         'suggest_facets': False,
     }):
         # Now suggested_facets should be []

@@ -1,9 +1,11 @@
 from datasette.app import Datasette
+from sanic.testing import PORT as PORT_BASE, SanicTestClient
 import itertools
 import json
 import os
 import pytest
 import random
+import re
 import sqlite3
 import sys
 import string
@@ -11,7 +13,7 @@ import tempfile
 import time
 
 
-class TestClient:
+class MyTestClient:
     def __init__(self, sanic_test_client):
         self.sanic_test_client = sanic_test_client
 
@@ -24,7 +26,7 @@ class TestClient:
 
 
 @pytest.fixture(scope='session')
-def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None, filename="fixtures.db"):
+def app_client(worker_id, sql_time_limit_ms=None, max_returned_rows=None, config=None, filename="fixtures.db"):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
         conn = sqlite3.connect(filepath)
@@ -49,38 +51,51 @@ def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None, file
         ds.sqlite_functions.append(
             ('sleep', 1, lambda n: time.sleep(float(n))),
         )
-        client = TestClient(ds.app().test_client)
+        m = re.search(r'[0-9]+', worker_id)
+        if m:
+            num_id = m.group(0)
+        else:
+            num_id = 0
+        port = PORT_BASE + int(num_id)
+        client = MyTestClient(SanicTestClient(ds.app(), port))
         client.ds = ds
         yield client
 
 
 @pytest.fixture(scope='session')
-def app_client_shorter_time_limit():
-    yield from app_client(20)
+def app_client_factory(worker_id):
+    def factory(**kwargs):
+        yield from app_client(worker_id, **kwargs)
+    return factory
 
 
 @pytest.fixture(scope='session')
-def app_client_returned_rows_matches_page_size():
-    yield from app_client(max_returned_rows=50)
+def app_client_shorter_time_limit(worker_id):
+    yield from app_client(worker_id, 20)
 
 
 @pytest.fixture(scope='session')
-def app_client_larger_cache_size():
-    yield from app_client(config={
+def app_client_returned_rows_matches_page_size(worker_id):
+    yield from app_client(worker_id, max_returned_rows=50)
+
+
+@pytest.fixture(scope='session')
+def app_client_larger_cache_size(worker_id):
+    yield from app_client(worker_id, config={
         'cache_size_kb': 2500,
     })
 
 
 @pytest.fixture(scope='session')
-def app_client_csv_max_mb_one():
-    yield from app_client(config={
+def app_client_csv_max_mb_one(worker_id):
+    yield from app_client(worker_id, config={
         'max_csv_mb': 1,
     })
 
 
 @pytest.fixture(scope="session")
-def app_client_with_dot():
-    yield from app_client(filename="fixtures.dot.db")
+def app_client_with_dot(worker_id):
+    yield from app_client(worker_id, filename="fixtures.dot.db")
 
 
 def generate_compound_rows(num):

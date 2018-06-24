@@ -639,8 +639,8 @@ def test_allow_download_on(app_client):
     assert len(soup.findAll('a', {'href': re.compile('\.db$')}))
 
 
-def test_allow_download_off():
-    for client in app_client(config={
+def test_allow_download_off(worker_id):
+    for client in app_client(worker_id, config={
         'allow_download': False,
     }):
         response = client.get(
@@ -665,8 +665,8 @@ def test_allow_sql_on(app_client):
     assert len(soup.findAll('textarea', {'name': 'sql'}))
 
 
-def test_allow_sql_off():
-    for client in app_client(config={
+def test_allow_sql_off(worker_id):
+    for client in app_client(worker_id, config={
         'allow_sql': False,
     }):
         response = client.get(

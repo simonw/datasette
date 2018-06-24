@@ -30,6 +30,7 @@ pk,planet_int,on_earth,state,city_id,city_id_label,neighborhood
 15,2,0,MC,4,Memnonia,Arcadia Planitia
 '''.lstrip().replace('\n', '\r\n')
 
+
 def test_table_csv(app_client):
     response = app_client.get('/fixtures/simple_primary_key.csv')
     assert response.status == 200

@@ -30,7 +30,7 @@ Loading Spatialite
 ~~~~~~~~~~~~~~~~~~
 
 The ``datasetteproject/datasette`` image includes a recent version of the
-:ref:`SpatiaLite extrnsion <spatialite>` for SQLite. To load and enable that
+:ref:`SpatiaLite extension <spatialite>` for SQLite. To load and enable that
 module, use the following command::
 
     docker run -p 8001:8001 -v `pwd`:/mnt \

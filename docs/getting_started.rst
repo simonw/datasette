@@ -1,12 +1,6 @@
 Getting started
 ===============
 
-::
-
-    pip3 install datasette
-
-Datasette requires Python 3.5 or higher.
-
 Basic usage
 -----------
 

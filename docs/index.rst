@@ -16,6 +16,7 @@ Contents
 .. toctree::
    :maxdepth: 2
 
+   installation
    getting_started
    json_api
    sql_queries

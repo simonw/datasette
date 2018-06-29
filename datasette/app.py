@@ -509,7 +509,7 @@ class Datasette:
             info.update(
                 {"ok": False, "error": message, "status": status, "title": title}
             )
-            if request.path.split("?")[0].endswith(".json"):
+            if request is not None and request.path.split("?")[0].endswith(".json"):
                 return response.json(info, status=status)
 
             else:

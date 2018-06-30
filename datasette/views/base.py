@@ -42,7 +42,7 @@ class DatasetteError(Exception):
 class RenderMixin(HTTPMethodView):
 
     def render(self, templates, **context):
-        template = self.jinja_env.select_template(templates)
+        template = self.ds.jinja_env.select_template(templates)
         select_templates = [
             "{}{}".format("*" if template_name == template.name else "", template_name)
             for template_name in templates
@@ -66,11 +66,6 @@ class BaseView(RenderMixin):
 
     def __init__(self, datasette):
         self.ds = datasette
-        self.files = datasette.files
-        self.jinja_env = datasette.jinja_env
-        self.executor = datasette.executor
-        self.page_size = datasette.page_size
-        self.max_returned_rows = datasette.max_returned_rows
 
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."

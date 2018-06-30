@@ -12,9 +12,6 @@ class IndexView(RenderMixin):
 
     def __init__(self, datasette):
         self.ds = datasette
-        self.files = datasette.files
-        self.jinja_env = datasette.jinja_env
-        self.executor = datasette.executor
 
     async def get(self, request, as_format):
         databases = []

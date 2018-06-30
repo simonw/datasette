@@ -466,7 +466,7 @@ class TableView(RowTableShared):
         page_size = _size or request.raw_args.get("_size")
         if page_size:
             if page_size == "max":
-                page_size = self.max_returned_rows
+                page_size = self.ds.max_returned_rows
             try:
                 page_size = int(page_size)
                 if page_size < 0:
@@ -475,14 +475,14 @@ class TableView(RowTableShared):
             except ValueError:
                 raise DatasetteError("_size must be a positive integer", status=400)
 
-            if page_size > self.max_returned_rows:
+            if page_size > self.ds.max_returned_rows:
                 raise DatasetteError(
-                    "_size must be <= {}".format(self.max_returned_rows), status=400
+                    "_size must be <= {}".format(self.ds.max_returned_rows), status=400
                 )
 
             extra_args["page_size"] = page_size
         else:
-            page_size = self.page_size
+            page_size = self.ds.page_size
 
         sql = "select {select} from {table_name} {where}{order_by}limit {limit}{offset}".format(
             select=select,

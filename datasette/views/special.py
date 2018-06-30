@@ -6,7 +6,6 @@ from .base import RenderMixin
 class JsonDataView(RenderMixin):
     def __init__(self, datasette, filename, data_callback):
         self.ds = datasette
-        self.jinja_env = datasette.jinja_env
         self.filename = filename
         self.data_callback = data_callback
 

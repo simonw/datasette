@@ -122,9 +122,16 @@ class BaseView(RenderMixin):
                 kwargs["table"] = table
                 if _format:
                     kwargs["as_format"] = ".{}".format(_format)
+            elif "table" in kwargs:
+                kwargs["table"] = urllib.parse.unquote_plus(
+                    kwargs["table"]
+                )
+
             should_redirect = "/{}-{}".format(name, expected)
             if "table" in kwargs:
-                should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
+                should_redirect += "/" + urllib.parse.quote_plus(
+                    kwargs["table"]
+                )
             if "pk_path" in kwargs:
                 should_redirect += "/" + kwargs["pk_path"]
             if "as_format" in kwargs:
@@ -253,6 +260,10 @@ class BaseView(RenderMixin):
             _format = _format or _ext_format
             kwargs["table"] = table
             del kwargs["table_and_format"]
+        elif "table" in kwargs:
+            kwargs["table"] = urllib.parse.unquote_plus(
+                kwargs["table"]
+            )
 
         if _format == "csv":
             return await self.as_csv(request, name, hash, **kwargs)

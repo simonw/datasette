@@ -56,6 +56,19 @@ def test_row(app_client):
     assert response.status == 200
 
 
+def test_row_strange_table_name(app_client):
+    response = app_client.get(
+        '/fixtures/table%2Fwith%2Fslashes.csv/3',
+        allow_redirects=False
+    )
+    assert response.status == 302
+    assert response.headers['Location'].endswith(
+        '/table%2Fwith%2Fslashes.csv/3'
+    )
+    response = app_client.get('/fixtures/table%2Fwith%2Fslashes.csv/3')
+    assert response.status == 200
+
+
 def test_add_filter_redirects(app_client):
     filter_args = urllib.parse.urlencode({
         '_filter_column': 'content',

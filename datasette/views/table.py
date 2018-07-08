@@ -806,7 +806,9 @@ class RowView(RowTableShared):
             select = "rowid, *"
             pks = ["rowid"]
         wheres = ['"{}"=:p{}'.format(pk, i) for i, pk in enumerate(pks)]
-        sql = 'select {} from "{}" where {}'.format(select, table, " AND ".join(wheres))
+        sql = 'select {} from {} where {}'.format(
+            select, escape_sqlite(table), " AND ".join(wheres)
+        )
         params = {}
         for i, pk_value in enumerate(pk_values):
             params["p{}".format(i)] = pk_value

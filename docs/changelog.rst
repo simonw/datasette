@@ -2,6 +2,17 @@
 Changelog
 =========
 
+.. _v0_23_2:
+
+0.23.2 (2018-07-07)
+-------------------
+
+Minor bugfix and documentation release.
+
+- CSV export now respects ``--cors``, fixes `#326 <https://github.com/simonw/datasette/issues/326>`_
+- :ref:`Installation instructions <installation>`, including docker image - closes `#328 <https://github.com/simonw/datasette/issues/328>`_
+- Fix for row pages for tables with / in, closes `#325 <https://github.com/simonw/datasette/issues/325>`_
+
 .. _v0_23_1:
 
 0.23.1 (2018-06-21)

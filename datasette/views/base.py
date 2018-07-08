@@ -12,6 +12,8 @@ from sanic import response
 from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 
+from starlette import asgi_application, Response
+
 from datasette import __version__
 from datasette.utils import (
     CustomJSONEncoder,
@@ -43,7 +45,44 @@ class DatasetteError(Exception):
         self.messagge_is_html = messagge_is_html
 
 
+class RequestWrapper:
+    # Implements the subset of the Sanic request that my code uses
+    def __init__(self, starlette_request):
+        self._request = starlette_request
+
+    @property
+    def path(self):
+        return self._request.url.path
+
+    @property
+    def query_string(self):
+        return str(self._request.query_string)
+
+    @property
+    def args(self):
+        # Key/list-of-values
+        # There's probably a better way to do this:
+        d = {}
+        for key, value in self._request.query_string:
+            d.setdefault(key, []).append(value)
+        return d
+
+    @property
+    def raw_args(self):
+        # Flat key/first-value dictionary
+        return self._request.query_string._dict
+
+
 class RenderMixin(HTTPMethodView):
+
+    def asgi_app(self):
+        @asgi_application
+        async def app(request):
+            sanic_response = await self.get(
+                RequestWrapper(request), **request["kwargs"]
+            )
+            return Response(sanic_response.body)
+        return app
 
     def render(self, templates, **context):
         template = self.ds.jinja_env.select_template(templates)

@@ -257,6 +257,9 @@ def package(
 )
 @click.option("-p", "--port", default=8001, help="port for server, defaults to 8001")
 @click.option(
+    "--asgi", is_flag=True, help="Run in ASGI mode"
+)
+@click.option(
     "--debug", is_flag=True, help="Enable debug mode - useful for development"
 )
 @click.option(
@@ -316,6 +319,7 @@ def serve(
     files,
     host,
     port,
+    asgi,
     debug,
     reload,
     cors,
@@ -372,4 +376,9 @@ def serve(
     )
     # Force initial hashing/table counting
     ds.inspect()
-    ds.app().run(host=host, port=port, debug=debug)
+    if asgi:
+        from uvicorn.run import UvicornServer
+        app = ds.asgi_app()
+        UvicornServer().run(app, host=host, port=port)
+    else:
+        ds.app().run(host=host, port=port, debug=debug)

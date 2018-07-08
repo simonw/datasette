@@ -430,6 +430,12 @@ class Datasette:
             self.executor, sql_operation_in_thread
         )
 
+    def asgi_app(self):
+        from starlette import Router, Path
+        return Router([
+            Path('/', app=IndexView(self).asgi_app(), methods=['GET']),
+        ])
+
     def app(self):
         app = Sanic(__name__)
         default_templates = str(app_root / "datasette" / "templates")

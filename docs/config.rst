@@ -152,3 +152,14 @@ You can disable the limit entirely by settings this to 0:
 ::
 
     datasette mydatabase.db --config max_csv_mb:0
+
+.. _config_truncate_cells_html:
+
+truncate_cells_html
+-------------------
+
+In the HTML table view, truncate any strings that are longer than this value. The full value will still be available in CSV, JSON and on the individual row HTML page. Set this to 0 to disable truncation.
+
+::
+
+    datasette mydatabase.db --config truncate_cells_html:0

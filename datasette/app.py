@@ -101,6 +101,9 @@ CONFIG_OPTIONS = (
     ConfigOption("max_csv_mb", 100, """
         Maximum size allowed for CSV export in MB. Set 0 to disable this limit.
     """.strip()),
+    ConfigOption("truncate_cells_html", 2048, """
+        Truncate cells longer than this in HTML table view. Set to 0 to disable.
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default

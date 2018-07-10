@@ -974,6 +974,7 @@ def test_config_json(app_client):
         "cache_size_kb": 0,
         "allow_csv_stream": True,
         "max_csv_mb": 100,
+        "truncate_cells_html": 2048,
     } == response.json
 
 

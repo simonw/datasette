@@ -69,6 +69,40 @@ def test_row_strange_table_name(app_client):
     assert response.status == 200
 
 
+def test_table_cell_truncation():
+    for client in app_client(config={
+        "truncate_cells_html": 5,
+    }):
+        response = client.get("/fixtures/facetable")
+        assert response.status == 200
+        table = Soup(response.body, "html.parser").find("table")
+        assert table["class"] == ["rows-and-columns"]
+        assert [
+            "Missi…", "Dogpa…", "SOMA", "Tende…", "Berna…", "Hayes…",
+            "Holly…", "Downt…", "Los F…", "Korea…", "Downt…", "Greek…",
+            "Corkt…", "Mexic…", "Arcad…"
+        ] == [
+            td.string for td in table.findAll("td", {
+                "class": "col-neighborhood"
+            })
+        ]
+
+
+def test_row_page_does_not_truncate():
+    for client in app_client(config={
+        "truncate_cells_html": 5,
+    }):
+        response = client.get("/fixtures/facetable/1")
+        assert response.status == 200
+        table = Soup(response.body, "html.parser").find("table")
+        assert table["class"] == ["rows-and-columns"]
+        assert ["Mission"] == [
+            td.string for td in table.findAll("td", {
+                "class": "col-neighborhood"
+            })
+        ]
+
+
 def test_add_filter_redirects(app_client):
     filter_args = urllib.parse.urlencode({
         '_filter_column': 'content',

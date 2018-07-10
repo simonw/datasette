@@ -117,6 +117,7 @@ class RowTableShared(BaseView):
         description,
         rows,
         link_column=False,
+        truncate_cells=0,
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         table_metadata = self.table_metadata(database, table)
@@ -202,6 +203,8 @@ class RowTableShared(BaseView):
                     )
                 else:
                     display_value = str(value)
+                    if truncate_cells and len(display_value) > truncate_cells:
+                        display_value = display_value[:truncate_cells] + u"\u2026"
 
                 cells.append({"column": column, "value": display_value})
             cell_rows.append(cells)
@@ -723,6 +726,7 @@ class TableView(RowTableShared):
                 results.description,
                 rows,
                 link_column=not is_view,
+                truncate_cells=self.ds.config["truncate_cells_html"],
             )
             metadata = self.ds.metadata.get("databases", {}).get(name, {}).get(
                 "tables", {}
@@ -827,6 +831,7 @@ class RowView(RowTableShared):
                 results.description,
                 rows,
                 link_column=False,
+                truncate_cells=0,
             )
             for column in display_columns:
                 column["sortable"] = False

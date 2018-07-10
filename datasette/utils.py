@@ -433,6 +433,8 @@ def temporary_heroku_directory(
 
         if metadata:
             extras.extend(['--metadata', 'metadata.json'])
+        if extra_options:
+            extras.extend(extra_options.split())
         for mount_point, path in static:
             link_or_copy_directory(
                 os.path.join(saved_cwd, path),

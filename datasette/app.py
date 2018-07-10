@@ -1,4 +1,5 @@
 import asyncio
+import click
 import collections
 import hashlib
 import itertools
@@ -261,17 +262,26 @@ class Datasette:
             name = path.stem
             if name in self._inspect:
                 raise Exception("Multiple files with same stem %s" % name)
-
-            with sqlite3.connect(
-                "file:{}?immutable=1".format(path), uri=True
-            ) as conn:
-                self.prepare_connection(conn)
-                self._inspect[name] = {
-                    "hash": inspect_hash(path),
-                    "file": str(path),
-                    "views": inspect_views(conn),
-                    "tables": inspect_tables(conn, self.metadata.get("databases", {}).get(name, {}))
-                }
+            try:
+                with sqlite3.connect(
+                    "file:{}?immutable=1".format(path), uri=True
+                ) as conn:
+                    self.prepare_connection(conn)
+                    self._inspect[name] = {
+                        "hash": inspect_hash(path),
+                        "file": str(path),
+                        "views": inspect_views(conn),
+                        "tables": inspect_tables(conn, self.metadata.get("databases", {}).get(name, {}))
+                    }
+            except sqlite3.OperationalError as e:
+                if (e.args[0] == 'no such module: VirtualSpatialIndex'):
+                    raise click.UsageError(
+                        "It looks like you're trying to load a SpatiaLite"
+                        " database without first loading the SpatiaLite module."
+                        "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+                    )
+                else:
+                    raise
         return self._inspect
 
     def register_custom_units(self):

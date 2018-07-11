@@ -5,7 +5,7 @@
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](http://datasette.readthedocs.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/master/LICENSE)
 
-*An instant JSON API for your SQLite databases*
+*A tool for exploring and publishing data*
 
 Datasette provides an instant, read-only JSON API for any SQLite database. It also provides tools  for packaging the database up as a Docker container and deploying that container to hosting providers such as [Zeit Now](https://zeit.co/now).
 

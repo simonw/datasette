@@ -1,7 +1,7 @@
 Datasette
 =========
 
-*An instant JSON API for your SQLite databases*
+*A tool for exploring and publishing data*
 
 Datasette provides an instant, read-only JSON API for any SQLite
 database. It also provides tools for packaging the database up as a

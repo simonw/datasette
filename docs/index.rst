@@ -18,6 +18,7 @@ Contents
 
    installation
    getting_started
+   publish
    json_api
    sql_queries
    csv_export

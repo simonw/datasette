@@ -100,7 +100,7 @@ def inspect(files, inspect_file, sqlite_extensions):
     "-n",
     "--name",
     default="datasette",
-    help="Application name to use when deploying to Now (ignored for Heroku)",
+    help="Application name to use when deploying",
 )
 @click.option(
     "-m",
@@ -259,10 +259,29 @@ def publish(
             install,
             extra_metadata,
         ):
-            create_output = check_output(["heroku", "apps:create", "--json"]).decode(
-                "utf8"
-            )
-            app_name = json.loads(create_output)["name"]
+
+            app_name = None
+            if name:
+                # Check to see if this app already exists
+                list_output = check_output(["heroku", "apps:list", "--json"]).decode('utf8')
+                apps = json.loads(list_output)
+
+                for app in apps:
+                    if app['name'] == name:
+                        app_name = name
+                        break
+
+            if not app_name:
+                # Create a new app
+                cmd = ["heroku", "apps:create"]
+                if name:
+                    cmd.append(name)
+                cmd.append("--json")
+                create_output = check_output(cmd).decode(
+                    "utf8"
+                )
+                app_name = json.loads(create_output)["name"]
+
             call(["heroku", "builds:create", "-a", app_name])
 
 

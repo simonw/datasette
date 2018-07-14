@@ -49,7 +49,7 @@ This will output some details about the new deployment, including a URL like thi
 
     https://limitless-reef-88278.herokuapp.com/ deployed to Heroku
 
-You can then set a custom subdomain by navigating to your new app's equivalent of ``https://dashboard.heroku.com/apps/limitless-reef-88278/settings`` and editing the name of your deployment, e.g. to http://datasette-publish-demo.herokuapp.com/
+You can specify a custom app name by passing ``-n my-app-name`` to the publish command. This will also allow you to overwrite an existing app.
 
 Custom metadata and plugins
 ---------------------------

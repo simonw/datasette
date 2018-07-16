@@ -73,7 +73,9 @@ queries inside your ``metadata.json`` file. Here's an example::
         "databases": {
            "sf-trees": {
                "queries": {
-                   "just_species": "select qSpecies from Street_Tree_List"
+                   "just_species": {
+                       "sql": select qSpecies from Street_Tree_List"
+                   }
                }
            }
         }
@@ -91,6 +93,11 @@ its own URL at::
 For the above example, that URL would be::
 
     /sf-trees/just_species
+
+You can optionally include ``"title"`` and ``"description"`` keys to show a
+title and description on the canned query page. As with regular table metadata
+you can alternatively specify ``"description_html"`` to have your description
+rendered as HTML (rather than having HTML special characters escaped).
 
 Canned queries support named parameters, so if you include those in the SQL you
 will then be able to enter them using the form fields on the canned query page
@@ -111,7 +118,11 @@ In the canned query JSON it looks like this::
         "databases": {
            "fixtures": {
                "queries": {
-                   "neighborhood_search": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;"
+                   "neighborhood_search": {
+                       "sql": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;",
+                       "title": "Search neighborhoods",
+                       "description_html": "<b>Demonstrating</b> simple like search"
+                   }
                }
            }
         }

@@ -161,13 +161,18 @@ METADATA = {
             },
             'queries': {
                 'pragma_cache_size': 'PRAGMA cache_size;',
-                'neighborhood_search': '''
-                    select neighborhood, facet_cities.name, state
-                    from facetable
-                        join facet_cities on facetable.city_id = facet_cities.id
-                    where neighborhood like '%' || :text || '%'
-                    order by neighborhood;
-                '''
+                'neighborhood_search': {
+                    'sql': '''
+                        select neighborhood, facet_cities.name, state
+                        from facetable
+                            join facet_cities
+                                on facetable.city_id = facet_cities.id
+                        where neighborhood like '%' || :text || '%'
+                        order by neighborhood;
+                    ''',
+                    'title': 'Search neighborhoods',
+                    'description_html': '<b>Demonstrating</b> simple like search',
+                },
             }
         },
     }

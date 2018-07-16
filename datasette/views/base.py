@@ -433,7 +433,7 @@ class BaseView(RenderMixin):
 
     async def custom_sql(
         self, request, name, hash, sql, editable=True, canned_query=None,
-        _size=None
+        metadata=None, _size=None
     ):
         params = request.raw_args
         if "sql" in params:
@@ -483,6 +483,7 @@ class BaseView(RenderMixin):
             "named_parameter_values": named_parameter_values,
             "editable": editable,
             "canned_query": canned_query,
+            "metadata": metadata,
             "config": self.ds.config,
         }, templates
 

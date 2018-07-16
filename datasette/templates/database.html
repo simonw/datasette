@@ -51,7 +51,7 @@
     <h2>Queries</h2>
     <ul>
         {% for query in queries %}
-            <li><a href="/{{ database }}-{{ database_hash }}/{{ query.name|urlencode }}" title="{{ query.sql }}">{{ query.name }}</a></li>
+            <li><a href="/{{ database }}-{{ database_hash }}/{{ query.name|urlencode }}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a></li>
         {% endfor %}
     </ul>
 {% endif %}

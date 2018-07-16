@@ -21,7 +21,9 @@
 {% block content %}
 <div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></div>
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ database }}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ metadata.title or database }}</h1>
+
+{% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 <form class="sql" action="/{{ database }}-{{ database_hash }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="get">
     <h3>Custom SQL query{% if rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(rows|length) }} row{% if rows|length == 1 %}{% else %}s{% endif %}{% endif %}</h3>

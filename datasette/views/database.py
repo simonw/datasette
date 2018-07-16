@@ -27,10 +27,7 @@ class DatabaseView(BaseView):
             "tables": tables,
             "hidden_count": len([t for t in tables if t["hidden"]]),
             "views": info["views"],
-            "queries": [
-                {"name": query_name, "sql": query_sql}
-                for query_name, query_sql in (metadata.get("queries") or {}).items()
-            ],
+            "queries": self.ds.get_canned_queries(name),
         }, {
             "database_hash": hash,
             "show_hidden": request.args.get("_show_hidden"),

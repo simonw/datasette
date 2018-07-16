@@ -754,3 +754,20 @@ def test_404_trailing_slash_redirect(app_client, path, expected_redirect):
     response = app_client.get(path, allow_redirects=False)
     assert 302 == response.status
     assert expected_redirect == response.headers["Location"]
+
+
+def test_canned_query_with_custom_metadata(app_client):
+    response = app_client.get("/fixtures/neighborhood_search?text=town")
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    assert "Search neighborhoods" == soup.find("h1").text
+    assert (
+        """
+<div class="metadata-description">
+ <b>
+  Demonstrating
+ </b>
+ simple like search
+</div>""".strip()
+        == soup.find("div", {"class": "metadata-description"}).prettify().strip()
+    )

@@ -174,6 +174,14 @@ class Datasette:
             ]
         return self._app_css_hash
 
+    def get_canned_queries(self, database_name):
+        names = self.metadata.get("databases", {}).get(database_name, {}).get(
+            "queries", {}
+        ).keys()
+        return [
+            self.get_canned_query(database_name, name) for name in names
+        ]
+
     def get_canned_query(self, database_name, query_name):
         query = self.metadata.get("databases", {}).get(database_name, {}).get(
             "queries", {}
@@ -181,7 +189,10 @@ class Datasette:
             query_name
         )
         if query:
-            return {"name": query_name, "sql": query}
+            if not isinstance(query, dict):
+                query = {"sql": query}
+            query["name"] = query_name
+            return query
 
     async def get_table_definition(self, database_name, table, type_="table"):
         table_definition_rows = list(

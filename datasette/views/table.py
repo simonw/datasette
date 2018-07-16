@@ -232,6 +232,7 @@ class TableView(RowTableShared):
                 name,
                 hash,
                 canned_query["sql"],
+                metadata=canned_query,
                 editable=False,
                 canned_query=table,
             )

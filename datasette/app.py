@@ -3,7 +3,6 @@ import click
 import collections
 import hashlib
 import itertools
-import json
 import os
 import sqlite3
 import sys
@@ -21,7 +20,6 @@ from sanic.exceptions import InvalidUsage, NotFound
 
 from .views.base import (
     DatasetteError,
-    RenderMixin,
     ureg
 )
 from .views.database import DatabaseDownload, DatabaseView

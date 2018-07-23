@@ -158,8 +158,22 @@ You can disable the limit entirely by settings this to 0:
 truncate_cells_html
 -------------------
 
-In the HTML table view, truncate any strings that are longer than this value. The full value will still be available in CSV, JSON and on the individual row HTML page. Set this to 0 to disable truncation.
+In the HTML table view, truncate any strings that are longer than this value.
+The full value will still be available in CSV, JSON and on the individual row
+HTML page. Set this to 0 to disable truncation.
 
 ::
 
     datasette mydatabase.db --config truncate_cells_html:0
+
+
+force_https_urls
+----------------
+
+Forces self-referential URLs in the JSON output to always use the ``https://``
+protocol. This is useful for cases where the application itself is hosted using
+HTTP but is served to the outside world via a proxy that enables HTTPS.
+
+::
+
+    datasette mydatabase.db --config force_https_urls:1

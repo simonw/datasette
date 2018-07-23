@@ -97,10 +97,13 @@ CONFIG_OPTIONS = (
         Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)
     """.strip()),
     ConfigOption("max_csv_mb", 100, """
-        Maximum size allowed for CSV export in MB. Set 0 to disable this limit.
+        Maximum size allowed for CSV export in MB - set 0 to disable this limit
     """.strip()),
     ConfigOption("truncate_cells_html", 2048, """
-        Truncate cells longer than this in HTML table view. Set to 0 to disable.
+        Truncate cells longer than this in HTML table view - set 0 to disable
+    """.strip()),
+    ConfigOption("force_https_urls", False, """
+        Force URLs in API output to always use https:// protocol
     """.strip()),
 )
 DEFAULT_CONFIG = {

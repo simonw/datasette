@@ -1,4 +1,3 @@
-from collections import namedtuple
 import sqlite3
 import urllib
 
@@ -564,9 +563,7 @@ class TableView(RowTableShared):
                             row["value"]
                         ),
                         "count": row["count"],
-                        "toggle_url": urllib.parse.urljoin(
-                            request.url, toggle_path
-                        ),
+                        "toggle_url": self.absolute_url(request, toggle_path),
                         "selected": selected,
                     })
             except InterruptedError:
@@ -650,8 +647,8 @@ class TableView(RowTableShared):
                     added_args["_sort_desc"] = sort_desc
             else:
                 added_args = {"_next": next_value}
-            next_url = urllib.parse.urljoin(
-                request.url, path_with_replaced_args(request, added_args)
+            next_url = self.absolute_url(
+                request, path_with_replaced_args(request, added_args)
             )
             rows = rows[:page_size]
 
@@ -702,8 +699,10 @@ class TableView(RowTableShared):
                         ):
                             suggested_facets.append({
                                 'name': facet_column,
-                                'toggle_url': path_with_added_args(
-                                    request, {'_facet': facet_column}
+                                'toggle_url': self.absolute_url(
+                                    request, path_with_added_args(
+                                        request, {"_facet": facet_column}
+                                    )
                                 ),
                             })
                     except InterruptedError:

@@ -975,6 +975,7 @@ def test_config_json(app_client):
         "allow_csv_stream": True,
         "max_csv_mb": 100,
         "truncate_cells_html": 2048,
+        "force_https_urls": False,
     } == response.json
 
 
@@ -1270,3 +1271,13 @@ def test_config_cache_size(app_client_larger_cache_size):
         '/fixtures/pragma_cache_size.json'
     )
     assert [[-2500]] == response.json['rows']
+
+
+def test_config_force_https_urls():
+    for client in app_client(config={"force_https_urls": True}):
+        response = client.get("/fixtures/facetable.json?_size=3&_facet=state")
+        assert response.json["next_url"].startswith("https://")
+        assert response.json["facet_results"]["state"]["results"][0][
+            "toggle_url"
+        ].startswith("https://")
+        assert response.json["suggested_facets"][0]["toggle_url"].startswith("https://")

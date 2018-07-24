@@ -1,9 +1,8 @@
 $ datasette publish --help
 
- Usage: datasette publish [OPTIONS] PUBLISHER [FILES]...
+Usage: cli publish [OPTIONS] PUBLISHER [FILES]...
 
-  Publish specified SQLite database files to the internet along with a
-  datasette API.
+  Publish specified SQLite database files to the internet along with a datasette API.
 
   Options for PUBLISHER:     * 'now' - You must have Zeit Now installed:
   https://zeit.co/now     * 'heroku' - You must have Heroku installed:
@@ -12,8 +11,7 @@ $ datasette publish --help
   Example usage: datasette publish now my-database.db
 
 Options:
-  -n, --name TEXT           Application name to use when deploying to Now
-                            (ignored for Heroku)
+  -n, --name TEXT           Application name to use when deploying
   -m, --metadata FILENAME   Path to JSON file containing metadata to publish
   --extra-options TEXT      Extra options to pass to datasette serve
   --force                   Pass --force option to now
@@ -21,8 +19,7 @@ Options:
   --token TEXT              Auth token to use for deploy (Now only)
   --template-dir DIRECTORY  Path to directory containing custom templates
   --plugins-dir DIRECTORY   Path to directory containing custom plugins
-  --static STATIC MOUNT     mountpoint:path-to-directory for serving static
-                            files
+  --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
   --install TEXT            Additional packages (e.g. plugins) to install
   --spatialite              Enable SpatialLite extension
   --version-note TEXT       Additional note to show on /-/versions

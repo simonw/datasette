@@ -41,7 +41,7 @@ jobs:
         - echo "{\"name\":\"datasette-latest-$ALIAS\",\"alias\":\"$TAG.datasette.io\"}" > now.json
         - now alias --token=$NOW_TOKEN
         # Build and release to Docker Hub
-        - docker login -e $DOCKER_EMAIL -u $DOCKER_USER -p $DOCKER_PASS
+        - docker login -u $DOCKER_USER -p $DOCKER_PASS
         - export REPO=datasetteproject/datasette
         - docker build -f Dockerfile -t $REPO:$TRAVIS_TAG .
         - docker push $REPO

@@ -191,6 +191,12 @@ def publish(
 
     if publisher == "now":
         _fail_if_publish_binary_not_installed("now", "Zeit Now", "https://zeit.co/now")
+        if extra_options:
+            extra_options += " "
+        else:
+            extra_options = ""
+        extra_options += "--config force_https_urls:on"
+
         with temporary_docker_directory(
             files,
             name,

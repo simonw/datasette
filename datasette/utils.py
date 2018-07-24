@@ -281,7 +281,7 @@ FROM python:3.6
 COPY . /app
 WORKDIR /app
 {spatialite_extras}
-RUN pip install {install_from}
+RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
 EXPOSE 8001
 CMD [{cmd}]'''.format(

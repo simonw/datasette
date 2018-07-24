@@ -771,3 +771,25 @@ def test_canned_query_with_custom_metadata(app_client):
 </div>""".strip()
         == soup.find("div", {"class": "metadata-description"}).prettify().strip()
     )
+
+
+@pytest.mark.parametrize('path,has_object,has_stream,has_expand', [
+    ("/fixtures/no_primary_key", False, True, False),
+    ("/fixtures/complex_foreign_keys", True, False, True),
+])
+def test_advanced_export_box(app_client, path, has_object, has_stream, has_expand):
+    response = app_client.get(path)
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    # JSON shape options
+    expected_json_shapes = ["default", "array"]
+    if has_object:
+        expected_json_shapes.append("object")
+    div = soup.find("div", {"class": "advanced-export"})
+    assert expected_json_shapes == [a.text for a in div.find("p").findAll("a")]
+    # "stream all rows" option
+    if has_stream:
+        assert "stream all rows" in str(div)
+    # "expand labels" option
+    if has_expand:
+        assert "expand labels" in str(div)

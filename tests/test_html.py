@@ -793,3 +793,17 @@ def test_advanced_export_box(app_client, path, has_object, has_stream, has_expan
     # "expand labels" option
     if has_expand:
         assert "expand labels" in str(div)
+
+
+def test_urlify_custom_queries(app_client):
+    path = "/fixtures?" + urllib.parse.urlencode({
+        "sql": "select ('https://twitter.com/' || 'simonw') as user_url;"
+    })
+    response = app_client.get(path)
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    assert '''<td class="col-user_url">
+ <a href="https://twitter.com/simonw">
+  https://twitter.com/simonw
+ </a>
+</td>''' == soup.find("td", {"class": "col-user_url"}).prettify().strip()

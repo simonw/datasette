@@ -26,7 +26,7 @@
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 <form class="sql" action="/{{ database }}-{{ database_hash }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="get">
-    <h3>Custom SQL query{% if rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(rows|length) }} row{% if rows|length == 1 %}{% else %}s{% endif %}{% endif %}</h3>
+    <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}</h3>
     {% if editable and config.allow_sql %}
         <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
     {% else %}
@@ -41,7 +41,7 @@
     <p><input type="submit" value="Run SQL"></p>
 </form>
 
-{% if rows %}
+{% if display_rows %}
 <p class="export-links">This data as <a href="{{ url_json }}">JSON</a>, <a href="{{ url_csv }}">CSV</a></p>
 <table class="rows-and-columns">
     <thead>
@@ -50,7 +50,7 @@
         </tr>
     </thead>
     <tbody>
-    {% for row in rows %}
+    {% for row in display_rows %}
         <tr>
             {% for column, td in zip(columns, row) %}
                 <td class="col-{{ column|to_css_class }}">{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>

@@ -6,6 +6,7 @@ import sqlite3
 import time
 import urllib
 
+import jinja2
 import pint
 from sanic import response
 from sanic.exceptions import NotFound
@@ -17,6 +18,7 @@ from datasette.utils import (
     InterruptedError,
     InvalidSql,
     LimitedWriter,
+    is_url,
     path_from_row_pks,
     path_with_added_args,
     path_with_format,
@@ -485,21 +487,40 @@ class BaseView(RenderMixin):
                 ),
             )
 
+        async def extra_template():
+            display_rows = []
+            for row in results.rows:
+                display_row = []
+                for value in row:
+                    display_value = value
+                    if value in ("", None):
+                        display_value = jinja2.Markup("&nbsp;")
+                    elif is_url(str(value).strip()):
+                        display_value = jinja2.Markup(
+                            '<a href="{url}">{url}</a>'.format(
+                                url=jinja2.escape(value.strip())
+                            )
+                        )
+                    display_row.append(display_value)
+                display_rows.append(display_row)
+            return {
+                "display_rows": display_rows,
+                "database_hash": hash,
+                "custom_sql": True,
+                "named_parameter_values": named_parameter_values,
+                "editable": editable,
+                "canned_query": canned_query,
+                "metadata": metadata,
+                "config": self.ds.config,
+            }
+
         return {
             "database": name,
             "rows": results.rows,
             "truncated": results.truncated,
             "columns": columns,
             "query": {"sql": sql, "params": params},
-        }, {
-            "database_hash": hash,
-            "custom_sql": True,
-            "named_parameter_values": named_parameter_values,
-            "editable": editable,
-            "canned_query": canned_query,
-            "metadata": metadata,
-            "config": self.ds.config,
-        }, templates
+        }, extra_template, templates
 
 
 def convert_specific_columns_to_json(rows, columns, json_cols):

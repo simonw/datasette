@@ -17,6 +17,7 @@ Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to 
 
 ## News
 
+* 23rd July 2018: [Datasette 0.24](http://datasette.readthedocs.io/en/latest/changelog.html#v0-24) - a number of small new features
 * 29th June 2018: [datasette-vega](https://github.com/simonw/datasette-vega), a new plugin for visualizing data as bar, line or scatter charts
 * 21st June 2018: [Datasette 0.23.1](http://datasette.readthedocs.io/en/latest/changelog.html#v0-23-1) - minor bug fixes
 * 18th June 2018: [Datasette 0.23: CSV, SpatiaLite and more](http://datasette.readthedocs.io/en/latest/changelog.html#v0-23) - CSV export, foreign key expansion in JSON and CSV, new config options, improved support for SpatiaLite and a bunch of other improvements

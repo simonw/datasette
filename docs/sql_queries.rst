@@ -63,6 +63,8 @@ The easiest way to create views is with the SQLite command-line interface::
     sqlite> CREATE VIEW demo_view AS select qSpecies from Street_Tree_List;
     <CTRL+D>
 
+.. _canned_queries:
+
 Canned queries
 --------------
 

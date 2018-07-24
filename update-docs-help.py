@@ -18,6 +18,7 @@ def update_help_includes():
         actual = "$ datasette {} --help\n\n{}".format(
             name, result.output
         )
+        actual = actual.replace('Usage: cli ', 'Usage: datasette ')
         open(docs_path / filename, "w").write(actual)
 
 

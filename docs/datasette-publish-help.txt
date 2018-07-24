@@ -1,6 +1,6 @@
 $ datasette publish --help
 
-Usage: cli publish [OPTIONS] PUBLISHER [FILES]...
+Usage: datasette publish [OPTIONS] PUBLISHER [FILES]...
 
   Publish specified SQLite database files to the internet along with a datasette API.
 

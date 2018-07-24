@@ -1,6 +1,6 @@
 $ datasette serve --help
 
-Usage: cli serve [OPTIONS] [FILES]...
+Usage: datasette serve [OPTIONS] [FILES]...
 
   Serve up specified SQLite database files with a web UI
 

@@ -1,6 +1,6 @@
 $ datasette package --help
 
-Usage: cli package [OPTIONS] FILES...
+Usage: datasette package [OPTIONS] FILES...
 
   Package specified SQLite files into a new datasette Docker container
 

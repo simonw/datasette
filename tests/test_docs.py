@@ -34,8 +34,4 @@ def test_help_includes(name, filename):
     # actual has "Usage: cli package [OPTIONS] FILES"
     # because it doesn't know that cli will be aliased to datasette
     expected = expected.replace('Usage: datasette', 'Usage: cli')
-    print('expected')
-    print(expected)
-    print('actual')
-    print(actual)
     assert expected == actual

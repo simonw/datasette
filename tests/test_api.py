@@ -18,7 +18,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {'fixtures': 0}.keys()
     d = response.json['fixtures']
     assert d['name'] == 'fixtures'
-    assert d['tables_count'] == 19
+    assert d['tables_count'] == 20
 
 
 def test_database_page(app_client):
@@ -153,6 +153,15 @@ def test_database_page(app_client):
         'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
+    }, {
+        "name": "infinity",
+        "columns": ["value"],
+        "count": 3,
+        "primary_keys": [],
+        "label_column": None,
+        "hidden": False,
+        "fts_table": None,
+        "foreign_keys": {"incoming": [], "outgoing": []}
     }, {
         'columns': ['id', 'content', 'content2'],
         'name': 'primary_key_multiple_columns',
@@ -1281,3 +1290,21 @@ def test_config_force_https_urls():
             "toggle_url"
         ].startswith("https://")
         assert response.json["suggested_facets"][0]["toggle_url"].startswith("https://")
+
+
+def test_infinity_returned_as_null(app_client):
+    response = app_client.get("/fixtures/infinity.json?_shape=array")
+    assert [
+        {"rowid": 1, "value": None},
+        {"rowid": 2, "value": None},
+        {"rowid": 3, "value": 1.5}
+    ] == response.json
+
+
+def test_infinity_returned_as_invalid_json_if_requested(app_client):
+    response = app_client.get("/fixtures/infinity.json?_shape=array&_json_infinity=1")
+    assert [
+        {"rowid": 1, "value": float("inf")},
+        {"rowid": 2, "value": float("-inf")},
+        {"rowid": 3, "value": 1.5}
+    ] == response.json

@@ -864,3 +864,15 @@ class LimitedWriter:
                 self.limit_bytes
             ))
         self.writer.write(bytes)
+
+
+_infinities = {float("inf"), float("-inf")}
+
+
+def remove_infinites(row):
+    if any((c in _infinities) if isinstance(c, float) else 0 for c in row):
+        return [
+            None if (isinstance(c, float) and c in _infinities) else c
+            for c in row
+        ]
+    return row

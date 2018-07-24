@@ -20,8 +20,10 @@ from datasette.utils import (
     path_from_row_pks,
     path_with_added_args,
     path_with_format,
+    remove_infinites,
     resolve_table_and_format,
-    to_css_class
+    to_css_class,
+    value_as_boolean,
 )
 
 ureg = pint.UnitRegistry()
@@ -333,6 +335,12 @@ class BaseView(RenderMixin):
                 data["rows"] = convert_specific_columns_to_json(
                     data["rows"], data["columns"], json_cols,
                 )
+
+            # unless _json_infinity=1 requested, replace infinity with None
+            if "rows" in data and not value_as_boolean(
+                request.args.get("_json_infinity", "0")
+            ):
+                data["rows"] = [remove_infinites(row) for row in data["rows"]]
 
             # Deal with the _shape option
             shape = request.args.get("_shape", "arrays")

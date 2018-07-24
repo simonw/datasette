@@ -148,6 +148,12 @@ querystring arguments:
 
     Compare `this query without the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array>`_ to `this query using the argument <https://fivethirtyeight.datasettes.com/fivethirtyeight.json?sql=select+%27{%22this+is%22%3A+%22a+json+object%22}%27+as+d&_shape=array&_json=d>`_
 
+``?_json_infinity=on``
+    If your data contains infinity or -infinity values, Datasette will replace
+    them with None when returning them as JSON. If you pass ``_json_infinity=1``
+    Datasette will instead return them as ``Infinity`` or ``-Infinity`` which is
+    invalid JSON but can be processed by some custom JSON parsers.
+
 ``?_timelimit=MS``
     Sets a custom time limit for the query in ms. You can use this for optimistic
     queries where you would like Datasette to give up if the query takes too

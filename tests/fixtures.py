@@ -367,6 +367,15 @@ CREATE TABLE [select] (
 );
 INSERT INTO [select] VALUES ('group', 'having', 'and');
 
+CREATE TABLE infinity (
+    value REAL
+);
+INSERT INTO infinity VALUES
+    (1e999),
+    (-1e999),
+    (1.5)
+;
+
 CREATE TABLE facet_cities (
     id integer primary key,
     name text

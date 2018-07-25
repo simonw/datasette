@@ -25,7 +25,7 @@ def test_config_options_are_documented(config):
     ('publish', 'datasette-publish-help.txt'),
 ))
 def test_help_includes(name, filename):
-    expected = open(docs_path / filename).read()
+    expected = open(str(docs_path / filename)).read()
     runner = CliRunner()
     result = runner.invoke(cli, [name, '--help'], terminal_width=88)
     actual = '$ datasette {} --help\n\n{}'.format(

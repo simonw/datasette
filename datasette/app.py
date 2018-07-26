@@ -2,6 +2,7 @@ import asyncio
 import click
 import collections
 import hashlib
+import importlib
 import itertools
 import os
 import sqlite3
@@ -41,6 +42,11 @@ from .utils import (
 from .inspect import inspect_hash, inspect_views, inspect_tables
 from .version import __version__
 
+default_plugins = (
+    "datasette.publish.heroku",
+    "datasette.publish.now",
+)
+
 app_root = Path(__file__).parent.parent
 
 connections = threading.local()
@@ -48,6 +54,11 @@ connections = threading.local()
 pm = pluggy.PluginManager("datasette")
 pm.add_hookspecs(hookspecs)
 pm.load_setuptools_entrypoints("datasette")
+
+# Load default plugins
+for plugin in default_plugins:
+    mod = importlib.import_module(plugin)
+    pm.register(mod, plugin)
 
 
 ConfigOption = collections.namedtuple(

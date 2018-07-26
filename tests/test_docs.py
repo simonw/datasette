@@ -22,21 +22,22 @@ def test_config_options_are_documented(config):
     assert config.name in get_headings("config.rst")
 
 
-@pytest.mark.parametrize('name,filename', (
-    ('serve', 'datasette-serve-help.txt'),
-    ('package', 'datasette-package-help.txt'),
-    ('publish', 'datasette-publish-help.txt'),
+@pytest.mark.parametrize("name,filename", (
+    ("serve", "datasette-serve-help.txt"),
+    ("package", "datasette-package-help.txt"),
+    ("publish now", "datasette-publish-now-help.txt"),
+    ("publish heroku", "datasette-publish-heroku-help.txt"),
 ))
 def test_help_includes(name, filename):
     expected = open(str(docs_path / filename)).read()
     runner = CliRunner()
-    result = runner.invoke(cli, [name, '--help'], terminal_width=88)
-    actual = '$ datasette {} --help\n\n{}'.format(
+    result = runner.invoke(cli, name.split() + ["--help"], terminal_width=88)
+    actual = "$ datasette {} --help\n\n{}".format(
         name, result.output
     )
     # actual has "Usage: cli package [OPTIONS] FILES"
     # because it doesn't know that cli will be aliased to datasette
-    expected = expected.replace('Usage: datasette', 'Usage: cli')
+    expected = expected.replace("Usage: datasette", "Usage: cli")
     assert expected == actual
 
 

@@ -41,7 +41,7 @@ setup(
         'hupper==1.0',
         'pint==0.8.1',
         'pluggy>=0.1.0,<1.0',
-        'starlette==0.1.14',
+        'starlette==0.1.15',
         'uvicorn==0.2.21',
     ],
     entry_points='''

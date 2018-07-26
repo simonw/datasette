@@ -7,14 +7,17 @@ docs_path = Path(__file__).parent / "docs"
 includes = (
     ("serve", "datasette-serve-help.txt"),
     ("package", "datasette-package-help.txt"),
-    ("publish", "datasette-publish-help.txt"),
+    ("publish now", "datasette-publish-now-help.txt"),
+    ("publish heroku", "datasette-publish-heroku-help.txt"),
 )
 
 
 def update_help_includes():
     for name, filename in includes:
         runner = CliRunner()
-        result = runner.invoke(cli, [name, "--help"], terminal_width=88)
+        result = runner.invoke(
+            cli, name.split() + ["--help"], terminal_width=88
+        )
         actual = "$ datasette {} --help\n\n{}".format(
             name, result.output
         )

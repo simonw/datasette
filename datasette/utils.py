@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from collections import OrderedDict
 import base64
+import click
 import hashlib
 import imp
 import json
@@ -376,6 +377,7 @@ def temporary_heroku_directory(
     plugins_dir,
     static,
     install,
+    version_note,
     extra_metadata=None
 ):
     # FIXME: lots of duplicated code from above
@@ -430,7 +432,8 @@ def temporary_heroku_directory(
                 os.path.join(tmp.name, 'plugins')
             )
             extras.extend(['--plugins-dir', 'plugins/'])
-
+        if version_note:
+            extras.extend(['--version-note', version_note])
         if metadata:
             extras.extend(['--metadata', 'metadata.json'])
         if extra_options:
@@ -876,3 +879,18 @@ def remove_infinites(row):
             for c in row
         ]
     return row
+
+
+class StaticMount(click.ParamType):
+    name = "static mount"
+
+    def convert(self, value, param, ctx):
+        if ":" not in value:
+            self.fail(
+                '"{}" should be of format mountpoint:directory'.format(value),
+                param, ctx
+            )
+        path, dirpath = value.split(":")
+        if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
+            self.fail("%s is not a valid directory path" % value, param, ctx)
+        return path, dirpath

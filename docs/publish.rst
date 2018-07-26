@@ -36,6 +36,8 @@ You can use ``anything-you-like.now.sh``, provided no one else has already regis
 
 You can also use custom domains, if you `first register them with Zeit Now <https://zeit.co/docs/features/aliases>`_.
 
+.. literalinclude:: datasette-publish-now-help.txt
+
 Publishing to Heroku
 --------------------
 
@@ -50,6 +52,8 @@ This will output some details about the new deployment, including a URL like thi
     https://limitless-reef-88278.herokuapp.com/ deployed to Heroku
 
 You can specify a custom app name by passing ``-n my-app-name`` to the publish command. This will also allow you to overwrite an existing app.
+
+.. literalinclude:: datasette-publish-heroku-help.txt
 
 Custom metadata and plugins
 ---------------------------
@@ -71,9 +75,6 @@ You can also specify plugins you would like to install. For example, if you want
 
     datasette publish now mydatabase.db --install=datasette-vega
 
-A full list of options can be seen by running ``datasette publish --help``:
-
-.. literalinclude:: datasette-publish-help.txt
 
 datasette package
 =================

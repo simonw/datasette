@@ -23,3 +23,8 @@ def extra_css_urls():
 @hookspec
 def extra_js_urls():
     "Extra JavaScript URLs added by this plugin"
+
+
+@hookspec
+def publish_subcommand(publish):
+    "Subcommands for 'datasette publish'"

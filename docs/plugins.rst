@@ -258,3 +258,12 @@ you have one:
         return [
             '/-/static-plugins/your_plugin/app.js'
         ]
+
+publish_subcommand(publish)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This hook allows you to create new providers for the ``datasette publish``
+command. Datasette uses this hook internally to implement the default ``now``
+and ``heroku`` subcommands, so you can read
+`their source <https://github.com/simonw/datasette/tree/master/datasette/publish>`_
+to see examples of this hook in action.

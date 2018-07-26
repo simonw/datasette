@@ -431,13 +431,45 @@ class Datasette:
         )
 
     def asgi_app(self):
-        from starlette import Router, Path
+        self.configure_jinja()
+        from starlette.routing import Router, Path, PathPrefix
+        from starlette.staticfiles import StaticFile, StaticFiles
         return Router([
-            Path('/', app=IndexView(self).asgi_app(), methods=['GET']),
+            Path(
+                '/(?P<as_format>\.jsono?)?$',
+                app=IndexView(self).asgi_app(),
+                methods=['GET']
+            ),
+            Path(
+                '/favicon.ico',
+                app=StaticFile(
+                    path=str(app_root / "datasette" / "static" / "favicon.ico")
+                )
+            ),
+            PathPrefix(
+                '/-/static/',
+                app=StaticFiles(
+                    directory=str(app_root / "datasette" / "static")
+                )
+            ),
+            Path(
+                "/(?P<db_name>[^/]+?)(?P<as_format>(\.jsono?|\.csv))?$",
+                app=DatabaseView(self).asgi_app(),
+            ),
+            Path(
+                "/(?P<db_name>[^/]+?)/(?P<table_and_format>[^/]+?)$",
+                app=TableView(self).asgi_app(),
+            ),
         ])
+        # app.add_route(
+        #     DatabaseView.as_view(self), "/<db_name:[^/]+?><as_format:(\.jsono?|\.csv)?$>"
+        # )
+        # app.add_route(
+        #     TableView.as_view(self),
+        #     "/<db_name:[^/]+>/<table_and_format:[^/]+?$>",
+        # )
 
-    def app(self):
-        app = Sanic(__name__)
+    def configure_jinja(self):
         default_templates = str(app_root / "datasette" / "templates")
         template_paths = []
         if self.template_dir:
@@ -465,6 +497,10 @@ class Datasette:
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
+
+    def app(self):
+        app = Sanic(__name__)
+        self.configure_jinja()
         app.add_route(IndexView.as_view(self), "/<as_format:(\.jsono?)?$>")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, "/favicon.ico")

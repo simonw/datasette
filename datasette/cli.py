@@ -377,8 +377,8 @@ def serve(
     # Force initial hashing/table counting
     ds.inspect()
     if asgi:
-        from uvicorn.run import UvicornServer
+        import uvicorn
         app = ds.asgi_app()
-        UvicornServer().run(app, host=host, port=port)
+        uvicorn.run(app, host, port, log_level="info")
     else:
         ds.app().run(host=host, port=port, debug=debug)

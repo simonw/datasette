@@ -56,21 +56,21 @@ class RequestWrapper:
 
     @property
     def query_string(self):
-        return str(self._request.query_string)
+        return str(self._request._scope["query_string"])
 
     @property
     def args(self):
         # Key/list-of-values
         # There's probably a better way to do this:
         d = {}
-        for key, value in self._request.query_string:
+        for key, value in self._request.query_params:
             d.setdefault(key, []).append(value)
         return d
 
     @property
     def raw_args(self):
         # Flat key/first-value dictionary
-        return self._request.query_string._dict
+        return dict(self.args)
 
 
 class RenderMixin(HTTPMethodView):

@@ -406,7 +406,7 @@ def temporary_heroku_directory(
         if metadata_content:
             open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))
 
-        open('runtime.txt', 'w').write('python-3.6.3')
+        open('runtime.txt', 'w').write('python-3.6.6')
 
         if branch:
             install = ['https://github.com/simonw/datasette/archive/{branch}.zip'.format(
@@ -434,7 +434,7 @@ def temporary_heroku_directory(
             extras.extend(['--plugins-dir', 'plugins/'])
         if version_note:
             extras.extend(['--version-note', version_note])
-        if metadata:
+        if metadata_content:
             extras.extend(['--metadata', 'metadata.json'])
         if extra_options:
             extras.extend(extra_options.split())

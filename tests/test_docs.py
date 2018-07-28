@@ -57,7 +57,7 @@ def test_plugin_hooks_are_documented(plugin):
     assert plugin in headings
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def documented_views():
     view_labels = set()
     for filename in docs_path.glob("*.rst"):

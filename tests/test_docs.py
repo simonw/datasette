@@ -9,12 +9,18 @@ import pytest
 import re
 
 docs_path = Path(__file__).parent.parent / 'docs'
+label_re = re.compile(r'\.\. _([^\s:]+):')
 
 
 def get_headings(filename, underline="-"):
     markdown = (docs_path / filename).open().read()
     heading_re = re.compile(r'(\S+)\n\{}+\n'.format(underline))
     return set(heading_re.findall(markdown))
+
+
+def get_labels(filename):
+    markdown = (docs_path / filename).open().read()
+    return set(label_re.findall(markdown))
 
 
 @pytest.mark.parametrize('config', app.CONFIG_OPTIONS)
@@ -49,3 +55,20 @@ def test_plugin_hooks_are_documented(plugin):
         s.split("(")[0] for s in get_headings("plugins.rst", "~")
     ]
     assert plugin in headings
+
+
+@pytest.fixture
+def documented_views():
+    view_labels = set()
+    for filename in docs_path.glob("*.rst"):
+        for label in get_labels(filename):
+            first_word = label.split("_")[0]
+            if first_word.endswith("View"):
+                view_labels.add(first_word)
+    return view_labels
+
+
+@pytest.mark.xfail
+@pytest.mark.parametrize("view_class", [v for v in dir(app) if v.endswith("View")])
+def test_view_classes_are_documented(documented_views, view_class):
+    assert view_class in documented_views

@@ -103,6 +103,8 @@ Should users be able to download the original SQLite database using a link on th
 
     datasette mydatabase.db --config allow_download:off
 
+.. _config_allow_sql:
+
 allow_sql
 ---------
 

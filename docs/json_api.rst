@@ -164,6 +164,8 @@ querystring arguments:
     For how many seconds should this response be cached by HTTP proxies? Use
     ``?_ttl=0`` to disable HTTP caching entirely for this request.
 
+.. _table_arguments:
+
 Special table arguments
 -----------------------
 

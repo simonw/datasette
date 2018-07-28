@@ -9,8 +9,11 @@ worry about SQL injection attacks.
 The easiest way to execute custom SQL against Datasette is through the web UI.
 The database index page includes a SQL editor that lets you run any SELECT query
 you like. You can also construct queries using the filter interface on the
-tables page, then click "View and edit SQL" to open that query in the cgustom
+tables page, then click "View and edit SQL" to open that query in the custom
 SQL editor.
+
+Note that this interface is only available if the :ref:`config_allow_sql` option
+has not been disabled.
 
 Any Datasette SQL query is reflected in the URL of the page, allowing you to
 bookmark them, share them with others and navigate through previous queries

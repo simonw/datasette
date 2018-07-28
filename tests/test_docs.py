@@ -68,7 +68,6 @@ def documented_views():
     return view_labels
 
 
-@pytest.mark.xfail
 @pytest.mark.parametrize("view_class", [v for v in dir(app) if v.endswith("View")])
 def test_view_classes_are_documented(documented_views, view_class):
     assert view_class in documented_views

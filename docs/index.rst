@@ -18,6 +18,7 @@ Contents
 
    installation
    getting_started
+   pages
    publish
    json_api
    sql_queries

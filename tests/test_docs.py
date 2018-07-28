@@ -13,14 +13,14 @@ label_re = re.compile(r'\.\. _([^\s:]+):')
 
 
 def get_headings(filename, underline="-"):
-    markdown = (docs_path / filename).open().read()
+    content = (docs_path / filename).open().read()
     heading_re = re.compile(r'(\S+)\n\{}+\n'.format(underline))
-    return set(heading_re.findall(markdown))
+    return set(heading_re.findall(content))
 
 
 def get_labels(filename):
-    markdown = (docs_path / filename).open().read()
-    return set(label_re.findall(markdown))
+    content = (docs_path / filename).open().read()
+    return set(label_re.findall(content))
 
 
 @pytest.mark.parametrize('config', app.CONFIG_OPTIONS)

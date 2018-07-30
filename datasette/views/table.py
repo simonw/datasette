@@ -269,7 +269,7 @@ class TableView(RowTableShared):
         special_args_lists = {}
         other_args = {}
         for key, value in args.items():
-            if key.startswith("_") and "__" not in key:
+            if (key.startswith("_") and "__" not in key) or key.startswith("_m2m_"):
                 special_args[key] = value[0]
                 special_args_lists[key] = value
             else:
@@ -303,6 +303,30 @@ class TableView(RowTableShared):
         units = table_metadata.get("units", {})
         filters = Filters(sorted(other_args.items()), units, ureg)
         where_clauses, params = filters.build_where_clauses()
+
+        # Hacky thing for ?_m2m_ad_targets__target_id=9a8c6
+        for m2m_key in special_args:
+            if m2m_key.startswith("_m2m_"):
+                rest = m2m_key.split("_m2m_", 1)[1]
+                m2m_table, other_column = rest.split("__", 1)
+                m2m_table_info = self.ds.inspect()[name]["tables"][m2m_table]
+                outgoing_fks = m2m_table_info["foreign_keys"]["outgoing"]
+                fk_to_us = [fk for fk in outgoing_fks if fk["other_table"] == table][0]
+                # fk_to_other = [
+                #     fk for fk in outgoing_fks
+                #     if fk["other_table"] != table
+                #     and fk["other_column"] == other_column
+                # ][0]
+                value = special_args[m2m_key]
+                # Figure out what the columns are in that m2m table
+                where_clauses.append(
+                    '{our_pk} in (select {our_pk} from {m2m_table} where {other_column} = "{value}")'.format(
+                        m2m_table=escape_sqlite(m2m_table),
+                        our_pk=fk_to_us["other_column"],
+                        other_column=escape_sqlite(other_column),
+                        value=value,
+                    )
+                )
 
         # _search support:
         fts_table = info[name]["tables"].get(table, {}).get("fts_table")

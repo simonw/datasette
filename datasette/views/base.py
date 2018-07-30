@@ -493,14 +493,20 @@ class BaseView(RenderMixin):
                 display_row = []
                 for value in row:
                     display_value = value
-                    if value in ("", None):
-                        display_value = jinja2.Markup("&nbsp;")
-                    elif is_url(str(value).strip()):
-                        display_value = jinja2.Markup(
-                            '<a href="{url}">{url}</a>'.format(
-                                url=jinja2.escape(value.strip())
+                    # Let the plugins have a go
+                    from datasette.app import pm
+                    plugin_value = pm.hook.render_cell(value=value)
+                    if plugin_value is not None:
+                        display_value = plugin_value
+                    else:
+                        if value in ("", None):
+                            display_value = jinja2.Markup("&nbsp;")
+                        elif is_url(str(display_value).strip()):
+                            display_value = jinja2.Markup(
+                                '<a href="{url}">{url}</a>'.format(
+                                    url=jinja2.escape(value.strip())
+                                )
                             )
-                        )
                     display_row.append(display_value)
                 display_rows.append(display_row)
             return {

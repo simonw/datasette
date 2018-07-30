@@ -3,6 +3,7 @@ from .fixtures import ( # noqa
     app_client,
 )
 import pytest
+import urllib
 
 
 def test_plugins_dir_plugin(app_client):
@@ -67,3 +68,20 @@ def test_plugins_with_duplicate_js_urls(app_client):
     ) < srcs.index(
         'https://example.com/plugin2.js'
     )
+
+
+def test_plugins_render_cell(app_client):
+    sql = """
+        select '{"href": "http://example.com/", "label":"Example"}'
+    """.strip()
+    path = "/fixtures?" + urllib.parse.urlencode({
+        "sql": sql,
+    })
+    response = app_client.get(path)
+    td = Soup(
+        response.body, "html.parser"
+    ).find("table").find("tbody").find("td")
+    a = td.find("a")
+    assert a is not None, str(a)
+    assert a.attrs["href"] == "http://example.com/"
+    assert a.text == "Example"

@@ -208,6 +208,8 @@ def extra_js_urls():
 
 PLUGIN2 = '''
 from datasette import hookimpl
+import jinja2
+import json
 
 
 @hookimpl
@@ -216,6 +218,30 @@ def extra_js_urls():
         'url': 'https://example.com/jquery.js',
         'sri': 'SRIHASH',
     }, 'https://example.com/plugin2.js']
+
+
+@hookimpl
+def render_cell(value):
+    # Render {"href": "...", "label": "..."} as link
+    stripped = value.strip()
+    if not stripped.startswith("{") and stripped.endswith("}"):
+        return None
+    try:
+        data = json.loads(value)
+    except ValueError:
+        return None
+    if set(data.keys()) != {"href", "label"}:
+        return None
+    href = data["href"]
+    if not (
+        href.startswith("/") or href.startswith("http://")
+        or href.startswith("https://")
+    ):
+        return None
+    return jinja2.Markup('<a href="{href}">{label}</a>'.format(
+        href=jinja2.escape(data["href"]),
+        label=jinja2.escape(data["label"] or "") or "&nbsp;"
+    ))
 '''
 
 TABLES = '''

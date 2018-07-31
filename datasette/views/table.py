@@ -305,6 +305,7 @@ class TableView(RowTableShared):
         where_clauses, params = filters.build_where_clauses()
 
         # Hacky thing for ?_m2m_ad_targets__target_id=9a8c6
+        extra_human_descriptions = []
         for m2m_key in request.args:
             if m2m_key.startswith("_m2m_"):
                 rest = m2m_key.split("_m2m_", 1)[1]
@@ -327,6 +328,9 @@ class TableView(RowTableShared):
                             other_column=escape_sqlite(other_column),
                             value=value,
                         )
+                    )
+                    extra_human_descriptions.append(
+                        '{} contains "{}"'.format(m2m_table, value)
                     )
 
         # _search support:
@@ -743,6 +747,9 @@ class TableView(RowTableShared):
             human_description_en = " ".join(
                 [b for b in [human_description_en, sorted_by] if b]
             )
+
+        if extra_human_descriptions:
+            human_description_en += " and ".join(extra_human_descriptions)
 
         async def extra_template():
             display_columns, display_rows = await self.display_columns_and_rows(

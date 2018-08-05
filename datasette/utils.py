@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 import base64
 import click
 import hashlib
@@ -38,6 +38,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
 '''
+
+TableFilter = namedtuple("TableFilter", (
+    "human_description_extras", "where_clauses", "params")
+)
 
 
 class InterruptedError(Exception):

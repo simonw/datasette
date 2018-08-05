@@ -33,3 +33,8 @@ def publish_subcommand(publish):
 @hookspec(firstresult=True)
 def render_cell(value):
     "Customize rendering of HTML table cell values"
+
+
+@hookspec
+def table_filter():
+    "Custom filtering of the current table based on the request"

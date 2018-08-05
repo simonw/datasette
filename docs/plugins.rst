@@ -320,3 +320,28 @@ If the value matches that pattern, the plugin returns an HTML link element:
             href=jinja2.escape(data["href"]),
             label=jinja2.escape(data["label"] or "") or "&nbsp;"
         ))
+
+table_filter
+~~~~~~~~~~~~
+
+Apply additional SQL filters to the current table based on the request.
+
+This should return an awaitable function with the following signature:
+
+.. code-block:: python
+
+    from datasette.utils import TableFilter
+
+    @hookimpl
+    def table_filter():
+        async def inner(view, name, table, request):
+            extra_human_descriptions = []
+            where_clauses = []
+            params = {}
+            # ... build those things here
+            return TableFilter(
+                human_description_extras=extra_human_descriptions,
+                where_clauses=where_clauses,
+                params=params,
+            )
+        return inner

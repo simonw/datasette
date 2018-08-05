@@ -313,7 +313,7 @@ class TableView(RowTableShared):
         search_args = dict(
             pair for pair in special_args.items() if pair[0].startswith("_search")
         )
-        search_descriptions = []
+        human_description_extras = []
         search = ""
         if fts_table and search_args:
             if "_search" in search_args:
@@ -324,7 +324,7 @@ class TableView(RowTableShared):
                         fts_table=escape_sqlite(fts_table),
                     )
                 )
-                search_descriptions.append('search matches "{}"'.format(search))
+                human_description_extras.append('search matches "{}"'.format(search))
                 params["search"] = search
             else:
                 # More complex: search against specific columns
@@ -341,12 +341,21 @@ class TableView(RowTableShared):
                             i=i
                         )
                     )
-                    search_descriptions.append(
+                    human_description_extras.append(
                         'search column "{}" matches "{}"'.format(
                             search_col, search_text
                         )
                     )
                     params["search_{}".format(i)] = search_text
+
+        # filter_arguments plugin hook support
+        for awaitable_fn in pm.hook.table_filter():
+            extras = await awaitable_fn(
+                view=self, name=name, table=table, request=request
+            )
+            human_description_extras.extend(extras.human_description_extras)
+            where_clauses.extend(extras.where_clauses)
+            params.update(extras.params)
 
         table_rows_count = None
         sortable_columns = set()
@@ -713,7 +722,7 @@ class TableView(RowTableShared):
                         pass
 
         # human_description_en combines filters AND search, if provided
-        human_description_en = filters.human_description_en(extra=search_descriptions)
+        human_description_en = filters.human_description_en(extra=human_description_extras)
 
         if sort or sort_desc:
             sorted_by = "sorted by {}{}".format(

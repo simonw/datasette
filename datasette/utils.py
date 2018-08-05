@@ -16,7 +16,6 @@ import shutil
 import urllib
 import numbers
 
-
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set((
     'abort action add after all alter analyze and as asc attach autoincrement '

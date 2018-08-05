@@ -13,6 +13,7 @@ from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 
 from datasette import __version__
+from datasette.plugins import pm
 from datasette.utils import (
     CustomJSONEncoder,
     InterruptedError,
@@ -494,7 +495,6 @@ class BaseView(RenderMixin):
                 for value in row:
                     display_value = value
                     # Let the plugins have a go
-                    from datasette.app import pm
                     plugin_value = pm.hook.render_cell(value=value)
                     if plugin_value is not None:
                         display_value = plugin_value

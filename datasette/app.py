@@ -2,7 +2,6 @@ import asyncio
 import click
 import collections
 import hashlib
-import importlib
 import itertools
 import os
 import sqlite3
@@ -14,7 +13,6 @@ from concurrent import futures
 from pathlib import Path
 
 from markupsafe import Markup
-import pluggy
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from sanic import Sanic, response
 from sanic.exceptions import InvalidUsage, NotFound
@@ -28,7 +26,6 @@ from .views.index import IndexView
 from .views.special import JsonDataView
 from .views.table import RowView, TableView
 
-from . import hookspecs
 from .utils import (
     InterruptedError,
     Results,
@@ -40,25 +37,12 @@ from .utils import (
     to_css_class
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
+from .plugins import pm
 from .version import __version__
-
-default_plugins = (
-    "datasette.publish.heroku",
-    "datasette.publish.now",
-)
 
 app_root = Path(__file__).parent.parent
 
 connections = threading.local()
-
-pm = pluggy.PluginManager("datasette")
-pm.add_hookspecs(hookspecs)
-pm.load_setuptools_entrypoints("datasette")
-
-# Load default plugins
-for plugin in default_plugins:
-    mod = importlib.import_module(plugin)
-    pm.register(mod, plugin)
 
 
 ConfigOption = collections.namedtuple(

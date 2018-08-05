@@ -231,7 +231,7 @@ def test_database_page(app_client):
             ],
         },
     }, {
-        'columns': ['group', 'having', 'and'],
+        'columns': ['group', 'having', 'and', 'json'],
         'name': 'select',
         'count': 1,
         'hidden': False,
@@ -599,6 +599,7 @@ def test_table_with_reserved_word_name(app_client):
         'group': 'group',
         'having': 'having',
         'and': 'and',
+        'json': '{"href": "http://example.com/", "label":"Example"}'
     }]
 
 

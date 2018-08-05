@@ -223,12 +223,16 @@ def extra_js_urls():
 @hookimpl
 def render_cell(value):
     # Render {"href": "...", "label": "..."} as link
+    if not isinstance(value, str):
+        return None
     stripped = value.strip()
     if not stripped.startswith("{") and stripped.endswith("}"):
         return None
     try:
         data = json.loads(value)
     except ValueError:
+        return None
+    if not isinstance(data, dict):
         return None
     if set(data.keys()) != {"href", "label"}:
         return None
@@ -389,9 +393,12 @@ INSERT INTO "searchable_fts" (rowid, text1, text2, [name with . and spaces])
 CREATE TABLE [select] (
   [group] text,
   [having] text,
-  [and] text
+  [and] text,
+  [json] text
 );
-INSERT INTO [select] VALUES ('group', 'having', 'and');
+INSERT INTO [select] VALUES ('group', 'having', 'and',
+    '{"href": "http://example.com/", "label":"Example"}'
+);
 
 CREATE TABLE infinity (
     value REAL

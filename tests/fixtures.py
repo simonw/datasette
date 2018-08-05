@@ -208,6 +208,8 @@ def extra_js_urls():
 
 PLUGIN2 = '''
 from datasette import hookimpl
+import jinja2
+import json
 
 
 @hookimpl
@@ -216,6 +218,34 @@ def extra_js_urls():
         'url': 'https://example.com/jquery.js',
         'sri': 'SRIHASH',
     }, 'https://example.com/plugin2.js']
+
+
+@hookimpl
+def render_cell(value):
+    # Render {"href": "...", "label": "..."} as link
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped.startswith("{") and stripped.endswith("}"):
+        return None
+    try:
+        data = json.loads(value)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    if set(data.keys()) != {"href", "label"}:
+        return None
+    href = data["href"]
+    if not (
+        href.startswith("/") or href.startswith("http://")
+        or href.startswith("https://")
+    ):
+        return None
+    return jinja2.Markup('<a href="{href}">{label}</a>'.format(
+        href=jinja2.escape(data["href"]),
+        label=jinja2.escape(data["label"] or "") or "&nbsp;"
+    ))
 '''
 
 TABLES = '''
@@ -363,9 +393,12 @@ INSERT INTO "searchable_fts" (rowid, text1, text2, [name with . and spaces])
 CREATE TABLE [select] (
   [group] text,
   [having] text,
-  [and] text
+  [and] text,
+  [json] text
 );
-INSERT INTO [select] VALUES ('group', 'having', 'and');
+INSERT INTO [select] VALUES ('group', 'having', 'and',
+    '{"href": "http://example.com/", "label":"Example"}'
+);
 
 CREATE TABLE infinity (
     value REAL

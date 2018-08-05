@@ -5,6 +5,7 @@ import jinja2
 from sanic.exceptions import NotFound
 from sanic.request import RequestParameters
 
+from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
     Filters,
@@ -22,7 +23,6 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
 )
-
 from .base import BaseView, DatasetteError, ureg
 
 LINK_WITH_LABEL = '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
@@ -166,7 +166,11 @@ class RowTableShared(BaseView):
                     # already shown in the link column.
                     continue
 
-                if isinstance(value, dict):
+                # First let the plugins have a go
+                plugin_display_value = pm.hook.render_cell(value=value)
+                if plugin_display_value is not None:
+                    display_value = plugin_display_value
+                elif isinstance(value, dict):
                     # It's an expanded foreign key - display link to other row
                     label = value["label"]
                     value = value["value"]

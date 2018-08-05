@@ -28,3 +28,8 @@ def extra_js_urls():
 @hookspec
 def publish_subcommand(publish):
     "Subcommands for 'datasette publish'"
+
+
+@hookspec(firstresult=True)
+def render_cell(value):
+    "Customize rendering of HTML table cell values"

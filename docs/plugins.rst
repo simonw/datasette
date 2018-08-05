@@ -267,3 +267,56 @@ command. Datasette uses this hook internally to implement the default ``now``
 and ``heroku`` subcommands, so you can read
 `their source <https://github.com/simonw/datasette/tree/master/datasette/publish>`_
 to see examples of this hook in action.
+
+render_cell(value)
+~~~~~~~~~~~~~~~~~~
+
+Lets you customize the display of values within table cells in the HTML table view.
+
+``value`` is the value that was loaded from the database.
+
+If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
+
+If the hook returns a string, that string will be rendered in the table cell.
+
+If you want to return HTML markup you can do so by returning a ``jinja2.Markup`` object.
+
+Here is an example of a custom ``render_cell()`` plugin which looks for values that are a JSON string matching the following format::
+
+    {"href": "https://www.example.com/", "label": "Name"}
+
+If the value matches that pattern, the plugin returns an HTML link element:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import jinja2
+    import json
+
+
+    @hookimpl
+    def render_cell(value):
+        # Render {"href": "...", "label": "..."} as link
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        if not stripped.startswith("{") and stripped.endswith("}"):
+            return None
+        try:
+            data = json.loads(value)
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        if set(data.keys()) != {"href", "label"}:
+            return None
+        href = data["href"]
+        if not (
+            href.startswith("/") or href.startswith("http://")
+            or href.startswith("https://")
+        ):
+            return None
+        return jinja2.Markup('<a href="{href}">{label}</a>'.format(
+            href=jinja2.escape(data["href"]),
+            label=jinja2.escape(data["label"] or "") or "&nbsp;"
+        ))

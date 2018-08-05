@@ -297,12 +297,16 @@ If the value matches that pattern, the plugin returns an HTML link element:
     @hookimpl
     def render_cell(value):
         # Render {"href": "...", "label": "..."} as link
+        if not isinstance(value, str):
+            return None
         stripped = value.strip()
         if not stripped.startswith("{") and stripped.endswith("}"):
             return None
         try:
             data = json.loads(value)
         except ValueError:
+            return None
+        if not isinstance(data, dict):
             return None
         if set(data.keys()) != {"href", "label"}:
             return None

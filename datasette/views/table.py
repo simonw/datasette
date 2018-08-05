@@ -350,9 +350,13 @@ class TableView(RowTableShared):
 
         # filter_arguments plugin hook support
         for awaitable_fn in pm.hook.table_filter():
+            if awaitable_fn is None:
+                continue
             extras = await awaitable_fn(
                 view=self, name=name, table=table, request=request
             )
+            if extras is None:
+                continue
             human_description_extras.extend(extras.human_description_extras)
             where_clauses.extend(extras.where_clauses)
             params.update(extras.params)

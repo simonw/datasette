@@ -158,6 +158,9 @@ METADATA = {
                 'primary_key_multiple_columns_explicit_label': {
                     'label_column': 'content2',
                 },
+                'simple_view': {
+                    'sortable_columns': ['content'],
+                }
             },
             'queries': {
                 'pragma_cache_size': 'PRAGMA cache_size;',

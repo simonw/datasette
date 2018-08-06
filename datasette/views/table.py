@@ -365,7 +365,8 @@ class TableView(RowTableShared):
         sortable_columns = set()
         if not is_view:
             table_rows_count = table_info["count"]
-            sortable_columns = self.sortable_columns_for_table(name, table, use_rowid)
+
+        sortable_columns = self.sortable_columns_for_table(name, table, use_rowid)
 
         # Allow for custom sort order
         sort = special_args.get("_sort")

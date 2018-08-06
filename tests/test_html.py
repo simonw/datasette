@@ -40,11 +40,6 @@ def test_sql_time_limit(app_client_shorter_time_limit):
     assert expected_html_fragment in response.text
 
 
-def test_view(app_client):
-    response = app_client.get('/fixtures/simple_view')
-    assert response.status == 200
-
-
 def test_row(app_client):
     response = app_client.get(
         '/fixtures/simple_primary_key/1',
@@ -618,25 +613,33 @@ def test_compound_primary_key_with_foreign_key_references(app_client):
 
 
 def test_view_html(app_client):
-    response = app_client.get('/fixtures/simple_view')
+    response = app_client.get("/fixtures/simple_view")
     assert response.status == 200
-    table = Soup(response.body, 'html.parser').find('table')
-    assert [
-        'content', 'upper_content'
-    ] == [th.string.strip() for th in table.select('thead th')]
+    table = Soup(response.body, "html.parser").find("table")
+    ths = table.select("thead th")
+    assert 2 == len(ths)
+    assert ths[0].find("a") is not None
+    assert ths[0].find("a")["href"].endswith("/simple_view?_sort=content")
+    assert ths[0].find("a").string.strip() == "content"
+    assert ths[1].find("a") is None
+    assert ths[1].string.strip() == "upper_content"
     expected = [
         [
             '<td class="col-content">hello</td>',
-            '<td class="col-upper_content">HELLO</td>'
-        ], [
+            '<td class="col-upper_content">HELLO</td>',
+        ],
+        [
             '<td class="col-content">world</td>',
-            '<td class="col-upper_content">WORLD</td>'
-        ], [
+            '<td class="col-upper_content">WORLD</td>',
+        ],
+        [
             '<td class="col-content">\xa0</td>',
-            '<td class="col-upper_content">\xa0</td>'
-        ]
+            '<td class="col-upper_content">\xa0</td>',
+        ],
     ]
-    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+    assert expected == [
+        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
+    ]
 
 
 def test_index_metadata(app_client):

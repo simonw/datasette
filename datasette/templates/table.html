@@ -88,7 +88,7 @@
     </div>
 </form>
 
-{% if query.sql %}
+{% if query.sql and config.allow_sql %}
     <p><a class="not-underlined" title="{{ query.sql }}" href="/{{ database }}-{{ database_hash }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 

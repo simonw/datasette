@@ -713,6 +713,10 @@ def test_allow_sql_on(app_client):
     )
     soup = Soup(response.body, 'html.parser')
     assert len(soup.findAll('textarea', {'name': 'sql'}))
+    response = app_client.get(
+        "/fixtures/sortable"
+    )
+    assert b"View and edit SQL" in response.body
 
 
 def test_allow_sql_off():
@@ -724,6 +728,11 @@ def test_allow_sql_off():
         )
         soup = Soup(response.body, 'html.parser')
         assert not len(soup.findAll('textarea', {'name': 'sql'}))
+        # The table page should no longer show "View and edit SQL"
+        response = client.get(
+            "/fixtures/sortable"
+        )
+        assert b"View and edit SQL" not in response.body
 
 
 def assert_querystring_equal(expected, actual):

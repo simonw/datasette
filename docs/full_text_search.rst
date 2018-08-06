@@ -69,6 +69,30 @@ And then populate it like this:
 
 You can use this technique to populate the full-text search index from any combination of tables and joins that makes sense for your project.
 
+Configuring full-text search for a table or view
+------------------------------------------------
+
+If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown above, Datasette will detect it automatically and add a search interface to the table page for that table.
+
+You can also manually configure which table should be used for full-text search using :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
+
+The ``fts_table`` property can be used to specify an associated FTS table. If the primary key column in your table which was used to populate the FTS table is something other than ``rowid``, you can specify the column to use with the ``fts_pk`` property.
+
+Here is an example which enables full-text search for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key::
+
+    {
+      "databases": {
+        "russian-ads": {
+          "tables": {
+            "display_ads": {
+              "fts_table": "ads_fts",
+              "fts_pk": "id"
+            }
+          }
+        }
+      }
+    }
+
 Setting up full-text search using csvs-to-sqlite
 ------------------------------------------------
 

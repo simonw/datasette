@@ -309,7 +309,10 @@ class TableView(RowTableShared):
         where_clauses, params = filters.build_where_clauses()
 
         # _search support:
-        fts_table = info[name]["tables"].get(table, {}).get("fts_table")
+        fts_table = table_metadata.get(
+            "fts_table", info[name]["tables"].get(table, {}).get("fts_table")
+        )
+        fts_pk = table_metadata.get("fts_pk", "rowid")
         search_args = dict(
             pair for pair in special_args.items() if pair[0].startswith("_search")
         )
@@ -320,8 +323,9 @@ class TableView(RowTableShared):
                 # Simple ?_search=xxx
                 search = search_args["_search"]
                 where_clauses.append(
-                    "rowid in (select rowid from {fts_table} where {fts_table} match :search)".format(
+                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match :search)".format(
                         fts_table=escape_sqlite(fts_table),
+                        fts_pk=escape_sqlite(fts_pk)
                     )
                 )
                 search_descriptions.append('search matches "{}"'.format(search))

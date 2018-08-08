@@ -49,9 +49,9 @@ setup(
     setup_requires=['pytest-runner'],
     extras_require={
         'test': [
-            'pytest==3.6.0',
+            'pytest==3.7.1',
             'aiohttp==3.3.2',
-            'beautifulsoup4==4.6.0',
+            'beautifulsoup4==4.6.1',
         ]
     },
     tests_require=[

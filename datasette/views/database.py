@@ -11,7 +11,7 @@ class DatabaseView(BaseView):
 
     async def data(self, request, name, hash, default_labels=False, _size=None):
         if request.args.get("sql"):
-            if not self.ds.config["allow_sql"]:
+            if not self.ds.config("allow_sql"):
                 raise DatasetteError("sql= is not allowed", status=400)
             sql = request.raw_args.pop("sql")
             validate_sql_select(sql)
@@ -41,7 +41,7 @@ class DatabaseView(BaseView):
 class DatabaseDownload(BaseView):
 
     async def view_get(self, request, name, hash, **kwargs):
-        if not self.ds.config["allow_download"]:
+        if not self.ds.config("allow_download"):
             raise DatasetteError("Database download is forbidden", status=403)
         filepath = self.ds.inspect()[name]["file"]
         return await response.file_stream(

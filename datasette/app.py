@@ -137,14 +137,14 @@ class Datasette:
         self.template_dir = template_dir
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
-        self.config = dict(DEFAULT_CONFIG, **(config or {}))
+        self._config = dict(DEFAULT_CONFIG, **(config or {}))
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
-            max_workers=self.config["num_sql_threads"]
+            max_workers=self.config("num_sql_threads")
         )
-        self.max_returned_rows = self.config["max_returned_rows"]
-        self.sql_time_limit_ms = self.config["sql_time_limit_ms"]
-        self.page_size = self.config["default_page_size"]
+        self.max_returned_rows = self.config("max_returned_rows")
+        self.sql_time_limit_ms = self.config("sql_time_limit_ms")
+        self.page_size = self.config("default_page_size")
         # Execute plugins in constructor, to ensure they are available
         # when the rest of `datasette inspect` executes
         if self.plugins_dir:
@@ -156,6 +156,16 @@ class Datasette:
                 except ValueError:
                     # Plugin already registered
                     pass
+
+    def config(self, key):
+        return self._config.get(key, None)
+
+    def config_dict(self):
+        # Returns a fully resolved config dictionary, useful for templates
+        return {
+            option.name: self.config(option.name)
+            for option in CONFIG_OPTIONS
+        }
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):
@@ -254,8 +264,8 @@ class Datasette:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
                 conn.execute("SELECT load_extension('{}')".format(extension))
-        if self.config["cache_size_kb"]:
-            conn.execute('PRAGMA cache_size=-{}'.format(self.config["cache_size_kb"]))
+        if self.config("cache_size_kb"):
+            conn.execute('PRAGMA cache_size=-{}'.format(self.config("cache_size_kb")))
         pm.hook.prepare_connection(conn=conn)
 
     def table_exists(self, database, table):
@@ -471,7 +481,7 @@ class Datasette:
             "/-/plugins<as_format:(\.json)?$>",
         )
         app.add_route(
-            JsonDataView.as_view(self, "config.json", lambda: self.config),
+            JsonDataView.as_view(self, "config.json", lambda: self._config),
             "/-/config<as_format:(\.json)?$>",
         )
         app.add_route(

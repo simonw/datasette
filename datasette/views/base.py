@@ -149,7 +149,7 @@ class BaseView(RenderMixin):
 
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
-        if url.startswith("http://") and self.ds.config["force_https_urls"]:
+        if url.startswith("http://") and self.ds.config("force_https_urls"):
             url = "https://" + url[len("http://"):]
         return url
 
@@ -167,7 +167,7 @@ class BaseView(RenderMixin):
         stream = request.args.get("_stream")
         if stream:
             # Some quick sanity checks
-            if not self.ds.config["allow_csv_stream"]:
+            if not self.ds.config("allow_csv_stream"):
                 raise DatasetteError("CSV streaming is disabled", status=400)
             if request.args.get("_next"):
                 raise DatasetteError(
@@ -205,7 +205,7 @@ class BaseView(RenderMixin):
 
         async def stream_fn(r):
             nonlocal data
-            writer = csv.writer(LimitedWriter(r, self.ds.config["max_csv_mb"]))
+            writer = csv.writer(LimitedWriter(r, self.ds.config("max_csv_mb")))
             first = True
             next = None
             while first or (next and stream):
@@ -426,7 +426,7 @@ class BaseView(RenderMixin):
                     "extra_css_urls": self.ds.extra_css_urls(),
                     "extra_js_urls": self.ds.extra_js_urls(),
                     "datasette_version": __version__,
-                    "config": self.ds.config,
+                    "config": self.ds.config_dict(),
                 }
             }
             if "metadata" not in context:
@@ -437,7 +437,7 @@ class BaseView(RenderMixin):
         if self.ds.cache_headers:
             ttl = request.args.get("_ttl", None)
             if ttl is None or not ttl.isdigit():
-                ttl = self.ds.config["default_cache_ttl"]
+                ttl = self.ds.config("default_cache_ttl")
             else:
                 ttl = int(ttl)
             if ttl == 0:
@@ -517,7 +517,7 @@ class BaseView(RenderMixin):
                 "editable": editable,
                 "canned_query": canned_query,
                 "metadata": metadata,
-                "config": self.ds.config,
+                "config": self.ds.config_dict(),
             }
 
         return {

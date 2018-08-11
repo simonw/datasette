@@ -513,10 +513,10 @@ class TableView(RowTableShared):
         )
 
         # facets support
-        facet_size = self.ds.config["default_facet_size"]
+        facet_size = self.ds.config("default_facet_size")
         metadata_facets = table_metadata.get("facets", [])
         facets = metadata_facets[:]
-        if request.args.get("_facet") and not self.ds.config["allow_facet"]:
+        if request.args.get("_facet") and not self.ds.config("allow_facet"):
             raise DatasetteError("_facet= is not allowed", status=400)
         try:
             facets.extend(request.args["_facet"])
@@ -541,7 +541,7 @@ class TableView(RowTableShared):
                 facet_rows_results = await self.ds.execute(
                     name, facet_sql, params,
                     truncate=False,
-                    custom_time_limit=self.ds.config["facet_time_limit_ms"],
+                    custom_time_limit=self.ds.config("facet_time_limit_ms"),
                 )
                 facet_results_values = []
                 facet_results[column] = {
@@ -674,13 +674,13 @@ class TableView(RowTableShared):
 
             # Detect suggested facets
             suggested_facets = []
-            if self.ds.config["suggest_facets"] and self.ds.config["allow_facet"]:
+            if self.ds.config("suggest_facets") and self.ds.config("allow_facet"):
                 for facet_column in columns:
                     if facet_column in facets:
                         continue
                     if _next:
                         continue
-                    if not self.ds.config["suggest_facets"]:
+                    if not self.ds.config("suggest_facets"):
                         continue
                     suggested_facet_sql = '''
                         select distinct {column} {from_sql}
@@ -697,7 +697,7 @@ class TableView(RowTableShared):
                         distinct_values = await self.ds.execute(
                             name, suggested_facet_sql, from_sql_params,
                             truncate=False,
-                            custom_time_limit=self.ds.config["facet_suggest_time_limit_ms"],
+                            custom_time_limit=self.ds.config("facet_suggest_time_limit_ms"),
                         )
                         num_distinct_values = len(distinct_values)
                         if (
@@ -735,7 +735,7 @@ class TableView(RowTableShared):
                 results.description,
                 rows,
                 link_column=not is_view,
-                truncate_cells=self.ds.config["truncate_cells_html"],
+                truncate_cells=self.ds.config("truncate_cells_html"),
             )
             metadata = self.ds.metadata.get("databases", {}).get(name, {}).get(
                 "tables", {}

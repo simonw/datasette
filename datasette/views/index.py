@@ -49,7 +49,7 @@ class IndexView(RenderMixin):
             return self.render(
                 ["index.html"],
                 databases=databases,
-                metadata=self.ds.metadata,
+                metadata=self.ds.metadata(),
                 datasette_version=__version__,
                 extra_css_urls=self.ds.extra_css_urls(),
                 extra_js_urls=self.ds.extra_js_urls(),

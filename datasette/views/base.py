@@ -74,7 +74,7 @@ class BaseView(RenderMixin):
 
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."
-        return self.ds.metadata.get("databases", {}).get(database, {}).get(
+        return (self.ds.metadata("databases") or {}).get(database, {}).get(
             "tables", {}
         ).get(
             table, {}
@@ -314,7 +314,7 @@ class BaseView(RenderMixin):
         end = time.time()
         data["query_ms"] = (end - start) * 1000
         for key in ("source", "source_url", "license", "license_url"):
-            value = self.ds.metadata.get(key)
+            value = self.ds.metadata(key)
             if value:
                 data[key] = value
         if _format in ("json", "jsono"):

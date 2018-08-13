@@ -18,7 +18,7 @@ class DatabaseView(BaseView):
             return await self.custom_sql(request, name, hash, sql, _size=_size)
 
         info = self.ds.inspect()[name]
-        metadata = self.ds.metadata.get("databases", {}).get(name, {})
+        metadata = (self.ds.metadata("databases") or {}).get(name, {})
         self.ds.update_with_inherited_metadata(metadata)
         tables = list(info["tables"].values())
         tables.sort(key=lambda t: (t["hidden"], t["name"]))

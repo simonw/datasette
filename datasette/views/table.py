@@ -737,7 +737,7 @@ class TableView(RowTableShared):
                 link_column=not is_view,
                 truncate_cells=self.ds.config("truncate_cells_html"),
             )
-            metadata = self.ds.metadata.get("databases", {}).get(name, {}).get(
+            metadata = (self.ds.metadata("databases") or {}).get(name, {}).get(
                 "tables", {}
             ).get(
                 table, {}
@@ -860,7 +860,9 @@ class RowView(RowTableShared):
                     ),
                     "_rows_and_columns.html",
                 ],
-                "metadata": self.ds.metadata.get("databases", {}).get(name, {}).get(
+                "metadata": (
+                    self.ds.metadata("databases") or {}
+                ).get(name, {}).get(
                     "tables", {}
                 ).get(
                     table, {}

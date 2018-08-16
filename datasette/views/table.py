@@ -1,4 +1,3 @@
-import sqlite3
 import urllib
 
 import jinja2
@@ -19,6 +18,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
     path_with_replaced_args,
+    sqlite3,
     to_css_class,
     urlsafe_components,
     value_as_boolean,

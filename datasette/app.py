@@ -4,7 +4,6 @@ import collections
 import hashlib
 import itertools
 import os
-import sqlite3
 import sys
 import threading
 import traceback
@@ -33,6 +32,7 @@ from .utils import (
     escape_sqlite,
     get_plugins,
     module_from_path,
+    sqlite3,
     sqlite_timelimit,
     to_css_class
 )

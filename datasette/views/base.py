@@ -2,7 +2,6 @@ import asyncio
 import csv
 import json
 import re
-import sqlite3
 import time
 import urllib
 
@@ -25,6 +24,7 @@ from datasette.utils import (
     path_with_format,
     remove_infinites,
     resolve_table_and_format,
+    sqlite3,
     to_css_class,
     value_as_boolean,
 )

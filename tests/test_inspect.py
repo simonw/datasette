@@ -1,7 +1,7 @@
 from datasette.app import Datasette
+from datasette.utils import sqlite3
 import os
 import pytest
-import sqlite3
 import tempfile
 
 

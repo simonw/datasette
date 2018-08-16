@@ -9,12 +9,16 @@ import os
 import pkg_resources
 import re
 import shlex
-import sqlite3
 import tempfile
 import time
 import shutil
 import urllib
 import numbers
+
+try:
+    import pysqlite3 as sqlite3
+except ImportError:
+    import sqlite3
 
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set((

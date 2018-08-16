@@ -1,10 +1,10 @@
 from datasette.app import Datasette
+from datasette.utils import sqlite3
 import itertools
 import json
 import os
 import pytest
 import random
-import sqlite3
 import sys
 import string
 import tempfile

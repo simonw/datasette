@@ -7,7 +7,6 @@ import json
 import os
 import pytest
 from sanic.request import Request
-import sqlite3
 import tempfile
 from unittest.mock import patch
 
@@ -228,7 +227,7 @@ def test_detect_fts():
     CREATE VIRTUAL TABLE "Street_Tree_List_fts" USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content="Street_Tree_List");
     CREATE VIRTUAL TABLE r USING rtree(a, b, c);
     '''
-    conn = sqlite3.connect(':memory:')
+    conn = utils.sqlite3.connect(':memory:')
     conn.executescript(sql)
     assert None is utils.detect_fts(conn, 'Dumb_Table')
     assert None is utils.detect_fts(conn, 'Test_View')

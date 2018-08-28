@@ -37,7 +37,7 @@ from .utils import (
     to_css_class
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
-from .plugins import pm
+from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
@@ -359,7 +359,7 @@ class Datasette:
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
             }
-            for p in get_plugins(pm)
+            for p in get_plugins(pm) if p["name"] not in DEFAULT_PLUGINS
         ]
 
     async def execute(

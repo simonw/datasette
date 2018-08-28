@@ -146,6 +146,12 @@ METADATA = {
                 'simple_primary_key': {
                     'description_html': 'Simple <em>primary</em> key',
                     'title': 'This <em>HTML</em> is escaped',
+                    "plugins": {
+                        "name-of-plugin": {
+                            "depth": "table",
+                            "special": "this-is-simple_primary_key"
+                        }
+                    }
                 },
                 'sortable': {
                     'sortable_columns': [
@@ -199,6 +205,7 @@ METADATA = {
 PLUGIN1 = '''
 from datasette import hookimpl
 import pint
+import json
 
 ureg = pint.UnitRegistry()
 
@@ -226,7 +233,6 @@ def extra_js_urls():
 
 @hookimpl
 def extra_body_script(template, database, table, datasette):
-    import json
     return 'var extra_body_script = {};'.format(
         json.dumps({
             "template": template,
@@ -239,6 +245,23 @@ def extra_body_script(template, database, table, datasette):
             )
         })
     )
+
+
+@hookimpl
+def render_cell(value, column, table, database, datasette):
+    # Render some debug output in cell with value RENDER_CELL_DEMO
+    if value != "RENDER_CELL_DEMO":
+        return None
+    return json.dumps({
+        "column": column,
+        "table": table,
+        "database": database,
+        "config": datasette.plugin_config(
+            "name-of-plugin",
+            database=database,
+            table=table,
+        )
+    })
 '''
 
 PLUGIN2 = '''
@@ -256,7 +279,7 @@ def extra_js_urls():
 
 
 @hookimpl
-def render_cell(value):
+def render_cell(value, database):
     # Render {"href": "...", "label": "..."} as link
     if not isinstance(value, str):
         return None
@@ -277,10 +300,13 @@ def render_cell(value):
         or href.startswith("https://")
     ):
         return None
-    return jinja2.Markup('<a href="{href}">{label}</a>'.format(
-        href=jinja2.escape(data["href"]),
-        label=jinja2.escape(data["label"] or "") or "&nbsp;"
-    ))
+    return jinja2.Markup(
+        '<a data-database="{database}" href="{href}">{label}</a>'.format(
+            database=database,
+            href=jinja2.escape(data["href"]),
+            label=jinja2.escape(data["label"] or "") or "&nbsp;"
+        )
+    )
 '''
 
 TABLES = '''
@@ -487,6 +513,7 @@ VALUES
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');
+INSERT INTO simple_primary_key VALUES (4, 'RENDER_CELL_DEMO');
 
 INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
 INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');

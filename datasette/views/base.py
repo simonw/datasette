@@ -501,10 +501,16 @@ class BaseView(RenderMixin):
             display_rows = []
             for row in results.rows:
                 display_row = []
-                for value in row:
+                for column, value in zip(results.columns, row):
                     display_value = value
                     # Let the plugins have a go
-                    plugin_value = pm.hook.render_cell(value=value)
+                    plugin_value = pm.hook.render_cell(
+                        value=value,
+                        column=column,
+                        table=None,
+                        database=name,
+                        datasette=self.ds,
+                    )
                     if plugin_value is not None:
                         display_value = plugin_value
                     else:

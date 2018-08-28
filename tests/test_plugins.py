@@ -72,7 +72,7 @@ def test_plugins_with_duplicate_js_urls(app_client):
     )
 
 
-def test_plugins_render_cell(app_client):
+def test_plugins_render_cell_link_from_json(app_client):
     sql = """
         select '{"href": "http://example.com/", "label":"Example"}'
     """.strip()
@@ -86,7 +86,23 @@ def test_plugins_render_cell(app_client):
     a = td.find("a")
     assert a is not None, str(a)
     assert a.attrs["href"] == "http://example.com/"
+    assert a.attrs["data-database"] == "fixtures"
     assert a.text == "Example"
+
+
+def test_plugins_render_cell_demo(app_client):
+    response = app_client.get("/fixtures/simple_primary_key?id=4")
+    soup = Soup(response.body, "html.parser")
+    td = soup.find("td", {"class": "col-content"})
+    assert {
+        "column": "content",
+        "table": "simple_primary_key",
+        "database": "fixtures",
+        "config": {
+            "depth": "table",
+            "special": "this-is-simple_primary_key"
+        }
+    } == json.loads(td.string)
 
 
 def test_plugin_config(app_client):
@@ -138,7 +154,7 @@ def test_plugin_config(app_client):
         ),
     ],
 )
-def test_extra_body_script(app_client, path, expected_extra_body_script):
+def test_plugins_extra_body_script(app_client, path, expected_extra_body_script):
     r = re.compile(r"<script>var extra_body_script = (.*?);</script>")
     json_data = r.search(app_client.get(path).body.decode("utf8")).group(1)
     actual_data = json.loads(json_data)

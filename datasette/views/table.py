@@ -167,7 +167,13 @@ class RowTableShared(BaseView):
                     continue
 
                 # First let the plugins have a go
-                plugin_display_value = pm.hook.render_cell(value=value)
+                plugin_display_value = pm.hook.render_cell(
+                    value=value,
+                    column=column,
+                    table=table,
+                    database=database,
+                    datasette=self.ds,
+                )
                 if plugin_display_value is not None:
                     display_value = plugin_display_value
                 elif isinstance(value, dict):

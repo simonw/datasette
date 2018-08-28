@@ -54,6 +54,10 @@ class Results:
         self.truncated = truncated
         self.description = description
 
+    @property
+    def columns(self):
+        return [d[0] for d in self.description]
+
     def __iter__(self):
         return iter(self.rows)
 

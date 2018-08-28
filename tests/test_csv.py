@@ -8,6 +8,7 @@ EXPECTED_TABLE_CSV = '''id,content
 1,hello
 2,world
 3,
+4,RENDER_CELL_DEMO
 '''.replace('\n', '\r\n')
 
 EXPECTED_CUSTOM_CSV = '''content

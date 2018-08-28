@@ -242,7 +242,7 @@ def test_database_page(app_client):
     }, {
         'columns': ['id', 'content'],
         'name': 'simple_primary_key',
-        'count': 3,
+        'count': 4,
         'hidden': False,
         'foreign_keys': {
             'incoming': [{
@@ -383,7 +383,8 @@ def test_custom_sql(app_client):
     assert [
         {'content': 'hello'},
         {'content': 'world'},
-        {'content': ''}
+        {'content': ''},
+        {'content': 'RENDER_CELL_DEMO'}
     ] == data['rows']
     assert ['content'] == data['columns']
     assert 'fixtures' == data['database']
@@ -457,6 +458,9 @@ def test_table_json(app_client):
     }, {
         'id': '3',
         'content': '',
+    }, {
+        'id': '4',
+        'content': 'RENDER_CELL_DEMO',
     }]
 
 
@@ -490,6 +494,7 @@ def test_table_shape_arrays(app_client):
         ['1', 'hello'],
         ['2', 'world'],
         ['3', ''],
+        ['4', 'RENDER_CELL_DEMO'],
     ] == response.json['rows']
 
 
@@ -500,7 +505,7 @@ def test_table_shape_arrayfirst(app_client):
             '_shape': 'arrayfirst'
         })
     )
-    assert ['hello', 'world', ''] == response.json
+    assert ['hello', 'world', '', 'RENDER_CELL_DEMO'] == response.json
 
 
 def test_table_shape_objects(app_client):
@@ -516,6 +521,9 @@ def test_table_shape_objects(app_client):
     }, {
         'id': '3',
         'content': '',
+    }, {
+        'id': '4',
+        'content': 'RENDER_CELL_DEMO',
     }] == response.json['rows']
 
 
@@ -532,6 +540,9 @@ def test_table_shape_array(app_client):
     }, {
         'id': '3',
         'content': '',
+    }, {
+        'id': '4',
+        'content': 'RENDER_CELL_DEMO',
     }] == response.json
 
 
@@ -563,6 +574,10 @@ def test_table_shape_object(app_client):
         '3': {
             'id': '3',
             'content': '',
+        },
+        '4': {
+            'id': '4',
+            'content': 'RENDER_CELL_DEMO',
         }
     } == response.json
 
@@ -826,6 +841,7 @@ def test_searchable_invalid_column(app_client):
     ('/fixtures/simple_primary_key.json?content__contains=o', [
         ['1', 'hello'],
         ['2', 'world'],
+        ['4', 'RENDER_CELL_DEMO'],
     ]),
     ('/fixtures/simple_primary_key.json?content__exact=', [
         ['3', ''],
@@ -833,6 +849,7 @@ def test_searchable_invalid_column(app_client):
     ('/fixtures/simple_primary_key.json?content__not=world', [
         ['1', 'hello'],
         ['3', ''],
+        ['4', 'RENDER_CELL_DEMO'],
     ]),
 ])
 def test_table_filter_queries(app_client, path, expected_rows):
@@ -866,6 +883,9 @@ def test_view(app_client):
     }, {
         'upper_content': '',
         'content': '',
+    }, {
+        'upper_content': 'RENDER_CELL_DEMO',
+        'content': 'RENDER_CELL_DEMO',
     }]
 
 

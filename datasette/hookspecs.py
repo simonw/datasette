@@ -36,5 +36,5 @@ def publish_subcommand(publish):
 
 
 @hookspec(firstresult=True)
-def render_cell(value):
+def render_cell(value, column, table, database, datasette):
     "Customize rendering of HTML table cell values"

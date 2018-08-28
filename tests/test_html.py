@@ -372,7 +372,7 @@ def test_css_classes_on_body(app_client, path, expected_classes):
 
 
 def test_table_html_simple_primary_key(app_client):
-    response = app_client.get('/fixtures/simple_primary_key')
+    response = app_client.get('/fixtures/simple_primary_key?_size=3')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert table['class'] == ['rows-and-columns']
@@ -381,7 +381,7 @@ def test_table_html_simple_primary_key(app_client):
     for expected_col, th in zip(('content',), ths[1:]):
         a = th.find('a')
         assert expected_col == a.string
-        assert a['href'].endswith('/simple_primary_key?_sort={}'.format(
+        assert a['href'].endswith('/simple_primary_key?_size=3&_sort={}'.format(
             expected_col
         ))
         assert ['nofollow'] == a['rel']
@@ -613,13 +613,13 @@ def test_compound_primary_key_with_foreign_key_references(app_client):
 
 
 def test_view_html(app_client):
-    response = app_client.get("/fixtures/simple_view")
+    response = app_client.get("/fixtures/simple_view?_size=3")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     ths = table.select("thead th")
     assert 2 == len(ths)
     assert ths[0].find("a") is not None
-    assert ths[0].find("a")["href"].endswith("/simple_view?_sort=content")
+    assert ths[0].find("a")["href"].endswith("/simple_view?_size=3&_sort=content")
     assert ths[0].find("a").string.strip() == "content"
     assert ths[1].find("a") is None
     assert ths[1].string.strip() == "upper_content"

@@ -217,9 +217,16 @@ Now that ``datasette-cluster-map`` plugin configuration will apply to every tabl
 Plugin hooks
 ------------
 
-Datasette will eventually have many more plugin hooks. You can track and
-contribute to their development in `issue #14
-<https://github.com/simonw/datasette/issues/14>`_.
+When you implement a plugin hook you can accept any or all of the parameters that are documented as being passed to that hook. For example, you can implement a ``render_cell`` plugin hook like this even though the hook definition defines more parameters than just ``value`` and ``column``:
+
+.. code-block:: python
+
+    @hookimpl
+    def render_cell(value, column):
+        if column == "stars":
+            return "*" * int(value)
+
+The full list of available plugin hooks is as follows.
 
 prepare_connection(conn)
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -333,18 +340,33 @@ and ``heroku`` subcommands, so you can read
 `their source <https://github.com/simonw/datasette/tree/master/datasette/publish>`_
 to see examples of this hook in action.
 
-render_cell(value)
-~~~~~~~~~~~~~~~~~~
+render_cell(value, column, table, database, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Lets you customize the display of values within table cells in the HTML table view.
 
-``value`` is the value that was loaded from the database.
+``value`` - string, integer or None
+    The value that was loaded from the database
+
+``column`` - string
+    The name of the column being rendered
+
+``table`` - string
+    The name of the table
+
+``database`` - string
+    The name of the database
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
 
 If the hook returns a string, that string will be rendered in the table cell.
 
 If you want to return HTML markup you can do so by returning a ``jinja2.Markup`` object.
+
+Datasette will loop through all available ``render_cell`` hooks and display the value returned by the first one that does not return ``None``.
 
 Here is an example of a custom ``render_cell()`` plugin which looks for values that are a JSON string matching the following format::
 

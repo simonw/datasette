@@ -53,7 +53,9 @@ def test_plugin_extra_css_urls(app_client, path, expected_decoded_object):
     ][0]["href"]
     # This link has a base64-encoded JSON blob in it
     encoded = special_href.split("/")[3]
-    assert expected_decoded_object == json.loads(base64.b64decode(encoded))
+    assert expected_decoded_object == json.loads(
+        base64.b64decode(encoded).decode("utf8")
+    )
 
 
 def test_plugin_extra_js_urls(app_client):

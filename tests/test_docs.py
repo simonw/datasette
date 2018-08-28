@@ -14,8 +14,8 @@ label_re = re.compile(r'\.\. _([^\s:]+):')
 
 def get_headings(filename, underline="-"):
     content = (docs_path / filename).open().read()
-    heading_re = re.compile(r'(\S+)\n\{}+\n'.format(underline))
-    return set(heading_re.findall(content))
+    heading_re = re.compile(r'(\w+)(\([^)]*\))?\n\{}+\n'.format(underline))
+    return set(h[0] for h in heading_re.findall(content))
 
 
 def get_labels(filename):

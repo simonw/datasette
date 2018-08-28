@@ -85,3 +85,20 @@ def test_plugins_render_cell(app_client):
     assert a is not None, str(a)
     assert a.attrs["href"] == "http://example.com/"
     assert a.text == "Example"
+
+
+def test_plugin_config(app_client):
+    assert {"depth": "table"} == app_client.ds.plugin_config(
+        "name-of-plugin", database="fixtures", table="sortable"
+    )
+    assert {"depth": "database"} == app_client.ds.plugin_config(
+        "name-of-plugin", database="fixtures", table="unknown_table"
+    )
+    assert {"depth": "database"} == app_client.ds.plugin_config(
+        "name-of-plugin", database="fixtures"
+    )
+    assert {"depth": "root"} == app_client.ds.plugin_config(
+        "name-of-plugin", database="unknown_database"
+    )
+    assert {"depth": "root"} == app_client.ds.plugin_config("name-of-plugin")
+    assert None is app_client.ds.plugin_config("unknown-plugin")

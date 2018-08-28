@@ -149,6 +149,71 @@ The priority order for template loading is:
 See :ref:`customization` for more details on how to write custom templates,
 including which filenames to use to customize which parts of the Datasette UI.
 
+Plugin configuration
+--------------------
+
+Plugins can have their own configuration, embedded in a :ref:`metadata` file. Configuration options for plugins live within a ``"plugins"`` key in that file, which can be included at the root, database or table level.
+
+Here is an example of some plugin configuration for a specific table::
+
+    {
+        "databases: {
+            "sf-trees": {
+                "tables": {
+                    "Street_Tree_List": {
+                        "plugins": {
+                            "datasette-cluster-map": {
+                                "latitude_column": "lat",
+                                "longitude_column": "lng"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+This tells the ``datasette-cluster-map`` column which latitude and longitude columns should be used for a table called ``Street_Tree_List`` inside a database file called ``sf-trees.db``.
+
+When you are writing plugins, you can access plugin configuration like this using the ``datasette.plugin_config()`` method. If you know you need plugin configuration for a specific table, you can access it like this::
+
+    plugin_config = datasette.plugin_config(
+        "datasette-cluster-map", database="sf-trees", table="Street_Tree_List"
+    )
+
+This will return the ``{"latitude_column": "lat", "longitude_column": "lng"}`` in the above example.
+
+If it cannot find the requested configuration at the table layer, it will fall back to the database layer and then the root layer. For example, a user may have set the plugin configuration option like so::
+
+    {
+        "databases: {
+            "sf-trees": {
+                "plugins": {
+                    "datasette-cluster-map": {
+                        "latitude_column": "xlat",
+                        "longitude_column": "xlng"
+                    }
+                }
+            }
+        }
+    }
+
+In this case, the above code would return that configuration for ANY table within the ``sf-trees`` database.
+
+The plugin configuration could also be set at the top level of ``metadata.json``::
+
+    {
+        "title": "This is the top-level title in metadata.json",
+        "plugins": {
+            "datasette-cluster-map": {
+                "latitude_column": "xlat",
+                "longitude_column": "xlng"
+            }
+        }
+    }
+
+Now that ``datasette-cluster-map`` plugin configuration will apply to every table in every database.
+
 Plugin hooks
 ------------
 

@@ -170,7 +170,7 @@ class Datasette:
     def metadata(self, key=None, database=None, table=None, fallback=True):
         """
         Looks up metadata, cascading backwards from specified level.
-        Returns None if metadata value is not foundself.
+        Returns None if metadata value is not found.
         """
         assert not (database is None and table is not None), \
             "Cannot call metadata() with table= specified but not database="
@@ -198,6 +198,17 @@ class Datasette:
             for item in search_list:
                 m.update(item)
             return m
+
+    def plugin_config(
+        self, plugin_name, database=None, table=None, fallback=True
+    ):
+        "Return config for plugin, falling back from specified database/table"
+        plugins = self.metadata(
+            "plugins", database=database, table=table, fallback=fallback
+        )
+        if plugins is None:
+            return None
+        return plugins.get(plugin_name)
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):

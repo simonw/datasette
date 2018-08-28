@@ -129,9 +129,19 @@ METADATA = {
     'license_url': 'https://github.com/simonw/datasette/blob/master/LICENSE',
     'source': 'tests/fixtures.py',
     'source_url': 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py',
+    "plugins": {
+        "name-of-plugin": {
+            "depth": "root"
+        }
+    },
     'databases': {
         'fixtures': {
             'description': 'Test tables description',
+            "plugins": {
+                "name-of-plugin": {
+                    "depth": "database"
+                }
+            },
             'tables': {
                 'simple_primary_key': {
                     'description_html': 'Simple <em>primary</em> key',
@@ -143,7 +153,12 @@ METADATA = {
                         'sortable_with_nulls',
                         'sortable_with_nulls_2',
                         'text',
-                    ]
+                    ],
+                    "plugins": {
+                        "name-of-plugin": {
+                            "depth": "table"
+                        }
+                    }
                 },
                 'no_primary_key': {
                     'sortable_columns': [],

@@ -222,6 +222,23 @@ def extra_js_urls():
         'url': 'https://example.com/jquery.js',
         'sri': 'SRIHASH',
     }, 'https://example.com/plugin1.js']
+
+
+@hookimpl
+def extra_body_script(template, database, table, datasette):
+    import json
+    return 'var extra_body_script = {};'.format(
+        json.dumps({
+            "template": template,
+            "database": database,
+            "table": table,
+            "config": datasette.plugin_config(
+                "name-of-plugin",
+                database=database,
+                table=table,
+            )
+        })
+    )
 '''
 
 PLUGIN2 = '''

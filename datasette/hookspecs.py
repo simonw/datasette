@@ -26,6 +26,11 @@ def extra_js_urls():
 
 
 @hookspec
+def extra_body_script(template, database, table, datasette):
+    "Extra JavaScript code to be included in <script> at bottom of body"
+
+
+@hookspec
 def publish_subcommand(publish):
     "Subcommands for 'datasette publish'"
 

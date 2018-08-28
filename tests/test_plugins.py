@@ -2,6 +2,8 @@ from bs4 import BeautifulSoup as Soup
 from .fixtures import ( # noqa
     app_client,
 )
+import json
+import re
 import pytest
 import urllib
 
@@ -102,3 +104,42 @@ def test_plugin_config(app_client):
     )
     assert {"depth": "root"} == app_client.ds.plugin_config("name-of-plugin")
     assert None is app_client.ds.plugin_config("unknown-plugin")
+
+
+@pytest.mark.parametrize(
+    "path,expected_extra_body_script",
+    [
+        (
+            "/",
+            {
+                "template": "index.html",
+                "database": None,
+                "table": None,
+                "config": {"depth": "root"},
+            },
+        ),
+        (
+            "/fixtures/",
+            {
+                "template": "database.html",
+                "database": "fixtures",
+                "table": None,
+                "config": {"depth": "database"},
+            },
+        ),
+        (
+            "/fixtures/sortable",
+            {
+                "template": "table.html",
+                "database": "fixtures",
+                "table": "sortable",
+                "config": {"depth": "table"},
+            },
+        ),
+    ],
+)
+def test_extra_body_script(app_client, path, expected_extra_body_script):
+    r = re.compile(r"<script>var extra_body_script = (.*?);</script>")
+    json_data = r.search(app_client.get(path).body.decode("utf8")).group(1)
+    actual_data = json.loads(json_data)
+    assert expected_extra_body_script == actual_data

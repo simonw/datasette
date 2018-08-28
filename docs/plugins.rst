@@ -385,3 +385,14 @@ If the value matches that pattern, the plugin returns an HTML link element:
             href=jinja2.escape(data["href"]),
             label=jinja2.escape(data["label"] or "") or "&nbsp;"
         ))
+
+extra_body_script(template, database, table, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
+
+The ``template``, ``database`` and ``table`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
+
+The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
+
+The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.

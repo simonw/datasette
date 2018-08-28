@@ -52,6 +52,14 @@ class RenderMixin(HTTPMethodView):
             "{}{}".format("*" if template_name == template.name else "", template_name)
             for template_name in templates
         ]
+        body_scripts = []
+        for script in pm.hook.extra_body_script(
+            template=template.name,
+            database=context.get("database"),
+            table=context.get("table"),
+            datasette=self.ds
+        ):
+            body_scripts.append(jinja2.Markup(script))
         return response.html(
             template.render(
                 {
@@ -60,6 +68,7 @@ class RenderMixin(HTTPMethodView):
                         "app_css_hash": self.ds.app_css_hash(),
                         "select_templates": select_templates,
                         "zip": zip,
+                        "body_scripts": body_scripts,
                     }
                 }
             )

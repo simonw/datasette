@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup as Soup
 from .fixtures import ( # noqa
     app_client,
 )
+import base64
 import json
 import re
 import pytest
@@ -15,16 +16,44 @@ def test_plugins_dir_plugin(app_client):
     assert pytest.approx(328.0839) == response.json['rows'][0][0]
 
 
-def test_plugin_extra_css_urls(app_client):
-    response = app_client.get('/')
+@pytest.mark.parametrize(
+    "path,expected_decoded_object",
+    [
+        (
+            "/",
+            {
+                "template": "index.html",
+                "database": None,
+                "table": None,
+            },
+        ),
+        (
+            "/fixtures/",
+            {
+                "template": "database.html",
+                "database": "fixtures",
+                "table": None,
+            },
+        ),
+        (
+            "/fixtures/sortable",
+            {
+                "template": "table.html",
+                "database": "fixtures",
+                "table": "sortable",
+            },
+        ),
+    ],
+)
+def test_plugin_extra_css_urls(app_client, path, expected_decoded_object):
+    response = app_client.get(path)
     links = Soup(response.body, 'html.parser').findAll('link')
-    assert [
-        l for l in links
-        if l.attrs == {
-            'rel': ['stylesheet'],
-            'href': 'https://example.com/app.css'
-        }
-    ]
+    special_href = [
+        l for l in links if l.attrs["href"].endswith("/extra-css-urls-demo.css")
+    ][0]["href"]
+    # This link has a base64-encoded JSON blob in it
+    encoded = special_href.split("/")[3]
+    assert expected_decoded_object == json.loads(base64.b64decode(encoded))
 
 
 def test_plugin_extra_js_urls(app_client):

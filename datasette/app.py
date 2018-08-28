@@ -2,7 +2,6 @@ import asyncio
 import click
 import collections
 import hashlib
-import itertools
 import os
 import sys
 import threading
@@ -257,33 +256,6 @@ class Datasette:
 
     def get_view_definition(self, database_name, view):
         return self.get_table_definition(database_name, view, 'view')
-
-    def asset_urls(self, key):
-        # Flatten list-of-lists from plugins:
-        seen_urls = set()
-        for url_or_dict in itertools.chain(
-            itertools.chain.from_iterable(getattr(pm.hook, key)()),
-            (self.metadata(key) or [])
-        ):
-            if isinstance(url_or_dict, dict):
-                url = url_or_dict["url"]
-                sri = url_or_dict.get("sri")
-            else:
-                url = url_or_dict
-                sri = None
-            if url in seen_urls:
-                continue
-            seen_urls.add(url)
-            if sri:
-                yield {"url": url, "sri": sri}
-            else:
-                yield {"url": url}
-
-    def extra_css_urls(self):
-        return self.asset_urls("extra_css_urls")
-
-    def extra_js_urls(self):
-        return self.asset_urls("extra_js_urls")
 
     def update_with_inherited_metadata(self, metadata):
         # Fills in source/license with defaults, if available

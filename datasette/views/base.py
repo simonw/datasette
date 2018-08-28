@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import itertools
 import json
 import re
 import time
@@ -46,6 +47,32 @@ class DatasetteError(Exception):
 
 class RenderMixin(HTTPMethodView):
 
+    def _asset_urls(self, key, template, context):
+        # Flatten list-of-lists from plugins:
+        seen_urls = set()
+        for url_or_dict in itertools.chain(
+            itertools.chain.from_iterable(getattr(pm.hook, key)(
+                template=template.name,
+                database=context.get("database"),
+                table=context.get("table"),
+                datasette=self.ds
+            )),
+            (self.ds.metadata(key) or [])
+        ):
+            if isinstance(url_or_dict, dict):
+                url = url_or_dict["url"]
+                sri = url_or_dict.get("sri")
+            else:
+                url = url_or_dict
+                sri = None
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            if sri:
+                yield {"url": url, "sri": sri}
+            else:
+                yield {"url": url}
+
     def render(self, templates, **context):
         template = self.ds.jinja_env.select_template(templates)
         select_templates = [
@@ -69,6 +96,12 @@ class RenderMixin(HTTPMethodView):
                         "select_templates": select_templates,
                         "zip": zip,
                         "body_scripts": body_scripts,
+                        "extra_css_urls": self._asset_urls(
+                            "extra_css_urls", template, context
+                        ),
+                        "extra_js_urls": self._asset_urls(
+                            "extra_js_urls", template, context
+                        ),
                     }
                 }
             )
@@ -432,8 +465,6 @@ class BaseView(RenderMixin):
                     "url_csv": url_csv,
                     "url_csv_path": url_csv_path,
                     "url_csv_args": url_csv_args,
-                    "extra_css_urls": self.ds.extra_css_urls(),
-                    "extra_js_urls": self.ds.extra_js_urls(),
                     "datasette_version": __version__,
                     "config": self.ds.config_dict(),
                 }

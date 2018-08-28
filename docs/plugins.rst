@@ -231,6 +231,9 @@ The full list of available plugin hooks is as follows.
 prepare_connection(conn)
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
+``conn`` - sqlite3 connection object
+    The connection that is being opened
+
 This hook is called when a new SQLite database connection is created. You can
 use it to `register custom SQL functions <https://docs.python.org/2/library/sqlite3.html#sqlite3.Connection.create_function>`_,
 aggregates and collations. For example:
@@ -252,6 +255,9 @@ arguments and can be called like this::
 prepare_jinja2_environment(env)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+``env`` - jinja2 Environment
+    The template environment that is being prepared
+
 This hook is called with the Jinja2 environment that is used to evaluate
 Datasette HTML templates. You can use it to do things like `register custom
 template filters <http://jinja.pocoo.org/docs/2.10/api/#custom-filters>`_, for
@@ -269,10 +275,22 @@ You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
 
-extra_css_urls()
-~~~~~~~~~~~~~~~~
+extra_css_urls(template, database, table, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Return a list of extra CSS URLs that should be included on every page. These can
+``template`` - string
+    The template that is being rendered, e.g. ``database.html``
+
+``database`` - string or None
+    The name of the database
+
+``table`` - string or None
+    The name of the table
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+Return a list of extra CSS URLs that should be included on the page. These can
 take advantage of the CSS class hooks described in :ref:`customization`.
 
 This can be a list of URLs:
@@ -301,8 +319,10 @@ Or a list of dictionaries defining both a URL and an
             'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
         }]
 
-extra_js_urls()
-~~~~~~~~~~~~~~~
+extra_js_urls(template, database, table, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Same arguments as ``extra_css_urls``.
 
 This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
 return either a list of URLs or a list of dictionaries:
@@ -334,6 +354,9 @@ you have one:
 publish_subcommand(publish)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+``publish`` - Click publish command group
+    The Click command group for the ``datasette publish`` subcommand
+
 This hook allows you to create new providers for the ``datasette publish``
 command. Datasette uses this hook internally to implement the default ``now``
 and ``heroku`` subcommands, so you can read
@@ -351,8 +374,8 @@ Lets you customize the display of values within table cells in the HTML table vi
 ``column`` - string
     The name of the column being rendered
 
-``table`` - string
-    The name of the table
+``table`` - string or None
+    The name of the table - or ``None`` if this is a custom SQL query
 
 ``database`` - string
     The name of the database
@@ -410,6 +433,18 @@ If the value matches that pattern, the plugin returns an HTML link element:
 
 extra_body_script(template, database, table, datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``template`` - string
+    The template that is being rendered, e.g. ``database.html``
+
+``database`` - string or None
+    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
+
+``table`` - string or None
+    The name of the table, or ``None`` if the page does not correct to a table
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
 

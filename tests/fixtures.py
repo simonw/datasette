@@ -204,6 +204,7 @@ METADATA = {
 
 PLUGIN1 = '''
 from datasette import hookimpl
+import base64
 import pint
 import json
 
@@ -219,8 +220,14 @@ def prepare_connection(conn):
 
 
 @hookimpl
-def extra_css_urls():
-    return ['https://example.com/app.css']
+def extra_css_urls(template, database, table, datasette):
+    return ['https://example.com/{}/extra-css-urls-demo.css'.format(
+        base64.b64encode(json.dumps({
+            "template": template,
+            "database": database,
+            "table": table,
+        }).encode("utf8")).decode("utf8")
+    )]
 
 
 @hookimpl

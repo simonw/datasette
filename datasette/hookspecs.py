@@ -16,12 +16,12 @@ def prepare_jinja2_environment(env):
 
 
 @hookspec
-def extra_css_urls():
+def extra_css_urls(template, database, table, datasette):
     "Extra CSS URLs added by this plugin"
 
 
 @hookspec
-def extra_js_urls():
+def extra_js_urls(template, database, table, datasette):
     "Extra JavaScript URLs added by this plugin"
 
 

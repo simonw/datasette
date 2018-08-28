@@ -363,6 +363,43 @@ and ``heroku`` subcommands, so you can read
 `their source <https://github.com/simonw/datasette/tree/master/datasette/publish>`_
 to see examples of this hook in action.
 
+Let's say you want to build a plugin that adds a ``datasette publish my_hosting_provider --api_key=xxx mydatabase.db`` publish command. Your implementation would start like this:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.common import add_common_publish_arguments_and_options
+    import click
+
+
+    @hookimpl
+    def publish_subcommand(publish):
+        @publish.command()
+        @add_common_publish_arguments_and_options
+        @click.option(
+            "-k",
+            "--api_key",
+            help="API key for talking to my hosting provider",
+        )
+        def my_hosting_provider(
+            files,
+            metadata,
+            extra_options,
+            branch,
+            template_dir,
+            plugins_dir,
+            static,
+            install,
+            version_note,
+            title,
+            license,
+            license_url,
+            source,
+            source_url,
+            api_key,
+        ):
+            # Your implementation goes here
+
 render_cell(value, column, table, database, datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

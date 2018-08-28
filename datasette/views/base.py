@@ -166,13 +166,13 @@ class BaseView(RenderMixin):
         assert NotImplemented
 
     async def get(self, request, db_name, **kwargs):
-        name, hash, should_redirect = self.resolve_db_name(db_name, **kwargs)
+        database, hash, should_redirect = self.resolve_db_name(db_name, **kwargs)
         if should_redirect:
             return self.redirect(request, should_redirect)
 
-        return await self.view_get(request, name, hash, **kwargs)
+        return await self.view_get(request, database, hash, **kwargs)
 
-    async def as_csv(self, request, name, hash, **kwargs):
+    async def as_csv(self, request, database, hash, **kwargs):
         stream = request.args.get("_stream")
         if stream:
             # Some quick sanity checks
@@ -186,7 +186,7 @@ class BaseView(RenderMixin):
         # Fetch the first page
         try:
             response_or_template_contexts = await self.data(
-                request, name, hash, **kwargs
+                request, database, hash, **kwargs
             )
             if isinstance(response_or_template_contexts, response.HTTPResponse):
                 return response_or_template_contexts
@@ -223,7 +223,7 @@ class BaseView(RenderMixin):
                         kwargs["_next"] = next
                     if not first:
                         data, extra_template_data, templates = await self.data(
-                            request, name, hash, **kwargs
+                            request, database, hash, **kwargs
                         )
                     if first:
                         writer.writerow(headings)
@@ -255,7 +255,7 @@ class BaseView(RenderMixin):
         if request.args.get("_dl", None):
             content_type = "text/csv; charset=utf-8"
             disposition = 'attachment; filename="{}.csv"'.format(
-                kwargs.get('table', name)
+                kwargs.get('table', database)
             )
             headers["Content-Disposition"] = disposition
 
@@ -265,7 +265,7 @@ class BaseView(RenderMixin):
             content_type=content_type
         )
 
-    async def view_get(self, request, name, hash, **kwargs):
+    async def view_get(self, request, database, hash, **kwargs):
         # If ?_format= is provided, use that as the format
         _format = request.args.get("_format", None)
         if not _format:
@@ -275,7 +275,7 @@ class BaseView(RenderMixin):
                 table_and_format=urllib.parse.unquote_plus(
                     kwargs["table_and_format"]
                 ),
-                table_exists=lambda t: self.ds.table_exists(name, t)
+                table_exists=lambda t: self.ds.table_exists(database, t)
             )
             _format = _format or _ext_format
             kwargs["table"] = table
@@ -286,7 +286,7 @@ class BaseView(RenderMixin):
             )
 
         if _format == "csv":
-            return await self.as_csv(request, name, hash, **kwargs)
+            return await self.as_csv(request, database, hash, **kwargs)
 
         if _format is None:
             # HTML views default to expanding all forign key labels
@@ -298,7 +298,7 @@ class BaseView(RenderMixin):
         templates = []
         try:
             response_or_template_contexts = await self.data(
-                request, name, hash, **kwargs
+                request, database, hash, **kwargs
             )
             if isinstance(response_or_template_contexts, response.HTTPResponse):
                 return response_or_template_contexts
@@ -381,7 +381,7 @@ class BaseView(RenderMixin):
                         data = {
                             "ok": False,
                             "error": error,
-                            "database": name,
+                            "database": database,
                             "database_hash": hash,
                         }
                 elif shape == "array":
@@ -458,7 +458,7 @@ class BaseView(RenderMixin):
         return r
 
     async def custom_sql(
-        self, request, name, hash, sql, editable=True, canned_query=None,
+        self, request, database, hash, sql, editable=True, canned_query=None,
         metadata=None, _size=None
     ):
         params = request.raw_args
@@ -484,16 +484,16 @@ class BaseView(RenderMixin):
         if _size:
             extra_args["page_size"] = _size
         results = await self.ds.execute(
-            name, sql, params, truncate=True, **extra_args
+            database, sql, params, truncate=True, **extra_args
         )
         columns = [r[0] for r in results.description]
 
-        templates = ["query-{}.html".format(to_css_class(name)), "query.html"]
+        templates = ["query-{}.html".format(to_css_class(database)), "query.html"]
         if canned_query:
             templates.insert(
                 0,
                 "query-{}-{}.html".format(
-                    to_css_class(name), to_css_class(canned_query)
+                    to_css_class(database), to_css_class(canned_query)
                 ),
             )
 
@@ -508,7 +508,7 @@ class BaseView(RenderMixin):
                         value=value,
                         column=column,
                         table=None,
-                        database=name,
+                        database=database,
                         datasette=self.ds,
                     )
                     if plugin_value is not None:
@@ -536,7 +536,7 @@ class BaseView(RenderMixin):
             }
 
         return {
-            "database": name,
+            "database": database,
             "rows": results.rows,
             "truncated": results.truncated,
             "columns": columns,

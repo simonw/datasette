@@ -77,7 +77,7 @@ def publish_subcommand(publish):
             app_name = None
             if name:
                 # Check to see if this app already exists
-                list_output = check_output(["heroku", "apps:list", "--json"]).decode(
+                list_output = check_output(["heroku", "apps:list", "-A", "--json"]).decode(
                     "utf8"
                 )
                 apps = json.loads(list_output)

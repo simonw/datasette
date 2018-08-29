@@ -26,7 +26,7 @@ def test_publish_heroku_installs_plugin(mock_call, mock_check_output, mock_which
         result = runner.invoke(cli.cli, ["publish", "heroku", "t.db"], input="y\n")
         assert -1 == result.exit_code
     mock_check_output.assert_has_calls(
-        [mock.call(["heroku", "plugins"]), mock.call(["heroku", "apps:list", "--json"])]
+        [mock.call(["heroku", "plugins"]), mock.call(["heroku", "apps:list", "-A", "--json"])]
     )
     mock_call.assert_has_calls(
         [mock.call(["heroku", "plugins:install", "heroku-builds"])]
@@ -49,7 +49,7 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
     mock_which.return_varue = True
     mock_check_output.side_effect = lambda s: {
         "['heroku', 'plugins']": b"heroku-builds",
-        "['heroku', 'apps:list', '--json']": b"[]",
+        "['heroku', 'apps:list', '-A', '--json']": b"[]",
         "['heroku', 'apps:create', 'datasette', '--json']": b'{"name": "f"}',
     }[repr(s)]
     runner = CliRunner()

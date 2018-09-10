@@ -1,10 +1,8 @@
 import asyncio
+import click
 import collections
 import hashlib
-import itertools
-import json
 import os
-import sqlite3
 import sys
 import threading
 import traceback
@@ -12,21 +10,20 @@ import urllib.parse
 from concurrent import futures
 from pathlib import Path
 
-import pluggy
+from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from sanic import Sanic, response
 from sanic.exceptions import InvalidUsage, NotFound
 
 from .views.base import (
     DatasetteError,
-    RenderMixin,
     ureg
 )
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
+from .views.special import JsonDataView
 from .views.table import RowView, TableView
 
-from . import hookspecs
 from .utils import (
     InterruptedError,
     Results,
@@ -34,10 +31,12 @@ from .utils import (
     escape_sqlite,
     get_plugins,
     module_from_path,
+    sqlite3,
     sqlite_timelimit,
     to_css_class
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
+from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
@@ -92,33 +91,26 @@ CONFIG_OPTIONS = (
     ConfigOption("default_cache_ttl", 365 * 24 * 60 * 60, """
         Default HTTP cache TTL (used in Cache-Control: max-age= header)
     """.strip()),
+    ConfigOption("cache_size_kb", 0, """
+        SQLite cache size in KB (0 == use SQLite default)
+    """.strip()),
+    ConfigOption("allow_csv_stream", True, """
+        Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)
+    """.strip()),
+    ConfigOption("max_csv_mb", 100, """
+        Maximum size allowed for CSV export in MB - set 0 to disable this limit
+    """.strip()),
+    ConfigOption("truncate_cells_html", 2048, """
+        Truncate cells longer than this in HTML table view - set 0 to disable
+    """.strip()),
+    ConfigOption("force_https_urls", False, """
+        Force URLs in API output to always use https:// protocol
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default
     for option in CONFIG_OPTIONS
 }
-
-
-class JsonDataView(RenderMixin):
-
-    def __init__(self, datasette, filename, data_callback):
-        self.ds = datasette
-        self.jinja_env = datasette.jinja_env
-        self.filename = filename
-        self.data_callback = data_callback
-
-    async def get(self, request, as_json):
-        data = self.data_callback()
-        if as_json:
-            headers = {}
-            if self.ds.cors:
-                headers["Access-Control-Allow-Origin"] = "*"
-            return response.HTTPResponse(
-                json.dumps(data), content_type="application/json", headers=headers
-            )
-
-        else:
-            return self.render(["show_json.html"], filename=self.filename, data=data)
 
 
 async def favicon(request):
@@ -139,24 +131,26 @@ class Datasette:
         plugins_dir=None,
         static_mounts=None,
         config=None,
+        version_note=None,
     ):
         self.files = files
         self.cache_headers = cache_headers
         self.cors = cors
         self._inspect = inspect_data
-        self.metadata = metadata or {}
+        self._metadata = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []
         self.template_dir = template_dir
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
-        self.config = dict(DEFAULT_CONFIG, **(config or {}))
+        self._config = dict(DEFAULT_CONFIG, **(config or {}))
+        self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
-            max_workers=self.config["num_sql_threads"]
+            max_workers=self.config("num_sql_threads")
         )
-        self.max_returned_rows = self.config["max_returned_rows"]
-        self.sql_time_limit_ms = self.config["sql_time_limit_ms"]
-        self.page_size = self.config["default_page_size"]
+        self.max_returned_rows = self.config("max_returned_rows")
+        self.sql_time_limit_ms = self.config("sql_time_limit_ms")
+        self.page_size = self.config("default_page_size")
         # Execute plugins in constructor, to ensure they are available
         # when the rest of `datasette inspect` executes
         if self.plugins_dir:
@@ -168,6 +162,59 @@ class Datasette:
                 except ValueError:
                     # Plugin already registered
                     pass
+
+    def config(self, key):
+        return self._config.get(key, None)
+
+    def config_dict(self):
+        # Returns a fully resolved config dictionary, useful for templates
+        return {
+            option.name: self.config(option.name)
+            for option in CONFIG_OPTIONS
+        }
+
+    def metadata(self, key=None, database=None, table=None, fallback=True):
+        """
+        Looks up metadata, cascading backwards from specified level.
+        Returns None if metadata value is not found.
+        """
+        assert not (database is None and table is not None), \
+            "Cannot call metadata() with table= specified but not database="
+        databases = self._metadata.get("databases") or {}
+        search_list = []
+        if database is not None:
+            search_list.append(databases.get(database) or {})
+        if table is not None:
+            table_metadata = (
+                (databases.get(database) or {}).get("tables") or {}
+            ).get(table) or {}
+            search_list.insert(0, table_metadata)
+        search_list.append(self._metadata)
+        if not fallback:
+            # No fallback allowed, so just use the first one in the list
+            search_list = search_list[:1]
+        if key is not None:
+            for item in search_list:
+                if key in item:
+                    return item[key]
+            return None
+        else:
+            # Return the merged list
+            m = {}
+            for item in search_list:
+                m.update(item)
+            return m
+
+    def plugin_config(
+        self, plugin_name, database=None, table=None, fallback=True
+    ):
+        "Return config for plugin, falling back from specified database/table"
+        plugins = self.metadata(
+            "plugins", database=database, table=table, fallback=fallback
+        )
+        if plugins is None:
+            return None
+        return plugins.get(plugin_name)
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):
@@ -182,42 +229,51 @@ class Datasette:
             ]
         return self._app_css_hash
 
+    def get_canned_queries(self, database_name):
+        queries = self.metadata(
+            "queries", database=database_name, fallback=False
+        ) or {}
+        names = queries.keys()
+        return [
+            self.get_canned_query(database_name, name) for name in names
+        ]
+
     def get_canned_query(self, database_name, query_name):
-        query = self.metadata.get("databases", {}).get(database_name, {}).get(
-            "queries", {}
-        ).get(
-            query_name
-        )
+        queries = self.metadata(
+            "queries", database=database_name, fallback=False
+        ) or {}
+        query = queries.get(query_name)
         if query:
-            return {"name": query_name, "sql": query}
+            if not isinstance(query, dict):
+                query = {"sql": query}
+            query["name"] = query_name
+            return query
 
-    def asset_urls(self, key):
-        urls_or_dicts = (self.metadata.get(key) or [])
-        # Flatten list-of-lists from plugins:
-        urls_or_dicts += list(itertools.chain.from_iterable(getattr(pm.hook, key)()))
-        for url_or_dict in urls_or_dicts:
-            if isinstance(url_or_dict, dict):
-                yield {"url": url_or_dict["url"], "sri": url_or_dict.get("sri")}
+    async def get_table_definition(self, database_name, table, type_="table"):
+        table_definition_rows = list(
+            await self.execute(
+                database_name,
+                'select sql from sqlite_master where name = :n and type=:t',
+                {"n": table, "t": type_},
+            )
+        )
+        if not table_definition_rows:
+            return None
+        return table_definition_rows[0][0]
 
-            else:
-                yield {"url": url_or_dict}
-
-    def extra_css_urls(self):
-        return self.asset_urls("extra_css_urls")
-
-    def extra_js_urls(self):
-        return self.asset_urls("extra_js_urls")
+    def get_view_definition(self, database_name, view):
+        return self.get_table_definition(database_name, view, 'view')
 
     def update_with_inherited_metadata(self, metadata):
         # Fills in source/license with defaults, if available
         metadata.update(
             {
-                "source": metadata.get("source") or self.metadata.get("source"),
+                "source": metadata.get("source") or self.metadata("source"),
                 "source_url": metadata.get("source_url")
-                or self.metadata.get("source_url"),
-                "license": metadata.get("license") or self.metadata.get("license"),
+                or self.metadata("source_url"),
+                "license": metadata.get("license") or self.metadata("license"),
                 "license_url": metadata.get("license_url")
-                or self.metadata.get("license_url"),
+                or self.metadata("license_url"),
             }
         )
 
@@ -230,6 +286,8 @@ class Datasette:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
                 conn.execute("SELECT load_extension('{}')".format(extension))
+        if self.config("cache_size_kb"):
+            conn.execute('PRAGMA cache_size=-{}'.format(self.config("cache_size_kb")))
         pm.hook.prepare_connection(conn=conn)
 
     def _is_sqlite3_file(self, path):
@@ -241,6 +299,9 @@ class Datasette:
             return True
         except:
             return False
+
+    def table_exists(self, database, table):
+        return table in self.inspect().get(database, {}).get("tables")
 
     def inspect(self):
         " Inspect the database and return a dictionary of table metadata "
@@ -266,22 +327,32 @@ class Datasette:
                 }
                 continue
 
-            with sqlite3.connect(
-                "file:{}?immutable=1".format(path), uri=True
-            ) as conn:
-                self.prepare_connection(conn)
-                self._inspect[name] = {
-                    "hash": inspect_hash(path),
-                    "file": str(path),
-                    "dbtype": "sqlite3",
-                    "views": inspect_views(conn),
-                    "tables": inspect_tables(conn, self.metadata.get("databases", {}).get(name, {}))
-                }
+            try:
+                with sqlite3.connect(
+                    "file:{}?immutable=1".format(path), uri=True
+                ) as conn:
+                    self.prepare_connection(conn)
+                    self._inspect[name] = {
+                        "hash": inspect_hash(path),
+                        "file": str(path),
+                        "dbtype": "sqlite3",
+                        "views": inspect_views(conn),
+                        "tables": inspect_tables(conn, (self.metadata("databases") or {}).get(name, {}))
+                    }
+            except sqlite3.OperationalError as e:
+                if (e.args[0] == 'no such module: VirtualSpatialIndex'):
+                    raise click.UsageError(
+                        "It looks like you're trying to load a SpatiaLite"
+                        " database without first loading the SpatiaLite module."
+                        "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+                    )
+                else:
+                    raise
         return self._inspect
 
     def register_custom_units(self):
         "Register any custom units defined in the metadata.json with Pint"
-        for unit in self.metadata.get("custom_units", []):
+        for unit in self.metadata("custom_units") or []:
             ureg.define(unit)
 
     def versions(self):
@@ -311,12 +382,14 @@ class Datasette:
                 fts_versions.append(fts)
             except sqlite3.OperationalError:
                 continue
-
+        datasette_version = {"version": __version__}
+        if self.version_note:
+            datasette_version["note"] = self.version_note
         return {
             "python": {
                 "version": ".".join(map(str, sys.version_info[:3])), "full": sys.version
             },
-            "datasette": {"version": __version__},
+            "datasette": datasette_version,
             "sqlite": {
                 "version": sqlite_version,
                 "fts_versions": fts_versions,
@@ -332,7 +405,7 @@ class Datasette:
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
             }
-            for p in get_plugins(pm)
+            for p in get_plugins(pm) if p["name"] not in DEFAULT_PLUGINS
         ]
 
     async def execute(
@@ -439,7 +512,7 @@ class Datasette:
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
-        app.add_route(IndexView.as_view(self), "/<as_json:(\.jsono?)?$>")
+        app.add_route(IndexView.as_view(self), "/<as_format:(\.jsono?)?$>")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, "/favicon.ico")
         app.static("/-/static/", str(app_root / "datasette" / "static"))
@@ -452,44 +525,52 @@ class Datasette:
                 app.static(modpath, plugin["static_path"])
         app.add_route(
             JsonDataView.as_view(self, "inspect.json", self.inspect),
-            "/-/inspect<as_json:(\.json)?$>",
+            "/-/inspect<as_format:(\.json)?$>",
         )
         app.add_route(
-            JsonDataView.as_view(self, "metadata.json", lambda: self.metadata),
-            "/-/metadata<as_json:(\.json)?$>",
+            JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
+            "/-/metadata<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "versions.json", self.versions),
-            "/-/versions<as_json:(\.json)?$>",
+            "/-/versions<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "plugins.json", self.plugins),
-            "/-/plugins<as_json:(\.json)?$>",
+            "/-/plugins<as_format:(\.json)?$>",
         )
         app.add_route(
-            JsonDataView.as_view(self, "config.json", lambda: self.config),
-            "/-/config<as_json:(\.json)?$>",
-        )
-        app.add_route(
-            DatabaseView.as_view(self), "/<db_name:[^/\.]+?><as_json:(\.jsono?)?$>"
+            JsonDataView.as_view(self, "config.json", lambda: self._config),
+            "/-/config<as_format:(\.json)?$>",
         )
         app.add_route(
             DatabaseDownload.as_view(self), "/<db_name:[^/]+?><as_db:(\.db)$>"
         )
         app.add_route(
+            DatabaseView.as_view(self), "/<db_name:[^/]+?><as_format:(\.jsono?|\.csv)?$>"
+        )
+        app.add_route(
             TableView.as_view(self),
-            "/<db_name:[^/]+>/<table:[^/]+?><as_json:(\.jsono?)?$>",
+            "/<db_name:[^/]+>/<table_and_format:[^/]+?$>",
         )
         app.add_route(
             RowView.as_view(self),
-            "/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_json:(\.jsono?)?$>",
+            "/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(\.jsono?)?$>",
         )
-
         self.register_custom_units()
+        # On 404 with a trailing slash redirect to path without that slash:
+        @app.middleware("response")
+        def redirect_on_404_with_trailing_slash(request, original_response):
+            if original_response.status == 404 and request.path.endswith("/"):
+                path = request.path.rstrip("/")
+                if request.query_string:
+                    path = "{}?{}".format(path, request.query_string)
+                return response.redirect(path)
 
         @app.exception(Exception)
         def on_exception(request, exception):
             title = None
+            help = None
             if isinstance(exception, NotFound):
                 status = 404
                 info = {}
@@ -502,6 +583,8 @@ class Datasette:
                 status = exception.status
                 info = exception.error_dict
                 message = exception.message
+                if exception.messagge_is_html:
+                    message = Markup(message)
                 title = exception.title
             else:
                 status = 500
@@ -514,7 +597,7 @@ class Datasette:
             info.update(
                 {"ok": False, "error": message, "status": status, "title": title}
             )
-            if request.path.split("?")[0].endswith(".json"):
+            if request is not None and request.path.split("?")[0].endswith(".json"):
                 return response.json(info, status=status)
 
             else:

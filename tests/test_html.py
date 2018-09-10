@@ -1,49 +1,101 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client
+from .fixtures import ( # noqa
+    app_client,
+    app_client_shorter_time_limit,
+)
 import pytest
 import re
 import urllib.parse
 
-pytest.fixture(scope='module')(app_client)
-
 
 def test_homepage(app_client):
-    response = app_client.get('/', gather_request=False)
+    response = app_client.get('/')
     assert response.status == 200
-    assert 'test_tables' in response.text
+    assert 'fixtures' in response.text
 
 
 def test_database_page(app_client):
-    response = app_client.get('/test_tables', allow_redirects=False, gather_request=False)
+    response = app_client.get('/fixtures', allow_redirects=False)
     assert response.status == 302
-    response = app_client.get('/test_tables', gather_request=False)
-    assert 'test_tables' in response.text
+    response = app_client.get('/fixtures')
+    assert 'fixtures' in response.text
 
 
 def test_invalid_custom_sql(app_client):
     response = app_client.get(
-        '/test_tables?sql=.schema',
-        gather_request=False
+        '/fixtures?sql=.schema'
     )
     assert response.status == 400
     assert 'Statement must be a SELECT' in response.text
 
 
-def test_view(app_client):
-    response = app_client.get('/test_tables/simple_view', gather_request=False)
-    assert response.status == 200
+def test_sql_time_limit(app_client_shorter_time_limit):
+    response = app_client_shorter_time_limit.get(
+        '/fixtures?sql=select+sleep(0.5)'
+    )
+    assert 400 == response.status
+    expected_html_fragment = """
+        <a href="https://datasette.readthedocs.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
+    """.strip()
+    assert expected_html_fragment in response.text
 
 
 def test_row(app_client):
     response = app_client.get(
-        '/test_tables/simple_primary_key/1',
-        allow_redirects=False,
-        gather_request=False
+        '/fixtures/simple_primary_key/1',
+        allow_redirects=False
     )
     assert response.status == 302
     assert response.headers['Location'].endswith('/1')
-    response = app_client.get('/test_tables/simple_primary_key/1', gather_request=False)
+    response = app_client.get('/fixtures/simple_primary_key/1')
     assert response.status == 200
+
+
+def test_row_strange_table_name(app_client):
+    response = app_client.get(
+        '/fixtures/table%2Fwith%2Fslashes.csv/3',
+        allow_redirects=False
+    )
+    assert response.status == 302
+    assert response.headers['Location'].endswith(
+        '/table%2Fwith%2Fslashes.csv/3'
+    )
+    response = app_client.get('/fixtures/table%2Fwith%2Fslashes.csv/3')
+    assert response.status == 200
+
+
+def test_table_cell_truncation():
+    for client in app_client(config={
+        "truncate_cells_html": 5,
+    }):
+        response = client.get("/fixtures/facetable")
+        assert response.status == 200
+        table = Soup(response.body, "html.parser").find("table")
+        assert table["class"] == ["rows-and-columns"]
+        assert [
+            "Missi…", "Dogpa…", "SOMA", "Tende…", "Berna…", "Hayes…",
+            "Holly…", "Downt…", "Los F…", "Korea…", "Downt…", "Greek…",
+            "Corkt…", "Mexic…", "Arcad…"
+        ] == [
+            td.string for td in table.findAll("td", {
+                "class": "col-neighborhood"
+            })
+        ]
+
+
+def test_row_page_does_not_truncate():
+    for client in app_client(config={
+        "truncate_cells_html": 5,
+    }):
+        response = client.get("/fixtures/facetable/1")
+        assert response.status == 200
+        table = Soup(response.body, "html.parser").find("table")
+        assert table["class"] == ["rows-and-columns"]
+        assert ["Mission"] == [
+            td.string for td in table.findAll("td", {
+                "class": "col-neighborhood"
+            })
+        ]
 
 
 def test_add_filter_redirects(app_client):
@@ -54,16 +106,16 @@ def test_add_filter_redirects(app_client):
     })
     # First we need to resolve the correct path before testing more redirects
     path_base = app_client.get(
-        '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
+        '/fixtures/simple_primary_key', allow_redirects=False
     ).headers['Location']
     path = path_base + '?' + filter_args
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?content__startswith=x')
 
     # Adding a redirect to an existing querystring:
     path = path_base + '?foo=bar&' + filter_args
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?foo=bar&content__startswith=x')
 
@@ -73,7 +125,7 @@ def test_add_filter_redirects(app_client):
         '_filter_op': 'isnull__5',
         '_filter_value': 'x'
     })
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?content__isnull=5')
 
@@ -94,10 +146,10 @@ def test_existing_filter_redirects(app_client):
         '_filter_value_4': 'world',
     }
     path_base = app_client.get(
-        '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
+        '/fixtures/simple_primary_key', allow_redirects=False
     ).headers['Location']
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert_querystring_equal(
         'name__contains=hello&age__gte=22&age__lt=30&name__contains=world',
@@ -107,7 +159,7 @@ def test_existing_filter_redirects(app_client):
     # Setting _filter_column_3 to empty string should remove *_3 entirely
     filter_args['_filter_column_3'] = ''
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert_querystring_equal(
         'name__contains=hello&age__gte=22&name__contains=world',
@@ -115,14 +167,14 @@ def test_existing_filter_redirects(app_client):
     )
 
     # ?_filter_op=exact should be removed if unaccompanied by _fiter_column
-    response = app_client.get(path_base + '?_filter_op=exact', allow_redirects=False, gather_request=False)
+    response = app_client.get(path_base + '?_filter_op=exact', allow_redirects=False)
     assert response.status == 302
     assert '?' not in response.headers['Location']
 
 
 def test_empty_search_parameter_gets_removed(app_client):
     path_base = app_client.get(
-        '/test_tables/simple_primary_key', allow_redirects=False, gather_request=False
+        '/fixtures/simple_primary_key', allow_redirects=False
     ).headers['Location']
     path = path_base + '?' + urllib.parse.urlencode({
         '_search': '',
@@ -130,7 +182,7 @@ def test_empty_search_parameter_gets_removed(app_client):
         '_filter_op': 'exact',
         '_filter_value': 'chidi',
     })
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith(
         '?name__exact=chidi'
@@ -139,21 +191,21 @@ def test_empty_search_parameter_gets_removed(app_client):
 
 def test_sort_by_desc_redirects(app_client):
     path_base = app_client.get(
-        '/test_tables/sortable', allow_redirects=False, gather_request=False
+        '/fixtures/sortable', allow_redirects=False
     ).headers['Location']
     path = path_base + '?' + urllib.parse.urlencode({
         '_sort': 'sortable',
         '_sort_by_desc': '1',
     })
-    response = app_client.get(path, allow_redirects=False, gather_request=False)
+    response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
     assert response.headers['Location'].endswith('?_sort_desc=sortable')
 
 
 def test_sort_links(app_client):
     response = app_client.get(
-        '/test_tables/sortable?_sort=sortable',
-        gather_request=False
+        '/fixtures/sortable?_sort=sortable'
+
     )
     assert response.status == 200
     ths = Soup(response.body, 'html.parser').findAll('th')
@@ -201,10 +253,92 @@ def test_sort_links(app_client):
     ] == attrs_and_link_attrs
 
 
+def test_facet_display(app_client):
+    response = app_client.get(
+        "/fixtures/facetable?_facet=planet_int&_facet=city_id&_facet=on_earth"
+    )
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    divs = soup.find(
+        "div", {"class": "facet-results"}
+    ).findAll("div")
+    actual = []
+    for div in divs:
+        actual.append(
+            {
+                "name": div.find("strong").text,
+                "items": [
+                    {
+                        "name": a.text,
+                        "qs": a["href"].split("?")[-1],
+                        "count": int(str(a.parent).split("</a>")[1].split("<")[0]),
+                    }
+                    for a in div.find("ul").findAll("a")
+                ],
+            }
+        )
+    assert [
+        {
+            "name": "city_id",
+            "items": [
+                {
+                    "name": "San Francisco",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=1",
+                    "count": 6,
+                },
+                {
+                    "name": "Los Angeles",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=2",
+                    "count": 4,
+                },
+                {
+                    "name": "Detroit",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=3",
+                    "count": 4,
+                },
+                {
+                    "name": "Memnonia",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=4",
+                    "count": 1,
+                },
+            ],
+        },
+        {
+            "name": "planet_int",
+            "items": [
+                {
+                    "name": "1",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&planet_int=1",
+                    "count": 14,
+                },
+                {
+                    "name": "2",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&planet_int=2",
+                    "count": 1,
+                },
+            ],
+        },
+        {
+            "name": "on_earth",
+            "items": [
+                {
+                    "name": "1",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&on_earth=1",
+                    "count": 14,
+                },
+                {
+                    "name": "0",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&on_earth=0",
+                    "count": 1,
+                },
+            ],
+        },
+    ] == actual
+
+
 def test_facets_persist_through_filter_form(app_client):
     response = app_client.get(
-        '/test_tables/facetable?_facet=planet_int&_facet=city_id',
-        gather_request=False
+        '/fixtures/facetable?_facet=planet_int&_facet=city_id'
     )
     assert response.status == 200
     inputs = Soup(response.body, 'html.parser').find('form').findAll('input')
@@ -219,26 +353,26 @@ def test_facets_persist_through_filter_form(app_client):
 
 @pytest.mark.parametrize('path,expected_classes', [
     ('/', ['index']),
-    ('/test_tables', ['db', 'db-test_tables']),
-    ('/test_tables/simple_primary_key', [
-        'table', 'db-test_tables', 'table-simple_primary_key'
+    ('/fixtures', ['db', 'db-fixtures']),
+    ('/fixtures/simple_primary_key', [
+        'table', 'db-fixtures', 'table-simple_primary_key'
     ]),
-    ('/test_tables/table%2Fwith%2Fslashes.csv', [
-        'table', 'db-test_tables', 'table-tablewithslashescsv-fa7563'
+    ('/fixtures/table%2Fwith%2Fslashes.csv', [
+        'table', 'db-fixtures', 'table-tablewithslashescsv-fa7563'
     ]),
-    ('/test_tables/simple_primary_key/1', [
-        'row', 'db-test_tables', 'table-simple_primary_key'
+    ('/fixtures/simple_primary_key/1', [
+        'row', 'db-fixtures', 'table-simple_primary_key'
     ]),
 ])
 def test_css_classes_on_body(app_client, path, expected_classes):
-    response = app_client.get(path, gather_request=False)
+    response = app_client.get(path)
     assert response.status == 200
     classes = re.search(r'<body class="(.*)">', response.text).group(1).split()
     assert classes == expected_classes
 
 
 def test_table_html_simple_primary_key(app_client):
-    response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
+    response = app_client.get('/fixtures/simple_primary_key?_size=3')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert table['class'] == ['rows-and-columns']
@@ -247,26 +381,76 @@ def test_table_html_simple_primary_key(app_client):
     for expected_col, th in zip(('content',), ths[1:]):
         a = th.find('a')
         assert expected_col == a.string
-        assert a['href'].endswith('/simple_primary_key?_sort={}'.format(
+        assert a['href'].endswith('/simple_primary_key?_size=3&_sort={}'.format(
             expected_col
         ))
         assert ['nofollow'] == a['rel']
     assert [
         [
-            '<td class="col-id"><a href="/test_tables/simple_primary_key/1">1</a></td>',
+            '<td class="col-id"><a href="/fixtures/simple_primary_key/1">1</a></td>',
             '<td class="col-content">hello</td>'
         ], [
-            '<td class="col-id"><a href="/test_tables/simple_primary_key/2">2</a></td>',
+            '<td class="col-id"><a href="/fixtures/simple_primary_key/2">2</a></td>',
             '<td class="col-content">world</td>'
         ], [
-            '<td class="col-id"><a href="/test_tables/simple_primary_key/3">3</a></td>',
-            '<td class="col-content"></td>'
+            '<td class="col-id"><a href="/fixtures/simple_primary_key/3">3</a></td>',
+            '<td class="col-content">\xa0</td>'
         ]
     ] == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
+def test_table_csv_json_export_interface(app_client):
+    response = app_client.get('/fixtures/simple_primary_key')
+    assert response.status == 200
+    # The links at the top of the page
+    links = Soup(response.body, "html.parser").find("p", {
+        "class": "export-links"
+    }).findAll("a")
+    actual = [l["href"].split("/")[-1] for l in links]
+    expected = [
+        "simple_primary_key.json",
+        "simple_primary_key.csv?_size=max",
+        "#export"
+    ]
+    assert expected == actual
+    # And the advaced export box at the bottom:
+    div = Soup(response.body, "html.parser").find("div", {
+        "class": "advanced-export"
+    })
+    json_links = [a["href"].split("/")[-1] for a in div.find("p").findAll("a")]
+    assert [
+        "simple_primary_key.json",
+        "simple_primary_key.json?_shape=array",
+        "simple_primary_key.json?_shape=object"
+    ] == json_links
+    # And the CSV form
+    form = div.find("form")
+    assert form["action"].endswith("/simple_primary_key.csv")
+    inputs = [str(input) for input in form.findAll("input")]
+    assert [
+        '<input name="_dl" type="checkbox"/>',
+        '<input type="submit" value="Export CSV"/>',
+        '<input name="_size" type="hidden" value="max"/>'
+    ] == inputs
+
+
+def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
+    response = app_client.get('/fixtures/facetable')
+    assert response.status == 200
+    links = Soup(response.body, "html.parser").find("p", {
+        "class": "export-links"
+    }).findAll("a")
+    actual = [l["href"].split("/")[-1] for l in links]
+    expected = [
+        "facetable.json?_labels=on",
+        "facetable.csv?_labels=on&_size=max",
+        "#export"
+    ]
+    assert expected == actual
+
+
 def test_row_html_simple_primary_key(app_client):
-    response = app_client.get('/test_tables/simple_primary_key/1', gather_request=False)
+    response = app_client.get('/fixtures/simple_primary_key/1')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
@@ -282,12 +466,12 @@ def test_row_html_simple_primary_key(app_client):
 
 def test_table_not_exists(app_client):
     assert 'Table not found: blah' in app_client.get(
-        '/test_tables/blah', gather_request=False
+        '/fixtures/blah'
     ).body.decode('utf8')
 
 
 def test_table_html_no_primary_key(app_client):
-    response = app_client.get('/test_tables/no_primary_key', gather_request=False)
+    response = app_client.get('/fixtures/no_primary_key')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     # We have disabled sorting for this table using metadata.json
@@ -296,7 +480,7 @@ def test_table_html_no_primary_key(app_client):
     ] == [th.string.strip() for th in table.select('thead th')[2:]]
     expected = [
         [
-            '<td class="col-Link"><a href="/test_tables/no_primary_key/{}">{}</a></td>'.format(i, i),
+            '<td class="col-Link"><a href="/fixtures/no_primary_key/{}">{}</a></td>'.format(i, i),
             '<td class="col-rowid">{}</td>'.format(i),
             '<td class="col-content">{}</td>'.format(i),
             '<td class="col-a">a{}</td>'.format(i),
@@ -308,7 +492,7 @@ def test_table_html_no_primary_key(app_client):
 
 
 def test_row_html_no_primary_key(app_client):
-    response = app_client.get('/test_tables/no_primary_key/1', gather_request=False)
+    response = app_client.get('/fixtures/no_primary_key/1')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
@@ -327,7 +511,7 @@ def test_row_html_no_primary_key(app_client):
 
 
 def test_table_html_compound_primary_key(app_client):
-    response = app_client.get('/test_tables/compound_primary_key', gather_request=False)
+    response = app_client.get('/fixtures/compound_primary_key')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     ths = table.findAll('th')
@@ -341,7 +525,7 @@ def test_table_html_compound_primary_key(app_client):
         ))
     expected = [
         [
-            '<td class="col-Link"><a href="/test_tables/compound_primary_key/a,b">a,b</a></td>',
+            '<td class="col-Link"><a href="/fixtures/compound_primary_key/a,b">a,b</a></td>',
             '<td class="col-pk1">a</td>',
             '<td class="col-pk2">b</td>',
             '<td class="col-content">c</td>',
@@ -351,34 +535,48 @@ def test_table_html_compound_primary_key(app_client):
 
 
 def test_table_html_foreign_key_links(app_client):
-    response = app_client.get('/test_tables/foreign_key_references', gather_request=False)
+    response = app_client.get('/fixtures/foreign_key_references')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
         [
-            '<td class="col-pk"><a href="/test_tables/foreign_key_references/1">1</a></td>',
-            '<td class="col-foreign_key_with_label"><a href="/test_tables/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
-            '<td class="col-foreign_key_with_no_label"><a href="/test_tables/primary_key_multiple_columns/1">1</a></td>'
+            '<td class="col-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
+            '<td class="col-foreign_key_with_label"><a href="/fixtures/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_no_label"><a href="/fixtures/primary_key_multiple_columns/1">1</a></td>'
+        ]
+    ]
+    assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
+
+
+def test_table_html_disable_foreign_key_links_with_labels(app_client):
+    response = app_client.get('/fixtures/foreign_key_references?_labels=off')
+    assert response.status == 200
+    table = Soup(response.body, 'html.parser').find('table')
+    expected = [
+        [
+            '<td class="col-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
+            '<td class="col-foreign_key_with_label">1</td>',
+            '<td class="col-foreign_key_with_no_label">1</td>'
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
 def test_table_html_foreign_key_custom_label_column(app_client):
-    response = app_client.get('/test_tables/custom_foreign_key_label', gather_request=False)
+    response = app_client.get('/fixtures/custom_foreign_key_label')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     expected = [
         [
-            '<td class="col-pk"><a href="/test_tables/custom_foreign_key_label/1">1</a></td>',
-            '<td class="col-foreign_key_with_custom_label"><a href="/test_tables/primary_key_multiple_columns_explicit_label/1">world2</a>\xa0<em>1</em></td>',
+            '<td class="col-pk"><a href="/fixtures/custom_foreign_key_label/1">1</a></td>',
+            '<td class="col-foreign_key_with_custom_label"><a href="/fixtures/primary_key_multiple_columns_explicit_label/1">world2</a>\xa0<em>1</em></td>',
         ]
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
 def test_row_html_compound_primary_key(app_client):
-    response = app_client.get('/test_tables/compound_primary_key/a,b', gather_request=False)
+    response = app_client.get('/fixtures/compound_primary_key/a,b')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
     assert [
@@ -394,58 +592,73 @@ def test_row_html_compound_primary_key(app_client):
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
-def test_view_html(app_client):
-    response = app_client.get('/test_tables/simple_view', gather_request=False)
+def test_compound_primary_key_with_foreign_key_references(app_client):
+    # e.g. a many-to-many table with a compound primary key on the two columns
+    response = app_client.get('/fixtures/searchable_tags')
     assert response.status == 200
     table = Soup(response.body, 'html.parser').find('table')
-    assert [
-        'content', 'upper_content'
-    ] == [th.string.strip() for th in table.select('thead th')]
     expected = [
         [
-            '<td class="col-content">hello</td>',
-            '<td class="col-upper_content">HELLO</td>'
-        ], [
-            '<td class="col-content">world</td>',
-            '<td class="col-upper_content">WORLD</td>'
-        ], [
-            '<td class="col-content"></td>',
-            '<td class="col-upper_content"></td>'
-        ]
+            '<td class="col-Link"><a href="/fixtures/searchable_tags/1,feline">1,feline</a></td>',
+            '<td class="col-searchable_id"><a href="/fixtures/searchable/1">1</a>\xa0<em>1</em></td>',
+            '<td class="col-tag"><a href="/fixtures/tags/feline">feline</a></td>',
+        ],
+        [
+            '<td class="col-Link"><a href="/fixtures/searchable_tags/2,canine">2,canine</a></td>',
+            '<td class="col-searchable_id"><a href="/fixtures/searchable/2">2</a>\xa0<em>2</em></td>',
+            '<td class="col-tag"><a href="/fixtures/tags/canine">canine</a></td>',
+        ],
     ]
     assert expected == [[str(td) for td in tr.select('td')] for tr in table.select('tbody tr')]
 
 
-def test_plugin_extra_css_urls(app_client):
-    response = app_client.get('/', gather_request=False)
-    assert b'<link rel="stylesheet" href="https://example.com/app.css">' in response.body
-
-
-def test_plugin_extra_js_urls(app_client):
-    response = app_client.get('/', gather_request=False)
-    assert (
-        b'<script src="https://example.com/app.js" integrity="SRIHASH" crossorigin="anonymous"></script>'
-        in response.body
-    )
+def test_view_html(app_client):
+    response = app_client.get("/fixtures/simple_view?_size=3")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    ths = table.select("thead th")
+    assert 2 == len(ths)
+    assert ths[0].find("a") is not None
+    assert ths[0].find("a")["href"].endswith("/simple_view?_size=3&_sort=content")
+    assert ths[0].find("a").string.strip() == "content"
+    assert ths[1].find("a") is None
+    assert ths[1].string.strip() == "upper_content"
+    expected = [
+        [
+            '<td class="col-content">hello</td>',
+            '<td class="col-upper_content">HELLO</td>',
+        ],
+        [
+            '<td class="col-content">world</td>',
+            '<td class="col-upper_content">WORLD</td>',
+        ],
+        [
+            '<td class="col-content">\xa0</td>',
+            '<td class="col-upper_content">\xa0</td>',
+        ],
+    ]
+    assert expected == [
+        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
+    ]
 
 
 def test_index_metadata(app_client):
-    response = app_client.get('/', gather_request=False)
+    response = app_client.get('/')
     assert response.status == 200
     soup = Soup(response.body, 'html.parser')
-    assert 'Datasette Title' == soup.find('h1').text
-    assert 'Datasette Description' == inner_html(
+    assert 'Datasette Fixtures' == soup.find('h1').text
+    assert 'An example SQLite database demonstrating Datasette' == inner_html(
         soup.find('div', {'class': 'metadata-description'})
     )
     assert_footer_links(soup)
 
 
 def test_database_metadata(app_client):
-    response = app_client.get('/test_tables', gather_request=False)
+    response = app_client.get('/fixtures')
     assert response.status == 200
     soup = Soup(response.body, 'html.parser')
     # Page title should be the default
-    assert 'test_tables' == soup.find('h1').text
+    assert 'fixtures' == soup.find('h1').text
     # Description should be custom
     assert 'Test tables description' == inner_html(
         soup.find('div', {'class': 'metadata-description'})
@@ -455,7 +668,7 @@ def test_database_metadata(app_client):
 
 
 def test_table_metadata(app_client):
-    response = app_client.get('/test_tables/simple_primary_key', gather_request=False)
+    response = app_client.get('/fixtures/simple_primary_key')
     assert response.status == 200
     soup = Soup(response.body, 'html.parser')
     # Page title should be custom and should be HTML escaped
@@ -470,8 +683,7 @@ def test_table_metadata(app_client):
 
 def test_allow_download_on(app_client):
     response = app_client.get(
-        "/test_tables",
-        gather_request=False
+        "/fixtures"
     )
     soup = Soup(response.body, 'html.parser')
     assert len(soup.findAll('a', {'href': re.compile('\.db$')}))
@@ -482,26 +694,29 @@ def test_allow_download_off():
         'allow_download': False,
     }):
         response = client.get(
-            "/test_tables",
-            gather_request=False
+            "/fixtures",
+
         )
         soup = Soup(response.body, 'html.parser')
         assert not len(soup.findAll('a', {'href': re.compile('\.db$')}))
         # Accessing URL directly should 403
         response = client.get(
-            "/test_tables.db",
-            gather_request=False
+            "/fixtures.db",
+
         )
         assert 403 == response.status
 
 
 def test_allow_sql_on(app_client):
     response = app_client.get(
-        "/test_tables",
-        gather_request=False
+        "/fixtures"
     )
     soup = Soup(response.body, 'html.parser')
     assert len(soup.findAll('textarea', {'name': 'sql'}))
+    response = app_client.get(
+        "/fixtures/sortable"
+    )
+    assert b"View and edit SQL" in response.body
 
 
 def test_allow_sql_off():
@@ -509,11 +724,15 @@ def test_allow_sql_off():
         'allow_sql': False,
     }):
         response = client.get(
-            "/test_tables",
-            gather_request=False
+            "/fixtures"
         )
         soup = Soup(response.body, 'html.parser')
         assert not len(soup.findAll('textarea', {'name': 'sql'}))
+        # The table page should no longer show "View and edit SQL"
+        response = client.get(
+            "/fixtures/sortable"
+        )
+        assert b"View and edit SQL" not in response.body
 
 
 def assert_querystring_equal(expected, actual):
@@ -525,11 +744,11 @@ def assert_footer_links(soup):
     assert 3 == len(footer_links)
     datasette_link, license_link, source_link = footer_links
     assert 'Datasette' == datasette_link.text.strip()
-    assert 'Source' == source_link.text.strip()
-    assert 'License' == license_link.text.strip()
+    assert 'tests/fixtures.py' == source_link.text.strip()
+    assert 'Apache License 2.0' == license_link.text.strip()
     assert 'https://github.com/simonw/datasette' == datasette_link['href']
-    assert 'http://www.example.com/source' == source_link['href']
-    assert 'http://www.example.com/license' == license_link['href']
+    assert 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py' == source_link['href']
+    assert 'https://github.com/simonw/datasette/blob/master/LICENSE' == license_link['href']
 
 
 def inner_html(soup):
@@ -537,3 +756,66 @@ def inner_html(soup):
     # This includes the parent tag - so remove that
     inner_html = html.split('>', 1)[1].rsplit('<', 1)[0]
     return inner_html.strip()
+
+
+@pytest.mark.parametrize('path,expected_redirect', [
+    ('/fixtures/', '/fixtures'),
+    ('/fixtures/simple_view/', '/fixtures/simple_view'),
+])
+def test_404_trailing_slash_redirect(app_client, path, expected_redirect):
+    response = app_client.get(path, allow_redirects=False)
+    assert 302 == response.status
+    assert expected_redirect == response.headers["Location"]
+
+
+def test_canned_query_with_custom_metadata(app_client):
+    response = app_client.get("/fixtures/neighborhood_search?text=town")
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    assert "Search neighborhoods" == soup.find("h1").text
+    assert (
+        """
+<div class="metadata-description">
+ <b>
+  Demonstrating
+ </b>
+ simple like search
+</div>""".strip()
+        == soup.find("div", {"class": "metadata-description"}).prettify().strip()
+    )
+
+
+@pytest.mark.parametrize('path,has_object,has_stream,has_expand', [
+    ("/fixtures/no_primary_key", False, True, False),
+    ("/fixtures/complex_foreign_keys", True, False, True),
+])
+def test_advanced_export_box(app_client, path, has_object, has_stream, has_expand):
+    response = app_client.get(path)
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    # JSON shape options
+    expected_json_shapes = ["default", "array"]
+    if has_object:
+        expected_json_shapes.append("object")
+    div = soup.find("div", {"class": "advanced-export"})
+    assert expected_json_shapes == [a.text for a in div.find("p").findAll("a")]
+    # "stream all rows" option
+    if has_stream:
+        assert "stream all rows" in str(div)
+    # "expand labels" option
+    if has_expand:
+        assert "expand labels" in str(div)
+
+
+def test_urlify_custom_queries(app_client):
+    path = "/fixtures?" + urllib.parse.urlencode({
+        "sql": "select ('https://twitter.com/' || 'simonw') as user_url;"
+    })
+    response = app_client.get(path)
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    assert '''<td class="col-user_url">
+ <a href="https://twitter.com/simonw">
+  https://twitter.com/simonw
+ </a>
+</td>''' == soup.find("td", {"class": "col-user_url"}).prettify().strip()

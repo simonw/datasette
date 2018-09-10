@@ -40,17 +40,22 @@ setup(
         'Jinja2==2.10',
         'hupper==1.0',
         'pint==0.8.1',
-        'pluggy>=0.1.0,<1.0',
+        'pluggy>=0.7.1',
     ],
     entry_points='''
         [console_scripts]
         datasette=datasette.cli:cli
     ''',
     setup_requires=['pytest-runner'],
+    extras_require={
+        'test': [
+            'pytest==3.7.1',
+            'aiohttp==3.3.2',
+            'beautifulsoup4==4.6.1',
+        ]
+    },
     tests_require=[
-        'pytest==3.2.1',
-        'aiohttp==2.3.2',
-        'beautifulsoup4==4.6.0',
+        'datasette[test]',
     ],
     classifiers=[
         'Development Status :: 4 - Beta',

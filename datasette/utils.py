@@ -1,5 +1,7 @@
 from contextlib import contextmanager
+from collections import OrderedDict
 import base64
+import click
 import hashlib
 import imp
 import json
@@ -7,13 +9,16 @@ import os
 import pkg_resources
 import re
 import shlex
-import sqlite3
 import tempfile
 import time
 import shutil
 import urllib
 import numbers
 
+try:
+    import pysqlite3 as sqlite3
+except ImportError:
+    import sqlite3
 
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set((
@@ -31,6 +36,13 @@ reserved_words = set((
     'vacuum values view virtual when where with without'
 ).split())
 
+SPATIALITE_DOCKERFILE_EXTRAS = r'''
+RUN apt-get update && \
+    apt-get install -y python3-dev gcc libsqlite3-mod-spatialite && \
+    rm -rf /var/lib/apt/lists/*
+ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
+'''
+
 
 class InterruptedError(Exception):
     pass
@@ -41,6 +53,10 @@ class Results:
         self.rows = rows
         self.truncated = truncated
         self.description = description
+
+    @property
+    def columns(self):
+        return [d[0] for d in self.description]
 
     def __iter__(self):
         return iter(self.rows)
@@ -62,8 +78,10 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
     if use_rowid:
         bits = [row['rowid']]
     else:
-        bits = [row[pk] for pk in pks]
-
+        bits = [
+            row[pk]["value"] if isinstance(row[pk], dict) else row[pk]
+            for pk in pks
+        ]
     if quote:
         bits = [urllib.parse.quote_plus(str(bit)) for bit in bits]
     else:
@@ -162,6 +180,13 @@ def validate_sql_select(sql):
             raise InvalidSql(msg)
 
 
+def append_querystring(url, querystring):
+    op = "&" if ("?" in url) else "?"
+    return "{}{}{}".format(
+        url, op, querystring
+    )
+
+
 def path_with_added_args(request, args, path=None):
     path = path or request.path
     if isinstance(args, dict):
@@ -218,14 +243,6 @@ def path_with_replaced_args(request, args, path=None):
     return path + query_string
 
 
-def path_with_ext(request, ext):
-    path = request.path
-    path += ext
-    if request.query_string:
-        path += '?' + request.query_string
-    return path
-
-
 _css_re = re.compile(r'''['"\n\\]''')
 _boring_keyword_re = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
@@ -241,7 +258,7 @@ def escape_sqlite(s):
         return '[{}]'.format(s)
 
 
-def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install):
+def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install, spatialite, version_note):
     cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
     cmd.append('"' + '", "'.join(files) + '"')
     cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
@@ -251,6 +268,8 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
         cmd.extend(['"--template-dir"', '"templates/"'])
     if plugins_dir:
         cmd.extend(['"--plugins-dir"', '"plugins/"'])
+    if version_note:
+        cmd.extend(['"--version-note"', '"{}"'.format(version_note)])
     if static:
         for mount_point, _ in static:
             cmd.extend(['"--static"', '"{}:{}"'.format(mount_point, mount_point)])
@@ -266,16 +285,18 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
         install = ['datasette'] + list(install)
 
     return '''
-FROM python:3
+FROM python:3.6
 COPY . /app
 WORKDIR /app
-RUN pip install {install_from}
+{spatialite_extras}
+RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
 EXPOSE 8001
 CMD [{cmd}]'''.format(
         files=' '.join(files),
         cmd=', '.join(cmd),
         install_from=' '.join(install),
+        spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else '',
     ).strip()
 
 
@@ -290,6 +311,8 @@ def temporary_docker_directory(
     plugins_dir,
     static,
     install,
+    spatialite,
+    version_note,
     extra_metadata=None
 ):
     extra_metadata = extra_metadata or {}
@@ -320,6 +343,8 @@ def temporary_docker_directory(
             plugins_dir,
             static,
             install,
+            spatialite,
+            version_note,
         )
         os.chdir(datasette_dir)
         if metadata_content:
@@ -359,6 +384,7 @@ def temporary_heroku_directory(
     plugins_dir,
     static,
     install,
+    version_note,
     extra_metadata=None
 ):
     # FIXME: lots of duplicated code from above
@@ -387,7 +413,7 @@ def temporary_heroku_directory(
         if metadata_content:
             open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))
 
-        open('runtime.txt', 'w').write('python-3.6.3')
+        open('runtime.txt', 'w').write('python-3.6.6')
 
         if branch:
             install = ['https://github.com/simonw/datasette/archive/{branch}.zip'.format(
@@ -413,9 +439,12 @@ def temporary_heroku_directory(
                 os.path.join(tmp.name, 'plugins')
             )
             extras.extend(['--plugins-dir', 'plugins/'])
-
-        if metadata:
+        if version_note:
+            extras.extend(['--version-note', version_note])
+        if metadata_content:
             extras.extend(['--metadata', 'metadata.json'])
+        if extra_options:
+            extras.extend(extra_options.split())
         for mount_point, path in static:
             link_or_copy_directory(
                 os.path.join(saved_cwd, path),
@@ -761,3 +790,114 @@ def get_plugins(pm):
             plugin_info['version'] = distinfo.version
         plugins.append(plugin_info)
     return plugins
+
+
+FORMATS = ('csv', 'json', 'jsono')
+
+
+def resolve_table_and_format(table_and_format, table_exists):
+    if '.' in table_and_format:
+        # Check if a table exists with this exact name
+        if table_exists(table_and_format):
+            return table_and_format, None
+    # Check if table ends with a known format
+    for _format in FORMATS:
+        if table_and_format.endswith(".{}".format(_format)):
+            table = table_and_format[:-(len(_format) + 1)]
+            return table, _format
+    return table_and_format, None
+
+
+def path_with_format(request, format, extra_qs=None):
+    qs = extra_qs or {}
+    path = request.path
+    if "." in request.path:
+        qs["_format"] = format
+    else:
+        path = "{}.{}".format(path, format)
+    if qs:
+        extra = urllib.parse.urlencode(sorted(qs.items()))
+        if request.query_string:
+            path = "{}?{}&{}".format(
+                path, request.query_string, extra
+            )
+        else:
+            path = "{}?{}".format(path, extra)
+    elif request.query_string:
+        path = "{}?{}".format(path, request.query_string)
+    return path
+
+
+class CustomRow(OrderedDict):
+    # Loose imitation of sqlite3.Row which offers
+    # both index-based AND key-based lookups
+    def __init__(self, columns, values=None):
+        self.columns = columns
+        if values:
+            self.update(values)
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return super().__getitem__(self.columns[key])
+        else:
+            return super().__getitem__(key)
+
+    def __iter__(self):
+        for column in self.columns:
+            yield self[column]
+
+
+def value_as_boolean(value):
+    if value.lower() not in ('on', 'off', 'true', 'false', '1', '0'):
+        raise ValueAsBooleanError
+    return value.lower() in ('on', 'true', '1')
+
+
+class ValueAsBooleanError(ValueError):
+    pass
+
+
+class WriteLimitExceeded(Exception):
+    pass
+
+
+class LimitedWriter:
+    def __init__(self, writer, limit_mb):
+        self.writer = writer
+        self.limit_bytes = limit_mb * 1024 * 1024
+        self.bytes_count = 0
+
+    def write(self, bytes):
+        self.bytes_count += len(bytes)
+        if self.limit_bytes and (self.bytes_count > self.limit_bytes):
+            raise WriteLimitExceeded("CSV contains more than {} bytes".format(
+                self.limit_bytes
+            ))
+        self.writer.write(bytes)
+
+
+_infinities = {float("inf"), float("-inf")}
+
+
+def remove_infinites(row):
+    if any((c in _infinities) if isinstance(c, float) else 0 for c in row):
+        return [
+            None if (isinstance(c, float) and c in _infinities) else c
+            for c in row
+        ]
+    return row
+
+
+class StaticMount(click.ParamType):
+    name = "static mount"
+
+    def convert(self, value, param, ctx):
+        if ":" not in value:
+            self.fail(
+                '"{}" should be of format mountpoint:directory'.format(value),
+                param, ctx
+            )
+        path, dirpath = value.split(":")
+        if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
+            self.fail("%s is not a valid directory path" % value, param, ctx)
+        return path, dirpath

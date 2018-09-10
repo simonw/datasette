@@ -7,7 +7,6 @@ import json
 import os
 import pytest
 from sanic.request import Request
-import sqlite3
 import tempfile
 from unittest.mock import patch
 
@@ -75,11 +74,34 @@ def test_path_with_replaced_args(path, args, expected):
     assert expected == actual
 
 
-@pytest.mark.parametrize('row,pks,expected_path', [
-    ({'A': 'foo', 'B': 'bar'}, ['A', 'B'], 'foo,bar'),
-    ({'A': 'f,o', 'B': 'bar'}, ['A', 'B'], 'f%2Co,bar'),
-    ({'A': 123}, ['A'], '123'),
-])
+@pytest.mark.parametrize(
+    "row,pks,expected_path",
+    [
+        ({"A": "foo", "B": "bar"}, ["A", "B"], "foo,bar"),
+        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f%2Co,bar"),
+        ({"A": 123}, ["A"], "123"),
+        (
+            utils.CustomRow(
+                ["searchable_id", "tag"],
+                [
+                    (
+                        "searchable_id",
+                        {"value": 1, "label": "1"},
+                    ),
+                    (
+                        "tag",
+                        {
+                            "value": "feline",
+                            "label": "feline",
+                        },
+                    ),
+                ],
+            ),
+            ["searchable_id", "tag"],
+            "1,feline",
+        ),
+    ],
+)
 def test_path_from_row_pks(row, pks, expected_path):
     actual_path = utils.path_from_row_pks(row, pks, False)
     assert expected_path == actual_path
@@ -205,7 +227,7 @@ def test_detect_fts():
     CREATE VIRTUAL TABLE "Street_Tree_List_fts" USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content="Street_Tree_List");
     CREATE VIRTUAL TABLE r USING rtree(a, b, c);
     '''
-    conn = sqlite3.connect(':memory:')
+    conn = utils.sqlite3.connect(':memory:')
     conn.executescript(sql)
     assert None is utils.detect_fts(conn, 'Dumb_Table')
     assert None is utils.detect_fts(conn, 'Test_View')
@@ -251,6 +273,8 @@ def test_temporary_docker_directory_uses_hard_link():
             plugins_dir=None,
             static=[],
             install=[],
+            spatialite=False,
+            version_note=None,
         ) as temp_docker:
             hello = os.path.join(temp_docker, 'hello')
             assert 'world' == open(hello).read()
@@ -276,6 +300,8 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             plugins_dir=None,
             static=[],
             install=[],
+            spatialite=False,
+            version_note=None,
         ) as temp_docker:
             hello = os.path.join(temp_docker, 'hello')
             assert 'world' == open(hello).read()
@@ -297,3 +323,54 @@ def test_compound_keys_after_sql():
   or
 (a = :p0 and b = :p1 and c > :p2))
     '''.strip() == utils.compound_keys_after_sql(['a', 'b', 'c'])
+
+
+def table_exists(table):
+    return table == "exists.csv"
+
+
+@pytest.mark.parametrize(
+    "table_and_format,expected_table,expected_format",
+    [
+        ("blah", "blah", None),
+        ("blah.csv", "blah", "csv"),
+        ("blah.json", "blah", "json"),
+        ("blah.baz", "blah.baz", None),
+        ("exists.csv", "exists.csv", None),
+    ],
+)
+def test_resolve_table_and_format(
+    table_and_format, expected_table, expected_format
+):
+    actual_table, actual_format = utils.resolve_table_and_format(
+        table_and_format, table_exists
+    )
+    assert expected_table == actual_table
+    assert expected_format == actual_format
+
+
+@pytest.mark.parametrize(
+    "path,format,extra_qs,expected",
+    [
+        ("/foo?sql=select+1", "csv", {}, "/foo.csv?sql=select+1"),
+        ("/foo?sql=select+1", "json", {}, "/foo.json?sql=select+1"),
+        ("/foo/bar", "json", {}, "/foo/bar.json"),
+        ("/foo/bar", "csv", {}, "/foo/bar.csv"),
+        ("/foo/bar.csv", "json", {}, "/foo/bar.csv?_format=json"),
+        ("/foo/bar", "csv", {"_dl": 1}, "/foo/bar.csv?_dl=1"),
+        ("/foo/b.csv", "json", {"_dl": 1}, "/foo/b.csv?_dl=1&_format=json"),
+        (
+            "/sf-trees/Street_Tree_List?_search=cherry&_size=1000",
+            "csv",
+            {"_dl": 1},
+            "/sf-trees/Street_Tree_List.csv?_search=cherry&_size=1000&_dl=1",
+        ),
+    ],
+)
+def test_path_with_format(path, format, extra_qs, expected):
+    request = Request(
+        path.encode('utf8'),
+        {}, '1.1', 'GET', None
+    )
+    actual = utils.path_with_format(request, format, extra_qs)
+    assert expected == actual

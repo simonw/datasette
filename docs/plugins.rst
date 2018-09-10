@@ -149,15 +149,90 @@ The priority order for template loading is:
 See :ref:`customization` for more details on how to write custom templates,
 including which filenames to use to customize which parts of the Datasette UI.
 
+Plugin configuration
+--------------------
+
+Plugins can have their own configuration, embedded in a :ref:`metadata` file. Configuration options for plugins live within a ``"plugins"`` key in that file, which can be included at the root, database or table level.
+
+Here is an example of some plugin configuration for a specific table::
+
+    {
+        "databases: {
+            "sf-trees": {
+                "tables": {
+                    "Street_Tree_List": {
+                        "plugins": {
+                            "datasette-cluster-map": {
+                                "latitude_column": "lat",
+                                "longitude_column": "lng"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+This tells the ``datasette-cluster-map`` column which latitude and longitude columns should be used for a table called ``Street_Tree_List`` inside a database file called ``sf-trees.db``.
+
+When you are writing plugins, you can access plugin configuration like this using the ``datasette.plugin_config()`` method. If you know you need plugin configuration for a specific table, you can access it like this::
+
+    plugin_config = datasette.plugin_config(
+        "datasette-cluster-map", database="sf-trees", table="Street_Tree_List"
+    )
+
+This will return the ``{"latitude_column": "lat", "longitude_column": "lng"}`` in the above example.
+
+If it cannot find the requested configuration at the table layer, it will fall back to the database layer and then the root layer. For example, a user may have set the plugin configuration option like so::
+
+    {
+        "databases: {
+            "sf-trees": {
+                "plugins": {
+                    "datasette-cluster-map": {
+                        "latitude_column": "xlat",
+                        "longitude_column": "xlng"
+                    }
+                }
+            }
+        }
+    }
+
+In this case, the above code would return that configuration for ANY table within the ``sf-trees`` database.
+
+The plugin configuration could also be set at the top level of ``metadata.json``::
+
+    {
+        "title": "This is the top-level title in metadata.json",
+        "plugins": {
+            "datasette-cluster-map": {
+                "latitude_column": "xlat",
+                "longitude_column": "xlng"
+            }
+        }
+    }
+
+Now that ``datasette-cluster-map`` plugin configuration will apply to every table in every database.
+
 Plugin hooks
 ------------
 
-Datasette will eventually have many more plugin hooks. You can track and
-contribute to their development in `issue #14
-<https://github.com/simonw/datasette/issues/14>`_.
+When you implement a plugin hook you can accept any or all of the parameters that are documented as being passed to that hook. For example, you can implement a ``render_cell`` plugin hook like this even though the hook definition defines more parameters than just ``value`` and ``column``:
+
+.. code-block:: python
+
+    @hookimpl
+    def render_cell(value, column):
+        if column == "stars":
+            return "*" * int(value)
+
+The full list of available plugin hooks is as follows.
 
 prepare_connection(conn)
 ~~~~~~~~~~~~~~~~~~~~~~~~
+
+``conn`` - sqlite3 connection object
+    The connection that is being opened
 
 This hook is called when a new SQLite database connection is created. You can
 use it to `register custom SQL functions <https://docs.python.org/2/library/sqlite3.html#sqlite3.Connection.create_function>`_,
@@ -180,6 +255,9 @@ arguments and can be called like this::
 prepare_jinja2_environment(env)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+``env`` - jinja2 Environment
+    The template environment that is being prepared
+
 This hook is called with the Jinja2 environment that is used to evaluate
 Datasette HTML templates. You can use it to do things like `register custom
 template filters <http://jinja.pocoo.org/docs/2.10/api/#custom-filters>`_, for
@@ -197,10 +275,22 @@ You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
 
-extra_css_urls()
-~~~~~~~~~~~~~~~~
+extra_css_urls(template, database, table, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Return a list of extra CSS URLs that should be included on every page. These can
+``template`` - string
+    The template that is being rendered, e.g. ``database.html``
+
+``database`` - string or None
+    The name of the database
+
+``table`` - string or None
+    The name of the table
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+Return a list of extra CSS URLs that should be included on the page. These can
 take advantage of the CSS class hooks described in :ref:`customization`.
 
 This can be a list of URLs:
@@ -229,8 +319,10 @@ Or a list of dictionaries defining both a URL and an
             'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
         }]
 
-extra_js_urls()
-~~~~~~~~~~~~~~~
+extra_js_urls(template, database, table, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Same arguments as ``extra_css_urls``.
 
 This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
 return either a list of URLs or a list of dictionaries:
@@ -258,3 +350,143 @@ you have one:
         return [
             '/-/static-plugins/your_plugin/app.js'
         ]
+
+publish_subcommand(publish)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``publish`` - Click publish command group
+    The Click command group for the ``datasette publish`` subcommand
+
+This hook allows you to create new providers for the ``datasette publish``
+command. Datasette uses this hook internally to implement the default ``now``
+and ``heroku`` subcommands, so you can read
+`their source <https://github.com/simonw/datasette/tree/master/datasette/publish>`_
+to see examples of this hook in action.
+
+Let's say you want to build a plugin that adds a ``datasette publish my_hosting_provider --api_key=xxx mydatabase.db`` publish command. Your implementation would start like this:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.common import add_common_publish_arguments_and_options
+    import click
+
+
+    @hookimpl
+    def publish_subcommand(publish):
+        @publish.command()
+        @add_common_publish_arguments_and_options
+        @click.option(
+            "-k",
+            "--api_key",
+            help="API key for talking to my hosting provider",
+        )
+        def my_hosting_provider(
+            files,
+            metadata,
+            extra_options,
+            branch,
+            template_dir,
+            plugins_dir,
+            static,
+            install,
+            version_note,
+            title,
+            license,
+            license_url,
+            source,
+            source_url,
+            api_key,
+        ):
+            # Your implementation goes here
+
+render_cell(value, column, table, database, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Lets you customize the display of values within table cells in the HTML table view.
+
+``value`` - string, integer or None
+    The value that was loaded from the database
+
+``column`` - string
+    The name of the column being rendered
+
+``table`` - string or None
+    The name of the table - or ``None`` if this is a custom SQL query
+
+``database`` - string
+    The name of the database
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
+
+If the hook returns a string, that string will be rendered in the table cell.
+
+If you want to return HTML markup you can do so by returning a ``jinja2.Markup`` object.
+
+Datasette will loop through all available ``render_cell`` hooks and display the value returned by the first one that does not return ``None``.
+
+Here is an example of a custom ``render_cell()`` plugin which looks for values that are a JSON string matching the following format::
+
+    {"href": "https://www.example.com/", "label": "Name"}
+
+If the value matches that pattern, the plugin returns an HTML link element:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import jinja2
+    import json
+
+
+    @hookimpl
+    def render_cell(value):
+        # Render {"href": "...", "label": "..."} as link
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        if not stripped.startswith("{") and stripped.endswith("}"):
+            return None
+        try:
+            data = json.loads(value)
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        if set(data.keys()) != {"href", "label"}:
+            return None
+        href = data["href"]
+        if not (
+            href.startswith("/") or href.startswith("http://")
+            or href.startswith("https://")
+        ):
+            return None
+        return jinja2.Markup('<a href="{href}">{label}</a>'.format(
+            href=jinja2.escape(data["href"]),
+            label=jinja2.escape(data["label"] or "") or "&nbsp;"
+        ))
+
+extra_body_script(template, database, table, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``template`` - string
+    The template that is being rendered, e.g. ``database.html``
+
+``database`` - string or None
+    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
+
+``table`` - string or None
+    The name of the table, or ``None`` if the page does not correct to a table
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
+
+The ``template``, ``database`` and ``table`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
+
+The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
+
+The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.

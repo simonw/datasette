@@ -1,7 +1,7 @@
 from datasette.app import Datasette
+from datasette.utils import sqlite3
 import os
 import pytest
-import sqlite3
 import tempfile
 
 
@@ -35,10 +35,10 @@ CREATE TABLE "office" (
 '''
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='session')
 def ds_instance():
     with tempfile.TemporaryDirectory() as tmpdir:
-        filepath = os.path.join(tmpdir, 'test_tables.db')
+        filepath = os.path.join(tmpdir, 'fixtures.db')
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         yield Datasette([filepath])
@@ -46,7 +46,7 @@ def ds_instance():
 
 def test_inspect_hidden_tables(ds_instance):
     info = ds_instance.inspect()
-    tables = info['test_tables']['tables']
+    tables = info['fixtures']['tables']
     expected_hidden = (
         'election_results_fts',
         'election_results_fts_content',
@@ -71,7 +71,7 @@ def test_inspect_hidden_tables(ds_instance):
 
 def test_inspect_foreign_keys(ds_instance):
     info = ds_instance.inspect()
-    tables = info['test_tables']['tables']
+    tables = info['fixtures']['tables']
     for table_name in ('county', 'party', 'office'):
         assert 0 == tables[table_name]['count']
         foreign_keys = tables[table_name]['foreign_keys']

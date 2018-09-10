@@ -4,25 +4,15 @@ from click_default_group import DefaultGroup
 import json
 import os
 import shutil
-from subprocess import call, check_output
+from subprocess import call
 import sys
-from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS
-from .utils import temporary_docker_directory, temporary_heroku_directory
-
-
-class StaticMount(click.ParamType):
-    name = "static mount"
-
-    def convert(self, value, param, ctx):
-        if ":" not in value:
-            self.fail(
-                '"{}" should be of format mountpoint:directory'.format(value),
-                param, ctx
-            )
-        path, dirpath = value.split(":")
-        if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
-            self.fail("%s is not a valid directory path" % value, param, ctx)
-        return path, dirpath
+from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
+from .utils import (
+    temporary_docker_directory,
+    value_as_boolean,
+    StaticMount,
+    ValueAsBooleanError,
+)
 
 
 class Config(click.ParamType):
@@ -36,17 +26,22 @@ class Config(click.ParamType):
             return
         name, value = config.split(":")
         if name not in DEFAULT_CONFIG:
-            self.fail("{} is not a valid option".format(name), param, ctx)
+            self.fail(
+                "{} is not a valid option (--help-config to see all)".format(
+                    name
+                ), param, ctx
+            )
             return
         # Type checking
         default = DEFAULT_CONFIG[name]
         if isinstance(default, bool):
-            if value.lower() not in ('on', 'off', 'true', 'false', '1', '0'):
+            try:
+                return name, value_as_boolean(value)
+            except ValueAsBooleanError:
                 self.fail(
-                    '"{}" should be on/off/true/false'.format(name), param, ctx
+                    '"{}" should be on/off/true/false/1/0'.format(name), param, ctx
                 )
                 return
-            return name, value.lower() in ('on', 'true', '1')
         elif isinstance(default, int):
             if not value.isdigit():
                 self.fail(
@@ -83,149 +78,14 @@ def inspect(files, inspect_file, sqlite_extensions):
     open(inspect_file, "w").write(json.dumps(app.inspect(), indent=2))
 
 
-@cli.command()
-@click.argument("publisher", type=click.Choice(["now", "heroku"]))
-@click.argument("files", type=click.Path(exists=True), nargs=-1)
-@click.option(
-    "-n",
-    "--name",
-    default="datasette",
-    help="Application name to use when deploying to Now (ignored for Heroku)",
-)
-@click.option(
-    "-m",
-    "--metadata",
-    type=click.File(mode="r"),
-    help="Path to JSON file containing metadata to publish",
-)
-@click.option("--extra-options", help="Extra options to pass to datasette serve")
-@click.option("--force", is_flag=True, help="Pass --force option to now")
-@click.option("--branch", help="Install datasette from a GitHub branch e.g. master")
-@click.option(
-    "--template-dir",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
-    help="Path to directory containing custom templates",
-)
-@click.option(
-    "--plugins-dir",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True),
-    help="Path to directory containing custom plugins",
-)
-@click.option(
-    "--static",
-    type=StaticMount(),
-    help="mountpoint:path-to-directory for serving static files",
-    multiple=True,
-)
-@click.option(
-    "--install",
-    help="Additional packages (e.g. plugins) to install",
-    multiple=True,
-)
-@click.option("--title", help="Title for metadata")
-@click.option("--license", help="License label for metadata")
-@click.option("--license_url", help="License URL for metadata")
-@click.option("--source", help="Source label for metadata")
-@click.option("--source_url", help="Source URL for metadata")
-def publish(
-    publisher,
-    files,
-    name,
-    metadata,
-    extra_options,
-    force,
-    branch,
-    template_dir,
-    plugins_dir,
-    static,
-    install,
-    **extra_metadata
-):
-    """
-    Publish specified SQLite database files to the internet along with a datasette API.
+@cli.group()
+def publish():
+    "Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"
+    pass
 
-    Options for PUBLISHER:
-        * 'now' - You must have Zeit Now installed: https://zeit.co/now
-        * 'heroku' - You must have Heroku installed: https://cli.heroku.com/
 
-    Example usage: datasette publish now my-database.db
-    """
-
-    def _fail_if_publish_binary_not_installed(binary, publish_target, install_link):
-        """Exit (with error message) if ``binary` isn't installed"""
-        if not shutil.which(binary):
-            click.secho(
-                "Publishing to {publish_target} requires {binary} to be installed and configured".format(
-                    publish_target=publish_target, binary=binary
-                ),
-                bg="red",
-                fg="white",
-                bold=True,
-                err=True,
-            )
-            click.echo(
-                "Follow the instructions at {install_link}".format(
-                    install_link=install_link
-                ),
-                err=True,
-            )
-            sys.exit(1)
-
-    if publisher == "now":
-        _fail_if_publish_binary_not_installed("now", "Zeit Now", "https://zeit.co/now")
-        with temporary_docker_directory(
-            files,
-            name,
-            metadata,
-            extra_options,
-            branch,
-            template_dir,
-            plugins_dir,
-            static,
-            install,
-            extra_metadata,
-        ):
-            if force:
-                call(["now", "--force"])
-            else:
-                call("now")
-
-    elif publisher == "heroku":
-        _fail_if_publish_binary_not_installed(
-            "heroku", "Heroku", "https://cli.heroku.com"
-        )
-
-        # Check for heroku-builds plugin
-        plugins = [
-            line.split()[0] for line in check_output(["heroku", "plugins"]).splitlines()
-        ]
-        if b"heroku-builds" not in plugins:
-            click.echo(
-                "Publishing to Heroku requires the heroku-builds plugin to be installed."
-            )
-            click.confirm(
-                "Install it? (this will run `heroku plugins:install heroku-builds`)",
-                abort=True,
-            )
-            call(["heroku", "plugins:install", "heroku-builds"])
-
-        with temporary_heroku_directory(
-            files,
-            name,
-            metadata,
-            extra_options,
-            branch,
-            template_dir,
-            plugins_dir,
-            static,
-            install,
-            extra_metadata,
-        ):
-            create_output = check_output(["heroku", "apps:create", "--json"]).decode(
-                "utf8"
-            )
-            app_name = json.loads(create_output)["name"]
-            call(["heroku", "builds:create", "-a", app_name])
+# Register publish plugins
+pm.hook.publish_subcommand(publish=publish)
 
 
 @cli.command()
@@ -335,6 +195,10 @@ def skeleton(files, metadata, sqlite_extensions):
     help="Additional packages (e.g. plugins) to install",
     multiple=True,
 )
+@click.option(
+    "--spatialite", is_flag=True, help="Enable SpatialLite extension"
+)
+@click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
 @click.option("--license_url", help="License URL for metadata")
@@ -350,6 +214,8 @@ def package(
     plugins_dir,
     static,
     install,
+    spatialite,
+    version_note,
     **extra_metadata
 ):
     "Package specified SQLite files into a new datasette Docker container"
@@ -372,6 +238,8 @@ def package(
         plugins_dir,
         static,
         install,
+        spatialite,
+        version_note,
         extra_metadata,
     ):
         args = ["docker", "build"]
@@ -438,6 +306,7 @@ def package(
     help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
     multiple=True,
 )
+@click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option(
     "--help-config",
     is_flag=True,
@@ -457,6 +326,7 @@ def serve(
     plugins_dir,
     static,
     config,
+    version_note,
     help_config,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -498,6 +368,7 @@ def serve(
         plugins_dir=plugins_dir,
         static_mounts=static,
         config=dict(config),
+        version_note=version_note,
     )
     # Force initial hashing/table counting
     ds.inspect()

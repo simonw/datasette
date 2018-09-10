@@ -35,7 +35,14 @@ table a:link {
 table a:visited {
     color: #8f54c4;
 }
+.small-screen-only,
+.select-wrapper.small-screen-only {
+    display: none;
+}
 @media only screen and (max-width: 576px) {
+    .small-screen-only {
+        display: initial;
+    }
     /* Force table to not be like tables anymore */
     table.rows-and-columns,
     .rows-and-columns thead,
@@ -110,6 +117,13 @@ form label {
     font-weight: bold;
     display: inline-block;
     width: 15%;
+}
+.advanced-export form label {
+    width: auto;
+}
+.advanced-export input[type=submit] {
+    font-size: 0.6em;
+    margin-left: 1em;
 }
 label.sort_by_desc {
     width: auto;
@@ -219,6 +233,9 @@ form input[type=submit] {
     font-family: Helvetica, sans-serif;
 }
 @media only screen and (max-width: 576px) {
+    .select-wrapper.small-screen-only {
+        display: inline-block;
+    }
     .select-wrapper {
         width: 100px;
     }
@@ -261,4 +278,11 @@ a.not-underlined {
 .facet-info a.cross:focus,
 .facet-info a.cross:active {
     text-decoration: none;
+}
+.advanced-export {
+    margin-top: 1em;
+    padding: 0.01em 2em 0.01em 1em;
+    width: auto;
+    display: inline-block;
+    box-shadow: 1px 2px 8px 2px rgba(0,0,0,0.08);
 }

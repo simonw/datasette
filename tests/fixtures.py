@@ -1,49 +1,98 @@
 from datasette.app import Datasette
+from datasette.utils import sqlite3
 import itertools
+import json
 import os
+import pytest
 import random
-import sqlite3
 import sys
 import string
 import tempfile
 import time
 
 
-def app_client(sql_time_limit_ms=None, max_returned_rows=None, config=None):
+class TestClient:
+    def __init__(self, sanic_test_client):
+        self.sanic_test_client = sanic_test_client
+
+    def get(self, path, allow_redirects=True):
+        return self.sanic_test_client.get(
+            path,
+            allow_redirects=allow_redirects,
+            gather_request=False
+        )
+
+
+@pytest.fixture(scope="session")
+def app_client(
+    sql_time_limit_ms=None,
+    max_returned_rows=None,
+    cors=False,
+    config=None,
+    filename="fixtures.db",
+):
     with tempfile.TemporaryDirectory() as tmpdir:
-        filepath = os.path.join(tmpdir, 'test_tables.db')
+        filepath = os.path.join(tmpdir, filename)
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         os.chdir(os.path.dirname(filepath))
-        plugins_dir = os.path.join(tmpdir, 'plugins')
+        plugins_dir = os.path.join(tmpdir, "plugins")
         os.mkdir(plugins_dir)
-        open(os.path.join(plugins_dir, 'my_plugin.py'), 'w').write(PLUGIN)
+        open(os.path.join(plugins_dir, "my_plugin.py"), "w").write(PLUGIN1)
+        open(os.path.join(plugins_dir, "my_plugin_2.py"), "w").write(PLUGIN2)
         config = config or {}
-        config.update({
-            'default_page_size': 50,
-            'max_returned_rows': max_returned_rows or 100,
-            'sql_time_limit_ms': sql_time_limit_ms or 200,
-        })
+        config.update(
+            {
+                "default_page_size": 50,
+                "max_returned_rows": max_returned_rows or 100,
+                "sql_time_limit_ms": sql_time_limit_ms or 200,
+            }
+        )
         ds = Datasette(
             [filepath],
+            cors=cors,
             metadata=METADATA,
             plugins_dir=plugins_dir,
             config=config,
         )
-        ds.sqlite_functions.append(
-            ('sleep', 1, lambda n: time.sleep(float(n))),
-        )
-        client = ds.app().test_client
+        ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
+        client = TestClient(ds.app().test_client)
         client.ds = ds
         yield client
 
 
+@pytest.fixture(scope='session')
 def app_client_shorter_time_limit():
     yield from app_client(20)
 
 
-def app_client_returend_rows_matches_page_size():
+@pytest.fixture(scope='session')
+def app_client_returned_rows_matches_page_size():
     yield from app_client(max_returned_rows=50)
+
+
+@pytest.fixture(scope='session')
+def app_client_larger_cache_size():
+    yield from app_client(config={
+        'cache_size_kb': 2500,
+    })
+
+
+@pytest.fixture(scope='session')
+def app_client_csv_max_mb_one():
+    yield from app_client(config={
+        'max_csv_mb': 1,
+    })
+
+
+@pytest.fixture(scope="session")
+def app_client_with_dot():
+    yield from app_client(filename="fixtures.dot.db")
+
+
+@pytest.fixture(scope='session')
+def app_client_with_cors():
+    yield from app_client(cors=True)
 
 
 def generate_compound_rows(num):
@@ -74,19 +123,35 @@ def generate_sortable_rows(num):
 
 
 METADATA = {
-    'title': 'Datasette Title',
-    'description': 'Datasette Description',
-    'license': 'License',
-    'license_url': 'http://www.example.com/license',
-    'source': 'Source',
-    'source_url': 'http://www.example.com/source',
+    'title': 'Datasette Fixtures',
+    'description': 'An example SQLite database demonstrating Datasette',
+    'license': 'Apache License 2.0',
+    'license_url': 'https://github.com/simonw/datasette/blob/master/LICENSE',
+    'source': 'tests/fixtures.py',
+    'source_url': 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py',
+    "plugins": {
+        "name-of-plugin": {
+            "depth": "root"
+        }
+    },
     'databases': {
-        'test_tables': {
+        'fixtures': {
             'description': 'Test tables description',
+            "plugins": {
+                "name-of-plugin": {
+                    "depth": "database"
+                }
+            },
             'tables': {
                 'simple_primary_key': {
                     'description_html': 'Simple <em>primary</em> key',
                     'title': 'This <em>HTML</em> is escaped',
+                    "plugins": {
+                        "name-of-plugin": {
+                            "depth": "table",
+                            "special": "this-is-simple_primary_key"
+                        }
+                    }
                 },
                 'sortable': {
                     'sortable_columns': [
@@ -94,7 +159,12 @@ METADATA = {
                         'sortable_with_nulls',
                         'sortable_with_nulls_2',
                         'text',
-                    ]
+                    ],
+                    "plugins": {
+                        "name-of-plugin": {
+                            "depth": "table"
+                        }
+                    }
                 },
                 'no_primary_key': {
                     'sortable_columns': [],
@@ -109,14 +179,34 @@ METADATA = {
                 'primary_key_multiple_columns_explicit_label': {
                     'label_column': 'content2',
                 },
+                'simple_view': {
+                    'sortable_columns': ['content'],
+                }
+            },
+            'queries': {
+                'pragma_cache_size': 'PRAGMA cache_size;',
+                'neighborhood_search': {
+                    'sql': '''
+                        select neighborhood, facet_cities.name, state
+                        from facetable
+                            join facet_cities
+                                on facetable.city_id = facet_cities.id
+                        where neighborhood like '%' || :text || '%'
+                        order by neighborhood;
+                    ''',
+                    'title': 'Search neighborhoods',
+                    'description_html': '<b>Demonstrating</b> simple like search',
+                },
             }
         },
     }
 }
 
-PLUGIN = '''
+PLUGIN1 = '''
 from datasette import hookimpl
+import base64
 import pint
+import json
 
 ureg = pint.UnitRegistry()
 
@@ -130,16 +220,100 @@ def prepare_connection(conn):
 
 
 @hookimpl
-def extra_css_urls():
-    return ['https://example.com/app.css']
+def extra_css_urls(template, database, table, datasette):
+    return ['https://example.com/{}/extra-css-urls-demo.css'.format(
+        base64.b64encode(json.dumps({
+            "template": template,
+            "database": database,
+            "table": table,
+        }).encode("utf8")).decode("utf8")
+    )]
 
 
 @hookimpl
 def extra_js_urls():
     return [{
-        'url': 'https://example.com/app.js',
+        'url': 'https://example.com/jquery.js',
         'sri': 'SRIHASH',
-    }]
+    }, 'https://example.com/plugin1.js']
+
+
+@hookimpl
+def extra_body_script(template, database, table, datasette):
+    return 'var extra_body_script = {};'.format(
+        json.dumps({
+            "template": template,
+            "database": database,
+            "table": table,
+            "config": datasette.plugin_config(
+                "name-of-plugin",
+                database=database,
+                table=table,
+            )
+        })
+    )
+
+
+@hookimpl
+def render_cell(value, column, table, database, datasette):
+    # Render some debug output in cell with value RENDER_CELL_DEMO
+    if value != "RENDER_CELL_DEMO":
+        return None
+    return json.dumps({
+        "column": column,
+        "table": table,
+        "database": database,
+        "config": datasette.plugin_config(
+            "name-of-plugin",
+            database=database,
+            table=table,
+        )
+    })
+'''
+
+PLUGIN2 = '''
+from datasette import hookimpl
+import jinja2
+import json
+
+
+@hookimpl
+def extra_js_urls():
+    return [{
+        'url': 'https://example.com/jquery.js',
+        'sri': 'SRIHASH',
+    }, 'https://example.com/plugin2.js']
+
+
+@hookimpl
+def render_cell(value, database):
+    # Render {"href": "...", "label": "..."} as link
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped.startswith("{") and stripped.endswith("}"):
+        return None
+    try:
+        data = json.loads(value)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    if set(data.keys()) != {"href", "label"}:
+        return None
+    href = data["href"]
+    if not (
+        href.startswith("/") or href.startswith("http://")
+        or href.startswith("https://")
+    ):
+        return None
+    return jinja2.Markup(
+        '<a data-database="{database}" href="{href}">{label}</a>'.format(
+            database=database,
+            href=jinja2.escape(data["href"]),
+            label=jinja2.escape(data["label"] or "") or "&nbsp;"
+        )
+    )
 '''
 
 TABLES = '''
@@ -249,6 +423,10 @@ INSERT INTO units VALUES (1, 1, 100);
 INSERT INTO units VALUES (2, 5000, 2500);
 INSERT INTO units VALUES (3, 100000, 75000);
 
+CREATE TABLE tags (
+    tag TEXT PRIMARY KEY
+);
+
 CREATE TABLE searchable (
   pk integer primary key,
   text1 text,
@@ -256,8 +434,24 @@ CREATE TABLE searchable (
   [name with . and spaces] text
 );
 
+CREATE TABLE searchable_tags (
+    searchable_id integer,
+    tag text,
+    PRIMARY KEY (searchable_id, tag),
+    FOREIGN KEY (searchable_id) REFERENCES searchable(pk),
+    FOREIGN KEY (tag) REFERENCES tags(tag)
+);
+
 INSERT INTO searchable VALUES (1, 'barry cat', 'terry dog', 'panther');
 INSERT INTO searchable VALUES (2, 'terry dog', 'sara weasel', 'puma');
+
+INSERT INTO tags VALUES ("canine");
+INSERT INTO tags VALUES ("feline");
+
+INSERT INTO searchable_tags (searchable_id, tag) VALUES
+    (1, "feline"),
+    (2, "canine")
+;
 
 CREATE VIRTUAL TABLE "searchable_fts"
     USING FTS3 (text1, text2, [name with . and spaces], content="searchable");
@@ -267,9 +461,21 @@ INSERT INTO "searchable_fts" (rowid, text1, text2, [name with . and spaces])
 CREATE TABLE [select] (
   [group] text,
   [having] text,
-  [and] text
+  [and] text,
+  [json] text
 );
-INSERT INTO [select] VALUES ('group', 'having', 'and');
+INSERT INTO [select] VALUES ('group', 'having', 'and',
+    '{"href": "http://example.com/", "label":"Example"}'
+);
+
+CREATE TABLE infinity (
+    value REAL
+);
+INSERT INTO infinity VALUES
+    (1e999),
+    (-1e999),
+    (1.5)
+;
 
 CREATE TABLE facet_cities (
     id integer primary key,
@@ -285,32 +491,36 @@ INSERT INTO facet_cities (id, name) VALUES
 CREATE TABLE facetable (
     pk integer primary key,
     planet_int integer,
+    on_earth integer,
     state text,
     city_id integer,
     neighborhood text,
     FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
-INSERT INTO facetable (planet_int, state, city_id, neighborhood) VALUES
-    (1, 'CA', 1, 'Mission'),
-    (1, 'CA', 1, 'Dogpatch'),
-    (1, 'CA', 1, 'SOMA'),
-    (1, 'CA', 1, 'Tenderloin'),
-    (1, 'CA', 1, 'Bernal Heights'),
-    (1, 'CA', 1, 'Hayes Valley'),
-    (1, 'CA', 2, 'Hollywood'),
-    (1, 'CA', 2, 'Downtown'),
-    (1, 'CA', 2, 'Los Feliz'),
-    (1, 'CA', 2, 'Koreatown'),
-    (1, 'MI', 3, 'Downtown'),
-    (1, 'MI', 3, 'Greektown'),
-    (1, 'MI', 3, 'Corktown'),
-    (1, 'MI', 3, 'Mexicantown'),
-    (2, 'MC', 4, 'Arcadia Planitia')
+INSERT INTO facetable
+    (planet_int, on_earth, state, city_id, neighborhood)
+VALUES
+    (1, 1, 'CA', 1, 'Mission'),
+    (1, 1, 'CA', 1, 'Dogpatch'),
+    (1, 1, 'CA', 1, 'SOMA'),
+    (1, 1, 'CA', 1, 'Tenderloin'),
+    (1, 1, 'CA', 1, 'Bernal Heights'),
+    (1, 1, 'CA', 1, 'Hayes Valley'),
+    (1, 1, 'CA', 2, 'Hollywood'),
+    (1, 1, 'CA', 2, 'Downtown'),
+    (1, 1, 'CA', 2, 'Los Feliz'),
+    (1, 1, 'CA', 2, 'Koreatown'),
+    (1, 1, 'MI', 3, 'Downtown'),
+    (1, 1, 'MI', 3, 'Greektown'),
+    (1, 1, 'MI', 3, 'Corktown'),
+    (1, 1, 'MI', 3, 'Mexicantown'),
+    (2, 0, 'MC', 4, 'Arcadia Planitia')
 ;
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');
+INSERT INTO simple_primary_key VALUES (4, 'RENDER_CELL_DEMO');
 
 INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
 INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');
@@ -342,10 +552,20 @@ CREATE VIEW simple_view AS
 ])
 
 if __name__ == '__main__':
-    filename = sys.argv[-1]
-    if filename.endswith('.db'):
-        conn = sqlite3.connect(filename)
+    # Can be called with data.db OR data.db metadata.json
+    db_filename = sys.argv[-1]
+    metadata_filename = None
+    if db_filename.endswith(".json"):
+        metadata_filename = db_filename
+        db_filename = sys.argv[-2]
+    if db_filename.endswith(".db"):
+        conn = sqlite3.connect(db_filename)
         conn.executescript(TABLES)
-        print('Test tables written to {}'.format(filename))
+        print("Test tables written to {}".format(db_filename))
+        if metadata_filename:
+            open(metadata_filename, 'w').write(json.dumps(METADATA))
+            print("- metadata written to {}".format(metadata_filename))
     else:
-        print('Usage: {} name_of_file_to_write.db'.format(sys.argv[0]))
+        print("Usage: {} db_to_write.db [metadata_to_write.json]".format(
+            sys.argv[0]
+        ))

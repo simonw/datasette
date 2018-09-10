@@ -5,6 +5,12 @@ Configuration
 
 Datasette provides a number of configuration options. These can be set using the ``--config name:value`` option to ``datasette serve``.
 
+You can set multiple configuration options at once like this::
+
+    datasette mydatabase.db --config default_page_size:50 \
+        --config sql_time_limit_ms:3500 \
+        --config max_returned_rows:2000
+
 To prevent rogue, long-running queries from making a Datasette instance inaccessible to other users, Datasette imposes some limits on the SQL that you can execute. These are exposed as config options which you can over-ride.
 
 default_page_size
@@ -28,6 +34,8 @@ You can optionally set a lower time limit for an individual query using the ``?_
     /my-database/my-table?qSpecies=44&_timelimit=100
 
 This would set the time limit to 100ms for that specific query. This feature is useful if you are working with databases of unknown size and complexity - a query that might make perfect sense for a smaller table could take too long to execute on a table with millions of rows. By setting custom time limits you can execute queries "optimistically" - e.g. give me an exact count of rows matching this query but only if it takes less than 100ms to calculate.
+
+.. _config_max_returned_rows:
 
 max_returned_rows
 -----------------
@@ -95,6 +103,8 @@ Should users be able to download the original SQLite database using a link on th
 
     datasette mydatabase.db --config allow_download:off
 
+.. _config_allow_sql:
+
 allow_sql
 ---------
 
@@ -110,3 +120,62 @@ Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-ag
 ::
 
     datasette mydatabase.db --config default_cache_ttl:10
+
+cache_size_kb
+-------------
+
+Sets the amount of memory SQLite uses for its `per-connection cache <https://www.sqlite.org/pragma.html#pragma_cache_size>`_, in KB.
+
+::
+
+    datasette mydatabase.db --config cache_size_kb:5000
+
+.. _config_allow_csv_stream:
+
+allow_csv_stream
+----------------
+
+Enables :ref:`the CSV export feature <csv_export>` where an entire table
+(potentially hundreds of thousands of rows) can be exported as a single CSV
+file. This is turned on by default - you can turn it off like this:
+
+::
+
+    datasette mydatabase.db --config allow_csv_stream:off
+
+.. _config_max_csv_mb:
+
+max_csv_mb
+----------
+
+The maximum size of CSV that can be exported, in megabytes. Defaults to 100MB.
+You can disable the limit entirely by settings this to 0:
+
+::
+
+    datasette mydatabase.db --config max_csv_mb:0
+
+.. _config_truncate_cells_html:
+
+truncate_cells_html
+-------------------
+
+In the HTML table view, truncate any strings that are longer than this value.
+The full value will still be available in CSV, JSON and on the individual row
+HTML page. Set this to 0 to disable truncation.
+
+::
+
+    datasette mydatabase.db --config truncate_cells_html:0
+
+
+force_https_urls
+----------------
+
+Forces self-referential URLs in the JSON output to always use the ``https://``
+protocol. This is useful for cases where the application itself is hosted using
+HTTP but is served to the outside world via a proxy that enables HTTPS.
+
+::
+
+    datasette mydatabase.db --config force_https_urls:1

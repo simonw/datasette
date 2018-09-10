@@ -5,6 +5,8 @@ Datasette includes some pages and JSON API endpoints for introspecting the curre
 
 Each of these pages can be viewed in your browser. Add ``.json`` to the URL to get back the contents as JSON.
 
+.. _JsonDataView_metadata:
+
 /-/metadata
 -----------
 
@@ -18,6 +20,8 @@ Shows the contents of the ``metadata.json`` file that was passed to ``datasette 
         "title": "Five Thirty Eight",
         "databases": {...}
     }
+
+.. _JsonDataView_inspect:
 
 /-/inspect
 ----------
@@ -52,6 +56,7 @@ This is an internal implementation detail of Datasette and the format should not
                 },
                 ...
 
+.. _JsonDataView_versions:
 
 /-/versions
 -----------
@@ -78,6 +83,8 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://fi
         }
     }
 
+.. _JsonDataView_plugins:
+
 /-/plugins
 ----------
 
@@ -91,6 +98,8 @@ Shows a list of currently installed plugins and their versions. `Plugins example
             "version": "0.4"
         }
     ]
+
+.. _JsonDataView_config:
 
 /-/config
 ---------

@@ -1,7 +1,12 @@
 import hashlib
-import sqlite3
 
-from .utils import detect_spatialite, detect_fts, escape_sqlite, get_all_foreign_keys
+from .utils import (
+    detect_spatialite,
+    detect_fts,
+    escape_sqlite,
+    get_all_foreign_keys,
+    sqlite3
+)
 
 
 HASH_BLOCK_SIZE = 1024 * 1024

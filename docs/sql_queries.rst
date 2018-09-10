@@ -9,8 +9,11 @@ worry about SQL injection attacks.
 The easiest way to execute custom SQL against Datasette is through the web UI.
 The database index page includes a SQL editor that lets you run any SELECT query
 you like. You can also construct queries using the filter interface on the
-tables page, then click "View and edit SQL" to open that query in the cgustom
+tables page, then click "View and edit SQL" to open that query in the custom
 SQL editor.
+
+Note that this interface is only available if the :ref:`config_allow_sql` option
+has not been disabled.
 
 Any Datasette SQL query is reflected in the URL of the page, allowing you to
 bookmark them, share them with others and navigate through previous queries
@@ -23,7 +26,9 @@ Named parameters
 ----------------
 
 Datasette has special support for SQLite named parameters. Consider a SQL query
-like this::
+like this:
+
+.. code-block:: sql
 
     select * from Street_Tree_List
     where "PermitNotes" like :notes
@@ -61,6 +66,8 @@ The easiest way to create views is with the SQLite command-line interface::
     sqlite> CREATE VIEW demo_view AS select qSpecies from Street_Tree_List;
     <CTRL+D>
 
+.. _canned_queries:
+
 Canned queries
 --------------
 
@@ -71,7 +78,9 @@ queries inside your ``metadata.json`` file. Here's an example::
         "databases": {
            "sf-trees": {
                "queries": {
-                   "just_species": "select qSpecies from Street_Tree_List"
+                   "just_species": {
+                       "sql": select qSpecies from Street_Tree_List"
+                   }
                }
            }
         }
@@ -90,10 +99,47 @@ For the above example, that URL would be::
 
     /sf-trees/just_species
 
+You can optionally include ``"title"`` and ``"description"`` keys to show a
+title and description on the canned query page. As with regular table metadata
+you can alternatively specify ``"description_html"`` to have your description
+rendered as HTML (rather than having HTML special characters escaped).
+
 Canned queries support named parameters, so if you include those in the SQL you
 will then be able to enter them using the form fields on the canned query page
 or by adding them to the URL. This means canned queries can be used to create
-custom JSON APIs based on a carefully designed SQL.
+custom JSON APIs based on a carefully designed SQL statement.
+
+Here's an example of a canned query with a named parameter:
+
+.. code-block:: sql
+
+    select neighborhood, facet_cities.name, state
+    from facetable join facet_cities on facetable.city_id = facet_cities.id
+    where neighborhood like '%' || :text || '%' order by neighborhood;
+
+In the canned query JSON it looks like this::
+
+    {
+        "databases": {
+           "fixtures": {
+               "queries": {
+                   "neighborhood_search": {
+                       "sql": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;",
+                       "title": "Search neighborhoods",
+                       "description_html": "<b>Demonstrating</b> simple like search"
+                   }
+               }
+           }
+        }
+    }
+
+You can try this canned query out here:
+https://latest.datasette.io/fixtures/neighborhood_search?text=town
+
+Note that we are using SQLite string concatenation here - the ``||`` operator -
+to add wildcard ``%`` characters to the string provided by the user.
+
+.. _pagination:
 
 Pagination
 ----------
@@ -105,7 +151,9 @@ scan through every preceding row to find the correct offset.
 
 When paginating through tables, Datasette instead orders the rows in the table
 by their primary key and performs a WHERE clause against the last seen primary
-key for the previous page. For example::
+key for the previous page. For example:
+
+.. code-block:: sql
 
     select rowid, * from Tree_List where rowid > 200 order by rowid limit 101
 

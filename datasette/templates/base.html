@@ -35,6 +35,11 @@
         {% endif %}
     {% endif %}
 </div>
+
+{% for body_script in body_scripts %}
+    <script>{{ body_script }}</script>
+{% endfor %}
+
 {% if select_templates %}<!-- Templates considered: {{ select_templates|join(", ") }} -->{% endif %}
 </body>
 </html>

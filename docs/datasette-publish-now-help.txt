@@ -1,0 +1,23 @@
+$ datasette publish now --help
+
+Usage: datasette publish now [OPTIONS] [FILES]...
+
+Options:
+  -m, --metadata FILENAME   Path to JSON file containing metadata to publish
+  --extra-options TEXT      Extra options to pass to datasette serve
+  --branch TEXT             Install datasette from a GitHub branch e.g. master
+  --template-dir DIRECTORY  Path to directory containing custom templates
+  --plugins-dir DIRECTORY   Path to directory containing custom plugins
+  --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
+  --install TEXT            Additional packages (e.g. plugins) to install
+  --version-note TEXT       Additional note to show on /-/versions
+  --title TEXT              Title for metadata
+  --license TEXT            License label for metadata
+  --license_url TEXT        License URL for metadata
+  --source TEXT             Source label for metadata
+  --source_url TEXT         Source URL for metadata
+  -n, --name TEXT           Application name to use when deploying
+  --force                   Pass --force option to now
+  --token TEXT              Auth token to use for deploy (Now only)
+  --spatialite              Enable SpatialLite extension
+  --help                    Show this message and exit.

@@ -5,16 +5,22 @@
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](http://datasette.readthedocs.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/master/LICENSE)
 
-*An instant JSON API for your SQLite databases*
+*A tool for exploring and publishing data*
 
 Datasette provides an instant, read-only JSON API for any SQLite database. It also provides tools  for packaging the database up as a Docker container and deploying that container to hosting providers such as [Zeit Now](https://zeit.co/now).
 
 Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to convert them to SQLite, then publish them with Datasette. Or try [Datasette Publish](https://publish.datasettes.com), a web app that lets you upload CSV data and deploy it using Datasette without needing to install any software.
 
-Documentation: http://datasette.readthedocs.io/ Examples: https://github.com/simonw/datasette/wiki/Datasettes
+* Documentation: http://datasette.readthedocs.io/
+* Examples: https://github.com/simonw/datasette/wiki/Datasettes
+* Live demo of current master: https://latest.datasette.io/
 
 ## News
 
+* 23rd July 2018: [Datasette 0.24](http://datasette.readthedocs.io/en/latest/changelog.html#v0-24) - a number of small new features
+* 29th June 2018: [datasette-vega](https://github.com/simonw/datasette-vega), a new plugin for visualizing data as bar, line or scatter charts
+* 21st June 2018: [Datasette 0.23.1](http://datasette.readthedocs.io/en/latest/changelog.html#v0-23-1) - minor bug fixes
+* 18th June 2018: [Datasette 0.23: CSV, SpatiaLite and more](http://datasette.readthedocs.io/en/latest/changelog.html#v0-23) - CSV export, foreign key expansion in JSON and CSV, new config options, improved support for SpatiaLite and a bunch of other improvements
 * 23rd May 2018: [Datasette 0.22.1 bugfix](https://github.com/simonw/datasette/releases/tag/0.22.1) plus we now use [versioneer](https://github.com/warner/python-versioneer)
 * 20th May 2018: [Datasette 0.22: Datasette Facets](https://simonwillison.net/2018/May/20/datasette-facets)
 * 5th May 2018: [Datasette 0.21: New _shape=, new _size=, search within columns](https://github.com/simonw/datasette/releases/tag/0.21)
@@ -174,11 +180,14 @@ This will create a docker image containing both the datasette application and th
       --extra-options TEXT      Extra options to pass to datasette serve
       --force                   Pass --force option to now
       --branch TEXT             Install datasette from a GitHub branch e.g. master
+      --token TEXT              Auth token to use for deploy (Now only)
       --template-dir DIRECTORY  Path to directory containing custom templates
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
       --install TEXT            Additional packages (e.g. plugins) to install
+      --spatialite              Enable SpatialLite extension
+      --version-note TEXT       Additional note to show on /-/versions
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata
@@ -206,6 +215,8 @@ If you have docker installed you can use `datasette package` to create a new Doc
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
       --install TEXT            Additional packages (e.g. plugins) to install
+      --spatialite              Enable SpatialLite extension
+      --version-note TEXT       Additional note to show on /-/versions
       --title TEXT              Title for metadata
       --license TEXT            License label for metadata
       --license_url TEXT        License URL for metadata

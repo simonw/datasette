@@ -69,7 +69,7 @@
     </div>
     <div class="filter-row">
         {% if is_sortable %}
-            <div class="select-wrapper">
+            <div class="select-wrapper small-screen-only">
                 <select name="_sort" id="sort_by">
                     <option value="">Sort...</option>
                     {% for column in display_columns %}
@@ -79,7 +79,7 @@
                     {% endfor %}
                 </select>
             </div>
-            <label class="sort_by_desc"><input type="checkbox" name="_sort_by_desc"{% if sort_desc %} checked{% endif %}> descending</label>
+            <label class="sort_by_desc small-screen-only"><input type="checkbox" name="_sort_by_desc"{% if sort_desc %} checked{% endif %}> descending</label>
         {% endif %}
         {% for facet in sorted_facet_results %}
             <input type="hidden" name="_facet" value="{{ facet.name }}">
@@ -88,11 +88,11 @@
     </div>
 </form>
 
-{% if query.sql %}
+{% if query.sql and config.allow_sql %}
     <p><a class="not-underlined" title="{{ query.sql }}" href="/{{ database }}-{{ database_hash }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 
-<p>This data as <a href="{{ url_json }}">.json</a></p>
+<p class="export-links">This data as <a href="{{ url_json }}">JSON</a>{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
 
 {% if suggested_facets %}
     <p class="suggested-facets">
@@ -117,7 +117,7 @@
                 <ul>
                     {% for facet_value in facet_info.results %}
                         {% if not facet_value.selected %}
-                            <li><a href="{{ facet_value.toggle_url }}">{{ facet_value.label or "_" }}</a> {{ "{:,}".format(facet_value.count) }}</li>
+                            <li><a href="{{ facet_value.toggle_url }}">{{ (facet_value.label if facet_value.label is not none else "_") }}</a> {{ "{:,}".format(facet_value.count) }}</li>
                         {% else %}
                             <li>{{ facet_value.label }} &middot; {{ "{:,}".format(facet_value.count) }} <a href="{{ facet_value.toggle_url }}" class="cross">&#x2716;</a></li>
                         {% endif %}
@@ -135,6 +135,27 @@
 
 {% if next_url %}
      <p><a href="{{ next_url }}">Next page</a></p>
+{% endif %}
+
+{% if display_rows %}
+    <div id="export" class="advanced-export">
+        <h3>Advanced export</h3>
+        <p>JSON shape: <a href="{{ url_json }}">default</a>, <a href="{{ append_querystring(url_json, '_shape=array') }}">array</a>{% if primary_keys %}, <a href="{{ append_querystring(url_json, '_shape=object') }}">object</a>{% endif %}</p>
+        <form action="{{ url_csv_path }}" method="get">
+            <p>
+                CSV options:
+                <label><input type="checkbox" name="_dl"> download file</label>
+                {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> expand labels</label>{% endif %}
+                {% if next_url and config.allow_csv_stream %}<label><input type="checkbox" name="_stream"> stream all rows</label>{% endif %}
+                <input type="submit" value="Export CSV">
+                {% for key, value in url_csv_args.items() %}
+                    {% if key != "_labels" %}
+                        <input type="hidden" name="{{ key }}" value="{{ value }}">
+                    {% endif %}
+                {% endfor %}
+            </p>
+        </form>
+    </div>
 {% endif %}
 
 {% if table_definition %}

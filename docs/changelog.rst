@@ -1,5 +1,170 @@
+=========
 Changelog
 =========
+
+.. _v0_24:
+
+0.24 (2018-07-23)
+-------------------
+
+A number of small new features:
+
+- ``datasette publish heroku`` now supports ``--extra-options``, fixes `#334 <https://github.com/simonw/datasette/issues/334>`_
+- Custom error message if SpatiaLite is needed for specified database, closes `#331 <https://github.com/simonw/datasette/issues/331>`_
+- New config option: ``truncate_cells_html`` for :ref:`truncating long cell values <config_truncate_cells_html>` in HTML view - closes `#330 <https://github.com/simonw/datasette/issues/330>`_
+- Documentation for :ref:`datasette publish and datasette package <publishing>`, closes `#337 <https://github.com/simonw/datasette/issues/337>`_
+- Fixed compatibility with Python 3.7
+- ``datasette publish heroku`` now supports app names via the ``-n`` option, which can also be used to overwrite an existing application [Russ Garrett]
+- Title and description metadata can now be set for :ref:`canned SQL queries <canned_queries>`, closes `#342 <https://github.com/simonw/datasette/issues/342>`_
+- New ``force_https_on`` config option, fixes ``https://`` API URLs when deploying to Zeit Now - closes `#333 <https://github.com/simonw/datasette/issues/333>`_
+- ``?_json_infinity=1`` querystring argument for handling Infinity/-Infinity values in JSON, closes `#332 <https://github.com/simonw/datasette/issues/332>`_
+- URLs displayed in the results of custom SQL queries are now URLified, closes `#298 <https://github.com/simonw/datasette/issues/298>`_
+
+.. _v0_23_2:
+
+0.23.2 (2018-07-07)
+-------------------
+
+Minor bugfix and documentation release.
+
+- CSV export now respects ``--cors``, fixes `#326 <https://github.com/simonw/datasette/issues/326>`_
+- :ref:`Installation instructions <installation>`, including docker image - closes `#328 <https://github.com/simonw/datasette/issues/328>`_
+- Fix for row pages for tables with / in, closes `#325 <https://github.com/simonw/datasette/issues/325>`_
+
+.. _v0_23_1:
+
+0.23.1 (2018-06-21)
+-------------------
+
+Minor bugfix release.
+
+- Correctly display empty strings in HTML table, closes `#314 <https://github.com/simonw/datasette/issues/314>`_
+- Allow "." in database filenames, closes `#302 <https://github.com/simonw/datasette/issues/302>`_
+- 404s ending in slash redirect to remove that slash, closes `#309 <https://github.com/simonw/datasette/issues/309>`_
+- Fixed incorrect display of compound primary keys with foreign key
+  references. Closes `#319 <https://github.com/simonw/datasette/issues/319>`_
+- Docs + example of canned SQL query using || concatenation. Closes `#321 <https://github.com/simonw/datasette/issues/321>`_
+- Correctly display facets with value of 0 - closes `#318 <https://github.com/simonw/datasette/issues/318>`_
+- Default 'expand labels' to checked in CSV advanced export
+
+.. _v0_23:
+
+0.23 (2018-06-18)
+-----------------
+
+This release features CSV export, improved options for foreign key expansions,
+new configuration settings and improved support for SpatiaLite.
+
+See `datasette/compare/0.22.1...0.23
+<https://github.com/simonw/datasette/compare/0.22.1...0.23>`_ for a full list of
+commits added since the last release.
+
+CSV export
+~~~~~~~~~~
+
+Any Datasette table, view or custom SQL query can now be exported as CSV.
+
+.. image:: advanced_export.png
+
+Check out the :ref:`CSV export documentation <csv_export>` for more details, or
+try the feature out on
+https://fivethirtyeight.datasettes.com/fivethirtyeight/bechdel%2Fmovies
+
+If your table has more than :ref:`config_max_returned_rows` (default 1,000)
+Datasette provides the option to *stream all rows*. This option takes advantage
+of async Python and Datasette's efficient :ref:`pagination <pagination>` to
+iterate through the entire matching result set and stream it back as a
+downloadable CSV file.
+
+Foreign key expansions
+~~~~~~~~~~~~~~~~~~~~~~
+
+When Datasette detects a foreign key reference it attempts to resolve a label
+for that reference (automatically or using the :ref:`label_columns` metadata
+option) so it can display a link to the associated row.
+
+This expansion is now also available for JSON and CSV representations of the
+table, using the new ``_labels=on`` querystring option. See
+:ref:`expand_foreign_keys` for more details.
+
+New configuration settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette's :ref:`config` now also supports boolean settings. A number of new
+configuration options have been added:
+
+* ``num_sql_threads`` - the number of threads used to execute SQLite queries. Defaults to 3.
+* ``allow_facet`` - enable or disable custom :ref:`facets` using the `_facet=` parameter. Defaults to on.
+* ``suggest_facets`` - should Datasette suggest facets? Defaults to on.
+* ``allow_download`` - should users be allowed to download the entire SQLite database? Defaults to on.
+* ``allow_sql`` - should users be allowed to execute custom SQL queries? Defaults to on.
+* ``default_cache_ttl`` - Default HTTP caching max-age header in seconds. Defaults to 365 days - caching can be disabled entirely by settings this to 0.
+* ``cache_size_kb`` - Set the amount of memory SQLite uses for its `per-connection cache <https://www.sqlite.org/pragma.html#pragma_cache_size>`_, in KB.
+* ``allow_csv_stream`` - allow users to stream entire result sets as a single CSV file. Defaults to on.
+* ``max_csv_mb`` - maximum size of a returned CSV file in MB. Defaults to 100MB, set to 0 to disable this limit.
+
+Control HTTP caching with ?_ttl=
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can now customize the HTTP max-age header that is sent on a per-URL basis, using the new ``?_ttl=`` querystring parameter.
+
+You can set this to any value in seconds, or you can set it to 0 to disable HTTP caching entirely.
+
+Consider for example this query which returns a randomly selected member of the Avengers::
+
+    select * from [avengers/avengers] order by random() limit 1
+
+If you hit the following page repeatedly you will get the same result, due to HTTP caching:
+
+`/fivethirtyeight?sql=select+*+from+%5Bavengers%2Favengers%5D+order+by+random%28%29+limit+1 <https://fivethirtyeight.datasettes.com/fivethirtyeight?sql=select+*+from+%5Bavengers%2Favengers%5D+order+by+random%28%29+limit+1>`_
+
+By adding `?_ttl=0` to the zero you can ensure the page will not be cached and get back a different super hero every time:
+
+`/fivethirtyeight?sql=select+*+from+%5Bavengers%2Favengers%5D+order+by+random%28%29+limit+1&_ttl=0 <https://fivethirtyeight.datasettes.com/fivethirtyeight?sql=select+*+from+%5Bavengers%2Favengers%5D+order+by+random%28%29+limit+1&_ttl=0>`_
+
+Improved support for SpatiaLite
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `SpatiaLite module <https://www.gaia-gis.it/fossil/libspatialite/index>`_
+for SQLite adds robust geospatial features to the database.
+
+Getting SpatiaLite working can be tricky, especially if you want to use the most
+recent alpha version (with support for K-nearest neighbor).
+
+Datasette now includes :ref:`extensive documentation on SpatiaLite
+<spatialite>`, and thanks to `Ravi Kotecha <https://github.com/r4vi>`_ our GitHub
+repo includes a `Dockerfile
+<https://github.com/simonw/datasette/blob/master/Dockerfile>`_ that can build
+the latest SpatiaLite and configure it for use with Datasette.
+
+The ``datasette publish`` and ``datasette package`` commands now accept a new
+``--spatialite`` argument which causes them to install and configure SpatiaLite
+as part of the container they deploy.
+
+latest.datasette.io
+~~~~~~~~~~~~~~~~~~~
+
+Every commit to Datasette master is now automatically deployed by Travis CI to
+https://latest.datasette.io/ - ensuring there is always a live demo of the
+latest version of the software.
+
+The demo uses `the fixtures
+<https://github.com/simonw/datasette/blob/master/tests/fixtures.py>`_ from our
+unit tests, ensuring it demonstrates the same range of functionality that is
+covered by the tests.
+
+You can see how the deployment mechanism works in our `.travis.yml
+<https://github.com/simonw/datasette/blob/master/.travis.yml>`_ file.
+
+Miscellaneous
+~~~~~~~~~~~~~
+
+* Got JSON data in one of your columns? Use the new ``?_json=COLNAME`` argument
+  to tell Datasette to return that JSON value directly rather than encoding it
+  as a string.
+* If you just want an array of the first value of each row, use the new
+  ``?_shape=arrayfirst`` option - `example
+  <https://latest.datasette.io/fixtures.json?sql=select+neighborhood+from+facetable+order+by+pk+limit+101&_shape=arrayfirst>`_.
 
 0.22.1 (2018-05-23)
 -------------------

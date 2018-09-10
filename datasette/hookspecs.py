@@ -1,8 +1,8 @@
 from pluggy import HookimplMarker
 from pluggy import HookspecMarker
 
-hookspec = HookspecMarker('datasette')
-hookimpl = HookimplMarker('datasette')
+hookspec = HookspecMarker("datasette")
+hookimpl = HookimplMarker("datasette")
 
 
 @hookspec
@@ -16,10 +16,25 @@ def prepare_jinja2_environment(env):
 
 
 @hookspec
-def extra_css_urls():
+def extra_css_urls(template, database, table, datasette):
     "Extra CSS URLs added by this plugin"
 
 
 @hookspec
-def extra_js_urls():
+def extra_js_urls(template, database, table, datasette):
     "Extra JavaScript URLs added by this plugin"
+
+
+@hookspec
+def extra_body_script(template, database, table, datasette):
+    "Extra JavaScript code to be included in <script> at bottom of body"
+
+
+@hookspec
+def publish_subcommand(publish):
+    "Subcommands for 'datasette publish'"
+
+
+@hookspec(firstresult=True)
+def render_cell(value, column, table, database, datasette):
+    "Customize rendering of HTML table cell values"

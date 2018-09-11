@@ -39,6 +39,10 @@ from .inspect import inspect_hash, inspect_views, inspect_tables
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
+# Read external database connectors
+from . import connectors
+connectors.load_connectors()
+
 app_root = Path(__file__).parent.parent
 
 connections = threading.local()
@@ -283,6 +287,16 @@ class Datasette:
             conn.execute('PRAGMA cache_size=-{}'.format(self.config("cache_size_kb")))
         pm.hook.prepare_connection(conn=conn)
 
+    def _is_sqlite3_file(self, path):
+        try:
+            with sqlite3.connect(
+                    "file:{}?immutable=1".format(path), uri=True
+            ) as conn:
+                conn.execute('select * from sqlite_master where type="table"')
+            return True
+        except:
+            return False
+
     def table_exists(self, database, table):
         return table in self.inspect().get(database, {}).get("tables")
 
@@ -297,6 +311,19 @@ class Datasette:
             name = path.stem
             if name in self._inspect:
                 raise Exception("Multiple files with same stem %s" % name)
+
+            # If it isn't a sqlite3 file, use other connectors
+            if not self._is_sqlite3_file(path):
+                tables, views, dbtype = connectors.inspect(path)
+                self._inspect[name] = {
+                    "hash": inspect_hash(path),
+                    "file": str(path),
+                    "dbtype": dbtype,
+                    "tables": tables,
+                    "views": views,
+                }
+                continue
+
             try:
                 with sqlite3.connect(
                     "file:{}?immutable=1".format(path), uri=True
@@ -305,6 +332,7 @@ class Datasette:
                     self._inspect[name] = {
                         "hash": inspect_hash(path),
                         "file": str(path),
+                        "dbtype": "sqlite3",
                         "views": inspect_views(conn),
                         "tables": inspect_tables(conn, (self.metadata("databases") or {}).get(name, {}))
                     }
@@ -393,13 +421,26 @@ class Datasette:
             conn = getattr(connections, db_name, None)
             if not conn:
                 info = self.inspect()[db_name]
-                conn = sqlite3.connect(
-                    "file:{}?immutable=1".format(info["file"]),
-                    uri=True,
-                    check_same_thread=False,
-                )
-                self.prepare_connection(conn)
+                if info['dbtype'] == 'sqlite3':
+                    conn = sqlite3.connect(
+                        "file:{}?immutable=1".format(info["file"]),
+                        uri=True,
+                        check_same_thread=False,
+                    )
+                    self.prepare_connection(conn)
+                else:
+                    conn = connectors.connect(info['file'], info['dbtype'])
                 setattr(connections, db_name, conn)
+
+            if not isinstance(conn, sqlite3.Connection):
+                rows, truncated, description = conn.execute(
+                    sql,
+                    params or {},
+                    truncate=truncate,
+                    page_size=page_size,
+                    max_returned_rows=self.max_returned_rows,
+                )
+                return Results(rows, truncated, description)
 
             time_limit_ms = self.sql_time_limit_ms
             if custom_time_limit and custom_time_limit < time_limit_ms:

@@ -39,17 +39,13 @@ from .inspect import inspect_hash, inspect_views, inspect_tables
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
-app_root = Path(__file__).parent.parent
-
-connections = threading.local()
-
-pm = pluggy.PluginManager("datasette")
-pm.add_hookspecs(hookspecs)
-pm.load_setuptools_entrypoints("datasette")
-
 # Read external database connectors
 from . import connectors
 connectors.load_connectors()
+
+app_root = Path(__file__).parent.parent
+
+connections = threading.local()
 
 ConfigOption = collections.namedtuple(
     "ConfigOption", ("name", "default", "help")

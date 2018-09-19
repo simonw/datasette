@@ -94,6 +94,8 @@ registered with Pint::
 .. _unit registry: https://github.com/hgrecco/pint/blob/master/pint/default_en.txt
 .. _custom units: http://pint.readthedocs.io/en/latest/defining.html
 
+.. _metadata_sortable_columns:
+
 Setting which columns can be used for sorting
 ---------------------------------------------
 

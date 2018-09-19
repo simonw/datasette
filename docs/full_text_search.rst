@@ -69,6 +69,8 @@ And then populate it like this:
 
 You can use this technique to populate the full-text search index from any combination of tables and joins that makes sense for your project.
 
+.. _full_text_search_table_or_view:
+
 Configuring full-text search for a table or view
 ------------------------------------------------
 

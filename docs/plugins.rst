@@ -149,6 +149,8 @@ The priority order for template loading is:
 See :ref:`customization` for more details on how to write custom templates,
 including which filenames to use to customize which parts of the Datasette UI.
 
+.. _plugins_configuration:
+
 Plugin configuration
 --------------------
 
@@ -228,6 +230,8 @@ When you implement a plugin hook you can accept any or all of the parameters tha
 
 The full list of available plugin hooks is as follows.
 
+.. _plugin_hook_prepare_connection:
+
 prepare_connection(conn)
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -252,6 +256,8 @@ arguments and can be called like this::
 
     select random_integer(1, 10);
 
+.. _plugin_hook_prepare_jinja2_environment:
+
 prepare_jinja2_environment(env)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -274,6 +280,8 @@ example:
 You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
+
+.. _plugin_hook_extra_css_urls:
 
 extra_css_urls(template, database, table, datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -319,6 +327,8 @@ Or a list of dictionaries defining both a URL and an
             'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
         }]
 
+.. _plugin_hook_extra_js_urls:
+
 extra_js_urls(template, database, table, datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -350,6 +360,8 @@ you have one:
         return [
             '/-/static-plugins/your_plugin/app.js'
         ]
+
+.. _plugin_hook_publish_subcommand:
 
 publish_subcommand(publish)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -399,6 +411,8 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
             api_key,
         ):
             # Your implementation goes here
+
+.. _plugin_hook_render_cell:
 
 render_cell(value, column, table, database, datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -467,6 +481,8 @@ If the value matches that pattern, the plugin returns an HTML link element:
             href=jinja2.escape(data["href"]),
             label=jinja2.escape(data["label"] or "") or "&nbsp;"
         ))
+
+.. _plugin_hook_extra_body_script:
 
 extra_body_script(template, database, table, datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

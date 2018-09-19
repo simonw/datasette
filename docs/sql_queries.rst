@@ -79,7 +79,7 @@ queries inside your ``metadata.json`` file. Here's an example::
            "sf-trees": {
                "queries": {
                    "just_species": {
-                       "sql": select qSpecies from Street_Tree_List"
+                       "sql": "select qSpecies from Street_Tree_List"
                    }
                }
            }

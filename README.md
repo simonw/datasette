@@ -17,6 +17,7 @@ Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to 
 
 ## News
 
+* 3rd October 2018: [The interesting ideas in Datasette](https://simonwillison.net/2018/Oct/4/datasette-ideas/) - a write-up of some of the less obvious interesting ideas embedded in the Datasette project.
 * 19th September 2018: [Datasette 0.25](http://datasette.readthedocs.io/en/latest/changelog.html#v0-25) - New plugin hooks, improved database view support and an easier way to use more recent versions of SQLite.
 * 23rd July 2018: [Datasette 0.24](http://datasette.readthedocs.io/en/latest/changelog.html#v0-24) - a number of small new features
 * 29th June 2018: [datasette-vega](https://github.com/simonw/datasette-vega), a new plugin for visualizing data as bar, line or scatter charts

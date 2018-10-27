@@ -83,3 +83,5 @@ If you want to install Datasette in its own virtual environment, use this::
 You can now run Datasette like so::
 
     datasette fixtures.db
+
+If you want to start making contributions to the Datasette project by installing a copy that lets you directly modify the code, take a look at our guide to :ref:`devenvironment`.

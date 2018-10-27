@@ -7,6 +7,8 @@ Datasette is an open source project. We welcome contributions!
 
 This document describes how to contribute to Datasette core. You can also contribute to the wider Datasette ecosystem by creating new :ref:`plugins`.
 
+.. _devenvironment:
+
 Setting up a development environment
 ------------------------------------
 

@@ -31,6 +31,7 @@ Contents
    introspection
    custom_templates
    plugins
+   contributing
    changelog
 
 .. _Zeit Now: https://zeit.co/now

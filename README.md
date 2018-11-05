@@ -7,9 +7,11 @@
 
 *A tool for exploring and publishing data*
 
-Datasette provides an instant, read-only JSON API for any SQLite database. It also provides tools  for packaging the database up as a Docker container and deploying that container to hosting providers such as [Zeit Now](https://zeit.co/now).
+Datasette is a tool for exploring and publishing data. It helps people take data of any shape or size and publish that as an interactive, explorable website and accompanying API.
 
-Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to convert them to SQLite, then publish them with Datasette. Or try [Datasette Publish](https://publish.datasettes.com), a web app that lets you upload CSV data and deploy it using Datasette without needing to install any software.
+Datasette is aimed at data journalists, museum curators, archivists, local governments and anyone else who has data that they wish to share with the world.
+
+[Explore a demo](https://fivethirtyeight.datasettes.com/fivethirtyeight), watch [a video about the project](https://simonwillison.net/2018/Oct/25/how-instantly-publish-data-internet-datasette/) or try it out by [uploading and publishing your own CSV data](https://publish.datasettes.com/).
 
 * Documentation: http://datasette.readthedocs.io/
 * Examples: https://github.com/simonw/datasette/wiki/Datasettes

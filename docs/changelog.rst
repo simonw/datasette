@@ -2,6 +2,15 @@
 Changelog
 =========
 
+.. _v0_25_1:
+
+0.25.1 (2018-11-04)
+-------------------
+
+Documentation improvements plus a fix for publishing to Zeit Now.
+
+- ``datasette publish now`` now uses Zeit's v1 platform, to work around the new 100MB image limit. Thanks, @slygent - closes `#366 <https://github.com/simonw/datasette/issues/366>`__.
+
 .. _v0_25:
 
 0.25 (2018-09-19)

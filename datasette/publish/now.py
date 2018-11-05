@@ -1,5 +1,6 @@
 from datasette import hookimpl
 import click
+import json
 from subprocess import call
 
 from .common import (
@@ -69,6 +70,11 @@ def publish_subcommand(publish):
                 "source_url": source_url,
             },
         ):
+            open("now.json", "w").write(json.dumps({
+                "features": {
+                    "cloud": "v1"
+                }
+            }))
             args = []
             if force:
                 args.append("--force")

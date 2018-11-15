@@ -29,6 +29,8 @@ The next step is to create a virtual environment for your project and use it to 
     cd datasette
     # Create a virtual environment in venv/
     python3 -mvenv venv
+    # Now activate the virtual environment, so pip can install into it
+    source venv/bin/activate
     # Install Datasette and its testing dependencies
     pip install -e .[test]
 

@@ -6,6 +6,7 @@ from .fixtures import ( # noqa
     app_client_with_dot,
     generate_compound_rows,
     generate_sortable_rows,
+    make_app_client,
     METADATA,
 )
 import pytest
@@ -435,7 +436,7 @@ def test_invalid_custom_sql(app_client):
 
 
 def test_allow_sql_off():
-    for client in app_client(config={
+    for client in make_app_client(config={
         'allow_sql': False,
     }):
         assert 400 == client.get(
@@ -1179,7 +1180,7 @@ def test_suggested_facets(app_client):
 
 
 def test_allow_facet_off():
-    for client in app_client(config={
+    for client in make_app_client(config={
         'allow_facet': False,
     }):
         assert 400 == client.get(
@@ -1192,7 +1193,7 @@ def test_allow_facet_off():
 
 
 def test_suggest_facets_off():
-    for client in app_client(config={
+    for client in make_app_client(config={
         'suggest_facets': False,
     }):
         # Now suggested_facets should be []
@@ -1304,7 +1305,7 @@ def test_config_cache_size(app_client_larger_cache_size):
 
 
 def test_config_force_https_urls():
-    for client in app_client(config={"force_https_urls": True}):
+    for client in make_app_client(config={"force_https_urls": True}):
         response = client.get("/fixtures/facetable.json?_size=3&_facet=state")
         assert response.json["next_url"].startswith("https://")
         assert response.json["facet_results"]["state"]["results"][0][

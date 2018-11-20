@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup as Soup
 from .fixtures import ( # noqa
     app_client,
     app_client_shorter_time_limit,
+    make_app_client,
 )
 import pytest
 import re
@@ -65,7 +66,7 @@ def test_row_strange_table_name(app_client):
 
 
 def test_table_cell_truncation():
-    for client in app_client(config={
+    for client in make_app_client(config={
         "truncate_cells_html": 5,
     }):
         response = client.get("/fixtures/facetable")
@@ -84,7 +85,7 @@ def test_table_cell_truncation():
 
 
 def test_row_page_does_not_truncate():
-    for client in app_client(config={
+    for client in make_app_client(config={
         "truncate_cells_html": 5,
     }):
         response = client.get("/fixtures/facetable/1")
@@ -690,7 +691,7 @@ def test_allow_download_on(app_client):
 
 
 def test_allow_download_off():
-    for client in app_client(config={
+    for client in make_app_client(config={
         'allow_download': False,
     }):
         response = client.get(
@@ -720,7 +721,7 @@ def test_allow_sql_on(app_client):
 
 
 def test_allow_sql_off():
-    for client in app_client(config={
+    for client in make_app_client(config={
         'allow_sql': False,
     }):
         response = client.get(

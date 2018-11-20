@@ -23,8 +23,7 @@ class TestClient:
         )
 
 
-@pytest.fixture(scope="session")
-def app_client(
+def make_app_client(
     sql_time_limit_ms=None,
     max_returned_rows=None,
     cors=False,
@@ -61,38 +60,43 @@ def app_client(
         yield client
 
 
+@pytest.fixture(scope="session")
+def app_client(**kwargs):
+    yield from make_app_client(**kwargs)
+
+
 @pytest.fixture(scope='session')
 def app_client_shorter_time_limit():
-    yield from app_client(20)
+    yield from make_app_client(20)
 
 
 @pytest.fixture(scope='session')
 def app_client_returned_rows_matches_page_size():
-    yield from app_client(max_returned_rows=50)
+    yield from make_app_client(max_returned_rows=50)
 
 
 @pytest.fixture(scope='session')
 def app_client_larger_cache_size():
-    yield from app_client(config={
+    yield from make_app_client(config={
         'cache_size_kb': 2500,
     })
 
 
 @pytest.fixture(scope='session')
 def app_client_csv_max_mb_one():
-    yield from app_client(config={
+    yield from make_app_client(config={
         'max_csv_mb': 1,
     })
 
 
 @pytest.fixture(scope="session")
 def app_client_with_dot():
-    yield from app_client(filename="fixtures.dot.db")
+    yield from make_app_client(filename="fixtures.dot.db")
 
 
 @pytest.fixture(scope='session')
 def app_client_with_cors():
-    yield from app_client(cors=True)
+    yield from make_app_client(cors=True)
 
 
 def generate_compound_rows(num):

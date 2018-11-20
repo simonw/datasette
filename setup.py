@@ -34,11 +34,11 @@ setup(
     package_data={'datasette': ['templates/*.html']},
     include_package_data=True,
     install_requires=[
-        'click==6.7',
+        'click==7.0',
         'click-default-group==1.2',
-        'Sanic==0.7.0',
+        'Sanic==0.8.3',
         'Jinja2==2.10',
-        'hupper==1.0',
+        'hupper==1.4.1',
         'pint==0.8.1',
         'pluggy>=0.7.1',
     ],
@@ -49,9 +49,9 @@ setup(
     setup_requires=['pytest-runner'],
     extras_require={
         'test': [
-            'pytest==3.7.1',
-            'aiohttp==3.3.2',
-            'beautifulsoup4==4.6.1',
+            'pytest==4.0.0',
+            'aiohttp==3.4.4',
+            'beautifulsoup4==4.6.3',
         ]
     },
     tests_require=[

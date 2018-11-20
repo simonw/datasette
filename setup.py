@@ -36,7 +36,7 @@ setup(
     install_requires=[
         'click==7.0',
         'click-default-group==1.2',
-        'Sanic==0.8.3',
+        'Sanic==0.7.0',
         'Jinja2==2.10',
         'hupper==1.4.1',
         'pint==0.8.1',

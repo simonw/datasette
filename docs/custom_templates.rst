@@ -12,7 +12,7 @@ When you launch Datasette, you can specify a custom metadata file like this::
 
     datasette mydb.db --metadata metadata.json
 
-Your ``metadata.json`` file can include linke that look like this::
+Your ``metadata.json`` file can include links that look like this::
 
     {
         "extra_css_urls": [

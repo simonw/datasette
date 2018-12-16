@@ -70,6 +70,8 @@ Then run Datasette like this::
 
     datasette fixtures.db -m fixtures-metadata.json
 
+.. _contributing_documentation:
+
 Editing and building the documentation
 --------------------------------------
 
@@ -89,6 +91,8 @@ This will create the HTML version of the documentation in ``docs/_build/html``. 
 Any time you make changes to a ``.rst`` file you can re-run ``make`` to update the built documents, then refresh them in your browser.
 
 The documentation is written using reStructuredText. You may find this article on `The subset of reStructuredText worth committing to memory <https://simonwillison.net/2018/Aug/25/restructuredtext/>`__ useful.
+
+.. _contributing_release:
 
 Release process
 ---------------

@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v0_25_2:
+
+0.25.2 (2018-12-16)
+-------------------
+
+- ``datasette publish heroku`` now uses the ``python-3.6.7`` runtime
+- Added documentation on :ref:`how to build the documentation <contributing_documentation>`
+- Added documentation covering :ref:`our release process <contributing_release>`
+- Upgraded to pytest 4.0.2
+
 .. _v0_25_1:
 
 0.25.1 (2018-11-04)

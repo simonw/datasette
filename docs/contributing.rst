@@ -106,6 +106,8 @@ Datasette releases are performed using tags. When a new version tag is pushed to
 * Build a wheel bundle of the underlying Python source code
 * Push that new wheel up to PyPI: https://pypi.org/project/datasette/
 
+To deploy new releases you will need to have push access to the main Datasette GitHub repository.
+
 Datasette follows `Semantic Versioning <https://semver.org/>`__::
 
     major.minor.patch
@@ -116,13 +118,17 @@ We increment ``minor`` for new features.
 
 We increment ``patch`` for bugfix releass.
 
-To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/3dc0b3fa8c9b9bd81540ffe20c8b7e7a72465274>`__.
+To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/3dc0b3fa8c9b9bd81540ffe20c8b7e7a72465274>`__::
 
-Then run the following::
+    # Update changelog
+    git commit -m "Release 0.25.2" -a
+    git push
+
+For non-bugfix releases you may want to update the news section of ``README.md`` as part of the same commit.
+
+Wait long enough for Travis to build and deploy the demo version of that commit (otherwise the tag deployment may fail to alias to it properly). Then run the following::
 
     git tag 0.25.2
-    git push && git push --tags
-
-You will need to have push access to the main Datasette GitHub repository.
+    git push --tags
 
 Once the release is out, you can manually update https://github.com/simonw/datasette/releases

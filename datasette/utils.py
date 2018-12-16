@@ -413,7 +413,7 @@ def temporary_heroku_directory(
         if metadata_content:
             open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))
 
-        open('runtime.txt', 'w').write('python-3.6.6')
+        open('runtime.txt', 'w').write('python-3.6.7')
 
         if branch:
             install = ['https://github.com/simonw/datasette/archive/{branch}.zip'.format(

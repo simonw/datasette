@@ -69,3 +69,56 @@ You can also use the ``fixtures.py`` script to recreate the testing version of `
 Then run Datasette like this::
 
     datasette fixtures.db -m fixtures-metadata.json
+
+Editing and building the documentation
+--------------------------------------
+
+Datasette's documentation lives in the ``docs/`` directory and is deployed automatically using `Read The Docs <https://readthedocs.org/>`__.
+
+You can build it locally by installing ``sphinx`` and ``sphinx_rtd_theme`` in your Datasette development environment and then running ``make`` directly in the ``docs/`` directory::
+
+    source venv/bin/activate
+    pip install sphinx sphinx_rtd_theme
+    cd docs/
+    make
+
+This will create the HTML version of the documentation in ``docs/_build/html``. You can open it in your browser like so::
+
+    open _build/html/index.html
+
+Any time you make changes to a ``.rst`` file you can re-run ``make`` to update the built documents, then refresh them in your browser.
+
+The documentation is written using reStructuredText. You may find this article on `The subset of reStructuredText worth committing to memory <https://simonwillison.net/2018/Aug/25/restructuredtext/>`__ useful.
+
+Release process
+---------------
+
+Datasette releases are performed using tags. When a new version tag is pushed to GitHub, a `Travis CI task <https://github.com/simonw/datasette/blob/master/.travis.yml>`__ will perform the following:
+
+* Run the unit tests against all supported Python versions. If the tests pass...
+* Set up https://v0-25-1.datasette.io/ (but with the new tag) to point to a live demo of this release
+* Build a Docker image of the release and push a tag to https://hub.docker.com/r/datasetteproject/datasette
+* Re-point the "latest" tag on Docker Hub to the new image
+* Build a wheel bundle of the underlying Python source code
+* Push that new wheel up to PyPI: https://pypi.org/project/datasette/
+
+Datasette follows `Semantic Versioning <https://semver.org/>`__::
+
+    major.minor.patch
+
+We increment ``major`` for backwards-incompatible releases. Datasette is currently pre-1.0 so the major version is always ``0``.
+
+We increment ``minor`` for new features.
+
+We increment ``patch`` for bugfix releass.
+
+To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/3dc0b3fa8c9b9bd81540ffe20c8b7e7a72465274>`__.
+
+Then run the following::
+
+    git tag 0.25.2
+    git push && git push --tags
+
+You will need to have push access to the main Datasette GitHub repository.
+
+Once the release is out, you can manually update https://github.com/simonw/datasette/releases

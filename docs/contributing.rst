@@ -118,7 +118,7 @@ We increment ``minor`` for new features.
 
 We increment ``patch`` for bugfix releass.
 
-To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/3dc0b3fa8c9b9bd81540ffe20c8b7e7a72465274>`__::
+To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/28872a1fa789f314b0342f4e6182f1c78d6e2bca>`__::
 
     # Update changelog
     git commit -m "Release 0.25.2" -a

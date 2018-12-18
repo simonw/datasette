@@ -14,7 +14,9 @@ FTS versions
 
 There are three different versions of the SQLite FTS module: FTS3, FTS4 and FTS5. You can tell which versions are supported by your instance of Datasette by checking the ``/-/versions`` page.
 
-FTS5 is the most advanced module, but is usually not available is the SQLite version that is bundled with Python. If in doubt, you should use FTS4.
+FTS5 is the most advanced module but may not be available in the SQLite version that is bundled with your Python installation. Most importantly, FTS5 is the only version that has the ability to order by search relevance without needing extra code.
+
+If you can't be sure that FTS5 will be available, you should use FTS4.
 
 Adding full-text search to a SQLite table
 -----------------------------------------

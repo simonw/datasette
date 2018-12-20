@@ -262,7 +262,7 @@ def package(
 @click.option(
     "--reload",
     is_flag=True,
-    help="Automatically reload if code change detected - useful for development",
+    help="Automatically reload if database or code change detected - useful for development",
 )
 @click.option(
     "--cors", is_flag=True, help="Enable CORS by serving Access-Control-Allow-Origin: *"
@@ -345,6 +345,7 @@ def serve(
         import hupper
 
         reloader = hupper.start_reloader("datasette.cli.serve")
+        reloader.watch_files(files)
         if metadata:
             reloader.watch_files([metadata.name])
 

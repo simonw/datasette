@@ -687,7 +687,7 @@ def test_allow_download_on(app_client):
         "/fixtures"
     )
     soup = Soup(response.body, 'html.parser')
-    assert len(soup.findAll('a', {'href': re.compile('\.db$')}))
+    assert len(soup.findAll('a', {'href': re.compile(r'\.db$')}))
 
 
 def test_allow_download_off():
@@ -699,7 +699,7 @@ def test_allow_download_off():
 
         )
         soup = Soup(response.body, 'html.parser')
-        assert not len(soup.findAll('a', {'href': re.compile('\.db$')}))
+        assert not len(soup.findAll('a', {'href': re.compile(r'\.db$')}))
         # Accessing URL directly should 403
         response = client.get(
             "/fixtures.db",

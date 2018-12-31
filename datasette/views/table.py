@@ -11,6 +11,7 @@ from datasette.utils import (
     InterruptedError,
     append_querystring,
     compound_keys_after_sql,
+    encode_table_name,
     escape_sqlite,
     filters_should_redirect,
     is_url,
@@ -147,7 +148,7 @@ class RowTableShared(BaseView):
                         "value": jinja2.Markup(
                             '<a href="/{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                                 database=database,
-                                table=urllib.parse.quote_plus(table),
+                                table=encode_table_name(table),
                                 flat_pks=str(
                                     jinja2.escape(
                                         path_from_row_pks(row, pks, not pks, False)
@@ -187,7 +188,7 @@ class RowTableShared(BaseView):
                     )
                     display_value = jinja2.Markup(link_template.format(
                         database=database,
-                        table=urllib.parse.quote_plus(other_table),
+                        table=encode_table_name(other_table),
                         link_id=urllib.parse.quote_plus(str(value)),
                         id=str(jinja2.escape(value)),
                         label=str(jinja2.escape(label)),

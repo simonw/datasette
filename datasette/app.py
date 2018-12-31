@@ -27,6 +27,7 @@ from .views.table import RowView, TableView
 from .utils import (
     InterruptedError,
     Results,
+    encode_table_name,
     escape_css_string,
     escape_sqlite,
     get_plugins,
@@ -465,6 +466,7 @@ class Datasette:
         self.jinja_env = Environment(loader=template_loader, autoescape=True)
         self.jinja_env.filters["escape_css_string"] = escape_css_string
         self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
+        self.jinja_env.filters["encode_table_name"] = encode_table_name
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)

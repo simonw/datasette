@@ -54,14 +54,14 @@ def test_row(app_client):
 
 def test_row_strange_table_name(app_client):
     response = app_client.get(
-        '/fixtures/table%2Fwith%2Fslashes.csv/3',
+        '/fixtures/tableU+002FwithU+002Fslashes.csv/3',
         allow_redirects=False
     )
     assert response.status == 302
     assert response.headers['Location'].endswith(
-        '/table%2Fwith%2Fslashes.csv/3'
+        '/tableU+002FwithU+002Fslashes.csv/3'
     )
-    response = app_client.get('/fixtures/table%2Fwith%2Fslashes.csv/3')
+    response = app_client.get('/fixtures/tableU+002FwithU+002Fslashes.csv/3')
     assert response.status == 200
 
 
@@ -358,7 +358,7 @@ def test_facets_persist_through_filter_form(app_client):
     ('/fixtures/simple_primary_key', [
         'table', 'db-fixtures', 'table-simple_primary_key'
     ]),
-    ('/fixtures/table%2Fwith%2Fslashes.csv', [
+    ('/fixtures/tableU+002FwithU+002Fslashes.csv', [
         'table', 'db-fixtures', 'table-tablewithslashescsv-fa7563'
     ]),
     ('/fixtures/simple_primary_key/1', [

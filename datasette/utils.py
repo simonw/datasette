@@ -72,6 +72,23 @@ def urlsafe_components(token):
     ]
 
 
+_decode_table_name_re = re.compile(r"U\+([\da-h]{4})", re.IGNORECASE)
+_encode_table_name_re = re.compile("[{}]".format(''.join(re.escape(c) for c in (
+    ";", "/", "?", ":", "@", "&", "=", "+", "$", ",", "~"
+))))
+
+
+def decode_table_name(table_name):
+    return _decode_table_name_re.sub(lambda m: chr(int(m.group(1), 16)), table_name)
+
+
+def encode_table_name(table_name):
+    return _encode_table_name_re.sub(
+        lambda m: "U+{0:0{1}x}".format(ord(m.group(0)), 4).upper(),
+        table_name
+    )
+
+
 def path_from_row_pks(row, pks, use_rowid, quote=True):
     """ Generate an optionally URL-quoted unique identifier
         for a row from its primary keys."""

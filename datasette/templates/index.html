@@ -21,7 +21,7 @@
             {{ "{:,}".format(database.views_count) }} view{% if database.views_count != 1 %}s{% endif %}
         {% endif %}
     </p>
-    <p>{% for table in database.tables_truncated %}<a href="{{ database.path }}/{{ table.name|quote_plus }}" title="{{ table.count }} rows">{{ table.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
+    <p>{% for table in database.tables_truncated %}<a href="{{ database.path }}/{{ table.name|encode_table_name }}" title="{{ table.count }} rows">{{ table.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
 {% endfor %}
 
 {% endblock %}

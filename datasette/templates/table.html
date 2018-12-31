@@ -29,7 +29,7 @@
     </h3>
 {% endif %}
 
-<form class="filters" action="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}" method="get">
+<form class="filters" action="/{{ database }}-{{ database_hash }}/{{ table|encode_table_name }}" method="get">
     {% if supports_search %}
         <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
     {% endif %}

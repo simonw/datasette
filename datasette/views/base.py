@@ -19,6 +19,8 @@ from datasette.utils import (
     InterruptedError,
     InvalidSql,
     LimitedWriter,
+    encode_table_name,
+    decode_table_name,
     is_url,
     path_from_row_pks,
     path_with_added_args,
@@ -161,7 +163,7 @@ class BaseView(RenderMixin):
         if expected != hash:
             if "table_and_format" in kwargs:
                 table, _format = resolve_table_and_format(
-                    table_and_format=urllib.parse.unquote_plus(
+                    table_and_format=decode_table_name(
                         kwargs["table_and_format"]
                     ),
                     table_exists=lambda t: self.ds.table_exists(name, t)
@@ -170,13 +172,13 @@ class BaseView(RenderMixin):
                 if _format:
                     kwargs["as_format"] = ".{}".format(_format)
             elif "table" in kwargs:
-                kwargs["table"] = urllib.parse.unquote_plus(
+                kwargs["table"] = decode_table_name(
                     kwargs["table"]
                 )
 
             should_redirect = "/{}-{}".format(name, expected)
             if "table" in kwargs:
-                should_redirect += "/" + urllib.parse.quote_plus(
+                should_redirect += "/" + encode_table_name(
                     kwargs["table"]
                 )
             if "pk_path" in kwargs:
@@ -305,7 +307,7 @@ class BaseView(RenderMixin):
             _format = (kwargs.pop("as_format", None) or "").lstrip(".")
         if "table_and_format" in kwargs:
             table, _ext_format = resolve_table_and_format(
-                table_and_format=urllib.parse.unquote_plus(
+                table_and_format=decode_table_name(
                     kwargs["table_and_format"]
                 ),
                 table_exists=lambda t: self.ds.table_exists(database, t)
@@ -314,7 +316,7 @@ class BaseView(RenderMixin):
             kwargs["table"] = table
             del kwargs["table_and_format"]
         elif "table" in kwargs:
-            kwargs["table"] = urllib.parse.unquote_plus(
+            kwargs["table"] = decode_table_name(
                 kwargs["table"]
             )
 

@@ -597,7 +597,7 @@ def test_table_shape_object_compound_primary_Key(app_client):
 
 
 def test_table_with_slashes_in_name(app_client):
-    response = app_client.get('/fixtures/table%2Fwith%2Fslashes.csv?_shape=objects&_format=json')
+    response = app_client.get('/fixtures/tableU+002FwithU+002Fslashes.csv?_shape=objects&_format=json')
     assert response.status == 200
     data = response.json
     assert data['rows'] == [{
@@ -897,7 +897,7 @@ def test_row(app_client):
 
 
 def test_row_strange_table_name(app_client):
-    response = app_client.get('/fixtures/table%2Fwith%2Fslashes.csv/3.json?_shape=objects')
+    response = app_client.get('/fixtures/tableU+002FwithU+002Fslashes.csv/3.json?_shape=objects')
     assert response.status == 200
     assert [{'pk': '3', 'content': 'hey'}] == response.json['rows']
 

@@ -261,13 +261,13 @@ class BaseView(RenderMixin):
                             request, database, hash, **kwargs
                         )
                     if first:
-                        writer.writerow(headings)
+                        await writer.writerow(headings)
                         first = False
                     next = data.get("next")
                     for row in data["rows"]:
                         if not expanded_columns:
                             # Simple path
-                            writer.writerow(row)
+                            await writer.writerow(row)
                         else:
                             # Look for {"value": "label": } dicts and expand
                             new_row = []
@@ -277,10 +277,10 @@ class BaseView(RenderMixin):
                                     new_row.append(cell["label"])
                                 else:
                                     new_row.append(cell)
-                            writer.writerow(new_row)
+                            await writer.writerow(new_row)
                 except Exception as e:
                     print('caught this', e)
-                    r.write(str(e))
+                    await r.write(str(e))
                     return
 
         content_type = "text/plain; charset=utf-8"

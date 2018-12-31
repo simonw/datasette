@@ -50,8 +50,8 @@ setup(
     extras_require={
         'test': [
             'pytest==4.0.2',
-            'aiohttp==3.3.2',
-            'beautifulsoup4==4.6.1',
+            'aiohttp==3.5.1',
+            'beautifulsoup4==4.6.3',
         ]
     },
     tests_require=[

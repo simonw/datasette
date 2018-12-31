@@ -30,6 +30,9 @@ from datasette.utils import (
     value_as_boolean,
 )
 
+from starlette.endpoints import HTTPEndpoint as StarletteEndpoint
+from starlette.responses import Response as StarletteResponse
+
 ureg = pint.UnitRegistry()
 
 HASH_LENGTH = 7
@@ -43,6 +46,39 @@ class DatasetteError(Exception):
         self.error_dict = error_dict or {}
         self.status = status
         self.messagge_is_html = messagge_is_html
+
+
+class RequestWrapper:
+    # Implements the subset of the Sanic request that my code uses
+    def __init__(self, starlette_request):
+        self._request = starlette_request
+
+    @property
+    def url(self):
+        return self._request.url._url
+
+    @property
+    def path(self):
+        return self._request.url.path
+
+    @property
+    def query_string(self):
+        q = self._request._scope["query_string"].decode("utf8")
+        return q
+
+    @property
+    def args(self):
+        # Key/list-of-values
+        # There's probably a better way to do this:
+        d = {}
+        for key, value in self._request.query_params.items():
+            d.setdefault(key, []).append(value)
+        return d
+
+    @property
+    def raw_args(self):
+        # Flat key/first-value dictionary
+        return dict(self.args)
 
 
 class RenderMixin(HTTPMethodView):
@@ -72,6 +108,17 @@ class RenderMixin(HTTPMethodView):
                 yield {"url": url, "sri": sri}
             else:
                 yield {"url": url}
+
+    def starlette_asgi_endpoint(self):
+        class App(StarletteEndpoint):
+            async def get(other_self, request):
+                #import pdb; pdb.set_trace()
+                sanic_response = await self.get(
+                    RequestWrapper(request), **request.path_params,
+                )
+                # TODO: media_type, status_code, headers etc
+                return StarletteResponse(sanic_response.body)
+        return App
 
     def render(self, templates, **context):
         template = self.ds.jinja_env.select_template(templates)

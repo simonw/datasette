@@ -439,35 +439,47 @@ class Datasette:
             self.executor, sql_operation_in_thread
         )
 
+    def asgi_app(self):
+        self.configure_jinja()
+        from starlette.routing import Router, Mount, Route
+        from starlette.responses import FileResponse
+        from starlette.staticfiles import StaticFiles
+
+        async def favicon(request):
+            return FileResponse(
+                path=str(app_root / "datasette" / "static" / "favicon.ico"),
+                media_type="image/x-icon"
+            )
+        return Router([
+            Route(
+                '/',
+                endpoint=IndexView(self).starlette_asgi_endpoint(),
+                methods=['GET']
+            ),
+            Route(
+                '/favicon.ico',
+                favicon,
+                methods=['GET']
+            ),
+            Mount(
+                '/-/static',
+                app=StaticFiles(directory=app_root / "datasette" / "static")
+            ),
+            Route(
+                '/{db_name}',
+                endpoint=DatabaseView(self).starlette_asgi_endpoint(),
+                methods=['GET']
+            ),
+            Route(
+                '/{db_name}/{table}',
+                endpoint=TableView(self).starlette_asgi_endpoint(),
+                methods=['GET']
+            ),
+        ])
+
     def app(self):
         app = Sanic(__name__)
-        default_templates = str(app_root / "datasette" / "templates")
-        template_paths = []
-        if self.template_dir:
-            template_paths.append(self.template_dir)
-        template_paths.extend(
-            [
-                plugin["templates_path"]
-                for plugin in get_plugins(pm)
-                if plugin["templates_path"]
-            ]
-        )
-        template_paths.append(default_templates)
-        template_loader = ChoiceLoader(
-            [
-                FileSystemLoader(template_paths),
-                # Support {% extends "default:table.html" %}:
-                PrefixLoader(
-                    {"default": FileSystemLoader(default_templates)}, delimiter=":"
-                ),
-            ]
-        )
-        self.jinja_env = Environment(loader=template_loader, autoescape=True)
-        self.jinja_env.filters["escape_css_string"] = escape_css_string
-        self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
-        self.jinja_env.filters["escape_sqlite"] = escape_sqlite
-        self.jinja_env.filters["to_css_class"] = to_css_class
-        pm.hook.prepare_jinja2_environment(env=self.jinja_env)
+        self.configure_jinja()
         app.add_route(IndexView.as_view(self), r"/<as_format:(\.jsono?)?$>")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, "/favicon.ico")
@@ -561,3 +573,33 @@ class Datasette:
                 return response.html(template.render(info), status=status)
 
         return app
+
+    def configure_jinja(self):
+        default_templates = str(app_root / "datasette" / "templates")
+        template_paths = []
+        if self.template_dir:
+            template_paths.append(self.template_dir)
+        template_paths.extend(
+            [
+                plugin["templates_path"]
+                for plugin in get_plugins(pm)
+                if plugin["templates_path"]
+            ]
+        )
+        template_paths.append(default_templates)
+        template_loader = ChoiceLoader(
+            [
+                FileSystemLoader(template_paths),
+                # Support {% extends "default:table.html" %}:
+                PrefixLoader(
+                    {"default": FileSystemLoader(default_templates)}, delimiter=":"
+                ),
+            ]
+        )
+        self.jinja_env = Environment(loader=template_loader, autoescape=True)
+        self.jinja_env.filters["escape_css_string"] = escape_css_string
+        self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
+        self.jinja_env.filters["escape_sqlite"] = escape_sqlite
+        self.jinja_env.filters["to_css_class"] = to_css_class
+        pm.hook.prepare_jinja2_environment(env=self.jinja_env)
+

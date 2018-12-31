@@ -13,7 +13,7 @@ class IndexView(RenderMixin):
     def __init__(self, datasette):
         self.ds = datasette
 
-    async def get(self, request, as_format):
+    async def get(self, request, as_format=''):
         databases = []
         for key, info in sorted(self.ds.inspect().items()):
             tables = [t for t in info["tables"].values() if not t["hidden"]]

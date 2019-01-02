@@ -21,7 +21,8 @@ def publish_subcommand(publish):
         help="Application name to use when deploying",
     )
     @click.option("--force", is_flag=True, help="Pass --force option to now")
-    @click.option("--token", help="Auth token to use for deploy (Now only)")
+    @click.option("--token", help="Auth token to use for deploy")
+    @click.option("--alias", help="Desired alias e.g. yoursite.now.sh")
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
     def now(
         files,
@@ -41,6 +42,7 @@ def publish_subcommand(publish):
         name,
         force,
         token,
+        alias,
         spatialite,
     ):
         fail_if_publish_binary_not_installed("now", "Zeit Now", "https://zeit.co/now")
@@ -70,11 +72,12 @@ def publish_subcommand(publish):
                 "source_url": source_url,
             },
         ):
-            open("now.json", "w").write(json.dumps({
-                "features": {
-                    "cloud": "v1"
-                }
-            }))
+            now_json = {
+                "version": 1
+            }
+            if alias:
+                now_json["alias"] = alias
+            open("now.json", "w").write(json.dumps(now_json))
             args = []
             if force:
                 args.append("--force")
@@ -84,3 +87,5 @@ def publish_subcommand(publish):
                 call(["now"] + args)
             else:
                 call("now")
+            if alias:
+                call(["now", "alias"])

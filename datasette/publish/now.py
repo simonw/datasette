@@ -88,4 +88,7 @@ def publish_subcommand(publish):
             else:
                 call("now")
             if alias:
-                call(["now", "alias"])
+                alias_args = ["alias"]
+                if token:
+                    alias_args.append("--token={}".format(token))
+                call(["now"] + alias_args)

@@ -18,6 +18,7 @@ Options:
   --source_url TEXT         Source URL for metadata
   -n, --name TEXT           Application name to use when deploying
   --force                   Pass --force option to now
-  --token TEXT              Auth token to use for deploy (Now only)
+  --token TEXT              Auth token to use for deploy
+  --alias TEXT              Desired alias e.g. yoursite.now.sh
   --spatialite              Enable SpatialLite extension
   --help                    Show this message and exit.

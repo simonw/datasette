@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_26:
+
+0.26 (2019-01-02)
+-----------------
+
+- ``datasette serve --reload`` now restarts Datasette if a database file changes on disk.
+- ``datasette publish now`` now takes an optional ``--alias mysite.now.sh`` argument. This will attempt to set an alias after the deploy completes.
+- Fixed a bug where the advanced CSV export form failed to include the currently selected filters (`#393 <https://github.com/simonw/datasette/issues/393>`__)
+
 .. _v0_25_2:
 
 0.25.2 (2018-12-16)

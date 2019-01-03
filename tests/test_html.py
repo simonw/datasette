@@ -401,7 +401,7 @@ def test_table_html_simple_primary_key(app_client):
 
 
 def test_table_csv_json_export_interface(app_client):
-    response = app_client.get('/fixtures/simple_primary_key')
+    response = app_client.get('/fixtures/simple_primary_key?id__gt=2')
     assert response.status == 200
     # The links at the top of the page
     links = Soup(response.body, "html.parser").find("p", {
@@ -409,8 +409,8 @@ def test_table_csv_json_export_interface(app_client):
     }).findAll("a")
     actual = [l["href"].split("/")[-1] for l in links]
     expected = [
-        "simple_primary_key.json",
-        "simple_primary_key.csv?_size=max",
+        "simple_primary_key.json?id__gt=2",
+        "simple_primary_key.csv?id__gt=2&_size=max",
         "#export"
     ]
     assert expected == actual
@@ -420,9 +420,9 @@ def test_table_csv_json_export_interface(app_client):
     })
     json_links = [a["href"].split("/")[-1] for a in div.find("p").findAll("a")]
     assert [
-        "simple_primary_key.json",
-        "simple_primary_key.json?_shape=array",
-        "simple_primary_key.json?_shape=object"
+        "simple_primary_key.json?id__gt=2",
+        "simple_primary_key.json?id__gt=2&_shape=array",
+        "simple_primary_key.json?id__gt=2&_shape=object"
     ] == json_links
     # And the CSV form
     form = div.find("form")
@@ -431,6 +431,7 @@ def test_table_csv_json_export_interface(app_client):
     assert [
         '<input name="_dl" type="checkbox"/>',
         '<input type="submit" value="Export CSV"/>',
+        '<input name="id__gt" type="hidden" value="2"/>',
         '<input name="_size" type="hidden" value="max"/>'
     ] == inputs
 

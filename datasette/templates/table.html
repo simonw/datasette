@@ -148,10 +148,8 @@
                 {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> expand labels</label>{% endif %}
                 {% if next_url and config.allow_csv_stream %}<label><input type="checkbox" name="_stream"> stream all rows</label>{% endif %}
                 <input type="submit" value="Export CSV">
-                {% for key, value in url_csv_args.items() %}
-                    {% if key != "_labels" %}
-                        <input type="hidden" name="{{ key }}" value="{{ value }}">
-                    {% endif %}
+                {% for key, value in url_csv_hidden_args %}
+                    <input type="hidden" name="{{ key }}" value="{{ value }}">
                 {% endfor %}
             </p>
         </form>

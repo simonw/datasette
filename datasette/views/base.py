@@ -464,7 +464,11 @@ class BaseView(RenderMixin):
                     }),
                     "url_csv": url_csv,
                     "url_csv_path": url_csv_path,
-                    "url_csv_args": url_csv_args,
+                    "url_csv_hidden_args": [
+                        (key, value)
+                        for key, value in urllib.parse.parse_qsl(request.query_string)
+                        if key not in ("_labels", "_facet", "_size")
+                    ] + [("_size", "max")],
                     "datasette_version": __version__,
                     "config": self.ds.config_dict(),
                 }

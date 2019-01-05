@@ -99,6 +99,9 @@ CONFIG_OPTIONS = (
     ConfigOption("force_https_urls", False, """
         Force URLs in API output to always use https:// protocol
     """.strip()),
+    ConfigOption("url_prefix", "", """
+        URLs within Datasette itself should start with this (defaults to auto)
+    """.strip()),
 )
 DEFAULT_CONFIG = {
     option.name: option.default

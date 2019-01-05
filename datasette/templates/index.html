@@ -10,7 +10,7 @@
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% for database in databases %}
-    <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.hash[:6] }}"><a href="{{ database.path }}">{{ database.name }}</a></h2>
+    <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.hash[:6] }}"><a href="{{ prefix }}{{ database.path }}">{{ database.name }}</a></h2>
     <p>
         {{ "{:,}".format(database.table_rows_sum) }} rows in {{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}{% if database.tables_count and database.hidden_tables_count %}, {% endif %}
         {% if database.hidden_tables_count %}
@@ -21,7 +21,7 @@
             {{ "{:,}".format(database.views_count) }} view{% if database.views_count != 1 %}s{% endif %}
         {% endif %}
     </p>
-    <p>{% for table in database.tables_truncated %}<a href="{{ database.path }}/{{ table.name|quote_plus }}" title="{{ table.count }} rows">{{ table.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
+    <p>{% for table in database.tables_truncated %}<a href="{{ prefix }}{{ database.path }}/{{ table.name|quote_plus }}" title="{{ table.count }} rows">{{ table.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_more %}, <a href="{{ prefix }}{{ database.path }}">...</a>{% endif %}</p>
 {% endfor %}
 
 {% endblock %}

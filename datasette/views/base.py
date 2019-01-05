@@ -102,6 +102,7 @@ class RenderMixin(HTTPMethodView):
                         "extra_js_urls": self._asset_urls(
                             "extra_js_urls", template, context
                         ),
+                        "prefix": self.ds.config("url_prefix") or "/",
                     }
                 }
             )
@@ -190,7 +191,7 @@ class BaseView(RenderMixin):
         return name, expected, None
 
     def absolute_url(self, request, path):
-        url = urllib.parse.urljoin(request.url, path)
+        url = urllib.parse.urljoin(self.ds.config("url_prefix") or request.url, path)
         if url.startswith("http://") and self.ds.config("force_https_urls"):
             url = "https://" + url[len("http://"):]
         return url

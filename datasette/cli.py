@@ -49,6 +49,8 @@ class Config(click.ParamType):
                 )
                 return
             return name, int(value)
+        elif isinstance(default, str):
+            return name, value
         else:
             # Should never happen:
             self.fail('Invalid option')

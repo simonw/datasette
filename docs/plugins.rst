@@ -380,7 +380,7 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.common import add_common_publish_arguments_and_options
+    from datasette.publish.common import add_common_publish_arguments_and_options
     import click
 
 

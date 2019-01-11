@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_26_1:
+
+0.26.1 (2019-01-10)
+-------------------
+
+- ``/-/versions`` now includes SQLite ``compile_options`` (`#396 <https://github.com/simonw/datasette/issues/396>`__)
+- `datasetteproject/datasette <https://hub.docker.com/r/datasetteproject/datasette>`__ Docker image now uses SQLite 3.26.0 (`#397 <https://github.com/simonw/datasette/issues/397>`__)
+- Cleaned up some deprecation warnings under Python 3.7
+
 .. _v0_26:
 
 0.26 (2019-01-02)

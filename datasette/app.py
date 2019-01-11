@@ -363,6 +363,9 @@ class Datasette:
                 "version": sqlite_version,
                 "fts_versions": fts_versions,
                 "extensions": sqlite_extensions,
+                "compile_options": [
+                    r[0] for r in conn.execute("pragma compile_options;").fetchall()
+                ],
             },
         }
 

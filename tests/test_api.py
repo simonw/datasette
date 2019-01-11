@@ -983,6 +983,7 @@ def test_versions_json(app_client):
     assert 'sqlite' in response.json
     assert 'version' in response.json['sqlite']
     assert 'fts_versions' in response.json['sqlite']
+    assert 'compile_options' in response.json['sqlite']
 
 
 def test_config_json(app_client):

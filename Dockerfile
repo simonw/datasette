@@ -2,7 +2,7 @@ FROM python:3.6-slim-stretch as build
 
 # Setup build dependencies
 RUN apt update \
-&& apt install -y python3-dev build-essential wget libxml2-dev libproj-dev libgeos-dev libsqlite3-dev zlib1g-dev pkg-config \
+&& apt install -y python3-dev build-essential wget libxml2-dev libproj-dev libgeos-dev libsqlite3-dev zlib1g-dev pkg-config git \
  && apt clean
 
 

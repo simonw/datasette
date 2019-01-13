@@ -1,7 +1,6 @@
 .DS_Store
 .cache
 .eggs
-.git
 .gitignore
 .ipynb_checkpoints
 .travis.yml

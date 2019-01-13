@@ -61,8 +61,8 @@ def make_app_client(
 
 
 @pytest.fixture(scope="session")
-def app_client(**kwargs):
-    yield from make_app_client(**kwargs)
+def app_client():
+    yield from make_app_client()
 
 
 @pytest.fixture(scope='session')

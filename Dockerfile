@@ -1,4 +1,4 @@
-FROM python:3.6-slim-stretch as build
+FROM python:3.7.2-slim-stretch as build
 
 # Setup build dependencies
 RUN apt update \
@@ -27,7 +27,7 @@ COPY . /datasette
 
 RUN pip install /datasette
 
-FROM python:3.6-slim-stretch
+FROM python:3.7.2-slim-stretch
 
 # Copy python dependencies and spatialite libraries
 COPY --from=build /usr/local/lib/ /usr/local/lib/

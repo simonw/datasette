@@ -160,6 +160,19 @@ def skeleton(files, metadata, sqlite_extensions):
 
 
 @cli.command()
+@click.option("--all", help="Include built-in default plugins", is_flag=True)
+@click.option(
+    "--plugins-dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Path to directory containing custom plugins",
+)
+def plugins(all, plugins_dir):
+    "List currently available plugins"
+    app = Datasette([], plugins_dir=plugins_dir)
+    click.echo(json.dumps(app.plugins(all), indent=4))
+
+
+@cli.command()
 @click.argument("files", type=click.Path(exists=True), nargs=-1, required=True)
 @click.option(
     "-t",

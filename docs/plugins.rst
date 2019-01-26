@@ -58,6 +58,49 @@ Now you can navigate to http://localhost:8001/mydb and run this SQL::
 
 To see the output of your plugin.
 
+Seeing what plugins are installed
+---------------------------------
+
+You can see a list of installed plugins by navigating to the ``/-/plugins`` page of your Datasette instance - for example: https://fivethirtyeight.datasettes.com/-/plugins
+
+You can also use the ``datasette plugins`` command::
+
+    $ datasette plugins
+    [
+        {
+            "name": "datasette_json_html",
+            "static": false,
+            "templates": false,
+            "version": "0.4.0"
+        }
+    ]
+
+If you run ``datasette plugins --all`` it will include default plugins that ship as part of Datasette::
+
+    $ datasette plugins --all
+    [
+        {
+            "name": "datasette_json_html",
+            "static": false,
+            "templates": false,
+            "version": "0.4.0"
+        },
+        {
+            "name": "datasette.publish.heroku",
+            "static": false,
+            "templates": false,
+            "version": null
+        },
+        {
+            "name": "datasette.publish.now",
+            "static": false,
+            "templates": false,
+            "version": null
+        }
+    ]
+
+You can add the ``--plugins-dir=`` option to include any plugins found in that directory.
+
 Packaging a plugin
 ------------------
 

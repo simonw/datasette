@@ -73,7 +73,7 @@ class RenderMixin(HTTPMethodView):
             else:
                 yield {"url": url}
 
-    def render(self, templates, **context):
+    async def render(self, templates, **context):
         template = self.ds.jinja_env.select_template(templates)
         select_templates = [
             "{}{}".format("*" if template_name == template.name else "", template_name)
@@ -88,7 +88,7 @@ class RenderMixin(HTTPMethodView):
         ):
             body_scripts.append(jinja2.Markup(script))
         return response.html(
-            template.render(
+            await template.render_async(
                 {
                     **context,
                     **{
@@ -475,7 +475,7 @@ class BaseView(RenderMixin):
             }
             if "metadata" not in context:
                 context["metadata"] = self.ds.metadata
-            r = self.render(templates, **context)
+            r = await self.render(templates, **context)
             r.status = status_code
         # Set far-future cache expiry
         if self.ds.cache_headers:

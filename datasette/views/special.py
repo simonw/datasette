@@ -22,7 +22,7 @@ class JsonDataView(RenderMixin):
             )
 
         else:
-            return self.render(
+            return await self.render(
                 ["show_json.html"],
                 filename=self.filename,
                 data=data

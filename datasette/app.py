@@ -468,7 +468,7 @@ class Datasette:
                 ),
             ]
         )
-        self.jinja_env = Environment(loader=template_loader, autoescape=True)
+        self.jinja_env = Environment(loader=template_loader, autoescape=True, enable_async=True)
         self.jinja_env.filters["escape_css_string"] = escape_css_string
         self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
@@ -522,15 +522,19 @@ class Datasette:
         self.register_custom_units()
         # On 404 with a trailing slash redirect to path without that slash:
         @app.middleware("response")
-        def redirect_on_404_with_trailing_slash(request, original_response):
+        async def redirect_on_404_with_trailing_slash(request, original_response):
+            if asyncio.iscoroutine(original_response):
+                original_response = await original_response
             if original_response.status == 404 and request.path.endswith("/"):
                 path = request.path.rstrip("/")
                 if request.query_string:
                     path = "{}?{}".format(path, request.query_string)
                 return response.redirect(path)
+            else:
+                return original_response
 
         @app.exception(Exception)
-        def on_exception(request, exception):
+        async def on_exception(request, exception):
             title = None
             help = None
             if isinstance(exception, NotFound):
@@ -564,6 +568,6 @@ class Datasette:
 
             else:
                 template = self.jinja_env.select_template(templates)
-                return response.html(template.render(info), status=status)
+                return response.html(await template.render_async(info), status=status)
 
         return app

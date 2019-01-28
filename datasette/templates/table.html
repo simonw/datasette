@@ -140,7 +140,13 @@
 {% if display_rows %}
     <div id="export" class="advanced-export">
         <h3>Advanced export</h3>
-        <p>JSON shape: <a href="{{ url_json }}">default</a>, <a href="{{ append_querystring(url_json, '_shape=array') }}">array</a>{% if primary_keys %}, <a href="{{ append_querystring(url_json, '_shape=object') }}">object</a>{% endif %}</p>
+        <p>JSON shape:
+            <a href="{{ url_json }}">default</a>,
+            <a href="{{ append_querystring(url_json, '_shape=array') }}">array</a>,
+            <a href="{{ append_querystring(url_json, '_shape=array&_nl=on') }}">newline-delimited</a>{% if primary_keys %},
+                <a href="{{ append_querystring(url_json, '_shape=object') }}">object</a>
+            {% endif %}
+        </p>
         <form action="{{ url_csv_path }}" method="get">
             <p>
                 CSV options:

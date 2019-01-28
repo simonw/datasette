@@ -9,6 +9,7 @@ from .fixtures import ( # noqa
     make_app_client,
     METADATA,
 )
+import json
 import pytest
 import urllib
 
@@ -545,6 +546,27 @@ def test_table_shape_array(app_client):
         'id': '4',
         'content': 'RENDER_CELL_DEMO',
     }] == response.json
+
+
+def test_table_shape_array_nl(app_client):
+    response = app_client.get(
+        '/fixtures/simple_primary_key.json?_shape=array&_nl=on'
+    )
+    lines = response.text.split("\n")
+    results = [json.loads(line) for line in lines]
+    assert [{
+        'id': '1',
+        'content': 'hello',
+    }, {
+        'id': '2',
+        'content': 'world',
+    }, {
+        'id': '3',
+        'content': '',
+    }, {
+        'id': '4',
+        'content': 'RENDER_CELL_DEMO',
+    }] == results
 
 
 def test_table_shape_invalid(app_client):

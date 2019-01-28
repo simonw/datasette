@@ -61,11 +61,12 @@ options:
 
 * ``?_shape=arrays`` - ``"rows"`` is the default option, shown above
 * ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects
-* ``?_shape=array`` - the entire response is an array of objects
-* ``?_shape=arrayfirst`` - the entire response is a flat JSON array containing just the first value from each row
-* ``?_shape=object`` - the entire response is a JSON object keyed using the primary keys of the rows
+* ``?_shape=array`` - an JSON array of objects
+* ``?_shape=array&_nl=on`` - a newline-separated list of JSON objects
+* ``?_shape=arrayfirst`` - a flat JSON array containing just the first value from each row
+* ``?_shape=object`` - a JSON object keyed using the primary keys of the rows
 
-``objects`` looks like this::
+``_shape=objects`` looks like this::
 
     {
         "database": "sf-trees",
@@ -86,7 +87,7 @@ options:
         ]
     }
 
-``array`` looks like this::
+``_shape=array`` looks like this::
 
     [
         {
@@ -103,11 +104,17 @@ options:
         }
     ]
 
-``arrayfirst`` looks like this::
+``_shape=array&_nl=on`` looks like this::
+
+    {"id": 1, "value": "Myoporum laetum :: Myoporum"}
+    {"id": 2, "value": "Metrosideros excelsa :: New Zealand Xmas Tree"}
+    {"id": 3, "value": "Pinus radiata :: Monterey Pine"}
+
+``_shape=arrayfirst`` looks like this::
 
     [1, 2, 3]
 
-``object`` looks like this::
+``_shape=object`` looks like this::
 
     {
         "1": {
@@ -139,6 +146,9 @@ querystring arguments:
 
 ``?_shape=SHAPE``
     The shape of the JSON to return, documented above.
+
+``?_nl=on``
+    When used with ``?_shape=array`` produces newline-delimited JSON objects.
 
 ``?_json=COLUMN1&_json=COLUMN2``
     If any of your SQLite columns contain JSON values, you can use one or more

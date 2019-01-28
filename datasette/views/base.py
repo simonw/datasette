@@ -432,10 +432,18 @@ class BaseView(RenderMixin):
             headers = {}
             if self.ds.cors:
                 headers["Access-Control-Allow-Origin"] = "*"
+            # Handle _nl option for _shape=array
+            nl = request.args.get("_nl", "")
+            if nl and shape == "array":
+                body = "\n".join(json.dumps(item) for item in data)
+                content_type = "text/plain"
+            else:
+                body = json.dumps(data, cls=CustomJSONEncoder)
+                content_type = "application/json"
             r = response.HTTPResponse(
-                json.dumps(data, cls=CustomJSONEncoder),
+                body,
                 status=status_code,
-                content_type="application/json",
+                content_type=content_type,
                 headers=headers,
             )
         else:

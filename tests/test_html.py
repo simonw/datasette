@@ -422,6 +422,7 @@ def test_table_csv_json_export_interface(app_client):
     assert [
         "simple_primary_key.json?id__gt=2",
         "simple_primary_key.json?id__gt=2&_shape=array",
+        "simple_primary_key.json?id__gt=2&_shape=array&_nl=on",
         "simple_primary_key.json?id__gt=2&_shape=object"
     ] == json_links
     # And the CSV form
@@ -796,7 +797,7 @@ def test_advanced_export_box(app_client, path, has_object, has_stream, has_expan
     assert response.status == 200
     soup = Soup(response.body, "html.parser")
     # JSON shape options
-    expected_json_shapes = ["default", "array"]
+    expected_json_shapes = ["default", "array", "newline-delimited"]
     if has_object:
         expected_json_shapes.append("object")
     div = soup.find("div", {"class": "advanced-export"})

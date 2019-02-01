@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v0_27:
+
+0.27 (2019-01-31)
+-----------------
+
+- New command: ``datasette plugins`` (:ref:`documentation <plugins_installed>`) shows you the currently installed list of plugins.
+- Datasette can now output `newline-delimited JSON <http://ndjson.org/>`__ using the new ``?_shape=array&_nl=on`` querystring option.
+- Added documentation on :ref:`ecosystem`.
+- Now using Python 3.7.2 as the base for the official `Datasette Docker image <https://hub.docker.com/r/datasetteproject/datasette/>`__.
+
 .. _v0_26_1:
 
 0.26.1 (2019-01-10)

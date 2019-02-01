@@ -58,6 +58,8 @@ Now you can navigate to http://localhost:8001/mydb and run this SQL::
 
 To see the output of your plugin.
 
+.. _plugins_installed:
+
 Seeing what plugins are installed
 ---------------------------------
 

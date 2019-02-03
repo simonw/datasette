@@ -96,4 +96,4 @@ def publish_subcommand(publish):
                 create_output = check_output(cmd).decode("utf8")
                 app_name = json.loads(create_output)["name"]
 
-            call(["heroku", "builds:create", "-a", app_name])
+            call(["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"])

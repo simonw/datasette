@@ -57,7 +57,7 @@
 {% endif %}
 
 {% if config.allow_download %}
-    <p>Download SQLite DB: <a href="/{{ database }}-{{ database_hash }}.db">{{ database }}.db</a></p>
+    <p class="download-sqlite">Download SQLite DB: <a href="/{{ database }}-{{ database_hash }}.db">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
 {% endif %}
 
 {% include "_codemirror_foot.html" %}

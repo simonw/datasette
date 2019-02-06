@@ -305,6 +305,7 @@ class Datasette:
                     self._inspect[name] = {
                         "hash": inspect_hash(path),
                         "file": str(path),
+                        "size": path.stat().st_size,
                         "views": inspect_views(conn),
                         "tables": inspect_tables(conn, (self.metadata("databases") or {}).get(name, {}))
                     }

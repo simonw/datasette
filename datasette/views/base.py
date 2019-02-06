@@ -19,6 +19,7 @@ from datasette.utils import (
     InterruptedError,
     InvalidSql,
     LimitedWriter,
+    format_bytes,
     is_url,
     path_from_row_pks,
     path_with_added_args,
@@ -102,6 +103,7 @@ class RenderMixin(HTTPMethodView):
                         "extra_js_urls": self._asset_urls(
                             "extra_js_urls", template, context
                         ),
+                        "format_bytes": format_bytes,
                     }
                 }
             )

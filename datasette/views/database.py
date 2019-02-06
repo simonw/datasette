@@ -24,6 +24,7 @@ class DatabaseView(BaseView):
         tables.sort(key=lambda t: (t["hidden"], t["name"]))
         return {
             "database": database,
+            "size": info["size"],
             "tables": tables,
             "hidden_count": len([t for t in tables if t["hidden"]]),
             "views": info["views"],

@@ -28,6 +28,10 @@ db-to-sqlite
 
 `db-to-sqlite <https://github.com/simonw/db-to-sqlite>`__ is a CLI tool that builds on top of `SQLAlchemy <https://www.google.com/search?client=firefox-b-1-ab&q=sqlalchemy>`__ and allows you to connect to any database supported by that library (including MySQL, oracle and PostgreSQL), run a SQL query and save the results to a new table in a SQLite database. 
 
+You can mirror an entire database (including copying foreign key relationships) with the ``--all`` option::
+
+    $ db-to-sqlite --connection="postgresql://simonw@localhost/myblog" --all blog.db
+
 dbf-to-sqlite
 -------------
 

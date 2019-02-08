@@ -42,6 +42,15 @@ markdown-to-sqlite
 
 `markdown-to-sqlite <https://github.com/simonw/markdown-to-sqlite>`__ reads Markdown files with embedded YAML metadata (e.g. for `Jekyll Front Matter <https://jekyllrb.com/docs/front-matter/>`__) and creates a SQLite table with a schema matching the metadata. This is useful if you want to keep structured data in text form in a GitHub repository and use that to build a SQLite database.
 
+socrata2sql
+-----------
+
+`socrata2sql <https://github.com/DallasMorningNews/socrata2sql>`__ is a tool by Andrew Chavez at the Dallas Morning News. It works with Socrata, a widely used platform for local and national government open data portals. It uses the Socrata API to pull down government datasets and store them in a local SQLite database (it can also export data to PostgreSQL, MySQL and other SQLAlchemy-supported databases).
+
+For example, to create a SQLite database of the `City of Dallas Payment Register <https://www.dallasopendata.com/Budget-Finance/City-of-Dallas-Payment-Register/64pp-jeba>`__ you would run the following command::
+
+    $ socrata2sql insert www.dallasopendata.com 64pp-jeba
+
 Datasette Plugins
 =================
 

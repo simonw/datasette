@@ -19,6 +19,8 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 24th February 2019: [
+sqlite-utils: a Python library and CLI tool for building SQLite databases](https://simonwillison.net/2019/Feb/25/sqlite-utils/) - a partner tool for easily creating SQLite databases for use with Datasette.
  * 31st Janary 2019: [Datasette 0.27](https://datasette.readthedocs.io/en/latest/changelog.html#v0-27) - `datasette plugins` command, newline-delimited JSON export option, new documentation on [The Datasette Ecosystem](https://datasette.readthedocs.io/en/latest/ecosystem.html).
  * 10th January 2019: [Datasette 0.26.1](http://datasette.readthedocs.io/en/latest/changelog.html#v0-26-1) - SQLite upgrade in Docker image, `/-/versions` now shows SQLite compile options.
  * 2nd January 2019: [Datasette 0.26](http://datasette.readthedocs.io/en/latest/changelog.html#v0-26) - minor bug fixes, `datasette publish now --alias` argument.

@@ -23,6 +23,8 @@ sqlite-utils
 
 The CLI tool can consume JSON streams directly and use them to create tables. It can also be used to query SQLite databases and output the results as CSV or JSON.
 
+See `sqlite-utils: a Python library and CLI tool for building SQLite databases <https://simonwillison.net/2019/Feb/25/sqlite-utils/>`__ for more.
+
 db-to-sqlite
 ------------
 

@@ -75,6 +75,11 @@ datasette-json-html
 
 `datasette-json-html <https://github.com/simonw/datasette-json-html>`__ renders HTML in Datasette's table view driven by JSON returned from your SQL queries. This provides a way to embed images, links and lists of links directly in Datasette's main interface, defined using custom SQL statements.
 
+datasette-jellyfish
+-------------------
+
+`datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`__ exposes custom SQL functions for a range of common fuzzy string matching functions, including soundex, porter stemming and levenshtein distance. It builds on top of the `Jellyfish Python library <https://jellyfish.readthedocs.io/>`__.
+
 datasette-render-images
 -----------------------
 

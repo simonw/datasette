@@ -16,6 +16,8 @@ Options:
   --license_url TEXT        License URL for metadata
   --source TEXT             Source label for metadata
   --source_url TEXT         Source URL for metadata
+  --about TEXT              About label for metadata
+  --about_url TEXT          About URL for metadata
   -n, --name TEXT           Application name to use when deploying
   --force                   Pass --force option to now
   --token TEXT              Auth token to use for deploy

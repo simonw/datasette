@@ -133,6 +133,8 @@ METADATA = {
     'license_url': 'https://github.com/simonw/datasette/blob/master/LICENSE',
     'source': 'tests/fixtures.py',
     'source_url': 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py',
+    'about': 'About Datasette',
+    'about_url': 'https://github.com/simonw/datasette',
     "plugins": {
         "name-of-plugin": {
             "depth": "root"

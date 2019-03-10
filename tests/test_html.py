@@ -744,14 +744,16 @@ def assert_querystring_equal(expected, actual):
 
 def assert_footer_links(soup):
     footer_links = soup.find('div', {'class': 'ft'}).findAll('a')
-    assert 3 == len(footer_links)
-    datasette_link, license_link, source_link = footer_links
+    assert 4 == len(footer_links)
+    datasette_link, license_link, source_link, about_link = footer_links
     assert 'Datasette' == datasette_link.text.strip()
     assert 'tests/fixtures.py' == source_link.text.strip()
     assert 'Apache License 2.0' == license_link.text.strip()
+    assert 'About Datasette' == about_link.text.strip()
     assert 'https://github.com/simonw/datasette' == datasette_link['href']
     assert 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py' == source_link['href']
     assert 'https://github.com/simonw/datasette/blob/master/LICENSE' == license_link['href']
+    assert 'https://github.com/simonw/datasette' == about_link['href']
 
 
 def inner_html(soup):

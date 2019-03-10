@@ -33,6 +33,11 @@
                 <a href="{{ metadata.source_url }}">
             {% endif %}{{ metadata.source or metadata.source_url }}{% if metadata.source_url %}</a>{% endif %}
         {% endif %}
+        {% if metadata.about or metadata.about_url %}&middot;
+            About: {% if metadata.about_url %}
+                <a href="{{ metadata.about_url }}">
+            {% endif %}{{ metadata.about or metadata.about_url }}{% if metadata.about_url %}</a>{% endif %}
+        {% endif %}
     {% endif %}
 </div>
 

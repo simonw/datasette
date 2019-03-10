@@ -39,6 +39,8 @@ def publish_subcommand(publish):
         license_url,
         source,
         source_url,
+        about,
+        about_url,
         name,
         force,
         token,
@@ -70,6 +72,8 @@ def publish_subcommand(publish):
                 "license_url": license_url,
                 "source": source,
                 "source_url": source_url,
+                "about": about,
+                "about_url": about_url,
             },
         ):
             now_json = {

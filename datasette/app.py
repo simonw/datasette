@@ -267,6 +267,9 @@ class Datasette:
                 "license": metadata.get("license") or self.metadata("license"),
                 "license_url": metadata.get("license_url")
                 or self.metadata("license_url"),
+                "about": metadata.get("about") or self.metadata("about"),
+                "about_url": metadata.get("about_url")
+                or self.metadata("about_url"),
             }
         )
 

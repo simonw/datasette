@@ -21,5 +21,10 @@
             <a href="{{ metadata.source_url }}">
         {% endif %}{{ metadata.source or metadata.source_url }}{% if metadata.source_url %}</a>{% endif %}
     {% endif %}
+    {% if metadata.about or metadata.about_url %}{% if metadata.license or metadata.license_url or metadata.source or metadat.source_url %}&middot;{% endif %}
+        About: {% if metadata.about_url %}
+            <a href="{{ metadata.about_url }}">
+        {% endif %}{{ metadata.about or metadata.about_url }}{% if metadata.about_url %}</a>{% endif %}
+    {% endif %}
     </p>
 {% endif %}

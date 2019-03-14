@@ -316,6 +316,9 @@ def package(
     multiple=True,
 )
 @click.option(
+    "--memory", is_flag=True, help="Make :memory: database available"
+)
+@click.option(
     "--config",
     type=Config(),
     help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
@@ -340,6 +343,7 @@ def serve(
     template_dir,
     plugins_dir,
     static,
+    memory,
     config,
     version_note,
     help_config,
@@ -384,6 +388,7 @@ def serve(
         plugins_dir=plugins_dir,
         static_mounts=static,
         config=dict(config),
+        memory=memory,
         version_note=version_note,
     )
     # Force initial hashing/table counting

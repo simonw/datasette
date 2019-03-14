@@ -1,5 +1,6 @@
 from .fixtures import ( # noqa
     app_client,
+    app_client_no_files,
     app_client_shorter_time_limit,
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
@@ -366,6 +367,31 @@ def test_database_page(app_client):
         'name': 'searchable_fts_segments',
         'primary_keys': ['blockid']
     }] == data['tables']
+
+
+def test_no_files_uses_memory_database(app_client_no_files):
+    response = app_client_no_files.get("/.json")
+    assert response.status == 200
+    assert {
+        ":memory:": {
+            "hash": "000",
+            "hidden_table_rows_sum": 0,
+            "hidden_tables_count": 0,
+            "name": ":memory:",
+            "path": ":memory:-000",
+            "table_rows_sum": 0,
+            "tables_count": 0,
+            "tables_more": False,
+            "tables_truncated": [],
+            "views_count": 0,
+        }
+    } == response.json
+    # Try that SQL query
+    response = app_client_no_files.get(
+        "/:memory:-0.json?sql=select+sqlite_version()&_shape=array"
+    )
+    assert 1 == len(response.json)
+    assert ["sqlite_version()"] == list(response.json[0].keys())
 
 
 def test_database_page_for_database_with_dot_in_name(app_client_with_dot):

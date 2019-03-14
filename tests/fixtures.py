@@ -65,6 +65,14 @@ def app_client():
     yield from make_app_client()
 
 
+@pytest.fixture(scope="session")
+def app_client_no_files():
+    ds = Datasette([])
+    client = TestClient(ds.app().test_client)
+    client.ds = ds
+    yield client
+
+
 @pytest.fixture(scope='session')
 def app_client_shorter_time_limit():
     yield from make_app_client(20)

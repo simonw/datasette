@@ -19,7 +19,7 @@
 {% if config.allow_sql %}
     <form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
         <h3>Custom SQL query</h3>
-        <p><textarea name="sql">select * from {{ tables[0].name|escape_sqlite }}</textarea></p>
+        <p><textarea name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
         <p><input type="submit" value="Run SQL"></p>
     </form>
 {% endif %}
@@ -56,7 +56,7 @@
     </ul>
 {% endif %}
 
-{% if config.allow_download %}
+{% if config.allow_download and database != ":memory:" %}
     <p class="download-sqlite">Download SQLite DB: <a href="/{{ database }}-{{ database_hash }}.db">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
 {% endif %}
 

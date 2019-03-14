@@ -17,6 +17,7 @@ Options:
   --template-dir DIRECTORY  Path to directory containing custom templates
   --plugins-dir DIRECTORY   Path to directory containing custom plugins
   --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
+  --memory                  Make :memory: database available
   --config CONFIG           Set config option using configname:value
                             datasette.readthedocs.io/en/latest/config.html
   --version-note TEXT       Additional note to show on /-/versions

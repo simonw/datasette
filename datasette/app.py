@@ -42,7 +42,7 @@ from .version import __version__
 app_root = Path(__file__).parent.parent
 
 connections = threading.local()
-
+MEMORY = object()
 
 ConfigOption = collections.namedtuple(
     "ConfigOption", ("name", "default", "help")
@@ -123,10 +123,15 @@ class Datasette:
         template_dir=None,
         plugins_dir=None,
         static_mounts=None,
+        memory=False,
         config=None,
         version_note=None,
     ):
         self.files = files
+        if not self.files:
+            self.files = [MEMORY]
+        elif memory:
+            self.files = (MEMORY,) + self.files
         self.cache_headers = cache_headers
         self.cors = cors
         self._inspect = inspect_data
@@ -296,31 +301,40 @@ class Datasette:
 
         self._inspect = {}
         for filename in self.files:
-            path = Path(filename)
-            name = path.stem
-            if name in self._inspect:
-                raise Exception("Multiple files with same stem %s" % name)
-            try:
-                with sqlite3.connect(
-                    "file:{}?immutable=1".format(path), uri=True
-                ) as conn:
-                    self.prepare_connection(conn)
-                    self._inspect[name] = {
-                        "hash": inspect_hash(path),
-                        "file": str(path),
-                        "size": path.stat().st_size,
-                        "views": inspect_views(conn),
-                        "tables": inspect_tables(conn, (self.metadata("databases") or {}).get(name, {}))
-                    }
-            except sqlite3.OperationalError as e:
-                if (e.args[0] == 'no such module: VirtualSpatialIndex'):
-                    raise click.UsageError(
-                        "It looks like you're trying to load a SpatiaLite"
-                        " database without first loading the SpatiaLite module."
-                        "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
-                    )
-                else:
-                    raise
+            if filename is MEMORY:
+                self._inspect[":memory:"] = {
+                    "hash": "000",
+                    "file": ":memory:",
+                    "size": 0,
+                    "views": {},
+                    "tables": {},
+                }
+            else:
+                path = Path(filename)
+                name = path.stem
+                if name in self._inspect:
+                    raise Exception("Multiple files with same stem %s" % name)
+                try:
+                    with sqlite3.connect(
+                        "file:{}?immutable=1".format(path), uri=True
+                    ) as conn:
+                        self.prepare_connection(conn)
+                        self._inspect[name] = {
+                            "hash": inspect_hash(path),
+                            "file": str(path),
+                            "size": path.stat().st_size,
+                            "views": inspect_views(conn),
+                            "tables": inspect_tables(conn, (self.metadata("databases") or {}).get(name, {}))
+                        }
+                except sqlite3.OperationalError as e:
+                    if (e.args[0] == 'no such module: VirtualSpatialIndex'):
+                        raise click.UsageError(
+                            "It looks like you're trying to load a SpatiaLite"
+                            " database without first loading the SpatiaLite module."
+                            "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+                        )
+                    else:
+                        raise
         return self._inspect
 
     def register_custom_units(self):
@@ -403,11 +417,14 @@ class Datasette:
             conn = getattr(connections, db_name, None)
             if not conn:
                 info = self.inspect()[db_name]
-                conn = sqlite3.connect(
-                    "file:{}?immutable=1".format(info["file"]),
-                    uri=True,
-                    check_same_thread=False,
-                )
+                if info["file"] == ":memory:":
+                    conn = sqlite3.connect(":memory:")
+                else:
+                    conn = sqlite3.connect(
+                        "file:{}?immutable=1".format(info["file"]),
+                        uri=True,
+                        check_same_thread=False,
+                    )
                 self.prepare_connection(conn)
                 setattr(connections, db_name, conn)
 

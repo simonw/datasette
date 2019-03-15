@@ -34,7 +34,7 @@ setup(
     package_data={'datasette': ['templates/*.html']},
     include_package_data=True,
     install_requires=[
-        'click==6.7',
+        'click>=6.7',
         'click-default-group==1.2',
         'Sanic==0.7.0',
         'Jinja2==2.10',

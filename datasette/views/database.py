@@ -30,7 +30,6 @@ class DatabaseView(BaseView):
             "views": info["views"],
             "queries": self.ds.get_canned_queries(database),
         }, {
-            "database_hash": hash,
             "show_hidden": request.args.get("_show_hidden"),
             "editable": True,
             "metadata": metadata,

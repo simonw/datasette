@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup as Soup
 from .fixtures import ( # noqa
     app_client,
     app_client_shorter_time_limit,
+    app_client_with_hash,
     make_app_client,
 )
 import pytest
@@ -15,10 +16,10 @@ def test_homepage(app_client):
     assert 'fixtures' in response.text
 
 
-def test_database_page(app_client):
-    response = app_client.get('/fixtures', allow_redirects=False)
+def test_database_page_redirects_with_url_hash(app_client_with_hash):
+    response = app_client_with_hash.get('/fixtures', allow_redirects=False)
     assert response.status == 302
-    response = app_client.get('/fixtures')
+    response = app_client_with_hash.get('/fixtures')
     assert 'fixtures' in response.text
 
 
@@ -41,19 +42,19 @@ def test_sql_time_limit(app_client_shorter_time_limit):
     assert expected_html_fragment in response.text
 
 
-def test_row(app_client):
-    response = app_client.get(
+def test_row_redirects_with_url_hash(app_client_with_hash):
+    response = app_client_with_hash.get(
         '/fixtures/simple_primary_key/1',
         allow_redirects=False
     )
     assert response.status == 302
     assert response.headers['Location'].endswith('/1')
-    response = app_client.get('/fixtures/simple_primary_key/1')
+    response = app_client_with_hash.get('/fixtures/simple_primary_key/1')
     assert response.status == 200
 
 
-def test_row_strange_table_name(app_client):
-    response = app_client.get(
+def test_row_strange_table_name_with_url_hash(app_client_with_hash):
+    response = app_client_with_hash.get(
         '/fixtures/table%2Fwith%2Fslashes.csv/3',
         allow_redirects=False
     )
@@ -61,7 +62,7 @@ def test_row_strange_table_name(app_client):
     assert response.headers['Location'].endswith(
         '/table%2Fwith%2Fslashes.csv/3'
     )
-    response = app_client.get('/fixtures/table%2Fwith%2Fslashes.csv/3')
+    response = app_client_with_hash.get('/fixtures/table%2Fwith%2Fslashes.csv/3')
     assert response.status == 200
 
 
@@ -105,10 +106,7 @@ def test_add_filter_redirects(app_client):
         '_filter_op': 'startswith',
         '_filter_value': 'x'
     })
-    # First we need to resolve the correct path before testing more redirects
-    path_base = app_client.get(
-        '/fixtures/simple_primary_key', allow_redirects=False
-    ).headers['Location']
+    path_base = '/fixtures/simple_primary_key'
     path = path_base + '?' + filter_args
     response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
@@ -146,9 +144,7 @@ def test_existing_filter_redirects(app_client):
         '_filter_op_4': 'contains',
         '_filter_value_4': 'world',
     }
-    path_base = app_client.get(
-        '/fixtures/simple_primary_key', allow_redirects=False
-    ).headers['Location']
+    path_base = '/fixtures/simple_primary_key'
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
@@ -174,9 +170,7 @@ def test_existing_filter_redirects(app_client):
 
 
 def test_empty_search_parameter_gets_removed(app_client):
-    path_base = app_client.get(
-        '/fixtures/simple_primary_key', allow_redirects=False
-    ).headers['Location']
+    path_base = '/fixtures/simple_primary_key'
     path = path_base + '?' + urllib.parse.urlencode({
         '_search': '',
         '_filter_column': 'name',
@@ -191,9 +185,7 @@ def test_empty_search_parameter_gets_removed(app_client):
 
 
 def test_sort_by_desc_redirects(app_client):
-    path_base = app_client.get(
-        '/fixtures/sortable', allow_redirects=False
-    ).headers['Location']
+    path_base = '/fixtures/sortable'
     path = path_base + '?' + urllib.parse.urlencode({
         '_sort': 'sortable',
         '_sort_by_desc': '1',

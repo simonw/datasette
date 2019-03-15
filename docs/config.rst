@@ -179,3 +179,17 @@ HTTP but is served to the outside world via a proxy that enables HTTPS.
 ::
 
     datasette mydatabase.db --config force_https_urls:1
+
+hash_urls
+---------
+
+When enabled, this setting causes Datasette to append a content hash of the
+database file to the URL path for every table and query within that database.
+
+When combined with far-future  expire headers this ensures that queries can be
+cached forever, safe in the knowledge that any modifications to the database
+itself will result in new, uncachcacheed URL paths.
+
+::
+
+    datasette mydatabase.db --config hash_urls:1

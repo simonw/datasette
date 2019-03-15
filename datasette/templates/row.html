@@ -16,9 +16,9 @@
 {% block body_class %}row db-{{ database|to_css_class }} table-{{ table|to_css_class }}{% endblock %}
 
 {% block content %}
-<div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a> / <a href="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}">{{ table }}</a></div>
+<div class="hd"><a href="/">home</a> / <a href="{{ database_url(database) }}">{{ database }}</a> / <a href="{{ database_url(database) }}/{{ table|quote_plus }}">{{ table }}</a></div>
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ table }}: {{ ', '.join(primary_key_values) }}</a></h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ table }}: {{ ', '.join(primary_key_values) }}</a></h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
@@ -31,7 +31,7 @@
     <ul>
         {% for other in foreign_key_tables %}
             <li>
-                <a href="/{{ database }}-{{ database_hash }}/{{ other.other_table|quote_plus }}?{{ other.other_column }}={{ ', '.join(primary_key_values) }}">
+                <a href="{{ database_url(database) }}/{{ other.other_table|quote_plus }}?{{ other.other_column }}={{ ', '.join(primary_key_values) }}">
                     {{ "{:,}".format(other.count) }} row{% if other.count == 1 %}{% else %}s{% endif %}</a>
                 from {{ other.other_column }} in {{ other.other_table }}
             </li>

@@ -750,7 +750,6 @@ class TableView(RowTableShared):
             )
             self.ds.update_with_inherited_metadata(metadata)
             return {
-                "database_hash": hash,
                 "supports_search": bool(fts_table),
                 "search": search or "",
                 "use_rowid": use_rowid,
@@ -851,7 +850,6 @@ class RowView(RowTableShared):
             for column in display_columns:
                 column["sortable"] = False
             return {
-                "database_hash": hash,
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
                 ),

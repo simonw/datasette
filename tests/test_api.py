@@ -1,6 +1,7 @@
 from .fixtures import ( # noqa
     app_client,
     app_client_no_files,
+    app_client_with_hash,
     app_client_shorter_time_limit,
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
@@ -378,7 +379,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
             "hidden_table_rows_sum": 0,
             "hidden_tables_count": 0,
             "name": ":memory:",
-            "path": ":memory:-000",
+            "path": "/:memory:",
             "table_rows_sum": 0,
             "tables_count": 0,
             "tables_more": False,
@@ -388,7 +389,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
     } == response.json
     # Try that SQL query
     response = app_client_no_files.get(
-        "/:memory:-0.json?sql=select+sqlite_version()&_shape=array"
+        "/:memory:.json?sql=select+sqlite_version()&_shape=array"
     )
     assert 1 == len(response.json)
     assert ["sqlite_version()"] == list(response.json[0].keys())
@@ -501,12 +502,12 @@ def test_table_not_exists_json(app_client):
     } == app_client.get('/fixtures/blah.json').json
 
 
-def test_jsono_redirects_to_shape_objects(app_client):
-    response_1 = app_client.get(
+def test_jsono_redirects_to_shape_objects(app_client_with_hash):
+    response_1 = app_client_with_hash.get(
         '/fixtures/simple_primary_key.jsono',
         allow_redirects=False
     )
-    response = app_client.get(
+    response = app_client_with_hash.get(
         response_1.headers['Location'],
         allow_redirects=False
     )
@@ -1056,6 +1057,7 @@ def test_config_json(app_client):
         "max_csv_mb": 100,
         "truncate_cells_html": 2048,
         "force_https_urls": False,
+        "hash_urls": False,
     } == response.json
 
 

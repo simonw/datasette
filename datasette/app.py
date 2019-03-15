@@ -69,6 +69,9 @@ CONFIG_OPTIONS = (
     ConfigOption("facet_suggest_time_limit_ms", 50, """
         Time limit for calculating a suggested facet
     """.strip()),
+    ConfigOption("hash_urls", False, """
+        Include DB file contents hash in URLs, for far-future caching
+    """.strip()),
     ConfigOption("allow_facet", True, """
         Allow users to specify columns to facet using ?_facet= parameter
     """.strip()),

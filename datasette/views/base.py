@@ -74,6 +74,17 @@ class RenderMixin(HTTPMethodView):
             else:
                 yield {"url": url}
 
+    def database_url(self, database):
+        if not self.ds.config("hash_urls"):
+            return "/{}".format(database)
+        else:
+            return "/{}-{}".format(
+                database, self.ds.inspect()[database]["hash"][:HASH_LENGTH]
+            )
+
+    def database_color(self, database):
+        return 'ff0000'
+
     def render(self, templates, **context):
         template = self.ds.jinja_env.select_template(templates)
         select_templates = [
@@ -104,6 +115,8 @@ class RenderMixin(HTTPMethodView):
                             "extra_js_urls", template, context
                         ),
                         "format_bytes": format_bytes,
+                        "database_url": self.database_url,
+                        "database_color": self.database_color,
                     }
                 }
             )
@@ -187,7 +200,9 @@ class BaseView(RenderMixin):
                 should_redirect += kwargs["as_format"]
             if "as_db" in kwargs:
                 should_redirect += kwargs["as_db"]
-            return name, expected, should_redirect
+
+            if self.ds.config("hash_urls"):
+                return name, expected, should_redirect
 
         return name, expected, None
 
@@ -417,7 +432,6 @@ class BaseView(RenderMixin):
                             "ok": False,
                             "error": error,
                             "database": database,
-                            "database_hash": hash,
                         }
                 elif shape == "array":
                     data = data["rows"]
@@ -571,7 +585,6 @@ class BaseView(RenderMixin):
                 display_rows.append(display_row)
             return {
                 "display_rows": display_rows,
-                "database_hash": hash,
                 "custom_sql": True,
                 "named_parameter_values": named_parameter_values,
                 "editable": editable,

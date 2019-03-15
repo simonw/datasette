@@ -824,3 +824,22 @@ def test_urlify_custom_queries(app_client):
   https://twitter.com/simonw
  </a>
 </td>''' == soup.find("td", {"class": "col-user_url"}).prettify().strip()
+
+
+def test_show_hide_sql_query(app_client):
+    path = "/fixtures?" + urllib.parse.urlencode({
+        "sql": "select ('https://twitter.com/' || 'simonw') as user_url;"
+    })
+    response = app_client.get(path)
+    soup = Soup(response.body, "html.parser")
+    span = soup.select(".show-hide-sql")[0]
+    assert span.find("a")["href"].endswith("&_hide_sql=1")
+    assert "(hide)" == span.getText()
+    assert soup.find("textarea") is not None
+    # Now follow the link to hide it
+    response = app_client.get(span.find("a")["href"])
+    soup = Soup(response.body, "html.parser")
+    span = soup.select(".show-hide-sql")[0]
+    assert not span.find("a")["href"].endswith("&_hide_sql=1")
+    assert "(show)" == span.getText()
+    assert soup.find("textarea") is None

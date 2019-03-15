@@ -26,11 +26,13 @@
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 <form class="sql" action="/{{ database }}-{{ database_hash }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="get">
-    <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}</h3>
-    {% if editable and config.allow_sql %}
-        <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
-    {% else %}
-        <pre>{% if query %}{{ query.sql }}{% endif %}</pre>
+    <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %} <span class="show-hide-sql">{% if hide_sql %}(<a href="{{ path_with_removed_args(request, {'_hide_sql': '1'}) }}">show</a>){% else %}(<a href="{{ path_with_added_args(request, {'_hide_sql': '1'}) }}">hide</a>){% endif %}</span></h3>
+    {% if not hide_sql %}
+        {% if editable and config.allow_sql %}
+            <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
+        {% else %}
+            <pre>{% if query %}{{ query.sql }}{% endif %}</pre>
+        {% endif %}
     {% endif %}
     {% if named_parameter_values %}
         <h3>Query parameters</h3>

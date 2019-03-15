@@ -23,6 +23,7 @@ from datasette.utils import (
     is_url,
     path_from_row_pks,
     path_with_added_args,
+    path_with_removed_args,
     path_with_format,
     remove_infinites,
     resolve_table_and_format,
@@ -578,6 +579,10 @@ class BaseView(RenderMixin):
                 "canned_query": canned_query,
                 "metadata": metadata,
                 "config": self.ds.config_dict(),
+                "request": request,
+                "path_with_added_args": path_with_added_args,
+                "path_with_removed_args": path_with_removed_args,
+                "hide_sql": "_hide_sql" in params,
             }
 
         return {

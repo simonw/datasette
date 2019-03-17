@@ -121,6 +121,7 @@ class Datasette:
     def __init__(
         self,
         files,
+        immutables=None,
         cache_headers=True,
         cors=False,
         inspect_data=None,
@@ -133,7 +134,9 @@ class Datasette:
         config=None,
         version_note=None,
     ):
-        self.files = files
+        immutables = immutables or []
+        self.files = files + immutables
+        self.immutables = set(immutables)
         if not self.files:
             self.files = [MEMORY]
         elif memory:
@@ -322,7 +325,7 @@ class Datasette:
                     raise Exception("Multiple files with same stem %s" % name)
                 try:
                     with sqlite3.connect(
-                        "file:{}?immutable=1".format(path), uri=True
+                        "file:{}?mode=ro".format(path), uri=True
                     ) as conn:
                         self.prepare_connection(conn)
                         self._inspect[name] = {
@@ -426,8 +429,13 @@ class Datasette:
                 if info["file"] == ":memory:":
                     conn = sqlite3.connect(":memory:")
                 else:
+                    # mode=ro or immutable=1?
+                    if info["file"] in self.immutables:
+                        qs = "immutable=1"
+                    else:
+                        qs = "mode=ro"
                     conn = sqlite3.connect(
-                        "file:{}?immutable=1".format(info["file"]),
+                        "file:{}?{}".format(info["file"], qs),
                         uri=True,
                         check_same_thread=False,
                     )

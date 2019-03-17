@@ -268,6 +268,13 @@ def package(
 @cli.command()
 @click.argument("files", type=click.Path(exists=True), nargs=-1)
 @click.option(
+    "-i",
+    "--immutable",
+    type=click.Path(exists=True),
+    help="Database files to open in immutable mode",
+    multiple=True,
+)
+@click.option(
     "-h", "--host", default="127.0.0.1", help="host for server, defaults to 127.0.0.1"
 )
 @click.option("-p", "--port", default=8001, help="port for server, defaults to 8001")
@@ -332,6 +339,7 @@ def package(
 )
 def serve(
     files,
+    immutable,
     host,
     port,
     debug,
@@ -376,9 +384,10 @@ def serve(
     if metadata:
         metadata_data = json.loads(metadata.read())
 
-    click.echo("Serve! files={} on port {}".format(files, port))
+    click.echo("Serve! files={} (immutables={}) on port {}".format(files, immutable, port))
     ds = Datasette(
         files,
+        immutables=immutable,
         cache_headers=not debug and not reload,
         cors=cors,
         inspect_data=inspect_data,

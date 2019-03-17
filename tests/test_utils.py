@@ -59,6 +59,13 @@ def test_path_with_removed_args(path, args, expected):
     )
     actual = utils.path_with_removed_args(request, args)
     assert expected == actual
+    # Run the test again but this time use the path= argument
+    request = Request(
+        "/".encode('utf8'),
+        {}, '1.1', 'GET', None
+    )
+    actual = utils.path_with_removed_args(request, args, path=path)
+    assert expected == actual
 
 
 @pytest.mark.parametrize('path,args,expected', [

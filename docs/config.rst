@@ -115,11 +115,21 @@ Enable/disable the ability for users to run custom SQL directly against a databa
 default_cache_ttl
 -----------------
 
-Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-age=X``. Can be over-ridden on a per-request basis using the ``?_ttl=`` querystring parameter. Set this to ``0`` to disable HTTP caching entirely. Defaults to 365 days (31536000 seconds).
+Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-age=X``. Can be over-ridden on a per-request basis using the ``?_ttl=`` querystring parameter. Set this to ``0`` to disable HTTP caching entirely. Defaults to 5 seconds.
 
 ::
 
-    datasette mydatabase.db --config default_cache_ttl:10
+    datasette mydatabase.db --config default_cache_ttl:60
+
+default_cache_ttl_hashed
+------------------------
+
+Default HTTP caching max-age for responses served using using the :ref:`hashed-urls mechanism <config_hash_urls>`. Defaults to 365 days (31536000 seconds).
+
+::
+
+    datasette mydatabase.db --config default_cache_ttl_hashed:10000
+
 
 cache_size_kb
 -------------
@@ -179,3 +189,19 @@ HTTP but is served to the outside world via a proxy that enables HTTPS.
 ::
 
     datasette mydatabase.db --config force_https_urls:1
+
+.. _config_hash_urls:
+
+hash_urls
+---------
+
+When enabled, this setting causes Datasette to append a content hash of the
+database file to the URL path for every table and query within that database.
+
+When combined with far-future  expire headers this ensures that queries can be
+cached forever, safe in the knowledge that any modifications to the database
+itself will result in new, uncachcacheed URL paths.
+
+::
+
+    datasette mydatabase.db --config hash_urls:1

@@ -69,6 +69,9 @@ CONFIG_OPTIONS = (
     ConfigOption("facet_suggest_time_limit_ms", 50, """
         Time limit for calculating a suggested facet
     """.strip()),
+    ConfigOption("hash_urls", False, """
+        Include DB file contents hash in URLs, for far-future caching
+    """.strip()),
     ConfigOption("allow_facet", True, """
         Allow users to specify columns to facet using ?_facet= parameter
     """.strip()),
@@ -81,8 +84,11 @@ CONFIG_OPTIONS = (
     ConfigOption("allow_sql", True, """
         Allow arbitrary SQL queries via ?sql= parameter
     """.strip()),
-    ConfigOption("default_cache_ttl", 365 * 24 * 60 * 60, """
+    ConfigOption("default_cache_ttl", 5, """
         Default HTTP cache TTL (used in Cache-Control: max-age= header)
+    """.strip()),
+    ConfigOption("default_cache_ttl_hashed", 365 * 24 * 60 * 60, """
+        Default HTTP cache TTL for hashed URL pages
     """.strip()),
     ConfigOption("cache_size_kb", 0, """
         SQLite cache size in KB (0 == use SQLite default)

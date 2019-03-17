@@ -73,6 +73,13 @@ def app_client_no_files():
     yield client
 
 
+@pytest.fixture(scope="session")
+def app_client_with_hash():
+    yield from make_app_client(config={
+        'hash_urls': True
+    })
+
+
 @pytest.fixture(scope='session')
 def app_client_shorter_time_limit():
     yield from make_app_client(20)

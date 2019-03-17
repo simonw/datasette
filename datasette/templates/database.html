@@ -12,12 +12,12 @@
 {% block content %}
 <div class="hd"><a href="/">home</a></div>
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ metadata.title or database }}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% if config.allow_sql %}
-    <form class="sql" action="/{{ database }}-{{ database_hash }}" method="get">
+    <form class="sql" action="{{ database_url(database) }}" method="get">
         <h3>Custom SQL query</h3>
         <p><textarea name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
         <p><input type="submit" value="Run SQL"></p>
@@ -27,7 +27,7 @@
 {% for table in tables %}
 {% if show_hidden or not table.hidden %}
 <div class="db-table">
-    <h2><a href="/{{ database }}-{{ database_hash }}/{{ table.name|quote_plus }}">{{ table.name }}</a>{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
+    <h2><a href="{{ database_url(database) }}/{{ table.name|quote_plus }}">{{ table.name }}</a>{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
     <p><em>{% for column in table.columns[:9] %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}{% if table.columns|length > 9 %}...{% endif %}</em></p>
     <p>{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}</p>
 </div>
@@ -35,14 +35,14 @@
 {% endfor %}
 
 {% if hidden_count and not show_hidden %}
-    <p>... and <a href="/{{ database }}-{{ database_hash }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
+    <p>... and <a href="{{ database_url(database) }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
 {% endif %}
 
 {% if views %}
     <h2>Views</h2>
     <ul>
         {% for view in views %}
-            <li><a href="/{{ database }}-{{ database_hash }}/{{ view|urlencode }}">{{ view }}</a></li>
+            <li><a href="{{ database_url(database) }}/{{ view|urlencode }}">{{ view }}</a></li>
         {% endfor %}
     </ul>
 {% endif %}
@@ -51,13 +51,13 @@
     <h2>Queries</h2>
     <ul>
         {% for query in queries %}
-            <li><a href="/{{ database }}-{{ database_hash }}/{{ query.name|urlencode }}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a></li>
+            <li><a href="{{ database_url(database) }}/{{ query.name|urlencode }}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a></li>
         {% endfor %}
     </ul>
 {% endif %}
 
 {% if config.allow_download and database != ":memory:" %}
-    <p class="download-sqlite">Download SQLite DB: <a href="/{{ database }}-{{ database_hash }}.db">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
+    <p class="download-sqlite">Download SQLite DB: <a href="{{ database_url(database) }}.db">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
 {% endif %}
 
 {% include "_codemirror_foot.html" %}

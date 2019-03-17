@@ -21,7 +21,7 @@ class IndexView(RenderMixin):
             database = {
                 "name": key,
                 "hash": info["hash"],
-                "path": "{}-{}".format(key, info["hash"][:HASH_LENGTH]),
+                "path": self.database_url(key),
                 "tables_truncated": sorted(
                     tables, key=lambda t: t["count"], reverse=True
                 )[

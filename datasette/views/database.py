@@ -30,7 +30,6 @@ class DatabaseView(BaseView):
             "views": info["views"],
             "queries": self.ds.get_canned_queries(database),
         }, {
-            "database_hash": hash,
             "show_hidden": request.args.get("_show_hidden"),
             "editable": True,
             "metadata": metadata,
@@ -41,7 +40,7 @@ class DatabaseView(BaseView):
 
 class DatabaseDownload(BaseView):
 
-    async def view_get(self, request, database, hash, **kwargs):
+    async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
         if not self.ds.config("allow_download"):
             raise DatasetteError("Database download is forbidden", status=403)
         filepath = self.ds.inspect()[database]["file"]

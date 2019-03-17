@@ -75,6 +75,17 @@ class RenderMixin(HTTPMethodView):
             else:
                 yield {"url": url}
 
+    def database_url(self, database):
+        if not self.ds.config("hash_urls"):
+            return "/{}".format(database)
+        else:
+            return "/{}-{}".format(
+                database, self.ds.inspect()[database]["hash"][:HASH_LENGTH]
+            )
+
+    def database_color(self, database):
+        return 'ff0000'
+
     def render(self, templates, **context):
         template = self.ds.jinja_env.select_template(templates)
         select_templates = [
@@ -105,6 +116,8 @@ class RenderMixin(HTTPMethodView):
                             "extra_js_urls", template, context
                         ),
                         "format_bytes": format_bytes,
+                        "database_url": self.database_url,
+                        "database_color": self.database_color,
                     }
                 }
             )
@@ -131,16 +144,18 @@ class BaseView(RenderMixin):
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
 
-    def redirect(self, request, path, forward_querystring=True):
+    def redirect(self, request, path, forward_querystring=True, remove_args=None):
         if request.query_string and "?" not in path and forward_querystring:
             path = "{}?{}".format(path, request.query_string)
+        if remove_args:
+            path = path_with_removed_args(request, remove_args, path=path)
         r = response.redirect(path)
         r.headers["Link"] = "<{}>; rel=preload".format(path)
         if self.ds.cors:
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
 
-    def resolve_db_name(self, db_name, **kwargs):
+    def resolve_db_name(self, request, db_name, **kwargs):
         databases = self.ds.inspect()
         hash = None
         name = None
@@ -161,7 +176,9 @@ class BaseView(RenderMixin):
             raise NotFound("Database not found: {}".format(name))
 
         expected = info["hash"][:HASH_LENGTH]
-        if expected != hash:
+        correct_hash_provided = (expected == hash)
+
+        if not correct_hash_provided:
             if "table_and_format" in kwargs:
                 table, _format = resolve_table_and_format(
                     table_and_format=urllib.parse.unquote_plus(
@@ -188,9 +205,11 @@ class BaseView(RenderMixin):
                 should_redirect += kwargs["as_format"]
             if "as_db" in kwargs:
                 should_redirect += kwargs["as_db"]
-            return name, expected, should_redirect
 
-        return name, expected, None
+            if self.ds.config("hash_urls") or "_hash" in request.args:
+                return name, expected, correct_hash_provided, should_redirect
+
+        return name, expected, correct_hash_provided, None
 
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
@@ -202,11 +221,13 @@ class BaseView(RenderMixin):
         assert NotImplemented
 
     async def get(self, request, db_name, **kwargs):
-        database, hash, should_redirect = self.resolve_db_name(db_name, **kwargs)
+        database, hash, correct_hash_provided, should_redirect = self.resolve_db_name(
+            request, db_name, **kwargs
+        )
         if should_redirect:
-            return self.redirect(request, should_redirect)
+            return self.redirect(request, should_redirect, remove_args={"_hash"})
 
-        return await self.view_get(request, database, hash, **kwargs)
+        return await self.view_get(request, database, hash, correct_hash_provided, **kwargs)
 
     async def as_csv(self, request, database, hash, **kwargs):
         stream = request.args.get("_stream")
@@ -301,7 +322,7 @@ class BaseView(RenderMixin):
             content_type=content_type
         )
 
-    async def view_get(self, request, database, hash, **kwargs):
+    async def view_get(self, request, database, hash, correct_hash_provided, **kwargs):
         # If ?_format= is provided, use that as the format
         _format = request.args.get("_format", None)
         if not _format:
@@ -418,7 +439,6 @@ class BaseView(RenderMixin):
                             "ok": False,
                             "error": error,
                             "database": database,
-                            "database_hash": hash,
                         }
                 elif shape == "array":
                     data = data["rows"]
@@ -489,10 +509,13 @@ class BaseView(RenderMixin):
             r = self.render(templates, **context)
             r.status = status_code
         # Set far-future cache expiry
-        if self.ds.cache_headers:
+        if self.ds.cache_headers and r.status == 200:
             ttl = request.args.get("_ttl", None)
             if ttl is None or not ttl.isdigit():
-                ttl = self.ds.config("default_cache_ttl")
+                if correct_hash_provided:
+                    ttl = self.ds.config("default_cache_ttl_hashed")
+                else:
+                    ttl = self.ds.config("default_cache_ttl")
             else:
                 ttl = int(ttl)
             if ttl == 0:
@@ -572,7 +595,6 @@ class BaseView(RenderMixin):
                 display_rows.append(display_row)
             return {
                 "display_rows": display_rows,
-                "database_hash": hash,
                 "custom_sql": True,
                 "named_parameter_values": named_parameter_values,
                 "editable": editable,

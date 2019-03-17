@@ -40,7 +40,7 @@ class DatabaseView(BaseView):
 
 class DatabaseDownload(BaseView):
 
-    async def view_get(self, request, database, hash, **kwargs):
+    async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
         if not self.ds.config("allow_download"):
             raise DatasetteError("Database download is forbidden", status=403)
         filepath = self.ds.inspect()[database]["file"]

@@ -1050,7 +1050,8 @@ def test_config_json(app_client):
         "allow_facet": True,
         "suggest_facets": True,
         "allow_sql": True,
-        "default_cache_ttl": 365 * 24 * 60 * 60,
+        "default_cache_ttl": 5,
+        "default_cache_ttl_hashed": 365 * 24 * 60 * 60,
         "num_sql_threads": 3,
         "cache_size_kb": 0,
         "allow_csv_stream": True,
@@ -1302,14 +1303,27 @@ def test_expand_label(app_client):
 
 
 @pytest.mark.parametrize('path,expected_cache_control', [
-    ("/fixtures/facetable.json", "max-age=31536000"),
-    ("/fixtures/facetable.json?_ttl=invalid", "max-age=31536000"),
+    ("/fixtures/facetable.json", "max-age=5"),
+    ("/fixtures/facetable.json?_ttl=invalid", "max-age=5"),
     ("/fixtures/facetable.json?_ttl=10", "max-age=10"),
     ("/fixtures/facetable.json?_ttl=0", "no-cache"),
 ])
 def test_ttl_parameter(app_client, path, expected_cache_control):
     response = app_client.get(path)
     assert expected_cache_control == response.headers['Cache-Control']
+
+
+@pytest.mark.parametrize("path,expected_redirect", [
+    ("/fixtures/facetable.json?_hash=1", "/fixtures-HASH/facetable.json"),
+    ("/fixtures/facetable.json?city_id=1&_hash=1", "/fixtures-HASH/facetable.json?city_id=1"),
+])
+def test_hash_parameter(app_client, path, expected_redirect):
+    # First get the current hash for the fixtures database
+    current_hash = app_client.get("/-/inspect.json").json["fixtures"]["hash"][:7]
+    response = app_client.get(path, allow_redirects=False)
+    assert response.status == 302
+    location = response.headers["Location"]
+    assert expected_redirect.replace("HASH", current_hash) == location
 
 
 test_json_columns_default_expected = [{

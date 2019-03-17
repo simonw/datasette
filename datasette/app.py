@@ -135,7 +135,7 @@ class Datasette:
         version_note=None,
     ):
         immutables = immutables or []
-        self.files = files + immutables
+        self.files = tuple(files) + tuple(immutables)
         self.immutables = set(immutables)
         if not self.files:
             self.files = [MEMORY]

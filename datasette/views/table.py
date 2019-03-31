@@ -14,6 +14,7 @@ from datasette.utils import (
     escape_sqlite,
     filters_should_redirect,
     is_url,
+    is_binary_column_type,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
@@ -125,6 +126,7 @@ class RowTableShared(BaseView):
         columns = [
             {"name": r[0], "sortable": r[0] in sortable_columns} for r in description
         ]
+
         tables = info["tables"]
         table_info = tables.get(table) or {}
         pks = table_info.get("primary_keys") or []
@@ -194,6 +196,9 @@ class RowTableShared(BaseView):
                     ))
                 elif value in ("", None):
                     display_value = jinja2.Markup("&nbsp;")
+                elif is_binary_column_type(table_info.get('column_types', {}).get(column, '')):
+                    # Prevent binary values from being rendered as garbage.
+                    display_value = jinja2.Markup('<{}&nbsp;bytes>'.format(len(value)))
                 elif is_url(str(value).strip()):
                     display_value = jinja2.Markup(
                         '<a href="{url}">{url}</a>'.format(

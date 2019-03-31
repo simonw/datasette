@@ -36,6 +36,10 @@ reserved_words = set((
     'vacuum values view virtual when where with without'
 ).split())
 
+binary_column_types = ('blob', 'point', 'linestring', 'polygon', 'multipoint',
+                       'multilinestring', 'multipolygon', 'geometrycollection',
+                       'geometry')
+
 SPATIALITE_DOCKERFILE_EXTRAS = r'''
 RUN apt-get update && \
     apt-get install -y python3-dev gcc libsqlite3-mod-spatialite && \
@@ -116,6 +120,14 @@ def compound_keys_after_sql(pks, start_index=0):
         pks_left.pop()
     or_clauses.reverse()
     return '({})'.format('\n  or\n'.join(or_clauses))
+
+
+def is_binary_column_type(column_type):
+    """ Return true if the column type may contain binary data. """
+    for ct in binary_column_types:
+        if column_type.startswith(ct):
+            return True
+    return False
 
 
 class CustomJSONEncoder(json.JSONEncoder):

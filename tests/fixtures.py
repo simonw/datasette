@@ -29,6 +29,7 @@ def make_app_client(
     cors=False,
     config=None,
     filename="fixtures.db",
+    is_immutable=False,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -48,7 +49,8 @@ def make_app_client(
             }
         )
         ds = Datasette(
-            [filepath],
+            [] if is_immutable else [filepath],
+            immutables=[filepath] if is_immutable else [],
             cors=cors,
             metadata=METADATA,
             plugins_dir=plugins_dir,
@@ -76,8 +78,8 @@ def app_client_no_files():
 @pytest.fixture(scope="session")
 def app_client_with_hash():
     yield from make_app_client(config={
-        'hash_urls': True
-    })
+        'hash_urls': True,
+    }, is_immutable=True)
 
 
 @pytest.fixture(scope='session')

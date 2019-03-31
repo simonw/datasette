@@ -1317,10 +1317,10 @@ def test_ttl_parameter(app_client, path, expected_cache_control):
     ("/fixtures/facetable.json?_hash=1", "/fixtures-HASH/facetable.json"),
     ("/fixtures/facetable.json?city_id=1&_hash=1", "/fixtures-HASH/facetable.json?city_id=1"),
 ])
-def test_hash_parameter(app_client, path, expected_redirect):
+def test_hash_parameter(app_client_with_hash, path, expected_redirect):
     # First get the current hash for the fixtures database
-    current_hash = app_client.get("/-/inspect.json").json["fixtures"]["hash"][:7]
-    response = app_client.get(path, allow_redirects=False)
+    current_hash = app_client_with_hash.get("/-/inspect.json").json["fixtures"]["hash"][:7]
+    response = app_client_with_hash.get(path, allow_redirects=False)
     assert response.status == 302
     location = response.headers["Location"]
     assert expected_redirect.replace("HASH", current_hash) == location

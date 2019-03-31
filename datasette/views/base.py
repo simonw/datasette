@@ -156,14 +156,13 @@ class BaseView(RenderMixin):
         return r
 
     async def resolve_db_name(self, request, db_name, **kwargs):
-        databases = self.ds.inspect()
         hash = None
         name = None
         if "-" in db_name:
             # Might be name-and-hash, or might just be
             # a name with a hyphen in it
             name, hash = db_name.rsplit("-", 1)
-            if name not in databases:
+            if name not in self.ds.databases:
                 # Try the whole name
                 name = db_name
                 hash = None
@@ -171,11 +170,13 @@ class BaseView(RenderMixin):
             name = db_name
         # Verify the hash
         try:
-            info = databases[name]
+            db = self.ds.databases[name]
         except KeyError:
             raise NotFound("Database not found: {}".format(name))
 
-        expected = info["hash"][:HASH_LENGTH]
+        expected = "000"
+        if db.hash is not None:
+            expected = db.hash[:HASH_LENGTH]
         correct_hash_provided = (expected == hash)
 
         if not correct_hash_provided:

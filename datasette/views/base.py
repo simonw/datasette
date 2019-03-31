@@ -76,12 +76,13 @@ class RenderMixin(HTTPMethodView):
                 yield {"url": url}
 
     def database_url(self, database):
-        if not self.ds.config("hash_urls"):
-            return "/{}".format(database)
-        else:
+        db = self.ds.databases[database]
+        if self.ds.config("hash_urls") and db.hash:
             return "/{}-{}".format(
-                database, self.ds.inspect()[database]["hash"][:HASH_LENGTH]
+                database, db.hash[:HASH_LENGTH]
             )
+        else:
+            return "/{}".format(database)
 
     def database_color(self, database):
         return 'ff0000'

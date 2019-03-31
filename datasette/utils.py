@@ -801,10 +801,11 @@ def get_plugins(pm):
 FORMATS = ('csv', 'json', 'jsono')
 
 
-def resolve_table_and_format(table_and_format, table_exists):
+async def resolve_table_and_format(table_and_format, table_exists):
     if '.' in table_and_format:
         # Check if a table exists with this exact name
-        if table_exists(table_and_format):
+        it_exists = await table_exists(table_and_format)
+        if it_exists:
             return table_and_format, None
     # Check if table ends with a known format
     for _format in FORMATS:

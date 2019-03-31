@@ -300,8 +300,13 @@ class Datasette:
             conn.execute('PRAGMA cache_size=-{}'.format(self.config("cache_size_kb")))
         pm.hook.prepare_connection(conn=conn)
 
-    def table_exists(self, database, table):
-        return table in self.inspect().get(database, {}).get("tables")
+    async def table_exists(self, database, table):
+        results = await self.execute(
+            database,
+            "select 1 from sqlite_master where type='table' and name=?",
+            params=(table,)
+        )
+        return bool(results.rows)
 
     def inspect(self):
         " Inspect the database and return a dictionary of table metadata "
@@ -410,19 +415,8 @@ class Datasette:
             for p in ps
         ]
 
-    async def execute(
-        self,
-        db_name,
-        sql,
-        params=None,
-        truncate=False,
-        custom_time_limit=None,
-        page_size=None,
-    ):
-        """Executes sql against db_name in a thread"""
-        page_size = page_size or self.page_size
-
-        def sql_operation_in_thread():
+    async def execute_against_connection_in_thread(self, db_name, fn):
+        def in_thread():
             conn = getattr(connections, db_name, None)
             if not conn:
                 info = self.inspect()[db_name]
@@ -441,7 +435,25 @@ class Datasette:
                     )
                 self.prepare_connection(conn)
                 setattr(connections, db_name, conn)
+            return fn(conn)
 
+        return await asyncio.get_event_loop().run_in_executor(
+            self.executor, in_thread
+        )
+
+    async def execute(
+        self,
+        db_name,
+        sql,
+        params=None,
+        truncate=False,
+        custom_time_limit=None,
+        page_size=None,
+    ):
+        """Executes sql against db_name in a thread"""
+        page_size = page_size or self.page_size
+
+        def sql_operation_in_thread(conn):
             time_limit_ms = self.sql_time_limit_ms
             if custom_time_limit and custom_time_limit < time_limit_ms:
                 time_limit_ms = custom_time_limit
@@ -476,8 +488,8 @@ class Datasette:
             else:
                 return Results(rows, False, cursor.description)
 
-        return await asyncio.get_event_loop().run_in_executor(
-            self.executor, sql_operation_in_thread
+        return await self.execute_against_connection_in_thread(
+            db_name, sql_operation_in_thread
         )
 
     def app(self):

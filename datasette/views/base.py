@@ -155,7 +155,7 @@ class BaseView(RenderMixin):
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
 
-    def resolve_db_name(self, request, db_name, **kwargs):
+    async def resolve_db_name(self, request, db_name, **kwargs):
         databases = self.ds.inspect()
         hash = None
         name = None
@@ -180,11 +180,13 @@ class BaseView(RenderMixin):
 
         if not correct_hash_provided:
             if "table_and_format" in kwargs:
-                table, _format = resolve_table_and_format(
+                async def async_table_exists(t):
+                    return await self.ds.table_exists(name, t)
+                table, _format = await resolve_table_and_format(
                     table_and_format=urllib.parse.unquote_plus(
                         kwargs["table_and_format"]
                     ),
-                    table_exists=lambda t: self.ds.table_exists(name, t)
+                    table_exists=async_table_exists
                 )
                 kwargs["table"] = table
                 if _format:
@@ -221,7 +223,7 @@ class BaseView(RenderMixin):
         assert NotImplemented
 
     async def get(self, request, db_name, **kwargs):
-        database, hash, correct_hash_provided, should_redirect = self.resolve_db_name(
+        database, hash, correct_hash_provided, should_redirect = await self.resolve_db_name(
             request, db_name, **kwargs
         )
         if should_redirect:
@@ -328,11 +330,13 @@ class BaseView(RenderMixin):
         if not _format:
             _format = (kwargs.pop("as_format", None) or "").lstrip(".")
         if "table_and_format" in kwargs:
-            table, _ext_format = resolve_table_and_format(
+            async def async_table_exists(t):
+                return await self.ds.table_exists(database, t)
+            table, _ext_format = await resolve_table_and_format(
                 table_and_format=urllib.parse.unquote_plus(
                     kwargs["table_and_format"]
                 ),
-                table_exists=lambda t: self.ds.table_exists(database, t)
+                table_exists=async_table_exists
             )
             _format = _format or _ext_format
             kwargs["table"] = table

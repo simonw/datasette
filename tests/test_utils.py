@@ -332,10 +332,11 @@ def test_compound_keys_after_sql():
     '''.strip() == utils.compound_keys_after_sql(['a', 'b', 'c'])
 
 
-def table_exists(table):
+async def table_exists(table):
     return table == "exists.csv"
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table_and_format,expected_table,expected_format",
     [
@@ -346,10 +347,10 @@ def table_exists(table):
         ("exists.csv", "exists.csv", None),
     ],
 )
-def test_resolve_table_and_format(
+async def test_resolve_table_and_format(
     table_and_format, expected_table, expected_format
 ):
-    actual_table, actual_format = utils.resolve_table_and_format(
+    actual_table, actual_format = await utils.resolve_table_and_format(
         table_and_format, table_exists
     )
     assert expected_table == actual_table

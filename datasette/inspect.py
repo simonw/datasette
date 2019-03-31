@@ -78,16 +78,16 @@ def inspect_tables(conn, database_metadata):
             # e.g. "select count(*) from some_fts;"
             count = 0
 
-        column_names = [
-            r[1]
-            for r in conn.execute(
-                "PRAGMA table_info({});".format(escape_sqlite(table))
-            ).fetchall()
-        ]
+        table_info = conn.execute(
+            "PRAGMA table_info({});".format(escape_sqlite(table))
+        ).fetchall()
+
+        column_names = [row[1] for row in table_info]
 
         tables[table] = {
             "name": table,
             "columns": column_names,
+            "column_types": {row[1]: row[2].lower() for row in table_info},
             "primary_keys": detect_primary_keys(conn, table),
             "count": count,
             "label_column": detect_label_column(column_names),

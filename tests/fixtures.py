@@ -27,6 +27,7 @@ def make_app_client(
     sql_time_limit_ms=None,
     max_returned_rows=None,
     cors=False,
+    memory=False,
     config=None,
     filename="fixtures.db",
     is_immutable=False,
@@ -51,6 +52,7 @@ def make_app_client(
         ds = Datasette(
             [] if is_immutable else [filepath],
             immutables=[filepath] if is_immutable else [],
+            memory=memory,
             cors=cors,
             metadata=METADATA,
             plugins_dir=plugins_dir,
@@ -74,6 +76,9 @@ def app_client_no_files():
     client.ds = ds
     yield client
 
+@pytest.fixture(scope="session")
+def app_client_with_memory():
+    yield from make_app_client(memory=True)
 
 @pytest.fixture(scope="session")
 def app_client_with_hash():

@@ -3,6 +3,7 @@ from .fixtures import ( # noqa
     app_client,
     app_client_shorter_time_limit,
     app_client_with_hash,
+    app_client_with_memory,
     make_app_client,
 )
 import pytest
@@ -676,12 +677,25 @@ def test_table_metadata(app_client):
     assert_footer_links(soup)
 
 
-def test_allow_download_on(app_client):
-    response = app_client.get(
+def test_database_download(app_client_with_memory):
+    # Regular page should have a download link
+    response = app_client_with_memory.get(
         "/fixtures"
     )
     soup = Soup(response.body, 'html.parser')
     assert len(soup.findAll('a', {'href': re.compile(r'\.db$')}))
+    # Check we can actually download it
+    assert 200 == app_client_with_memory.get(
+        "/fixtures.db",
+    ).status
+    # Memory page should NOT have a download link
+    response2 = app_client_with_memory.get("/:memory:")
+    soup2 = Soup(response2.body, 'html.parser')
+    assert 0 == len(soup2.findAll('a', {'href': re.compile(r'\.db$')}))
+    # The URL itself should 404
+    assert 404 == app_client_with_memory.get(
+        "/:memory:.db",
+    ).status
 
 
 def test_allow_download_off():
@@ -690,14 +704,12 @@ def test_allow_download_off():
     }):
         response = client.get(
             "/fixtures",
-
         )
         soup = Soup(response.body, 'html.parser')
         assert not len(soup.findAll('a', {'href': re.compile(r'\.db$')}))
         # Accessing URL directly should 403
         response = client.get(
             "/fixtures.db",
-
         )
         assert 403 == response.status
 

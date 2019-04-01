@@ -43,7 +43,14 @@ class DatabaseDownload(BaseView):
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
         if not self.ds.config("allow_download"):
             raise DatasetteError("Database download is forbidden", status=403)
-        filepath = self.ds.inspect()[database]["file"]
+        if database not in self.ds.databases:
+            raise DatasetteError("Invalid database", status=404)
+        db = self.ds.databases[database]
+        if db.is_memory:
+            raise DatasetteError("Cannot download :memory: database", status=404)
+        if not db.path:
+            raise DatasetteError("Cannot download database", status=404)
+        filepath = db.path
         return await response.file_stream(
             filepath,
             filename=os.path.basename(filepath),

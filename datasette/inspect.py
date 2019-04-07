@@ -5,6 +5,7 @@ from .utils import (
     detect_fts,
     escape_sqlite,
     get_all_foreign_keys,
+    table_columns,
     sqlite3
 )
 
@@ -78,12 +79,7 @@ def inspect_tables(conn, database_metadata):
             # e.g. "select count(*) from some_fts;"
             count = 0
 
-        column_names = [
-            r[1]
-            for r in conn.execute(
-                "PRAGMA table_info({});".format(escape_sqlite(table))
-            ).fetchall()
-        ]
+        column_names = table_columns(conn, table)
 
         tables[table] = {
             "name": table,

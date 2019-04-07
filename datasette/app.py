@@ -33,6 +33,7 @@ from .utils import (
     module_from_path,
     sqlite3,
     sqlite_timelimit,
+    table_columns,
     to_css_class
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
@@ -462,6 +463,11 @@ class Datasette:
             }
             for p in ps
         ]
+
+    async def table_columns(self, db_name, table):
+        return await self.execute_against_connection_in_thread(
+            db_name, lambda conn: table_columns(conn, table)
+        )
 
     async def execute_against_connection_in_thread(self, db_name, fn):
         def in_thread():

@@ -536,6 +536,15 @@ def detect_fts_sql(table):
     '''.format(table=table)
 
 
+def table_columns(conn, table):
+    return [
+        r[1]
+        for r in conn.execute(
+            "PRAGMA table_info({});".format(escape_sqlite(table))
+        ).fetchall()
+    ]
+
+
 class Filter:
     def __init__(self, key, display, sql_template, human_template, format='{}', numeric=False, no_argument=False):
         self.key = key

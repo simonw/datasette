@@ -19,6 +19,7 @@ from datasette.utils import (
     path_with_removed_args,
     path_with_replaced_args,
     sqlite3,
+    table_columns,
     to_css_class,
     urlsafe_components,
     value_as_boolean,
@@ -31,13 +32,12 @@ LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
 
 class RowTableShared(BaseView):
 
-    def sortable_columns_for_table(self, database, table, use_rowid):
+    async def sortable_columns_for_table(self, database, table, use_rowid):
         table_metadata = self.table_metadata(database, table)
         if "sortable_columns" in table_metadata:
             sortable_columns = set(table_metadata["sortable_columns"])
         else:
-            table_info = self.ds.inspect()[database]["tables"].get(table) or {}
-            sortable_columns = set(table_info.get("columns", []))
+            sortable_columns = set(await self.ds.table_columns(database, table))
         if use_rowid:
             sortable_columns.add("rowid")
         return sortable_columns
@@ -121,7 +121,7 @@ class RowTableShared(BaseView):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         table_metadata = self.table_metadata(database, table)
         info = self.ds.inspect()[database]
-        sortable_columns = self.sortable_columns_for_table(database, table, True)
+        sortable_columns = await self.sortable_columns_for_table(database, table, True)
         columns = [
             {"name": r[0], "sortable": r[0] in sortable_columns} for r in description
         ]
@@ -363,7 +363,7 @@ class TableView(RowTableShared):
         if not is_view:
             table_rows_count = table_info["count"]
 
-        sortable_columns = self.sortable_columns_for_table(database, table, use_rowid)
+        sortable_columns = await self.sortable_columns_for_table(database, table, use_rowid)
 
         # Allow for custom sort order
         sort = special_args.get("_sort")

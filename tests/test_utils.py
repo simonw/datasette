@@ -7,6 +7,7 @@ import json
 import os
 import pytest
 from sanic.request import Request
+import sqlite3
 import tempfile
 from unittest.mock import patch
 
@@ -355,6 +356,14 @@ async def test_resolve_table_and_format(
     )
     assert expected_table == actual_table
     assert expected_format == actual_format
+
+
+def test_table_columns():
+    conn = sqlite3.connect(":memory:")
+    conn.executescript("""
+    create table places (id integer primary key, name text, bob integer)
+    """)
+    assert ["id", "name", "bob"] == utils.table_columns(conn, "places")
 
 
 @pytest.mark.parametrize(

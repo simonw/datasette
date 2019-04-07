@@ -44,20 +44,11 @@ class RowTableShared(BaseView):
             sortable_columns.add("rowid")
         return sortable_columns
 
-    def expandable_columns(self, database, table):
+    async def expandable_columns(self, database, table):
         # Returns list of (fk_dict, label_column-or-None) pairs for that table
-        tables = self.ds.inspect()[database].get("tables", {})
-        table_info = tables.get(table)
-        if not table_info:
-            return []
         expandables = []
-        for fk in table_info["foreign_keys"]["outgoing"]:
-            label_column = (
-                self.ds.table_metadata(
-                    database, fk["other_table"]
-                ).get("label_column")
-                or tables.get(fk["other_table"], {}).get("label_column")
-            ) or None
+        for fk in await self.ds.foreign_keys_for_table(database, table):
+            label_column = await self.ds.label_column_for_table(database, fk["other_table"])
             expandables.append((fk, label_column))
         return expandables
 
@@ -582,7 +573,7 @@ class TableView(RowTableShared):
 
         # Expand labeled columns if requested
         expanded_columns = []
-        expandable_columns = self.expandable_columns(database, table)
+        expandable_columns = await self.expandable_columns(database, table)
         columns_to_expand = None
         try:
             all_labels = value_as_boolean(special_args.get("_labels", ""))

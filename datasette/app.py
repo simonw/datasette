@@ -189,7 +189,6 @@ class Datasette:
             if db.name in self.databases:
                 raise Exception("Multiple files with same stem: {}".format(db.name))
             self.databases[db.name] = db
-        print(self.databases)
         self.cache_headers = cache_headers
         self.cors = cors
         self._inspect = inspect_data

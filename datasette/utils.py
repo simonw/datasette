@@ -475,6 +475,22 @@ def temporary_heroku_directory(
         os.chdir(saved_cwd)
 
 
+def get_outbound_foreign_keys(conn, table):
+    infos = conn.execute(
+        'PRAGMA foreign_key_list([{}])'.format(table)
+    ).fetchall()
+    fks = []
+    for info in infos:
+        if info is not None:
+            id, seq, table_name, from_, to_, on_update, on_delete, match = info
+            fks.append({
+                'other_table': table_name,
+                'column': from_,
+                'other_column': to_
+            })
+    return fks
+
+
 def get_all_foreign_keys(conn):
     tables = [r[0] for r in conn.execute('select name from sqlite_master where type="table"')]
     table_to_foreign_keys = {}

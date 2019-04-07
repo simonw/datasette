@@ -131,14 +131,6 @@ class BaseView(RenderMixin):
     def __init__(self, datasette):
         self.ds = datasette
 
-    def table_metadata(self, database, table):
-        "Fetch table-specific metadata."
-        return (self.ds.metadata("databases") or {}).get(database, {}).get(
-            "tables", {}
-        ).get(
-            table, {}
-        )
-
     def options(self, request, *args, **kwargs):
         r = response.text("ok")
         if self.ds.cors:

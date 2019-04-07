@@ -50,7 +50,6 @@ This is an internal implementation detail of Datasette and the format should not
                     },
                     "fts_table": null,
                     "hidden": false,
-                    "label_column": null,
                     "name": "./index",
                     "primary_keys": []
                 },

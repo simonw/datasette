@@ -33,7 +33,7 @@ LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
 class RowTableShared(BaseView):
 
     async def sortable_columns_for_table(self, database, table, use_rowid):
-        table_metadata = self.table_metadata(database, table)
+        table_metadata = self.ds.table_metadata(database, table)
         if "sortable_columns" in table_metadata:
             sortable_columns = set(table_metadata["sortable_columns"])
         else:
@@ -51,7 +51,7 @@ class RowTableShared(BaseView):
         expandables = []
         for fk in table_info["foreign_keys"]["outgoing"]:
             label_column = (
-                self.table_metadata(
+                self.ds.table_metadata(
                     database, fk["other_table"]
                 ).get("label_column")
                 or tables.get(fk["other_table"], {}).get("label_column")
@@ -62,11 +62,7 @@ class RowTableShared(BaseView):
     async def expand_foreign_keys(self, database, table, column, values):
         "Returns dict mapping (column, value) -> label"
         labeled_fks = {}
-        tables_info = self.ds.inspect()[database]["tables"]
-        table_info = tables_info.get(table) or {}
-        if not table_info:
-            return {}
-        foreign_keys = table_info["foreign_keys"]["outgoing"]
+        foreign_keys = await self.ds.foreign_keys_for_table(database, table)
         # Find the foreign_key for this column
         try:
             fk = [
@@ -75,13 +71,7 @@ class RowTableShared(BaseView):
             ][0]
         except IndexError:
             return {}
-        label_column = (
-            # First look in metadata.json for this foreign key table:
-            self.table_metadata(
-                database, fk["other_table"]
-            ).get("label_column")
-            or tables_info.get(fk["other_table"], {}).get("label_column")
-        )
+        label_column = await self.ds.label_column_for_table(database, fk["other_table"])
         if not label_column:
             return {
                 (fk["column"], value): str(value)
@@ -119,7 +109,7 @@ class RowTableShared(BaseView):
         truncate_cells=0,
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
-        table_metadata = self.table_metadata(database, table)
+        table_metadata = self.ds.table_metadata(database, table)
         info = self.ds.inspect()[database]
         sortable_columns = await self.sortable_columns_for_table(database, table, True)
         columns = [
@@ -309,7 +299,7 @@ class TableView(RowTableShared):
                 forward_querystring=False,
             )
 
-        table_metadata = self.table_metadata(database, table)
+        table_metadata = self.ds.table_metadata(database, table)
         units = table_metadata.get("units", {})
         filters = Filters(sorted(other_args.items()), units, ureg)
         where_clauses, params = filters.build_where_clauses()
@@ -880,7 +870,7 @@ class RowView(RowTableShared):
             "columns": columns,
             "primary_keys": pks,
             "primary_key_values": pk_values,
-            "units": self.table_metadata(database, table).get("units", {}),
+            "units": self.ds.table_metadata(database, table).get("units", {}),
         }
 
         if "foreign_key_tables" in (request.raw_args.get("_extras") or "").split(","):

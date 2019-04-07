@@ -35,7 +35,6 @@ def test_database_page(app_client):
         'count': 0,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': [],
     }, {
@@ -44,7 +43,6 @@ def test_database_page(app_client):
         'count': 0,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
     }, {
@@ -68,7 +66,6 @@ def test_database_page(app_client):
             }],
         },
         'hidden': False,
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
     }, {
@@ -77,7 +74,6 @@ def test_database_page(app_client):
         'count': 1,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk1', 'pk2'],
     }, {
@@ -86,7 +82,6 @@ def test_database_page(app_client):
         'count': 1001,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk1', 'pk2', 'pk3'],
     }, {
@@ -102,7 +97,6 @@ def test_database_page(app_client):
                 'other_table': 'primary_key_multiple_columns_explicit_label'
             }],
         },
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
     }, {
@@ -119,7 +113,6 @@ def test_database_page(app_client):
         },
         'fts_table': None,
         'hidden': False,
-        'label_column': 'name',
         'primary_keys': ['id'],
     }, {
         'columns': ['pk', 'planet_int', 'on_earth', 'state', 'city_id', 'neighborhood'],
@@ -135,7 +128,6 @@ def test_database_page(app_client):
         },
         'fts_table': None,
         'hidden': False,
-        'label_column': None,
         'primary_keys': ['pk'],
     }, {
         'columns': ['pk', 'foreign_key_with_label', 'foreign_key_with_no_label'],
@@ -154,7 +146,6 @@ def test_database_page(app_client):
                 'other_table': 'simple_primary_key',
             }],
         },
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
     }, {
@@ -162,7 +153,6 @@ def test_database_page(app_client):
         "columns": ["value"],
         "count": 3,
         "primary_keys": [],
-        "label_column": None,
         "hidden": False,
         "fts_table": None,
         "foreign_keys": {"incoming": [], "outgoing": []}
@@ -179,7 +169,6 @@ def test_database_page(app_client):
             'outgoing': []
         },
         'hidden': False,
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['id']
     }, {
@@ -195,7 +184,6 @@ def test_database_page(app_client):
             'outgoing': []
         },
         'hidden': False,
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['id']
     },  {
@@ -209,14 +197,12 @@ def test_database_page(app_client):
         }], 'outgoing': []},
         'fts_table': 'searchable_fts',
         'hidden': False,
-        'label_column': None,
         'primary_keys': ['pk'],
     }, {
         "name": "searchable_tags",
         "columns": ["searchable_id", "tag"],
         "primary_keys": ["searchable_id", "tag"],
         "count": 2,
-        "label_column": None,
         "hidden": False,
         "fts_table": None,
         "foreign_keys": {
@@ -240,7 +226,6 @@ def test_database_page(app_client):
         'count': 1,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': [],
     }, {
@@ -268,7 +253,6 @@ def test_database_page(app_client):
             }],
             'outgoing': [],
         },
-        'label_column': 'content',
         'fts_table': None,
         'primary_keys': ['id'],
     }, {
@@ -280,7 +264,6 @@ def test_database_page(app_client):
         'count': 201,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk1', 'pk2'],
     }, {
@@ -289,7 +272,6 @@ def test_database_page(app_client):
         'count': 1,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
     }, {
@@ -297,7 +279,6 @@ def test_database_page(app_client):
         "columns": ["tag"],
         "primary_keys": ["tag"],
         "count": 2,
-        "label_column": None,
         "hidden": False,
         "fts_table": None,
         "foreign_keys": {
@@ -316,7 +297,6 @@ def test_database_page(app_client):
         'count': 3,
         'hidden': False,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': ['pk'],
     },  {
@@ -325,7 +305,6 @@ def test_database_page(app_client):
         'count': 201,
         'hidden': True,
         'foreign_keys': {'incoming': [], 'outgoing': []},
-        'label_column': None,
         'fts_table': None,
         'primary_keys': [],
     },  {
@@ -334,7 +313,6 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'fts_table': 'searchable_fts',
         'hidden': True,
-        'label_column': None,
         'name': 'searchable_fts',
         'primary_keys': []
     }, {
@@ -343,7 +321,6 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'fts_table': None,
         'hidden': True,
-        'label_column': None,
         'name': 'searchable_fts_content',
         'primary_keys': ['docid']
     }, {
@@ -355,7 +332,6 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'fts_table': None,
         'hidden': True,
-        'label_column': None,
         'name': 'searchable_fts_segdir',
         'primary_keys': ['level', 'idx']
     }, {
@@ -364,7 +340,6 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'fts_table': None,
         'hidden': True,
-        'label_column': None,
         'name': 'searchable_fts_segments',
         'primary_keys': ['blockid']
     }] == data['tables']

@@ -29,6 +29,7 @@ from .utils import (
     Results,
     escape_css_string,
     escape_sqlite,
+    get_outbound_foreign_keys,
     get_plugins,
     module_from_path,
     sqlite3,
@@ -464,10 +465,38 @@ class Datasette:
             for p in ps
         ]
 
+    def table_metadata(self, database, table):
+        "Fetch table-specific metadata."
+        return (self.metadata("databases") or {}).get(database, {}).get(
+            "tables", {}
+        ).get(
+            table, {}
+        )
+
     async def table_columns(self, db_name, table):
         return await self.execute_against_connection_in_thread(
             db_name, lambda conn: table_columns(conn, table)
         )
+
+    async def foreign_keys_for_table(self, database, table):
+        return await self.execute_against_connection_in_thread(
+            database, lambda conn: get_outbound_foreign_keys(conn, table)
+        )
+
+    async def label_column_for_table(self, db_name, table):
+        explicit_label_column = (
+            self.table_metadata(
+                db_name, table
+            ).get("label_column")
+        )
+        if explicit_label_column:
+            return explicit_label_column
+        # If a table has two columns, one of which is ID, then label_column is the other one
+        column_names = await self.table_columns(db_name, table)
+        if (column_names and len(column_names) == 2 and "id" in column_names):
+            return [c for c in column_names if c != "id"][0]
+        # Couldn't find a label:
+        return None
 
     async def execute_against_connection_in_thread(self, db_name, fn):
         def in_thread():

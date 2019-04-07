@@ -31,17 +31,6 @@ def inspect_views(conn):
     return [v[0] for v in conn.execute('select name from sqlite_master where type = "view"')]
 
 
-def detect_label_column(column_names):
-    """ Detect the label column - which we display as the label for a joined column.
-
-        If a table has two columns, one of which is ID, then label_column is the other one.
-    """
-    if (column_names and len(column_names) == 2 and "id" in column_names):
-        return [c for c in column_names if c != "id"][0]
-
-    return None
-
-
 def detect_primary_keys(conn, table):
     " Figure out primary keys for a table. "
     table_info_rows = [
@@ -86,7 +75,6 @@ def inspect_tables(conn, database_metadata):
             "columns": column_names,
             "primary_keys": detect_primary_keys(conn, table),
             "count": count,
-            "label_column": detect_label_column(column_names),
             "hidden": table_metadata.get("hidden") or False,
             "fts_table": detect_fts(conn, table),
         }

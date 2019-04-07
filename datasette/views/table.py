@@ -14,6 +14,7 @@ from datasette.utils import (
     detect_primary_keys,
     escape_sqlite,
     filters_should_redirect,
+    get_all_foreign_keys,
     is_url,
     path_from_row_pks,
     path_with_added_args,
@@ -884,11 +885,10 @@ class RowView(RowTableShared):
         if len(pk_values) != 1:
             return []
 
-        table_info = self.ds.inspect()[database]["tables"].get(table)
-        if not table_info:
-            return []
-
-        foreign_keys = table_info["foreign_keys"]["incoming"]
+        all_foreign_keys = await self.ds.execute_against_connection_in_thread(
+            database, get_all_foreign_keys
+        )
+        foreign_keys = all_foreign_keys[table]["incoming"]
         if len(foreign_keys) == 0:
             return []
 

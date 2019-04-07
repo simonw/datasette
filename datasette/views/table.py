@@ -11,6 +11,7 @@ from datasette.utils import (
     InterruptedError,
     append_querystring,
     compound_keys_after_sql,
+    detect_primary_keys,
     escape_sqlite,
     filters_should_redirect,
     is_url,
@@ -110,19 +111,16 @@ class RowTableShared(BaseView):
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         table_metadata = self.ds.table_metadata(database, table)
-        info = self.ds.inspect()[database]
         sortable_columns = await self.sortable_columns_for_table(database, table, True)
         columns = [
             {"name": r[0], "sortable": r[0] in sortable_columns} for r in description
         ]
-        tables = info["tables"]
-        table_info = tables.get(table) or {}
-        pks = table_info.get("primary_keys") or []
+        pks = await self.ds.execute_against_connection_in_thread(
+            database, lambda conn: detect_primary_keys(conn, table)
+        )
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
-            for fk in table_info.get(
-                "foreign_keys", {}
-            ).get("outgoing", None) or []
+            for fk in await self.ds.foreign_keys_for_table(database, table)
         }
 
         cell_rows = []
@@ -600,7 +598,7 @@ class TableView(RowTableShared):
 
         if columns_to_expand:
             expanded_labels = {}
-            for fk, label_column in expandable_columns:
+            for fk, _ in expandable_columns:
                 column = fk["column"]
                 if column not in columns_to_expand:
                     continue

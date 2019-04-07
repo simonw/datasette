@@ -475,6 +475,19 @@ def temporary_heroku_directory(
         os.chdir(saved_cwd)
 
 
+def detect_primary_keys(conn, table):
+    " Figure out primary keys for a table. "
+    table_info_rows = [
+        row
+        for row in conn.execute(
+            'PRAGMA table_info("{}")'.format(table)
+        ).fetchall()
+        if row[-1]
+    ]
+    table_info_rows.sort(key=lambda row: row[-1])
+    return [str(r[1]) for r in table_info_rows]
+
+
 def get_outbound_foreign_keys(conn, table):
     infos = conn.execute(
         'PRAGMA foreign_key_list([{}])'.format(table)

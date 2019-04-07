@@ -11,6 +11,7 @@ from datasette.utils import (
     InterruptedError,
     append_querystring,
     compound_keys_after_sql,
+    detect_fts,
     detect_primary_keys,
     escape_sqlite,
     filters_should_redirect,
@@ -227,12 +228,12 @@ class TableView(RowTableShared):
             )
 
         is_view = bool(await self.ds.get_view_definition(database, table))
-        info = self.ds.inspect()
-        table_info = info[database]["tables"].get(table) or {}
-        if not is_view and not table_info:
+        table_exists = bool(await self.ds.table_exists(database, table))
+        if not is_view and not table_exists:
             raise NotFound("Table not found: {}".format(table))
-
-        pks = table_info.get("primary_keys") or []
+        pks = await self.ds.execute_against_connection_in_thread(
+            database, lambda conn: detect_primary_keys(conn, table)
+        )
         use_rowid = not pks and not is_view
         if use_rowid:
             select = "rowid, *"
@@ -295,8 +296,8 @@ class TableView(RowTableShared):
         where_clauses, params = filters.build_where_clauses()
 
         # _search support:
-        fts_table = table_metadata.get(
-            "fts_table", info[database]["tables"].get(table, {}).get("fts_table")
+        fts_table = await self.ds.execute_against_connection_in_thread(
+            database, lambda conn: detect_fts(conn, table)
         )
         fts_pk = table_metadata.get("fts_pk", "rowid")
         search_args = dict(
@@ -318,10 +319,9 @@ class TableView(RowTableShared):
                 params["search"] = search
             else:
                 # More complex: search against specific columns
-                valid_columns = set(info[database]["tables"][fts_table]["columns"])
                 for i, (key, search_text) in enumerate(search_args.items()):
                     search_col = key.split("_search_", 1)[1]
-                    if search_col not in valid_columns:
+                    if search_col not in await self.ds.table_columns(database, fts_table):
                         raise DatasetteError("Cannot search by that column", status=400)
 
                     where_clauses.append(
@@ -341,7 +341,9 @@ class TableView(RowTableShared):
         table_rows_count = None
         sortable_columns = set()
         if not is_view:
-            table_rows_count = table_info["count"]
+            table_rows_count = (await self.ds.execute(
+                database, "select count(*) from {}".format(escape_sqlite(table))
+            )).rows[0][0]
 
         sortable_columns = await self.sortable_columns_for_table(database, table, use_rowid)
 

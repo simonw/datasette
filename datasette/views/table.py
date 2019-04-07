@@ -803,9 +803,9 @@ class RowView(RowTableShared):
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
-        info = self.ds.inspect()[database]
-        table_info = info["tables"].get(table) or {}
-        pks = table_info.get("primary_keys") or []
+        pks = await self.ds.execute_against_connection_in_thread(
+            database, lambda conn: detect_primary_keys(conn, table)
+        )
         use_rowid = not pks
         select = "*"
         if use_rowid:

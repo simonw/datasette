@@ -17,22 +17,22 @@ world
 '''.replace('\n', '\r\n')
 
 EXPECTED_TABLE_WITH_LABELS_CSV = '''
-pk,planet_int,on_earth,state,city_id,city_id_label,neighborhood
-1,1,1,CA,1,San Francisco,Mission
-2,1,1,CA,1,San Francisco,Dogpatch
-3,1,1,CA,1,San Francisco,SOMA
-4,1,1,CA,1,San Francisco,Tenderloin
-5,1,1,CA,1,San Francisco,Bernal Heights
-6,1,1,CA,1,San Francisco,Hayes Valley
-7,1,1,CA,2,Los Angeles,Hollywood
-8,1,1,CA,2,Los Angeles,Downtown
-9,1,1,CA,2,Los Angeles,Los Feliz
-10,1,1,CA,2,Los Angeles,Koreatown
-11,1,1,MI,3,Detroit,Downtown
-12,1,1,MI,3,Detroit,Greektown
-13,1,1,MI,3,Detroit,Corktown
-14,1,1,MI,3,Detroit,Mexicantown
-15,2,0,MC,4,Memnonia,Arcadia Planitia
+pk,planet_int,on_earth,state,city_id,city_id_label,neighborhood,tags
+1,1,1,CA,1,San Francisco,Mission,"[""tag1"", ""tag2""]"
+2,1,1,CA,1,San Francisco,Dogpatch,"[""tag1"", ""tag3""]"
+3,1,1,CA,1,San Francisco,SOMA,[]
+4,1,1,CA,1,San Francisco,Tenderloin,[]
+5,1,1,CA,1,San Francisco,Bernal Heights,[]
+6,1,1,CA,1,San Francisco,Hayes Valley,[]
+7,1,1,CA,2,Los Angeles,Hollywood,[]
+8,1,1,CA,2,Los Angeles,Downtown,[]
+9,1,1,CA,2,Los Angeles,Los Feliz,[]
+10,1,1,CA,2,Los Angeles,Koreatown,[]
+11,1,1,MI,3,Detroit,Downtown,[]
+12,1,1,MI,3,Detroit,Greektown,[]
+13,1,1,MI,3,Detroit,Corktown,[]
+14,1,1,MI,3,Detroit,Mexicantown,[]
+15,2,0,MC,4,Memnonia,Arcadia Planitia,[]
 '''.lstrip().replace('\n', '\r\n')
 
 

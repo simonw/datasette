@@ -293,7 +293,7 @@ class TableView(RowTableShared):
         table_metadata = self.ds.table_metadata(database, table)
         units = table_metadata.get("units", {})
         filters = Filters(sorted(other_args.items()), units, ureg)
-        where_clauses, params = filters.build_where_clauses()
+        where_clauses, params = filters.build_where_clauses(table)
 
         # _search support:
         fts_table = await self.ds.execute_against_connection_in_thread(

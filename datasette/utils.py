@@ -565,6 +565,16 @@ def detect_fts_sql(table):
     '''.format(table=table)
 
 
+def detect_json1(conn=None):
+    if conn is None:
+        conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("SELECT json('{}')")
+        return True
+    except Exception:
+        return False
+
+
 def table_columns(conn, table):
     return [
         r[1]
@@ -584,7 +594,7 @@ class Filter:
         self.numeric = numeric
         self.no_argument = no_argument
 
-    def where_clause(self, column, value, param_counter):
+    def where_clause(self, table, column, value, param_counter):
         converted = self.format.format(value)
         if self.numeric and converted.isdigit():
             converted = int(converted)
@@ -597,6 +607,7 @@ class Filter:
             kwargs = {
                 'c': column,
                 'p': 'p{}'.format(param_counter),
+                't': table,
             }
         return self.sql_template.format(**kwargs), converted
 
@@ -613,6 +624,7 @@ class Filter:
 
 class Filters:
     _filters = [
+        # key, display, sql_template, human_template, format=, numeric=, no_argument=
         Filter('exact', '=', '"{c}" = :{p}', lambda c, v: '{c} = {v}' if v.isdigit() else '{c} = "{v}"'),
         Filter('not', '!=', '"{c}" != :{p}', lambda c, v: '{c} != {v}' if v.isdigit() else '{c} != "{v}"'),
         Filter('contains', 'contains', '"{c}" like :{p}', '{c} contains "{v}"', format='%{}%'),
@@ -624,6 +636,11 @@ class Filters:
         Filter('lte', '\u2264', '"{c}" <= :{p}', '{c} \u2264 {v}', numeric=True),
         Filter('glob', 'glob', '"{c}" glob :{p}', '{c} glob "{v}"'),
         Filter('like', 'like', '"{c}" like :{p}', '{c} like "{v}"'),
+    ] + ([Filter('arraycontains', 'array contains', """rowid in (
+            select {t}.rowid from {t}, json_each({t}.{c}) j
+            where j.value = :{p}
+        )""", '{c} contains "{v}"')
+    ] if detect_json1() else []) + [
         Filter('isnull', 'is null', '"{c}" is null', '{c} is null', no_argument=True),
         Filter('notnull', 'is not null', '"{c}" is not null', '{c} is not null', no_argument=True),
         Filter('isblank', 'is blank', '("{c}" is null or "{c}" = "")', '{c} is blank', no_argument=True),
@@ -677,7 +694,7 @@ class Filters:
         return bool(self.pairs)
 
     def convert_unit(self, column, value):
-        "If the user has provided a unit in the quey, convert it into the column unit, if present."
+        "If the user has provided a unit in the query, convert it into the column unit, if present."
         if column not in self.units:
             return value
 
@@ -690,13 +707,13 @@ class Filters:
         column_unit = self.ureg(self.units[column])
         return value.to(column_unit).magnitude
 
-    def build_where_clauses(self):
+    def build_where_clauses(self, table):
         sql_bits = []
         params = {}
         for i, (column, lookup, value) in enumerate(self.selections()):
             filter = self._filters_by_key.get(lookup, None)
             if filter:
-                sql_bit, param = filter.where_clause(column, self.convert_unit(column, value), i)
+                sql_bit, param = filter.where_clause(table, column, self.convert_unit(column, value), i)
                 sql_bits.append(sql_bit)
                 if param is not None:
                     param_id = 'p{}'.format(i)

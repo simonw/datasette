@@ -1,3 +1,4 @@
+from datasette.utils import detect_json1
 from .fixtures import ( # noqa
     app_client,
     app_client_no_files,
@@ -115,7 +116,7 @@ def test_database_page(app_client):
         'hidden': False,
         'primary_keys': ['id'],
     }, {
-        'columns': ['pk', 'planet_int', 'on_earth', 'state', 'city_id', 'neighborhood'],
+        'columns': ['pk', 'planet_int', 'on_earth', 'state', 'city_id', 'neighborhood', 'tags'],
         'name': 'facetable',
         'count': 15,
         'foreign_keys': {
@@ -882,6 +883,18 @@ def test_table_filter_queries(app_client, path, expected_rows):
     assert expected_rows == response.json['rows']
 
 
+@pytest.mark.skipif(
+    not detect_json1(),
+    reason="Requires the SQLite json1 module"
+)
+def test_table_filter_json_arraycontains(app_client):
+    response = app_client.get("/fixtures/facetable.json?tags__arraycontains=tag1")
+    assert [
+        [1, 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]'],
+        [2, 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]']
+    ] == response.json['rows']
+
+
 def test_max_returned_rows(app_client):
     response = app_client.get(
         '/fixtures.json?sql=select+content+from+no_primary_key'
@@ -1244,7 +1257,8 @@ def test_expand_labels(app_client):
                 "value": 1,
                 "label": "San Francisco"
             },
-            "neighborhood": "Dogpatch"
+            "neighborhood": "Dogpatch",
+            "tags": '["tag1", "tag3"]'
         },
         "13": {
             "pk": 13,
@@ -1255,7 +1269,8 @@ def test_expand_labels(app_client):
                 "value": 3,
                 "label": "Detroit"
             },
-            "neighborhood": "Corktown"
+            "neighborhood": "Corktown",
+            "tags": '[]',
         }
     } == response.json
 

@@ -187,7 +187,7 @@ def test_custom_json_encoder(obj, expected):
 ])
 def test_build_where(args, expected_where, expected_params):
     f = utils.Filters(sorted(args.items()))
-    sql_bits, actual_params = f.build_where_clauses()
+    sql_bits, actual_params = f.build_where_clauses("table")
     assert expected_where == sql_bits
     assert {
         'p{}'.format(i): param

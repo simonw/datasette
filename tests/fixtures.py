@@ -523,26 +523,27 @@ CREATE TABLE facetable (
     state text,
     city_id integer,
     neighborhood text,
+    tags text,
     FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (planet_int, on_earth, state, city_id, neighborhood)
+    (planet_int, on_earth, state, city_id, neighborhood, tags)
 VALUES
-    (1, 1, 'CA', 1, 'Mission'),
-    (1, 1, 'CA', 1, 'Dogpatch'),
-    (1, 1, 'CA', 1, 'SOMA'),
-    (1, 1, 'CA', 1, 'Tenderloin'),
-    (1, 1, 'CA', 1, 'Bernal Heights'),
-    (1, 1, 'CA', 1, 'Hayes Valley'),
-    (1, 1, 'CA', 2, 'Hollywood'),
-    (1, 1, 'CA', 2, 'Downtown'),
-    (1, 1, 'CA', 2, 'Los Feliz'),
-    (1, 1, 'CA', 2, 'Koreatown'),
-    (1, 1, 'MI', 3, 'Downtown'),
-    (1, 1, 'MI', 3, 'Greektown'),
-    (1, 1, 'MI', 3, 'Corktown'),
-    (1, 1, 'MI', 3, 'Mexicantown'),
-    (2, 0, 'MC', 4, 'Arcadia Planitia')
+    (1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]'),
+    (1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]'),
+    (1, 1, 'CA', 1, 'SOMA', '[]'),
+    (1, 1, 'CA', 1, 'Tenderloin', '[]'),
+    (1, 1, 'CA', 1, 'Bernal Heights', '[]'),
+    (1, 1, 'CA', 1, 'Hayes Valley', '[]'),
+    (1, 1, 'CA', 2, 'Hollywood', '[]'),
+    (1, 1, 'CA', 2, 'Downtown', '[]'),
+    (1, 1, 'CA', 2, 'Los Feliz', '[]'),
+    (1, 1, 'CA', 2, 'Koreatown', '[]'),
+    (1, 1, 'MI', 3, 'Downtown', '[]'),
+    (1, 1, 'MI', 3, 'Greektown', '[]'),
+    (1, 1, 'MI', 3, 'Corktown', '[]'),
+    (1, 1, 'MI', 3, 'Mexicantown', '[]'),
+    (2, 0, 'MC', 4, 'Arcadia Planitia', '[]')
 ;
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');

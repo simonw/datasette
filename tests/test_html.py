@@ -861,3 +861,11 @@ def test_show_hide_sql_query(app_client):
     assert not span.find("a")["href"].endswith("&_hide_sql=1")
     assert "(show)" == span.getText()
     assert soup.find("textarea") is None
+    # The SQL should still be there in a hidden form field
+    hiddens = soup.find("form").select("input[type=hidden]")
+    assert [
+        ('sql', "select ('https://twitter.com/' || 'simonw') as user_url;"),
+        ('_hide_sql', '1'),
+    ] == [
+        (hidden['name'], hidden['value']) for hidden in hiddens
+    ]

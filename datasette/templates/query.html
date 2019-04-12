@@ -29,10 +29,13 @@
     <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %} <span class="show-hide-sql">{% if hide_sql %}(<a href="{{ path_with_removed_args(request, {'_hide_sql': '1'}) }}">show</a>){% else %}(<a href="{{ path_with_added_args(request, {'_hide_sql': '1'}) }}">hide</a>){% endif %}</span></h3>
     {% if not hide_sql %}
         {% if editable and config.allow_sql %}
-            <p><textarea name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
+            <p><textarea id="sql-editor" name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
         {% else %}
             <pre>{% if query %}{{ query.sql }}{% endif %}</pre>
         {% endif %}
+    {% else %}
+        <input type="hidden" name="sql" value="{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}">
+        <input type="hidden" name="_hide_sql" value="1">
     {% endif %}
     {% if named_parameter_values %}
         <h3>Query parameters</h3>

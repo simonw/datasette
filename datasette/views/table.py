@@ -296,10 +296,12 @@ class TableView(RowTableShared):
         where_clauses, params = filters.build_where_clauses(table)
 
         # _search support:
-        fts_table = await self.ds.execute_against_connection_in_thread(
+        fts_table = special_args.get("_fts_table")
+        fts_table = fts_table or table_metadata.get("fts_table")
+        fts_table = fts_table or await self.ds.execute_against_connection_in_thread(
             database, lambda conn: detect_fts(conn, table)
         )
-        fts_pk = table_metadata.get("fts_pk", "rowid")
+        fts_pk = special_args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
         search_args = dict(
             pair for pair in special_args.items() if pair[0].startswith("_search")
         )
@@ -731,6 +733,10 @@ class TableView(RowTableShared):
                 table, {}
             )
             self.ds.update_with_inherited_metadata(metadata)
+            form_hidden_args = []
+            for arg in ("_fts_table", "_fts_pk"):
+                if arg in special_args:
+                    form_hidden_args.append((arg, special_args[arg]))
             return {
                 "supports_search": bool(fts_table),
                 "search": search or "",
@@ -745,6 +751,7 @@ class TableView(RowTableShared):
                     key=lambda f: (len(f["results"]), f["name"]),
                     reverse=True
                 ),
+                "form_hidden_args": form_hidden_args,
                 "facet_hideable": lambda facet: facet not in metadata_facets,
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "path_with_replaced_args": path_with_replaced_args,

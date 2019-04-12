@@ -185,6 +185,20 @@ def test_empty_search_parameter_gets_removed(app_client):
     )
 
 
+def test_searchable_view_persists_fts_table(app_client):
+    # The search form should persist ?_fts_table as a hidden field
+    response = app_client.get(
+        "/fixtures/searchable_view?_fts_table=searchable_fts&_fts_pk=pk"
+    )
+    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [
+        ('_fts_table', 'searchable_fts'), ('_fts_pk', 'pk')
+    ] == [
+        (hidden['name'], hidden['value']) for hidden in hiddens
+    ]
+
+
 def test_sort_by_desc_redirects(app_client):
     path_base = '/fixtures/sortable'
     path = path_base + '?' + urllib.parse.urlencode({

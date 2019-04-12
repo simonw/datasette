@@ -847,6 +847,24 @@ def test_searchable(app_client, path, expected_rows):
     assert expected_rows == response.json['rows']
 
 
+@pytest.mark.parametrize('path,expected_rows', [
+    ('/fixtures/searchable_view_configured_by_metadata.json?_search=weasel', [
+        [2, 'terry dog', 'sara weasel', 'puma'],
+    ]),
+    # This should return all results because search is not configured:
+    ('/fixtures/searchable_view.json?_search=weasel', [
+        [1, 'barry cat', 'terry dog', 'panther'],
+        [2, 'terry dog', 'sara weasel', 'puma'],
+    ]),
+    ('/fixtures/searchable_view.json?_search=weasel&_fts_table=searchable_fts&_fts_pk=pk', [
+        [2, 'terry dog', 'sara weasel', 'puma'],
+    ]),
+])
+def test_searchable_views(app_client, path, expected_rows):
+    response = app_client.get(path)
+    assert expected_rows == response.json['rows']
+
+
 def test_searchable_invalid_column(app_client):
     response = app_client.get(
         '/fixtures/searchable.json?_search_invalid=x'

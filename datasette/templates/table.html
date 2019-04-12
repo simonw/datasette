@@ -84,6 +84,9 @@
         {% for facet in sorted_facet_results %}
             <input type="hidden" name="_facet" value="{{ facet.name }}">
         {% endfor %}
+        {% for key, value in form_hidden_args %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}">
+        {% endfor %}
         <input type="submit" value="Apply">
     </div>
 </form>

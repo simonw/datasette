@@ -209,6 +209,10 @@ METADATA = {
                 },
                 'simple_view': {
                     'sortable_columns': ['content'],
+                },
+                'searchable_view_configured_by_metadata': {
+                    'fts_table': 'searchable_fts',
+                    'fts_pk': 'pk'
                 }
             },
             'queries': {
@@ -563,6 +567,12 @@ INSERT INTO [table/with/slashes.csv] VALUES (3, 'hey');
 
 CREATE VIEW simple_view AS
     SELECT content, upper(content) AS upper_content FROM simple_primary_key;
+
+CREATE VIEW searchable_view AS
+    SELECT * from searchable;
+
+CREATE VIEW searchable_view_configured_by_metadata AS
+    SELECT * from searchable;
 
 ''' + '\n'.join([
     'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(i=i + 1)

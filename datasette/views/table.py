@@ -295,6 +295,10 @@ class TableView(RowTableShared):
         filters = Filters(sorted(other_args.items()), units, ureg)
         where_clauses, params = filters.build_where_clauses(table)
 
+        # Add _where= from querystring
+        if self.ds.config("allow_sql") and "_where" in request.args:
+            where_clauses.extend(request.args["_where"])
+
         # _search support:
         fts_table = special_args.get("_fts_table")
         fts_table = fts_table or table_metadata.get("fts_table")

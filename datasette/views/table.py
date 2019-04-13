@@ -296,8 +296,11 @@ class TableView(RowTableShared):
         where_clauses, params = filters.build_where_clauses(table)
 
         # Add _where= from querystring
-        if self.ds.config("allow_sql") and "_where" in request.args:
-            where_clauses.extend(request.args["_where"])
+        if "_where" in request.args:
+            if not self.ds.config("allow_sql"):
+                raise DatasetteError("_where= is not allowed", status=400)
+            else:
+                where_clauses.extend(request.args["_where"])
 
         # _search support:
         fts_table = special_args.get("_fts_table")

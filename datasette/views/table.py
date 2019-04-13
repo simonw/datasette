@@ -53,46 +53,6 @@ class RowTableShared(BaseView):
             expandables.append((fk, label_column))
         return expandables
 
-    async def expand_foreign_keys(self, database, table, column, values):
-        "Returns dict mapping (column, value) -> label"
-        labeled_fks = {}
-        foreign_keys = await self.ds.foreign_keys_for_table(database, table)
-        # Find the foreign_key for this column
-        try:
-            fk = [
-                foreign_key for foreign_key in foreign_keys
-                if foreign_key["column"] == column
-            ][0]
-        except IndexError:
-            return {}
-        label_column = await self.ds.label_column_for_table(database, fk["other_table"])
-        if not label_column:
-            return {
-                (fk["column"], value): str(value)
-                for value in values
-            }
-        labeled_fks = {}
-        sql = '''
-            select {other_column}, {label_column}
-            from {other_table}
-            where {other_column} in ({placeholders})
-        '''.format(
-            other_column=escape_sqlite(fk["other_column"]),
-            label_column=escape_sqlite(label_column),
-            other_table=escape_sqlite(fk["other_table"]),
-            placeholders=", ".join(["?"] * len(set(values))),
-        )
-        try:
-            results = await self.ds.execute(
-                database, sql, list(set(values))
-            )
-        except InterruptedError:
-            pass
-        else:
-            for id, value in results:
-                labeled_fks[(fk["column"], id)] = value
-        return labeled_fks
-
     async def display_columns_and_rows(
         self,
         database,
@@ -556,7 +516,7 @@ class TableView(RowTableShared):
                 facet_rows = facet_rows_results.rows[:facet_size]
                 # Attempt to expand foreign keys into labels
                 values = [row["value"] for row in facet_rows]
-                expanded = (await self.expand_foreign_keys(
+                expanded = (await self.ds.expand_foreign_keys(
                     database, table, column, values
                 ))
                 for row in facet_rows:
@@ -617,7 +577,7 @@ class TableView(RowTableShared):
                 column_index = columns.index(column)
                 values = [row[column_index] for row in rows]
                 # Expand them
-                expanded_labels.update(await self.expand_foreign_keys(
+                expanded_labels.update(await self.ds.expand_foreign_keys(
                     database, table, column, values
                 ))
             if expanded_labels:

@@ -218,7 +218,7 @@ The Datasette table view takes a number of special querystring arguments:
 
     Some examples:
 
-    * `facetable?_where=state="MI"&_where=city_id=3 <https://latest.datasette.io/facetable?_where=state=%22MI%22&_where=city_id=3>`__
+    * `facetable?_where=state="MI"&_where=city_id=3 <https://latest.datasette.io/fixtures/facetable?_where=state=%22MI%22&_where=city_id=3>`__
     * `facetable?_where=city_id in (select id from facet_cities where name != "Detroit") <https://latest.datasette.io/fixtures/facetable?_where=city_id%20in%20(select%20id%20from%20facet_cities%20where%20name%20!=%20%22Detroit%22)>`__
 
 ``?_group_count=COLUMN``

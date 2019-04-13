@@ -398,6 +398,12 @@ class Datasette:
                 labeled_fks[(fk["column"], id)] = value
         return labeled_fks
 
+    def absolute_url(self, request, path):
+        url = urllib.parse.urljoin(request.url, path)
+        if url.startswith("http://") and self.config("force_https_urls"):
+            url = "https://" + url[len("http://"):]
+        return url
+
     def inspect(self):
         " Inspect the database and return a dictionary of table metadata "
         if self._inspect:

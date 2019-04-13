@@ -207,12 +207,6 @@ class BaseView(RenderMixin):
 
         return name, expected, correct_hash_provided, None
 
-    def absolute_url(self, request, path):
-        url = urllib.parse.urljoin(request.url, path)
-        if url.startswith("http://") and self.ds.config("force_https_urls"):
-            url = "https://" + url[len("http://"):]
-        return url
-
     def get_templates(self, database, table=None):
         assert NotImplemented
 

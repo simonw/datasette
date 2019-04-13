@@ -295,12 +295,19 @@ class TableView(RowTableShared):
         filters = Filters(sorted(other_args.items()), units, ureg)
         where_clauses, params = filters.build_where_clauses(table)
 
+        extra_wheres_for_ui = []
         # Add _where= from querystring
         if "_where" in request.args:
             if not self.ds.config("allow_sql"):
                 raise DatasetteError("_where= is not allowed", status=400)
             else:
                 where_clauses.extend(request.args["_where"])
+                extra_wheres_for_ui = [{
+                    "text": text,
+                    "remove_url": path_with_removed_args(
+                        request, {"_where": text}
+                    )
+                } for text in request.args["_where"]]
 
         # _search support:
         fts_table = special_args.get("_fts_table")
@@ -758,6 +765,7 @@ class TableView(RowTableShared):
                     key=lambda f: (len(f["results"]), f["name"]),
                     reverse=True
                 ),
+                "extra_wheres_for_ui": extra_wheres_for_ui,
                 "form_hidden_args": form_hidden_args,
                 "facet_hideable": lambda facet: facet not in metadata_facets,
                 "is_sortable": any(c["sortable"] for c in display_columns),

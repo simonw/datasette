@@ -869,3 +869,17 @@ def test_show_hide_sql_query(app_client):
     ] == [
         (hidden['name'], hidden['value']) for hidden in hiddens
     ]
+
+
+def test_extra_where_clauses(app_client):
+    response = app_client.get(
+        "/fixtures/facetable?_where=neighborhood='Dogpatch'&_where=city_id=1"
+    )
+    soup = Soup(response.body, "html.parser")
+    div = soup.select(".extra-wheres")[0]
+    assert "2 extra where clauses" == div.find("h3").text
+    hrefs = [a["href"] for a in div.findAll("a")]
+    assert [
+        "/fixtures/facetable?_where=city_id%3D1",
+        "/fixtures/facetable?_where=neighborhood%3D%27Dogpatch%27"
+    ] == hrefs

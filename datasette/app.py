@@ -348,6 +348,7 @@ class Datasette:
                 conn.execute("SELECT load_extension('{}')".format(extension))
         if self.config("cache_size_kb"):
             conn.execute('PRAGMA cache_size=-{}'.format(self.config("cache_size_kb")))
+        # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn)
 
     async def table_exists(self, database, table):
@@ -467,7 +468,7 @@ class Datasette:
                     sqlite_extensions[extension] = result.fetchone()[0]
                 else:
                     sqlite_extensions[extension] = None
-            except Exception as e:
+            except Exception:
                 pass
         # Figure out supported FTS versions
         fts_versions = []
@@ -649,6 +650,7 @@ class Datasette:
         self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
+        # pylint: disable=no-member
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
         app.add_route(IndexView.as_view(self), r"/<as_format:(\.jsono?)?$>")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
@@ -697,6 +699,7 @@ class Datasette:
         )
         self.register_custom_units()
         # On 404 with a trailing slash redirect to path without that slash:
+        # pylint: disable=unused-variable
         @app.middleware("response")
         def redirect_on_404_with_trailing_slash(request, original_response):
             if original_response.status == 404 and request.path.endswith("/"):

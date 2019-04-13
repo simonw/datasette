@@ -94,6 +94,7 @@ class RenderMixin(HTTPMethodView):
             for template_name in templates
         ]
         body_scripts = []
+        # pylint: disable=no-member
         for script in pm.hook.extra_body_script(
             template=template.name,
             database=context.get("database"),
@@ -147,6 +148,9 @@ class BaseView(RenderMixin):
         if self.ds.cors:
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
+
+    async def data(self, request, database, hash, **kwargs):
+        raise NotImplementedError
 
     async def resolve_db_name(self, request, db_name, **kwargs):
         hash = None
@@ -238,7 +242,7 @@ class BaseView(RenderMixin):
             if isinstance(response_or_template_contexts, response.HTTPResponse):
                 return response_or_template_contexts
             else:
-                data, extra_template_data, templates = response_or_template_contexts
+                data, _, _ = response_or_template_contexts
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
@@ -269,7 +273,7 @@ class BaseView(RenderMixin):
                     if next:
                         kwargs["_next"] = next
                     if not first:
-                        data, extra_template_data, templates = await self.data(
+                        data, _, _ = await self.data(
                             request, database, hash, **kwargs
                         )
                     if first:
@@ -565,6 +569,7 @@ class BaseView(RenderMixin):
                 for column, value in zip(results.columns, row):
                     display_value = value
                     # Let the plugins have a go
+                    # pylint: disable=no-member
                     plugin_value = pm.hook.render_cell(
                         value=value,
                         column=column,

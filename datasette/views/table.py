@@ -108,6 +108,7 @@ class RowTableShared(BaseView):
                     continue
 
                 # First let the plugins have a go
+                # pylint: disable=no-member
                 plugin_display_value = pm.hook.render_cell(
                     value=value,
                     column=column,

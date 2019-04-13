@@ -38,3 +38,8 @@ def publish_subcommand(publish):
 @hookspec(firstresult=True)
 def render_cell(value, column, table, database, datasette):
     "Customize rendering of HTML table cell values"
+
+
+@hookspec
+def register_facet_classes():
+    "Register Facet subclasses"

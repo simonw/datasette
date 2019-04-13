@@ -105,6 +105,11 @@ h2 em {
     font-style: normal;
     font-weight: lighter;
 }
+.extra-wheres ul, .extra-wheres li {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
 form.sql textarea {
     border: 1px solid #ccc;
     width: 70%;

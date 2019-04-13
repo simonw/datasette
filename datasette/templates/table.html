@@ -91,6 +91,17 @@
     </div>
 </form>
 
+{% if extra_wheres_for_ui %}
+<div class="extra-wheres">
+    <h3>{{ extra_wheres_for_ui|length }} extra where clause{% if extra_wheres_for_ui|length != 1 %}s{% endif %}</h3>
+    <ul>
+    {% for extra_where in extra_wheres_for_ui %}
+        <li><code>{{ extra_where.text }}</code> [<a href="{{ extra_where.remove_url }}">remove</a>]</li>
+    {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 {% if query.sql and config.allow_sql %}
     <p><a class="not-underlined" title="{{ query.sql }}" href="{{ database_url(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}

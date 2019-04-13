@@ -443,9 +443,11 @@ def test_allow_sql_off():
     for client in make_app_client(config={
         'allow_sql': False,
     }):
-        assert 400 == client.get(
+        response = client.get(
             "/fixtures.json?sql=select+sleep(0.01)"
-        ).status
+        )
+        assert 400 == response.status
+        assert 'sql= is not allowed' == response.json['error']
 
 
 def test_table_json(app_client):
@@ -911,6 +913,34 @@ def test_table_filter_json_arraycontains(app_client):
         [1, 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]'],
         [2, 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]']
     ] == response.json['rows']
+
+
+def test_table_filter_extra_where(app_client):
+    response = app_client.get(
+        "/fixtures/facetable.json?_where=neighborhood='Dogpatch'"
+    )
+    assert [
+        [2, 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]']
+    ] == response.json['rows']
+
+
+def test_table_filter_extra_where_invalid(app_client):
+    response = app_client.get(
+        "/fixtures/facetable.json?_where=neighborhood=Dogpatch'"
+    )
+    assert 400 == response.status
+    assert 'Invalid SQL' == response.json['title']
+
+
+def test_table_filter_extra_where_disabled_if_no_sql_allowed():
+    for client in make_app_client(config={
+        'allow_sql': False,
+    }):
+        response = client.get(
+            "/fixtures/facetable.json?_where=neighborhood='Dogpatch'"
+        )
+        assert 400 == response.status
+        assert '_where= is not allowed' == response.json['error']
 
 
 def test_max_returned_rows(app_client):

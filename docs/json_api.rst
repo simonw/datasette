@@ -206,6 +206,21 @@ The Datasette table view takes a number of special querystring arguments:
     Like ``_search=`` but allows you to specify the column to be searched, as
     opposed to searching all columns that have been indexed by FTS.
 
+``?_where=SQL-fragment``
+    If the :ref:`config_allow_sql` config option is enabled, this parameter
+    can be used to pass one or more additional SQL fragments to be used in the
+    `WHERE` clause of the SQL used to query the table.
+
+    This is particularly useful if you are building a JavaScript application
+    that needs to do something creative but still wants the other conveniences
+    provided by the table view (such as faceting) and hence would like not to
+    have to construct a completely custom SQL query.
+
+    Some examples:
+
+    * `facetable?_where=state="MI"&_where=city_id=3 <https://latest.datasette.io/facetable?_where=state=%22MI%22&_where=city_id=3>`__
+    * `facetable?_where=city_id in (select id from facet_cities where name != "Detroit") <https://latest.datasette.io/fixtures/facetable?_where=city_id%20in%20(select%20id%20from%20facet_cities%20where%20name%20!=%20%22Detroit%22)>`__
+
 ``?_group_count=COLUMN``
     Executes a SQL query that returns a count of the number of rows matching
     each unique value in that column, with the most common ordered first.

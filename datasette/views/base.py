@@ -370,7 +370,9 @@ class BaseView(RenderMixin):
                 SQL query took too long. The time limit is controlled by the
                 <a href="https://datasette.readthedocs.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
                 configuration option.
-            """, title="SQL Interrupted", status=400, messagge_is_html=True)
+
+                {}
+            """.format(e), title="SQL Interrupted", status=400, messagge_is_html=True)
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 

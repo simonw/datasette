@@ -110,7 +110,7 @@
 
 {% if suggested_facets %}
     <p class="suggested-facets">
-        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if facet.type %} ({{ facet.type }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
     </p>
 {% endif %}
 

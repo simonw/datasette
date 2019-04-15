@@ -5,6 +5,7 @@ from . import hookspecs
 DEFAULT_PLUGINS = (
     "datasette.publish.heroku",
     "datasette.publish.now",
+    "datasette.publish.cloudrun",
 )
 
 pm = pluggy.PluginManager("datasette")

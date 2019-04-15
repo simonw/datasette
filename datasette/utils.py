@@ -267,7 +267,7 @@ def escape_sqlite(s):
 def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install, spatialite, version_note):
     cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
     cmd.append('"' + '", "'.join(files) + '"')
-    cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
+    cmd.extend(['"--cors"', '"--port"', '"8080"', '"--inspect-file"', '"inspect-data.json"'])
     if metadata_file:
         cmd.extend(['"--metadata"', '"{}"'.format(metadata_file)])
     if template_dir:

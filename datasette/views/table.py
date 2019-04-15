@@ -9,7 +9,6 @@ from datasette.facets import load_facet_configs
 from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
-    Filters,
     InterruptedError,
     append_querystring,
     compound_keys_after_sql,
@@ -29,6 +28,7 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
 )
+from datasette.filters import Filters
 from .base import BaseView, DatasetteError, ureg
 
 LINK_WITH_LABEL = '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'

@@ -5,6 +5,7 @@ import jinja2
 from sanic.exceptions import NotFound
 from sanic.request import RequestParameters
 
+from datasette.facets import load_facet_configs
 from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
@@ -479,15 +480,12 @@ class TableView(RowTableShared):
         )
 
         # facets support
-        # pylint: disable=no-member
-        metadata_facets = table_metadata.get("facets", [])
-        facets = metadata_facets[:]
-        if request.args.get("_facet") and not self.ds.config("allow_facet"):
+        if not self.ds.config("allow_facet") and any(arg.startswith("_facet") for arg in request.args):
             raise DatasetteError("_facet= is not allowed", status=400)
-        try:
-            facets.extend(request.args["_facet"])
-        except KeyError:
-            pass
+        facet_configs = load_facet_configs(request, table_metadata)
+        print("facet_configs", facet_configs)
+
+        # pylint: disable=no-member
         facet_classes = list(
             itertools.chain.from_iterable(pm.hook.register_facet_classes())
         )
@@ -495,7 +493,7 @@ class TableView(RowTableShared):
         facets_timed_out = []
         facet_instances = []
         for klass in facet_classes:
-            facet_instances.append(klass(self.ds, request, database, table, configs=facets))
+            facet_instances.append(klass(self.ds, request, database, table, configs=facet_configs.get(klass.type)))
 
         for facet in facet_instances:
             instance_facet_results, instance_facets_timed_out = await facet.facet_results(
@@ -504,6 +502,7 @@ class TableView(RowTableShared):
             facet_results.update(instance_facet_results)
             facets_timed_out.extend(instance_facets_timed_out)
 
+        # Figure out columns and rows for the query
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
 
@@ -653,7 +652,7 @@ class TableView(RowTableShared):
                 ),
                 "extra_wheres_for_ui": extra_wheres_for_ui,
                 "form_hidden_args": form_hidden_args,
-                "facet_hideable": lambda facet: facet not in metadata_facets,
+                "facet_hideable": lambda facet: facet not in [], # TODO: used to be metadata_facets fix this
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "path_with_replaced_args": path_with_replaced_args,
                 "path_with_removed_args": path_with_removed_args,

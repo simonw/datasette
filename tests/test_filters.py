@@ -60,6 +60,14 @@ import pytest
         ['foo in (:p0, :p1, :p2)'],
         ["1", "2", "3"]
     ),
+    # date
+    (
+        {
+            "foo__date": "1988-01-01",
+        },
+        ["date(foo) = :p0"],
+        ["1988-01-01"]
+    ),
     # JSON array variants of __in (useful for unexpected characters)
     (
         {

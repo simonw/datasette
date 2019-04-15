@@ -100,6 +100,7 @@ class Filters:
             where j.value = :{p}
         )""", '{c} contains "{v}"')
     ] if detect_json1() else []) + [
+        TemplatedFilter('date', 'date', 'date({c}) = :{p}', '"{c}" is on date {v}'),
         TemplatedFilter('isnull', 'is null', '"{c}" is null', '{c} is null', no_argument=True),
         TemplatedFilter('notnull', 'is not null', '"{c}" is not null', '{c} is not null', no_argument=True),
         TemplatedFilter('isblank', 'is blank', '("{c}" is null or "{c}" = "")', '{c} is blank', no_argument=True),

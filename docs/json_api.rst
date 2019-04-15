@@ -233,6 +233,9 @@ You can filter the data returned by the table based on column values using a que
 
     This is only available if the ``json1`` SQLite extension is enabled.
 
+``?column__date=value``
+    Column is a datestamp occurring on the specified YYYY-MM-DD date, e.g. ``2018-01-02``.
+
 ``?column__isnull=1``
     Matches rows where the column is null.
 

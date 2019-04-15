@@ -53,6 +53,28 @@ import pytest
         ['"bar" > :p0', '"baz" is null', '"foo" is null'],
         [10]
     ),
+    (
+        {
+            'foo__in': '1,2,3',
+        },
+        ['foo in (:p0, :p1, :p2)'],
+        ["1", "2", "3"]
+    ),
+    # JSON array variants of __in (useful for unexpected characters)
+    (
+        {
+            'foo__in': '[1,2,3]',
+        },
+        ['foo in (:p0, :p1, :p2)'],
+        [1, 2, 3]
+    ),
+    (
+        {
+            'foo__in': '["dog,cat", "cat[dog]"]',
+        },
+        ['foo in (:p0, :p1)'],
+        ["dog,cat", "cat[dog]"]
+    ),
 ])
 def test_build_where(args, expected_where, expected_params):
     f = Filters(sorted(args.items()))

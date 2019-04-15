@@ -903,6 +903,16 @@ def test_table_filter_queries(app_client, path, expected_rows):
     assert expected_rows == response.json['rows']
 
 
+def test_table_filter_queries_multiple_of_same_type(app_client):
+    response = app_client.get(
+        "/fixtures/simple_primary_key.json?content__not=world&content__not=hello"
+    )
+    assert [
+        ['3', ''],
+        ['4', 'RENDER_CELL_DEMO']
+    ] == response.json['rows']
+
+
 @pytest.mark.skipif(
     not detect_json1(),
     reason="Requires the SQLite json1 module"

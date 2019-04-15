@@ -219,13 +219,14 @@ class TableView(RowTableShared):
         # it can still be queried using ?_col__exact=blah
         special_args = {}
         special_args_lists = {}
-        other_args = {}
+        other_args = []
         for key, value in args.items():
             if key.startswith("_") and "__" not in key:
                 special_args[key] = value[0]
                 special_args_lists[key] = value
             else:
-                other_args[key] = value[0]
+                for v in value:
+                    other_args.append((key, v))
 
         # Handle ?_filter_column and redirect, if present
         redirect_params = filters_should_redirect(special_args)
@@ -253,7 +254,7 @@ class TableView(RowTableShared):
 
         table_metadata = self.ds.table_metadata(database, table)
         units = table_metadata.get("units", {})
-        filters = Filters(sorted(other_args.items()), units, ureg)
+        filters = Filters(sorted(other_args), units, ureg)
         where_clauses, params = filters.build_where_clauses(table)
 
         extra_wheres_for_ui = []
@@ -521,7 +522,7 @@ class TableView(RowTableShared):
                     database, table, column, values
                 ))
                 for row in facet_rows:
-                    selected = str(other_args.get(column)) == str(row["value"])
+                    selected = (column, str(row["value"])) in other_args
                     if selected:
                         toggle_path = path_with_removed_args(
                             request, {column: str(row["value"])}

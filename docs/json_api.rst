@@ -219,6 +219,15 @@ You can filter the data returned by the table based on column values using a que
 ``?column__glob=value``
     Similar to LIKE but uses Unix wildcard syntax and is case sensitive.
 
+``?column__in=value1,value2,value3``
+    Rows where column matches any of the provided values.
+
+    You can use a comma separated string, or you can use a JSON array.
+
+    The JSON array option is useful if one of your matching values itself contains a comma:
+
+    ``?column__in=["value","value,with,commas"]``
+
 ``?column__arraycontains=value``
     Works against columns that contain JSON arrays - matches if any of the values in that array match.
 

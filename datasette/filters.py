@@ -1,5 +1,10 @@
+import json
 import numbers
-from .utils import detect_json1
+
+from .utils import (
+    detect_json1,
+    escape_sqlite,
+)
 
 
 class Filter:
@@ -52,6 +57,29 @@ class TemplatedFilter(Filter):
             return template.format(c=column, v=value)
 
 
+class InFilter(Filter):
+    key = 'in'
+    display = 'in'
+
+    def __init__(self):
+        pass
+
+    def split_value(self, value):
+        if value.startswith("["):
+            return json.loads(value)
+        else:
+            return [v.strip() for v in value.split(",")]
+
+    def where_clause(self, table, column, value, param_counter):
+        values = self.split_value(value)
+        params = [":p{}".format(param_counter + i) for i in range(len(values))]
+        sql = "{} in ({})".format(escape_sqlite(column), ", ".join(params))
+        return sql, values
+
+    def human_clause(self, column, value):
+        return "{} in {}".format(column, json.dumps(self.split_value(value)))
+
+
 class Filters:
     _filters = [
         # key, display, sql_template, human_template, format=, numeric=, no_argument=
@@ -64,8 +92,9 @@ class Filters:
         TemplatedFilter('gte', '\u2265', '"{c}" >= :{p}', '{c} \u2265 {v}', numeric=True),
         TemplatedFilter('lt', '<', '"{c}" < :{p}', '{c} < {v}', numeric=True),
         TemplatedFilter('lte', '\u2264', '"{c}" <= :{p}', '{c} \u2264 {v}', numeric=True),
-        TemplatedFilter('glob', 'glob', '"{c}" glob :{p}', '{c} glob "{v}"'),
         TemplatedFilter('like', 'like', '"{c}" like :{p}', '{c} like "{v}"'),
+        TemplatedFilter('glob', 'glob', '"{c}" glob :{p}', '{c} glob "{v}"'),
+        InFilter(),
     ] + ([TemplatedFilter('arraycontains', 'array contains', """rowid in (
             select {t}.rowid from {t}, json_each({t}.{c}) j
             where j.value = :{p}

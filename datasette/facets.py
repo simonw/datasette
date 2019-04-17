@@ -60,7 +60,6 @@ class Facet:
         self.table = table # can be None
         self.configs = configs
 
-<<<<<<< HEAD
     async def suggest(self, sql, params, filtered_table_rows_count):
         return []
 
@@ -85,28 +84,6 @@ class ColumnFacet(Facet):
     async def suggest(self, sql, params, filtered_table_rows_count):
         # Detect column names using the "limit 0" trick
         columns = await self.get_columns(sql, params)
-=======
-    async def suggest(self, sql, params):
-        raise NotImplementedError
-
-    async def facet_results(self, sql, params):
-        # returns ([results], [timed_out])
-        raise NotImplementedError
-
-
-class ColumnFacet(Facet):
-    # This is the default so type=""
-    type = ""
-
-    async def suggest(self, sql, params, filtered_table_rows_count):
-        # Detect column names
-        columns = (
-            await self.ds.execute(
-                self.database, "select * from ({}) limit 0".format(sql),
-                params
-            )
-        ).columns
->>>>>>> WIP refactoring facets to plugin, refs #427
         facet_size = self.ds.config("default_facet_size")
         suggested_facets = []
         for column in columns:
@@ -163,13 +140,9 @@ class ColumnFacet(Facet):
                 other_args[key] = value[0]
 
         facet_size = self.ds.config("default_facet_size")
-<<<<<<< HEAD
         for config in (self.configs or []):
             column = config.get("column") or config["single"]
             # TODO: does this query break if inner sql produces value or count columns?
-=======
-        for column in self.configs:
->>>>>>> WIP refactoring facets to plugin, refs #427
             facet_sql = """
                 select {col} as value, count(*) as count from (
                     {sql}
@@ -231,7 +204,6 @@ class ColumnFacet(Facet):
 class ManyToManyFacet(Facet):
     type = "m2m"
 
-<<<<<<< HEAD
     async def suggest(self, sql, params, filtered_table_rows_count):
         # This is calculated based on foreign key relationships to this table
         # Are there any many-to-many tables pointing here?
@@ -691,8 +663,3 @@ emoji_re = re.compile(
     "\U0001f95e\U0001f95f-\U0001f96b\U0001f980-\U0001f984\U0001f985-\U0001f991"
     "\U0001f992-\U0001f997\U0001f9c0\U0001f9d0-\U0001f9e6]"
 )
-=======
-
-class ArrayFacet(Facet):
-    type = "array"
->>>>>>> WIP refactoring facets to plugin, refs #427

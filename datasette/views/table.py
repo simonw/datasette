@@ -464,11 +464,14 @@ class TableView(RowTableShared):
         else:
             page_size = self.ds.page_size
 
-        sql = "select {select} from {table_name} {where}{order_by}limit {limit}{offset}".format(
+        sql_no_limit = "select {select} from {table_name} {where}{order_by}".format(
             select=select,
             table_name=escape_sqlite(table),
             where=where_clause,
             order_by=order_by,
+        )
+        sql = "{sql_no_limit} limit {limit}{offset}".format(
+            sql_no_limit=sql_no_limit.rstrip(),
             limit=page_size + 1,
             offset=offset,
         )
@@ -498,7 +501,7 @@ class TableView(RowTableShared):
 
         for facet in facet_instances:
             instance_facet_results, instance_facets_timed_out = await facet.facet_results(
-                sql, params,
+                sql_no_limit, params,
             )
             facet_results.update(instance_facet_results)
             facets_timed_out.extend(instance_facets_timed_out)
@@ -605,7 +608,7 @@ class TableView(RowTableShared):
             for facet in facet_instances:
                 # TODO: ensure facet is not suggested if it is already active
                 # used to use 'if facet_column in facets' for this
-                suggested_facets.extend(await facet.suggest(sql, params, filtered_table_rows_count))
+                suggested_facets.extend(await facet.suggest(sql_no_limit, params, filtered_table_rows_count))
 
         # human_description_en combines filters AND search, if provided
         human_description_en = filters.human_description_en(extra=search_descriptions)

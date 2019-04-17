@@ -551,3 +551,12 @@ The ``template``, ``database`` and ``table`` options can be used to return diffe
 The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
 
 The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
+
+.. _plugin_hook_register_facet_classes:
+
+register_facet_classes()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Return a list of additional ``Facet`` subclasses that can be used to suggest and render facets.
+
+For examples of how this can be used, see `datasette/facets.py <https://github.com/simonw/datasette/blob/master/datasette/facets.py>`__.

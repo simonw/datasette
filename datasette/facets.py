@@ -8,6 +8,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
     detect_json1,
+    InterruptedError,
     InvalidSql,
     sqlite3,
 )
@@ -142,7 +143,7 @@ class ColumnFacet(Facet):
                         ),
                     })
             except InterruptedError:
-                pass
+                continue
         return suggested_facets
 
     async def facet_results(self, sql, params):
@@ -238,6 +239,9 @@ class ManyToManyFacet(Facet):
         all_foreign_keys = await self.ds.execute_against_connection_in_thread(
             self.database, get_all_foreign_keys
         )
+        if not all_foreign_keys.get(self.table):
+            # It's probably a view
+            return []
         incoming = all_foreign_keys[self.table]["incoming"]
         # Do any of these incoming tables have exactly two outgoing keys?
         for fk in incoming:
@@ -377,7 +381,7 @@ class DateFacet(Facet):
             suggested_facet_sql = """
                 select date({column}) from (
                     {sql}
-                ) limit 100;
+                ) where {column} glob "????-??-??" limit 100;
             """.format(
                 column=escape_sqlite(column),
                 sql=sql,
@@ -429,7 +433,7 @@ class DateFacet(Facet):
                     {sql}
                 )
                 where date({col}) is not null
-                group by date({col}) order by date({col}) desc limit {limit}
+                group by date({col}) order by count desc limit {limit}
             """.format(
                 col=escape_sqlite(column),
                 sql=sql,
@@ -577,7 +581,6 @@ class EmojiFacet(Facet):
                         ),
                     })
             except (InterruptedError, sqlite3.OperationalError) as e:
-                print(" oh no ", e)
                 continue
         return suggested_facets
 

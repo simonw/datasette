@@ -702,7 +702,7 @@ class Datasette:
                         truncated = False
                 except sqlite3.OperationalError as e:
                     if e.args == ('interrupted',):
-                        raise InterruptedError(e)
+                        raise InterruptedError(e, sql, params)
                     if log_sql_errors:
                         print(
                             "ERROR: conn={}, sql = {}, params = {}: {}".format(

@@ -8,13 +8,13 @@ import pytest
 @pytest.mark.asyncio
 async def test_column_facet_suggest(app_client):
     facet = ColumnFacet(
-        app_client.ds, MockRequest("http://localhost/"), "fixtures", "facetable", []
+        app_client.ds,
+        MockRequest("http://localhost/"),
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
     )
-    suggestions = await facet.suggest(
-        "select * from facetable",
-        [],
-        await app_client.ds.table_count("fixtures", "facetable"),
-    )
+    suggestions = await facet.suggest()
     assert [
         {"name": "planet_int", "toggle_url": "http://localhost/?_facet=planet_int"},
         {"name": "on_earth", "toggle_url": "http://localhost/?_facet=on_earth"},
@@ -30,16 +30,12 @@ async def test_column_facet_results(app_client):
     facet = ColumnFacet(
         app_client.ds,
         MockRequest("http://localhost/?_facet=city_id"),
-        "fixtures",
-        "facetable",
-        [{"single": "city_id"}],
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
+        configs=[{"single": "city_id"}],
     )
-    buckets, timed_out = await facet.facet_results(
-        """
-        select * from facetable
-    """,
-        [],
-    )
+    buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
     assert {
         "city_id": {

@@ -47,24 +47,38 @@ def register_facet_classes():
 class Facet:
     type = None
 
-    def __init__(self, ds, request, database, table, configs):
+    def __init__(
+        self,
+        ds,
+        request,
+        database,
+        sql=None,
+        table=None,
+        params=None,
+        configs=None,
+        row_count=None,
+    ):
+        assert table or sql, "Must provide either table= or sql="
         self.ds = ds
         self.request = request
         self.database = database
-        self.table = (
-            table
-        )  # For foreign key expansion. Can be None for e.g. canned SQL queries
+        # For foreign key expansion. Can be None for e.g. canned SQL queries:
+        self.table = table
+        self.sql = sql or "select * from [{}]".format(table)
+        self.params = params or []
         self.configs = configs
+        # row_count can be None, in which case we calculate it ourselves:
+        self.row_count = row_count
 
     def get_querystring_pairs(self):
         # ?_foo=bar&_foo=2&empty= becomes:
         # [('_foo', 'bar'), ('_foo', '2'), ('empty', '')]
         return urllib.parse.parse_qsl(self.request.query_string, keep_blank_values=True)
 
-    async def suggest(self, sql, params, filtered_table_rows_count):
+    async def suggest(self):
         return []
 
-    async def facet_results(self, sql, params):
+    async def facet_results(self):
         # returns ([results], [timed_out])
         # TODO: Include "hideable" with each one somehow, which indicates if it was
         # defined in metadata (in which case you cannot turn it off)
@@ -78,12 +92,24 @@ class Facet:
             )
         ).columns
 
+    async def get_row_count(self):
+        if self.row_count is None:
+            self.row_count = (
+                await self.ds.execute(
+                    self.database,
+                    "select count(*) from ({})".format(self.sql),
+                    self.params,
+                )
+            ).rows[0][0]
+        return self.row_count
+
 
 class ColumnFacet(Facet):
     type = "column"
 
-    async def suggest(self, sql, params, filtered_table_rows_count):
-        columns = await self.get_columns(sql, params)
+    async def suggest(self):
+        row_count = await self.get_row_count()
+        columns = await self.get_columns(self.sql, self.params)
         facet_size = self.ds.config("default_facet_size")
         suggested_facets = []
         for column in columns:
@@ -93,14 +119,14 @@ class ColumnFacet(Facet):
                 ) where {column} is not null
                 limit {limit}
             """.format(
-                column=escape_sqlite(column), sql=sql, limit=facet_size + 1
+                column=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
             distinct_values = None
             try:
                 distinct_values = await self.ds.execute(
                     self.database,
                     suggested_facet_sql,
-                    params,
+                    self.params,
                     truncate=False,
                     custom_time_limit=self.ds.config("facet_suggest_time_limit_ms"),
                 )
@@ -109,7 +135,7 @@ class ColumnFacet(Facet):
                     num_distinct_values
                     and num_distinct_values > 1
                     and num_distinct_values <= facet_size
-                    and num_distinct_values < filtered_table_rows_count
+                    and num_distinct_values < row_count
                 ):
                     suggested_facets.append(
                         {
@@ -124,7 +150,7 @@ class ColumnFacet(Facet):
                 continue
         return suggested_facets
 
-    async def facet_results(self, sql, params):
+    async def facet_results(self):
         facet_results = {}
         facets_timed_out = []
 
@@ -140,13 +166,13 @@ class ColumnFacet(Facet):
                 where {col} is not null
                 group by {col} order by count desc limit {limit}
             """.format(
-                col=escape_sqlite(column), sql=sql, limit=facet_size + 1
+                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
             try:
                 facet_rows_results = await self.ds.execute(
                     self.database,
                     facet_sql,
-                    params,
+                    self.params,
                     truncate=False,
                     custom_time_limit=self.ds.config("facet_time_limit_ms"),
                 )

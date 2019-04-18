@@ -482,6 +482,17 @@ class TableView(RowTableShared):
             database, sql, params, truncate=True, **extra_args
         )
 
+        # Number of filtered rows in whole set:
+        filtered_table_rows_count = None
+        if count_sql:
+            try:
+                count_rows = list(await self.ds.execute(
+                    database, count_sql, from_sql_params
+                ))
+                filtered_table_rows_count = count_rows[0][0]
+            except InterruptedError:
+                pass
+
         # facets support
         if not self.ds.config("allow_facet") and any(arg.startswith("_facet") for arg in request.args):
             raise DatasetteError("_facet= is not allowed", status=400)
@@ -495,12 +506,19 @@ class TableView(RowTableShared):
         facets_timed_out = []
         facet_instances = []
         for klass in facet_classes:
-            facet_instances.append(klass(self.ds, request, database, table, configs=facet_configs.get(klass.type)))
+            facet_instances.append(klass(
+                self.ds,
+                request,
+                database,
+                sql=sql_no_limit,
+                params=params,
+                table=table,
+                configs=facet_configs.get(klass.type),
+                row_count=filtered_table_rows_count,
+            ))
 
         for facet in facet_instances:
-            instance_facet_results, instance_facets_timed_out = await facet.facet_results(
-                sql_no_limit, params,
-            )
+            instance_facet_results, instance_facets_timed_out = await facet.facet_results()
             facet_results.update(instance_facet_results)
             facets_timed_out.extend(instance_facets_timed_out)
 
@@ -588,17 +606,6 @@ class TableView(RowTableShared):
             )
             rows = rows[:page_size]
 
-        # Number of filtered rows in whole set:
-        filtered_table_rows_count = None
-        if count_sql:
-            try:
-                count_rows = list(await self.ds.execute(
-                    database, count_sql, from_sql_params
-                ))
-                filtered_table_rows_count = count_rows[0][0]
-            except InterruptedError:
-                pass
-
         # Detect suggested facets
         suggested_facets = []
 
@@ -606,7 +613,7 @@ class TableView(RowTableShared):
             for facet in facet_instances:
                 # TODO: ensure facet is not suggested if it is already active
                 # used to use 'if facet_column in facets' for this
-                suggested_facets.extend(await facet.suggest(sql_no_limit, params, filtered_table_rows_count))
+                suggested_facets.extend(await facet.suggest())
 
         # human_description_en combines filters AND search, if provided
         human_description_en = filters.human_description_en(extra=search_descriptions)

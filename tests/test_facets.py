@@ -1,16 +1,8 @@
 from datasette.facets import ColumnFacet
 from .fixtures import app_client  # noqa
+from .utils import MockRequest
 from collections import namedtuple
 import pytest
-
-
-class MockRequest:
-    def __init__(self, url):
-        self.url = url
-        self.path = "/" + url.split("://")[1].split("/", 1)[1]
-        self.query_string = ""
-        if "?" in url:
-            self.query_string = url.split("?", 1)[1]
 
 
 @pytest.mark.asyncio

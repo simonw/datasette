@@ -346,9 +346,8 @@ class TableView(RowTableShared):
                 "where {} ".format(" and ".join(where_clauses))
             ) if where_clauses else "",
         )
-        # Store current params and where_clauses for later:
+        # Copy of params so we can mutate them later:
         from_sql_params = dict(**params)
-        from_sql_where_clauses = where_clauses[:]
 
         count_sql = "select count(*) {}".format(from_sql)
 
@@ -483,7 +482,6 @@ class TableView(RowTableShared):
         if not self.ds.config("allow_facet") and any(arg.startswith("_facet") for arg in request.args):
             raise DatasetteError("_facet= is not allowed", status=400)
         facet_configs = load_facet_configs(request, table_metadata)
-        print("facet_configs", facet_configs)
 
         # pylint: disable=no-member
         facet_classes = list(

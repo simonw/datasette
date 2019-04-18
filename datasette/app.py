@@ -359,6 +359,10 @@ class Datasette:
         )
         return bool(results.rows)
 
+    async def table_count(self, database, table):
+        results = await self.execute(database, "select count(*) from [{}]".format(table))
+        return results.rows[0][0]
+
     async def expand_foreign_keys(self, database, table, column, values):
         "Returns dict mapping (column, value) -> label"
         labeled_fks = {}

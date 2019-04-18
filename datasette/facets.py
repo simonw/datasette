@@ -15,12 +15,29 @@ from datasette.utils import (
 
 
 def load_facet_configs(request, table_metadata):
-    # Given a request and this tables metadata, return
-    # a dict of selected facets and their configs
-    #   return {type, [config1, config2]...}
+    # Given a request and the metadata configuration for a table, return
+    # a dictionary of selected facets, their lists of configs and for each
+    # config whether it came from the request or the metadata.
+    #
+    #   return {type: [
+    #       {"source": "metadata", "config": config1},
+    #       {"source": "request", "config": config2}]}
     facet_configs = {}
-    # metadata_facets = table_metadata.get("facets", [])
-    # facets = metadata_facets[:]
+    metadata_facets = table_metadata.get("facets", [])
+    for metadata_config in metadata_facets:
+        if isinstance(metadata_config, str):
+            type = "column"
+            metadata_config = {"simple": metadata_config}
+        else:
+            # This should have a single key and a single value
+            assert len(metadata_config.values()) == 1, "Metadata config dicts should be {type: config}"
+            type, metadata_config = metadata_config.items()[0]
+            if isinstance(metadata_config, str):
+                metadata_config = {"simple": metadata_config}
+        facet_configs.setdefault(type, []).append({
+            "source": "metadata",
+            "config": metadata_config
+        })
     qs_pairs = urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
     for key, values in qs_pairs.items():
         if key.startswith("_facet"):
@@ -34,8 +51,11 @@ def load_facet_configs(request, table_metadata):
                 if value.startswith("{"):
                     config = json.loads(value)
                 else:
-                    config = {"single": value}
-                facet_configs.setdefault(type, []).append(config)
+                    config = {"simple": value}
+                facet_configs.setdefault(type, []).append({
+                    "source": "request",
+                    "config": config
+                })
     return facet_configs
 
 
@@ -158,7 +178,7 @@ class ColumnFacet(Facet):
 
         facet_size = self.ds.config("default_facet_size")
         for config in self.configs or []:
-            column = config.get("column") or config["single"]
+            column = config.get("column") or config["simple"]
             facet_sql = """
                 select {col} as value, count(*) as count from (
                     {sql}

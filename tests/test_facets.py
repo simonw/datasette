@@ -33,7 +33,7 @@ async def test_column_facet_results(app_client):
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
-        configs=[{"single": "city_id"}],
+        configs=[{"simple": "city_id"}],
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out

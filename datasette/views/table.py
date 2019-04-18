@@ -513,7 +513,9 @@ class TableView(RowTableShared):
                 sql=sql_no_limit,
                 params=params,
                 table=table,
-                configs=facet_configs.get(klass.type),
+                configs=[
+                    fc["config"] for fc in facet_configs.get(klass.type, [])
+                ],
                 row_count=filtered_table_rows_count,
             ))
 

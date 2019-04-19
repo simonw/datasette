@@ -283,7 +283,7 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
         for opt in extra_options.split():
             cmd.append('{}'.format(opt))
     cmd = ' '.join(cmd)
-    shell_command = f'"sh", "-c", "{cmd}"'
+    shell_command = '"sh", "-c", "{}"'.format(cmd)
     if branch:
         install = ['https://github.com/simonw/datasette/archive/{}.zip'.format(
             branch

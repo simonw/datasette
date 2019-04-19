@@ -66,6 +66,6 @@ def publish_subcommand(publish):
                 "about_url": about_url,
             },
         ):
-            image_id = f"gcr.io/{project}/{name}"
-            check_call(f"gcloud builds submit --tag {image_id}", shell=True)
-        check_call(f"gcloud beta run deploy --allow-unauthenticated --image {image_id}", shell=True)
+            image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
+            check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
+        check_call("gcloud beta run deploy --allow-unauthenticated --image {}".format(image_id), shell=True)

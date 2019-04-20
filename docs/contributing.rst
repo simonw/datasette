@@ -7,6 +7,12 @@ Datasette is an open source project. We welcome contributions!
 
 This document describes how to contribute to Datasette core. You can also contribute to the wider Datasette ecosystem by creating new :ref:`plugins`.
 
+General guidelines
+------------------
+
+* **master should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
+* **The ideal commit** should bundle together the implementation, unit tests and associated documentation updates. The commit message should link to an associated issue.
+
 .. _devenvironment:
 
 Setting up a development environment

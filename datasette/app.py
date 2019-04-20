@@ -131,6 +131,10 @@ class ConnectedDatabase:
             self.size = p.stat().st_size
 
     @property
+    def mtime_ns(self):
+        return Path(self.path).stat().st_mtime_ns
+
+    @property
     def name(self):
         if self.is_memory:
             return ":memory:"

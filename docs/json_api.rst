@@ -303,6 +303,11 @@ Special table arguments
     Pagination by continuation token - pass the token that was returned in the
     ``"next"`` property by the previous page.
 
+``?_trace=1``
+    Turns on tracing for this page: SQL queries executed during the request will
+    be gathered and included in the response, either in a new ``"_traces"`` key
+    for JSON responses or at the bottom of the page if the response is in HTML.
+
 .. _expand_foreign_keys:
 
 Expanding foreign key references

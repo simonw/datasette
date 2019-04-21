@@ -624,7 +624,7 @@ class Datasette:
             else:
                 return Results(rows, False, cursor.description)
 
-        with trace("sql", (db_name, sql, params)):
+        with trace("sql", (db_name, sql.strip(), params)):
             results = await self.execute_against_connection_in_thread(
                 db_name, sql_operation_in_thread
             )
@@ -729,10 +729,23 @@ class Datasette:
                 return response.redirect(path)
 
         @app.middleware("response")
-        async def print_traces(request, response):
-            if request.get("traces") is not None:
-                print(json.dumps(request["traces"], indent=2))
-                print("Num traces: {}".format(len(request["traces"])))
+        async def add_traces_to_response(request, response):
+            if request.get("traces") is None:
+                return
+            traces = request["traces"]
+            if "text/html" in response.content_type and b'</body>' in response.body:
+                extra = json.dumps(traces, indent=2)
+                extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
+                response.body = response.body.replace(b"</body>", extra_html)
+            elif "json" in response.content_type and response.body.startswith(b"{"):
+                data = json.loads(response.body)
+                if "_traces" not in data:
+                    data["_traces"] = {
+                        "num_traces": len(traces),
+                        "traces": traces,
+                        "duration_sum_ms": sum(t[-1] for t in traces),
+                    }
+                    response.body = json.dumps(data).encode("utf8")
 
         @app.exception(Exception)
         def on_exception(request, exception):

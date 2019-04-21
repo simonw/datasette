@@ -738,7 +738,7 @@ class Datasette:
                 extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
                 response.body = response.body.replace(b"</body>", extra_html)
             elif "json" in response.content_type and response.body.startswith(b"{"):
-                data = json.loads(response.body)
+                data = json.loads(response.body.decode("utf8"))
                 if "_traces" not in data:
                     data["_traces"] = {
                         "num_traces": len(traces),

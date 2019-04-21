@@ -2,6 +2,7 @@ import asyncio
 import click
 import collections
 import hashlib
+import json
 import os
 import sys
 import threading
@@ -38,6 +39,7 @@ from .utils import (
     to_css_class
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
+from .tracer import capture_traces, trace
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
@@ -622,12 +624,25 @@ class Datasette:
             else:
                 return Results(rows, False, cursor.description)
 
-        return await self.execute_against_connection_in_thread(
-            db_name, sql_operation_in_thread
-        )
+        with trace("sql", (db_name, sql, params)):
+            results = await self.execute_against_connection_in_thread(
+                db_name, sql_operation_in_thread
+            )
+        return results
 
     def app(self):
-        app = Sanic(__name__)
+
+        class TracingSanic(Sanic):
+            async def handle_request(self, request, write_callback, stream_callback):
+                if request.args.get("_trace"):
+                    request["traces"] = []
+                    with capture_traces(request["traces"]):
+                        res = await super().handle_request(request, write_callback, stream_callback)
+                else:
+                    res = await super().handle_request(request, write_callback, stream_callback)
+                return res
+
+        app = TracingSanic(__name__)
         default_templates = str(app_root / "datasette" / "templates")
         template_paths = []
         if self.template_dir:
@@ -702,6 +717,7 @@ class Datasette:
             r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(\.jsono?)?$>",
         )
         self.register_custom_units()
+
         # On 404 with a trailing slash redirect to path without that slash:
         # pylint: disable=unused-variable
         @app.middleware("response")
@@ -711,6 +727,12 @@ class Datasette:
                 if request.query_string:
                     path = "{}?{}".format(path, request.query_string)
                 return response.redirect(path)
+
+        @app.middleware("response")
+        async def print_traces(request, response):
+            if request.get("traces") is not None:
+                print(json.dumps(request["traces"], indent=2))
+                print("Num traces: {}".format(len(request["traces"])))
 
         @app.exception(Exception)
         def on_exception(request, exception):

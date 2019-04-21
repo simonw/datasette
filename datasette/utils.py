@@ -152,8 +152,10 @@ def sqlite_timelimit(conn, ms):
             return 1
 
     conn.set_progress_handler(handler, n)
-    yield
-    conn.set_progress_handler(None, n)
+    try:
+        yield
+    finally:
+        conn.set_progress_handler(None, n)
 
 
 class InvalidSql(Exception):

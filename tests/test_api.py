@@ -1443,3 +1443,14 @@ def test_infinity_returned_as_invalid_json_if_requested(app_client):
         {"rowid": 2, "value": float("-inf")},
         {"rowid": 3, "value": 1.5}
     ] == response.json
+
+
+def test_trace(app_client):
+    response = app_client.get("/fixtures/simple_primary_key.json?_trace=1")
+    data = response.json
+    assert "_traces" in data
+    traces = data["_traces"]
+    assert isinstance(traces["duration_sum_ms"], float)
+    assert isinstance(traces["num_traces"], int)
+    assert isinstance(traces["traces"], list)
+    assert len(traces["traces"]) == traces["num_traces"]

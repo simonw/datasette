@@ -308,6 +308,9 @@ Special table arguments
     be gathered and included in the response, either in a new ``"_traces"`` key
     for JSON responses or at the bottom of the page if the response is in HTML.
 
+    The structure of the data returned here should be considered highly unstable
+    and very likely to change.
+
 .. _expand_foreign_keys:
 
 Expanding foreign key references

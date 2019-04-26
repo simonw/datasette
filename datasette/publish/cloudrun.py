@@ -42,7 +42,7 @@ def publish_subcommand(publish):
         spatialite,
     ):
         fail_if_publish_binary_not_installed("gcloud", "Google Cloud", "https://cloud.google.com/sdk/")
-        project = check_output("gcloud config get-value project", shell=True).decode("utf-8").strip()
+        project = check_output("gcloud config get-value project", shell=True, universal_newlines=True).strip()
 
         with temporary_docker_directory(
             files,

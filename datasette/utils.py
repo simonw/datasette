@@ -263,11 +263,10 @@ def escape_sqlite(s):
     else:
         return '[{}]'.format(s)
 
-
 def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install, spatialite, version_note):
     cmd = ['datasette', 'serve', '--host', '0.0.0.0']
     cmd.append('", "'.join(files))
-    cmd.extend(['--cors', '--port', '$PORT', '--inspect-file', 'inspect-data.json'])
+    cmd.extend(['--cors', '--inspect-file', 'inspect-data.json'])
     if metadata_file:
         cmd.extend(['--metadata', '{}'.format(metadata_file)])
     if template_dir:
@@ -282,8 +281,10 @@ def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, p
     if extra_options:
         for opt in extra_options.split():
             cmd.append('{}'.format(opt))
+    cmd = [shlex.quote(part) for part in cmd]
+    # port attribute is a (fixed) env variable and should not be quoted
+    cmd.extend(['--port', '$PORT'])
     cmd = ' '.join(cmd)
-    shell_command = '"sh", "-c", "{}"'.format(cmd)
     if branch:
         install = ['https://github.com/simonw/datasette/archive/{}.zip'.format(
             branch
@@ -300,9 +301,9 @@ RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
 ENV PORT 8001
 EXPOSE 8001
-CMD [{cmd}]'''.format(
+CMD {cmd}'''.format(
         files=' '.join(files),
-        cmd=shell_command,
+        cmd=cmd,
         install_from=' '.join(install),
         spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else '',
     ).strip()

@@ -443,6 +443,8 @@ class Datasette:
                             "views": inspect_views(conn),
                             "tables": inspect_tables(conn, (self.metadata("databases") or {}).get(name, {}))
                         }
+                        for result in pm.hook.inspect(database=name, conn=conn, datasette=self):
+                            self._inspect[name].update(result)
                 except sqlite3.OperationalError as e:
                     if (e.args[0] == 'no such module: VirtualSpatialIndex'):
                         raise click.UsageError(
@@ -716,6 +718,7 @@ class Datasette:
             RowView.as_view(self),
             r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(\.jsono?)?$>",
         )
+        pm.hook.prepare_sanic(app=app, datasette=self)
         self.register_custom_units()
 
         # On 404 with a trailing slash redirect to path without that slash:

@@ -326,6 +326,27 @@ You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
 
+.. _plugin_hook_prepare_sanic:
+
+prepare_sanic(app, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Called at startup to allow plugins to add additional HTTP endpoints to Sanic's web router.
+
+``app`` - Sanic app instance
+    The instance of the Sanic app.
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+In this hook, you can add new routes using ``app.add_route``::
+
+        app.add_route(lambda x: text("Hello World"), r"/test/")
+
+**Warning**: This hook depends on Sanic - an implementation detail which `may change in a later version of Datasette <https://github.com/simonw/datasette/issues/272>`_.
+
+The return value is ignored.
+
 .. _plugin_hook_extra_css_urls:
 
 extra_css_urls(template, database, table, datasette)
@@ -551,3 +572,33 @@ The ``template``, ``database`` and ``table`` options can be used to return diffe
 The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
 
 The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
+
+.. _plugin_hook_inspect:
+
+inspect(database, conn, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Called at inspect time to allow the plugin to inspect the database and save the inspected data. 
+
+``database`` - string
+    The name of the database being inspected.
+
+``conn`` - Sqlite connection
+    A sqlite connection object for the database.
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+This is useful if you need to cache any information about the database which might be expensive to collect on every page load.
+
+Return a dictionary which is merged into the inspected data. You should store inspected data within this using a plugin-specific key:: 
+
+        return {
+                "myplugin": {<data>}
+        }
+
+The inspected data dictionary can be retrieved later with::
+
+        my_data = datasette.inspect()["myplugin"]
+
+

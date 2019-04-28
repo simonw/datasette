@@ -31,6 +31,16 @@ def extra_body_script(template, database, table, datasette):
 
 
 @hookspec
+def inspect(database, conn):
+    "Inspect the database for plugin-specific information"
+
+
+@hookspec
+def prepare_sanic(app, datasette):
+    "Add additional web routes"
+
+
+@hookspec
 def publish_subcommand(publish):
     "Subcommands for 'datasette publish'"
 

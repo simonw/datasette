@@ -97,7 +97,8 @@ class RenderMixin(HTTPMethodView):
             template=template.name,
             database=context.get("database"),
             table=context.get("table"),
-            datasette=self.ds
+            primary_key=context.get("primary_key_values"),
+            datasette=self.ds,
         ):
             body_scripts.append(jinja2.Markup(script))
         return response.html(

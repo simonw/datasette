@@ -38,3 +38,8 @@ def publish_subcommand(publish):
 @hookspec(firstresult=True)
 def render_cell(value, column, table, database, datasette):
     "Customize rendering of HTML table cell values"
+
+
+@hookspec
+def register_output_renderer():
+    "Register a renderer to output data in a different format"

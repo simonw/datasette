@@ -24,6 +24,7 @@ from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
 from .views.special import JsonDataView
 from .views.table import RowView, TableView
+from .renderer import json_renderer
 
 from .utils import (
     InterruptedError,
@@ -207,6 +208,7 @@ class Datasette:
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
         self._config = dict(DEFAULT_CONFIG, **(config or {}))
+        self.renderers = {}  # File extension -> renderer function
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
             max_workers=self.config("num_sql_threads")
@@ -630,6 +632,22 @@ class Datasette:
             )
         return results
 
+    def register_renderers(self):
+        """ Register output renderers which output data in custom formats. """
+        # Built-in renderers
+        self.renderers['json'] = json_renderer
+
+        # Hooks
+        hook_renderers = []
+        for hook in pm.hook.register_output_renderer():
+            if type(hook) == list:
+                hook_renderers += hook
+            else:
+                hook_renderers.append(hook)
+
+        for renderer in hook_renderers:
+            self.renderers[renderer['extension']] = renderer['callback']
+
     def app(self):
 
         class TracingSanic(Sanic):
@@ -671,6 +689,11 @@ class Datasette:
         self.jinja_env.filters["to_css_class"] = to_css_class
         # pylint: disable=no-member
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
+
+        self.register_renderers()
+        # Generate a regex snippet to match all registered renderer file extensions
+        renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
+
         app.add_route(IndexView.as_view(self), r"/<as_format:(\.jsono?)?$>")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, "/favicon.ico")
@@ -706,7 +729,8 @@ class Datasette:
             DatabaseDownload.as_view(self), r"/<db_name:[^/]+?><as_db:(\.db)$>"
         )
         app.add_route(
-            DatabaseView.as_view(self), r"/<db_name:[^/]+?><as_format:(\.jsono?|\.csv)?$>"
+            DatabaseView.as_view(self),
+            r"/<db_name:[^/]+?><as_format:(" + renderer_regex + r"|.jsono|\.csv)?$>"
         )
         app.add_route(
             TableView.as_view(self),
@@ -714,7 +738,7 @@ class Datasette:
         )
         app.add_route(
             RowView.as_view(self),
-            r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(\.jsono?)?$>",
+            r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(" + renderer_regex + r")?$>",
         )
         self.register_custom_units()
 

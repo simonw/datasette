@@ -291,7 +291,7 @@ async def test_resolve_table_and_format(
     table_and_format, expected_table, expected_format
 ):
     actual_table, actual_format = await utils.resolve_table_and_format(
-        table_and_format, table_exists
+        table_and_format, table_exists, ['json']
     )
     assert expected_table == actual_table
     assert expected_format == actual_format

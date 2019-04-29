@@ -118,6 +118,8 @@ class RowTableShared(BaseView):
                 )
                 if plugin_display_value is not None:
                     display_value = plugin_display_value
+                elif isinstance(value, bytes):
+                    display_value = jinja2.Markup("<{}&nbsp;bytes>".format(len(value)))
                 elif isinstance(value, dict):
                     # It's an expanded foreign key - display link to other row
                     label = value["label"]

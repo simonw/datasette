@@ -428,6 +428,10 @@ class BaseView(RenderMixin):
             url_labels_extra = {}
             if data.get("expandable_columns"):
                 url_labels_extra = {"_labels": "on"}
+
+            renderers = {
+                key: path_with_format(request, key, {**url_labels_extra}) for key in self.ds.renderers.keys()
+            }
             url_csv_args = {
                 "_size": "max",
                 **url_labels_extra
@@ -438,9 +442,7 @@ class BaseView(RenderMixin):
                 **data,
                 **extras,
                 **{
-                    "url_json": path_with_format(request, "json", {
-                        **url_labels_extra,
-                    }),
+                    "renderers": renderers,
                     "url_csv": url_csv,
                     "url_csv_path": url_csv_path,
                     "url_csv_hidden_args": [

@@ -639,7 +639,7 @@ class Datasette:
 
         # Hooks
         hook_renderers = []
-        for hook in pm.hook.register_output_renderer():
+        for hook in pm.hook.register_output_renderer(datasette=self):
             if type(hook) == list:
                 hook_renderers += hook
             else:

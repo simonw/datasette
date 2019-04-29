@@ -554,15 +554,18 @@ The string that you return from this function will be treated as "safe" for incl
 
 .. _plugin_register_output_renderer:
 
-register_output_renderer()
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+register_output_renderer(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 Allows the plugin to register a new output renderer, to output data in a custom format. The hook function should return a dictionary, or a list of dictionaries, which contain the file extension you want to handle and a callback function:
 
 .. code-block:: python
 
         @hookimpl
-        def register_output_renderer():
+        def register_output_renderer(datasette):
             return {
                 'extension': 'test',
                 'callback': render_test

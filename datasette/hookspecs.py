@@ -26,7 +26,7 @@ def extra_js_urls(template, database, table, datasette):
 
 
 @hookspec
-def extra_body_script(template, database, table, datasette):
+def extra_body_script(template, database, table, view_name, datasette):
     "Extra JavaScript code to be included in <script> at bottom of body"
 
 

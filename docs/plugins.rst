@@ -529,8 +529,8 @@ If the value matches that pattern, the plugin returns an HTML link element:
 
 .. _plugin_hook_extra_body_script:
 
-extra_body_script(template, database, table, datasette)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+extra_body_script(template, database, table, view_name, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``template`` - string
     The template that is being rendered, e.g. ``database.html``
@@ -540,6 +540,9 @@ extra_body_script(template, database, table, datasette)
 
 ``table`` - string or None
     The name of the table, or ``None`` if the page does not correct to a table
+
+``view_name`` - string
+    The name of the view being displayed. (`database`, `table`, and `row` are the most important ones.)
 
 ``datasette`` - Datasette instance
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``

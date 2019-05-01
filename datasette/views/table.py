@@ -174,6 +174,7 @@ class RowTableShared(BaseView):
 
 
 class TableView(RowTableShared):
+    name = 'table'
 
     async def data(self, request, database, hash, table, default_labels=False,  _next=None, _size=None):
         canned_query = self.ds.get_canned_query(database, table)
@@ -778,6 +779,7 @@ class TableView(RowTableShared):
 
 
 class RowView(RowTableShared):
+    name = 'row'
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)

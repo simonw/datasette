@@ -9,6 +9,7 @@ from .base import HASH_LENGTH, RenderMixin
 
 
 class IndexView(RenderMixin):
+    name = 'index'
 
     def __init__(self, datasette):
         self.ds = datasette

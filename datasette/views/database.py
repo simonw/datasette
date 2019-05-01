@@ -8,6 +8,7 @@ from .base import BaseView, DatasetteError
 
 
 class DatabaseView(BaseView):
+    name = 'database'
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
         if request.args.get("sql"):
@@ -39,6 +40,7 @@ class DatabaseView(BaseView):
 
 
 class DatabaseDownload(BaseView):
+    name = 'database_download'
 
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
         if not self.ds.config("allow_download"):

@@ -47,7 +47,7 @@
 </form>
 
 {% if display_rows %}
-<p class="export-links">This data as <a href="{{ url_json }}">JSON</a>, <a href="{{ url_csv }}">CSV</a></p>
+  <p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}, <a href="{{ url_csv }}">CSV</a></p>
 <table class="rows-and-columns">
     <thead>
         <tr>

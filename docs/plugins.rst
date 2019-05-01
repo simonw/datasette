@@ -551,3 +551,53 @@ The ``template``, ``database`` and ``table`` options can be used to return diffe
 The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
 
 The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
+
+.. _plugin_register_output_renderer:
+
+register_output_renderer(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+Allows the plugin to register a new output renderer, to output data in a custom format. The hook function should return a dictionary, or a list of dictionaries, which contain the file extension you want to handle and a callback function:
+
+.. code-block:: python
+
+        @hookimpl
+        def register_output_renderer(datasette):
+            return {
+                'extension': 'test',
+                'callback': render_test
+            }
+
+This will register `render_test` to be called when paths with the extension `.test` (for example `/database.test`, `/database/table.test`, or `/database/table/row.test`) are requested. When a request is received, the callback function is called with three positional arguments:
+
+``args`` - dictionary
+    The GET parameters of the request
+
+``data`` - dictionary
+    The data to be rendered
+
+``view_name`` - string
+    The name of the view where the renderer is being called. (`database`, `table`, and `row` are the most important ones.)
+
+The callback function can return `None`, if it is unable to render the data, or a dictionary with the following keys:
+
+``body`` - string or bytes, optional
+    The response body, default empty
+
+``content_type`` - string, optional
+    The Content-Type header, default `text/plain`
+
+``status_code`` - integer, optional
+    The HTTP status code, default 200
+
+A simple example of an output renderer callback function:
+
+.. code-block:: python
+
+        def render_test(args, data, view_name):
+            return {
+                'body': 'Hello World'
+            }

@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import threading
+import time
 import traceback
 import urllib.parse
 from concurrent import futures
@@ -654,6 +655,7 @@ class Datasette:
             async def handle_request(self, request, write_callback, stream_callback):
                 if request.args.get("_trace"):
                     request["traces"] = []
+                    request["trace_start"] = time.time()
                     with capture_traces(request["traces"]):
                         res = await super().handle_request(request, write_callback, stream_callback)
                 else:
@@ -756,7 +758,10 @@ class Datasette:
         async def add_traces_to_response(request, response):
             if request.get("traces") is None:
                 return
-            traces = request["traces"]
+            traces = {
+                "duration": time.time() - request["trace_start"],
+                "queries": request["traces"],
+            }
             if "text/html" in response.content_type and b'</body>' in response.body:
                 extra = json.dumps(traces, indent=2)
                 extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
@@ -765,9 +770,9 @@ class Datasette:
                 data = json.loads(response.body.decode("utf8"))
                 if "_traces" not in data:
                     data["_traces"] = {
-                        "num_traces": len(traces),
+                        "num_traces": len(traces["queries"]),
                         "traces": traces,
-                        "duration_sum_ms": sum(t[-1] for t in traces),
+                        "duration_sum_ms": sum(t[-1] for t in traces["queries"]),
                     }
                     response.body = json.dumps(data).encode("utf8")
 

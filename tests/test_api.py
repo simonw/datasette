@@ -1452,5 +1452,5 @@ def test_trace(app_client):
     traces = data["_traces"]
     assert isinstance(traces["duration_sum_ms"], float)
     assert isinstance(traces["num_traces"], int)
-    assert isinstance(traces["traces"], list)
-    assert len(traces["traces"]) == traces["num_traces"]
+    assert isinstance(traces["traces"], dict)
+    assert len(traces["traces"]["queries"]) == traces["num_traces"]

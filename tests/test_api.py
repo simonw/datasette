@@ -18,12 +18,17 @@ import urllib
 
 
 def test_homepage(app_client):
-    response = app_client.get('/.json')
+    response = app_client.get("/.json")
     assert response.status == 200
-    assert response.json.keys() == {'fixtures': 0}.keys()
-    d = response.json['fixtures']
-    assert d['name'] == 'fixtures'
-    assert d['tables_count'] == 20
+    assert response.json.keys() == {"fixtures": 0}.keys()
+    d = response.json["fixtures"]
+    assert d["name"] == "fixtures"
+    assert d["tables_count"] == 25
+    assert len(d["tables_truncated"]) == 5
+    assert d["tables_more"] is True
+    assert d["hidden_table_rows_sum"] == 5
+    assert d["hidden_tables_count"] == 4
+    assert d["views_count"] == 4
 
 
 def test_database_page(app_client):
@@ -351,7 +356,8 @@ def test_no_files_uses_memory_database(app_client_no_files):
     assert response.status == 200
     assert {
         ":memory:": {
-            "hash": "000",
+            "hash": None,
+            "color": "f7935d",
             "hidden_table_rows_sum": 0,
             "hidden_tables_count": 0,
             "name": ":memory:",

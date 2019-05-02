@@ -26,6 +26,36 @@ async def test_column_facet_suggest(app_client):
 
 
 @pytest.mark.asyncio
+async def test_column_facet_suggest_skip_if_selected(app_client):
+    facet = ColumnFacet(
+        app_client.ds,
+        MockRequest("http://localhost/?_facet=planet_int&_facet=on_earth"),
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
+    )
+    suggestions = await facet.suggest()
+    assert [
+        {
+            "name": "state",
+            "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=state",
+        },
+        {
+            "name": "city_id",
+            "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=city_id",
+        },
+        {
+            "name": "neighborhood",
+            "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=neighborhood",
+        },
+        {
+            "name": "tags",
+            "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=tags",
+        },
+    ] == suggestions
+
+
+@pytest.mark.asyncio
 async def test_column_facet_results(app_client):
     facet = ColumnFacet(
         app_client.ds,
@@ -45,28 +75,28 @@ async def test_column_facet_results(app_client):
                     "value": 1,
                     "label": "San Francisco",
                     "count": 6,
-                    "toggle_url": "http://localhost/?_facet=city_id?_facet=city_id&city_id=1",
+                    "toggle_url": "http://localhost/?_facet=city_id&city_id=1",
                     "selected": False,
                 },
                 {
                     "value": 2,
                     "label": "Los Angeles",
                     "count": 4,
-                    "toggle_url": "http://localhost/?_facet=city_id?_facet=city_id&city_id=2",
+                    "toggle_url": "http://localhost/?_facet=city_id&city_id=2",
                     "selected": False,
                 },
                 {
                     "value": 3,
                     "label": "Detroit",
                     "count": 4,
-                    "toggle_url": "http://localhost/?_facet=city_id?_facet=city_id&city_id=3",
+                    "toggle_url": "http://localhost/?_facet=city_id&city_id=3",
                     "selected": False,
                 },
                 {
                     "value": 4,
                     "label": "Memnonia",
                     "count": 1,
-                    "toggle_url": "http://localhost/?_facet=city_id?_facet=city_id&city_id=4",
+                    "toggle_url": "http://localhost/?_facet=city_id&city_id=4",
                     "selected": False,
                 },
             ],

@@ -133,6 +133,8 @@ class ColumnFacet(Facet):
         facet_size = self.ds.config("default_facet_size")
         suggested_facets = []
         for column in columns:
+            if ("_facet", column) in self.get_querystring_pairs():
+                continue
             suggested_facet_sql = """
                 select distinct {column} from (
                     {sql}

@@ -1,15 +1,16 @@
 import importlib
 import pluggy
+import sys
 from . import hookspecs
 
-DEFAULT_PLUGINS = (
-    "datasette.publish.heroku",
-    "datasette.publish.now",
-)
+DEFAULT_PLUGINS = ("datasette.publish.heroku", "datasette.publish.now")
 
 pm = pluggy.PluginManager("datasette")
 pm.add_hookspecs(hookspecs)
-pm.load_setuptools_entrypoints("datasette")
+
+if not hasattr(sys, "_called_from_test"):
+    # Only load plugins if not running tests
+    pm.load_setuptools_entrypoints("datasette")
 
 # Load default plugins
 for plugin in DEFAULT_PLUGINS:

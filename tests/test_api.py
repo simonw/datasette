@@ -1060,18 +1060,16 @@ def test_inspect_json(app_client):
 
 
 def test_plugins_json(app_client):
-    response = app_client.get(
-        "/-/plugins.json"
-    )
-    # This will include any plugins that have been installed into the
-    # current virtual environment, so we only check for the presence of
-    # the one we know will definitely be There
-    assert {
-        'name': 'my_plugin.py',
-        'static': False,
-        'templates': False,
-        'version': None,
-    } in response.json
+    response = app_client.get("/-/plugins.json")
+    assert [
+        {"name": "my_plugin.py", "static": False, "templates": False, "version": None},
+        {
+            "name": "my_plugin_2.py",
+            "static": False,
+            "templates": False,
+            "version": None,
+        }
+    ] == sorted(response.json, key=lambda p: p["name"])
 
 
 def test_versions_json(app_client):

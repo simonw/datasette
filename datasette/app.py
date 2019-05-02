@@ -205,6 +205,20 @@ class ConnectedDatabase:
                     """)
                 ).rows
             ]
+        # Add any from metadata.json
+        db_metadata = self.ds.metadata(database=self.name)
+        if "tables" in db_metadata:
+            hidden_tables += [
+                t for t in db_metadata["tables"] if db_metadata["tables"][t].get("hidden")
+            ]
+        # Also mark as hidden any tables which start with the name of a hidden table
+        # e.g. "searchable_fts" implies "searchable_fts_content" should be hidden
+        for table_name in await self.table_names():
+            for hidden_table in hidden_tables[:]:
+                if table_name.startswith(hidden_table):
+                    hidden_tables.append(table_name)
+                    continue
+
         return hidden_tables
 
     async def view_names(self):

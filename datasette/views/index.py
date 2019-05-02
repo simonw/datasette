@@ -41,13 +41,6 @@ class IndexView(RenderMixin):
                         name, lambda conn: detect_fts(conn, table)
                     ),
                 }
-            # Also mark as hidden any tables which start with the name of a hidden table
-            # e.g. "searchable_fts" implies "searchable_fts_content" should be hidden
-            for t in tables.keys():
-                for hidden_table in hidden_table_names:
-                    if t == hidden_table or t.startswith(hidden_table):
-                        tables[t]["hidden"] = True
-                        continue
             hidden_tables = [t for t in tables.values() if t["hidden"]]
 
             databases.append({

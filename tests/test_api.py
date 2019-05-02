@@ -26,8 +26,10 @@ def test_homepage(app_client):
     assert d["tables_count"] == 25
     assert len(d["tables_truncated"]) == 5
     assert d["tables_more"] is True
-    assert d["hidden_table_rows_sum"] == 5
-    assert d["hidden_tables_count"] == 4
+    # 4 hidden FTS tables + no_primary_key (hidden in metadata)
+    assert d["hidden_tables_count"] == 5
+    # 201 in no_primary_key, plus 5 in other hidden tables:
+    assert d["hidden_table_rows_sum"] == 206
     assert d["views_count"] == 4
 
 

@@ -700,7 +700,6 @@ def test_page_size_zero(app_client):
     response = app_client.get('/fixtures/no_primary_key.json?_size=0')
     assert 200 == response.status
     assert [] == response.json['rows']
-    assert 201 == response.json['table_rows_count']
     assert 201 == response.json['filtered_table_rows_count']
     assert None is response.json['next']
     assert None is response.json['next_url']
@@ -800,7 +799,6 @@ def test_sortable_and_filtered(app_client):
         if 'd' in row['content']
     ]
     assert len(expected) == response.json['filtered_table_rows_count']
-    assert 201 == response.json['table_rows_count']
     expected.sort(key=lambda row: -row['sortable'])
     assert [
         r['content'] for r in expected

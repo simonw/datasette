@@ -317,12 +317,7 @@ class TableView(RowTableShared):
                     )
                     params["search_{}".format(i)] = search_text
 
-        table_rows_count = None
         sortable_columns = set()
-        if not is_view:
-            table_rows_count = (await self.ds.execute(
-                database, "select count(*) from {}".format(escape_sqlite(table))
-            )).rows[0][0]
 
         sortable_columns = await self.sortable_columns_for_table(database, table, use_rowid)
 
@@ -760,7 +755,6 @@ class TableView(RowTableShared):
             "human_description_en": human_description_en,
             "rows": rows[:page_size],
             "truncated": results.truncated,
-            "table_rows_count": table_rows_count,
             "filtered_table_rows_count": filtered_table_rows_count,
             "expanded_columns": expanded_columns,
             "expandable_columns": expandable_columns,

@@ -43,3 +43,8 @@ def render_cell(value, column, table, database, datasette):
 @hookspec
 def register_output_renderer(datasette):
     "Register a renderer to output data in a different format"
+
+
+@hookspec
+def register_facet_classes():
+    "Register Facet subclasses"

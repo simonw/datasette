@@ -601,3 +601,68 @@ A simple example of an output renderer callback function:
             return {
                 'body': 'Hello World'
             }
+
+.. _plugin_register_facet_classes:
+
+register_facet_classes()
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Return a list of additional Facet subclasses to be registered.
+
+Each Facet subclass implements a new type of facet operation. The class should look like this:
+
+.. code-block:: python
+
+    class SpecialFacet(Facet):
+        # This key must be unique across all facet classes:
+        type = "special"
+
+        async def suggest(self, sql, params, filtered_table_rows_count):
+            suggested_facets = []
+            # Perform calculations to suggest facets
+            suggested_facets.append({
+                "name": column, # Or other unique name
+                # Construct the URL that will enable this facet:
+                "toggle_url": self.ds.absolute_url(
+                    self.request, path_with_added_args(
+                        self.request, {"_facet": column}
+                    )
+                ),
+            })
+            return suggested_facets
+
+        async def facet_results(self, sql, params):
+            # This should execute the facet operation and return results
+            facet_results = {}
+            facets_timed_out = []
+            # Do some calculations here...
+            for column in columns_selected_for_facet:
+                try:
+                    facet_results_values = []
+                    # More calculations...
+                    facet_results_values.append({
+                        "value": value,
+                        "label": label,
+                        "count": count,
+                        "toggle_url": self.ds.absolute_url(self.request, toggle_path),
+                        "selected": selected,
+                    })
+                    facet_results[column] = {
+                        "name": column,
+                        "results": facet_results_values,
+                        "truncated": len(facet_rows_results) > facet_size,
+                    }
+                except InterruptedError:
+                    facets_timed_out.append(column)
+
+            return facet_results, facets_timed_out
+
+See ``datasette/facets.py`` for examples of how these classes can work.
+
+The plugin hook can then be used to register the new facet class like this:
+
+.. code-block:: python
+
+    @hookimpl
+    def register_facet_classes():
+        return [SpecialFacet]

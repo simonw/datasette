@@ -130,12 +130,19 @@ class ConnectedDatabase:
         self.is_mutable = is_mutable
         self.is_memory = is_memory
         self.hash = None
-        self.size = None
+        self.cached_size = None
         self.cached_table_counts = None
         if not self.is_mutable:
             p = Path(path)
             self.hash = inspect_hash(p)
-            self.size = p.stat().st_size
+            self.cached_size = p.stat().st_size
+
+    @property
+    def size(self):
+        if self.cached_size is not None:
+            return self.cached_size
+        else:
+            return Path(self.path).stat().st_size
 
     async def table_counts(self, limit=10):
         if not self.is_mutable and self.cached_table_counts is not None:

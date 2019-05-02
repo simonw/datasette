@@ -492,7 +492,6 @@ class TableView(RowTableShared):
         # facets support
         if not self.ds.config("allow_facet") and any(arg.startswith("_facet") for arg in request.args):
             raise DatasetteError("_facet= is not allowed", status=400)
-        facet_configs = load_facet_configs(request, table_metadata)
 
         # pylint: disable=no-member
         facet_classes = list(
@@ -509,9 +508,7 @@ class TableView(RowTableShared):
                 sql=sql_no_limit,
                 params=params,
                 table=table,
-                configs=[
-                    fc["config"] for fc in facet_configs.get(klass.type, [])
-                ],
+                metadata=table_metadata,
                 row_count=filtered_table_rows_count,
             ))
 
@@ -659,7 +656,6 @@ class TableView(RowTableShared):
                 ),
                 "extra_wheres_for_ui": extra_wheres_for_ui,
                 "form_hidden_args": form_hidden_args,
-                "facet_hideable": lambda facet: facet not in [], # TODO: used to be metadata_facets fix this
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "path_with_replaced_args": path_with_replaced_args,
                 "path_with_removed_args": path_with_removed_args,

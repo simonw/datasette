@@ -124,7 +124,7 @@
             <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}" id="facet-{{ facet_info.name|to_css_class }}">
                 <p class="facet-info-name">
                     <strong>{{ facet_info.name }}</strong>
-                    {% if facet_hideable(facet_info.name) %}
+                    {% if facet_info.hideable %}
                         <a href="{{ path_with_removed_args(request, {'_facet': facet_info['name']}) }}" class="cross">&#x2716;</a>
                     {% endif %}
                 </p>

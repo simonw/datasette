@@ -26,7 +26,7 @@ async def test_column_facet_suggest(app_client):
 
 
 @pytest.mark.asyncio
-async def test_column_facet_suggest_skip_if_selected(app_client):
+async def test_column_facet_suggest_skip_if_already_selected(app_client):
     facet = ColumnFacet(
         app_client.ds,
         MockRequest("http://localhost/?_facet=planet_int&_facet=on_earth"),
@@ -56,6 +56,20 @@ async def test_column_facet_suggest_skip_if_selected(app_client):
 
 
 @pytest.mark.asyncio
+async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
+    facet = ColumnFacet(
+        app_client.ds,
+        MockRequest("http://localhost/"),
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
+        metadata={"facets": ["city_id"]},
+    )
+    suggestions = [s["name"] for s in await facet.suggest()]
+    assert ["planet_int", "on_earth", "state", "neighborhood", "tags"] == suggestions
+
+
+@pytest.mark.asyncio
 async def test_column_facet_results(app_client):
     facet = ColumnFacet(
         app_client.ds,
@@ -63,13 +77,13 @@ async def test_column_facet_results(app_client):
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
-        configs=[{"simple": "city_id"}],
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
     assert {
         "city_id": {
             "name": "city_id",
+            "hideable": True,
             "results": [
                 {
                     "value": 1,
@@ -97,6 +111,57 @@ async def test_column_facet_results(app_client):
                     "label": "Memnonia",
                     "count": 1,
                     "toggle_url": "http://localhost/?_facet=city_id&city_id=4",
+                    "selected": False,
+                },
+            ],
+            "truncated": False,
+        }
+    } == buckets
+
+
+@pytest.mark.asyncio
+async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
+    facet = ColumnFacet(
+        app_client.ds,
+        MockRequest("http://localhost/"),
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
+        metadata={"facets": ["city_id"]},
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert [] == timed_out
+    assert {
+        "city_id": {
+            "name": "city_id",
+            "hideable": False,
+            "results": [
+                {
+                    "value": 1,
+                    "label": "San Francisco",
+                    "count": 6,
+                    "toggle_url": "http://localhost/?city_id=1",
+                    "selected": False,
+                },
+                {
+                    "value": 2,
+                    "label": "Los Angeles",
+                    "count": 4,
+                    "toggle_url": "http://localhost/?city_id=2",
+                    "selected": False,
+                },
+                {
+                    "value": 3,
+                    "label": "Detroit",
+                    "count": 4,
+                    "toggle_url": "http://localhost/?city_id=3",
+                    "selected": False,
+                },
+                {
+                    "value": 4,
+                    "label": "Memnonia",
+                    "count": 1,
+                    "toggle_url": "http://localhost/?city_id=4",
                     "selected": False,
                 },
             ],

@@ -23,6 +23,7 @@ def load_facet_configs(request, table_metadata):
     #       {"source": "metadata", "config": config1},
     #       {"source": "request", "config": config2}]}
     facet_configs = {}
+    table_metadata = table_metadata or {}
     metadata_facets = table_metadata.get("facets", [])
     for metadata_config in metadata_facets:
         if isinstance(metadata_config, str):
@@ -75,7 +76,7 @@ class Facet:
         sql=None,
         table=None,
         params=None,
-        configs=None,
+        metadata=None,
         row_count=None,
     ):
         assert table or sql, "Must provide either table= or sql="
@@ -86,9 +87,13 @@ class Facet:
         self.table = table
         self.sql = sql or "select * from [{}]".format(table)
         self.params = params or []
-        self.configs = configs
+        self.metadata = metadata
         # row_count can be None, in which case we calculate it ourselves:
         self.row_count = row_count
+
+    def get_configs(self):
+        configs = load_facet_configs(self.request, self.metadata)
+        return configs.get(self.type) or []
 
     def get_querystring_pairs(self):
         # ?_foo=bar&_foo=2&empty= becomes:
@@ -132,8 +137,9 @@ class ColumnFacet(Facet):
         columns = await self.get_columns(self.sql, self.params)
         facet_size = self.ds.config("default_facet_size")
         suggested_facets = []
+        already_enabled = [c["config"]["simple"] for c in self.get_configs()]
         for column in columns:
-            if ("_facet", column) in self.get_querystring_pairs():
+            if column in already_enabled:
                 continue
             suggested_facet_sql = """
                 select distinct {column} from (
@@ -179,7 +185,9 @@ class ColumnFacet(Facet):
         qs_pairs = self.get_querystring_pairs()
 
         facet_size = self.ds.config("default_facet_size")
-        for config in self.configs or []:
+        for source_and_config in self.get_configs():
+            config = source_and_config["config"]
+            source = source_and_config["source"]
             column = config.get("column") or config["simple"]
             facet_sql = """
                 select {col} as value, count(*) as count from (
@@ -201,6 +209,7 @@ class ColumnFacet(Facet):
                 facet_results_values = []
                 facet_results[column] = {
                     "name": column,
+                    "hideable": source != "metadata",
                     "results": facet_results_values,
                     "truncated": len(facet_rows_results) > facet_size,
                 }

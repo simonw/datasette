@@ -265,26 +265,28 @@ def escape_sqlite(s):
     else:
         return '[{}]'.format(s)
 
-
 def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install, spatialite, version_note):
-    cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
-    cmd.append('"' + '", "'.join(files) + '"')
-    cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
+    cmd = ['datasette', 'serve', '--host', '0.0.0.0']
+    cmd.append('", "'.join(files))
+    cmd.extend(['--cors', '--inspect-file', 'inspect-data.json'])
     if metadata_file:
-        cmd.extend(['"--metadata"', '"{}"'.format(metadata_file)])
+        cmd.extend(['--metadata', '{}'.format(metadata_file)])
     if template_dir:
-        cmd.extend(['"--template-dir"', '"templates/"'])
+        cmd.extend(['--template-dir', 'templates/'])
     if plugins_dir:
-        cmd.extend(['"--plugins-dir"', '"plugins/"'])
+        cmd.extend(['--plugins-dir', 'plugins/'])
     if version_note:
-        cmd.extend(['"--version-note"', '"{}"'.format(version_note)])
+        cmd.extend(['--version-note', '{}'.format(version_note)])
     if static:
         for mount_point, _ in static:
-            cmd.extend(['"--static"', '"{}:{}"'.format(mount_point, mount_point)])
+            cmd.extend(['--static', '{}:{}'.format(mount_point, mount_point)])
     if extra_options:
         for opt in extra_options.split():
-            cmd.append('"{}"'.format(opt))
-
+            cmd.append('{}'.format(opt))
+    cmd = [shlex.quote(part) for part in cmd]
+    # port attribute is a (fixed) env variable and should not be quoted
+    cmd.extend(['--port', '$PORT'])
+    cmd = ' '.join(cmd)
     if branch:
         install = ['https://github.com/simonw/datasette/archive/{}.zip'.format(
             branch
@@ -299,10 +301,11 @@ WORKDIR /app
 {spatialite_extras}
 RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
+ENV PORT 8001
 EXPOSE 8001
-CMD [{cmd}]'''.format(
+CMD {cmd}'''.format(
         files=' '.join(files),
-        cmd=', '.join(cmd),
+        cmd=cmd,
         install_from=' '.join(install),
         spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else '',
     ).strip()

@@ -1300,14 +1300,20 @@ def test_suggested_facets(app_client):
     } for suggestion in app_client.get(
         "/fixtures/facetable.json"
     ).json["suggested_facets"]]
-    assert [
+    expected = [
         {"name": "planet_int", "querystring": "_facet=planet_int"},
         {"name": "on_earth", "querystring": "_facet=on_earth"},
         {"name": "state", "querystring": "_facet=state"},
         {"name": "city_id", "querystring": "_facet=city_id"},
         {"name": "neighborhood", "querystring": "_facet=neighborhood"},
         {"name": "tags", "querystring": "_facet=tags"}
-     ] == suggestions
+    ]
+    if detect_json1():
+        expected.append({
+            "name": "tags",
+            "querystring": "_facet_array=tags"
+        })
+    assert expected == suggestions
 
 
 def test_allow_facet_off():

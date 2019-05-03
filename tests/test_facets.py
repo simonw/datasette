@@ -1,4 +1,5 @@
-from datasette.facets import ColumnFacet
+from datasette.facets import ColumnFacet, ArrayFacet
+from datasette.utils import detect_json1
 from .fixtures import app_client  # noqa
 from .utils import MockRequest
 from collections import namedtuple
@@ -169,6 +170,72 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
                     "selected": False,
                 },
             ],
+            "truncated": False,
+        }
+    } == buckets
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+async def test_array_facet_suggest(app_client):
+    facet = ArrayFacet(
+        app_client.ds,
+        MockRequest("http://localhost/"),
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
+    )
+    suggestions = await facet.suggest()
+    assert [
+        {
+            "name": "tags",
+            "type": "array",
+            "toggle_url": "http://localhost/?_facet_array=tags",
+        }
+    ] == suggestions
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+async def test_array_facet_results(app_client):
+    facet = ArrayFacet(
+        app_client.ds,
+        MockRequest("http://localhost/?_facet_array=tags"),
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert [] == timed_out
+    assert {
+        "tags": {
+            "name": "tags",
+            "type": "array",
+            "results": [
+                {
+                    "value": "tag1",
+                    "label": "tag1",
+                    "count": 2,
+                    "toggle_url": "http://localhost/?_facet_array=tags&tags__arraycontains=tag1",
+                    "selected": False,
+                },
+                {
+                    "value": "tag2",
+                    "label": "tag2",
+                    "count": 1,
+                    "toggle_url": "http://localhost/?_facet_array=tags&tags__arraycontains=tag2",
+                    "selected": False,
+                },
+                {
+                    "value": "tag3",
+                    "label": "tag3",
+                    "count": 1,
+                    "toggle_url": "http://localhost/?_facet_array=tags&tags__arraycontains=tag3",
+                    "selected": False,
+                },
+            ],
+            "hideable": True,
+            "toggle_url": "/",
             "truncated": False,
         }
     } == buckets

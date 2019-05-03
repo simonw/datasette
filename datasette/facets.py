@@ -62,7 +62,10 @@ def load_facet_configs(request, table_metadata):
 
 @hookimpl
 def register_facet_classes():
-    return [ColumnFacet]
+    classes = [ColumnFacet]
+    if detect_json1():
+        classes.append(ArrayFacet)
+    return classes
 
 
 class Facet:
@@ -245,6 +248,111 @@ class ColumnFacet(Facet):
                             "selected": selected,
                         }
                     )
+            except InterruptedError:
+                facets_timed_out.append(column)
+
+        return facet_results, facets_timed_out
+
+
+class ArrayFacet(Facet):
+    type = "array"
+
+    async def suggest(self):
+        columns = await self.get_columns(self.sql, self.params)
+        suggested_facets = []
+        already_enabled = [c["config"]["simple"] for c in self.get_configs()]
+        for column in columns:
+            if column in already_enabled:
+                continue
+            # Is every value in this column either null or a JSON array?
+            suggested_facet_sql = """
+                select distinct json_type({column})
+                from ({sql})
+            """.format(
+                column=escape_sqlite(column),
+                sql=self.sql,
+            )
+            try:
+                results = await self.ds.execute(
+                    self.database, suggested_facet_sql, self.params,
+                    truncate=False,
+                    custom_time_limit=self.ds.config("facet_suggest_time_limit_ms"),
+                    log_sql_errors=False,
+                )
+                types = tuple(r[0] for r in results.rows)
+                if types in (
+                    ("array",),
+                    ("array", None)
+                ):
+                    suggested_facets.append({
+                        "name": column,
+                        "type": "array",
+                        "toggle_url": self.ds.absolute_url(
+                            self.request, path_with_added_args(
+                                self.request, {"_facet_array": column}
+                            )
+                        ),
+                    })
+            except (InterruptedError, sqlite3.OperationalError):
+                continue
+        return suggested_facets
+
+    async def facet_results(self):
+        # self.configs should be a plain list of columns
+        facet_results = {}
+        facets_timed_out = []
+
+        facet_size = self.ds.config("default_facet_size")
+        for source_and_config in self.get_configs():
+            config = source_and_config["config"]
+            print(config)
+            source = source_and_config["source"]
+            column = config.get("column") or config["simple"]
+            facet_sql = """
+                select j.value as value, count(*) as count from (
+                    {sql}
+                ) join json_each({col}) j
+                group by j.value order by count desc limit {limit}
+            """.format(
+                col=escape_sqlite(column),
+                sql=self.sql,
+                limit=facet_size+1,
+            )
+            try:
+                facet_rows_results = await self.ds.execute(
+                    self.database, facet_sql, self.params,
+                    truncate=False,
+                    custom_time_limit=self.ds.config("facet_time_limit_ms"),
+                )
+                facet_results_values = []
+                facet_results[column] = {
+                    "name": column,
+                    "type": self.type,
+                    "results": facet_results_values,
+                    "hideable": source != "metadata",
+                    "toggle_url": path_with_removed_args(self.request, {"_facet_array": column}),
+                    "truncated": len(facet_rows_results) > facet_size,
+                }
+                facet_rows = facet_rows_results.rows[:facet_size]
+                pairs = self.get_querystring_pairs()
+                for row in facet_rows:
+                    value = str(row["value"])
+                    selected = ("{}__arraycontains".format(column), value) in pairs
+                    if selected:
+                        toggle_path = path_with_removed_args(
+                            self.request, {"{}__arraycontains".format(column): value}
+                        )
+                    else:
+                        toggle_path = path_with_added_args(
+                            self.request, {"{}__arraycontains".format(column): value}
+                        )
+                    facet_results_values.append({
+                        "value": value,
+                        "label": value,
+                        "count": row["count"],
+                        "toggle_url": self.ds.absolute_url(self.request, toggle_path),
+                        "selected": selected,
+                    })
             except InterruptedError:
                 facets_timed_out.append(column)
 

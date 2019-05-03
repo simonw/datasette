@@ -5,7 +5,9 @@ from .fixtures import ( # noqa
     app_client_with_hash,
     app_client_with_memory,
     make_app_client,
+    METADATA,
 )
+import json
 import pytest
 import re
 import urllib.parse
@@ -899,3 +901,12 @@ def test_binary_data_display(app_client):
     assert expected_tds == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ]
+
+
+def test_metadata_json_html(app_client):
+    response = app_client.get(
+        "/-/metadata"
+    )
+    assert response.status == 200
+    pre = Soup(response.body, "html.parser").find("pre")
+    assert METADATA == json.loads(pre.text)

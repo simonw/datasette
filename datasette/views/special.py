@@ -4,6 +4,8 @@ from .base import RenderMixin
 
 
 class JsonDataView(RenderMixin):
+    name = "json_data"
+
     def __init__(self, datasette, filename, data_callback):
         self.ds = datasette
         self.filename = filename

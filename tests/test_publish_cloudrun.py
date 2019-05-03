@@ -35,7 +35,14 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which):
         result = runner.invoke(cli.cli, ["publish", "cloudrun", "test.db"])
         assert 0 == result.exit_code
         tag = "gcr.io/{}/datasette".format(mock_output.return_value)
-        mock_call.assert_has_calls([
-            mock.call("gcloud builds submit --tag {}".format(tag), shell=True),
-            mock.call("gcloud beta run deploy --allow-unauthenticated --image {}".format(tag), shell=True)])
-
+        mock_call.assert_has_calls(
+            [
+                mock.call("gcloud builds submit --tag {}".format(tag), shell=True),
+                mock.call(
+                    "gcloud beta run deploy --allow-unauthenticated --image {}".format(
+                        tag
+                    ),
+                    shell=True,
+                ),
+            ]
+        )

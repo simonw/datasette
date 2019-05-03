@@ -17,9 +17,7 @@ class TestClient:
 
     def get(self, path, allow_redirects=True):
         return self.sanic_test_client.get(
-            path,
-            allow_redirects=allow_redirects,
-            gather_request=False
+            path, allow_redirects=allow_redirects, gather_request=False
         )
 
 
@@ -79,39 +77,35 @@ def app_client_no_files():
     client.ds = ds
     yield client
 
+
 @pytest.fixture(scope="session")
 def app_client_with_memory():
     yield from make_app_client(memory=True)
 
+
 @pytest.fixture(scope="session")
 def app_client_with_hash():
-    yield from make_app_client(config={
-        'hash_urls': True,
-    }, is_immutable=True)
+    yield from make_app_client(config={"hash_urls": True}, is_immutable=True)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_shorter_time_limit():
     yield from make_app_client(20)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_returned_rows_matches_page_size():
     yield from make_app_client(max_returned_rows=50)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_larger_cache_size():
-    yield from make_app_client(config={
-        'cache_size_kb': 2500,
-    })
+    yield from make_app_client(config={"cache_size_kb": 2500})
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_csv_max_mb_one():
-    yield from make_app_client(config={
-        'max_csv_mb': 1,
-    })
+    yield from make_app_client(config={"max_csv_mb": 1})
 
 
 @pytest.fixture(scope="session")
@@ -119,7 +113,7 @@ def app_client_with_dot():
     yield from make_app_client(filename="fixtures.dot.db")
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def app_client_with_cors():
     yield from make_app_client(cors=True)
 
@@ -128,7 +122,7 @@ def generate_compound_rows(num):
     for a, b, c in itertools.islice(
         itertools.product(string.ascii_lowercase, repeat=3), num
     ):
-        yield a, b, c, '{}-{}-{}'.format(a, b, c)
+        yield a, b, c, "{}-{}-{}".format(a, b, c)
 
 
 def generate_sortable_rows(num):
@@ -137,107 +131,81 @@ def generate_sortable_rows(num):
         itertools.product(string.ascii_lowercase, repeat=2), num
     ):
         yield {
-            'pk1': a,
-            'pk2': b,
-            'content': '{}-{}'.format(a, b),
-            'sortable': rand.randint(-100, 100),
-            'sortable_with_nulls': rand.choice([
-                None, rand.random(), rand.random()
-            ]),
-            'sortable_with_nulls_2': rand.choice([
-                None, rand.random(), rand.random()
-            ]),
-            'text': rand.choice(['$null', '$blah']),
+            "pk1": a,
+            "pk2": b,
+            "content": "{}-{}".format(a, b),
+            "sortable": rand.randint(-100, 100),
+            "sortable_with_nulls": rand.choice([None, rand.random(), rand.random()]),
+            "sortable_with_nulls_2": rand.choice([None, rand.random(), rand.random()]),
+            "text": rand.choice(["$null", "$blah"]),
         }
 
 
 METADATA = {
-    'title': 'Datasette Fixtures',
-    'description': 'An example SQLite database demonstrating Datasette',
-    'license': 'Apache License 2.0',
-    'license_url': 'https://github.com/simonw/datasette/blob/master/LICENSE',
-    'source': 'tests/fixtures.py',
-    'source_url': 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py',
-    'about': 'About Datasette',
-    'about_url': 'https://github.com/simonw/datasette',
-    "plugins": {
-        "name-of-plugin": {
-            "depth": "root"
-        }
-    },
-    'databases': {
-        'fixtures': {
-            'description': 'Test tables description',
-            "plugins": {
-                "name-of-plugin": {
-                    "depth": "database"
-                }
-            },
-            'tables': {
-                'simple_primary_key': {
-                    'description_html': 'Simple <em>primary</em> key',
-                    'title': 'This <em>HTML</em> is escaped',
+    "title": "Datasette Fixtures",
+    "description": "An example SQLite database demonstrating Datasette",
+    "license": "Apache License 2.0",
+    "license_url": "https://github.com/simonw/datasette/blob/master/LICENSE",
+    "source": "tests/fixtures.py",
+    "source_url": "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
+    "about": "About Datasette",
+    "about_url": "https://github.com/simonw/datasette",
+    "plugins": {"name-of-plugin": {"depth": "root"}},
+    "databases": {
+        "fixtures": {
+            "description": "Test tables description",
+            "plugins": {"name-of-plugin": {"depth": "database"}},
+            "tables": {
+                "simple_primary_key": {
+                    "description_html": "Simple <em>primary</em> key",
+                    "title": "This <em>HTML</em> is escaped",
                     "plugins": {
                         "name-of-plugin": {
                             "depth": "table",
-                            "special": "this-is-simple_primary_key"
+                            "special": "this-is-simple_primary_key",
                         }
-                    }
+                    },
                 },
-                'sortable': {
-                    'sortable_columns': [
-                        'sortable',
-                        'sortable_with_nulls',
-                        'sortable_with_nulls_2',
-                        'text',
+                "sortable": {
+                    "sortable_columns": [
+                        "sortable",
+                        "sortable_with_nulls",
+                        "sortable_with_nulls_2",
+                        "text",
                     ],
-                    "plugins": {
-                        "name-of-plugin": {
-                            "depth": "table"
-                        }
-                    }
+                    "plugins": {"name-of-plugin": {"depth": "table"}},
                 },
-                'no_primary_key': {
-                    'sortable_columns': [],
-                    'hidden': True,
+                "no_primary_key": {"sortable_columns": [], "hidden": True},
+                "units": {"units": {"distance": "m", "frequency": "Hz"}},
+                "primary_key_multiple_columns_explicit_label": {
+                    "label_column": "content2"
                 },
-                'units': {
-                    'units': {
-                        'distance': 'm',
-                        'frequency': 'Hz'
-                    }
+                "simple_view": {"sortable_columns": ["content"]},
+                "searchable_view_configured_by_metadata": {
+                    "fts_table": "searchable_fts",
+                    "fts_pk": "pk",
                 },
-                'primary_key_multiple_columns_explicit_label': {
-                    'label_column': 'content2',
-                },
-                'simple_view': {
-                    'sortable_columns': ['content'],
-                },
-                'searchable_view_configured_by_metadata': {
-                    'fts_table': 'searchable_fts',
-                    'fts_pk': 'pk'
-                }
             },
-            'queries': {
-                'pragma_cache_size': 'PRAGMA cache_size;',
-                'neighborhood_search': {
-                    'sql': '''
+            "queries": {
+                "pragma_cache_size": "PRAGMA cache_size;",
+                "neighborhood_search": {
+                    "sql": """
                         select neighborhood, facet_cities.name, state
                         from facetable
                             join facet_cities
                                 on facetable.city_id = facet_cities.id
                         where neighborhood like '%' || :text || '%'
                         order by neighborhood;
-                    ''',
-                    'title': 'Search neighborhoods',
-                    'description_html': '<b>Demonstrating</b> simple like search',
+                    """,
+                    "title": "Search neighborhoods",
+                    "description_html": "<b>Demonstrating</b> simple like search",
                 },
-            }
-        },
-    }
+            },
+        }
+    },
 }
 
-PLUGIN1 = '''
+PLUGIN1 = """
 from datasette import hookimpl
 import base64
 import pint
@@ -304,9 +272,9 @@ def render_cell(value, column, table, database, datasette):
             table=table,
         )
     })
-'''
+"""
 
-PLUGIN2 = '''
+PLUGIN2 = """
 from datasette import hookimpl
 import jinja2
 import json
@@ -349,9 +317,10 @@ def render_cell(value, database):
             label=jinja2.escape(data["label"] or "") or "&nbsp;"
         )
     )
-'''
+"""
 
-TABLES = '''
+TABLES = (
+    """
 CREATE TABLE simple_primary_key (
   id varchar(30) primary key,
   content text
@@ -581,26 +550,42 @@ CREATE VIEW searchable_view AS
 CREATE VIEW searchable_view_configured_by_metadata AS
     SELECT * from searchable;
 
-''' + '\n'.join([
-    'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(i=i + 1)
-    for i in range(201)
-]) + '\n'.join([
-    'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
-        a=a, b=b, c=c, content=content
-    ) for a, b, c, content in generate_compound_rows(1001)
-]) + '\n'.join([
-    '''INSERT INTO sortable VALUES (
+"""
+    + "\n".join(
+        [
+            'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(
+                i=i + 1
+            )
+            for i in range(201)
+        ]
+    )
+    + "\n".join(
+        [
+            'INSERT INTO compound_three_primary_keys VALUES ("{a}", "{b}", "{c}", "{content}");'.format(
+                a=a, b=b, c=c, content=content
+            )
+            for a, b, c, content in generate_compound_rows(1001)
+        ]
+    )
+    + "\n".join(
+        [
+            """INSERT INTO sortable VALUES (
         "{pk1}", "{pk2}", "{content}", {sortable},
         {sortable_with_nulls}, {sortable_with_nulls_2}, "{text}");
-    '''.format(
-        **row
-    ).replace('None', 'null') for row in generate_sortable_rows(201)
-])
-TABLE_PARAMETERIZED_SQL = [(
-    "insert into binary_data (data) values (?);", [b'this is binary data']
-)]
+    """.format(
+                **row
+            ).replace(
+                "None", "null"
+            )
+            for row in generate_sortable_rows(201)
+        ]
+    )
+)
+TABLE_PARAMETERIZED_SQL = [
+    ("insert into binary_data (data) values (?);", [b"this is binary data"])
+]
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Can be called with data.db OR data.db metadata.json
     db_filename = sys.argv[-1]
     metadata_filename = None
@@ -615,9 +600,7 @@ if __name__ == '__main__':
                 conn.execute(sql, params)
         print("Test tables written to {}".format(db_filename))
         if metadata_filename:
-            open(metadata_filename, 'w').write(json.dumps(METADATA))
+            open(metadata_filename, "w").write(json.dumps(METADATA))
             print("- metadata written to {}".format(metadata_filename))
     else:
-        print("Usage: {} db_to_write.db [metadata_to_write.json]".format(
-            sys.argv[0]
-        ))
+        print("Usage: {} db_to_write.db [metadata_to_write.json]".format(sys.argv[0]))

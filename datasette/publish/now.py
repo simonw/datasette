@@ -76,9 +76,7 @@ def publish_subcommand(publish):
                 "about_url": about_url,
             },
         ):
-            now_json = {
-                "version": 1
-            }
+            now_json = {"version": 1}
             if alias:
                 now_json["alias"] = alias
             open("now.json", "w").write(json.dumps(now_json))

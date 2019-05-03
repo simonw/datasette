@@ -1,7 +1,5 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import ( # noqa
-    app_client,
-)
+from .fixtures import app_client  # noqa
 import base64
 import json
 import re
@@ -13,41 +11,26 @@ def test_plugins_dir_plugin(app_client):
     response = app_client.get(
         "/fixtures.json?sql=select+convert_units(100%2C+'m'%2C+'ft')"
     )
-    assert pytest.approx(328.0839) == response.json['rows'][0][0]
+    assert pytest.approx(328.0839) == response.json["rows"][0][0]
 
 
 @pytest.mark.parametrize(
     "path,expected_decoded_object",
     [
-        (
-            "/",
-            {
-                "template": "index.html",
-                "database": None,
-                "table": None,
-            },
-        ),
+        ("/", {"template": "index.html", "database": None, "table": None}),
         (
             "/fixtures/",
-            {
-                "template": "database.html",
-                "database": "fixtures",
-                "table": None,
-            },
+            {"template": "database.html", "database": "fixtures", "table": None},
         ),
         (
             "/fixtures/sortable",
-            {
-                "template": "table.html",
-                "database": "fixtures",
-                "table": "sortable",
-            },
+            {"template": "table.html", "database": "fixtures", "table": "sortable"},
         ),
     ],
 )
 def test_plugin_extra_css_urls(app_client, path, expected_decoded_object):
     response = app_client.get(path)
-    links = Soup(response.body, 'html.parser').findAll('link')
+    links = Soup(response.body, "html.parser").findAll("link")
     special_href = [
         l for l in links if l.attrs["href"].endswith("/extra-css-urls-demo.css")
     ][0]["href"]
@@ -59,47 +42,43 @@ def test_plugin_extra_css_urls(app_client, path, expected_decoded_object):
 
 
 def test_plugin_extra_js_urls(app_client):
-    response = app_client.get('/')
-    scripts = Soup(response.body, 'html.parser').findAll('script')
+    response = app_client.get("/")
+    scripts = Soup(response.body, "html.parser").findAll("script")
     assert [
-        s for s in scripts
-        if s.attrs == {
-            'integrity': 'SRIHASH',
-            'crossorigin': 'anonymous',
-            'src': 'https://example.com/jquery.js'
+        s
+        for s in scripts
+        if s.attrs
+        == {
+            "integrity": "SRIHASH",
+            "crossorigin": "anonymous",
+            "src": "https://example.com/jquery.js",
         }
     ]
 
 
 def test_plugins_with_duplicate_js_urls(app_client):
     # If two plugins both require jQuery, jQuery should be loaded only once
-    response = app_client.get(
-        "/fixtures"
-    )
+    response = app_client.get("/fixtures")
     # This test is a little tricky, as if the user has any other plugins in
     # their current virtual environment those may affect what comes back too.
     # What matters is that https://example.com/jquery.js is only there once
     # and it comes before plugin1.js and plugin2.js which could be in either
     # order
-    scripts = Soup(response.body, 'html.parser').findAll('script')
-    srcs = [s['src'] for s in scripts if s.get('src')]
+    scripts = Soup(response.body, "html.parser").findAll("script")
+    srcs = [s["src"] for s in scripts if s.get("src")]
     # No duplicates allowed:
     assert len(srcs) == len(set(srcs))
     # jquery.js loaded once:
-    assert 1 == srcs.count('https://example.com/jquery.js')
+    assert 1 == srcs.count("https://example.com/jquery.js")
     # plugin1.js and plugin2.js are both there:
-    assert 1 == srcs.count('https://example.com/plugin1.js')
-    assert 1 == srcs.count('https://example.com/plugin2.js')
+    assert 1 == srcs.count("https://example.com/plugin1.js")
+    assert 1 == srcs.count("https://example.com/plugin2.js")
     # jquery comes before them both
-    assert srcs.index(
-        'https://example.com/jquery.js'
-    ) < srcs.index(
-        'https://example.com/plugin1.js'
+    assert srcs.index("https://example.com/jquery.js") < srcs.index(
+        "https://example.com/plugin1.js"
     )
-    assert srcs.index(
-        'https://example.com/jquery.js'
-    ) < srcs.index(
-        'https://example.com/plugin2.js'
+    assert srcs.index("https://example.com/jquery.js") < srcs.index(
+        "https://example.com/plugin2.js"
     )
 
 
@@ -107,13 +86,9 @@ def test_plugins_render_cell_link_from_json(app_client):
     sql = """
         select '{"href": "http://example.com/", "label":"Example"}'
     """.strip()
-    path = "/fixtures?" + urllib.parse.urlencode({
-        "sql": sql,
-    })
+    path = "/fixtures?" + urllib.parse.urlencode({"sql": sql})
     response = app_client.get(path)
-    td = Soup(
-        response.body, "html.parser"
-    ).find("table").find("tbody").find("td")
+    td = Soup(response.body, "html.parser").find("table").find("tbody").find("td")
     a = td.find("a")
     assert a is not None, str(a)
     assert a.attrs["href"] == "http://example.com/"
@@ -129,10 +104,7 @@ def test_plugins_render_cell_demo(app_client):
         "column": "content",
         "table": "simple_primary_key",
         "database": "fixtures",
-        "config": {
-            "depth": "table",
-            "special": "this-is-simple_primary_key"
-        }
+        "config": {"depth": "table", "special": "this-is-simple_primary_key"},
     } == json.loads(td.string)
 
 

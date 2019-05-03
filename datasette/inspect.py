@@ -7,7 +7,7 @@ from .utils import (
     escape_sqlite,
     get_all_foreign_keys,
     table_columns,
-    sqlite3
+    sqlite3,
 )
 
 
@@ -29,7 +29,9 @@ def inspect_hash(path):
 
 def inspect_views(conn):
     " List views in a database. "
-    return [v[0] for v in conn.execute('select name from sqlite_master where type = "view"')]
+    return [
+        v[0] for v in conn.execute('select name from sqlite_master where type = "view"')
+    ]
 
 
 def inspect_tables(conn, database_metadata):
@@ -37,15 +39,11 @@ def inspect_tables(conn, database_metadata):
     tables = {}
     table_names = [
         r["name"]
-        for r in conn.execute(
-            'select * from sqlite_master where type="table"'
-        )
+        for r in conn.execute('select * from sqlite_master where type="table"')
     ]
 
     for table in table_names:
-        table_metadata = database_metadata.get("tables", {}).get(
-            table, {}
-        )
+        table_metadata = database_metadata.get("tables", {}).get(table, {})
 
         try:
             count = conn.execute(

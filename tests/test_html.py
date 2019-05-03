@@ -883,3 +883,19 @@ def test_extra_where_clauses(app_client):
         "/fixtures/facetable?_where=city_id%3D1",
         "/fixtures/facetable?_where=neighborhood%3D%27Dogpatch%27"
     ] == hrefs
+
+
+def test_binary_data_display(app_client):
+    response = app_client.get("/fixtures/binary_data")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    expected_tds = [
+        [
+            '<td class="col-Link"><a href="/fixtures/binary_data/1">1</a></td>',
+            '<td class="col-rowid">1</td>',
+            '<td class="col-data">&lt;Binary\xa0data:\xa019\xa0bytes&gt;</td>'
+        ]
+    ]
+    assert expected_tds == [
+        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
+    ]

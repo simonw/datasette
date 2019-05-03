@@ -36,6 +36,9 @@ def make_app_client(
         filepath = os.path.join(tmpdir, filename)
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
+        for sql, params in TABLE_PARAMETERIZED_SQL:
+            with conn:
+                conn.execute(sql, params)
         os.chdir(os.path.dirname(filepath))
         plugins_dir = os.path.join(tmpdir, "plugins")
         os.mkdir(plugins_dir)
@@ -550,6 +553,10 @@ VALUES
     (2, 0, 'MC', 4, 'Arcadia Planitia', '[]')
 ;
 
+CREATE TABLE binary_data (
+    data BLOB
+);
+
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');
@@ -589,6 +596,9 @@ CREATE VIEW searchable_view_configured_by_metadata AS
         **row
     ).replace('None', 'null') for row in generate_sortable_rows(201)
 ])
+TABLE_PARAMETERIZED_SQL = [(
+    "insert into binary_data (data) values (?);", [b'this is binary data']
+)]
 
 if __name__ == '__main__':
     # Can be called with data.db OR data.db metadata.json
@@ -600,6 +610,9 @@ if __name__ == '__main__':
     if db_filename.endswith(".db"):
         conn = sqlite3.connect(db_filename)
         conn.executescript(TABLES)
+        for sql, params in TABLE_PARAMETERIZED_SQL:
+            with conn:
+                conn.execute(sql, params)
         print("Test tables written to {}".format(db_filename))
         if metadata_filename:
             open(metadata_filename, 'w').write(json.dumps(METADATA))

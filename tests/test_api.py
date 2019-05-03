@@ -23,7 +23,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {"fixtures": 0}.keys()
     d = response.json["fixtures"]
     assert d["name"] == "fixtures"
-    assert d["tables_count"] == 25
+    assert d["tables_count"] == 26
     assert len(d["tables_truncated"]) == 5
     assert d["tables_more"] is True
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
@@ -53,6 +53,14 @@ def test_database_page(app_client):
         'foreign_keys': {'incoming': [], 'outgoing': []},
         'fts_table': None,
         'primary_keys': ['pk'],
+    }, {
+        'columns': ['data'],
+        'count': 1,
+        'foreign_keys': {'incoming': [], 'outgoing': []},
+        'fts_table': None,
+        'hidden': False,
+        'name': 'binary_data',
+        'primary_keys': []
     }, {
         'columns': ['pk', 'f1', 'f2', 'f3'],
         'name': 'complex_foreign_keys',

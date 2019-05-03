@@ -2,9 +2,11 @@ import asyncio
 import click
 import collections
 import hashlib
+import json
 import os
 import sys
 import threading
+import time
 import traceback
 import urllib.parse
 from concurrent import futures
@@ -23,10 +25,12 @@ from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
 from .views.special import JsonDataView
 from .views.table import RowView, TableView
+from .renderer import json_renderer
 
 from .utils import (
     InterruptedError,
     Results,
+    detect_spatialite,
     escape_css_string,
     escape_sqlite,
     get_outbound_foreign_keys,
@@ -38,6 +42,7 @@ from .utils import (
     to_css_class
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
+from .tracer import capture_traces, trace
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
@@ -119,16 +124,48 @@ async def favicon(request):
 
 
 class ConnectedDatabase:
-    def __init__(self, path=None, is_mutable=False, is_memory=False):
+    def __init__(self, ds, path=None, is_mutable=False, is_memory=False):
+        self.ds = ds
         self.path = path
         self.is_mutable = is_mutable
         self.is_memory = is_memory
         self.hash = None
-        self.size = None
+        self.cached_size = None
+        self.cached_table_counts = None
         if not self.is_mutable:
             p = Path(path)
             self.hash = inspect_hash(p)
-            self.size = p.stat().st_size
+            self.cached_size = p.stat().st_size
+
+    @property
+    def size(self):
+        if self.cached_size is not None:
+            return self.cached_size
+        else:
+            return Path(self.path).stat().st_size
+
+    async def table_counts(self, limit=10):
+        if not self.is_mutable and self.cached_table_counts is not None:
+            return self.cached_table_counts
+        # Try to get counts for each table, $limit timeout for each count
+        counts = {}
+        for table in await self.table_names():
+            try:
+                table_count = (await self.ds.execute(
+                    self.name,
+                    "select count(*) from [{}]".format(table),
+                    custom_time_limit=limit,
+                )).rows[0][0]
+                counts[table] = table_count
+            except InterruptedError:
+                counts[table] = None
+        if not self.is_mutable:
+            self.cached_table_counts = counts
+        return counts
+
+    @property
+    def mtime_ns(self):
+        return Path(self.path).stat().st_mtime_ns
 
     @property
     def name(self):
@@ -136,6 +173,64 @@ class ConnectedDatabase:
             return ":memory:"
         else:
             return Path(self.path).stem
+
+    async def table_names(self):
+        results = await self.ds.execute(self.name, "select name from sqlite_master where type='table'")
+        return [r[0] for r in results.rows]
+
+    async def hidden_table_names(self):
+        # Mark tables 'hidden' if they relate to FTS virtual tables
+        hidden_tables = [r[0] for r in (
+            await self.ds.execute(self.name, """
+                select name from sqlite_master
+                where rootpage = 0
+                and sql like '%VIRTUAL TABLE%USING FTS%'
+            """)
+        ).rows]
+        has_spatialite = await self.ds.execute_against_connection_in_thread(
+            self.name, detect_spatialite
+        )
+        if has_spatialite:
+            # Also hide Spatialite internal tables
+            hidden_tables += [
+                "ElementaryGeometries",
+                "SpatialIndex",
+                "geometry_columns",
+                "spatial_ref_sys",
+                "spatialite_history",
+                "sql_statements_log",
+                "sqlite_sequence",
+                "views_geometry_columns",
+                "virts_geometry_columns",
+            ] + [
+                r[0]
+                for r in (
+                    await self.ds.execute(self.name, """
+                        select name from sqlite_master
+                        where name like "idx_%"
+                        and type = "table"
+                    """)
+                ).rows
+            ]
+        # Add any from metadata.json
+        db_metadata = self.ds.metadata(database=self.name)
+        if "tables" in db_metadata:
+            hidden_tables += [
+                t for t in db_metadata["tables"] if db_metadata["tables"][t].get("hidden")
+            ]
+        # Also mark as hidden any tables which start with the name of a hidden table
+        # e.g. "searchable_fts" implies "searchable_fts_content" should be hidden
+        for table_name in await self.table_names():
+            for hidden_table in hidden_tables[:]:
+                if table_name.startswith(hidden_table):
+                    hidden_tables.append(table_name)
+                    continue
+
+        return hidden_tables
+
+    async def view_names(self):
+        results = await self.ds.execute(self.name, "select name from sqlite_master where type='view'")
+        return [r[0] for r in results.rows]
 
     def __repr__(self):
         tags = []
@@ -187,7 +282,8 @@ class Datasette:
             if file is MEMORY:
                 path = None
                 is_memory = True
-            db = ConnectedDatabase(path, is_mutable=path not in self.immutables, is_memory=is_memory)
+            is_mutable = path not in self.immutables
+            db = ConnectedDatabase(self, path, is_mutable=is_mutable, is_memory=is_memory)
             if db.name in self.databases:
                 raise Exception("Multiple files with same stem: {}".format(db.name))
             self.databases[db.name] = db
@@ -201,6 +297,7 @@ class Datasette:
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
         self._config = dict(DEFAULT_CONFIG, **(config or {}))
+        self.renderers = {}  # File extension -> renderer function
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
             max_workers=self.config("num_sql_threads")
@@ -579,6 +676,7 @@ class Datasette:
         truncate=False,
         custom_time_limit=None,
         page_size=None,
+        log_sql_errors=True,
     ):
         """Executes sql against db_name in a thread"""
         page_size = page_size or self.page_size
@@ -604,12 +702,13 @@ class Datasette:
                         truncated = False
                 except sqlite3.OperationalError as e:
                     if e.args == ('interrupted',):
-                        raise InterruptedError(e)
-                    print(
-                        "ERROR: conn={}, sql = {}, params = {}: {}".format(
-                            conn, repr(sql), params, e
+                        raise InterruptedError(e, sql, params)
+                    if log_sql_errors:
+                        print(
+                            "ERROR: conn={}, sql = {}, params = {}: {}".format(
+                                conn, repr(sql), params, e
+                            )
                         )
-                    )
                     raise
 
             if truncate:
@@ -618,12 +717,42 @@ class Datasette:
             else:
                 return Results(rows, False, cursor.description)
 
-        return await self.execute_against_connection_in_thread(
-            db_name, sql_operation_in_thread
-        )
+        with trace("sql", (db_name, sql.strip(), params)):
+            results = await self.execute_against_connection_in_thread(
+                db_name, sql_operation_in_thread
+            )
+        return results
+
+    def register_renderers(self):
+        """ Register output renderers which output data in custom formats. """
+        # Built-in renderers
+        self.renderers['json'] = json_renderer
+
+        # Hooks
+        hook_renderers = []
+        for hook in pm.hook.register_output_renderer(datasette=self):
+            if type(hook) == list:
+                hook_renderers += hook
+            else:
+                hook_renderers.append(hook)
+
+        for renderer in hook_renderers:
+            self.renderers[renderer['extension']] = renderer['callback']
 
     def app(self):
-        app = Sanic(__name__)
+
+        class TracingSanic(Sanic):
+            async def handle_request(self, request, write_callback, stream_callback):
+                if request.args.get("_trace"):
+                    request["traces"] = []
+                    request["trace_start"] = time.time()
+                    with capture_traces(request["traces"]):
+                        res = await super().handle_request(request, write_callback, stream_callback)
+                else:
+                    res = await super().handle_request(request, write_callback, stream_callback)
+                return res
+
+        app = TracingSanic(__name__)
         default_templates = str(app_root / "datasette" / "templates")
         template_paths = []
         if self.template_dir:
@@ -652,6 +781,11 @@ class Datasette:
         self.jinja_env.filters["to_css_class"] = to_css_class
         # pylint: disable=no-member
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
+
+        self.register_renderers()
+        # Generate a regex snippet to match all registered renderer file extensions
+        renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
+
         app.add_route(IndexView.as_view(self), r"/<as_format:(\.jsono?)?$>")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, "/favicon.ico")
@@ -687,7 +821,8 @@ class Datasette:
             DatabaseDownload.as_view(self), r"/<db_name:[^/]+?><as_db:(\.db)$>"
         )
         app.add_route(
-            DatabaseView.as_view(self), r"/<db_name:[^/]+?><as_format:(\.jsono?|\.csv)?$>"
+            DatabaseView.as_view(self),
+            r"/<db_name:[^/]+?><as_format:(" + renderer_regex + r"|.jsono|\.csv)?$>"
         )
         app.add_route(
             TableView.as_view(self),
@@ -695,9 +830,10 @@ class Datasette:
         )
         app.add_route(
             RowView.as_view(self),
-            r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(\.jsono?)?$>",
+            r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(" + renderer_regex + r")?$>",
         )
         self.register_custom_units()
+
         # On 404 with a trailing slash redirect to path without that slash:
         # pylint: disable=unused-variable
         @app.middleware("response")
@@ -707,6 +843,28 @@ class Datasette:
                 if request.query_string:
                     path = "{}?{}".format(path, request.query_string)
                 return response.redirect(path)
+
+        @app.middleware("response")
+        async def add_traces_to_response(request, response):
+            if request.get("traces") is None:
+                return
+            traces = {
+                "duration": time.time() - request["trace_start"],
+                "queries": request["traces"],
+            }
+            if "text/html" in response.content_type and b'</body>' in response.body:
+                extra = json.dumps(traces, indent=2)
+                extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
+                response.body = response.body.replace(b"</body>", extra_html)
+            elif "json" in response.content_type and response.body.startswith(b"{"):
+                data = json.loads(response.body.decode("utf8"))
+                if "_traces" not in data:
+                    data["_traces"] = {
+                        "num_traces": len(traces["queries"]),
+                        "traces": traces,
+                        "duration_sum_ms": sum(t[-1] for t in traces["queries"]),
+                    }
+                    response.body = json.dumps(data).encode("utf8")
 
         @app.exception(Exception)
         def on_exception(request, exception):
@@ -744,5 +902,12 @@ class Datasette:
             else:
                 template = self.jinja_env.select_template(templates)
                 return response.html(template.render(info), status=status)
+
+        # First time server starts up, calculate table counts for immutable databases
+        @app.listener("before_server_start")
+        async def setup_db(app, loop):
+            for dbname, database in self.databases.items():
+                if not database.is_mutable:
+                    await database.table_counts(limit=60*60*1000)
 
         return app

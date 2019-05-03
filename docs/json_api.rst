@@ -176,10 +176,80 @@ querystring arguments:
 
 .. _table_arguments:
 
-Special table arguments
------------------------
+Table arguments
+---------------
 
-The Datasette table view takes a number of special querystring arguments:
+The Datasette table view takes a number of special querystring arguments.
+
+Column filter arguments
+~~~~~~~~~~~~~~~~~~~~~~~
+
+You can filter the data returned by the table based on column values using a querystring argument.
+
+``?column__exact=value`` or ``?_column=value``
+    Returns rows where the specified column exactly matches the value.
+
+``?column__not=value``
+    Returns rows where the column does not match the value.
+
+``?column__contains=value``
+    Rows where the string column contains the specified value (``column like "%value%"`` in SQL).
+
+``?column__endswith=value``
+    Rows where the string column ends with the specified value (``column like "%value"`` in SQL).
+
+``?column__startswith=value``
+    Rows where the string column starts with the specified value (``column like "value%"`` in SQL).
+
+``?column__gt=value``
+    Rows which are greater than the specified value.
+
+``?column__gte=value``
+    Rows which are greater than or equal to the specified value.
+
+``?column__lt=value``
+    Rows which are less than the specified value.
+
+``?column__lte=value``
+    Rows which are less than or equal to the specified value.
+
+``?column__like=value``
+    Match rows with a LIKE clause, case insensitive and with ``%`` as the wildcard character.
+
+``?column__glob=value``
+    Similar to LIKE but uses Unix wildcard syntax and is case sensitive.
+
+``?column__in=value1,value2,value3``
+    Rows where column matches any of the provided values.
+
+    You can use a comma separated string, or you can use a JSON array.
+
+    The JSON array option is useful if one of your matching values itself contains a comma:
+
+    ``?column__in=["value","value,with,commas"]``
+
+``?column__arraycontains=value``
+    Works against columns that contain JSON arrays - matches if any of the values in that array match.
+
+    This is only available if the ``json1`` SQLite extension is enabled.
+
+``?column__date=value``
+    Column is a datestamp occurring on the specified YYYY-MM-DD date, e.g. ``2018-01-02``.
+
+``?column__isnull=1``
+    Matches rows where the column is null.
+
+``?column__notnull=1``
+    Matches rows where the column is not null.
+
+``?column__isblank=1``
+    Matches rows where the column is blank, meaning null or the empty string.
+
+``?column__notblank=1``
+    Matches rows where the column is not blank.
+
+Special table arguments
+~~~~~~~~~~~~~~~~~~~~~~~
 
 ``?_labels=on/off``
     Expand foreign key references for every possible column. See below.
@@ -232,6 +302,14 @@ The Datasette table view takes a number of special querystring arguments:
 ``?_next=TOKEN``
     Pagination by continuation token - pass the token that was returned in the
     ``"next"`` property by the previous page.
+
+``?_trace=1``
+    Turns on tracing for this page: SQL queries executed during the request will
+    be gathered and included in the response, either in a new ``"_traces"`` key
+    for JSON responses or at the bottom of the page if the response is in HTML.
+
+    The structure of the data returned here should be considered highly unstable
+    and very likely to change.
 
 .. _expand_foreign_keys:
 

@@ -26,7 +26,7 @@ def extra_js_urls(template, database, table, datasette):
 
 
 @hookspec
-def extra_body_script(template, database, table, datasette):
+def extra_body_script(template, database, table, view_name, datasette):
     "Extra JavaScript code to be included in <script> at bottom of body"
 
 
@@ -38,3 +38,13 @@ def publish_subcommand(publish):
 @hookspec(firstresult=True)
 def render_cell(value, column, table, database, datasette):
     "Customize rendering of HTML table cell values"
+
+
+@hookspec
+def register_output_renderer(datasette):
+    "Register a renderer to output data in a different format"
+
+
+@hookspec
+def register_facet_classes():
+    "Register Facet subclasses"

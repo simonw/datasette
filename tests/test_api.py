@@ -18,12 +18,19 @@ import urllib
 
 
 def test_homepage(app_client):
-    response = app_client.get('/.json')
+    response = app_client.get("/.json")
     assert response.status == 200
-    assert response.json.keys() == {'fixtures': 0}.keys()
-    d = response.json['fixtures']
-    assert d['name'] == 'fixtures'
-    assert d['tables_count'] == 20
+    assert response.json.keys() == {"fixtures": 0}.keys()
+    d = response.json["fixtures"]
+    assert d["name"] == "fixtures"
+    assert d["tables_count"] == 25
+    assert len(d["tables_truncated"]) == 5
+    assert d["tables_more"] is True
+    # 4 hidden FTS tables + no_primary_key (hidden in metadata)
+    assert d["hidden_tables_count"] == 5
+    # 201 in no_primary_key, plus 5 in other hidden tables:
+    assert d["hidden_table_rows_sum"] == 206
+    assert d["views_count"] == 4
 
 
 def test_database_page(app_client):
@@ -351,7 +358,8 @@ def test_no_files_uses_memory_database(app_client_no_files):
     assert response.status == 200
     assert {
         ":memory:": {
-            "hash": "000",
+            "hash": None,
+            "color": "f7935d",
             "hidden_table_rows_sum": 0,
             "hidden_tables_count": 0,
             "name": ":memory:",
@@ -692,7 +700,6 @@ def test_page_size_zero(app_client):
     response = app_client.get('/fixtures/no_primary_key.json?_size=0')
     assert 200 == response.status
     assert [] == response.json['rows']
-    assert 201 == response.json['table_rows_count']
     assert 201 == response.json['filtered_table_rows_count']
     assert None is response.json['next']
     assert None is response.json['next_url']
@@ -792,7 +799,6 @@ def test_sortable_and_filtered(app_client):
         if 'd' in row['content']
     ]
     assert len(expected) == response.json['filtered_table_rows_count']
-    assert 201 == response.json['table_rows_count']
     expected.sort(key=lambda row: -row['sortable'])
     assert [
         r['content'] for r in expected
@@ -901,6 +907,16 @@ def test_searchable_invalid_column(app_client):
 def test_table_filter_queries(app_client, path, expected_rows):
     response = app_client.get(path)
     assert expected_rows == response.json['rows']
+
+
+def test_table_filter_queries_multiple_of_same_type(app_client):
+    response = app_client.get(
+        "/fixtures/simple_primary_key.json?content__not=world&content__not=hello"
+    )
+    assert [
+        ['3', ''],
+        ['4', 'RENDER_CELL_DEMO']
+    ] == response.json['rows']
 
 
 @pytest.mark.skipif(
@@ -1042,18 +1058,16 @@ def test_inspect_json(app_client):
 
 
 def test_plugins_json(app_client):
-    response = app_client.get(
-        "/-/plugins.json"
-    )
-    # This will include any plugins that have been installed into the
-    # current virtual environment, so we only check for the presence of
-    # the one we know will definitely be There
-    assert {
-        'name': 'my_plugin.py',
-        'static': False,
-        'templates': False,
-        'version': None,
-    } in response.json
+    response = app_client.get("/-/plugins.json")
+    assert [
+        {"name": "my_plugin.py", "static": False, "templates": False, "version": None},
+        {
+            "name": "my_plugin_2.py",
+            "static": False,
+            "templates": False,
+            "version": None,
+        }
+    ] == sorted(response.json, key=lambda p: p["name"])
 
 
 def test_versions_json(app_client):
@@ -1115,6 +1129,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         {
             "state": {
                 "name": "state",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=city_id",
                 "results": [
                     {
                         "value": "CA",
@@ -1142,6 +1159,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             },
             "city_id": {
                 "name": "city_id",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=state",
                 "results": [
                     {
                         "value": 1,
@@ -1180,6 +1200,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         {
             "state": {
                 "name": "state",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=city_id&state=MI",
                 "results": [
                     {
                         "value": "MI",
@@ -1193,6 +1216,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             },
             "city_id": {
                 "name": "city_id",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=state&state=MI",
                 "results": [
                     {
                         "value": 3,
@@ -1210,6 +1236,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         {
             "planet_int": {
                 "name": "planet_int",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json",
                 "results": [
                     {
                         "value": 1,
@@ -1235,6 +1264,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         {
             "planet_int": {
                 "name": "planet_int",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?planet_int=1",
                 "results": [
                     {
                         "value": 1,
@@ -1262,9 +1294,26 @@ def test_facets(app_client, path, expected_facet_results):
 
 
 def test_suggested_facets(app_client):
-    assert len(app_client.get(
+    suggestions = [{
+        "name": suggestion["name"],
+        "querystring": suggestion["toggle_url"].split("?")[-1]
+    } for suggestion in app_client.get(
         "/fixtures/facetable.json"
-    ).json["suggested_facets"]) > 0
+    ).json["suggested_facets"]]
+    expected = [
+        {"name": "planet_int", "querystring": "_facet=planet_int"},
+        {"name": "on_earth", "querystring": "_facet=on_earth"},
+        {"name": "state", "querystring": "_facet=state"},
+        {"name": "city_id", "querystring": "_facet=city_id"},
+        {"name": "neighborhood", "querystring": "_facet=neighborhood"},
+        {"name": "tags", "querystring": "_facet=tags"}
+    ]
+    if detect_json1():
+        expected.append({
+            "name": "tags",
+            "querystring": "_facet_array=tags"
+        })
+    assert expected == suggestions
 
 
 def test_allow_facet_off():
@@ -1433,3 +1482,14 @@ def test_infinity_returned_as_invalid_json_if_requested(app_client):
         {"rowid": 2, "value": float("-inf")},
         {"rowid": 3, "value": 1.5}
     ] == response.json
+
+
+def test_trace(app_client):
+    response = app_client.get("/fixtures/simple_primary_key.json?_trace=1")
+    data = response.json
+    assert "_traces" in data
+    traces = data["_traces"]
+    assert isinstance(traces["duration_sum_ms"], float)
+    assert isinstance(traces["num_traces"], int)
+    assert isinstance(traces["traces"], dict)
+    assert len(traces["traces"]["queries"]) == traces["num_traces"]

@@ -676,6 +676,7 @@ class Datasette:
         truncate=False,
         custom_time_limit=None,
         page_size=None,
+        log_sql_errors=True,
     ):
         """Executes sql against db_name in a thread"""
         page_size = page_size or self.page_size
@@ -701,12 +702,13 @@ class Datasette:
                         truncated = False
                 except sqlite3.OperationalError as e:
                     if e.args == ('interrupted',):
-                        raise InterruptedError(e)
-                    print(
-                        "ERROR: conn={}, sql = {}, params = {}: {}".format(
-                            conn, repr(sql), params, e
+                        raise InterruptedError(e, sql, params)
+                    if log_sql_errors:
+                        print(
+                            "ERROR: conn={}, sql = {}, params = {}: {}".format(
+                                conn, repr(sql), params, e
+                            )
                         )
-                    )
                     raise
 
             if truncate:

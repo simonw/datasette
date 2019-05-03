@@ -110,7 +110,7 @@
 
 {% if suggested_facets %}
     <p class="suggested-facets">
-        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if facet.type %} ({{ facet.type }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
     </p>
 {% endif %}
 
@@ -123,9 +123,9 @@
         {% for facet_info in sorted_facet_results %}
             <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}" id="facet-{{ facet_info.name|to_css_class }}">
                 <p class="facet-info-name">
-                    <strong>{{ facet_info.name }}</strong>
-                    {% if facet_hideable(facet_info.name) %}
-                        <a href="{{ path_with_removed_args(request, {'_facet': facet_info['name']}) }}" class="cross">&#x2716;</a>
+                    <strong>{{ facet_info.name }}{% if facet_info.type != "column" %} ({{ facet_info.type }}){% endif %}</strong>
+                    {% if facet_info.hideable %}
+                        <a href="{{ facet_info.toggle_url }}" class="cross">&#x2716;</a>
                     {% endif %}
                 </p>
                 <ul>

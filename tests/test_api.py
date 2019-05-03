@@ -1129,6 +1129,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         {
             "state": {
                 "name": "state",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=city_id",
                 "results": [
                     {
                         "value": "CA",
@@ -1156,6 +1159,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             },
             "city_id": {
                 "name": "city_id",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=state",
                 "results": [
                     {
                         "value": 1,
@@ -1194,6 +1200,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         {
             "state": {
                 "name": "state",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=city_id&state=MI",
                 "results": [
                     {
                         "value": "MI",
@@ -1207,6 +1216,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             },
             "city_id": {
                 "name": "city_id",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=state&state=MI",
                 "results": [
                     {
                         "value": 3,
@@ -1224,6 +1236,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         {
             "planet_int": {
                 "name": "planet_int",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json",
                 "results": [
                     {
                         "value": 1,
@@ -1249,6 +1264,9 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
         {
             "planet_int": {
                 "name": "planet_int",
+                "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?planet_int=1",
                 "results": [
                     {
                         "value": 1,
@@ -1276,9 +1294,20 @@ def test_facets(app_client, path, expected_facet_results):
 
 
 def test_suggested_facets(app_client):
-    assert len(app_client.get(
+    suggestions = [{
+        "name": suggestion["name"],
+        "querystring": suggestion["toggle_url"].split("?")[-1]
+    } for suggestion in app_client.get(
         "/fixtures/facetable.json"
-    ).json["suggested_facets"]) > 0
+    ).json["suggested_facets"]]
+    assert [
+        {"name": "planet_int", "querystring": "_facet=planet_int"},
+        {"name": "on_earth", "querystring": "_facet=on_earth"},
+        {"name": "state", "querystring": "_facet=state"},
+        {"name": "city_id", "querystring": "_facet=city_id"},
+        {"name": "neighborhood", "querystring": "_facet=neighborhood"},
+        {"name": "tags", "querystring": "_facet=tags"}
+     ] == suggestions
 
 
 def test_allow_facet_off():

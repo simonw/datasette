@@ -4,19 +4,58 @@
  Publishing data
 =================
 
-Datasette includes tools for publishing and deploying your data to the internet. The ``datasette publish`` command will deploy a new Datasette instance containing your databases directly to a Zeit New or Heroku hosting account. You can also use ``datasette package`` to create a Docker image that bundles your databases together with the datasette application that is used to serve them.
+Datasette includes tools for publishing and deploying your data to the internet. The ``datasette publish`` command will deploy a new Datasette instance containing your databases directly to a Heroku, Google Cloud or Zeit Now hosting account. You can also use ``datasette package`` to create a Docker image that bundles your databases together with the datasette application that is used to serve them.
 
 datasette publish
 =================
 
 Once you have created a SQLite database (e.g. using `csvs-to-sqlite <https://github.com/simonw/csvs-to-sqlite/>`_) you can deploy it to a hosting account using a single command.
 
-You will need a free hosting account with either `Zeit Now <https://zeit.co/now>`_ or `Heroku <http://heroku.com/>`_. Once you have created your account you will need to install and configure the ``now`` or ``heroku`` command-line tools.
+You will need a hosting account with `Heroku <http://heroku.com/>`__ or `Google Cloud <https://cloud.google.com/>`__. Once you have created your account you will need to install and configure the ``now`` or ``heroku`` command-line tools.
 
-Publishing to Zeit Now
-----------------------
+Publishing to Heroku
+--------------------
 
-To publish your database(s) to a new instance hosted by Zeit Now, create an account there, install the `now cli tool <https://zeit.co/download>`_ and then run the following command::
+To publish your data using Heroku, first create an account there and install and configure the `Heroku CLI tool <https://devcenter.heroku.com/articles/heroku-cli>`_.
+
+You can publish a database to Heroku using the following command::
+
+    datasette publish heroku mydatabase.db
+
+This will output some details about the new deployment, including a URL like this one::
+
+    https://limitless-reef-88278.herokuapp.com/ deployed to Heroku
+
+You can specify a custom app name by passing ``-n my-app-name`` to the publish command. This will also allow you to overwrite an existing app.
+
+.. literalinclude:: datasette-publish-heroku-help.txt
+
+Publishing to Google Cloud Run
+------------------------------
+
+`Google Cloud Run <https://cloud.google.com/run/>`__ launched as a beta in in April 2019. It allows you to publish data in a scale-to-zero environment, so your application will start running when the first request is received and will shut down again when traffic ceases. This means you only pay for time spent serving traffic.
+
+You will first need to install and configure the Google Cloud CLI tools by following `these instructions <https://cloud.google.com/sdk/>`__.
+
+You can then publish a database to Google Cloud Run using the following command::
+
+    datasette publish cloudrun mydatabase.db
+
+You may need to interact with prompts from the tool. Once it has finished it will output a URL like this one::
+
+    Service [datasette] revision [datasette-00001] has been deployed
+    and is serving traffic at https://datasette-j7hipcg4aq-uc.a.run.app
+
+During the deployment the tool will prompt you for the name of your service. You can reuse an existing name to replace your previous deployment with your new version, or pick a new name to deploy to a new URL.
+
+.. literalinclude:: datasette-publish-cloudrun-help.txt
+
+Publishing to Zeit Now v1
+-------------------------
+
+Datasette can be deployed to Zeit Now's older v1 hosting platform. They no longer accept new signups for this service, so this option is currently only available if you created an account before January 2019.
+
+To publish your database(s) to a new instance hosted by Zeit Now v1, install the `now cli tool <https://zeit.co/download>`__ and then run the following command::
 
     datasette publish now mydatabase.db
 
@@ -37,23 +76,6 @@ You can use ``anything-you-like.now.sh``, provided no one else has already regis
 You can also use custom domains, if you `first register them with Zeit Now <https://zeit.co/docs/features/aliases>`_.
 
 .. literalinclude:: datasette-publish-now-help.txt
-
-Publishing to Heroku
---------------------
-
-To publish your data using Heroku, first create an account there and install and configure the `Heroku CLI tool <https://devcenter.heroku.com/articles/heroku-cli>`_.
-
-You can now publish a database to Heroku using the following command::
-
-    datasette publish heroku mydatabase.db
-
-This will output some details about the new deployment, including a URL like this one::
-
-    https://limitless-reef-88278.herokuapp.com/ deployed to Heroku
-
-You can specify a custom app name by passing ``-n my-app-name`` to the publish command. This will also allow you to overwrite an existing app.
-
-.. literalinclude:: datasette-publish-heroku-help.txt
 
 Custom metadata and plugins
 ---------------------------

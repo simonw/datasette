@@ -34,6 +34,7 @@ def test_config_options_are_documented(config):
     ("package", "datasette-package-help.txt"),
     ("publish now", "datasette-publish-now-help.txt"),
     ("publish heroku", "datasette-publish-heroku-help.txt"),
+    ("publish cloudrun", "datasette-publish-cloudrun-help.txt"),
 ))
 def test_help_includes(name, filename):
     expected = open(str(docs_path / filename)).read()

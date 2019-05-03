@@ -1,9 +1,10 @@
 language: python
+dist: xenial
 
 # 3.6 is listed first so it gets used for the later build stages
 python:
   - "3.6"
-  - "3.7-dev"
+  - "3.7"
   - "3.5"
 
 # Executed for 3.5 AND 3.5 as the first "test" stage:

@@ -33,12 +33,12 @@ If you just want to get started without creating your own fork, you can do this 
 The next step is to create a virtual environment for your project and use it to install Datasette's dependencies::
 
     cd datasette
-    # Create a virtual environment in venv/
-    python3 -mvenv venv
+    # Create a virtual environment in ./venv
+    python3 -m venv ./venv
     # Now activate the virtual environment, so pip can install into it
     source venv/bin/activate
     # Install Datasette and its testing dependencies
-    pip install -e .[test]
+    python3 -m pip -e .[test]
 
 That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "use the setup.py in this directory and install the optional testing dependencies as well".
 

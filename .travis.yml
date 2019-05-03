@@ -1,4 +1,5 @@
 language: python
+dist: xenial
 
 # 3.6 is listed first so it gets used for the later build stages
 python:

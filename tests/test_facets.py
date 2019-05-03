@@ -83,7 +83,9 @@ async def test_column_facet_results(app_client):
     assert {
         "city_id": {
             "name": "city_id",
+            "type": "column",
             "hideable": True,
+            "toggle_url": "/",
             "results": [
                 {
                     "value": 1,
@@ -134,7 +136,9 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
     assert {
         "city_id": {
             "name": "city_id",
+            "type": "column",
             "hideable": False,
+            "toggle_url": "/",
             "results": [
                 {
                     "value": 1,

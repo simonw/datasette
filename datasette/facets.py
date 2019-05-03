@@ -209,7 +209,9 @@ class ColumnFacet(Facet):
                 facet_results_values = []
                 facet_results[column] = {
                     "name": column,
+                    "type": self.type,
                     "hideable": source != "metadata",
+                    "toggle_url": path_with_removed_args(self.request, {"_facet": column}),
                     "results": facet_results_values,
                     "truncated": len(facet_rows_results) > facet_size,
                 }

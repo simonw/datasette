@@ -1130,6 +1130,8 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             "state": {
                 "name": "state",
                 "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=city_id",
                 "results": [
                     {
                         "value": "CA",
@@ -1158,6 +1160,8 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             "city_id": {
                 "name": "city_id",
                 "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=state",
                 "results": [
                     {
                         "value": 1,
@@ -1197,6 +1201,8 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             "state": {
                 "name": "state",
                 "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=city_id&state=MI",
                 "results": [
                     {
                         "value": "MI",
@@ -1211,6 +1217,8 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             "city_id": {
                 "name": "city_id",
                 "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?_facet=state&state=MI",
                 "results": [
                     {
                         "value": 3,
@@ -1229,6 +1237,8 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             "planet_int": {
                 "name": "planet_int",
                 "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json",
                 "results": [
                     {
                         "value": 1,
@@ -1255,6 +1265,8 @@ def test_page_size_matching_max_returned_rows(app_client_returned_rows_matches_p
             "planet_int": {
                 "name": "planet_int",
                 "hideable": True,
+                "type": "column",
+                "toggle_url": "/fixtures/facetable.json?planet_int=1",
                 "results": [
                     {
                         "value": 1,

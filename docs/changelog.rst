@@ -1,6 +1,55 @@
+.. _changelog:
+
 =========
 Changelog
 =========
+
+.. _v0_27:
+
+0.27 (2019-01-31)
+-----------------
+
+- New command: ``datasette plugins`` (:ref:`documentation <plugins_installed>`) shows you the currently installed list of plugins.
+- Datasette can now output `newline-delimited JSON <http://ndjson.org/>`__ using the new ``?_shape=array&_nl=on`` querystring option.
+- Added documentation on :ref:`ecosystem`.
+- Now using Python 3.7.2 as the base for the official `Datasette Docker image <https://hub.docker.com/r/datasetteproject/datasette/>`__.
+
+.. _v0_26_1:
+
+0.26.1 (2019-01-10)
+-------------------
+
+- ``/-/versions`` now includes SQLite ``compile_options`` (`#396 <https://github.com/simonw/datasette/issues/396>`__)
+- `datasetteproject/datasette <https://hub.docker.com/r/datasetteproject/datasette>`__ Docker image now uses SQLite 3.26.0 (`#397 <https://github.com/simonw/datasette/issues/397>`__)
+- Cleaned up some deprecation warnings under Python 3.7
+
+.. _v0_26:
+
+0.26 (2019-01-02)
+-----------------
+
+- ``datasette serve --reload`` now restarts Datasette if a database file changes on disk.
+- ``datasette publish now`` now takes an optional ``--alias mysite.now.sh`` argument. This will attempt to set an alias after the deploy completes.
+- Fixed a bug where the advanced CSV export form failed to include the currently selected filters (`#393 <https://github.com/simonw/datasette/issues/393>`__)
+
+.. _v0_25_2:
+
+0.25.2 (2018-12-16)
+-------------------
+
+- ``datasette publish heroku`` now uses the ``python-3.6.7`` runtime
+- Added documentation on :ref:`how to build the documentation <contributing_documentation>`
+- Added documentation covering :ref:`our release process <contributing_release>`
+- Upgraded to pytest 4.0.2
+
+.. _v0_25_1:
+
+0.25.1 (2018-11-04)
+-------------------
+
+Documentation improvements plus a fix for publishing to Zeit Now.
+
+- ``datasette publish now`` now uses Zeit's v1 platform, to work around the new 100MB image limit. Thanks, @slygent - closes `#366 <https://github.com/simonw/datasette/issues/366>`__.
 
 .. _v0_25:
 

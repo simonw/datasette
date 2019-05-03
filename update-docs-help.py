@@ -9,6 +9,7 @@ includes = (
     ("package", "datasette-package-help.txt"),
     ("publish now", "datasette-publish-now-help.txt"),
     ("publish heroku", "datasette-publish-heroku-help.txt"),
+    ("publish cloudrun", "datasette-publish-cloudrun-help.txt"),
 )
 
 

@@ -160,6 +160,19 @@ def skeleton(files, metadata, sqlite_extensions):
 
 
 @cli.command()
+@click.option("--all", help="Include built-in default plugins", is_flag=True)
+@click.option(
+    "--plugins-dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+    help="Path to directory containing custom plugins",
+)
+def plugins(all, plugins_dir):
+    "List currently available plugins"
+    app = Datasette([], plugins_dir=plugins_dir)
+    click.echo(json.dumps(app.plugins(all), indent=4))
+
+
+@cli.command()
 @click.argument("files", type=click.Path(exists=True), nargs=-1, required=True)
 @click.option(
     "-t",
@@ -204,6 +217,8 @@ def skeleton(files, metadata, sqlite_extensions):
 @click.option("--license_url", help="License URL for metadata")
 @click.option("--source", help="Source label for metadata")
 @click.option("--source_url", help="Source URL for metadata")
+@click.option("--about", help="About label for metadata")
+@click.option("--about_url", help="About URL for metadata")
 def package(
     files,
     tag,
@@ -253,6 +268,13 @@ def package(
 @cli.command()
 @click.argument("files", type=click.Path(exists=True), nargs=-1)
 @click.option(
+    "-i",
+    "--immutable",
+    type=click.Path(exists=True),
+    help="Database files to open in immutable mode",
+    multiple=True,
+)
+@click.option(
     "-h", "--host", default="127.0.0.1", help="host for server, defaults to 127.0.0.1"
 )
 @click.option("-p", "--port", default=8001, help="port for server, defaults to 8001")
@@ -262,7 +284,7 @@ def package(
 @click.option(
     "--reload",
     is_flag=True,
-    help="Automatically reload if code change detected - useful for development",
+    help="Automatically reload if database or code change detected - useful for development",
 )
 @click.option(
     "--cors", is_flag=True, help="Enable CORS by serving Access-Control-Allow-Origin: *"
@@ -301,6 +323,9 @@ def package(
     multiple=True,
 )
 @click.option(
+    "--memory", is_flag=True, help="Make :memory: database available"
+)
+@click.option(
     "--config",
     type=Config(),
     help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
@@ -314,6 +339,7 @@ def package(
 )
 def serve(
     files,
+    immutable,
     host,
     port,
     debug,
@@ -325,6 +351,7 @@ def serve(
     template_dir,
     plugins_dir,
     static,
+    memory,
     config,
     version_note,
     help_config,
@@ -345,6 +372,7 @@ def serve(
         import hupper
 
         reloader = hupper.start_reloader("datasette.cli.serve")
+        reloader.watch_files(files)
         if metadata:
             reloader.watch_files([metadata.name])
 
@@ -356,9 +384,10 @@ def serve(
     if metadata:
         metadata_data = json.loads(metadata.read())
 
-    click.echo("Serve! files={} on port {}".format(files, port))
+    click.echo("Serve! files={} (immutables={}) on port {}".format(files, immutable, port))
     ds = Datasette(
         files,
+        immutables=immutable,
         cache_headers=not debug and not reload,
         cors=cors,
         inspect_data=inspect_data,
@@ -368,6 +397,7 @@ def serve(
         plugins_dir=plugins_dir,
         static_mounts=static,
         config=dict(config),
+        memory=memory,
         version_note=version_note,
     )
     # Force initial hashing/table counting

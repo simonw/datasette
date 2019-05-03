@@ -152,8 +152,10 @@ def sqlite_timelimit(conn, ms):
             return 1
 
     conn.set_progress_handler(handler, n)
-    yield
-    conn.set_progress_handler(None, n)
+    try:
+        yield
+    finally:
+        conn.set_progress_handler(None, n)
 
 
 class InvalidSql(Exception):
@@ -208,8 +210,14 @@ def path_with_added_args(request, args, path=None):
 
 
 def path_with_removed_args(request, args, path=None):
+    query_string = request.query_string
+    if path is None:
+        path = request.path
+    else:
+        if "?" in path:
+            bits = path.split("?", 1)
+            path, query_string = bits
     # args can be a dict or a set
-    path = path or request.path
     current = []
     if isinstance(args, set):
         def should_remove(key, value):
@@ -218,7 +226,7 @@ def path_with_removed_args(request, args, path=None):
         # Must match key AND value
         def should_remove(key, value):
             return args.get(key) == value
-    for key, value in urllib.parse.parse_qsl(request.query_string):
+    for key, value in urllib.parse.parse_qsl(query_string):
         if not should_remove(key, value):
             current.append((key, value))
     query_string = urllib.parse.urlencode(current)
@@ -257,26 +265,28 @@ def escape_sqlite(s):
     else:
         return '[{}]'.format(s)
 
-
 def make_dockerfile(files, metadata_file, extra_options, branch, template_dir, plugins_dir, static, install, spatialite, version_note):
-    cmd = ['"datasette"', '"serve"', '"--host"', '"0.0.0.0"']
-    cmd.append('"' + '", "'.join(files) + '"')
-    cmd.extend(['"--cors"', '"--port"', '"8001"', '"--inspect-file"', '"inspect-data.json"'])
+    cmd = ['datasette', 'serve', '--host', '0.0.0.0']
+    cmd.append('", "'.join(files))
+    cmd.extend(['--cors', '--inspect-file', 'inspect-data.json'])
     if metadata_file:
-        cmd.extend(['"--metadata"', '"{}"'.format(metadata_file)])
+        cmd.extend(['--metadata', '{}'.format(metadata_file)])
     if template_dir:
-        cmd.extend(['"--template-dir"', '"templates/"'])
+        cmd.extend(['--template-dir', 'templates/'])
     if plugins_dir:
-        cmd.extend(['"--plugins-dir"', '"plugins/"'])
+        cmd.extend(['--plugins-dir', 'plugins/'])
     if version_note:
-        cmd.extend(['"--version-note"', '"{}"'.format(version_note)])
+        cmd.extend(['--version-note', '{}'.format(version_note)])
     if static:
         for mount_point, _ in static:
-            cmd.extend(['"--static"', '"{}:{}"'.format(mount_point, mount_point)])
+            cmd.extend(['--static', '{}:{}'.format(mount_point, mount_point)])
     if extra_options:
         for opt in extra_options.split():
-            cmd.append('"{}"'.format(opt))
-
+            cmd.append('{}'.format(opt))
+    cmd = [shlex.quote(part) for part in cmd]
+    # port attribute is a (fixed) env variable and should not be quoted
+    cmd.extend(['--port', '$PORT'])
+    cmd = ' '.join(cmd)
     if branch:
         install = ['https://github.com/simonw/datasette/archive/{}.zip'.format(
             branch
@@ -291,10 +301,11 @@ WORKDIR /app
 {spatialite_extras}
 RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
+ENV PORT 8001
 EXPOSE 8001
-CMD [{cmd}]'''.format(
+CMD {cmd}'''.format(
         files=' '.join(files),
-        cmd=', '.join(cmd),
+        cmd=cmd,
         install_from=' '.join(install),
         spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else '',
     ).strip()
@@ -413,7 +424,7 @@ def temporary_heroku_directory(
         if metadata_content:
             open('metadata.json', 'w').write(json.dumps(metadata_content, indent=2))
 
-        open('runtime.txt', 'w').write('python-3.6.6')
+        open('runtime.txt', 'w').write('python-3.6.7')
 
         if branch:
             install = ['https://github.com/simonw/datasette/archive/{branch}.zip'.format(
@@ -467,6 +478,35 @@ def temporary_heroku_directory(
     finally:
         tmp.cleanup()
         os.chdir(saved_cwd)
+
+
+def detect_primary_keys(conn, table):
+    " Figure out primary keys for a table. "
+    table_info_rows = [
+        row
+        for row in conn.execute(
+            'PRAGMA table_info("{}")'.format(table)
+        ).fetchall()
+        if row[-1]
+    ]
+    table_info_rows.sort(key=lambda row: row[-1])
+    return [str(r[1]) for r in table_info_rows]
+
+
+def get_outbound_foreign_keys(conn, table):
+    infos = conn.execute(
+        'PRAGMA foreign_key_list([{}])'.format(table)
+    ).fetchall()
+    fks = []
+    for info in infos:
+        if info is not None:
+            id, seq, table_name, from_, to_, on_update, on_delete, match = info
+            fks.append({
+                'other_table': table_name,
+                'column': from_,
+                'other_column': to_
+            })
+    return fks
 
 
 def get_all_foreign_keys(conn):
@@ -530,134 +570,23 @@ def detect_fts_sql(table):
     '''.format(table=table)
 
 
-class Filter:
-    def __init__(self, key, display, sql_template, human_template, format='{}', numeric=False, no_argument=False):
-        self.key = key
-        self.display = display
-        self.sql_template = sql_template
-        self.human_template = human_template
-        self.format = format
-        self.numeric = numeric
-        self.no_argument = no_argument
-
-    def where_clause(self, column, value, param_counter):
-        converted = self.format.format(value)
-        if self.numeric and converted.isdigit():
-            converted = int(converted)
-        if self.no_argument:
-            kwargs = {
-                'c': column,
-            }
-            converted = None
-        else:
-            kwargs = {
-                'c': column,
-                'p': 'p{}'.format(param_counter),
-            }
-        return self.sql_template.format(**kwargs), converted
-
-    def human_clause(self, column, value):
-        if callable(self.human_template):
-            template = self.human_template(column, value)
-        else:
-            template = self.human_template
-        if self.no_argument:
-            return template.format(c=column)
-        else:
-            return template.format(c=column, v=value)
+def detect_json1(conn=None):
+    if conn is None:
+        conn = sqlite3.connect(":memory:")
+    try:
+        conn.execute("SELECT json('{}')")
+        return True
+    except Exception:
+        return False
 
 
-class Filters:
-    _filters = [
-        Filter('exact', '=', '"{c}" = :{p}', lambda c, v: '{c} = {v}' if v.isdigit() else '{c} = "{v}"'),
-        Filter('not', '!=', '"{c}" != :{p}', lambda c, v: '{c} != {v}' if v.isdigit() else '{c} != "{v}"'),
-        Filter('contains', 'contains', '"{c}" like :{p}', '{c} contains "{v}"', format='%{}%'),
-        Filter('endswith', 'ends with', '"{c}" like :{p}', '{c} ends with "{v}"', format='%{}'),
-        Filter('startswith', 'starts with', '"{c}" like :{p}', '{c} starts with "{v}"', format='{}%'),
-        Filter('gt', '>', '"{c}" > :{p}', '{c} > {v}', numeric=True),
-        Filter('gte', '\u2265', '"{c}" >= :{p}', '{c} \u2265 {v}', numeric=True),
-        Filter('lt', '<', '"{c}" < :{p}', '{c} < {v}', numeric=True),
-        Filter('lte', '\u2264', '"{c}" <= :{p}', '{c} \u2264 {v}', numeric=True),
-        Filter('glob', 'glob', '"{c}" glob :{p}', '{c} glob "{v}"'),
-        Filter('like', 'like', '"{c}" like :{p}', '{c} like "{v}"'),
-        Filter('isnull', 'is null', '"{c}" is null', '{c} is null', no_argument=True),
-        Filter('notnull', 'is not null', '"{c}" is not null', '{c} is not null', no_argument=True),
-        Filter('isblank', 'is blank', '("{c}" is null or "{c}" = "")', '{c} is blank', no_argument=True),
-        Filter('notblank', 'is not blank', '("{c}" is not null and "{c}" != "")', '{c} is not blank', no_argument=True),
+def table_columns(conn, table):
+    return [
+        r[1]
+        for r in conn.execute(
+            "PRAGMA table_info({});".format(escape_sqlite(table))
+        ).fetchall()
     ]
-    _filters_by_key = {
-        f.key: f for f in _filters
-    }
-
-    def __init__(self, pairs, units={}, ureg=None):
-        self.pairs = pairs
-        self.units = units
-        self.ureg = ureg
-
-    def lookups(self):
-        "Yields (lookup, display, no_argument) pairs"
-        for filter in self._filters:
-            yield filter.key, filter.display, filter.no_argument
-
-    def human_description_en(self, extra=None):
-        bits = []
-        if extra:
-            bits.extend(extra)
-        for column, lookup, value in self.selections():
-            filter = self._filters_by_key.get(lookup, None)
-            if filter:
-                bits.append(filter.human_clause(column, value))
-        # Comma separated, with an ' and ' at the end
-        and_bits = []
-        commas, tail = bits[:-1], bits[-1:]
-        if commas:
-            and_bits.append(', '.join(commas))
-        if tail:
-            and_bits.append(tail[0])
-        s = ' and '.join(and_bits)
-        if not s:
-            return ''
-        return 'where {}'.format(s)
-
-    def selections(self):
-        "Yields (column, lookup, value) tuples"
-        for key, value in self.pairs:
-            if '__' in key:
-                column, lookup = key.rsplit('__', 1)
-            else:
-                column = key
-                lookup = 'exact'
-            yield column, lookup, value
-
-    def has_selections(self):
-        return bool(self.pairs)
-
-    def convert_unit(self, column, value):
-        "If the user has provided a unit in the quey, convert it into the column unit, if present."
-        if column not in self.units:
-            return value
-
-        # Try to interpret the value as a unit
-        value = self.ureg(value)
-        if isinstance(value, numbers.Number):
-            # It's just a bare number, assume it's the column unit
-            return value
-
-        column_unit = self.ureg(self.units[column])
-        return value.to(column_unit).magnitude
-
-    def build_where_clauses(self):
-        sql_bits = []
-        params = {}
-        for i, (column, lookup, value) in enumerate(self.selections()):
-            filter = self._filters_by_key.get(lookup, None)
-            if filter:
-                sql_bit, param = filter.where_clause(column, self.convert_unit(column, value), i)
-                sql_bits.append(sql_bit)
-                if param is not None:
-                    param_id = 'p{}'.format(i)
-                    params[param_id] = param
-        return sql_bits, params
 
 
 filter_column_re = re.compile(r'^_filter_column_\d+$')
@@ -792,16 +721,16 @@ def get_plugins(pm):
     return plugins
 
 
-FORMATS = ('csv', 'json', 'jsono')
-
-
-def resolve_table_and_format(table_and_format, table_exists):
+async def resolve_table_and_format(table_and_format, table_exists, allowed_formats=[]):
     if '.' in table_and_format:
         # Check if a table exists with this exact name
-        if table_exists(table_and_format):
+        it_exists = await table_exists(table_and_format)
+        if it_exists:
             return table_and_format, None
+
     # Check if table ends with a known format
-    for _format in FORMATS:
+    formats = list(allowed_formats) + ['csv', 'jsono']
+    for _format in formats:
         if table_and_format.endswith(".{}".format(_format)):
             table = table_and_format[:-(len(_format) + 1)]
             return table, _format
@@ -901,3 +830,15 @@ class StaticMount(click.ParamType):
         if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
             self.fail("%s is not a valid directory path" % value, param, ctx)
         return path, dirpath
+
+
+def format_bytes(bytes):
+    current = float(bytes)
+    for unit in ("bytes", "KB", "MB", "GB", "TB"):
+        if current < 1024:
+            break
+        current = current / 1024
+    if unit == "bytes":
+        return "{} {}".format(int(current), unit)
+    else:
+        return "{:.1f} {}".format(current, unit)

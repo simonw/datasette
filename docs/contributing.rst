@@ -7,6 +7,12 @@ Datasette is an open source project. We welcome contributions!
 
 This document describes how to contribute to Datasette core. You can also contribute to the wider Datasette ecosystem by creating new :ref:`plugins`.
 
+General guidelines
+------------------
+
+* **master should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
+* **The ideal commit** should bundle together the implementation, unit tests and associated documentation updates. The commit message should link to an associated issue.
+
 .. _devenvironment:
 
 Setting up a development environment
@@ -29,6 +35,8 @@ The next step is to create a virtual environment for your project and use it to 
     cd datasette
     # Create a virtual environment in ./venv
     python3 -m venv ./venv
+    # Now activate the virtual environment, so pip can install into it
+    source venv/bin/activate
     # Install Datasette and its testing dependencies
     python3 -m pip -e .[test]
 
@@ -67,3 +75,66 @@ You can also use the ``fixtures.py`` script to recreate the testing version of `
 Then run Datasette like this::
 
     datasette fixtures.db -m fixtures-metadata.json
+
+.. _contributing_documentation:
+
+Editing and building the documentation
+--------------------------------------
+
+Datasette's documentation lives in the ``docs/`` directory and is deployed automatically using `Read The Docs <https://readthedocs.org/>`__.
+
+You can build it locally by installing ``sphinx`` and ``sphinx_rtd_theme`` in your Datasette development environment and then running ``make`` directly in the ``docs/`` directory::
+
+    source venv/bin/activate
+    pip install sphinx sphinx_rtd_theme
+    cd docs/
+    make
+
+This will create the HTML version of the documentation in ``docs/_build/html``. You can open it in your browser like so::
+
+    open _build/html/index.html
+
+Any time you make changes to a ``.rst`` file you can re-run ``make`` to update the built documents, then refresh them in your browser.
+
+The documentation is written using reStructuredText. You may find this article on `The subset of reStructuredText worth committing to memory <https://simonwillison.net/2018/Aug/25/restructuredtext/>`__ useful.
+
+.. _contributing_release:
+
+Release process
+---------------
+
+Datasette releases are performed using tags. When a new version tag is pushed to GitHub, a `Travis CI task <https://github.com/simonw/datasette/blob/master/.travis.yml>`__ will perform the following:
+
+* Run the unit tests against all supported Python versions. If the tests pass...
+* Set up https://v0-25-1.datasette.io/ (but with the new tag) to point to a live demo of this release
+* Build a Docker image of the release and push a tag to https://hub.docker.com/r/datasetteproject/datasette
+* Re-point the "latest" tag on Docker Hub to the new image
+* Build a wheel bundle of the underlying Python source code
+* Push that new wheel up to PyPI: https://pypi.org/project/datasette/
+
+To deploy new releases you will need to have push access to the main Datasette GitHub repository.
+
+Datasette follows `Semantic Versioning <https://semver.org/>`__::
+
+    major.minor.patch
+
+We increment ``major`` for backwards-incompatible releases. Datasette is currently pre-1.0 so the major version is always ``0``.
+
+We increment ``minor`` for new features.
+
+We increment ``patch`` for bugfix releass.
+
+To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/28872a1fa789f314b0342f4e6182f1c78d6e2bca>`__::
+
+    # Update changelog
+    git commit -m "Release 0.25.2" -a
+    git push
+
+For non-bugfix releases you may want to update the news section of ``README.md`` as part of the same commit.
+
+Wait long enough for Travis to build and deploy the demo version of that commit (otherwise the tag deployment may fail to alias to it properly). Then run the following::
+
+    git tag 0.25.2
+    git push --tags
+
+Once the release is out, you can manually update https://github.com/simonw/datasette/releases

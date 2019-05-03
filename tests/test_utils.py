@@ -3,10 +3,12 @@ Tests for various datasette helper functions.
 """
 
 from datasette import utils
+from datasette.filters import Filters
 import json
 import os
 import pytest
 from sanic.request import Request
+import sqlite3
 import tempfile
 from unittest.mock import patch
 
@@ -58,6 +60,13 @@ def test_path_with_removed_args(path, args, expected):
         {}, '1.1', 'GET', None
     )
     actual = utils.path_with_removed_args(request, args)
+    assert expected == actual
+    # Run the test again but this time use the path= argument
+    request = Request(
+        "/".encode('utf8'),
+        {}, '1.1', 'GET', None
+    )
+    actual = utils.path_with_removed_args(request, args, path=path)
     assert expected == actual
 
 
@@ -123,68 +132,6 @@ def test_custom_json_encoder(obj, expected):
         sort_keys=True
     )
     assert expected == actual
-
-
-@pytest.mark.parametrize('args,expected_where,expected_params', [
-    (
-        {
-            'name_english__contains': 'foo',
-        },
-        ['"name_english" like :p0'],
-        ['%foo%']
-    ),
-    (
-        {
-            'foo': 'bar',
-            'bar__contains': 'baz',
-        },
-        ['"bar" like :p0', '"foo" = :p1'],
-        ['%baz%', 'bar']
-    ),
-    (
-        {
-            'foo__startswith': 'bar',
-            'bar__endswith': 'baz',
-        },
-        ['"bar" like :p0', '"foo" like :p1'],
-        ['%baz', 'bar%']
-    ),
-    (
-        {
-            'foo__lt': '1',
-            'bar__gt': '2',
-            'baz__gte': '3',
-            'bax__lte': '4',
-        },
-        ['"bar" > :p0', '"bax" <= :p1', '"baz" >= :p2', '"foo" < :p3'],
-        [2, 4, 3, 1]
-    ),
-    (
-        {
-            'foo__like': '2%2',
-            'zax__glob': '3*',
-        },
-        ['"foo" like :p0', '"zax" glob :p1'],
-        ['2%2', '3*']
-    ),
-    (
-        {
-            'foo__isnull': '1',
-            'baz__isnull': '1',
-            'bar__gt': '10'
-        },
-        ['"bar" > :p0', '"baz" is null', '"foo" is null'],
-        [10]
-    ),
-])
-def test_build_where(args, expected_where, expected_params):
-    f = utils.Filters(sorted(args.items()))
-    sql_bits, actual_params = f.build_where_clauses()
-    assert expected_where == sql_bits
-    assert {
-        'p{}'.format(i): param
-        for i, param in enumerate(expected_params)
-    } == actual_params
 
 
 @pytest.mark.parametrize('bad_sql', [
@@ -309,6 +256,29 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             assert 1 == os.stat(hello).st_nlink
 
 
+def test_temporary_docker_directory_quotes_args():
+     with tempfile.TemporaryDirectory() as td:
+        os.chdir(td)
+        open('hello', 'w').write('world')
+        with utils.temporary_docker_directory(
+            files=['hello'],
+            name='t',
+            metadata=None,
+            extra_options='--$HOME',
+            branch=None,
+            template_dir=None,
+            plugins_dir=None,
+            static=[],
+            install=[],
+            spatialite=False,
+            version_note='$PWD',
+        ) as temp_docker:
+            df = os.path.join(temp_docker, 'Dockerfile')
+            df_contents = open(df).read()
+            assert "'$PWD'" in df_contents
+            assert "'--$HOME'" in df_contents
+
+
 def test_compound_keys_after_sql():
     assert '((a > :p0))' == utils.compound_keys_after_sql(['a'])
     assert '''
@@ -325,10 +295,11 @@ def test_compound_keys_after_sql():
     '''.strip() == utils.compound_keys_after_sql(['a', 'b', 'c'])
 
 
-def table_exists(table):
+async def table_exists(table):
     return table == "exists.csv"
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "table_and_format,expected_table,expected_format",
     [
@@ -339,14 +310,22 @@ def table_exists(table):
         ("exists.csv", "exists.csv", None),
     ],
 )
-def test_resolve_table_and_format(
+async def test_resolve_table_and_format(
     table_and_format, expected_table, expected_format
 ):
-    actual_table, actual_format = utils.resolve_table_and_format(
-        table_and_format, table_exists
+    actual_table, actual_format = await utils.resolve_table_and_format(
+        table_and_format, table_exists, ['json']
     )
     assert expected_table == actual_table
     assert expected_format == actual_format
+
+
+def test_table_columns():
+    conn = sqlite3.connect(":memory:")
+    conn.executescript("""
+    create table places (id integer primary key, name text, bob integer)
+    """)
+    assert ["id", "name", "bob"] == utils.table_columns(conn, "places")
 
 
 @pytest.mark.parametrize(
@@ -374,3 +353,18 @@ def test_path_with_format(path, format, extra_qs, expected):
     )
     actual = utils.path_with_format(request, format, extra_qs)
     assert expected == actual
+
+
+@pytest.mark.parametrize(
+    "bytes,expected",
+    [
+        (120, '120 bytes'),
+        (1024, '1.0 KB'),
+        (1024 * 1024, '1.0 MB'),
+        (1024 * 1024 * 1024, '1.0 GB'),
+        (1024 * 1024 * 1024 * 1.3, '1.3 GB'),
+        (1024 * 1024 * 1024 * 1024, '1.0 TB'),
+    ]
+)
+def test_format_bytes(bytes, expected):
+    assert expected == utils.format_bytes(bytes)

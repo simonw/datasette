@@ -1,28 +1,34 @@
 import urllib
+import itertools
 
 import jinja2
 from sanic.exceptions import NotFound
 from sanic.request import RequestParameters
 
+from datasette.facets import load_facet_configs
 from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
-    Filters,
     InterruptedError,
     append_querystring,
     compound_keys_after_sql,
+    detect_fts,
+    detect_primary_keys,
     escape_sqlite,
     filters_should_redirect,
+    get_all_foreign_keys,
     is_url,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
     path_with_replaced_args,
     sqlite3,
+    table_columns,
     to_css_class,
     urlsafe_components,
     value_as_boolean,
 )
+from datasette.filters import Filters
 from .base import BaseView, DatasetteError, ureg
 
 LINK_WITH_LABEL = '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
@@ -31,83 +37,23 @@ LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
 
 class RowTableShared(BaseView):
 
-    def sortable_columns_for_table(self, database, table, use_rowid):
-        table_metadata = self.table_metadata(database, table)
+    async def sortable_columns_for_table(self, database, table, use_rowid):
+        table_metadata = self.ds.table_metadata(database, table)
         if "sortable_columns" in table_metadata:
             sortable_columns = set(table_metadata["sortable_columns"])
         else:
-            table_info = self.ds.inspect()[database]["tables"].get(table) or {}
-            sortable_columns = set(table_info.get("columns", []))
+            sortable_columns = set(await self.ds.table_columns(database, table))
         if use_rowid:
             sortable_columns.add("rowid")
         return sortable_columns
 
-    def expandable_columns(self, database, table):
+    async def expandable_columns(self, database, table):
         # Returns list of (fk_dict, label_column-or-None) pairs for that table
-        tables = self.ds.inspect()[database].get("tables", {})
-        table_info = tables.get(table)
-        if not table_info:
-            return []
         expandables = []
-        for fk in table_info["foreign_keys"]["outgoing"]:
-            label_column = (
-                self.table_metadata(
-                    database, fk["other_table"]
-                ).get("label_column")
-                or tables.get(fk["other_table"], {}).get("label_column")
-            ) or None
+        for fk in await self.ds.foreign_keys_for_table(database, table):
+            label_column = await self.ds.label_column_for_table(database, fk["other_table"])
             expandables.append((fk, label_column))
         return expandables
-
-    async def expand_foreign_keys(self, database, table, column, values):
-        "Returns dict mapping (column, value) -> label"
-        labeled_fks = {}
-        tables_info = self.ds.inspect()[database]["tables"]
-        table_info = tables_info.get(table) or {}
-        if not table_info:
-            return {}
-        foreign_keys = table_info["foreign_keys"]["outgoing"]
-        # Find the foreign_key for this column
-        try:
-            fk = [
-                foreign_key for foreign_key in foreign_keys
-                if foreign_key["column"] == column
-            ][0]
-        except IndexError:
-            return {}
-        label_column = (
-            # First look in metadata.json for this foreign key table:
-            self.table_metadata(
-                database, fk["other_table"]
-            ).get("label_column")
-            or tables_info.get(fk["other_table"], {}).get("label_column")
-        )
-        if not label_column:
-            return {
-                (fk["column"], value): str(value)
-                for value in values
-            }
-        labeled_fks = {}
-        sql = '''
-            select {other_column}, {label_column}
-            from {other_table}
-            where {other_column} in ({placeholders})
-        '''.format(
-            other_column=escape_sqlite(fk["other_column"]),
-            label_column=escape_sqlite(label_column),
-            other_table=escape_sqlite(fk["other_table"]),
-            placeholders=", ".join(["?"] * len(set(values))),
-        )
-        try:
-            results = await self.ds.execute(
-                database, sql, list(set(values))
-            )
-        except InterruptedError:
-            pass
-        else:
-            for id, value in results:
-                labeled_fks[(fk["column"], id)] = value
-        return labeled_fks
 
     async def display_columns_and_rows(
         self,
@@ -119,20 +65,17 @@ class RowTableShared(BaseView):
         truncate_cells=0,
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
-        table_metadata = self.table_metadata(database, table)
-        info = self.ds.inspect()[database]
-        sortable_columns = self.sortable_columns_for_table(database, table, True)
+        table_metadata = self.ds.table_metadata(database, table)
+        sortable_columns = await self.sortable_columns_for_table(database, table, True)
         columns = [
             {"name": r[0], "sortable": r[0] in sortable_columns} for r in description
         ]
-        tables = info["tables"]
-        table_info = tables.get(table) or {}
-        pks = table_info.get("primary_keys") or []
+        pks = await self.ds.execute_against_connection_in_thread(
+            database, lambda conn: detect_primary_keys(conn, table)
+        )
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
-            for fk in table_info.get(
-                "foreign_keys", {}
-            ).get("outgoing", None) or []
+            for fk in await self.ds.foreign_keys_for_table(database, table)
         }
 
         cell_rows = []
@@ -167,6 +110,7 @@ class RowTableShared(BaseView):
                     continue
 
                 # First let the plugins have a go
+                # pylint: disable=no-member
                 plugin_display_value = pm.hook.render_cell(
                     value=value,
                     column=column,
@@ -176,6 +120,10 @@ class RowTableShared(BaseView):
                 )
                 if plugin_display_value is not None:
                     display_value = plugin_display_value
+                elif isinstance(value, bytes):
+                    display_value = jinja2.Markup("&lt;Binary&nbsp;data:&nbsp;{}&nbsp;byte{}&gt;".format(
+                        len(value), "" if len(value) == 1 else "s")
+                    )
                 elif isinstance(value, dict):
                     # It's an expanded foreign key - display link to other row
                     label = value["label"]
@@ -232,6 +180,7 @@ class RowTableShared(BaseView):
 
 
 class TableView(RowTableShared):
+    name = 'table'
 
     async def data(self, request, database, hash, table, default_labels=False,  _next=None, _size=None):
         canned_query = self.ds.get_canned_query(database, table)
@@ -247,12 +196,12 @@ class TableView(RowTableShared):
             )
 
         is_view = bool(await self.ds.get_view_definition(database, table))
-        info = self.ds.inspect()
-        table_info = info[database]["tables"].get(table) or {}
-        if not is_view and not table_info:
+        table_exists = bool(await self.ds.table_exists(database, table))
+        if not is_view and not table_exists:
             raise NotFound("Table not found: {}".format(table))
-
-        pks = table_info.get("primary_keys") or []
+        pks = await self.ds.execute_against_connection_in_thread(
+            database, lambda conn: detect_primary_keys(conn, table)
+        )
         use_rowid = not pks and not is_view
         if use_rowid:
             select = "rowid, *"
@@ -277,13 +226,14 @@ class TableView(RowTableShared):
         # it can still be queried using ?_col__exact=blah
         special_args = {}
         special_args_lists = {}
-        other_args = {}
+        other_args = []
         for key, value in args.items():
             if key.startswith("_") and "__" not in key:
                 special_args[key] = value[0]
                 special_args_lists[key] = value
             else:
-                other_args[key] = value[0]
+                for v in value:
+                    other_args.append((key, v))
 
         # Handle ?_filter_column and redirect, if present
         redirect_params = filters_should_redirect(special_args)
@@ -309,16 +259,32 @@ class TableView(RowTableShared):
                 forward_querystring=False,
             )
 
-        table_metadata = self.table_metadata(database, table)
+        table_metadata = self.ds.table_metadata(database, table)
         units = table_metadata.get("units", {})
-        filters = Filters(sorted(other_args.items()), units, ureg)
-        where_clauses, params = filters.build_where_clauses()
+        filters = Filters(sorted(other_args), units, ureg)
+        where_clauses, params = filters.build_where_clauses(table)
+
+        extra_wheres_for_ui = []
+        # Add _where= from querystring
+        if "_where" in request.args:
+            if not self.ds.config("allow_sql"):
+                raise DatasetteError("_where= is not allowed", status=400)
+            else:
+                where_clauses.extend(request.args["_where"])
+                extra_wheres_for_ui = [{
+                    "text": text,
+                    "remove_url": path_with_removed_args(
+                        request, {"_where": text}
+                    )
+                } for text in request.args["_where"]]
 
         # _search support:
-        fts_table = table_metadata.get(
-            "fts_table", info[database]["tables"].get(table, {}).get("fts_table")
+        fts_table = special_args.get("_fts_table")
+        fts_table = fts_table or table_metadata.get("fts_table")
+        fts_table = fts_table or await self.ds.execute_against_connection_in_thread(
+            database, lambda conn: detect_fts(conn, table)
         )
-        fts_pk = table_metadata.get("fts_pk", "rowid")
+        fts_pk = special_args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
         search_args = dict(
             pair for pair in special_args.items() if pair[0].startswith("_search")
         )
@@ -338,10 +304,9 @@ class TableView(RowTableShared):
                 params["search"] = search
             else:
                 # More complex: search against specific columns
-                valid_columns = set(info[database]["tables"][fts_table]["columns"])
                 for i, (key, search_text) in enumerate(search_args.items()):
                     search_col = key.split("_search_", 1)[1]
-                    if search_col not in valid_columns:
+                    if search_col not in await self.ds.table_columns(database, fts_table):
                         raise DatasetteError("Cannot search by that column", status=400)
 
                     where_clauses.append(
@@ -358,12 +323,9 @@ class TableView(RowTableShared):
                     )
                     params["search_{}".format(i)] = search_text
 
-        table_rows_count = None
         sortable_columns = set()
-        if not is_view:
-            table_rows_count = table_info["count"]
 
-        sortable_columns = self.sortable_columns_for_table(database, table, use_rowid)
+        sortable_columns = await self.sortable_columns_for_table(database, table, use_rowid)
 
         # Allow for custom sort order
         sort = special_args.get("_sort")
@@ -388,9 +350,8 @@ class TableView(RowTableShared):
                 "where {} ".format(" and ".join(where_clauses))
             ) if where_clauses else "",
         )
-        # Store current params and where_clauses for later:
+        # Copy of params so we can mutate them later:
         from_sql_params = dict(**params)
-        from_sql_where_clauses = where_clauses[:]
 
         count_sql = "select count(*) {}".format(from_sql)
 
@@ -502,11 +463,14 @@ class TableView(RowTableShared):
         else:
             page_size = self.ds.page_size
 
-        sql = "select {select} from {table_name} {where}{order_by}limit {limit}{offset}".format(
+        sql_no_limit = "select {select} from {table_name} {where}{order_by}".format(
             select=select,
             table_name=escape_sqlite(table),
             where=where_clause,
             order_by=order_by,
+        )
+        sql = "{sql_no_limit} limit {limit}{offset}".format(
+            sql_no_limit=sql_no_limit.rstrip(),
             limit=page_size + 1,
             offset=offset,
         )
@@ -518,72 +482,46 @@ class TableView(RowTableShared):
             database, sql, params, truncate=True, **extra_args
         )
 
+        # Number of filtered rows in whole set:
+        filtered_table_rows_count = None
+        if count_sql:
+            try:
+                count_rows = list(await self.ds.execute(
+                    database, count_sql, from_sql_params
+                ))
+                filtered_table_rows_count = count_rows[0][0]
+            except InterruptedError:
+                pass
+
         # facets support
-        facet_size = self.ds.config("default_facet_size")
-        metadata_facets = table_metadata.get("facets", [])
-        facets = metadata_facets[:]
-        if request.args.get("_facet") and not self.ds.config("allow_facet"):
+        if not self.ds.config("allow_facet") and any(arg.startswith("_facet") for arg in request.args):
             raise DatasetteError("_facet= is not allowed", status=400)
-        try:
-            facets.extend(request.args["_facet"])
-        except KeyError:
-            pass
+
+        # pylint: disable=no-member
+        facet_classes = list(
+            itertools.chain.from_iterable(pm.hook.register_facet_classes())
+        )
         facet_results = {}
         facets_timed_out = []
-        for column in facets:
-            if _next:
-                continue
-            facet_sql = """
-                select {col} as value, count(*) as count
-                {from_sql} {and_or_where} {col} is not null
-                group by {col} order by count desc limit {limit}
-            """.format(
-                col=escape_sqlite(column),
-                from_sql=from_sql,
-                and_or_where='and' if from_sql_where_clauses else 'where',
-                limit=facet_size+1,
-            )
-            try:
-                facet_rows_results = await self.ds.execute(
-                    database, facet_sql, params,
-                    truncate=False,
-                    custom_time_limit=self.ds.config("facet_time_limit_ms"),
-                )
-                facet_results_values = []
-                facet_results[column] = {
-                    "name": column,
-                    "results": facet_results_values,
-                    "truncated": len(facet_rows_results) > facet_size,
-                }
-                facet_rows = facet_rows_results.rows[:facet_size]
-                # Attempt to expand foreign keys into labels
-                values = [row["value"] for row in facet_rows]
-                expanded = (await self.expand_foreign_keys(
-                    database, table, column, values
-                ))
-                for row in facet_rows:
-                    selected = str(other_args.get(column)) == str(row["value"])
-                    if selected:
-                        toggle_path = path_with_removed_args(
-                            request, {column: str(row["value"])}
-                        )
-                    else:
-                        toggle_path = path_with_added_args(
-                            request, {column: row["value"]}
-                        )
-                    facet_results_values.append({
-                        "value": row["value"],
-                        "label": expanded.get(
-                            (column, row["value"]),
-                            row["value"]
-                        ),
-                        "count": row["count"],
-                        "toggle_url": self.absolute_url(request, toggle_path),
-                        "selected": selected,
-                    })
-            except InterruptedError:
-                facets_timed_out.append(column)
+        facet_instances = []
+        for klass in facet_classes:
+            facet_instances.append(klass(
+                self.ds,
+                request,
+                database,
+                sql=sql_no_limit,
+                params=params,
+                table=table,
+                metadata=table_metadata,
+                row_count=filtered_table_rows_count,
+            ))
 
+        for facet in facet_instances:
+            instance_facet_results, instance_facets_timed_out = await facet.facet_results()
+            facet_results.update(instance_facet_results)
+            facets_timed_out.extend(instance_facets_timed_out)
+
+        # Figure out columns and rows for the query
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
 
@@ -593,7 +531,7 @@ class TableView(RowTableShared):
 
         # Expand labeled columns if requested
         expanded_columns = []
-        expandable_columns = self.expandable_columns(database, table)
+        expandable_columns = await self.expandable_columns(database, table)
         columns_to_expand = None
         try:
             all_labels = value_as_boolean(special_args.get("_labels", ""))
@@ -610,7 +548,7 @@ class TableView(RowTableShared):
 
         if columns_to_expand:
             expanded_labels = {}
-            for fk, label_column in expandable_columns:
+            for fk, _ in expandable_columns:
                 column = fk["column"]
                 if column not in columns_to_expand:
                     continue
@@ -619,7 +557,7 @@ class TableView(RowTableShared):
                 column_index = columns.index(column)
                 values = [row[column_index] for row in rows]
                 # Expand them
-                expanded_labels.update(await self.expand_foreign_keys(
+                expanded_labels.update(await self.ds.expand_foreign_keys(
                     database, table, column, values
                 ))
             if expanded_labels:
@@ -662,66 +600,19 @@ class TableView(RowTableShared):
                     added_args["_sort_desc"] = sort_desc
             else:
                 added_args = {"_next": next_value}
-            next_url = self.absolute_url(
+            next_url = self.ds.absolute_url(
                 request, path_with_replaced_args(request, added_args)
             )
             rows = rows[:page_size]
 
-        # Number of filtered rows in whole set:
-        filtered_table_rows_count = None
-        if count_sql:
-            try:
-                count_rows = list(await self.ds.execute(
-                    database, count_sql, from_sql_params
-                ))
-                filtered_table_rows_count = count_rows[0][0]
-            except InterruptedError:
-                pass
+        # Detect suggested facets
+        suggested_facets = []
 
-            # Detect suggested facets
-            suggested_facets = []
-            if self.ds.config("suggest_facets") and self.ds.config("allow_facet"):
-                for facet_column in columns:
-                    if facet_column in facets:
-                        continue
-                    if _next:
-                        continue
-                    if not self.ds.config("suggest_facets"):
-                        continue
-                    suggested_facet_sql = '''
-                        select distinct {column} {from_sql}
-                        {and_or_where} {column} is not null
-                        limit {limit}
-                    '''.format(
-                        column=escape_sqlite(facet_column),
-                        from_sql=from_sql,
-                        and_or_where='and' if from_sql_where_clauses else 'where',
-                        limit=facet_size+1
-                    )
-                    distinct_values = None
-                    try:
-                        distinct_values = await self.ds.execute(
-                            database, suggested_facet_sql, from_sql_params,
-                            truncate=False,
-                            custom_time_limit=self.ds.config("facet_suggest_time_limit_ms"),
-                        )
-                        num_distinct_values = len(distinct_values)
-                        if (
-                            num_distinct_values and
-                            num_distinct_values > 1 and
-                            num_distinct_values <= facet_size and
-                            num_distinct_values < filtered_table_rows_count
-                        ):
-                            suggested_facets.append({
-                                'name': facet_column,
-                                'toggle_url': self.absolute_url(
-                                    request, path_with_added_args(
-                                        request, {"_facet": facet_column}
-                                    )
-                                ),
-                            })
-                    except InterruptedError:
-                        pass
+        if self.ds.config("suggest_facets") and self.ds.config("allow_facet") and not _next:
+            for facet in facet_instances:
+                # TODO: ensure facet is not suggested if it is already active
+                # used to use 'if facet_column in facets' for this
+                suggested_facets.extend(await facet.suggest())
 
         # human_description_en combines filters AND search, if provided
         human_description_en = filters.human_description_en(extra=search_descriptions)
@@ -749,8 +640,11 @@ class TableView(RowTableShared):
                 table, {}
             )
             self.ds.update_with_inherited_metadata(metadata)
+            form_hidden_args = []
+            for arg in ("_fts_table", "_fts_pk"):
+                if arg in special_args:
+                    form_hidden_args.append((arg, special_args[arg]))
             return {
-                "database_hash": hash,
                 "supports_search": bool(fts_table),
                 "search": search or "",
                 "use_rowid": use_rowid,
@@ -764,7 +658,8 @@ class TableView(RowTableShared):
                     key=lambda f: (len(f["results"]), f["name"]),
                     reverse=True
                 ),
-                "facet_hideable": lambda facet: facet not in metadata_facets,
+                "extra_wheres_for_ui": extra_wheres_for_ui,
+                "form_hidden_args": form_hidden_args,
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "path_with_replaced_args": path_with_replaced_args,
                 "path_with_removed_args": path_with_removed_args,
@@ -794,7 +689,6 @@ class TableView(RowTableShared):
             "human_description_en": human_description_en,
             "rows": rows[:page_size],
             "truncated": results.truncated,
-            "table_rows_count": table_rows_count,
             "filtered_table_rows_count": filtered_table_rows_count,
             "expanded_columns": expanded_columns,
             "expandable_columns": expandable_columns,
@@ -813,12 +707,13 @@ class TableView(RowTableShared):
 
 
 class RowView(RowTableShared):
+    name = 'row'
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
-        info = self.ds.inspect()[database]
-        table_info = info["tables"].get(table) or {}
-        pks = table_info.get("primary_keys") or []
+        pks = await self.ds.execute_against_connection_in_thread(
+            database, lambda conn: detect_primary_keys(conn, table)
+        )
         use_rowid = not pks
         select = "*"
         if use_rowid:
@@ -851,7 +746,6 @@ class RowView(RowTableShared):
             for column in display_columns:
                 column["sortable"] = False
             return {
-                "database_hash": hash,
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
                 ),
@@ -882,7 +776,7 @@ class RowView(RowTableShared):
             "columns": columns,
             "primary_keys": pks,
             "primary_key_values": pk_values,
-            "units": self.table_metadata(database, table).get("units", {}),
+            "units": self.ds.table_metadata(database, table).get("units", {}),
         }
 
         if "foreign_key_tables" in (request.raw_args.get("_extras") or "").split(","):
@@ -898,11 +792,10 @@ class RowView(RowTableShared):
         if len(pk_values) != 1:
             return []
 
-        table_info = self.ds.inspect()[database]["tables"].get(table)
-        if not table_info:
-            return []
-
-        foreign_keys = table_info["foreign_keys"]["incoming"]
+        all_foreign_keys = await self.ds.execute_against_connection_in_thread(
+            database, get_all_foreign_keys
+        )
+        foreign_keys = all_foreign_keys[table]["incoming"]
         if len(foreign_keys) == 0:
             return []
 

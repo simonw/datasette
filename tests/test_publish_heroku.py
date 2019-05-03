@@ -24,7 +24,7 @@ def test_publish_heroku_installs_plugin(mock_call, mock_check_output, mock_which
     with runner.isolated_filesystem():
         open("t.db", "w").write("data")
         result = runner.invoke(cli.cli, ["publish", "heroku", "t.db"], input="y\n")
-        assert -1 == result.exit_code
+        assert 0 != result.exit_code
     mock_check_output.assert_has_calls(
         [mock.call(["heroku", "plugins"]), mock.call(["heroku", "apps:list", "--json"])]
     )
@@ -57,7 +57,7 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
         open("test.db", "w").write("data")
         result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
         assert 0 == result.exit_code, result.output
-        mock_call.assert_called_once_with(["heroku", "builds:create", "-a", "f"])
+        mock_call.assert_called_once_with(["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"])
 
 
 @mock.patch("shutil.which")

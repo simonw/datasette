@@ -2,9 +2,11 @@ import asyncio
 import click
 import collections
 import hashlib
+import json
 import os
 import sys
 import threading
+import time
 import traceback
 import urllib.parse
 from concurrent import futures
@@ -23,26 +25,31 @@ from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
 from .views.special import JsonDataView
 from .views.table import RowView, TableView
+from .renderer import json_renderer
 
 from .utils import (
     InterruptedError,
     Results,
+    detect_spatialite,
     escape_css_string,
     escape_sqlite,
+    get_outbound_foreign_keys,
     get_plugins,
     module_from_path,
     sqlite3,
     sqlite_timelimit,
+    table_columns,
     to_css_class
 )
 from .inspect import inspect_hash, inspect_views, inspect_tables
+from .tracer import capture_traces, trace
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
 
 connections = threading.local()
-
+MEMORY = object()
 
 ConfigOption = collections.namedtuple(
     "ConfigOption", ("name", "default", "help")
@@ -69,6 +76,9 @@ CONFIG_OPTIONS = (
     ConfigOption("facet_suggest_time_limit_ms", 50, """
         Time limit for calculating a suggested facet
     """.strip()),
+    ConfigOption("hash_urls", False, """
+        Include DB file contents hash in URLs, for far-future caching
+    """.strip()),
     ConfigOption("allow_facet", True, """
         Allow users to specify columns to facet using ?_facet= parameter
     """.strip()),
@@ -81,8 +91,11 @@ CONFIG_OPTIONS = (
     ConfigOption("allow_sql", True, """
         Allow arbitrary SQL queries via ?sql= parameter
     """.strip()),
-    ConfigOption("default_cache_ttl", 365 * 24 * 60 * 60, """
+    ConfigOption("default_cache_ttl", 5, """
         Default HTTP cache TTL (used in Cache-Control: max-age= header)
+    """.strip()),
+    ConfigOption("default_cache_ttl_hashed", 365 * 24 * 60 * 60, """
+        Default HTTP cache TTL for hashed URL pages
     """.strip()),
     ConfigOption("cache_size_kb", 0, """
         SQLite cache size in KB (0 == use SQLite default)
@@ -110,11 +123,139 @@ async def favicon(request):
     return response.text("")
 
 
+class ConnectedDatabase:
+    def __init__(self, ds, path=None, is_mutable=False, is_memory=False):
+        self.ds = ds
+        self.path = path
+        self.is_mutable = is_mutable
+        self.is_memory = is_memory
+        self.hash = None
+        self.cached_size = None
+        self.cached_table_counts = None
+        if not self.is_mutable:
+            p = Path(path)
+            self.hash = inspect_hash(p)
+            self.cached_size = p.stat().st_size
+
+    @property
+    def size(self):
+        if self.cached_size is not None:
+            return self.cached_size
+        else:
+            return Path(self.path).stat().st_size
+
+    async def table_counts(self, limit=10):
+        if not self.is_mutable and self.cached_table_counts is not None:
+            return self.cached_table_counts
+        # Try to get counts for each table, $limit timeout for each count
+        counts = {}
+        for table in await self.table_names():
+            try:
+                table_count = (await self.ds.execute(
+                    self.name,
+                    "select count(*) from [{}]".format(table),
+                    custom_time_limit=limit,
+                )).rows[0][0]
+                counts[table] = table_count
+            except InterruptedError:
+                counts[table] = None
+        if not self.is_mutable:
+            self.cached_table_counts = counts
+        return counts
+
+    @property
+    def mtime_ns(self):
+        return Path(self.path).stat().st_mtime_ns
+
+    @property
+    def name(self):
+        if self.is_memory:
+            return ":memory:"
+        else:
+            return Path(self.path).stem
+
+    async def table_names(self):
+        results = await self.ds.execute(self.name, "select name from sqlite_master where type='table'")
+        return [r[0] for r in results.rows]
+
+    async def hidden_table_names(self):
+        # Mark tables 'hidden' if they relate to FTS virtual tables
+        hidden_tables = [r[0] for r in (
+            await self.ds.execute(self.name, """
+                select name from sqlite_master
+                where rootpage = 0
+                and sql like '%VIRTUAL TABLE%USING FTS%'
+            """)
+        ).rows]
+        has_spatialite = await self.ds.execute_against_connection_in_thread(
+            self.name, detect_spatialite
+        )
+        if has_spatialite:
+            # Also hide Spatialite internal tables
+            hidden_tables += [
+                "ElementaryGeometries",
+                "SpatialIndex",
+                "geometry_columns",
+                "spatial_ref_sys",
+                "spatialite_history",
+                "sql_statements_log",
+                "sqlite_sequence",
+                "views_geometry_columns",
+                "virts_geometry_columns",
+            ] + [
+                r[0]
+                for r in (
+                    await self.ds.execute(self.name, """
+                        select name from sqlite_master
+                        where name like "idx_%"
+                        and type = "table"
+                    """)
+                ).rows
+            ]
+        # Add any from metadata.json
+        db_metadata = self.ds.metadata(database=self.name)
+        if "tables" in db_metadata:
+            hidden_tables += [
+                t for t in db_metadata["tables"] if db_metadata["tables"][t].get("hidden")
+            ]
+        # Also mark as hidden any tables which start with the name of a hidden table
+        # e.g. "searchable_fts" implies "searchable_fts_content" should be hidden
+        for table_name in await self.table_names():
+            for hidden_table in hidden_tables[:]:
+                if table_name.startswith(hidden_table):
+                    hidden_tables.append(table_name)
+                    continue
+
+        return hidden_tables
+
+    async def view_names(self):
+        results = await self.ds.execute(self.name, "select name from sqlite_master where type='view'")
+        return [r[0] for r in results.rows]
+
+    def __repr__(self):
+        tags = []
+        if self.is_mutable:
+            tags.append("mutable")
+        if self.is_memory:
+            tags.append("memory")
+        if self.hash:
+            tags.append("hash={}".format(self.hash))
+        if self.size is not None:
+            tags.append("size={}".format(self.size))
+        tags_str = ""
+        if tags:
+            tags_str = " ({})".format(", ".join(tags))
+        return "<ConnectedDatabase: {}{}>".format(
+            self.name, tags_str
+        )
+
+
 class Datasette:
 
     def __init__(
         self,
         files,
+        immutables=None,
         cache_headers=True,
         cors=False,
         inspect_data=None,
@@ -123,10 +264,29 @@ class Datasette:
         template_dir=None,
         plugins_dir=None,
         static_mounts=None,
+        memory=False,
         config=None,
         version_note=None,
     ):
-        self.files = files
+        immutables = immutables or []
+        self.files = tuple(files) + tuple(immutables)
+        self.immutables = set(immutables)
+        if not self.files:
+            self.files = [MEMORY]
+        elif memory:
+            self.files = (MEMORY,) + self.files
+        self.databases = {}
+        for file in self.files:
+            path = file
+            is_memory = False
+            if file is MEMORY:
+                path = None
+                is_memory = True
+            is_mutable = path not in self.immutables
+            db = ConnectedDatabase(self, path, is_mutable=is_mutable, is_memory=is_memory)
+            if db.name in self.databases:
+                raise Exception("Multiple files with same stem: {}".format(db.name))
+            self.databases[db.name] = db
         self.cache_headers = cache_headers
         self.cors = cors
         self._inspect = inspect_data
@@ -137,6 +297,7 @@ class Datasette:
         self.plugins_dir = plugins_dir
         self.static_mounts = static_mounts or []
         self._config = dict(DEFAULT_CONFIG, **(config or {}))
+        self.renderers = {}  # File extension -> renderer function
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
             max_workers=self.config("num_sql_threads")
@@ -267,6 +428,9 @@ class Datasette:
                 "license": metadata.get("license") or self.metadata("license"),
                 "license_url": metadata.get("license_url")
                 or self.metadata("license_url"),
+                "about": metadata.get("about") or self.metadata("about"),
+                "about_url": metadata.get("about_url")
+                or self.metadata("about_url"),
             }
         )
 
@@ -281,10 +445,62 @@ class Datasette:
                 conn.execute("SELECT load_extension('{}')".format(extension))
         if self.config("cache_size_kb"):
             conn.execute('PRAGMA cache_size=-{}'.format(self.config("cache_size_kb")))
+        # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn)
 
-    def table_exists(self, database, table):
-        return table in self.inspect().get(database, {}).get("tables")
+    async def table_exists(self, database, table):
+        results = await self.execute(
+            database,
+            "select 1 from sqlite_master where type='table' and name=?",
+            params=(table,)
+        )
+        return bool(results.rows)
+
+    async def expand_foreign_keys(self, database, table, column, values):
+        "Returns dict mapping (column, value) -> label"
+        labeled_fks = {}
+        foreign_keys = await self.foreign_keys_for_table(database, table)
+        # Find the foreign_key for this column
+        try:
+            fk = [
+                foreign_key for foreign_key in foreign_keys
+                if foreign_key["column"] == column
+            ][0]
+        except IndexError:
+            return {}
+        label_column = await self.label_column_for_table(database, fk["other_table"])
+        if not label_column:
+            return {
+                (fk["column"], value): str(value)
+                for value in values
+            }
+        labeled_fks = {}
+        sql = '''
+            select {other_column}, {label_column}
+            from {other_table}
+            where {other_column} in ({placeholders})
+        '''.format(
+            other_column=escape_sqlite(fk["other_column"]),
+            label_column=escape_sqlite(label_column),
+            other_table=escape_sqlite(fk["other_table"]),
+            placeholders=", ".join(["?"] * len(set(values))),
+        )
+        try:
+            results = await self.execute(
+                database, sql, list(set(values))
+            )
+        except InterruptedError:
+            pass
+        else:
+            for id, value in results:
+                labeled_fks[(fk["column"], id)] = value
+        return labeled_fks
+
+    def absolute_url(self, request, path):
+        url = urllib.parse.urljoin(request.url, path)
+        if url.startswith("http://") and self.config("force_https_urls"):
+            url = "https://" + url[len("http://"):]
+        return url
 
     def inspect(self):
         " Inspect the database and return a dictionary of table metadata "
@@ -293,30 +509,40 @@ class Datasette:
 
         self._inspect = {}
         for filename in self.files:
-            path = Path(filename)
-            name = path.stem
-            if name in self._inspect:
-                raise Exception("Multiple files with same stem %s" % name)
-            try:
-                with sqlite3.connect(
-                    "file:{}?immutable=1".format(path), uri=True
-                ) as conn:
-                    self.prepare_connection(conn)
-                    self._inspect[name] = {
-                        "hash": inspect_hash(path),
-                        "file": str(path),
-                        "views": inspect_views(conn),
-                        "tables": inspect_tables(conn, (self.metadata("databases") or {}).get(name, {}))
-                    }
-            except sqlite3.OperationalError as e:
-                if (e.args[0] == 'no such module: VirtualSpatialIndex'):
-                    raise click.UsageError(
-                        "It looks like you're trying to load a SpatiaLite"
-                        " database without first loading the SpatiaLite module."
-                        "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
-                    )
-                else:
-                    raise
+            if filename is MEMORY:
+                self._inspect[":memory:"] = {
+                    "hash": "000",
+                    "file": ":memory:",
+                    "size": 0,
+                    "views": {},
+                    "tables": {},
+                }
+            else:
+                path = Path(filename)
+                name = path.stem
+                if name in self._inspect:
+                    raise Exception("Multiple files with same stem %s" % name)
+                try:
+                    with sqlite3.connect(
+                        "file:{}?mode=ro".format(path), uri=True
+                    ) as conn:
+                        self.prepare_connection(conn)
+                        self._inspect[name] = {
+                            "hash": inspect_hash(path),
+                            "file": str(path),
+                            "size": path.stat().st_size,
+                            "views": inspect_views(conn),
+                            "tables": inspect_tables(conn, (self.metadata("databases") or {}).get(name, {}))
+                        }
+                except sqlite3.OperationalError as e:
+                    if (e.args[0] == 'no such module: VirtualSpatialIndex'):
+                        raise click.UsageError(
+                            "It looks like you're trying to load a SpatiaLite"
+                            " database without first loading the SpatiaLite module."
+                            "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+                        )
+                    else:
+                        raise
         return self._inspect
 
     def register_custom_units(self):
@@ -339,7 +565,7 @@ class Datasette:
                     sqlite_extensions[extension] = result.fetchone()[0]
                 else:
                     sqlite_extensions[extension] = None
-            except Exception as e:
+            except Exception:
                 pass
         # Figure out supported FTS versions
         fts_versions = []
@@ -363,10 +589,16 @@ class Datasette:
                 "version": sqlite_version,
                 "fts_versions": fts_versions,
                 "extensions": sqlite_extensions,
+                "compile_options": [
+                    r[0] for r in conn.execute("pragma compile_options;").fetchall()
+                ],
             },
         }
 
-    def plugins(self):
+    def plugins(self, show_all=False):
+        ps = list(get_plugins(pm))
+        if not show_all:
+            ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
         return [
             {
                 "name": p["name"],
@@ -374,8 +606,67 @@ class Datasette:
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
             }
-            for p in get_plugins(pm) if p["name"] not in DEFAULT_PLUGINS
+            for p in ps
         ]
+
+    def table_metadata(self, database, table):
+        "Fetch table-specific metadata."
+        return (self.metadata("databases") or {}).get(database, {}).get(
+            "tables", {}
+        ).get(
+            table, {}
+        )
+
+    async def table_columns(self, db_name, table):
+        return await self.execute_against_connection_in_thread(
+            db_name, lambda conn: table_columns(conn, table)
+        )
+
+    async def foreign_keys_for_table(self, database, table):
+        return await self.execute_against_connection_in_thread(
+            database, lambda conn: get_outbound_foreign_keys(conn, table)
+        )
+
+    async def label_column_for_table(self, db_name, table):
+        explicit_label_column = (
+            self.table_metadata(
+                db_name, table
+            ).get("label_column")
+        )
+        if explicit_label_column:
+            return explicit_label_column
+        # If a table has two columns, one of which is ID, then label_column is the other one
+        column_names = await self.table_columns(db_name, table)
+        if (column_names and len(column_names) == 2 and "id" in column_names):
+            return [c for c in column_names if c != "id"][0]
+        # Couldn't find a label:
+        return None
+
+    async def execute_against_connection_in_thread(self, db_name, fn):
+        def in_thread():
+            conn = getattr(connections, db_name, None)
+            if not conn:
+                db = self.databases[db_name]
+                if db.is_memory:
+                    conn = sqlite3.connect(":memory:")
+                else:
+                    # mode=ro or immutable=1?
+                    if db.is_mutable:
+                        qs = "mode=ro"
+                    else:
+                        qs = "immutable=1"
+                    conn = sqlite3.connect(
+                        "file:{}?{}".format(db.path, qs),
+                        uri=True,
+                        check_same_thread=False,
+                    )
+                self.prepare_connection(conn)
+                setattr(connections, db_name, conn)
+            return fn(conn)
+
+        return await asyncio.get_event_loop().run_in_executor(
+            self.executor, in_thread
+        )
 
     async def execute(
         self,
@@ -385,22 +676,12 @@ class Datasette:
         truncate=False,
         custom_time_limit=None,
         page_size=None,
+        log_sql_errors=True,
     ):
         """Executes sql against db_name in a thread"""
         page_size = page_size or self.page_size
 
-        def sql_operation_in_thread():
-            conn = getattr(connections, db_name, None)
-            if not conn:
-                info = self.inspect()[db_name]
-                conn = sqlite3.connect(
-                    "file:{}?immutable=1".format(info["file"]),
-                    uri=True,
-                    check_same_thread=False,
-                )
-                self.prepare_connection(conn)
-                setattr(connections, db_name, conn)
-
+        def sql_operation_in_thread(conn):
             time_limit_ms = self.sql_time_limit_ms
             if custom_time_limit and custom_time_limit < time_limit_ms:
                 time_limit_ms = custom_time_limit
@@ -421,12 +702,13 @@ class Datasette:
                         truncated = False
                 except sqlite3.OperationalError as e:
                     if e.args == ('interrupted',):
-                        raise InterruptedError(e)
-                    print(
-                        "ERROR: conn={}, sql = {}, params = {}: {}".format(
-                            conn, repr(sql), params, e
+                        raise InterruptedError(e, sql, params)
+                    if log_sql_errors:
+                        print(
+                            "ERROR: conn={}, sql = {}, params = {}: {}".format(
+                                conn, repr(sql), params, e
+                            )
                         )
-                    )
                     raise
 
             if truncate:
@@ -435,12 +717,42 @@ class Datasette:
             else:
                 return Results(rows, False, cursor.description)
 
-        return await asyncio.get_event_loop().run_in_executor(
-            self.executor, sql_operation_in_thread
-        )
+        with trace("sql", (db_name, sql.strip(), params)):
+            results = await self.execute_against_connection_in_thread(
+                db_name, sql_operation_in_thread
+            )
+        return results
+
+    def register_renderers(self):
+        """ Register output renderers which output data in custom formats. """
+        # Built-in renderers
+        self.renderers['json'] = json_renderer
+
+        # Hooks
+        hook_renderers = []
+        for hook in pm.hook.register_output_renderer(datasette=self):
+            if type(hook) == list:
+                hook_renderers += hook
+            else:
+                hook_renderers.append(hook)
+
+        for renderer in hook_renderers:
+            self.renderers[renderer['extension']] = renderer['callback']
 
     def app(self):
-        app = Sanic(__name__)
+
+        class TracingSanic(Sanic):
+            async def handle_request(self, request, write_callback, stream_callback):
+                if request.args.get("_trace"):
+                    request["traces"] = []
+                    request["trace_start"] = time.time()
+                    with capture_traces(request["traces"]):
+                        res = await super().handle_request(request, write_callback, stream_callback)
+                else:
+                    res = await super().handle_request(request, write_callback, stream_callback)
+                return res
+
+        app = TracingSanic(__name__)
         default_templates = str(app_root / "datasette" / "templates")
         template_paths = []
         if self.template_dir:
@@ -467,8 +779,14 @@ class Datasette:
         self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
+        # pylint: disable=no-member
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
-        app.add_route(IndexView.as_view(self), "/<as_format:(\.jsono?)?$>")
+
+        self.register_renderers()
+        # Generate a regex snippet to match all registered renderer file extensions
+        renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
+
+        app.add_route(IndexView.as_view(self), r"/<as_format:(\.jsono?)?$>")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         app.add_route(favicon, "/favicon.ico")
         app.static("/-/static/", str(app_root / "datasette" / "static"))
@@ -481,40 +799,43 @@ class Datasette:
                 app.static(modpath, plugin["static_path"])
         app.add_route(
             JsonDataView.as_view(self, "inspect.json", self.inspect),
-            "/-/inspect<as_format:(\.json)?$>",
+            r"/-/inspect<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
-            "/-/metadata<as_format:(\.json)?$>",
+            r"/-/metadata<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "versions.json", self.versions),
-            "/-/versions<as_format:(\.json)?$>",
+            r"/-/versions<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "plugins.json", self.plugins),
-            "/-/plugins<as_format:(\.json)?$>",
+            r"/-/plugins<as_format:(\.json)?$>",
         )
         app.add_route(
             JsonDataView.as_view(self, "config.json", lambda: self._config),
-            "/-/config<as_format:(\.json)?$>",
+            r"/-/config<as_format:(\.json)?$>",
         )
         app.add_route(
-            DatabaseDownload.as_view(self), "/<db_name:[^/]+?><as_db:(\.db)$>"
+            DatabaseDownload.as_view(self), r"/<db_name:[^/]+?><as_db:(\.db)$>"
         )
         app.add_route(
-            DatabaseView.as_view(self), "/<db_name:[^/]+?><as_format:(\.jsono?|\.csv)?$>"
+            DatabaseView.as_view(self),
+            r"/<db_name:[^/]+?><as_format:(" + renderer_regex + r"|.jsono|\.csv)?$>"
         )
         app.add_route(
             TableView.as_view(self),
-            "/<db_name:[^/]+>/<table_and_format:[^/]+?$>",
+            r"/<db_name:[^/]+>/<table_and_format:[^/]+?$>",
         )
         app.add_route(
             RowView.as_view(self),
-            "/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(\.jsono?)?$>",
+            r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:(" + renderer_regex + r")?$>",
         )
         self.register_custom_units()
+
         # On 404 with a trailing slash redirect to path without that slash:
+        # pylint: disable=unused-variable
         @app.middleware("response")
         def redirect_on_404_with_trailing_slash(request, original_response):
             if original_response.status == 404 and request.path.endswith("/"):
@@ -522,6 +843,28 @@ class Datasette:
                 if request.query_string:
                     path = "{}?{}".format(path, request.query_string)
                 return response.redirect(path)
+
+        @app.middleware("response")
+        async def add_traces_to_response(request, response):
+            if request.get("traces") is None:
+                return
+            traces = {
+                "duration": time.time() - request["trace_start"],
+                "queries": request["traces"],
+            }
+            if "text/html" in response.content_type and b'</body>' in response.body:
+                extra = json.dumps(traces, indent=2)
+                extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
+                response.body = response.body.replace(b"</body>", extra_html)
+            elif "json" in response.content_type and response.body.startswith(b"{"):
+                data = json.loads(response.body.decode("utf8"))
+                if "_traces" not in data:
+                    data["_traces"] = {
+                        "num_traces": len(traces["queries"]),
+                        "traces": traces,
+                        "duration_sum_ms": sum(t[-1] for t in traces["queries"]),
+                    }
+                    response.body = json.dumps(data).encode("utf8")
 
         @app.exception(Exception)
         def on_exception(request, exception):
@@ -559,5 +902,12 @@ class Datasette:
             else:
                 template = self.jinja_env.select_template(templates)
                 return response.html(template.render(info), status=status)
+
+        # First time server starts up, calculate table counts for immutable databases
+        @app.listener("before_server_start")
+        async def setup_db(app, loop):
+            for dbname, database in self.databases.items():
+                if not database.is_mutable:
+                    await database.table_counts(limit=60*60*1000)
 
         return app

@@ -68,6 +68,8 @@ Here's a recipe for taking a table with existing latitude and longitude columns,
         UPDATE events SET
         point_geom = GeomFromText('POINT('||"longitude"||' '||"latitude"||')',4326);
     ''')
+    # Now add a spatial index to that column
+    conn.execute('select CreateSpatialIndex("museums", "point_geom");')
     # If you don't commit your changes will not be persisted:
     conn.commit()
     conn.close()

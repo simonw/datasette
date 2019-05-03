@@ -61,11 +61,12 @@ options:
 
 * ``?_shape=arrays`` - ``"rows"`` is the default option, shown above
 * ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects
-* ``?_shape=array`` - the entire response is an array of objects
-* ``?_shape=arrayfirst`` - the entire response is a flat JSON array containing just the first value from each row
-* ``?_shape=object`` - the entire response is a JSON object keyed using the primary keys of the rows
+* ``?_shape=array`` - an JSON array of objects
+* ``?_shape=array&_nl=on`` - a newline-separated list of JSON objects
+* ``?_shape=arrayfirst`` - a flat JSON array containing just the first value from each row
+* ``?_shape=object`` - a JSON object keyed using the primary keys of the rows
 
-``objects`` looks like this::
+``_shape=objects`` looks like this::
 
     {
         "database": "sf-trees",
@@ -86,7 +87,7 @@ options:
         ]
     }
 
-``array`` looks like this::
+``_shape=array`` looks like this::
 
     [
         {
@@ -103,11 +104,17 @@ options:
         }
     ]
 
-``arrayfirst`` looks like this::
+``_shape=array&_nl=on`` looks like this::
+
+    {"id": 1, "value": "Myoporum laetum :: Myoporum"}
+    {"id": 2, "value": "Metrosideros excelsa :: New Zealand Xmas Tree"}
+    {"id": 3, "value": "Pinus radiata :: Monterey Pine"}
+
+``_shape=arrayfirst`` looks like this::
 
     [1, 2, 3]
 
-``object`` looks like this::
+``_shape=object`` looks like this::
 
     {
         "1": {
@@ -140,6 +147,9 @@ querystring arguments:
 ``?_shape=SHAPE``
     The shape of the JSON to return, documented above.
 
+``?_nl=on``
+    When used with ``?_shape=array`` produces newline-delimited JSON objects.
+
 ``?_json=COLUMN1&_json=COLUMN2``
     If any of your SQLite columns contain JSON values, you can use one or more
     ``_json=`` parameters to request that those columns be returned as regular
@@ -166,10 +176,80 @@ querystring arguments:
 
 .. _table_arguments:
 
-Special table arguments
------------------------
+Table arguments
+---------------
 
-The Datasette table view takes a number of special querystring arguments:
+The Datasette table view takes a number of special querystring arguments.
+
+Column filter arguments
+~~~~~~~~~~~~~~~~~~~~~~~
+
+You can filter the data returned by the table based on column values using a querystring argument.
+
+``?column__exact=value`` or ``?_column=value``
+    Returns rows where the specified column exactly matches the value.
+
+``?column__not=value``
+    Returns rows where the column does not match the value.
+
+``?column__contains=value``
+    Rows where the string column contains the specified value (``column like "%value%"`` in SQL).
+
+``?column__endswith=value``
+    Rows where the string column ends with the specified value (``column like "%value"`` in SQL).
+
+``?column__startswith=value``
+    Rows where the string column starts with the specified value (``column like "value%"`` in SQL).
+
+``?column__gt=value``
+    Rows which are greater than the specified value.
+
+``?column__gte=value``
+    Rows which are greater than or equal to the specified value.
+
+``?column__lt=value``
+    Rows which are less than the specified value.
+
+``?column__lte=value``
+    Rows which are less than or equal to the specified value.
+
+``?column__like=value``
+    Match rows with a LIKE clause, case insensitive and with ``%`` as the wildcard character.
+
+``?column__glob=value``
+    Similar to LIKE but uses Unix wildcard syntax and is case sensitive.
+
+``?column__in=value1,value2,value3``
+    Rows where column matches any of the provided values.
+
+    You can use a comma separated string, or you can use a JSON array.
+
+    The JSON array option is useful if one of your matching values itself contains a comma:
+
+    ``?column__in=["value","value,with,commas"]``
+
+``?column__arraycontains=value``
+    Works against columns that contain JSON arrays - matches if any of the values in that array match.
+
+    This is only available if the ``json1`` SQLite extension is enabled.
+
+``?column__date=value``
+    Column is a datestamp occurring on the specified YYYY-MM-DD date, e.g. ``2018-01-02``.
+
+``?column__isnull=1``
+    Matches rows where the column is null.
+
+``?column__notnull=1``
+    Matches rows where the column is not null.
+
+``?column__isblank=1``
+    Matches rows where the column is blank, meaning null or the empty string.
+
+``?column__notblank=1``
+    Matches rows where the column is not blank.
+
+Special table arguments
+~~~~~~~~~~~~~~~~~~~~~~~
 
 ``?_labels=on/off``
     Expand foreign key references for every possible column. See below.
@@ -196,6 +276,21 @@ The Datasette table view takes a number of special querystring arguments:
     Like ``_search=`` but allows you to specify the column to be searched, as
     opposed to searching all columns that have been indexed by FTS.
 
+``?_where=SQL-fragment``
+    If the :ref:`config_allow_sql` config option is enabled, this parameter
+    can be used to pass one or more additional SQL fragments to be used in the
+    `WHERE` clause of the SQL used to query the table.
+
+    This is particularly useful if you are building a JavaScript application
+    that needs to do something creative but still wants the other conveniences
+    provided by the table view (such as faceting) and hence would like not to
+    have to construct a completely custom SQL query.
+
+    Some examples:
+
+    * `facetable?_where=neighborhood like "%c%"&_where=city_id=3 <https://latest.datasette.io/fixtures/facetable?_where=neighborhood%20like%20%22%c%%22&_where=city_id=3>`__
+    * `facetable?_where=city_id in (select id from facet_cities where name != "Detroit") <https://latest.datasette.io/fixtures/facetable?_where=city_id%20in%20(select%20id%20from%20facet_cities%20where%20name%20!=%20%22Detroit%22)>`__
+
 ``?_group_count=COLUMN``
     Executes a SQL query that returns a count of the number of rows matching
     each unique value in that column, with the most common ordered first.
@@ -207,6 +302,14 @@ The Datasette table view takes a number of special querystring arguments:
 ``?_next=TOKEN``
     Pagination by continuation token - pass the token that was returned in the
     ``"next"`` property by the previous page.
+
+``?_trace=1``
+    Turns on tracing for this page: SQL queries executed during the request will
+    be gathered and included in the response, either in a new ``"_traces"`` key
+    for JSON responses or at the bottom of the page if the response is in HTML.
+
+    The structure of the data returned here should be considered highly unstable
+    and very likely to change.
 
 .. _expand_foreign_keys:
 

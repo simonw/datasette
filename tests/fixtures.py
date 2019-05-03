@@ -23,18 +23,22 @@ class TestClient:
         )
 
 
-@pytest.fixture(scope="session")
-def app_client(
+def make_app_client(
     sql_time_limit_ms=None,
     max_returned_rows=None,
     cors=False,
+    memory=False,
     config=None,
     filename="fixtures.db",
+    is_immutable=False,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
+        for sql, params in TABLE_PARAMETERIZED_SQL:
+            with conn:
+                conn.execute(sql, params)
         os.chdir(os.path.dirname(filepath))
         plugins_dir = os.path.join(tmpdir, "plugins")
         os.mkdir(plugins_dir)
@@ -49,7 +53,9 @@ def app_client(
             }
         )
         ds = Datasette(
-            [filepath],
+            [] if is_immutable else [filepath],
+            immutables=[filepath] if is_immutable else [],
+            memory=memory,
             cors=cors,
             metadata=METADATA,
             plugins_dir=plugins_dir,
@@ -61,38 +67,61 @@ def app_client(
         yield client
 
 
+@pytest.fixture(scope="session")
+def app_client():
+    yield from make_app_client()
+
+
+@pytest.fixture(scope="session")
+def app_client_no_files():
+    ds = Datasette([])
+    client = TestClient(ds.app().test_client)
+    client.ds = ds
+    yield client
+
+@pytest.fixture(scope="session")
+def app_client_with_memory():
+    yield from make_app_client(memory=True)
+
+@pytest.fixture(scope="session")
+def app_client_with_hash():
+    yield from make_app_client(config={
+        'hash_urls': True,
+    }, is_immutable=True)
+
+
 @pytest.fixture(scope='session')
 def app_client_shorter_time_limit():
-    yield from app_client(20)
+    yield from make_app_client(20)
 
 
 @pytest.fixture(scope='session')
 def app_client_returned_rows_matches_page_size():
-    yield from app_client(max_returned_rows=50)
+    yield from make_app_client(max_returned_rows=50)
 
 
 @pytest.fixture(scope='session')
 def app_client_larger_cache_size():
-    yield from app_client(config={
+    yield from make_app_client(config={
         'cache_size_kb': 2500,
     })
 
 
 @pytest.fixture(scope='session')
 def app_client_csv_max_mb_one():
-    yield from app_client(config={
+    yield from make_app_client(config={
         'max_csv_mb': 1,
     })
 
 
 @pytest.fixture(scope="session")
 def app_client_with_dot():
-    yield from app_client(filename="fixtures.dot.db")
+    yield from make_app_client(filename="fixtures.dot.db")
 
 
 @pytest.fixture(scope='session')
 def app_client_with_cors():
-    yield from app_client(cors=True)
+    yield from make_app_client(cors=True)
 
 
 def generate_compound_rows(num):
@@ -129,6 +158,8 @@ METADATA = {
     'license_url': 'https://github.com/simonw/datasette/blob/master/LICENSE',
     'source': 'tests/fixtures.py',
     'source_url': 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py',
+    'about': 'About Datasette',
+    'about_url': 'https://github.com/simonw/datasette',
     "plugins": {
         "name-of-plugin": {
             "depth": "root"
@@ -181,6 +212,10 @@ METADATA = {
                 },
                 'simple_view': {
                     'sortable_columns': ['content'],
+                },
+                'searchable_view_configured_by_metadata': {
+                    'fts_table': 'searchable_fts',
+                    'fts_pk': 'pk'
                 }
             },
             'queries': {
@@ -495,27 +530,32 @@ CREATE TABLE facetable (
     state text,
     city_id integer,
     neighborhood text,
+    tags text,
     FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (planet_int, on_earth, state, city_id, neighborhood)
+    (planet_int, on_earth, state, city_id, neighborhood, tags)
 VALUES
-    (1, 1, 'CA', 1, 'Mission'),
-    (1, 1, 'CA', 1, 'Dogpatch'),
-    (1, 1, 'CA', 1, 'SOMA'),
-    (1, 1, 'CA', 1, 'Tenderloin'),
-    (1, 1, 'CA', 1, 'Bernal Heights'),
-    (1, 1, 'CA', 1, 'Hayes Valley'),
-    (1, 1, 'CA', 2, 'Hollywood'),
-    (1, 1, 'CA', 2, 'Downtown'),
-    (1, 1, 'CA', 2, 'Los Feliz'),
-    (1, 1, 'CA', 2, 'Koreatown'),
-    (1, 1, 'MI', 3, 'Downtown'),
-    (1, 1, 'MI', 3, 'Greektown'),
-    (1, 1, 'MI', 3, 'Corktown'),
-    (1, 1, 'MI', 3, 'Mexicantown'),
-    (2, 0, 'MC', 4, 'Arcadia Planitia')
+    (1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]'),
+    (1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]'),
+    (1, 1, 'CA', 1, 'SOMA', '[]'),
+    (1, 1, 'CA', 1, 'Tenderloin', '[]'),
+    (1, 1, 'CA', 1, 'Bernal Heights', '[]'),
+    (1, 1, 'CA', 1, 'Hayes Valley', '[]'),
+    (1, 1, 'CA', 2, 'Hollywood', '[]'),
+    (1, 1, 'CA', 2, 'Downtown', '[]'),
+    (1, 1, 'CA', 2, 'Los Feliz', '[]'),
+    (1, 1, 'CA', 2, 'Koreatown', '[]'),
+    (1, 1, 'MI', 3, 'Downtown', '[]'),
+    (1, 1, 'MI', 3, 'Greektown', '[]'),
+    (1, 1, 'MI', 3, 'Corktown', '[]'),
+    (1, 1, 'MI', 3, 'Mexicantown', '[]'),
+    (2, 0, 'MC', 4, 'Arcadia Planitia', '[]')
 ;
+
+CREATE TABLE binary_data (
+    data BLOB
+);
 
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
@@ -535,6 +575,12 @@ INSERT INTO [table/with/slashes.csv] VALUES (3, 'hey');
 CREATE VIEW simple_view AS
     SELECT content, upper(content) AS upper_content FROM simple_primary_key;
 
+CREATE VIEW searchable_view AS
+    SELECT * from searchable;
+
+CREATE VIEW searchable_view_configured_by_metadata AS
+    SELECT * from searchable;
+
 ''' + '\n'.join([
     'INSERT INTO no_primary_key VALUES ({i}, "a{i}", "b{i}", "c{i}");'.format(i=i + 1)
     for i in range(201)
@@ -550,6 +596,9 @@ CREATE VIEW simple_view AS
         **row
     ).replace('None', 'null') for row in generate_sortable_rows(201)
 ])
+TABLE_PARAMETERIZED_SQL = [(
+    "insert into binary_data (data) values (?);", [b'this is binary data']
+)]
 
 if __name__ == '__main__':
     # Can be called with data.db OR data.db metadata.json
@@ -561,6 +610,9 @@ if __name__ == '__main__':
     if db_filename.endswith(".db"):
         conn = sqlite3.connect(db_filename)
         conn.executescript(TABLES)
+        for sql, params in TABLE_PARAMETERIZED_SQL:
+            with conn:
+                conn.execute(sql, params)
         print("Test tables written to {}".format(db_filename))
         if metadata_filename:
             open(metadata_filename, 'w').write(json.dumps(METADATA))

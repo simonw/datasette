@@ -1,9 +1,10 @@
 language: python
+dist: xenial
 
 # 3.6 is listed first so it gets used for the later build stages
 python:
   - "3.6"
-  - "3.7-dev"
+  - "3.7"
   - "3.5"
 
 # Executed for 3.5 AND 3.5 as the first "test" stage:
@@ -50,8 +51,7 @@ jobs:
         - provider: pypi
           user: simonw
           distributions: bdist_wheel
-          password:
-            secure: ikY6iF+/2AxFlwcun35iAEz7Wbrnp0Fp7b32Z7uob5RsGpIDCYYDa3T/qNhiyNsg5fecGp01rBf1F+dL357b0rWEeaoONtsDrTKFeBUB6bMnzNtr3QbHq/TeQ1f+Vn6FWpY9360Ihbz0pKPzWWYHJxOjXPM793rGWmPu7siCc4oQZOpwLK28GZeFP803wq/QG81hFRWR8IiMlqljkecEGhaM6ftxzizk1LBoTZCw3DdL2xDwzrLvF3Hg1jXX08pJm9WrLJNS6i+LRhiLv9IJ5KxRDwNHJhrvblRrZn0CKVbiWR/8985r4R7CXaeG68uJ505RcVoXYRsq9D7mAcYAB3U5AzU9TsPQlvUgwJlFpKOsZlCw+5AHFIYUXvlP2Qo5kfXUYC9KKdJwbWjcW7isUqWpzInGfnmRNMJGzmIm2q65ua0FNLV4vK1wl98O60HFSyhXJi84YmCAPgidJ22sEA6sHAdMEFiWglhap12zPc6i7trXKC8aLjW/3qGXhUq3BK8vQcbutGer+Q3z9UM7kthB76FtCUVc8eqljtdAcGt5kXoHIEPwGb50ikOxo/qpXsXVH36Z6plbELbayXb3ocUrMdhWP5+kfnrdLEmx+X4IpUauxGUqLGliYSQpfjp8XyA87ASCjsSqUEjr/4t4YztW5a3mWBYZ+IjjYXW6PQg=
+          password: ${PYPI_PASSWORD}
           on:
             branch: master
             tags: true

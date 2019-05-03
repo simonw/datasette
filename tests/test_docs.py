@@ -4,6 +4,7 @@ Tests to ensure certain things are documented.
 from click.testing import CliRunner
 from datasette import app
 from datasette.cli import cli
+from datasette.filters import Filters
 from pathlib import Path
 import pytest
 import re
@@ -33,6 +34,7 @@ def test_config_options_are_documented(config):
     ("package", "datasette-package-help.txt"),
     ("publish now", "datasette-publish-now-help.txt"),
     ("publish heroku", "datasette-publish-heroku-help.txt"),
+    ("publish cloudrun", "datasette-publish-cloudrun-help.txt"),
 ))
 def test_help_includes(name, filename):
     expected = open(str(docs_path / filename)).read()
@@ -71,3 +73,20 @@ def documented_views():
 @pytest.mark.parametrize("view_class", [v for v in dir(app) if v.endswith("View")])
 def test_view_classes_are_documented(documented_views, view_class):
     assert view_class in documented_views
+
+
+@pytest.fixture(scope="session")
+def documented_table_filters():
+    json_api_rst = (docs_path / "json_api.rst").read_text()
+    section = json_api_rst.split(".. _table_arguments:")[-1]
+    # Lines starting with ``?column__exact= are docs for filters
+    return set(
+        line.split("__")[1].split("=")[0]
+        for line in section.split("\n")
+        if line.startswith("``?column__")
+    )
+
+
+@pytest.mark.parametrize("filter", [f.key for f in Filters._filters])
+def test_table_filters_are_documented(documented_table_filters, filter):
+    assert filter in documented_table_filters

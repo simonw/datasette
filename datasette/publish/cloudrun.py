@@ -1,7 +1,7 @@
 from datasette import hookimpl
 import click
 import json
-from subprocess import call
+from subprocess import check_call, check_output
 
 from .common import (
     add_common_publish_arguments_and_options,
@@ -20,11 +20,8 @@ def publish_subcommand(publish):
         default="datasette",
         help="Application name to use when deploying",
     )
-    @click.option("--force", is_flag=True, help="Pass --force option to now")
-    @click.option("--token", help="Auth token to use for deploy")
-    @click.option("--alias", help="Desired alias e.g. yoursite.now.sh")
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
-    def now(
+    def cloudrun(
         files,
         metadata,
         extra_options,
@@ -42,17 +39,10 @@ def publish_subcommand(publish):
         about,
         about_url,
         name,
-        force,
-        token,
-        alias,
         spatialite,
     ):
-        fail_if_publish_binary_not_installed("now", "Zeit Now", "https://zeit.co/now")
-        if extra_options:
-            extra_options += " "
-        else:
-            extra_options = ""
-        extra_options += "--config force_https_urls:on"
+        fail_if_publish_binary_not_installed("gcloud", "Google Cloud", "https://cloud.google.com/sdk/")
+        project = check_output("gcloud config get-value project", shell=True, universal_newlines=True).strip()
 
         with temporary_docker_directory(
             files,
@@ -76,23 +66,6 @@ def publish_subcommand(publish):
                 "about_url": about_url,
             },
         ):
-            now_json = {
-                "version": 1
-            }
-            if alias:
-                now_json["alias"] = alias
-            open("now.json", "w").write(json.dumps(now_json))
-            args = []
-            if force:
-                args.append("--force")
-            if token:
-                args.append("--token={}".format(token))
-            if args:
-                call(["now"] + args)
-            else:
-                call("now")
-            if alias:
-                alias_args = ["alias"]
-                if token:
-                    alias_args.append("--token={}".format(token))
-                call(["now"] + alias_args)
+            image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
+            check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
+        check_call("gcloud beta run deploy --allow-unauthenticated --image {}".format(image_id), shell=True)

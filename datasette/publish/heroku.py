@@ -35,6 +35,8 @@ def publish_subcommand(publish):
         license_url,
         source,
         source_url,
+        about,
+        about_url,
         name,
     ):
         fail_if_publish_binary_not_installed(
@@ -72,6 +74,8 @@ def publish_subcommand(publish):
                 "license_url": license_url,
                 "source": source,
                 "source_url": source_url,
+                "about": about,
+                "about_url": about_url,
             },
         ):
             app_name = None
@@ -96,4 +100,4 @@ def publish_subcommand(publish):
                 create_output = check_output(cmd).decode("utf8")
                 app_name = json.loads(create_output)["name"]
 
-            call(["heroku", "builds:create", "-a", app_name])
+            call(["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"])

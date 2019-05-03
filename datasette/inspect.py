@@ -3,8 +3,10 @@ import hashlib
 from .utils import (
     detect_spatialite,
     detect_fts,
+    detect_primary_keys,
     escape_sqlite,
     get_all_foreign_keys,
+    table_columns,
     sqlite3
 )
 
@@ -28,30 +30,6 @@ def inspect_hash(path):
 def inspect_views(conn):
     " List views in a database. "
     return [v[0] for v in conn.execute('select name from sqlite_master where type = "view"')]
-
-
-def detect_label_column(column_names):
-    """ Detect the label column - which we display as the label for a joined column.
-
-        If a table has two columns, one of which is ID, then label_column is the other one.
-    """
-    if (column_names and len(column_names) == 2 and "id" in column_names):
-        return [c for c in column_names if c != "id"][0]
-
-    return None
-
-
-def detect_primary_keys(conn, table):
-    " Figure out primary keys for a table. "
-    table_info_rows = [
-        row
-        for row in conn.execute(
-            'PRAGMA table_info("{}")'.format(table)
-        ).fetchall()
-        if row[-1]
-    ]
-    table_info_rows.sort(key=lambda row: row[-1])
-    return [str(r[1]) for r in table_info_rows]
 
 
 def inspect_tables(conn, database_metadata):
@@ -78,19 +56,13 @@ def inspect_tables(conn, database_metadata):
             # e.g. "select count(*) from some_fts;"
             count = 0
 
-        column_names = [
-            r[1]
-            for r in conn.execute(
-                "PRAGMA table_info({});".format(escape_sqlite(table))
-            ).fetchall()
-        ]
+        column_names = table_columns(conn, table)
 
         tables[table] = {
             "name": table,
             "columns": column_names,
             "primary_keys": detect_primary_keys(conn, table),
             "count": count,
-            "label_column": detect_label_column(column_names),
             "hidden": table_metadata.get("hidden") or False,
             "fts_table": detect_fts(conn, table),
         }

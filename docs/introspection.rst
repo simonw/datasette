@@ -50,7 +50,6 @@ This is an internal implementation detail of Datasette and the format should not
                     },
                     "fts_table": null,
                     "hidden": false,
-                    "label_column": null,
                     "name": "./index",
                     "primary_keys": []
                 },
@@ -61,7 +60,7 @@ This is an internal implementation detail of Datasette and the format should not
 /-/versions
 -----------
 
-Shows the version of Datasette, Python and SQLite. `Versions example <https://fivethirtyeight.datasettes.com/-/versions>`_::
+Shows the version of Datasette, Python and SQLite. `Versions example <https://latest.datasette.io/-/versions>`_::
 
     {
         "datasette": {
@@ -76,8 +75,18 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://fi
                 "json1": null
             },
             "fts_versions": [
+                "FTS5",
                 "FTS4",
                 "FTS3"
+            ],
+            "compile_options": [
+                "COMPILER=gcc-6.3.0 20170516",
+                "ENABLE_FTS3",
+                "ENABLE_FTS4",
+                "ENABLE_FTS5",
+                "ENABLE_JSON1",
+                "ENABLE_RTREE",
+                "THREADSAFE=1"
             ],
             "version": "3.16.2"
         }

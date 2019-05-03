@@ -58,6 +58,51 @@ Now you can navigate to http://localhost:8001/mydb and run this SQL::
 
 To see the output of your plugin.
 
+.. _plugins_installed:
+
+Seeing what plugins are installed
+---------------------------------
+
+You can see a list of installed plugins by navigating to the ``/-/plugins`` page of your Datasette instance - for example: https://fivethirtyeight.datasettes.com/-/plugins
+
+You can also use the ``datasette plugins`` command::
+
+    $ datasette plugins
+    [
+        {
+            "name": "datasette_json_html",
+            "static": false,
+            "templates": false,
+            "version": "0.4.0"
+        }
+    ]
+
+If you run ``datasette plugins --all`` it will include default plugins that ship as part of Datasette::
+
+    $ datasette plugins --all
+    [
+        {
+            "name": "datasette_json_html",
+            "static": false,
+            "templates": false,
+            "version": "0.4.0"
+        },
+        {
+            "name": "datasette.publish.heroku",
+            "static": false,
+            "templates": false,
+            "version": null
+        },
+        {
+            "name": "datasette.publish.now",
+            "static": false,
+            "templates": false,
+            "version": null
+        }
+    ]
+
+You can add the ``--plugins-dir=`` option to include any plugins found in that directory.
+
 Packaging a plugin
 ------------------
 
@@ -380,7 +425,7 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
 .. code-block:: python
 
     from datasette import hookimpl
-    from datasette.common import add_common_publish_arguments_and_options
+    from datasette.publish.common import add_common_publish_arguments_and_options
     import click
 
 
@@ -484,8 +529,8 @@ If the value matches that pattern, the plugin returns an HTML link element:
 
 .. _plugin_hook_extra_body_script:
 
-extra_body_script(template, database, table, datasette)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+extra_body_script(template, database, table, view_name, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``template`` - string
     The template that is being rendered, e.g. ``database.html``
@@ -495,6 +540,9 @@ extra_body_script(template, database, table, datasette)
 
 ``table`` - string or None
     The name of the table, or ``None`` if the page does not correct to a table
+
+``view_name`` - string
+    The name of the view being displayed. (`database`, `table`, and `row` are the most important ones.)
 
 ``datasette`` - Datasette instance
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
@@ -506,3 +554,118 @@ The ``template``, ``database`` and ``table`` options can be used to return diffe
 The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
 
 The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
+
+.. _plugin_register_output_renderer:
+
+register_output_renderer(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+Allows the plugin to register a new output renderer, to output data in a custom format. The hook function should return a dictionary, or a list of dictionaries, which contain the file extension you want to handle and a callback function:
+
+.. code-block:: python
+
+        @hookimpl
+        def register_output_renderer(datasette):
+            return {
+                'extension': 'test',
+                'callback': render_test
+            }
+
+This will register `render_test` to be called when paths with the extension `.test` (for example `/database.test`, `/database/table.test`, or `/database/table/row.test`) are requested. When a request is received, the callback function is called with three positional arguments:
+
+``args`` - dictionary
+    The GET parameters of the request
+
+``data`` - dictionary
+    The data to be rendered
+
+``view_name`` - string
+    The name of the view where the renderer is being called. (`database`, `table`, and `row` are the most important ones.)
+
+The callback function can return `None`, if it is unable to render the data, or a dictionary with the following keys:
+
+``body`` - string or bytes, optional
+    The response body, default empty
+
+``content_type`` - string, optional
+    The Content-Type header, default `text/plain`
+
+``status_code`` - integer, optional
+    The HTTP status code, default 200
+
+A simple example of an output renderer callback function:
+
+.. code-block:: python
+
+        def render_test(args, data, view_name):
+            return {
+                'body': 'Hello World'
+            }
+
+.. _plugin_register_facet_classes:
+
+register_facet_classes()
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Return a list of additional Facet subclasses to be registered.
+
+Each Facet subclass implements a new type of facet operation. The class should look like this:
+
+.. code-block:: python
+
+    class SpecialFacet(Facet):
+        # This key must be unique across all facet classes:
+        type = "special"
+
+        async def suggest(self, sql, params, filtered_table_rows_count):
+            suggested_facets = []
+            # Perform calculations to suggest facets
+            suggested_facets.append({
+                "name": column, # Or other unique name
+                # Construct the URL that will enable this facet:
+                "toggle_url": self.ds.absolute_url(
+                    self.request, path_with_added_args(
+                        self.request, {"_facet": column}
+                    )
+                ),
+            })
+            return suggested_facets
+
+        async def facet_results(self, sql, params):
+            # This should execute the facet operation and return results
+            facet_results = {}
+            facets_timed_out = []
+            # Do some calculations here...
+            for column in columns_selected_for_facet:
+                try:
+                    facet_results_values = []
+                    # More calculations...
+                    facet_results_values.append({
+                        "value": value,
+                        "label": label,
+                        "count": count,
+                        "toggle_url": self.ds.absolute_url(self.request, toggle_path),
+                        "selected": selected,
+                    })
+                    facet_results[column] = {
+                        "name": column,
+                        "results": facet_results_values,
+                        "truncated": len(facet_rows_results) > facet_size,
+                    }
+                except InterruptedError:
+                    facets_timed_out.append(column)
+
+            return facet_results, facets_timed_out
+
+See ``datasette/facets.py`` for examples of how these classes can work.
+
+The plugin hook can then be used to register the new facet class like this:
+
+.. code-block:: python
+
+    @hookimpl
+    def register_facet_classes():
+        return [SpecialFacet]

@@ -1,7 +1,6 @@
 import asyncio
 import csv
 import itertools
-import json
 import re
 import time
 import urllib
@@ -15,19 +14,17 @@ from sanic.views import HTTPMethodView
 from datasette import __version__
 from datasette.plugins import pm
 from datasette.utils import (
-    CustomJSONEncoder,
     InterruptedError,
     InvalidSql,
     LimitedWriter,
+    format_bytes,
     is_url,
-    path_from_row_pks,
     path_with_added_args,
+    path_with_removed_args,
     path_with_format,
-    remove_infinites,
     resolve_table_and_format,
     sqlite3,
     to_css_class,
-    value_as_boolean,
 )
 
 ureg = pint.UnitRegistry()
@@ -73,6 +70,18 @@ class RenderMixin(HTTPMethodView):
             else:
                 yield {"url": url}
 
+    def database_url(self, database):
+        db = self.ds.databases[database]
+        if self.ds.config("hash_urls") and db.hash:
+            return "/{}-{}".format(
+                database, db.hash[:HASH_LENGTH]
+            )
+        else:
+            return "/{}".format(database)
+
+    def database_color(self, database):
+        return 'ff0000'
+
     def render(self, templates, **context):
         template = self.ds.jinja_env.select_template(templates)
         select_templates = [
@@ -80,10 +89,12 @@ class RenderMixin(HTTPMethodView):
             for template_name in templates
         ]
         body_scripts = []
+        # pylint: disable=no-member
         for script in pm.hook.extra_body_script(
             template=template.name,
             database=context.get("database"),
             table=context.get("table"),
+            view_name=self.name,
             datasette=self.ds
         ):
             body_scripts.append(jinja2.Markup(script))
@@ -102,6 +113,9 @@ class RenderMixin(HTTPMethodView):
                         "extra_js_urls": self._asset_urls(
                             "extra_js_urls", template, context
                         ),
+                        "format_bytes": format_bytes,
+                        "database_url": self.database_url,
+                        "database_color": self.database_color,
                     }
                 }
             )
@@ -109,18 +123,11 @@ class RenderMixin(HTTPMethodView):
 
 
 class BaseView(RenderMixin):
+    name = ''
     re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
 
     def __init__(self, datasette):
         self.ds = datasette
-
-    def table_metadata(self, database, table):
-        "Fetch table-specific metadata."
-        return (self.ds.metadata("databases") or {}).get(database, {}).get(
-            "tables", {}
-        ).get(
-            table, {}
-        )
 
     def options(self, request, *args, **kwargs):
         r = response.text("ok")
@@ -128,24 +135,28 @@ class BaseView(RenderMixin):
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
 
-    def redirect(self, request, path, forward_querystring=True):
+    def redirect(self, request, path, forward_querystring=True, remove_args=None):
         if request.query_string and "?" not in path and forward_querystring:
             path = "{}?{}".format(path, request.query_string)
+        if remove_args:
+            path = path_with_removed_args(request, remove_args, path=path)
         r = response.redirect(path)
         r.headers["Link"] = "<{}>; rel=preload".format(path)
         if self.ds.cors:
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
 
-    def resolve_db_name(self, db_name, **kwargs):
-        databases = self.ds.inspect()
+    async def data(self, request, database, hash, **kwargs):
+        raise NotImplementedError
+
+    async def resolve_db_name(self, request, db_name, **kwargs):
         hash = None
         name = None
         if "-" in db_name:
             # Might be name-and-hash, or might just be
             # a name with a hyphen in it
             name, hash = db_name.rsplit("-", 1)
-            if name not in databases:
+            if name not in self.ds.databases:
                 # Try the whole name
                 name = db_name
                 hash = None
@@ -153,18 +164,25 @@ class BaseView(RenderMixin):
             name = db_name
         # Verify the hash
         try:
-            info = databases[name]
+            db = self.ds.databases[name]
         except KeyError:
             raise NotFound("Database not found: {}".format(name))
 
-        expected = info["hash"][:HASH_LENGTH]
-        if expected != hash:
+        expected = "000"
+        if db.hash is not None:
+            expected = db.hash[:HASH_LENGTH]
+        correct_hash_provided = (expected == hash)
+
+        if not correct_hash_provided:
             if "table_and_format" in kwargs:
-                table, _format = resolve_table_and_format(
+                async def async_table_exists(t):
+                    return await self.ds.table_exists(name, t)
+                table, _format = await resolve_table_and_format(
                     table_and_format=urllib.parse.unquote_plus(
                         kwargs["table_and_format"]
                     ),
-                    table_exists=lambda t: self.ds.table_exists(name, t)
+                    table_exists=async_table_exists,
+                    allowed_formats=self.ds.renderers.keys()
                 )
                 kwargs["table"] = table
                 if _format:
@@ -185,25 +203,23 @@ class BaseView(RenderMixin):
                 should_redirect += kwargs["as_format"]
             if "as_db" in kwargs:
                 should_redirect += kwargs["as_db"]
-            return name, expected, should_redirect
 
-        return name, expected, None
+            if self.ds.config("hash_urls") or "_hash" in request.args:
+                return name, expected, correct_hash_provided, should_redirect
 
-    def absolute_url(self, request, path):
-        url = urllib.parse.urljoin(request.url, path)
-        if url.startswith("http://") and self.ds.config("force_https_urls"):
-            url = "https://" + url[len("http://"):]
-        return url
+        return name, expected, correct_hash_provided, None
 
     def get_templates(self, database, table=None):
         assert NotImplemented
 
     async def get(self, request, db_name, **kwargs):
-        database, hash, should_redirect = self.resolve_db_name(db_name, **kwargs)
+        database, hash, correct_hash_provided, should_redirect = await self.resolve_db_name(
+            request, db_name, **kwargs
+        )
         if should_redirect:
-            return self.redirect(request, should_redirect)
+            return self.redirect(request, should_redirect, remove_args={"_hash"})
 
-        return await self.view_get(request, database, hash, **kwargs)
+        return await self.view_get(request, database, hash, correct_hash_provided, **kwargs)
 
     async def as_csv(self, request, database, hash, **kwargs):
         stream = request.args.get("_stream")
@@ -224,7 +240,7 @@ class BaseView(RenderMixin):
             if isinstance(response_or_template_contexts, response.HTTPResponse):
                 return response_or_template_contexts
             else:
-                data, extra_template_data, templates = response_or_template_contexts
+                data, _, _ = response_or_template_contexts
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
@@ -255,7 +271,7 @@ class BaseView(RenderMixin):
                     if next:
                         kwargs["_next"] = next
                     if not first:
-                        data, extra_template_data, templates = await self.data(
+                        data, _, _ = await self.data(
                             request, database, hash, **kwargs
                         )
                     if first:
@@ -298,31 +314,43 @@ class BaseView(RenderMixin):
             content_type=content_type
         )
 
-    async def view_get(self, request, database, hash, **kwargs):
+    async def get_format(self, request, database, args):
+        """ Determine the format of the response from the request, from URL
+            parameters or from a file extension.
+
+            `args` is a dict of the path components parsed from the URL by the router.
+        """
         # If ?_format= is provided, use that as the format
         _format = request.args.get("_format", None)
         if not _format:
-            _format = (kwargs.pop("as_format", None) or "").lstrip(".")
-        if "table_and_format" in kwargs:
-            table, _ext_format = resolve_table_and_format(
+            _format = (args.pop("as_format", None) or "").lstrip(".")
+        if "table_and_format" in args:
+            async def async_table_exists(t):
+                return await self.ds.table_exists(database, t)
+            table, _ext_format = await resolve_table_and_format(
                 table_and_format=urllib.parse.unquote_plus(
-                    kwargs["table_and_format"]
+                    args["table_and_format"]
                 ),
-                table_exists=lambda t: self.ds.table_exists(database, t)
+                table_exists=async_table_exists,
+                allowed_formats=self.ds.renderers.keys()
             )
             _format = _format or _ext_format
-            kwargs["table"] = table
-            del kwargs["table_and_format"]
-        elif "table" in kwargs:
-            kwargs["table"] = urllib.parse.unquote_plus(
-                kwargs["table"]
+            args["table"] = table
+            del args["table_and_format"]
+        elif "table" in args:
+            args["table"] = urllib.parse.unquote_plus(
+                args["table"]
             )
+        return _format, args
+
+    async def view_get(self, request, database, hash, correct_hash_provided, **kwargs):
+        _format, kwargs = await self.get_format(request, database, kwargs)
 
         if _format == "csv":
             return await self.as_csv(request, database, hash, **kwargs)
 
         if _format is None:
-            # HTML views default to expanding all forign key labels
+            # HTML views default to expanding all foriegn key labels
             kwargs['default_labels'] = True
 
         extra_template_data = {}
@@ -338,7 +366,7 @@ class BaseView(RenderMixin):
 
             else:
                 data, extra_template_data, templates = response_or_template_contexts
-        except InterruptedError as e:
+        except InterruptedError:
             raise DatasetteError("""
                 SQL query took too long. The time limit is controlled by the
                 <a href="https://datasette.readthedocs.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
@@ -359,85 +387,37 @@ class BaseView(RenderMixin):
             value = self.ds.metadata(key)
             if value:
                 data[key] = value
-        if _format in ("json", "jsono"):
-            # Special case for .jsono extension - redirect to _shape=objects
-            if _format == "jsono":
-                return self.redirect(
+
+        # Special case for .jsono extension - redirect to _shape=objects
+        if _format == "jsono":
+            return self.redirect(
+                request,
+                path_with_added_args(
                     request,
-                    path_with_added_args(
-                        request,
-                        {"_shape": "objects"},
-                        path=request.path.rsplit(".jsono", 1)[0] + ".json",
-                    ),
-                    forward_querystring=False,
-                )
-
-            # Handle the _json= parameter which may modify data["rows"]
-            json_cols = []
-            if "_json" in request.args:
-                json_cols = request.args["_json"]
-            if json_cols and "rows" in data and "columns" in data:
-                data["rows"] = convert_specific_columns_to_json(
-                    data["rows"], data["columns"], json_cols,
-                )
-
-            # unless _json_infinity=1 requested, replace infinity with None
-            if "rows" in data and not value_as_boolean(
-                request.args.get("_json_infinity", "0")
-            ):
-                data["rows"] = [remove_infinites(row) for row in data["rows"]]
-
-            # Deal with the _shape option
-            shape = request.args.get("_shape", "arrays")
-            if shape == "arrayfirst":
-                data = [row[0] for row in data["rows"]]
-            elif shape in ("objects", "object", "array"):
-                columns = data.get("columns")
-                rows = data.get("rows")
-                if rows and columns:
-                    data["rows"] = [dict(zip(columns, row)) for row in rows]
-                if shape == "object":
-                    error = None
-                    if "primary_keys" not in data:
-                        error = "_shape=object is only available on tables"
-                    else:
-                        pks = data["primary_keys"]
-                        if not pks:
-                            error = "_shape=object not available for tables with no primary keys"
-                        else:
-                            object_rows = {}
-                            for row in data["rows"]:
-                                pk_string = path_from_row_pks(row, pks, not pks)
-                                object_rows[pk_string] = row
-                            data = object_rows
-                    if error:
-                        data = {
-                            "ok": False,
-                            "error": error,
-                            "database": database,
-                            "database_hash": hash,
-                        }
-                elif shape == "array":
-                    data = data["rows"]
-            elif shape == "arrays":
-                pass
-            else:
-                status_code = 400
-                data = {
-                    "ok": False,
-                    "error": "Invalid _shape: {}".format(shape),
-                    "status": 400,
-                    "title": None,
-                }
-            headers = {}
-            if self.ds.cors:
-                headers["Access-Control-Allow-Origin"] = "*"
-            r = response.HTTPResponse(
-                json.dumps(data, cls=CustomJSONEncoder),
-                status=status_code,
-                content_type="application/json",
-                headers=headers,
+                    {"_shape": "objects"},
+                    path=request.path.rsplit(".jsono", 1)[0] + ".json",
+                ),
+                forward_querystring=False,
             )
+
+        if _format in self.ds.renderers.keys():
+            # Dispatch request to the correct output format renderer
+            # (CSV is not handled here due to streaming)
+            result = self.ds.renderers[_format](request.args, data, self.name)
+            if result is None:
+                raise NotFound("No data")
+
+            response_args = {
+                'content_type': result.get('content_type', 'text/plain'),
+                'status': result.get('status_code', 200)
+            }
+
+            if type(result.get('body')) == bytes:
+                response_args['body_bytes'] = result.get('body')
+            else:
+                response_args['body'] = result.get('body')
+
+            r = response.HTTPResponse(**response_args)
         else:
             extras = {}
             if callable(extra_template_data):
@@ -449,6 +429,10 @@ class BaseView(RenderMixin):
             url_labels_extra = {}
             if data.get("expandable_columns"):
                 url_labels_extra = {"_labels": "on"}
+
+            renderers = {
+                key: path_with_format(request, key, {**url_labels_extra}) for key in self.ds.renderers.keys()
+            }
             url_csv_args = {
                 "_size": "max",
                 **url_labels_extra
@@ -459,12 +443,14 @@ class BaseView(RenderMixin):
                 **data,
                 **extras,
                 **{
-                    "url_json": path_with_format(request, "json", {
-                        **url_labels_extra,
-                    }),
+                    "renderers": renderers,
                     "url_csv": url_csv,
                     "url_csv_path": url_csv_path,
-                    "url_csv_args": url_csv_args,
+                    "url_csv_hidden_args": [
+                        (key, value)
+                        for key, value in urllib.parse.parse_qsl(request.query_string)
+                        if key not in ("_labels", "_facet", "_size")
+                    ] + [("_size", "max")],
                     "datasette_version": __version__,
                     "config": self.ds.config_dict(),
                 }
@@ -473,20 +459,29 @@ class BaseView(RenderMixin):
                 context["metadata"] = self.ds.metadata
             r = self.render(templates, **context)
             r.status = status_code
-        # Set far-future cache expiry
-        if self.ds.cache_headers:
-            ttl = request.args.get("_ttl", None)
-            if ttl is None or not ttl.isdigit():
-                ttl = self.ds.config("default_cache_ttl")
+
+        ttl = request.args.get("_ttl", None)
+        if ttl is None or not ttl.isdigit():
+            if correct_hash_provided:
+                ttl = self.ds.config("default_cache_ttl_hashed")
             else:
-                ttl = int(ttl)
+                ttl = self.ds.config("default_cache_ttl")
+
+        return self.set_response_headers(r, ttl)
+
+    def set_response_headers(self, response, ttl):
+        # Set far-future cache expiry
+        if self.ds.cache_headers and response.status == 200:
+            ttl = int(ttl)
             if ttl == 0:
                 ttl_header = 'no-cache'
             else:
                 ttl_header = 'max-age={}'.format(ttl)
-            r.headers["Cache-Control"] = ttl_header
-        r.headers["Referrer-Policy"] = "no-referrer"
-        return r
+            response.headers["Cache-Control"] = ttl_header
+        response.headers["Referrer-Policy"] = "no-referrer"
+        if self.ds.cors:
+            response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
 
     async def custom_sql(
         self, request, database, hash, sql, editable=True, canned_query=None,
@@ -535,6 +530,7 @@ class BaseView(RenderMixin):
                 for column, value in zip(results.columns, row):
                     display_value = value
                     # Let the plugins have a go
+                    # pylint: disable=no-member
                     plugin_value = pm.hook.render_cell(
                         value=value,
                         column=column,
@@ -557,13 +553,16 @@ class BaseView(RenderMixin):
                 display_rows.append(display_row)
             return {
                 "display_rows": display_rows,
-                "database_hash": hash,
                 "custom_sql": True,
                 "named_parameter_values": named_parameter_values,
                 "editable": editable,
                 "canned_query": canned_query,
                 "metadata": metadata,
                 "config": self.ds.config_dict(),
+                "request": request,
+                "path_with_added_args": path_with_added_args,
+                "path_with_removed_args": path_with_removed_args,
+                "hide_sql": "_hide_sql" in params,
             }
 
         return {
@@ -573,22 +572,3 @@ class BaseView(RenderMixin):
             "columns": columns,
             "query": {"sql": sql, "params": params},
         }, extra_template, templates
-
-
-def convert_specific_columns_to_json(rows, columns, json_cols):
-    json_cols = set(json_cols)
-    if not json_cols.intersection(columns):
-        return rows
-    new_rows = []
-    for row in rows:
-        new_row = []
-        for value, column in zip(row, columns):
-            if column in json_cols:
-                try:
-                    value = json.loads(value)
-                except (TypeError, ValueError) as e:
-                    print(e)
-                    pass
-            new_row.append(value)
-        new_rows.append(new_row)
-    return new_rows

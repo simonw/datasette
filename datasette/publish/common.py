@@ -42,6 +42,8 @@ def add_common_publish_arguments_and_options(subcommand):
         click.option("--license_url", help="License URL for metadata"),
         click.option("--source", help="Source label for metadata"),
         click.option("--source_url", help="Source URL for metadata"),
+        click.option("--about", help="About label for metadata"),
+        click.option("--about_url", help="About URL for metadata"),
     )):
         subcommand = decorator(subcommand)
     return subcommand

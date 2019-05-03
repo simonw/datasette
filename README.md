@@ -7,9 +7,11 @@
 
 *A tool for exploring and publishing data*
 
-Datasette provides an instant, read-only JSON API for any SQLite database. It also provides tools  for packaging the database up as a Docker container and deploying that container to hosting providers such as [Zeit Now](https://zeit.co/now).
+Datasette is a tool for exploring and publishing data. It helps people take data of any shape or size and publish that as an interactive, explorable website and accompanying API.
 
-Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to convert them to SQLite, then publish them with Datasette. Or try [Datasette Publish](https://publish.datasettes.com), a web app that lets you upload CSV data and deploy it using Datasette without needing to install any software.
+Datasette is aimed at data journalists, museum curators, archivists, local governments and anyone else who has data that they wish to share with the world.
+
+[Explore a demo](https://fivethirtyeight.datasettes.com/fivethirtyeight), watch [a video about the project](https://simonwillison.net/2018/Oct/25/how-instantly-publish-data-internet-datasette/) or try it out by [uploading and publishing your own CSV data](https://publish.datasettes.com/).
 
 * Documentation: http://datasette.readthedocs.io/
 * Examples: https://github.com/simonw/datasette/wiki/Datasettes
@@ -17,6 +19,12 @@ Got CSV data? Use [csvs-to-sqlite](https://github.com/simonw/csvs-to-sqlite) to 
 
 ## News
 
+ * 24th February 2019: [
+sqlite-utils: a Python library and CLI tool for building SQLite databases](https://simonwillison.net/2019/Feb/25/sqlite-utils/) - a partner tool for easily creating SQLite databases for use with Datasette.
+ * 31st Janary 2019: [Datasette 0.27](https://datasette.readthedocs.io/en/latest/changelog.html#v0-27) - `datasette plugins` command, newline-delimited JSON export option, new documentation on [The Datasette Ecosystem](https://datasette.readthedocs.io/en/latest/ecosystem.html).
+ * 10th January 2019: [Datasette 0.26.1](http://datasette.readthedocs.io/en/latest/changelog.html#v0-26-1) - SQLite upgrade in Docker image, `/-/versions` now shows SQLite compile options.
+ * 2nd January 2019: [Datasette 0.26](http://datasette.readthedocs.io/en/latest/changelog.html#v0-26) - minor bug fixes, `datasette publish now --alias` argument.
+* 18th December 2018: [Fast Autocomplete Search for Your Website](https://24ways.org/2018/fast-autocomplete-search-for-your-website/) - a new tutorial on using Datasette to build a JavaScript autocomplete search engine.
 * 3rd October 2018: [The interesting ideas in Datasette](https://simonwillison.net/2018/Oct/4/datasette-ideas/) - a write-up of some of the less obvious interesting ideas embedded in the Datasette project.
 * 19th September 2018: [Datasette 0.25](http://datasette.readthedocs.io/en/latest/changelog.html#v0-25) - New plugin hooks, improved database view support and an easier way to use more recent versions of SQLite.
 * 23rd July 2018: [Datasette 0.24](http://datasette.readthedocs.io/en/latest/changelog.html#v0-24) - a number of small new features
@@ -76,7 +84,6 @@ http://localhost:8001/History/downloads.json will return that data as JSON:
             "total_bytes",
             ...
         ],
-        "table_rows_count": 576,
         "rows": [
             [
                 1,

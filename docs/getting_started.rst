@@ -42,7 +42,6 @@ JSON:
             "total_bytes",
             ...
         ],
-        "table_rows_count": 576,
         "rows": [
             [
                 1,

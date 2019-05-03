@@ -2,6 +2,9 @@ from bs4 import BeautifulSoup as Soup
 from .fixtures import ( # noqa
     app_client,
     app_client_shorter_time_limit,
+    app_client_with_hash,
+    app_client_with_memory,
+    make_app_client,
 )
 import pytest
 import re
@@ -14,10 +17,10 @@ def test_homepage(app_client):
     assert 'fixtures' in response.text
 
 
-def test_database_page(app_client):
-    response = app_client.get('/fixtures', allow_redirects=False)
+def test_database_page_redirects_with_url_hash(app_client_with_hash):
+    response = app_client_with_hash.get('/fixtures', allow_redirects=False)
     assert response.status == 302
-    response = app_client.get('/fixtures')
+    response = app_client_with_hash.get('/fixtures')
     assert 'fixtures' in response.text
 
 
@@ -40,19 +43,19 @@ def test_sql_time_limit(app_client_shorter_time_limit):
     assert expected_html_fragment in response.text
 
 
-def test_row(app_client):
-    response = app_client.get(
+def test_row_redirects_with_url_hash(app_client_with_hash):
+    response = app_client_with_hash.get(
         '/fixtures/simple_primary_key/1',
         allow_redirects=False
     )
     assert response.status == 302
     assert response.headers['Location'].endswith('/1')
-    response = app_client.get('/fixtures/simple_primary_key/1')
+    response = app_client_with_hash.get('/fixtures/simple_primary_key/1')
     assert response.status == 200
 
 
-def test_row_strange_table_name(app_client):
-    response = app_client.get(
+def test_row_strange_table_name_with_url_hash(app_client_with_hash):
+    response = app_client_with_hash.get(
         '/fixtures/table%2Fwith%2Fslashes.csv/3',
         allow_redirects=False
     )
@@ -60,12 +63,12 @@ def test_row_strange_table_name(app_client):
     assert response.headers['Location'].endswith(
         '/table%2Fwith%2Fslashes.csv/3'
     )
-    response = app_client.get('/fixtures/table%2Fwith%2Fslashes.csv/3')
+    response = app_client_with_hash.get('/fixtures/table%2Fwith%2Fslashes.csv/3')
     assert response.status == 200
 
 
 def test_table_cell_truncation():
-    for client in app_client(config={
+    for client in make_app_client(config={
         "truncate_cells_html": 5,
     }):
         response = client.get("/fixtures/facetable")
@@ -84,7 +87,7 @@ def test_table_cell_truncation():
 
 
 def test_row_page_does_not_truncate():
-    for client in app_client(config={
+    for client in make_app_client(config={
         "truncate_cells_html": 5,
     }):
         response = client.get("/fixtures/facetable/1")
@@ -104,10 +107,7 @@ def test_add_filter_redirects(app_client):
         '_filter_op': 'startswith',
         '_filter_value': 'x'
     })
-    # First we need to resolve the correct path before testing more redirects
-    path_base = app_client.get(
-        '/fixtures/simple_primary_key', allow_redirects=False
-    ).headers['Location']
+    path_base = '/fixtures/simple_primary_key'
     path = path_base + '?' + filter_args
     response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
@@ -145,9 +145,7 @@ def test_existing_filter_redirects(app_client):
         '_filter_op_4': 'contains',
         '_filter_value_4': 'world',
     }
-    path_base = app_client.get(
-        '/fixtures/simple_primary_key', allow_redirects=False
-    ).headers['Location']
+    path_base = '/fixtures/simple_primary_key'
     path = path_base + '?' + urllib.parse.urlencode(filter_args)
     response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
@@ -173,9 +171,7 @@ def test_existing_filter_redirects(app_client):
 
 
 def test_empty_search_parameter_gets_removed(app_client):
-    path_base = app_client.get(
-        '/fixtures/simple_primary_key', allow_redirects=False
-    ).headers['Location']
+    path_base = '/fixtures/simple_primary_key'
     path = path_base + '?' + urllib.parse.urlencode({
         '_search': '',
         '_filter_column': 'name',
@@ -189,10 +185,22 @@ def test_empty_search_parameter_gets_removed(app_client):
     )
 
 
+def test_searchable_view_persists_fts_table(app_client):
+    # The search form should persist ?_fts_table as a hidden field
+    response = app_client.get(
+        "/fixtures/searchable_view?_fts_table=searchable_fts&_fts_pk=pk"
+    )
+    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [
+        ('_fts_table', 'searchable_fts'), ('_fts_pk', 'pk')
+    ] == [
+        (hidden['name'], hidden['value']) for hidden in hiddens
+    ]
+
+
 def test_sort_by_desc_redirects(app_client):
-    path_base = app_client.get(
-        '/fixtures/sortable', allow_redirects=False
-    ).headers['Location']
+    path_base = '/fixtures/sortable'
     path = path_base + '?' + urllib.parse.urlencode({
         '_sort': 'sortable',
         '_sort_by_desc': '1',
@@ -400,7 +408,7 @@ def test_table_html_simple_primary_key(app_client):
 
 
 def test_table_csv_json_export_interface(app_client):
-    response = app_client.get('/fixtures/simple_primary_key')
+    response = app_client.get('/fixtures/simple_primary_key?id__gt=2')
     assert response.status == 200
     # The links at the top of the page
     links = Soup(response.body, "html.parser").find("p", {
@@ -408,8 +416,8 @@ def test_table_csv_json_export_interface(app_client):
     }).findAll("a")
     actual = [l["href"].split("/")[-1] for l in links]
     expected = [
-        "simple_primary_key.json",
-        "simple_primary_key.csv?_size=max",
+        "simple_primary_key.json?id__gt=2",
+        "simple_primary_key.csv?id__gt=2&_size=max",
         "#export"
     ]
     assert expected == actual
@@ -419,9 +427,10 @@ def test_table_csv_json_export_interface(app_client):
     })
     json_links = [a["href"].split("/")[-1] for a in div.find("p").findAll("a")]
     assert [
-        "simple_primary_key.json",
-        "simple_primary_key.json?_shape=array",
-        "simple_primary_key.json?_shape=object"
+        "simple_primary_key.json?id__gt=2",
+        "simple_primary_key.json?id__gt=2&_shape=array",
+        "simple_primary_key.json?id__gt=2&_shape=array&_nl=on",
+        "simple_primary_key.json?id__gt=2&_shape=object"
     ] == json_links
     # And the CSV form
     form = div.find("form")
@@ -430,6 +439,7 @@ def test_table_csv_json_export_interface(app_client):
     assert [
         '<input name="_dl" type="checkbox"/>',
         '<input type="submit" value="Export CSV"/>',
+        '<input name="id__gt" type="hidden" value="2"/>',
         '<input name="_size" type="hidden" value="max"/>'
     ] == inputs
 
@@ -681,28 +691,39 @@ def test_table_metadata(app_client):
     assert_footer_links(soup)
 
 
-def test_allow_download_on(app_client):
-    response = app_client.get(
+def test_database_download(app_client_with_memory):
+    # Regular page should have a download link
+    response = app_client_with_memory.get(
         "/fixtures"
     )
     soup = Soup(response.body, 'html.parser')
-    assert len(soup.findAll('a', {'href': re.compile('\.db$')}))
+    assert len(soup.findAll('a', {'href': re.compile(r'\.db$')}))
+    # Check we can actually download it
+    assert 200 == app_client_with_memory.get(
+        "/fixtures.db",
+    ).status
+    # Memory page should NOT have a download link
+    response2 = app_client_with_memory.get("/:memory:")
+    soup2 = Soup(response2.body, 'html.parser')
+    assert 0 == len(soup2.findAll('a', {'href': re.compile(r'\.db$')}))
+    # The URL itself should 404
+    assert 404 == app_client_with_memory.get(
+        "/:memory:.db",
+    ).status
 
 
 def test_allow_download_off():
-    for client in app_client(config={
+    for client in make_app_client(config={
         'allow_download': False,
     }):
         response = client.get(
             "/fixtures",
-
         )
         soup = Soup(response.body, 'html.parser')
-        assert not len(soup.findAll('a', {'href': re.compile('\.db$')}))
+        assert not len(soup.findAll('a', {'href': re.compile(r'\.db$')}))
         # Accessing URL directly should 403
         response = client.get(
             "/fixtures.db",
-
         )
         assert 403 == response.status
 
@@ -720,7 +741,7 @@ def test_allow_sql_on(app_client):
 
 
 def test_allow_sql_off():
-    for client in app_client(config={
+    for client in make_app_client(config={
         'allow_sql': False,
     }):
         response = client.get(
@@ -741,14 +762,16 @@ def assert_querystring_equal(expected, actual):
 
 def assert_footer_links(soup):
     footer_links = soup.find('div', {'class': 'ft'}).findAll('a')
-    assert 3 == len(footer_links)
-    datasette_link, license_link, source_link = footer_links
+    assert 4 == len(footer_links)
+    datasette_link, license_link, source_link, about_link = footer_links
     assert 'Datasette' == datasette_link.text.strip()
     assert 'tests/fixtures.py' == source_link.text.strip()
     assert 'Apache License 2.0' == license_link.text.strip()
+    assert 'About Datasette' == about_link.text.strip()
     assert 'https://github.com/simonw/datasette' == datasette_link['href']
     assert 'https://github.com/simonw/datasette/blob/master/tests/fixtures.py' == source_link['href']
     assert 'https://github.com/simonw/datasette/blob/master/LICENSE' == license_link['href']
+    assert 'https://github.com/simonw/datasette' == about_link['href']
 
 
 def inner_html(soup):
@@ -794,7 +817,7 @@ def test_advanced_export_box(app_client, path, has_object, has_stream, has_expan
     assert response.status == 200
     soup = Soup(response.body, "html.parser")
     # JSON shape options
-    expected_json_shapes = ["default", "array"]
+    expected_json_shapes = ["default", "array", "newline-delimited"]
     if has_object:
         expected_json_shapes.append("object")
     div = soup.find("div", {"class": "advanced-export"})
@@ -819,3 +842,60 @@ def test_urlify_custom_queries(app_client):
   https://twitter.com/simonw
  </a>
 </td>''' == soup.find("td", {"class": "col-user_url"}).prettify().strip()
+
+
+def test_show_hide_sql_query(app_client):
+    path = "/fixtures?" + urllib.parse.urlencode({
+        "sql": "select ('https://twitter.com/' || 'simonw') as user_url;"
+    })
+    response = app_client.get(path)
+    soup = Soup(response.body, "html.parser")
+    span = soup.select(".show-hide-sql")[0]
+    assert span.find("a")["href"].endswith("&_hide_sql=1")
+    assert "(hide)" == span.getText()
+    assert soup.find("textarea") is not None
+    # Now follow the link to hide it
+    response = app_client.get(span.find("a")["href"])
+    soup = Soup(response.body, "html.parser")
+    span = soup.select(".show-hide-sql")[0]
+    assert not span.find("a")["href"].endswith("&_hide_sql=1")
+    assert "(show)" == span.getText()
+    assert soup.find("textarea") is None
+    # The SQL should still be there in a hidden form field
+    hiddens = soup.find("form").select("input[type=hidden]")
+    assert [
+        ('sql', "select ('https://twitter.com/' || 'simonw') as user_url;"),
+        ('_hide_sql', '1'),
+    ] == [
+        (hidden['name'], hidden['value']) for hidden in hiddens
+    ]
+
+
+def test_extra_where_clauses(app_client):
+    response = app_client.get(
+        "/fixtures/facetable?_where=neighborhood='Dogpatch'&_where=city_id=1"
+    )
+    soup = Soup(response.body, "html.parser")
+    div = soup.select(".extra-wheres")[0]
+    assert "2 extra where clauses" == div.find("h3").text
+    hrefs = [a["href"] for a in div.findAll("a")]
+    assert [
+        "/fixtures/facetable?_where=city_id%3D1",
+        "/fixtures/facetable?_where=neighborhood%3D%27Dogpatch%27"
+    ] == hrefs
+
+
+def test_binary_data_display(app_client):
+    response = app_client.get("/fixtures/binary_data")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    expected_tds = [
+        [
+            '<td class="col-Link"><a href="/fixtures/binary_data/1">1</a></td>',
+            '<td class="col-rowid">1</td>',
+            '<td class="col-data">&lt;Binary\xa0data:\xa019\xa0bytes&gt;</td>'
+        ]
+    ]
+    assert expected_tds == [
+        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
+    ]

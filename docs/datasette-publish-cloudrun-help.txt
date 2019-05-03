@@ -1,12 +1,8 @@
-$ datasette package --help
+$ datasette publish cloudrun --help
 
-Usage: datasette package [OPTIONS] FILES...
-
-  Package specified SQLite files into a new datasette Docker container
+Usage: datasette publish cloudrun [OPTIONS] [FILES]...
 
 Options:
-  -t, --tag TEXT            Name for the resulting Docker container, can optionally use
-                            name:tag format
   -m, --metadata FILENAME   Path to JSON file containing metadata to publish
   --extra-options TEXT      Extra options to pass to datasette serve
   --branch TEXT             Install datasette from a GitHub branch e.g. master
@@ -14,7 +10,6 @@ Options:
   --plugins-dir DIRECTORY   Path to directory containing custom plugins
   --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
   --install TEXT            Additional packages (e.g. plugins) to install
-  --spatialite              Enable SpatialLite extension
   --version-note TEXT       Additional note to show on /-/versions
   --title TEXT              Title for metadata
   --license TEXT            License label for metadata
@@ -23,4 +18,6 @@ Options:
   --source_url TEXT         Source URL for metadata
   --about TEXT              About label for metadata
   --about_url TEXT          About URL for metadata
+  -n, --name TEXT           Application name to use when deploying
+  --spatialite              Enable SpatialLite extension
   --help                    Show this message and exit.

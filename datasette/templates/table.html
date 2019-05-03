@@ -17,9 +17,9 @@
 {% block body_class %}table db-{{ database|to_css_class }} table-{{ table|to_css_class }}{% endblock %}
 
 {% block content %}
-<div class="hd"><a href="/">home</a> / <a href="/{{ database }}-{{ database_hash }}">{{ database }}</a></div>
+<div class="hd"><a href="/">home</a> / <a href="{{ database_url(database) }}">{{ database }}</a></div>
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_hash[:6] }}">{{ metadata.title or table }}{% if is_view %} (view){% endif %}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or table }}{% if is_view %} (view){% endif %}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
@@ -29,7 +29,7 @@
     </h3>
 {% endif %}
 
-<form class="filters" action="/{{ database }}-{{ database_hash }}/{{ table|quote_plus }}" method="get">
+<form class="filters" action="{{ database_url(database) }}/{{ table|quote_plus }}" method="get">
     {% if supports_search %}
         <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
     {% endif %}
@@ -84,19 +84,33 @@
         {% for facet in sorted_facet_results %}
             <input type="hidden" name="_facet" value="{{ facet.name }}">
         {% endfor %}
+        {% for key, value in form_hidden_args %}
+            <input type="hidden" name="{{ key }}" value="{{ value }}">
+        {% endfor %}
         <input type="submit" value="Apply">
     </div>
 </form>
 
-{% if query.sql and config.allow_sql %}
-    <p><a class="not-underlined" title="{{ query.sql }}" href="/{{ database }}-{{ database_hash }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
+{% if extra_wheres_for_ui %}
+<div class="extra-wheres">
+    <h3>{{ extra_wheres_for_ui|length }} extra where clause{% if extra_wheres_for_ui|length != 1 %}s{% endif %}</h3>
+    <ul>
+    {% for extra_where in extra_wheres_for_ui %}
+        <li><code>{{ extra_where.text }}</code> [<a href="{{ extra_where.remove_url }}">remove</a>]</li>
+    {% endfor %}
+    </ul>
+</div>
 {% endif %}
 
-<p class="export-links">This data as <a href="{{ url_json }}">JSON</a>{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
+{% if query.sql and config.allow_sql %}
+    <p><a class="not-underlined" title="{{ query.sql }}" href="{{ database_url(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
+{% endif %}
+
+<p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
 
 {% if suggested_facets %}
     <p class="suggested-facets">
-        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if facet.type %} ({{ facet.type }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
     </p>
 {% endif %}
 
@@ -109,9 +123,9 @@
         {% for facet_info in sorted_facet_results %}
             <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}" id="facet-{{ facet_info.name|to_css_class }}">
                 <p class="facet-info-name">
-                    <strong>{{ facet_info.name }}</strong>
-                    {% if facet_hideable(facet_info.name) %}
-                        <a href="{{ path_with_removed_args(request, {'_facet': facet_info['name']}) }}" class="cross">&#x2716;</a>
+                    <strong>{{ facet_info.name }}{% if facet_info.type != "column" %} ({{ facet_info.type }}){% endif %}</strong>
+                    {% if facet_info.hideable %}
+                        <a href="{{ facet_info.toggle_url }}" class="cross">&#x2716;</a>
                     {% endif %}
                 </p>
                 <ul>
@@ -140,7 +154,13 @@
 {% if display_rows %}
     <div id="export" class="advanced-export">
         <h3>Advanced export</h3>
-        <p>JSON shape: <a href="{{ url_json }}">default</a>, <a href="{{ append_querystring(url_json, '_shape=array') }}">array</a>{% if primary_keys %}, <a href="{{ append_querystring(url_json, '_shape=object') }}">object</a>{% endif %}</p>
+        <p>JSON shape:
+            <a href="{{ renderers['json'] }}">default</a>,
+            <a href="{{ append_querystring(renderers['json'], '_shape=array') }}">array</a>,
+            <a href="{{ append_querystring(renderers['json'], '_shape=array&_nl=on') }}">newline-delimited</a>{% if primary_keys %},
+                <a href="{{ append_querystring(renderers['json'], '_shape=object') }}">object</a>
+            {% endif %}
+        </p>
         <form action="{{ url_csv_path }}" method="get">
             <p>
                 CSV options:
@@ -148,10 +168,8 @@
                 {% if expandable_columns %}<label><input type="checkbox" name="_labels" checked> expand labels</label>{% endif %}
                 {% if next_url and config.allow_csv_stream %}<label><input type="checkbox" name="_stream"> stream all rows</label>{% endif %}
                 <input type="submit" value="Export CSV">
-                {% for key, value in url_csv_args.items() %}
-                    {% if key != "_labels" %}
-                        <input type="hidden" name="{{ key }}" value="{{ value }}">
-                    {% endif %}
+                {% for key, value in url_csv_hidden_args %}
+                    <input type="hidden" name="{{ key }}" value="{{ value }}">
                 {% endfor %}
             </p>
         </form>

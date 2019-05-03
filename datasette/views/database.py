@@ -2,12 +2,19 @@ import os
 
 from sanic import response
 
-from datasette.utils import to_css_class, validate_sql_select
+from datasette.utils import (
+    detect_fts,
+    detect_primary_keys,
+    get_all_foreign_keys,
+    to_css_class,
+    validate_sql_select,
+)
 
 from .base import BaseView, DatasetteError
 
 
 class DatabaseView(BaseView):
+    name = "database"
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
         if request.args.get("sql"):
@@ -17,33 +24,70 @@ class DatabaseView(BaseView):
             validate_sql_select(sql)
             return await self.custom_sql(request, database, hash, sql, _size=_size)
 
-        info = self.ds.inspect()[database]
+        db = self.ds.databases[database]
+
+        table_counts = await db.table_counts(5)
+        views = await db.view_names()
+        hidden_table_names = set(await db.hidden_table_names())
+        all_foreign_keys = await self.ds.execute_against_connection_in_thread(
+            database, get_all_foreign_keys
+        )
+
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)
-        tables = list(info["tables"].values())
+
+        tables = []
+        for table in table_counts:
+            table_columns = await self.ds.table_columns(database, table)
+            tables.append(
+                {
+                    "name": table,
+                    "columns": table_columns,
+                    "primary_keys": await self.ds.execute_against_connection_in_thread(
+                        database, lambda conn: detect_primary_keys(conn, table)
+                    ),
+                    "count": table_counts[table],
+                    "hidden": table in hidden_table_names,
+                    "fts_table": await self.ds.execute_against_connection_in_thread(
+                        database, lambda conn: detect_fts(conn, table)
+                    ),
+                    "foreign_keys": all_foreign_keys[table],
+                }
+            )
+
         tables.sort(key=lambda t: (t["hidden"], t["name"]))
-        return {
-            "database": database,
-            "tables": tables,
-            "hidden_count": len([t for t in tables if t["hidden"]]),
-            "views": info["views"],
-            "queries": self.ds.get_canned_queries(database),
-        }, {
-            "database_hash": hash,
-            "show_hidden": request.args.get("_show_hidden"),
-            "editable": True,
-            "metadata": metadata,
-        }, (
-            "database-{}.html".format(to_css_class(database)), "database.html"
+        return (
+            {
+                "database": database,
+                "size": db.size,
+                "tables": tables,
+                "hidden_count": len([t for t in tables if t["hidden"]]),
+                "views": views,
+                "queries": self.ds.get_canned_queries(database),
+            },
+            {
+                "show_hidden": request.args.get("_show_hidden"),
+                "editable": True,
+                "metadata": metadata,
+            },
+            ("database-{}.html".format(to_css_class(database)), "database.html"),
         )
 
 
 class DatabaseDownload(BaseView):
+    name = "database_download"
 
-    async def view_get(self, request, database, hash, **kwargs):
+    async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
         if not self.ds.config("allow_download"):
             raise DatasetteError("Database download is forbidden", status=403)
-        filepath = self.ds.inspect()[database]["file"]
+        if database not in self.ds.databases:
+            raise DatasetteError("Invalid database", status=404)
+        db = self.ds.databases[database]
+        if db.is_memory:
+            raise DatasetteError("Cannot download :memory: database", status=404)
+        if not db.path:
+            raise DatasetteError("Cannot download database", status=404)
+        filepath = db.path
         return await response.file_stream(
             filepath,
             filename=os.path.basename(filepath),

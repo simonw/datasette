@@ -34,10 +34,10 @@ setup(
     package_data={'datasette': ['templates/*.html']},
     include_package_data=True,
     install_requires=[
-        'click==6.7',
+        'click>=6.7',
         'click-default-group==1.2',
         'Sanic==0.7.0',
-        'Jinja2==2.10',
+        'Jinja2==2.10.1',
         'hupper==1.0',
         'pint==0.8.1',
         'pluggy>=0.7.1',
@@ -49,8 +49,9 @@ setup(
     setup_requires=['pytest-runner'],
     extras_require={
         'test': [
-            'pytest==3.7.1',
-            'aiohttp==3.3.2',
+            'pytest==4.0.2',
+            'pytest-asyncio==0.10.0',
+            'aiohttp==3.5.3',
             'beautifulsoup4==4.6.1',
         ]
     },
@@ -64,6 +65,7 @@ setup(
         'Intended Audience :: End Users/Desktop',
         'Topic :: Database',
         'License :: OSI Approved :: Apache Software License',
+        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.5',
     ],

@@ -4,6 +4,7 @@
 [![Travis CI](https://travis-ci.org/simonw/datasette.svg?branch=master)](https://travis-ci.org/simonw/datasette)
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](http://datasette.readthedocs.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/master/LICENSE)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://black.readthedocs.io/en/stable/)
 
 *A tool for exploring and publishing data*
 

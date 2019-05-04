@@ -54,6 +54,7 @@ setup(
             "pytest-asyncio==0.10.0",
             "aiohttp==3.5.3",
             "beautifulsoup4==4.6.1",
+            "black",
         ]
     },
     tests_require=["datasette[test]"],

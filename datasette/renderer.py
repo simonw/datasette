@@ -89,8 +89,4 @@ def json_renderer(args, data, view_name):
     else:
         body = json.dumps(data, cls=CustomJSONEncoder)
         content_type = "application/json"
-    return {
-        "body": body,
-        "status_code": status_code,
-        "content_type": content_type
-    }
+    return {"body": body, "status_code": status_code, "content_type": content_type}

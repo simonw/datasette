@@ -20,16 +20,14 @@ class Config(click.ParamType):
 
     def convert(self, config, param, ctx):
         if ":" not in config:
-            self.fail(
-                '"{}" should be name:value'.format(config), param, ctx
-            )
+            self.fail('"{}" should be name:value'.format(config), param, ctx)
             return
         name, value = config.split(":")
         if name not in DEFAULT_CONFIG:
             self.fail(
-                "{} is not a valid option (--help-config to see all)".format(
-                    name
-                ), param, ctx
+                "{} is not a valid option (--help-config to see all)".format(name),
+                param,
+                ctx,
             )
             return
         # Type checking
@@ -44,14 +42,12 @@ class Config(click.ParamType):
                 return
         elif isinstance(default, int):
             if not value.isdigit():
-                self.fail(
-                    '"{}" should be an integer'.format(name), param, ctx
-                )
+                self.fail('"{}" should be an integer'.format(name), param, ctx)
                 return
             return name, int(value)
         else:
             # Should never happen:
-            self.fail('Invalid option')
+            self.fail("Invalid option")
 
 
 @click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)
@@ -204,13 +200,9 @@ def plugins(all, plugins_dir):
     multiple=True,
 )
 @click.option(
-    "--install",
-    help="Additional packages (e.g. plugins) to install",
-    multiple=True,
+    "--install", help="Additional packages (e.g. plugins) to install", multiple=True
 )
-@click.option(
-    "--spatialite", is_flag=True, help="Enable SpatialLite extension"
-)
+@click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
@@ -322,9 +314,7 @@ def package(
     help="mountpoint:path-to-directory for serving static files",
     multiple=True,
 )
-@click.option(
-    "--memory", is_flag=True, help="Make :memory: database available"
-)
+@click.option("--memory", is_flag=True, help="Make :memory: database available")
 @click.option(
     "--config",
     type=Config(),
@@ -332,11 +322,7 @@ def package(
     multiple=True,
 )
 @click.option("--version-note", help="Additional note to show on /-/versions")
-@click.option(
-    "--help-config",
-    is_flag=True,
-    help="Show available config options",
-)
+@click.option("--help-config", is_flag=True, help="Show available config options")
 def serve(
     files,
     immutable,
@@ -360,12 +346,12 @@ def serve(
     if help_config:
         formatter = formatting.HelpFormatter()
         with formatter.section("Config options"):
-            formatter.write_dl([
-                (option.name, '{} (default={})'.format(
-                    option.help, option.default
-                ))
-                for option in CONFIG_OPTIONS
-            ])
+            formatter.write_dl(
+                [
+                    (option.name, "{} (default={})".format(option.help, option.default))
+                    for option in CONFIG_OPTIONS
+                ]
+            )
         click.echo(formatter.getvalue())
         sys.exit(0)
     if reload:
@@ -384,7 +370,9 @@ def serve(
     if metadata:
         metadata_data = json.loads(metadata.read())
 
-    click.echo("Serve! files={} (immutables={}) on port {}".format(files, immutable, port))
+    click.echo(
+        "Serve! files={} (immutables={}) on port {}".format(files, immutable, port)
+    )
     ds = Datasette(
         files,
         immutables=immutable,

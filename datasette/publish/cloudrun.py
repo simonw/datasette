@@ -41,8 +41,12 @@ def publish_subcommand(publish):
         name,
         spatialite,
     ):
-        fail_if_publish_binary_not_installed("gcloud", "Google Cloud", "https://cloud.google.com/sdk/")
-        project = check_output("gcloud config get-value project", shell=True, universal_newlines=True).strip()
+        fail_if_publish_binary_not_installed(
+            "gcloud", "Google Cloud", "https://cloud.google.com/sdk/"
+        )
+        project = check_output(
+            "gcloud config get-value project", shell=True, universal_newlines=True
+        ).strip()
 
         with temporary_docker_directory(
             files,
@@ -68,4 +72,9 @@ def publish_subcommand(publish):
         ):
             image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
             check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
-        check_call("gcloud beta run deploy --allow-unauthenticated --image {}".format(image_id), shell=True)
+        check_call(
+            "gcloud beta run deploy --allow-unauthenticated --image {}".format(
+                image_id
+            ),
+            shell=True,
+        )

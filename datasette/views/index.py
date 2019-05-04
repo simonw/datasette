@@ -15,7 +15,7 @@ from .base import HASH_LENGTH, RenderMixin
 
 
 class IndexView(RenderMixin):
-    name = 'index'
+    name = "index"
 
     def __init__(self, datasette):
         self.ds = datasette
@@ -43,23 +43,25 @@ class IndexView(RenderMixin):
                 }
             hidden_tables = [t for t in tables.values() if t["hidden"]]
 
-            databases.append({
-                "name": name,
-                "hash": db.hash,
-                "color": db.hash[:6] if db.hash else hashlib.md5(name.encode("utf8")).hexdigest()[:6],
-                "path": self.database_url(name),
-                "tables_truncated": sorted(
-                    tables.values(), key=lambda t: t["count"] or 0, reverse=True
-                )[
-                    :5
-                ],
-                "tables_count": len(tables),
-                "tables_more": len(tables) > 5,
-                "table_rows_sum": sum((t["count"] or 0) for t in tables.values()),
-                "hidden_table_rows_sum": sum(t["count"] for t in hidden_tables),
-                "hidden_tables_count": len(hidden_tables),
-                "views_count": len(views),
-            })
+            databases.append(
+                {
+                    "name": name,
+                    "hash": db.hash,
+                    "color": db.hash[:6]
+                    if db.hash
+                    else hashlib.md5(name.encode("utf8")).hexdigest()[:6],
+                    "path": self.database_url(name),
+                    "tables_truncated": sorted(
+                        tables.values(), key=lambda t: t["count"] or 0, reverse=True
+                    )[:5],
+                    "tables_count": len(tables),
+                    "tables_more": len(tables) > 5,
+                    "table_rows_sum": sum((t["count"] or 0) for t in tables.values()),
+                    "hidden_table_rows_sum": sum(t["count"] for t in hidden_tables),
+                    "hidden_tables_count": len(hidden_tables),
+                    "views_count": len(views),
+                }
+            )
         if as_format:
             headers = {}
             if self.ds.cors:

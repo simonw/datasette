@@ -5,46 +5,54 @@ import sys
 
 
 def add_common_publish_arguments_and_options(subcommand):
-    for decorator in reversed((
-        click.argument("files", type=click.Path(exists=True), nargs=-1),
-        click.option(
-            "-m",
-            "--metadata",
-            type=click.File(mode="r"),
-            help="Path to JSON file containing metadata to publish",
-        ),
-        click.option("--extra-options", help="Extra options to pass to datasette serve"),
-        click.option("--branch", help="Install datasette from a GitHub branch e.g. master"),
-        click.option(
-            "--template-dir",
-            type=click.Path(exists=True, file_okay=False, dir_okay=True),
-            help="Path to directory containing custom templates",
-        ),
-        click.option(
-            "--plugins-dir",
-            type=click.Path(exists=True, file_okay=False, dir_okay=True),
-            help="Path to directory containing custom plugins",
-        ),
-        click.option(
-            "--static",
-            type=StaticMount(),
-            help="mountpoint:path-to-directory for serving static files",
-            multiple=True,
-        ),
-        click.option(
-            "--install",
-            help="Additional packages (e.g. plugins) to install",
-            multiple=True,
-        ),
-        click.option("--version-note", help="Additional note to show on /-/versions"),
-        click.option("--title", help="Title for metadata"),
-        click.option("--license", help="License label for metadata"),
-        click.option("--license_url", help="License URL for metadata"),
-        click.option("--source", help="Source label for metadata"),
-        click.option("--source_url", help="Source URL for metadata"),
-        click.option("--about", help="About label for metadata"),
-        click.option("--about_url", help="About URL for metadata"),
-    )):
+    for decorator in reversed(
+        (
+            click.argument("files", type=click.Path(exists=True), nargs=-1),
+            click.option(
+                "-m",
+                "--metadata",
+                type=click.File(mode="r"),
+                help="Path to JSON file containing metadata to publish",
+            ),
+            click.option(
+                "--extra-options", help="Extra options to pass to datasette serve"
+            ),
+            click.option(
+                "--branch", help="Install datasette from a GitHub branch e.g. master"
+            ),
+            click.option(
+                "--template-dir",
+                type=click.Path(exists=True, file_okay=False, dir_okay=True),
+                help="Path to directory containing custom templates",
+            ),
+            click.option(
+                "--plugins-dir",
+                type=click.Path(exists=True, file_okay=False, dir_okay=True),
+                help="Path to directory containing custom plugins",
+            ),
+            click.option(
+                "--static",
+                type=StaticMount(),
+                help="mountpoint:path-to-directory for serving static files",
+                multiple=True,
+            ),
+            click.option(
+                "--install",
+                help="Additional packages (e.g. plugins) to install",
+                multiple=True,
+            ),
+            click.option(
+                "--version-note", help="Additional note to show on /-/versions"
+            ),
+            click.option("--title", help="Title for metadata"),
+            click.option("--license", help="License label for metadata"),
+            click.option("--license_url", help="License URL for metadata"),
+            click.option("--source", help="Source label for metadata"),
+            click.option("--source_url", help="Source URL for metadata"),
+            click.option("--about", help="About label for metadata"),
+            click.option("--about_url", help="About URL for metadata"),
+        )
+    ):
         subcommand = decorator(subcommand)
     return subcommand
 

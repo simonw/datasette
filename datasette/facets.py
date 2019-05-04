@@ -31,14 +31,15 @@ def load_facet_configs(request, table_metadata):
             metadata_config = {"simple": metadata_config}
         else:
             # This should have a single key and a single value
-            assert len(metadata_config.values()) == 1, "Metadata config dicts should be {type: config}"
+            assert (
+                len(metadata_config.values()) == 1
+            ), "Metadata config dicts should be {type: config}"
             type, metadata_config = metadata_config.items()[0]
             if isinstance(metadata_config, str):
                 metadata_config = {"simple": metadata_config}
-        facet_configs.setdefault(type, []).append({
-            "source": "metadata",
-            "config": metadata_config
-        })
+        facet_configs.setdefault(type, []).append(
+            {"source": "metadata", "config": metadata_config}
+        )
     qs_pairs = urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
     for key, values in qs_pairs.items():
         if key.startswith("_facet"):
@@ -53,10 +54,9 @@ def load_facet_configs(request, table_metadata):
                     config = json.loads(value)
                 else:
                     config = {"simple": value}
-                facet_configs.setdefault(type, []).append({
-                    "source": "request",
-                    "config": config
-                })
+                facet_configs.setdefault(type, []).append(
+                    {"source": "request", "config": config}
+                )
     return facet_configs
 
 
@@ -214,7 +214,9 @@ class ColumnFacet(Facet):
                     "name": column,
                     "type": self.type,
                     "hideable": source != "metadata",
-                    "toggle_url": path_with_removed_args(self.request, {"_facet": column}),
+                    "toggle_url": path_with_removed_args(
+                        self.request, {"_facet": column}
+                    ),
                     "results": facet_results_values,
                     "truncated": len(facet_rows_results) > facet_size,
                 }
@@ -269,30 +271,31 @@ class ArrayFacet(Facet):
                 select distinct json_type({column})
                 from ({sql})
             """.format(
-                column=escape_sqlite(column),
-                sql=self.sql,
+                column=escape_sqlite(column), sql=self.sql
             )
             try:
                 results = await self.ds.execute(
-                    self.database, suggested_facet_sql, self.params,
+                    self.database,
+                    suggested_facet_sql,
+                    self.params,
                     truncate=False,
                     custom_time_limit=self.ds.config("facet_suggest_time_limit_ms"),
                     log_sql_errors=False,
                 )
                 types = tuple(r[0] for r in results.rows)
-                if types in (
-                    ("array",),
-                    ("array", None)
-                ):
-                    suggested_facets.append({
-                        "name": column,
-                        "type": "array",
-                        "toggle_url": self.ds.absolute_url(
-                            self.request, path_with_added_args(
-                                self.request, {"_facet_array": column}
-                            )
-                        ),
-                    })
+                if types in (("array",), ("array", None)):
+                    suggested_facets.append(
+                        {
+                            "name": column,
+                            "type": "array",
+                            "toggle_url": self.ds.absolute_url(
+                                self.request,
+                                path_with_added_args(
+                                    self.request, {"_facet_array": column}
+                                ),
+                            ),
+                        }
+                    )
             except (InterruptedError, sqlite3.OperationalError):
                 continue
         return suggested_facets
@@ -314,13 +317,13 @@ class ArrayFacet(Facet):
                 ) join json_each({col}) j
                 group by j.value order by count desc limit {limit}
             """.format(
-                col=escape_sqlite(column),
-                sql=self.sql,
-                limit=facet_size+1,
+                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
             try:
                 facet_rows_results = await self.ds.execute(
-                    self.database, facet_sql, self.params,
+                    self.database,
+                    facet_sql,
+                    self.params,
                     truncate=False,
                     custom_time_limit=self.ds.config("facet_time_limit_ms"),
                 )
@@ -330,7 +333,9 @@ class ArrayFacet(Facet):
                     "type": self.type,
                     "results": facet_results_values,
                     "hideable": source != "metadata",
-                    "toggle_url": path_with_removed_args(self.request, {"_facet_array": column}),
+                    "toggle_url": path_with_removed_args(
+                        self.request, {"_facet_array": column}
+                    ),
                     "truncated": len(facet_rows_results) > facet_size,
                 }
                 facet_rows = facet_rows_results.rows[:facet_size]
@@ -346,13 +351,17 @@ class ArrayFacet(Facet):
                         toggle_path = path_with_added_args(
                             self.request, {"{}__arraycontains".format(column): value}
                         )
-                    facet_results_values.append({
-                        "value": value,
-                        "label": value,
-                        "count": row["count"],
-                        "toggle_url": self.ds.absolute_url(self.request, toggle_path),
-                        "selected": selected,
-                    })
+                    facet_results_values.append(
+                        {
+                            "value": value,
+                            "label": value,
+                            "count": row["count"],
+                            "toggle_url": self.ds.absolute_url(
+                                self.request, toggle_path
+                            ),
+                            "selected": selected,
+                        }
+                    )
             except InterruptedError:
                 facets_timed_out.append(column)
 

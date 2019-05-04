@@ -57,7 +57,9 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
         open("test.db", "w").write("data")
         result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
         assert 0 == result.exit_code, result.output
-        mock_call.assert_called_once_with(["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"])
+        mock_call.assert_called_once_with(
+            ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
+        )
 
 
 @mock.patch("shutil.which")

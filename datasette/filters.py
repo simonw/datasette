@@ -1,10 +1,7 @@
 import json
 import numbers
 
-from .utils import (
-    detect_json1,
-    escape_sqlite,
-)
+from .utils import detect_json1, escape_sqlite
 
 
 class Filter:
@@ -20,7 +17,16 @@ class Filter:
 
 
 class TemplatedFilter(Filter):
-    def __init__(self, key, display, sql_template, human_template, format='{}', numeric=False, no_argument=False):
+    def __init__(
+        self,
+        key,
+        display,
+        sql_template,
+        human_template,
+        format="{}",
+        numeric=False,
+        no_argument=False,
+    ):
         self.key = key
         self.display = display
         self.sql_template = sql_template
@@ -34,16 +40,10 @@ class TemplatedFilter(Filter):
         if self.numeric and converted.isdigit():
             converted = int(converted)
         if self.no_argument:
-            kwargs = {
-                'c': column,
-            }
+            kwargs = {"c": column}
             converted = None
         else:
-            kwargs = {
-                'c': column,
-                'p': 'p{}'.format(param_counter),
-                't': table,
-            }
+            kwargs = {"c": column, "p": "p{}".format(param_counter), "t": table}
         return self.sql_template.format(**kwargs), converted
 
     def human_clause(self, column, value):
@@ -58,8 +58,8 @@ class TemplatedFilter(Filter):
 
 
 class InFilter(Filter):
-    key = 'in'
-    display = 'in'
+    key = "in"
+    display = "in"
 
     def __init__(self):
         pass
@@ -81,34 +81,98 @@ class InFilter(Filter):
 
 
 class Filters:
-    _filters = [
-        # key, display, sql_template, human_template, format=, numeric=, no_argument=
-        TemplatedFilter('exact', '=', '"{c}" = :{p}', lambda c, v: '{c} = {v}' if v.isdigit() else '{c} = "{v}"'),
-        TemplatedFilter('not', '!=', '"{c}" != :{p}', lambda c, v: '{c} != {v}' if v.isdigit() else '{c} != "{v}"'),
-        TemplatedFilter('contains', 'contains', '"{c}" like :{p}', '{c} contains "{v}"', format='%{}%'),
-        TemplatedFilter('endswith', 'ends with', '"{c}" like :{p}', '{c} ends with "{v}"', format='%{}'),
-        TemplatedFilter('startswith', 'starts with', '"{c}" like :{p}', '{c} starts with "{v}"', format='{}%'),
-        TemplatedFilter('gt', '>', '"{c}" > :{p}', '{c} > {v}', numeric=True),
-        TemplatedFilter('gte', '\u2265', '"{c}" >= :{p}', '{c} \u2265 {v}', numeric=True),
-        TemplatedFilter('lt', '<', '"{c}" < :{p}', '{c} < {v}', numeric=True),
-        TemplatedFilter('lte', '\u2264', '"{c}" <= :{p}', '{c} \u2264 {v}', numeric=True),
-        TemplatedFilter('like', 'like', '"{c}" like :{p}', '{c} like "{v}"'),
-        TemplatedFilter('glob', 'glob', '"{c}" glob :{p}', '{c} glob "{v}"'),
-        InFilter(),
-    ] + ([TemplatedFilter('arraycontains', 'array contains', """rowid in (
+    _filters = (
+        [
+            # key, display, sql_template, human_template, format=, numeric=, no_argument=
+            TemplatedFilter(
+                "exact",
+                "=",
+                '"{c}" = :{p}',
+                lambda c, v: "{c} = {v}" if v.isdigit() else '{c} = "{v}"',
+            ),
+            TemplatedFilter(
+                "not",
+                "!=",
+                '"{c}" != :{p}',
+                lambda c, v: "{c} != {v}" if v.isdigit() else '{c} != "{v}"',
+            ),
+            TemplatedFilter(
+                "contains",
+                "contains",
+                '"{c}" like :{p}',
+                '{c} contains "{v}"',
+                format="%{}%",
+            ),
+            TemplatedFilter(
+                "endswith",
+                "ends with",
+                '"{c}" like :{p}',
+                '{c} ends with "{v}"',
+                format="%{}",
+            ),
+            TemplatedFilter(
+                "startswith",
+                "starts with",
+                '"{c}" like :{p}',
+                '{c} starts with "{v}"',
+                format="{}%",
+            ),
+            TemplatedFilter("gt", ">", '"{c}" > :{p}', "{c} > {v}", numeric=True),
+            TemplatedFilter(
+                "gte", "\u2265", '"{c}" >= :{p}', "{c} \u2265 {v}", numeric=True
+            ),
+            TemplatedFilter("lt", "<", '"{c}" < :{p}', "{c} < {v}", numeric=True),
+            TemplatedFilter(
+                "lte", "\u2264", '"{c}" <= :{p}', "{c} \u2264 {v}", numeric=True
+            ),
+            TemplatedFilter("like", "like", '"{c}" like :{p}', '{c} like "{v}"'),
+            TemplatedFilter("glob", "glob", '"{c}" glob :{p}', '{c} glob "{v}"'),
+            InFilter(),
+        ]
+        + (
+            [
+                TemplatedFilter(
+                    "arraycontains",
+                    "array contains",
+                    """rowid in (
             select {t}.rowid from {t}, json_each({t}.{c}) j
             where j.value = :{p}
-        )""", '{c} contains "{v}"')
-    ] if detect_json1() else []) + [
-        TemplatedFilter('date', 'date', 'date({c}) = :{p}', '"{c}" is on date {v}'),
-        TemplatedFilter('isnull', 'is null', '"{c}" is null', '{c} is null', no_argument=True),
-        TemplatedFilter('notnull', 'is not null', '"{c}" is not null', '{c} is not null', no_argument=True),
-        TemplatedFilter('isblank', 'is blank', '("{c}" is null or "{c}" = "")', '{c} is blank', no_argument=True),
-        TemplatedFilter('notblank', 'is not blank', '("{c}" is not null and "{c}" != "")', '{c} is not blank', no_argument=True),
-    ]
-    _filters_by_key = {
-        f.key: f for f in _filters
-    }
+        )""",
+                    '{c} contains "{v}"',
+                )
+            ]
+            if detect_json1()
+            else []
+        )
+        + [
+            TemplatedFilter("date", "date", "date({c}) = :{p}", '"{c}" is on date {v}'),
+            TemplatedFilter(
+                "isnull", "is null", '"{c}" is null', "{c} is null", no_argument=True
+            ),
+            TemplatedFilter(
+                "notnull",
+                "is not null",
+                '"{c}" is not null',
+                "{c} is not null",
+                no_argument=True,
+            ),
+            TemplatedFilter(
+                "isblank",
+                "is blank",
+                '("{c}" is null or "{c}" = "")',
+                "{c} is blank",
+                no_argument=True,
+            ),
+            TemplatedFilter(
+                "notblank",
+                "is not blank",
+                '("{c}" is not null and "{c}" != "")',
+                "{c} is not blank",
+                no_argument=True,
+            ),
+        ]
+    )
+    _filters_by_key = {f.key: f for f in _filters}
 
     def __init__(self, pairs, units={}, ureg=None):
         self.pairs = pairs
@@ -132,22 +196,22 @@ class Filters:
         and_bits = []
         commas, tail = bits[:-1], bits[-1:]
         if commas:
-            and_bits.append(', '.join(commas))
+            and_bits.append(", ".join(commas))
         if tail:
             and_bits.append(tail[0])
-        s = ' and '.join(and_bits)
+        s = " and ".join(and_bits)
         if not s:
-            return ''
-        return 'where {}'.format(s)
+            return ""
+        return "where {}".format(s)
 
     def selections(self):
         "Yields (column, lookup, value) tuples"
         for key, value in self.pairs:
-            if '__' in key:
-                column, lookup = key.rsplit('__', 1)
+            if "__" in key:
+                column, lookup = key.rsplit("__", 1)
             else:
                 column = key
-                lookup = 'exact'
+                lookup = "exact"
             yield column, lookup, value
 
     def has_selections(self):
@@ -174,13 +238,15 @@ class Filters:
         for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:
-                sql_bit, param = filter.where_clause(table, column, self.convert_unit(column, value), i)
+                sql_bit, param = filter.where_clause(
+                    table, column, self.convert_unit(column, value), i
+                )
                 sql_bits.append(sql_bit)
                 if param is not None:
                     if not isinstance(param, list):
                         param = [param]
                     for individual_param in param:
-                        param_id = 'p{}'.format(i)
+                        param_id = "p{}".format(i)
                         params[param_id] = individual_param
                         i += 1
         return sql_bits, params

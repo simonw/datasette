@@ -1,5 +1,6 @@
 from setuptools import setup, find_packages
 import os
+import sys
 
 import versioneer
 
@@ -20,6 +21,11 @@ def get_version():
     exec(open(path).read(), g)
     return g["__version__"]
 
+
+# Only install black on Python 3.6 or higher
+maybe_black = []
+if sys.version_info > (3, 5):
+    maybe_black = ["black"]
 
 setup(
     name="datasette",
@@ -54,8 +60,8 @@ setup(
             "pytest-asyncio==0.10.0",
             "aiohttp==3.5.3",
             "beautifulsoup4==4.6.1",
-            "black; python_version>'3.5'",
         ]
+        + maybe_black
     },
     tests_require=["datasette[test]"],
     classifiers=[

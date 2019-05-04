@@ -7,10 +7,6 @@ import sys
 code_root = Path(__file__).parent.parent
 
 
-# @pytest.mark.skipif(
-#     sys.version_info[:2] > (3, 6),
-#     reason="Breaks on 3.7 at the moment, but it only needs to run under one Python version",
-# )
 def test_black():
     runner = CliRunner()
     result = runner.invoke(

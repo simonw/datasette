@@ -529,7 +529,8 @@ def test_table_json(app_client):
     assert response.status == 200
     data = response.json
     assert (
-        data["query"]["sql"] == "select * from simple_primary_key order by id limit 51"
+        data["query"]["sql"].lower()
+        == "select * from simple_primary_key order by id limit 51"
     )
     assert data["query"]["params"] == {}
     assert data["rows"] == [

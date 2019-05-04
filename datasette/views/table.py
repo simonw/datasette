@@ -5,7 +5,6 @@ import jinja2
 from sanic.exceptions import NotFound
 from sanic.request import RequestParameters
 
-from datasette.facets import load_facet_configs
 from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
@@ -23,12 +22,12 @@ from datasette.utils import (
     path_with_removed_args,
     path_with_replaced_args,
     sqlite3,
-    table_columns,
     to_css_class,
     urlsafe_components,
     value_as_boolean,
 )
 from datasette.filters import Filters
+from ..sql import Select, Table
 from .base import BaseView, DatasetteError, ureg
 
 LINK_WITH_LABEL = (
@@ -212,18 +211,6 @@ class TableView(RowTableShared):
         pks = await self.ds.execute_against_connection_in_thread(
             database, lambda conn: detect_primary_keys(conn, table)
         )
-        use_rowid = not pks and not is_view
-        if use_rowid:
-            select = "rowid, *"
-            order_by = "rowid"
-            order_by_pks = "rowid"
-        else:
-            select = "*"
-            order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
-            order_by = order_by_pks
-
-        if is_view:
-            order_by = ""
 
         # We roll our own query_string decoder because by default Sanic
         # drops anything with an empty value e.g. ?name__exact=
@@ -272,7 +259,22 @@ class TableView(RowTableShared):
         table_metadata = self.ds.table_metadata(database, table)
         units = table_metadata.get("units", {})
         filters = Filters(sorted(other_args), units, ureg)
-        where_clauses, params = filters.build_where_clauses(table)
+
+        # Initial work is now done. Start building the SQL:
+        sql = Select(from_tables=[Table(table)])
+
+        use_rowid = not pks and not is_view
+        if use_rowid:
+            sql.fields = ["rowid", "*"]
+            sql.order_by = ["rowid"]
+        else:
+            sql.fields = "*"
+            sql.order_by = [escape_sqlite(pk) for pk in pks]
+
+        if is_view:
+            sql.order_by = []
+
+        sql.where, params = filters.build_where_clauses(table)
 
         extra_wheres_for_ui = []
         # Add _where= from querystring
@@ -280,7 +282,7 @@ class TableView(RowTableShared):
             if not self.ds.config("allow_sql"):
                 raise DatasetteError("_where= is not allowed", status=400)
             else:
-                where_clauses.extend(request.args["_where"])
+                sql.where.extend(request.args["_where"])
                 extra_wheres_for_ui = [
                     {
                         "text": text,
@@ -305,9 +307,9 @@ class TableView(RowTableShared):
             if "_search" in search_args:
                 # Simple ?_search=xxx
                 search = search_args["_search"]
-                where_clauses.append(
+                sql.where.append(
                     "{fts_pk} in (select rowid from {fts_table} where {fts_table} match :search)".format(
-                        fts_table=escape_sqlite(fts_table), fts_pk=escape_sqlite(fts_pk)
+                        fts_table=Table(fts_table), fts_pk=escape_sqlite(fts_pk)
                     )
                 )
                 search_descriptions.append('search matches "{}"'.format(search))
@@ -321,9 +323,9 @@ class TableView(RowTableShared):
                     ):
                         raise DatasetteError("Cannot search by that column", status=400)
 
-                    where_clauses.append(
+                    sql.where.append(
                         "rowid in (select rowid from {fts_table} where {search_col} match :search_{i})".format(
-                            fts_table=escape_sqlite(fts_table),
+                            fts_table=Table(fts_table),
                             search_col=escape_sqlite(search_col),
                             i=i,
                         )
@@ -335,7 +337,9 @@ class TableView(RowTableShared):
                     )
                     params["search_{}".format(i)] = search_text
 
-        sortable_columns = set()
+        # At this point the pre-pagination row filtering is done.
+        # Save the count(*) query here so we can fetch the full row count later
+        count_sql = sql.count()
 
         sortable_columns = await self.sortable_columns_for_table(
             database, table, use_rowid
@@ -347,7 +351,7 @@ class TableView(RowTableShared):
             if sort not in sortable_columns:
                 raise DatasetteError("Cannot sort table by {}".format(sort))
 
-            order_by = escape_sqlite(sort)
+            sql.order_by = [escape_sqlite(sort)] + sql.order_by
         sort_desc = special_args.get("_sort_desc")
         if sort_desc:
             if sort_desc not in sortable_columns:
@@ -356,25 +360,16 @@ class TableView(RowTableShared):
             if sort:
                 raise DatasetteError("Cannot use _sort and _sort_desc at the same time")
 
-            order_by = "{} desc".format(escape_sqlite(sort_desc))
+            sql.order_by = ["{} desc".format(escape_sqlite(sort_desc))] + sql.order_by
 
-        from_sql = "from {table_name} {where}".format(
-            table_name=escape_sqlite(table),
-            where=("where {} ".format(" and ".join(where_clauses)))
-            if where_clauses
-            else "",
-        )
         # Copy of params so we can mutate them later:
         from_sql_params = dict(**params)
 
-        count_sql = "select count(*) {}".format(from_sql)
-
         _next = _next or special_args.get("_next")
-        offset = ""
         if _next:
             if is_view:
                 # _next is an offset
-                offset = " offset {}".format(int(_next))
+                sql.offset = int(_next)
             else:
                 components = urlsafe_components(_next)
                 # If a sort order is applied, the first of these is the sort value
@@ -405,21 +400,21 @@ class TableView(RowTableShared):
                     if sort_value is None:
                         if sort_desc:
                             # Just items where column is null ordered by pk
-                            where_clauses.append(
+                            sql.where.append(
                                 "({column} is null and {next_clauses})".format(
                                     column=escape_sqlite(sort_desc),
                                     next_clauses=" and ".join(next_by_pk_clauses),
                                 )
                             )
                         else:
-                            where_clauses.append(
+                            sql.where.append(
                                 "({column} is not null or ({column} is null and {next_clauses}))".format(
                                     column=escape_sqlite(sort),
                                     next_clauses=" and ".join(next_by_pk_clauses),
                                 )
                             )
                     else:
-                        where_clauses.append(
+                        sql.where.append(
                             "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
                                 column=escape_sqlite(sort or sort_desc),
                                 op=">" if sort else "<",
@@ -433,28 +428,21 @@ class TableView(RowTableShared):
                             )
                         )
                         params["p{}".format(len(params))] = sort_value
-                    order_by = "{}, {}".format(order_by, order_by_pks)
                 else:
-                    where_clauses.extend(next_by_pk_clauses)
-
-        where_clause = ""
-        if where_clauses:
-            where_clause = "where {} ".format(" and ".join(where_clauses))
-
-        if order_by:
-            order_by = "order by {} ".format(order_by)
+                    sql.where.extend(next_by_pk_clauses)
 
         # _group_count=col1&_group_count=col2
         group_count = special_args_lists.get("_group_count") or []
         if group_count:
-            sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
-                group_cols=", ".join(
-                    '"{}"'.format(group_count_col) for group_count_col in group_count
-                ),
-                table_name=escape_sqlite(table),
-                where=where_clause,
+            group_cols = [escape_sqlite(col) for col in group_count]
+            group_count_sql = sql.copy()
+            group_count_sql.fields = group_cols + ['count(*) AS "count"']
+            group_count_sql.group_by = group_cols
+            group_count_sql.order_by = ["count DESC"]
+            group_count_sql.limit = 10
+            return await self.custom_sql(
+                request, database, hash, str(group_count_sql), editable=True
             )
-            return await self.custom_sql(request, database, hash, sql, editable=True)
 
         extra_args = {}
         # Handle ?_size=500
@@ -479,39 +467,34 @@ class TableView(RowTableShared):
         else:
             page_size = self.ds.page_size
 
-        sql_no_limit = "select {select} from {table_name} {where}{order_by}".format(
-            select=select,
-            table_name=escape_sqlite(table),
-            where=where_clause,
-            order_by=order_by,
-        )
-        sql = "{sql_no_limit} limit {limit}{offset}".format(
-            sql_no_limit=sql_no_limit.rstrip(), limit=page_size + 1, offset=offset
-        )
+        sql.limit = page_size + 1
 
         if request.raw_args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.raw_args["_timelimit"])
 
         results = await self.ds.execute(
-            database, sql, params, truncate=True, **extra_args
+            database, str(sql), params, truncate=True, **extra_args
         )
 
         # Number of filtered rows in whole set:
         filtered_table_rows_count = None
-        if count_sql:
-            try:
-                count_rows = list(
-                    await self.ds.execute(database, count_sql, from_sql_params)
-                )
-                filtered_table_rows_count = count_rows[0][0]
-            except InterruptedError:
-                pass
+
+        try:
+            count_rows = list(
+                await self.ds.execute(database, str(count_sql), from_sql_params)
+            )
+            filtered_table_rows_count = count_rows[0][0]
+        except InterruptedError:
+            pass
 
         # facets support
         if not self.ds.config("allow_facet") and any(
             arg.startswith("_facet") for arg in request.args
         ):
             raise DatasetteError("_facet= is not allowed", status=400)
+
+        sql_no_limit = sql.copy()
+        sql_no_limit.limit = None
 
         # pylint: disable=no-member
         facet_classes = list(
@@ -526,7 +509,7 @@ class TableView(RowTableShared):
                     self.ds,
                     request,
                     database,
-                    sql=sql_no_limit,
+                    sql=str(sql_no_limit),
                     params=params,
                     table=table,
                     metadata=table_metadata,
@@ -719,7 +702,7 @@ class TableView(RowTableShared):
                 "columns": columns,
                 "primary_keys": pks,
                 "units": units,
-                "query": {"sql": sql, "params": params},
+                "query": {"sql": str(sql), "params": params},
                 "facet_results": facet_results,
                 "suggested_facets": suggested_facets,
                 "next": next_value and str(next_value) or None,
@@ -742,18 +725,19 @@ class RowView(RowTableShared):
             database, lambda conn: detect_primary_keys(conn, table)
         )
         use_rowid = not pks
-        select = "*"
+
+        sql = Select(fields="*", from_tables=[Table(table)])
+
         if use_rowid:
-            select = "rowid, *"
+            sql.fields = ["rowid", "*"]
             pks = ["rowid"]
-        wheres = ['"{}"=:p{}'.format(pk, i) for i, pk in enumerate(pks)]
-        sql = "select {} from {} where {}".format(
-            select, escape_sqlite(table), " AND ".join(wheres)
-        )
+        sql.where = ['"{}"=:p{}'.format(pk, i) for i, pk in enumerate(pks)]
+
         params = {}
         for i, pk_value in enumerate(pk_values):
             params["p{}".format(i)] = pk_value
-        results = await self.ds.execute(database, sql, params, truncate=True)
+        results = await self.ds.execute(database, str(sql), params, truncate=True)
+
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
@@ -826,7 +810,7 @@ class RowView(RowTableShared):
         if len(foreign_keys) == 0:
             return []
 
-        sql = "select " + ", ".join(
+        sql = Select(
             [
                 "(select count(*) from {table} where {column}=:id)".format(
                     table=escape_sqlite(fk["other_table"]),
@@ -836,7 +820,7 @@ class RowView(RowTableShared):
             ]
         )
         try:
-            rows = list(await self.ds.execute(database, sql, {"id": pk_values[0]}))
+            rows = list(await self.ds.execute(database, str(sql), {"id": pk_values[0]}))
         except sqlite3.OperationalError:
             # Almost certainly hit the timeout
             return []

@@ -7,6 +7,9 @@ import sys
 code_root = Path(__file__).parent.parent
 
 
+@pytest.mark.skipif(
+    sys.version_info[:2] < (3, 6), reason="Black requires Python 3.6 or later"
+)
 def test_black():
     runner = CliRunner()
     result = runner.invoke(

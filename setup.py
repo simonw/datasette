@@ -24,7 +24,7 @@ def get_version():
 
 # Only install black on Python 3.6 or higher
 maybe_black = []
-if sys.version_info > (3, 5):
+if sys.version_info > (3, 6):
     maybe_black = ["black"]
 
 setup(

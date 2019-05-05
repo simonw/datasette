@@ -149,6 +149,8 @@ class ConnectedDatabase:
 
     @property
     def size(self):
+        if self.is_memory:
+            return 0
         if self.cached_size is not None:
             return self.cached_size
         else:

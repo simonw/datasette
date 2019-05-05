@@ -19,6 +19,11 @@ def test_homepage(app_client):
     assert "fixtures" in response.text
 
 
+def test_memory_database_page(app_client_with_memory):
+    response = app_client_with_memory.get("/:memory:")
+    assert response.status == 200
+
+
 def test_database_page_redirects_with_url_hash(app_client_with_hash):
     response = app_client_with_hash.get("/fixtures", allow_redirects=False)
     assert response.status == 302

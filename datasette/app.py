@@ -905,11 +905,14 @@ class Datasette:
                 {"ok": False, "error": message, "status": status, "title": title}
             )
             if request is not None and request.path.split("?")[0].endswith(".json"):
-                return response.json(info, status=status)
+                r = response.json(info, status=status)
 
             else:
                 template = self.jinja_env.select_template(templates)
-                return response.html(template.render(info), status=status)
+                r = response.html(template.render(info), status=status)
+            if self.cors:
+                r.headers["Access-Control-Allow-Origin"] = "*"
+            return r
 
         # First time server starts up, calculate table counts for immutable databases
         @app.listener("before_server_start")

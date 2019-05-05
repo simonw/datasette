@@ -750,14 +750,13 @@ class Datasette:
                     request["traces"] = []
                     request["trace_start"] = time.time()
                     with capture_traces(request["traces"]):
-                        res = await super().handle_request(
+                        await super().handle_request(
                             request, write_callback, stream_callback
                         )
                 else:
-                    res = await super().handle_request(
+                    await super().handle_request(
                         request, write_callback, stream_callback
                     )
-                return res
 
         app = TracingSanic(__name__)
         default_templates = str(app_root / "datasette" / "templates")

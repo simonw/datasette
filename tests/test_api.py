@@ -6,6 +6,7 @@ from .fixtures import (  # noqa
     app_client_shorter_time_limit,
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
+    app_client_with_cors,
     app_client_with_dot,
     generate_compound_rows,
     generate_sortable_rows,
@@ -1474,3 +1475,18 @@ def test_trace(app_client):
     assert isinstance(traces["num_traces"], int)
     assert isinstance(traces["traces"], dict)
     assert len(traces["traces"]["queries"]) == traces["num_traces"]
+
+
+@pytest.mark.parametrize(
+    "path,status_code",
+    [
+        ("/fixtures.json", 200),
+        ("/fixtures/no_primary_key.json", 200),
+        # A 400 invalid SQL query should still have the header:
+        ("/fixtures.json?sql=select+blah", 400),
+    ],
+)
+def test_cors(app_client_with_cors, path, status_code):
+    response = app_client_with_cors.get(path)
+    assert response.status == status_code
+    assert "*" == response.headers["Access-Control-Allow-Origin"]

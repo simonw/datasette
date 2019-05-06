@@ -3,6 +3,7 @@ from datasette.utils import sqlite3
 import itertools
 import json
 import os
+import pathlib
 import pytest
 import random
 import sys
@@ -587,11 +588,19 @@ TABLE_PARAMETERIZED_SQL = [
 
 if __name__ == "__main__":
     # Can be called with data.db OR data.db metadata.json
-    db_filename = sys.argv[-1]
+    arg_index = -1
+    db_filename = sys.argv[arg_index]
     metadata_filename = None
+    plugins_path = None
+    if db_filename.endswith("/"):
+        # It's the plugins dir
+        plugins_path = db_filename
+        arg_index -= 1
+        db_filename = sys.argv[arg_index]
     if db_filename.endswith(".json"):
         metadata_filename = db_filename
-        db_filename = sys.argv[-2]
+        arg_index -= 1
+        db_filename = sys.argv[arg_index]
     if db_filename.endswith(".db"):
         conn = sqlite3.connect(db_filename)
         conn.executescript(TABLES)
@@ -602,5 +611,20 @@ if __name__ == "__main__":
         if metadata_filename:
             open(metadata_filename, "w").write(json.dumps(METADATA))
             print("- metadata written to {}".format(metadata_filename))
+        if plugins_path:
+            path = pathlib.Path(plugins_path)
+            if not path.exists():
+                path.mkdir()
+                for filename, content in (
+                    ("my_plugin.py", PLUGIN1),
+                    ("my_plugin_2.py", PLUGIN2),
+                ):
+                    filepath = path / filename
+                    filepath.write_text(content)
+                    print("  Wrote plugin: {}".format(filepath))
     else:
-        print("Usage: {} db_to_write.db [metadata_to_write.json]".format(sys.argv[0]))
+        print(
+            "Usage: {} db_to_write.db [metadata_to_write.json] [plugins-dir/]".format(
+                sys.argv[0]
+            )
+        )

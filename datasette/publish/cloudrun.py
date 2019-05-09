@@ -18,7 +18,12 @@ def publish_subcommand(publish):
         "-n",
         "--name",
         default="datasette",
-        help="Application name to use when deploying",
+        help="Application name to use when building",
+    )
+    @click.option(
+        "--service",
+        default="",
+        help="Cloud Run service to deploy (or over-write)",
     )
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
     def cloudrun(
@@ -39,6 +44,7 @@ def publish_subcommand(publish):
         about,
         about_url,
         name,
+        service,
         spatialite,
     ):
         fail_if_publish_binary_not_installed(
@@ -73,8 +79,8 @@ def publish_subcommand(publish):
             image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
             check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
         check_call(
-            "gcloud beta run deploy --allow-unauthenticated --image {}".format(
-                image_id
+            "gcloud beta run deploy --allow-unauthenticated --image {}{}".format(
+                image_id, " {}".format(service) if service else "",
             ),
             shell=True,
         )

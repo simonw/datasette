@@ -12,7 +12,7 @@ Datasette is a tool for exploring and publishing data. It helps people take data
 
 Datasette is aimed at data journalists, museum curators, archivists, local governments and anyone else who has data that they wish to share with the world.
 
-[Explore a demo](https://fivethirtyeight.datasettes.com/fivethirtyeight), watch [a video about the project](https://simonwillison.net/2018/Oct/25/how-instantly-publish-data-internet-datasette/) or try it out by [uploading and publishing your own CSV data](https://publish.datasettes.com/).
+[Explore a demo](https://fivethirtyeight.datasettes.com/fivethirtyeight), watch [a video about the project](https://simonwillison.net/2018/Oct/25/how-instantly-publish-data-internet-datasette/) or try it out by [uploading and publishing your own CSV data](https://simonwillison.net/2019/Apr/23/datasette-glitch/).
 
 * Documentation: http://datasette.readthedocs.io/
 * Examples: https://github.com/simonw/datasette/wiki/Datasettes

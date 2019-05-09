@@ -21,9 +21,7 @@ def publish_subcommand(publish):
         help="Application name to use when building",
     )
     @click.option(
-        "--service",
-        default="",
-        help="Cloud Run service to deploy (or over-write)",
+        "--service", default="", help="Cloud Run service to deploy (or over-write)"
     )
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
     def cloudrun(
@@ -80,7 +78,7 @@ def publish_subcommand(publish):
             check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
         check_call(
             "gcloud beta run deploy --allow-unauthenticated --image {}{}".format(
-                image_id, " {}".format(service) if service else "",
+                image_id, " {}".format(service) if service else ""
             ),
             shell=True,
         )

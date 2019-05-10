@@ -3,6 +3,12 @@ datasets.json
 
 scratchpad
 
+.vscode
+
+# We don't use Pipfile, so ignore them
+Pipfile
+Pipfile.lock
+
 # SQLite databases
 *.db
 *.sqlite

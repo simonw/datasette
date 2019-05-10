@@ -30,7 +30,7 @@ setup(
     author='Simon Willison',
     license='Apache License, Version 2.0',
     url='https://github.com/simonw/datasette',
-    packages=find_packages(),
+    packages=find_packages(exclude='tests'),
     package_data={'datasette': ['templates/*.html']},
     include_package_data=True,
     install_requires=[

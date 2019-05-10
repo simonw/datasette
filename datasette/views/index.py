@@ -57,7 +57,9 @@ class IndexView(RenderMixin):
                     "tables_count": len(tables),
                     "tables_more": len(tables) > 5,
                     "table_rows_sum": sum((t["count"] or 0) for t in tables.values()),
-                    "hidden_table_rows_sum": sum(t["count"] for t in hidden_tables),
+                    "hidden_table_rows_sum": sum(
+                        t["count"] for t in hidden_tables if t["count"] is not None
+                    ),
                     "hidden_tables_count": len(hidden_tables),
                     "views_count": len(views),
                 }

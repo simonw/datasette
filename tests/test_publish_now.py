@@ -77,15 +77,14 @@ def test_publish_now_multiple_aliases(mock_run, mock_which):
         )
         mock_run.assert_has_calls(
             [
-                mock.call(["now", "--token", "XXX"], stdout=subprocess.PIPE),
+                mock.call(["now", "--token=XXX"], stdout=subprocess.PIPE),
                 mock.call(
                     [
                         "now",
                         "alias",
                         b"https://demo.example.com/",
                         "alias1",
-                        "--token",
-                        "XXX",
+                        "--token=XXX",
                     ]
                 ),
                 mock.call(
@@ -94,8 +93,7 @@ def test_publish_now_multiple_aliases(mock_run, mock_which):
                         "alias",
                         b"https://demo.example.com/",
                         "alias2",
-                        "--token",
-                        "XXX",
+                        "--token=XXX",
                     ]
                 ),
             ]

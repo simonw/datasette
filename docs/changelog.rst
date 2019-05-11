@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_27_1:
+
+0.27.1 (2019-05-09)
+-------------------
+
+- Tiny bugfix release: don't install ``tests/`` in the wrong place. Thanks, Veit Heller.
+
 .. _v0_27:
 
 0.27 (2019-01-31)

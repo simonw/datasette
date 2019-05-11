@@ -21,40 +21,6 @@ Shows the contents of the ``metadata.json`` file that was passed to ``datasette 
         "databases": {...}
     }
 
-.. _JsonDataView_inspect:
-
-/-/inspect
-----------
-
-Shows the result of running ``datasette inspect`` on the currently loaded databases. This is run automatically when Datasette starts up, or can be run as a separate step and passed to ``datasette serve --inspect-file``.
-
-This is an internal implementation detail of Datasette and the format should not be considered stable - it is likely to change in undocumented ways between different releases.
-
-`Inspect example <https://fivethirtyeight.datasettes.com/-/inspect>`_::
-
-    {
-        "fivethirtyeight": {
-            "file": "fivethirtyeight.db",
-            "hash": "5de27e3eceb3f5ba817e0b2e066cea77832592b62d94690b5102a48f385b95fb",
-            "tables": {
-                "./index": {
-                    "columns": [
-                        "dataset_url",
-                        "article_url",
-                        "live"
-                    ],
-                    "count": 125,
-                    "foreign_keys": {
-                        "incoming": [],
-                        "outgoing": []
-                    },
-                    "fts_table": null,
-                    "hidden": false,
-                    "name": "./index",
-                    "primary_keys": []
-                },
-                ...
-
 .. _JsonDataView_versions:
 
 /-/versions

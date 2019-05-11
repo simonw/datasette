@@ -7,7 +7,7 @@ SQLite includes `a powerful mechanism for enabling full-text search <https://www
 
 .. image:: full_text_search.png
 
-Datasette detects which tables have been configured for full-text search when it first inspects the database on startup (or via the ``datasette inspect`` command). You can visit the ``/-/inspect`` page on your Datasette instance to see the results of this inspection. Tables that have been configured for full-text search will have their ``fts_table`` property set to the name of another table (tables without full-text search will have this property set to ``null``).
+Datasette automatically detects which tables have been configured for full-text search.
 
 FTS versions
 ------------
@@ -70,6 +70,8 @@ And then populate it like this:
         FROM items JOIN categories ON items.category_id=categories.id;
 
 You can use this technique to populate the full-text search index from any combination of tables and joins that makes sense for your project.
+
+The `sqlite-utils tool <https://sqlite-utils.readthedocs.io/en/latest/cli.html#configuring-full-text-search>`__ provides a command-line mechanism that can be used to implement the above steps.
 
 .. _full_text_search_table_or_view:
 

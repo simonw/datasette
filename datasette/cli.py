@@ -1,3 +1,4 @@
+import asyncio
 import click
 from click import formatting
 from click_default_group import DefaultGroup
@@ -60,7 +61,7 @@ def cli():
 
 @cli.command()
 @click.argument("files", type=click.Path(exists=True), nargs=-1)
-@click.option("--inspect-file", default="inspect-data.json")
+@click.option("--inspect-file", default="-")
 @click.option(
     "sqlite_extensions",
     "--load-extension",
@@ -70,8 +71,31 @@ def cli():
     help="Path to a SQLite extension to load",
 )
 def inspect(files, inspect_file, sqlite_extensions):
-    app = Datasette(files, sqlite_extensions=sqlite_extensions)
-    open(inspect_file, "w").write(json.dumps(app.inspect(), indent=2))
+    app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
+    if inspect_file == "-":
+        out = sys.stdout
+    else:
+        out = open(inspect_file, "w")
+    loop = asyncio.get_event_loop()
+    inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))
+    out.write(json.dumps(inspect_data, indent=2))
+
+
+async def inspect_(files, sqlite_extensions):
+    app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
+    data = {}
+    for name, database in app.databases.items():
+        counts = await database.table_counts(limit=3600 * 1000)
+        data[name] = {
+            "hash": database.hash,
+            "size": database.size,
+            "file": database.path,
+            "tables": {
+                table_name: {"count": table_count}
+                for table_name, table_count in counts.items()
+            },
+        }
+    return data
 
 
 @cli.group()

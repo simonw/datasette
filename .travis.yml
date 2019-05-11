@@ -29,9 +29,9 @@ jobs:
         - export ALIAS=`echo $TRAVIS_COMMIT | cut -c 1-7`
         - echo "{\"name\":\"datasette-latest-$ALIAS\",\"alias\":\"latest.datasette.io\"}" > now.json
         - datasette publish now fixtures.db -m fixtures.json --token=$NOW_TOKEN --branch=$TRAVIS_COMMIT --version-note=$TRAVIS_COMMIT --name=datasette-latest-$ALIAS
-        - now alias --token=$NOW_TOKEN
+        - now --target production --token=$NOW_TOKEN
         - echo "{\"name\":\"datasette-latest-$ALIAS\",\"alias\":\"$ALIAS.datasette.io\"}" > now.json
-        - now alias --token=$NOW_TOKEN
+        - now --target production --token=$NOW_TOKEN
     - stage: release tagged version
       if: tag IS present
       python: 3.6
@@ -40,7 +40,7 @@ jobs:
         - export ALIAS=`echo $TRAVIS_COMMIT | cut -c 1-7`
         - export TAG=`echo $TRAVIS_TAG | sed 's/\./-/g' | sed 's/.*/v&/'`
         - echo "{\"name\":\"datasette-latest-$ALIAS\",\"alias\":\"$TAG.datasette.io\"}" > now.json
-        - now alias --token=$NOW_TOKEN
+        - now --target production --token=$NOW_TOKEN
         # Build and release to Docker Hub
         - docker login -u $DOCKER_USER -p $DOCKER_PASS
         - export REPO=datasetteproject/datasette

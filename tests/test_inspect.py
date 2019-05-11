@@ -21,6 +21,10 @@ def test_inspect_cli(app_client):
 
 
 def test_inspect_cli_writes_to_file(app_client):
+    print(app_client)
+    import os
+    print(os.getcwd())
+    print(os.listdir("."))
     runner = CliRunner()
     result = runner.invoke(
         cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"]

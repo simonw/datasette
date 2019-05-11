@@ -9,9 +9,8 @@ scratchpad
 Pipfile
 Pipfile.lock
 
-# SQLite databases
-*.db
-*.sqlite
+fixtures.db
+*test.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

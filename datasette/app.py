@@ -344,6 +344,28 @@ class Datasette:
                 except ValueError:
                     # Plugin already registered
                     pass
+        # Run the sanity checks
+        asyncio.get_event_loop().run_until_complete(self.run_sanity_checks())
+
+    async def run_sanity_checks(self):
+        # Only one check right now, for Spatialite
+        for database_name, database in self.databases.items():
+            # Run pragma_info on every table
+            for table in await database.table_names():
+                try:
+                    await self.execute(
+                        database_name,
+                        "PRAGMA table_info({});".format(escape_sqlite(table)),
+                    )
+                except sqlite3.OperationalError as e:
+                    if e.args[0] == "no such module: VirtualSpatialIndex":
+                        raise click.UsageError(
+                            "It looks like you're trying to load a SpatiaLite"
+                            " database without first loading the SpatiaLite module."
+                            "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+                        )
+                    else:
+                        raise
 
     def config(self, key):
         return self._config.get(key, None)
@@ -530,29 +552,17 @@ class Datasette:
                 name = path.stem
                 if name in self._inspect:
                     raise Exception("Multiple files with same stem %s" % name)
-                try:
-                    with sqlite3.connect(
-                        "file:{}?mode=ro".format(path), uri=True
-                    ) as conn:
-                        self.prepare_connection(conn)
-                        self._inspect[name] = {
-                            "hash": inspect_hash(path),
-                            "file": str(path),
-                            "size": path.stat().st_size,
-                            "views": inspect_views(conn),
-                            "tables": inspect_tables(
-                                conn, (self.metadata("databases") or {}).get(name, {})
-                            ),
-                        }
-                except sqlite3.OperationalError as e:
-                    if e.args[0] == "no such module: VirtualSpatialIndex":
-                        raise click.UsageError(
-                            "It looks like you're trying to load a SpatiaLite"
-                            " database without first loading the SpatiaLite module."
-                            "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
-                        )
-                    else:
-                        raise
+                with sqlite3.connect("file:{}?mode=ro".format(path), uri=True) as conn:
+                    self.prepare_connection(conn)
+                    self._inspect[name] = {
+                        "hash": inspect_hash(path),
+                        "file": str(path),
+                        "size": path.stat().st_size,
+                        "views": inspect_views(conn),
+                        "tables": inspect_tables(
+                            conn, (self.metadata("databases") or {}).get(name, {})
+                        ),
+                    }
         return self._inspect
 
     def register_custom_units(self):

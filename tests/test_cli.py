@@ -1,6 +1,7 @@
 from .fixtures import app_client
 from datasette.cli import cli
 from click.testing import CliRunner
+import pathlib
 import json
 
 
@@ -28,3 +29,12 @@ def test_inspect_cli_writes_to_file(app_client):
     assert 0 == result.exit_code, result.output
     data = json.load(open("foo.json"))
     assert ["fixtures"] == list(data.keys())
+
+
+def test_spatialite_error_if_attempt_to_open_spatialite():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["serve", str(pathlib.Path(__file__).parent / "spatialite.db")]
+    )
+    assert result.exit_code != 0
+    assert "trying to load a SpatiaLite database" in result.output

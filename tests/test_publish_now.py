@@ -63,12 +63,40 @@ def test_publish_now_multiple_aliases(mock_run, mock_which):
         open("test.db", "w").write("data")
         runner.invoke(
             cli.cli,
-            ["publish", "now", "test.db", "--alias", "alias1", "--alias", "alias2"],
+            [
+                "publish",
+                "now",
+                "test.db",
+                "--token",
+                "XXX",
+                "--alias",
+                "alias1",
+                "--alias",
+                "alias2",
+            ],
         )
         mock_run.assert_has_calls(
             [
-                mock.call("now", stdout=subprocess.PIPE),
-                mock.call(["now", "alias", b"https://demo.example.com/", "alias1"]),
-                mock.call(["now", "alias", b"https://demo.example.com/", "alias2"]),
+                mock.call(["now", "--token", "XXX"], stdout=subprocess.PIPE),
+                mock.call(
+                    [
+                        "now",
+                        "alias",
+                        b"https://demo.example.com/",
+                        "alias1",
+                        "--token",
+                        "XXX",
+                    ]
+                ),
+                mock.call(
+                    [
+                        "now",
+                        "alias",
+                        b"https://demo.example.com/",
+                        "alias2",
+                        "--token",
+                        "XXX",
+                    ]
+                ),
             ]
         )

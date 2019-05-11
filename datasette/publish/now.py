@@ -92,8 +92,10 @@ def publish_subcommand(publish):
                 # I couldn't get --target=production working, so I call
                 # 'now alias' with arguments directly instead - but that
                 # means I need to figure out what URL it was deployed to.
-                for single_alias in alias:
-                    # Because --alias can be specified multiple times
-                    run(["now", "alias", deployment_url, single_alias])
+                for single_alias in alias:  # --alias can be specified multiple times
+                    args = ["now", "alias", deployment_url, single_alias]
+                    if token:
+                        args.append("--token={}".format(token))
+                    run(args)
             else:
                 print(deployment_url.decode("latin1"))

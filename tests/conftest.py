@@ -11,7 +11,12 @@ def pytest_unconfigure(config):
 
 
 def pytest_collection_modifyitems(items):
-    # Ensure test_black.py runs first before any asyncio code kicks in
-    test_black = [fn for fn in items if fn.name == "test_black"]
-    if test_black:
-        items.insert(0, items.pop(items.index(test_black[0])))
+    # Ensure test_black.py and test_inspect.py run first before any asyncio code kicks in
+    move_to_front(items, "test_black")
+    move_to_front(items, "test_inspect_cli")
+
+
+def move_to_front(items, test_name):
+    test = [fn for fn in items if fn.name == test_name]
+    if test:
+        items.insert(0, items.pop(items.index(test[0])))

@@ -15,14 +15,16 @@ def test_inspect_cli(app_client):
     assert 64 == len(database["hash"])
     for table_name, expected_count in {
         "Table With Space In Name": 0,
-        "facetable": 15
+        "facetable": 15,
     }.items():
         assert expected_count == database["tables"][table_name]["count"]
 
 
 def test_inspect_cli_writes_to_file(app_client):
     runner = CliRunner()
-    result = runner.invoke(cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"])
+    result = runner.invoke(
+        cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"]
+    )
     assert 0 == result.exit_code, result.output
     data = json.load(open("foo.json"))
     assert ["fixtures"] == list(data.keys())

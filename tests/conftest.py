@@ -15,6 +15,7 @@ def pytest_collection_modifyitems(items):
     move_to_front(items, "test_black")
     move_to_front(items, "test_inspect_cli")
     move_to_front(items, "test_inspect_cli_writes_to_file")
+    move_to_front(items, "test_spatialite_error_if_attempt_to_open_spatialite")
 
 
 def move_to_front(items, test_name):

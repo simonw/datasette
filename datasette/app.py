@@ -344,8 +344,6 @@ class Datasette:
                 except ValueError:
                     # Plugin already registered
                     pass
-        # Run the sanity checks
-        asyncio.get_event_loop().run_until_complete(self.run_sanity_checks())
 
     async def run_sanity_checks(self):
         # Only one check right now, for Spatialite

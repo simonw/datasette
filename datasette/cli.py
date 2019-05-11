@@ -412,6 +412,8 @@ def serve(
         memory=memory,
         version_note=version_note,
     )
-    # Force initial hashing/table counting
-    ds.inspect()
+    # Run async sanity checks - but only if we're not under pytest
+    asyncio.get_event_loop().run_until_complete(ds.run_sanity_checks())
+
+    # Start the server
     ds.app().run(host=host, port=port, debug=debug)

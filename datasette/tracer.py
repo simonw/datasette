@@ -1,8 +1,11 @@
 import asyncio
 from contextlib import contextmanager
 import time
+import traceback
 
 tracers = {}
+
+TRACE_RESERVED_KEYS = {"type", "start", "end", "duration_ms", "traceback"}
 
 
 def get_task_id():
@@ -14,7 +17,10 @@ def get_task_id():
 
 
 @contextmanager
-def trace(type, action):
+def trace(type, **kwargs):
+    assert not TRACE_RESERVED_KEYS.intersection(
+        kwargs.keys()
+    ), ".trace() keyword parameters cannot include {}".format(TRACE_RESERVED_KEYS)
     task_id = get_task_id()
     if task_id is None:
         yield
@@ -23,10 +29,18 @@ def trace(type, action):
     if tracer is None:
         yield
         return
-    begin = time.time()
+    start = time.time()
     yield
     end = time.time()
-    tracer.append((type, action, begin, end, 1000 * (end - begin)))
+    trace = {
+        "type": type,
+        "start": start,
+        "end": end,
+        "duration_ms": (end - start) * 1000,
+        "traceback": traceback.format_list(traceback.extract_stack(limit=6)[:-3]),
+    }
+    trace.update(kwargs)
+    tracer.append(trace)
 
 
 @contextmanager

@@ -1469,12 +1469,22 @@ def test_infinity_returned_as_invalid_json_if_requested(app_client):
 def test_trace(app_client):
     response = app_client.get("/fixtures/simple_primary_key.json?_trace=1")
     data = response.json
-    assert "_traces" in data
-    traces = data["_traces"]
-    assert isinstance(traces["duration_sum_ms"], float)
-    assert isinstance(traces["num_traces"], int)
-    assert isinstance(traces["traces"], dict)
-    assert len(traces["traces"]["queries"]) == traces["num_traces"]
+    assert "_trace" in data
+    trace_info = data["_trace"]
+    assert isinstance(trace_info["request_duration_ms"], float)
+    assert isinstance(trace_info["sum_trace_duration_ms"], float)
+    assert isinstance(trace_info["num_traces"], int)
+    assert isinstance(trace_info["traces"], list)
+    assert len(trace_info["traces"]) == trace_info["num_traces"]
+    for trace in trace_info["traces"]:
+        assert isinstance(trace["type"], str)
+        assert isinstance(trace["start"], float)
+        assert isinstance(trace["end"], float)
+        assert trace["duration_ms"] == (trace["end"] - trace["start"]) * 1000
+        assert isinstance(trace["traceback"], list)
+        assert isinstance(trace["database"], str)
+        assert isinstance(trace["sql"], str)
+        assert isinstance(trace["params"], (list, dict))
 
 
 @pytest.mark.parametrize(

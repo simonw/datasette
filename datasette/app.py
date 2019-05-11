@@ -723,7 +723,7 @@ class Datasette:
             else:
                 return Results(rows, False, cursor.description)
 
-        with trace("sql", (db_name, sql.strip(), params)):
+        with trace("sql", database=db_name, sql=sql.strip(), params=params):
             results = await self.execute_against_connection_in_thread(
                 db_name, sql_operation_in_thread
             )
@@ -857,22 +857,21 @@ class Datasette:
         async def add_traces_to_response(request, response):
             if request.get("traces") is None:
                 return
-            traces = {
-                "duration": time.time() - request["trace_start"],
-                "queries": request["traces"],
+            traces = request["traces"]
+            trace_info = {
+                "request_duration_ms": 1000 * (time.time() - request["trace_start"]),
+                "sum_trace_duration_ms": sum(t["duration_ms"] for t in traces),
+                "num_traces": len(traces),
+                "traces": traces,
             }
             if "text/html" in response.content_type and b"</body>" in response.body:
-                extra = json.dumps(traces, indent=2)
+                extra = json.dumps(trace_info, indent=2)
                 extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
                 response.body = response.body.replace(b"</body>", extra_html)
             elif "json" in response.content_type and response.body.startswith(b"{"):
                 data = json.loads(response.body.decode("utf8"))
-                if "_traces" not in data:
-                    data["_traces"] = {
-                        "num_traces": len(traces["queries"]),
-                        "traces": traces,
-                        "duration_sum_ms": sum(t[-1] for t in traces["queries"]),
-                    }
+                if "_trace" not in data:
+                    data["_trace"] = trace_info
                     response.body = json.dumps(data).encode("utf8")
 
         @app.exception(Exception)

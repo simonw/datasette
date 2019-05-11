@@ -60,17 +60,3 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
         mock_call.assert_called_once_with(
             ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
         )
-
-
-@mock.patch("shutil.which")
-@mock.patch("datasette.publish.now.call")
-def test_publish_now_force_token(mock_call, mock_which):
-    mock_which.return_value = True
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
-        result = runner.invoke(
-            cli.cli, ["publish", "now", "test.db", "--force", "--token=X"]
-        )
-        assert 0 == result.exit_code
-        mock_call.assert_called_once_with(["now", "--force", "--token=X"])

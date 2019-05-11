@@ -1,7 +1,7 @@
 from datasette import hookimpl
 import click
 import json
-from subprocess import call
+from subprocess import run, PIPE
 
 from .common import (
     add_common_publish_arguments_and_options,
@@ -22,7 +22,7 @@ def publish_subcommand(publish):
     )
     @click.option("--force", is_flag=True, help="Pass --force option to now")
     @click.option("--token", help="Auth token to use for deploy")
-    @click.option("--alias", help="Desired alias e.g. yoursite.now.sh")
+    @click.option("--alias", multiple=True, help="Desired alias e.g. yoursite.now.sh")
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
     def now(
         files,
@@ -77,20 +77,23 @@ def publish_subcommand(publish):
             },
         ):
             now_json = {"version": 1}
-            if alias:
-                now_json["alias"] = alias
-            open("now.json", "w").write(json.dumps(now_json))
+            open("now.json", "w").write(json.dumps(now_json, indent=4))
             args = []
             if force:
                 args.append("--force")
             if token:
                 args.append("--token={}".format(token))
             if args:
-                call(["now"] + args)
+                done = run(["now"] + args, stdout=PIPE)
             else:
-                call("now")
+                done = run("now", stdout=PIPE)
+            deployment_url = done.stdout
             if alias:
-                alias_args = ["alias"]
-                if token:
-                    alias_args.append("--token={}".format(token))
-                call(["now"] + alias_args)
+                # I couldn't get --target=production working, so I call
+                # 'now alias' with arguments directly instead - but that
+                # means I need to figure out what URL it was deployed to.
+                for single_alias in alias:
+                    # Because --alias can be specified multiple times
+                    run(["now", "alias", deployment_url, single_alias])
+            else:
+                print(deployment_url.decode("latin1"))

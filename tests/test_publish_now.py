@@ -1,6 +1,7 @@
 from click.testing import CliRunner
 from datasette import cli
 from unittest import mock
+import subprocess
 
 
 @mock.patch("shutil.which")
@@ -24,20 +25,20 @@ def test_publish_now_invalid_database(mock_which):
 
 
 @mock.patch("shutil.which")
-@mock.patch("datasette.publish.now.call")
-def test_publish_now(mock_call, mock_which):
+@mock.patch("datasette.publish.now.run")
+def test_publish_now(mock_run, mock_which):
     mock_which.return_value = True
     runner = CliRunner()
     with runner.isolated_filesystem():
         open("test.db", "w").write("data")
         result = runner.invoke(cli.cli, ["publish", "now", "test.db"])
         assert 0 == result.exit_code
-        mock_call.assert_called_once_with("now")
+        mock_run.assert_called_once_with("now", stdout=subprocess.PIPE)
 
 
 @mock.patch("shutil.which")
-@mock.patch("datasette.publish.now.call")
-def test_publish_now_force_token(mock_call, mock_which):
+@mock.patch("datasette.publish.now.run")
+def test_publish_now_force_token(mock_run, mock_which):
     mock_which.return_value = True
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -46,4 +47,28 @@ def test_publish_now_force_token(mock_call, mock_which):
             cli.cli, ["publish", "now", "test.db", "--force", "--token=X"]
         )
         assert 0 == result.exit_code
-        mock_call.assert_called_once_with(["now", "--force", "--token=X"])
+        mock_run.assert_called_once_with(
+            ["now", "--force", "--token=X"], stdout=subprocess.PIPE
+        )
+
+
+@mock.patch("shutil.which")
+@mock.patch("datasette.publish.now.run")
+def test_publish_now_multiple_aliases(mock_run, mock_which):
+    mock_which.return_value = True
+    mock_run.return_value = mock.Mock(0)
+    mock_run.return_value.stdout = b"https://demo.example.com/"
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        open("test.db", "w").write("data")
+        runner.invoke(
+            cli.cli,
+            ["publish", "now", "test.db", "--alias", "alias1", "--alias", "alias2"],
+        )
+        mock_run.assert_has_calls(
+            [
+                mock.call("now", stdout=subprocess.PIPE),
+                mock.call(["now", "alias", b"https://demo.example.com/", "alias1"]),
+                mock.call(["now", "alias", b"https://demo.example.com/", "alias2"]),
+            ]
+        )

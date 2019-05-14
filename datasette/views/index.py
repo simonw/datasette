@@ -52,7 +52,9 @@ class IndexView(RenderMixin):
                     else hashlib.md5(name.encode("utf8")).hexdigest()[:6],
                     "path": self.database_url(name),
                     "tables_truncated": sorted(
-                        tables.values(), key=lambda t: t["count"] or 0, reverse=True
+                        (t for t in tables.values() if t not in hidden_tables),
+                        key=lambda t: t["count"] or 0,
+                        reverse=True,
                     )[:5],
                     "tables_count": len(tables),
                     "tables_more": len(tables) > 5,

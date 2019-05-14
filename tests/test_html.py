@@ -2,6 +2,7 @@ from bs4 import BeautifulSoup as Soup
 from .fixtures import (  # noqa
     app_client,
     app_client_shorter_time_limit,
+    app_client_two_attached_databases,
     app_client_with_hash,
     app_client_with_memory,
     make_app_client,
@@ -13,10 +14,34 @@ import re
 import urllib.parse
 
 
-def test_homepage(app_client):
-    response = app_client.get("/")
+def test_homepage(app_client_two_attached_databases):
+    response = app_client_two_attached_databases.get("/")
     assert response.status == 200
-    assert "fixtures" in response.text
+    soup = Soup(response.body, "html.parser")
+    assert "Datasette Fixtures" == soup.find("h1").text
+    assert (
+        "An example SQLite database demonstrating Datasette"
+        == soup.select(".metadata-description")[0].text.strip()
+    )
+    # Should be two attached databases
+    assert [
+        {"href": "/fixtures", "text": "fixtures"},
+        {"href": "/extra_database", "text": "extra_database"},
+    ] == [{"href": a["href"], "text": a.text.strip()} for a in soup.select("h2 a")]
+    # The second attached database should show count text and attached tables
+    h2 = soup.select("h2")[1]
+    assert "extra_database" == h2.text.strip()
+    counts_p, links_p = h2.find_all_next("p")
+    assert "7 rows in 5 tables, 5 rows in 4 hidden tables" == counts_p.text.strip().replace(
+        "  ", ""
+    ).replace(
+        "\n", ""
+    )
+    # We should only show visible, not hidden tables here:
+    table_links = [
+        {"href": a["href"], "text": a.text.strip()} for a in links_p.findAll("a")
+    ]
+    assert [{"href": "/extra_database/searchable", "text": "searchable"}] == table_links
 
 
 def test_memory_database_page(app_client_with_memory):

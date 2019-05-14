@@ -30,14 +30,26 @@ def make_app_client(
     config=None,
     filename="fixtures.db",
     is_immutable=False,
+    extra_databases=None,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
+        if is_immutable:
+            files = []
+            immutables = [filepath]
+        else:
+            files = [filepath]
+            immutables = []
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
         for sql, params in TABLE_PARAMETERIZED_SQL:
             with conn:
                 conn.execute(sql, params)
+        if extra_databases is not None:
+            for extra_filename, extra_sql in extra_databases.items():
+                extra_filepath = os.path.join(tmpdir, extra_filename)
+                sqlite3.connect(extra_filepath).executescript(extra_sql)
+                files.append(extra_filepath)
         os.chdir(os.path.dirname(filepath))
         plugins_dir = os.path.join(tmpdir, "plugins")
         os.mkdir(plugins_dir)
@@ -52,8 +64,8 @@ def make_app_client(
             }
         )
         ds = Datasette(
-            [] if is_immutable else [filepath],
-            immutables=[filepath] if is_immutable else [],
+            files,
+            immutables=immutables,
             memory=memory,
             cors=cors,
             metadata=METADATA,
@@ -77,6 +89,13 @@ def app_client_no_files():
     client = TestClient(ds.app().test_client)
     client.ds = ds
     yield client
+
+
+@pytest.fixture(scope="session")
+def app_client_two_attached_databases():
+    yield from make_app_client(
+        extra_databases={"extra_database.db": EXTRA_DATABASE_SQL}
+    )
 
 
 @pytest.fixture(scope="session")
@@ -585,6 +604,22 @@ CREATE VIEW searchable_view_configured_by_metadata AS
 TABLE_PARAMETERIZED_SQL = [
     ("insert into binary_data (data) values (?);", [b"this is binary data"])
 ]
+
+EXTRA_DATABASE_SQL = """
+CREATE TABLE searchable (
+  pk integer primary key,
+  text1 text,
+  text2 text
+);
+
+INSERT INTO searchable VALUES (1, 'barry cat', 'terry dog');
+INSERT INTO searchable VALUES (2, 'terry dog', 'sara weasel');
+
+CREATE VIRTUAL TABLE "searchable_fts"
+    USING FTS3 (text1, text2, content="searchable");
+INSERT INTO "searchable_fts" (rowid, text1, text2)
+    SELECT rowid, text1, text2 FROM searchable;
+"""
 
 if __name__ == "__main__":
     # Can be called with data.db OR data.db metadata.json

@@ -549,6 +549,19 @@ class Datasette:
         for unit in self.metadata("custom_units") or []:
             ureg.define(unit)
 
+    def connected_databases(self):
+        return [
+            {
+                "name": d.name,
+                "path": d.path,
+                "size": d.size,
+                "is_mutable": d.is_mutable,
+                "is_memory": d.is_memory,
+                "hash": d.hash,
+            }
+            for d in self.databases.values()
+        ]
+
     def versions(self):
         conn = sqlite3.connect(":memory:")
         self.prepare_connection(conn)
@@ -809,6 +822,10 @@ class Datasette:
         app.add_route(
             JsonDataView.as_view(self, "config.json", lambda: self._config),
             r"/-/config<as_format:(\.json)?$>",
+        )
+        app.add_route(
+            JsonDataView.as_view(self, "databases.json", self.connected_databases),
+            r"/-/databases<as_format:(\.json)?$>",
         )
         app.add_route(
             DatabaseDownload.as_view(self), r"/<db_name:[^/]+?><as_db:(\.db)$>"

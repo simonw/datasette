@@ -6,6 +6,7 @@ from .fixtures import (  # noqa
     app_client_shorter_time_limit,
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
+    app_client_two_attached_databases_one_immutable,
     app_client_with_cors,
     app_client_with_dot,
     generate_compound_rows,
@@ -1056,6 +1057,22 @@ def test_unit_filters(app_client):
 
     assert len(data["rows"]) == 1
     assert data["rows"][0][0] == 2
+
+
+def test_databases_json(app_client_two_attached_databases_one_immutable):
+    response = app_client_two_attached_databases_one_immutable.get("/-/databases.json")
+    databases = response.json
+    assert 2 == len(databases)
+    extra_database, fixtures_database = databases
+    assert "extra_database" == extra_database["name"]
+    assert None == extra_database["hash"]
+    assert True == extra_database["is_mutable"]
+    assert False == extra_database["is_memory"]
+
+    assert "fixtures" == fixtures_database["name"]
+    assert fixtures_database["hash"] is not None
+    assert False == fixtures_database["is_mutable"]
+    assert False == fixtures_database["is_memory"]
 
 
 def test_metadata_json(app_client):

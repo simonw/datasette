@@ -89,3 +89,19 @@ Shows the :ref:`config` options for this instance of Datasette. `Config example 
         "max_returned_rows": 1000,
         "sql_time_limit_ms": 1000
     }
+
+/-/databases
+------------
+
+Shows currently attached databases. `Databases example <https://latest.datasette.io/-/config>`_::
+
+    [
+        {
+            "hash": null,
+            "is_memory": false,
+            "is_mutable": true,
+            "name": "fixtures",
+            "path": "fixtures.db",
+            "size": 225280
+        }
+    ]

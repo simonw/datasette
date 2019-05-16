@@ -1,13 +1,17 @@
+from contextlib import contextmanager
 from datasette import hookimpl
 import click
 import json
+import os
+import shlex
 from subprocess import call, check_output
+import tempfile
 
 from .common import (
     add_common_publish_arguments_and_options,
     fail_if_publish_binary_not_installed,
 )
-from ..utils import temporary_heroku_directory
+from datasette.utils import link_or_copy, link_or_copy_directory
 
 
 @hookimpl
@@ -101,3 +105,95 @@ def publish_subcommand(publish):
                 app_name = json.loads(create_output)["name"]
 
             call(["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"])
+
+
+@contextmanager
+def temporary_heroku_directory(
+    files,
+    name,
+    metadata,
+    extra_options,
+    branch,
+    template_dir,
+    plugins_dir,
+    static,
+    install,
+    version_note,
+    extra_metadata=None,
+):
+    extra_metadata = extra_metadata or {}
+    tmp = tempfile.TemporaryDirectory()
+    saved_cwd = os.getcwd()
+
+    file_paths = [os.path.join(saved_cwd, file_path) for file_path in files]
+    file_names = [os.path.split(f)[-1] for f in files]
+
+    if metadata:
+        metadata_content = json.load(metadata)
+    else:
+        metadata_content = {}
+    for key, value in extra_metadata.items():
+        if value:
+            metadata_content[key] = value
+
+    try:
+        os.chdir(tmp.name)
+
+        if metadata_content:
+            open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
+
+        open("runtime.txt", "w").write("python-3.6.8")
+
+        if branch:
+            install = [
+                "https://github.com/simonw/datasette/archive/{branch}.zip".format(
+                    branch=branch
+                )
+            ] + list(install)
+        else:
+            install = ["datasette"] + list(install)
+
+        open("requirements.txt", "w").write("\n".join(install))
+        os.mkdir("bin")
+        open("bin/post_compile", "w").write(
+            "datasette inspect --inspect-file inspect-data.json"
+        )
+
+        extras = []
+        if template_dir:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, template_dir),
+                os.path.join(tmp.name, "templates"),
+            )
+            extras.extend(["--template-dir", "templates/"])
+        if plugins_dir:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, plugins_dir), os.path.join(tmp.name, "plugins")
+            )
+            extras.extend(["--plugins-dir", "plugins/"])
+        if version_note:
+            extras.extend(["--version-note", version_note])
+        if metadata_content:
+            extras.extend(["--metadata", "metadata.json"])
+        if extra_options:
+            extras.extend(extra_options.split())
+        for mount_point, path in static:
+            link_or_copy_directory(
+                os.path.join(saved_cwd, path), os.path.join(tmp.name, mount_point)
+            )
+            extras.extend(["--static", "{}:{}".format(mount_point, mount_point)])
+
+        quoted_files = " ".join(map(shlex.quote, file_names))
+        procfile_cmd = "web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json {extras}".format(
+            quoted_files=quoted_files, extras=" ".join(extras)
+        )
+        open("Procfile", "w").write(procfile_cmd)
+
+        for path, filename in zip(file_paths, file_names):
+            link_or_copy(path, os.path.join(tmp.name, filename))
+
+        yield
+
+    finally:
+        tmp.cleanup()
+        os.chdir(saved_cwd)

@@ -30,6 +30,7 @@ from .utils import (
     detect_spatialite,
     escape_css_string,
     escape_sqlite,
+    get_all_foreign_keys,
     get_outbound_foreign_keys,
     get_plugins,
     module_from_path,
@@ -260,6 +261,11 @@ class ConnectedDatabase:
             self.name, "select name from sqlite_master where type='view'"
         )
         return [r[0] for r in results.rows]
+
+    async def get_all_foreign_keys(self):
+        return await self.ds.execute_against_connection_in_thread(
+            self.name, get_all_foreign_keys
+        )
 
     def __repr__(self):
         tags = []

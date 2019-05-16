@@ -54,14 +54,27 @@ class IndexView(RenderMixin):
                     "fts_table": await self.ds.execute_against_connection_in_thread(
                         name, lambda conn: detect_fts(conn, table)
                     ),
+                    "num_relationships_for_sorting": 0,
                 }
+
+            if request.args.get("_sort") == "relationships" or not table_counts:
+                # We will be sorting by number of relationships, so populate that field
+                all_foreign_keys = await db.get_all_foreign_keys()
+                for table, foreign_keys in all_foreign_keys.items():
+                    count = len(foreign_keys["incoming"] + foreign_keys["outgoing"])
+                    tables[table]["num_relationships_for_sorting"] = count
+
             hidden_tables = [t for t in tables.values() if t["hidden"]]
             visible_tables = [t for t in tables.values() if not t["hidden"]]
 
             tables_and_views_truncated = list(
                 sorted(
                     (t for t in tables.values() if t not in hidden_tables),
-                    key=lambda t: t["count"] or 0,
+                    key=lambda t: (
+                        t["num_relationships_for_sorting"],
+                        t["count"] or 0,
+                        t["name"],
+                    ),
                     reverse=True,
                 )[:TRUNCATE_AT]
             )

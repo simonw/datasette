@@ -34,6 +34,21 @@ def test_homepage(app_client):
     assert d["views_count"] == 4
 
 
+def test_homepage_sort_by_relationships(app_client):
+    response = app_client.get("/.json?_sort=relationships")
+    assert response.status == 200
+    tables = [
+        t["name"] for t in response.json["fixtures"]["tables_and_views_truncated"]
+    ]
+    assert [
+        "simple_primary_key",
+        "complex_foreign_keys",
+        "searchable_tags",
+        "foreign_key_references",
+        "facetable",
+    ] == tables
+
+
 def test_database_page(app_client):
     response = app_client.get("/fixtures.json")
     data = response.json

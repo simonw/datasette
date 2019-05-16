@@ -29,9 +29,7 @@ class DatabaseView(BaseView):
         table_counts = await db.table_counts(5)
         views = await db.view_names()
         hidden_table_names = set(await db.hidden_table_names())
-        all_foreign_keys = await self.ds.execute_against_connection_in_thread(
-            database, get_all_foreign_keys
-        )
+        all_foreign_keys = await db.get_all_foreign_keys()
 
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)

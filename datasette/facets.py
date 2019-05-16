@@ -308,7 +308,6 @@ class ArrayFacet(Facet):
         facet_size = self.ds.config("default_facet_size")
         for source_and_config in self.get_configs():
             config = source_and_config["config"]
-            print(config)
             source = source_and_config["source"]
             column = config.get("column") or config["simple"]
             facet_sql = """

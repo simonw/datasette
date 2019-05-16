@@ -559,7 +559,7 @@ class Datasette:
                 "is_memory": d.is_memory,
                 "hash": d.hash,
             }
-            for d in self.databases.values()
+            for d in sorted(self.databases.values(), key=lambda d: d.name)
         ]
 
     def versions(self):

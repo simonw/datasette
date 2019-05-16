@@ -64,7 +64,7 @@ Some examples:
 
 * `../items <https://register-of-members-interests.datasettes.com/regmem-d22c12c/items>`_ lists all of the line-items registered by UK MPs as potential conflicts of interest. It demonstrates Datasette's support for :ref:`full_text_search`.
 * `../antiquities-act%2Factions_under_antiquities_act <https://fivethirtyeight.datasettes.com/fivethirtyeight-ac35616/antiquities-act%2Factions_under_antiquities_act>`_ is an interface for exploring the "actions under the antiquities act" data table published by FiveThirtyEight.
-* `../global-power-plants?country_long=United+Kingdom&fuel1=Gas <https://global-power-plants.datasettes.com/global-power-plants-9e55be2/global-power-plants?country_long=United+Kingdom&fuel1=Gas>`_ is a filtered table page showing every Gas power plant in the United Kingdom. It includes some default facets (configured using `its metadata.json <https://global-power-plants.datasettes.com/-/metadata>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
+* `../global-power-plants?country_long=United+Kingdom&primary_fuel=Gas <https://global-power-plants.datasettes.com/global-power-plants/global-power-plants?_facet=primary_fuel&_facet=owner&_facet=country_long&country_long__exact=United+Kingdom&primary_fuel=Gas>`_ is a filtered table page showing every Gas power plant in the United Kingdom. It includes some default facets (configured using `its metadata.json <https://global-power-plants.datasettes.com/-/metadata>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
 
 .. _RowView:
 

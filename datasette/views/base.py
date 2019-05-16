@@ -208,7 +208,12 @@ class BaseView(RenderMixin):
             if "as_db" in kwargs:
                 should_redirect += kwargs["as_db"]
 
-            if self.ds.config("hash_urls") or "_hash" in request.args:
+            if (
+                (self.ds.config("hash_urls") or "_hash" in request.args)
+                and
+                # Redirect only if database is immutable
+                not self.ds.databases[name].is_mutable
+            ):
                 return name, expected, correct_hash_provided, should_redirect
 
         return name, expected, correct_hash_provided, None

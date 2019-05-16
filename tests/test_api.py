@@ -1421,13 +1421,25 @@ def test_ttl_parameter(app_client, path, expected_cache_control):
         ),
     ],
 )
-def test_hash_parameter(app_client_with_hash, path, expected_redirect):
+def test_hash_parameter(
+    app_client_two_attached_databases_one_immutable, path, expected_redirect
+):
     # First get the current hash for the fixtures database
-    current_hash = app_client_with_hash.ds.databases["fixtures"].hash[:7]
-    response = app_client_with_hash.get(path, allow_redirects=False)
+    current_hash = app_client_two_attached_databases_one_immutable.ds.databases[
+        "fixtures"
+    ].hash[:7]
+    response = app_client_two_attached_databases_one_immutable.get(
+        path, allow_redirects=False
+    )
     assert response.status == 302
     location = response.headers["Location"]
     assert expected_redirect.replace("HASH", current_hash) == location
+
+
+def test_hash_parameter_ignored_for_mutable_databases(app_client):
+    path = "/fixtures/facetable.json?_hash=1"
+    response = app_client.get(path, allow_redirects=False)
+    assert response.status == 200
 
 
 test_json_columns_default_expected = [

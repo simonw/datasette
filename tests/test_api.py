@@ -445,6 +445,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
             "hidden_table_rows_sum": 0,
             "hidden_tables_count": 0,
             "name": ":memory:",
+            "show_table_row_counts": False,
             "path": "/:memory:",
             "table_rows_sum": 0,
             "tables_count": 0,

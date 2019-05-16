@@ -14,7 +14,11 @@ from datasette.version import __version__
 from .base import HASH_LENGTH, RenderMixin
 
 
+# Truncate table list on homepage at:
 TRUNCATE_AT = 5
+
+# Only attempt counts if less than this many tables:
+COUNT_TABLE_LIMIT = 30
 
 
 class IndexView(RenderMixin):
@@ -26,11 +30,18 @@ class IndexView(RenderMixin):
     async def get(self, request, as_format):
         databases = []
         for name, db in self.ds.databases.items():
-            table_counts = await db.table_counts(5)
-            views = await db.view_names()
-            tables = {}
+            table_names = await db.table_names()
             hidden_table_names = set(await db.hidden_table_names())
-            for table in table_counts:
+            views = await db.view_names()
+            # Perform counts only for immutable or DBS with <= COUNT_TABLE_LIMIT tables
+            table_counts = {}
+            if not db.is_mutable or len(table_names) <= COUNT_TABLE_LIMIT:
+                table_counts = await db.table_counts(10)
+                # If any of these are None it means at least one timed out - ignore them all
+                if any(v is None for v in table_counts.values()):
+                    table_counts = {}
+            tables = {}
+            for table in table_names:
                 table_columns = await self.ds.table_columns(name, table)
                 tables[table] = {
                     "name": table,
@@ -38,7 +49,7 @@ class IndexView(RenderMixin):
                     "primary_keys": await self.ds.execute_against_connection_in_thread(
                         name, lambda conn: detect_primary_keys(conn, table)
                     ),
-                    "count": table_counts[table],
+                    "count": table_counts.get(table),
                     "hidden": table in hidden_table_names,
                     "fts_table": await self.ds.execute_against_connection_in_thread(
                         name, lambda conn: detect_fts(conn, table)
@@ -74,6 +85,7 @@ class IndexView(RenderMixin):
                     > TRUNCATE_AT,
                     "tables_count": len(visible_tables),
                     "table_rows_sum": sum((t["count"] or 0) for t in visible_tables),
+                    "show_table_row_counts": bool(table_counts),
                     "hidden_table_rows_sum": sum(
                         t["count"] for t in hidden_tables if t["count"] is not None
                     ),

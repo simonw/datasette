@@ -3,6 +3,9 @@
 Installation
 ============
 
+.. note::
+    If you just want to try Datasette out you don't need to install anything: see :ref:`glitch`
+
 There are two main options for installing Datasette. You can install it directly
 on to your machine, or you can install it using Docker.
 

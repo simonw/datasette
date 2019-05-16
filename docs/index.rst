@@ -17,9 +17,9 @@ Contents
 .. toctree::
    :maxdepth: 2
 
-   ecosystem
-   installation
    getting_started
+   installation
+   ecosystem
    pages
    publish
    json_api

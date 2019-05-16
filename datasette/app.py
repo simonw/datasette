@@ -172,7 +172,9 @@ class ConnectedDatabase:
                     )
                 ).rows[0][0]
                 counts[table] = table_count
-            except InterruptedError:
+            # In some cases I saw "SQL Logic Error" here in addition to
+            # InterruptedError - so we catch that too:
+            except (InterruptedError, sqlite3.OperationalError):
                 counts[table] = None
         if not self.is_mutable:
             self.cached_table_counts = counts

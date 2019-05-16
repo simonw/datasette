@@ -12,16 +12,16 @@
 {% for database in databases %}
     <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.color }}"><a href="{{ database.path }}">{{ database.name }}</a></h2>
     <p>
-        {{ "{:,}".format(database.table_rows_sum) }} rows in {{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}{% if database.tables_count and database.hidden_tables_count %}, {% endif %}
-        {% if database.hidden_tables_count %}
-            {{ "{:,}".format(database.hidden_table_rows_sum) }} rows in {{ database.hidden_tables_count }} hidden table{% if database.hidden_tables_count != 1 %}s{% endif %}
-        {% endif %}
-        {% if database.views_count %}
-            {% if database.tables_count or database.hidden_tables_count %} - {% endif %}
+        {{ "{:,}".format(database.table_rows_sum) }} rows in {{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}{% if database.tables_count and database.hidden_tables_count %}, {% endif -%}
+        {% if database.hidden_tables_count -%}
+            {{ "{:,}".format(database.hidden_table_rows_sum) }} rows in {{ database.hidden_tables_count }} hidden table{% if database.hidden_tables_count != 1 %}s{% endif -%}
+        {% endif -%}
+        {% if database.views_count -%}
+            {% if database.tables_count or database.hidden_tables_count %}, {% endif -%}
             {{ "{:,}".format(database.views_count) }} view{% if database.views_count != 1 %}s{% endif %}
         {% endif %}
     </p>
-    <p>{% for table in database.tables_truncated %}<a href="{{ database.path }}/{{ table.name|quote_plus }}" title="{{ table.count }} rows">{{ table.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
+    <p>{% for table in database.tables_and_views_truncated %}<a href="{{ database.path }}/{{ table.name|quote_plus }}"{% if table.count %} title="{{ table.count }} rows"{% endif %}>{{ table.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_and_views_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
 {% endfor %}
 
 {% endblock %}

@@ -612,6 +612,8 @@ CREATE TABLE searchable (
   text2 text
 );
 
+CREATE VIEW searchable_view AS SELECT * FROM searchable;
+
 INSERT INTO searchable VALUES (1, 'barry cat', 'terry dog');
 INSERT INTO searchable VALUES (2, 'terry dog', 'sara weasel');
 

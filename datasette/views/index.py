@@ -14,6 +14,9 @@ from datasette.version import __version__
 from .base import HASH_LENGTH, RenderMixin
 
 
+TRUNCATE_AT = 5
+
+
 class IndexView(RenderMixin):
     name = "index"
 
@@ -42,6 +45,21 @@ class IndexView(RenderMixin):
                     ),
                 }
             hidden_tables = [t for t in tables.values() if t["hidden"]]
+            visible_tables = [t for t in tables.values() if not t["hidden"]]
+
+            tables_and_views_truncated = list(
+                sorted(
+                    (t for t in tables.values() if t not in hidden_tables),
+                    key=lambda t: t["count"] or 0,
+                    reverse=True,
+                )[:TRUNCATE_AT]
+            )
+
+            # Only add views if this is less than TRUNCATE_AT
+            if len(tables_and_views_truncated) < TRUNCATE_AT:
+                num_views_to_add = TRUNCATE_AT - len(tables_and_views_truncated)
+                for view_name in views[:num_views_to_add]:
+                    tables_and_views_truncated.append({"name": view_name})
 
             databases.append(
                 {
@@ -51,13 +69,10 @@ class IndexView(RenderMixin):
                     if db.hash
                     else hashlib.md5(name.encode("utf8")).hexdigest()[:6],
                     "path": self.database_url(name),
-                    "tables_truncated": sorted(
-                        (t for t in tables.values() if t not in hidden_tables),
-                        key=lambda t: t["count"] or 0,
-                        reverse=True,
-                    )[:5],
-                    "tables_count": len(tables),
-                    "tables_more": len(tables) > 5,
+                    "tables_and_views_truncated": tables_and_views_truncated,
+                    "tables_and_views_more": (len(visible_tables) + len(views))
+                    > TRUNCATE_AT,
+                    "tables_count": len(visible_tables),
                     "table_rows_sum": sum((t["count"] or 0) for t in tables.values()),
                     "hidden_table_rows_sum": sum(
                         t["count"] for t in hidden_tables if t["count"] is not None

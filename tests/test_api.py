@@ -24,9 +24,9 @@ def test_homepage(app_client):
     assert response.json.keys() == {"fixtures": 0}.keys()
     d = response.json["fixtures"]
     assert d["name"] == "fixtures"
-    assert d["tables_count"] == 26
-    assert len(d["tables_truncated"]) == 5
-    assert d["tables_more"] is True
+    assert d["tables_count"] == 21
+    assert len(d["tables_and_views_truncated"]) == 5
+    assert d["tables_and_views_more"] is True
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
     assert d["hidden_tables_count"] == 5
     # 201 in no_primary_key, plus 5 in other hidden tables:
@@ -448,8 +448,8 @@ def test_no_files_uses_memory_database(app_client_no_files):
             "path": "/:memory:",
             "table_rows_sum": 0,
             "tables_count": 0,
-            "tables_more": False,
-            "tables_truncated": [],
+            "tables_and_views_more": False,
+            "tables_and_views_truncated": [],
             "views_count": 0,
         }
     } == response.json

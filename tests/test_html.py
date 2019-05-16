@@ -32,16 +32,17 @@ def test_homepage(app_client_two_attached_databases):
     h2 = soup.select("h2")[1]
     assert "extra_database" == h2.text.strip()
     counts_p, links_p = h2.find_all_next("p")
-    assert "7 rows in 5 tables, 5 rows in 4 hidden tables" == counts_p.text.strip().replace(
-        "  ", ""
-    ).replace(
-        "\n", ""
+    assert (
+        "7 rows in 1 table, 5 rows in 4 hidden tables, 1 view" == counts_p.text.strip()
     )
     # We should only show visible, not hidden tables here:
     table_links = [
         {"href": a["href"], "text": a.text.strip()} for a in links_p.findAll("a")
     ]
-    assert [{"href": "/extra_database/searchable", "text": "searchable"}] == table_links
+    assert [
+        {"href": "/extra_database/searchable", "text": "searchable"},
+        {"href": "/extra_database/searchable_view", "text": "searchable_view"},
+    ] == table_links
 
 
 def test_memory_database_page(app_client_with_memory):

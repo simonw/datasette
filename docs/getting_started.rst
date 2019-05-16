@@ -20,14 +20,14 @@ Here's a demo project on Glitch which you can use as the basis for your own expe
 
 `glitch.com/~datasette-csvs <https://glitch.com/~datasette-csvs>`__
 
-Glitch allows you to "remix" any project to create your own copy and start editing it in your browser. You can also remix the ``datasette-csvs`` project by clicking this button:
+Glitch allows you to "remix" any project to create your own copy and start editing it in your browser. You can remix the ``datasette-csvs`` project by clicking this button:
 
 .. image:: https://cdn.glitch.com/2703baf2-b643-4da7-ab91-7ee2a2d00b5b%2Fremix-button.svg
    :target: https://glitch.com/edit/#!/remix/datasette-csvs
 
 Find a CSV file and drag it onto the Glitch file explorer panel - ``datasette-csvs`` will automatically convert it to a SQLite database (using `csvs-to-sqlite <https://github.com/simonw/csvs-to-sqlite>`__) and allow you to start exploring it using Datasette.
 
-If your CSV file has a ``latitude`` and ``longitude`` column you can visualize it on a map by uncomminting the ``datasette-cluster-map`` line in the ``requirements.txt`` file using the Glitch file editor.
+If your CSV file has a ``latitude`` and ``longitude`` column you can visualize it on a map by uncommenting the ``datasette-cluster-map`` line in the ``requirements.txt`` file using the Glitch file editor.
 
 Need some data? Try this `Public Art Data <https://data.seattle.gov/Community/Public-Art-Data/j7sn-tdzk>`__ for the city of Seattle - hit "Export" and select "CSV" to download it as a CSV file.
 

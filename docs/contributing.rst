@@ -83,20 +83,35 @@ Editing and building the documentation
 
 Datasette's documentation lives in the ``docs/`` directory and is deployed automatically using `Read The Docs <https://readthedocs.org/>`__.
 
-You can build it locally by installing ``sphinx`` and ``sphinx_rtd_theme`` in your Datasette development environment and then running ``make`` directly in the ``docs/`` directory::
+The documentation is written using reStructuredText. You may find this article on `The subset of reStructuredText worth committing to memory <https://simonwillison.net/2018/Aug/25/restructuredtext/>`__ useful.
 
+You can build it locally by installing ``sphinx`` and ``sphinx_rtd_theme`` in your Datasette development environment and then running ``make html`` directly in the ``docs/`` directory::
+
+    # You may first need to activate your virtual environment:
     source venv/bin/activate
+
+    # Install the dependencies needed to build the docs
     pip install sphinx sphinx_rtd_theme
+
+    # Now build the docs
     cd docs/
-    make
+    make html
 
 This will create the HTML version of the documentation in ``docs/_build/html``. You can open it in your browser like so::
 
     open _build/html/index.html
 
-Any time you make changes to a ``.rst`` file you can re-run ``make`` to update the built documents, then refresh them in your browser.
+Any time you make changes to a ``.rst`` file you can re-run ``make html`` to update the built documents, then refresh them in your browser.
 
-The documentation is written using reStructuredText. You may find this article on `The subset of reStructuredText worth committing to memory <https://simonwillison.net/2018/Aug/25/restructuredtext/>`__ useful.
+For added productivity, you can run Sphinx in auto-build mode. This will run a local webserver serving the docs that automatically rebuilds them and refreshes the page any time you hit save in your editor.
+
+To enable auto-build mode, first install `sphinx-autobuild <https://pypi.org/project/sphinx-autobuild/>`__::
+
+    pip install sphinx-autobuild
+
+Now start the server by running::
+
+    make livehtml
 
 .. _contributing_release:
 

@@ -31,6 +31,7 @@ def make_app_client(
     filename="fixtures.db",
     is_immutable=False,
     extra_databases=None,
+    inspect_data=None,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -71,6 +72,7 @@ def make_app_client(
             metadata=METADATA,
             plugins_dir=plugins_dir,
             config=config,
+            inspect_data=inspect_data,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         client = TestClient(ds.app().test_client)

@@ -147,6 +147,12 @@ class ConnectedDatabase:
             p = Path(path)
             self.hash = inspect_hash(p)
             self.cached_size = p.stat().st_size
+            # Maybe use self.ds.inspect_data to populate cached_table_counts
+            if self.ds.inspect_data and self.ds.inspect_data.get(self.name):
+                self.cached_table_counts = {
+                    key: value["count"]
+                    for key, value in self.ds.inspect_data[self.name]["tables"].items()
+                }
 
     @property
     def size(self):
@@ -310,6 +316,7 @@ class Datasette:
         elif memory:
             self.files = (MEMORY,) + self.files
         self.databases = {}
+        self.inspect_data = inspect_data
         for file in self.files:
             path = file
             is_memory = False
@@ -325,7 +332,6 @@ class Datasette:
             self.databases[db.name] = db
         self.cache_headers = cache_headers
         self.cors = cors
-        self._inspect = inspect_data
         self._metadata = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []

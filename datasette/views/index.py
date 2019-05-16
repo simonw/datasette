@@ -73,7 +73,7 @@ class IndexView(RenderMixin):
                     "tables_and_views_more": (len(visible_tables) + len(views))
                     > TRUNCATE_AT,
                     "tables_count": len(visible_tables),
-                    "table_rows_sum": sum((t["count"] or 0) for t in tables.values()),
+                    "table_rows_sum": sum((t["count"] or 0) for t in visible_tables),
                     "hidden_table_rows_sum": sum(
                         t["count"] for t in hidden_tables if t["count"] is not None
                     ),
@@ -81,6 +81,9 @@ class IndexView(RenderMixin):
                     "views_count": len(views),
                 }
             )
+
+        databases.sort(key=lambda database: database["name"])
+
         if as_format:
             headers = {}
             if self.ds.cors:

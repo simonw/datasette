@@ -1,4 +1,4 @@
-RDatasette
+Datasette
 =========
 
 *A tool for exploring and publishing data*

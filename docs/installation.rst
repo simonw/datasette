@@ -9,6 +9,8 @@ Installation
 There are two main options for installing Datasette. You can install it directly
 on to your machine, or you can install it using Docker.
 
+.. contents::
+
 Using Docker
 ------------
 

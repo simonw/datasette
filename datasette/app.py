@@ -538,39 +538,6 @@ class Datasette:
             url = "https://" + url[len("http://") :]
         return url
 
-    def inspect(self):
-        " Inspect the database and return a dictionary of table metadata "
-        if self._inspect:
-            return self._inspect
-
-        self._inspect = {}
-        for filename in self.files:
-            if filename is MEMORY:
-                self._inspect[":memory:"] = {
-                    "hash": "000",
-                    "file": ":memory:",
-                    "size": 0,
-                    "views": {},
-                    "tables": {},
-                }
-            else:
-                path = Path(filename)
-                name = path.stem
-                if name in self._inspect:
-                    raise Exception("Multiple files with same stem %s" % name)
-                with sqlite3.connect("file:{}?mode=ro".format(path), uri=True) as conn:
-                    self.prepare_connection(conn)
-                    self._inspect[name] = {
-                        "hash": inspect_hash(path),
-                        "file": str(path),
-                        "size": path.stat().st_size,
-                        "views": inspect_views(conn),
-                        "tables": inspect_tables(
-                            conn, (self.metadata("databases") or {}).get(name, {})
-                        ),
-                    }
-        return self._inspect
-
     def register_custom_units(self):
         "Register any custom units defined in the metadata.json with Pint"
         for unit in self.metadata("custom_units") or []:
@@ -821,10 +788,6 @@ class Datasette:
             if plugin["static_path"]:
                 modpath = "/-/static-plugins/{}/".format(plugin["name"])
                 app.static(modpath, plugin["static_path"])
-        app.add_route(
-            JsonDataView.as_view(self, "inspect.json", self.inspect),
-            r"/-/inspect<as_format:(\.json)?$>",
-        )
         app.add_route(
             JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
             r"/-/metadata<as_format:(\.json)?$>",

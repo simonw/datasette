@@ -57,6 +57,19 @@ You can also provide metadata at the per-database or per-table level, like this:
 
 Each of the top-level metadata fields can be used at the database and table level.
 
+Source, license and about
+-------------------------
+
+The three visible metadata fields you can apply to everything, specific databases or specific tables are source, license and about. All three are optionaly.
+
+**source** and **source_url** should be used to indicate where the underlying data came from.
+
+**license** and **license_url** should be used to indicate the license under which the data can be used.
+
+**about** and **about_url** can be used to link to further information about the project - an accompanying blog entry for example.
+
+For each of these you can provide just the ``*_url`` field and Datasette will treat that as the default link label text and display the URL directly on the page.
+
 Specifying units for a column
 -----------------------------
 

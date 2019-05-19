@@ -11,7 +11,7 @@ datasette publish
 
 Once you have created a SQLite database (e.g. using `csvs-to-sqlite <https://github.com/simonw/csvs-to-sqlite/>`_) you can deploy it to a hosting account using a single command.
 
-You will need a hosting account with `Heroku <http://heroku.com/>`__ or `Google Cloud <https://cloud.google.com/>`__. Once you have created your account you will need to install and configure the ``now`` or ``heroku`` command-line tools.
+You will need a hosting account with `Heroku <https://www.heroku.com/>`__ or `Google Cloud <https://cloud.google.com/>`__. Once you have created your account you will need to install and configure the ``heroku`` or ``gcloud`` command-line tools.
 
 Publishing to Heroku
 --------------------

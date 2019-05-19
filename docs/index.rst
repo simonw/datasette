@@ -24,6 +24,7 @@ Contents
    publish
    json_api
    sql_queries
+   performance
    csv_export
    facets
    full_text_search

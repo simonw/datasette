@@ -29,7 +29,7 @@ If this time limit is too short for you, you can customize it using the ``sql_ti
 
     datasette mydatabase.db --config sql_time_limit_ms:3500
 
-You can optionally set a lower time limit for an individual query using the ``?_timelimit=100`` query string argument::
+You can optionally set a lower time limit for an individual query using the ``?_timelimit=100`` querystring argument::
 
     /my-database/my-table?qSpecies=44&_timelimit=100
 
@@ -112,6 +112,8 @@ Enable/disable the ability for users to run custom SQL directly against a databa
 
     datasette mydatabase.db --config allow_sql:off
 
+.. _config_default_cache_ttl:
+
 default_cache_ttl
 -----------------
 
@@ -120,6 +122,8 @@ Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-ag
 ::
 
     datasette mydatabase.db --config default_cache_ttl:60
+
+.. _config_default_cache_ttl_hashed:
 
 default_cache_ttl_hashed
 ------------------------
@@ -198,7 +202,7 @@ hash_urls
 When enabled, this setting causes Datasette to append a content hash of the
 database file to the URL path for every table and query within that database.
 
-When combined with far-future  expire headers this ensures that queries can be
+When combined with far-future expire headers this ensures that queries can be
 cached forever, safe in the knowledge that any modifications to the database
 itself will result in new, uncachcacheed URL paths.
 

@@ -295,7 +295,8 @@ def make_dockerfile(
     version_note,
 ):
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
-    cmd.append('", "'.join(files))
+    for filename in files:
+        cmd.extend(["-i", filename])
     cmd.extend(["--cors", "--inspect-file", "inspect-data.json"])
     if metadata_file:
         cmd.extend(["--metadata", "{}".format(metadata_file)])

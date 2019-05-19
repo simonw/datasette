@@ -4,7 +4,6 @@ from .fixtures import (  # noqa
     app_client_shorter_time_limit,
     app_client_two_attached_databases,
     app_client_with_hash,
-    app_client_with_memory,
     make_app_client,
     METADATA,
 )
@@ -45,9 +44,10 @@ def test_homepage(app_client_two_attached_databases):
     ] == table_links
 
 
-def test_memory_database_page(app_client_with_memory):
-    response = app_client_with_memory.get("/:memory:")
-    assert response.status == 200
+def test_memory_database_page():
+    for client in make_app_client(memory=True):
+        response = client.get("/:memory:")
+        assert response.status == 200
 
 
 def test_database_page_redirects_with_url_hash(app_client_with_hash):
@@ -724,23 +724,35 @@ def test_table_metadata(app_client):
     assert_footer_links(soup)
 
 
-def test_database_download(app_client_with_memory):
-    # Regular page should have a download link
-    response = app_client_with_memory.get("/fixtures")
+def test_database_download_allowed_for_immutable():
+    for client in make_app_client(is_immutable=True):
+        assert not client.ds.databases["fixtures"].is_mutable
+        # Regular page should have a download link
+        response = client.get("/fixtures")
+        soup = Soup(response.body, "html.parser")
+        assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
+        # Check we can actually download it
+        assert 200 == client.get("/fixtures.db").status
+
+
+def test_database_download_disallowed_for_mutable(app_client):
+    response = app_client.get("/fixtures")
     soup = Soup(response.body, "html.parser")
-    assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
-    # Check we can actually download it
-    assert 200 == app_client_with_memory.get("/fixtures.db").status
-    # Memory page should NOT have a download link
-    response2 = app_client_with_memory.get("/:memory:")
-    soup2 = Soup(response2.body, "html.parser")
-    assert 0 == len(soup2.findAll("a", {"href": re.compile(r"\.db$")}))
-    # The URL itself should 404
-    assert 404 == app_client_with_memory.get("/:memory:.db").status
+    assert 0 == len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
+    assert 403 == app_client.get("/fixtures.db").status
+
+
+def test_database_download_disallowed_for_memory():
+    for client in make_app_client(memory=True):
+        # Memory page should NOT have a download link
+        response = client.get("/:memory:")
+        soup = Soup(response.body, "html.parser")
+        assert 0 == len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
+        assert 404 == client.get("/:memory:.db").status
 
 
 def test_allow_download_off():
-    for client in make_app_client(config={"allow_download": False}):
+    for client in make_app_client(is_immutable=True, config={"allow_download": False}):
         response = client.get("/fixtures")
         soup = Soup(response.body, "html.parser")
         assert not len(soup.findAll("a", {"href": re.compile(r"\.db$")}))

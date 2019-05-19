@@ -56,7 +56,7 @@
     </ul>
 {% endif %}
 
-{% if config.allow_download and database != ":memory:" %}
+{% if allow_download %}
     <p class="download-sqlite">Download SQLite DB: <a href="{{ database_url(database) }}.db">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
 {% endif %}
 

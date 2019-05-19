@@ -108,11 +108,6 @@ def app_client_two_attached_databases_one_immutable():
 
 
 @pytest.fixture(scope="session")
-def app_client_with_memory():
-    yield from make_app_client(memory=True)
-
-
-@pytest.fixture(scope="session")
 def app_client_with_hash():
     yield from make_app_client(config={"hash_urls": True}, is_immutable=True)
 

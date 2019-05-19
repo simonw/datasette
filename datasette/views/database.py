@@ -67,6 +67,9 @@ class DatabaseView(BaseView):
                 "show_hidden": request.args.get("_show_hidden"),
                 "editable": True,
                 "metadata": metadata,
+                "allow_download": self.ds.config("allow_download")
+                and not db.is_mutable
+                and database != ":memory:",
             },
             ("database-{}.html".format(to_css_class(database)), "database.html"),
         )
@@ -76,13 +79,13 @@ class DatabaseDownload(BaseView):
     name = "database_download"
 
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
-        if not self.ds.config("allow_download"):
-            raise DatasetteError("Database download is forbidden", status=403)
         if database not in self.ds.databases:
             raise DatasetteError("Invalid database", status=404)
         db = self.ds.databases[database]
         if db.is_memory:
             raise DatasetteError("Cannot download :memory: database", status=404)
+        if not self.ds.config("allow_download") or db.is_mutable:
+            raise DatasetteError("Database download is forbidden", status=403)
         if not db.path:
             raise DatasetteError("Cannot download database", status=404)
         filepath = db.path

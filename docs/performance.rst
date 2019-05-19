@@ -67,7 +67,7 @@ You can enable these hashed URLs in two ways: using the :ref:`config_hash_urls` 
 
 With hashed URLs enabled, any request to e.g. ``/mydatabase/mytable`` will 302 redirect to ``mydatabase-455fe3a/mytable``. The URL containing the hash will be served with a very long cache expire header - configured using :ref:`config_default_cache_ttl_hashed` which defaults to 365 days.
 
-Since these responses are cached for a long time, you may wish to build API clients against the non-hashed version of these URLs. These 302 redirects are served extremely quickly, so this should still be a performant way to work agaist the Datasette API.
+Since these responses are cached for a long time, you may wish to build API clients against the non-hashed version of these URLs. These 302 redirects are served extremely quickly, so this should still be a performant way to work against the Datasette API.
 
 If you run Datasette behind an `HTTP/2 server push <https://en.wikipedia.org/wiki/HTTP/2_Server_Push>`__ aware proxy such as Cloudflare Datasette will serve the 302 redirects in such a way that the redirected page will be efficiently "pushed" to the browser as part of the response, without the browser needing to make a second HTTP request to fetch the redirected resource.
 

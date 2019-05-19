@@ -7,7 +7,7 @@ docs_path = Path(__file__).parent / "docs"
 includes = (
     ("serve", "datasette-serve-help.txt"),
     ("package", "datasette-package-help.txt"),
-    ("publish now", "datasette-publish-now-help.txt"),
+    ("publish nowv1", "datasette-publish-nowv1-help.txt"),
     ("publish heroku", "datasette-publish-heroku-help.txt"),
     ("publish cloudrun", "datasette-publish-cloudrun-help.txt"),
 )

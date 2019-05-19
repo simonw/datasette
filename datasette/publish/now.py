@@ -24,7 +24,7 @@ def publish_subcommand(publish):
     @click.option("--token", help="Auth token to use for deploy")
     @click.option("--alias", multiple=True, help="Desired alias e.g. yoursite.now.sh")
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
-    def now(
+    def nowv1(
         files,
         metadata,
         extra_options,

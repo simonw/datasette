@@ -57,7 +57,7 @@ Datasette can be deployed to Zeit Now's older v1 hosting platform. They no longe
 
 To publish your database(s) to a new instance hosted by Zeit Now v1, install the `now cli tool <https://zeit.co/download>`__ and then run the following command::
 
-    datasette publish now mydatabase.db
+    datasette publish nowv1 mydatabase.db
 
 This will upload your database to Zeit Now, assign you a new URL and install and start a new instance of Datasette to serve your database.
 
@@ -75,7 +75,7 @@ You can use ``anything-you-like.now.sh``, provided no one else has already regis
 
 You can also use custom domains, if you `first register them with Zeit Now <https://zeit.co/docs/features/aliases>`_.
 
-.. literalinclude:: datasette-publish-now-help.txt
+.. literalinclude:: datasette-publish-nowv1-help.txt
 
 Custom metadata and plugins
 ---------------------------
@@ -84,18 +84,18 @@ Custom metadata and plugins
 
 You can define your own :ref:`metadata` and deploy that with your instance like so::
 
-    datasette publish now mydatabase.db -m metadata.json
+    datasette publish nowv1 mydatabase.db -m metadata.json
 
 If you just want to set the title, license or source information you can do that directly using extra options to ``datasette publish``::
 
-    datasette publish now mydatabase.db \
+    datasette publish nowv1 mydatabase.db \
         --title="Title of my database" \
         --source="Where the data originated" \
         --source_url="http://www.example.com/"
 
 You can also specify plugins you would like to install. For example, if you want to include the `datasette-vega <https://github.com/simonw/datasette-vega>`_ visualization plugin you can use the following::
 
-    datasette publish now mydatabase.db --install=datasette-vega
+    datasette publish nowv1 mydatabase.db --install=datasette-vega
 
 
 datasette package

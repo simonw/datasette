@@ -10,7 +10,7 @@ def test_publish_now_requires_now(mock_which):
     runner = CliRunner()
     with runner.isolated_filesystem():
         open("test.db", "w").write("data")
-        result = runner.invoke(cli.cli, ["publish", "now", "test.db"])
+        result = runner.invoke(cli.cli, ["publish", "nowv1", "test.db"])
         assert result.exit_code == 1
         assert "Publishing to Zeit Now requires now" in result.output
 
@@ -19,9 +19,16 @@ def test_publish_now_requires_now(mock_which):
 def test_publish_now_invalid_database(mock_which):
     mock_which.return_value = True
     runner = CliRunner()
-    result = runner.invoke(cli.cli, ["publish", "now", "woop.db"])
+    result = runner.invoke(cli.cli, ["publish", "nowv1", "woop.db"])
     assert result.exit_code == 2
     assert 'Path "woop.db" does not exist' in result.output
+
+
+@mock.patch("shutil.which")
+def test_publish_now_using_now_alias(mock_which):
+    mock_which.return_value = True
+    result = CliRunner().invoke(cli.cli, ["publish", "now", "woop.db"])
+    assert result.exit_code == 2
 
 
 @mock.patch("shutil.which")
@@ -31,7 +38,7 @@ def test_publish_now(mock_run, mock_which):
     runner = CliRunner()
     with runner.isolated_filesystem():
         open("test.db", "w").write("data")
-        result = runner.invoke(cli.cli, ["publish", "now", "test.db"])
+        result = runner.invoke(cli.cli, ["publish", "nowv1", "test.db"])
         assert 0 == result.exit_code
         mock_run.assert_called_once_with("now", stdout=subprocess.PIPE)
 
@@ -44,7 +51,7 @@ def test_publish_now_force_token(mock_run, mock_which):
     with runner.isolated_filesystem():
         open("test.db", "w").write("data")
         result = runner.invoke(
-            cli.cli, ["publish", "now", "test.db", "--force", "--token=X"]
+            cli.cli, ["publish", "nowv1", "test.db", "--force", "--token=X"]
         )
         assert 0 == result.exit_code
         mock_run.assert_called_once_with(

@@ -1,6 +1,6 @@
-$ datasette publish now --help
+$ datasette publish nowv1 --help
 
-Usage: datasette publish now [OPTIONS] [FILES]...
+Usage: datasette publish nowv1 [OPTIONS] [FILES]...
 
 Options:
   -m, --metadata FILENAME   Path to JSON file containing metadata to publish

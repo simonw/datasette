@@ -12,9 +12,9 @@ Datasette is a tool for exploring and publishing data. It helps people take data
 
 Datasette is aimed at data journalists, museum curators, archivists, local governments and anyone else who has data that they wish to share with the world.
 
-[Explore a demo](https://fivethirtyeight.datasettes.com/fivethirtyeight), watch [a video about the project](https://simonwillison.net/2018/Oct/25/how-instantly-publish-data-internet-datasette/) or try it out by [uploading and publishing your own CSV data](https://simonwillison.net/2019/Apr/23/datasette-glitch/).
+[Explore a demo](https://fivethirtyeight.datasettes.com/fivethirtyeight), watch [a video about the project](https://www.youtube.com/watch?v=pTr1uLQTJNE) or try it out by [uploading and publishing your own CSV data](https://simonwillison.net/2019/Apr/23/datasette-glitch/).
 
-* Documentation: http://datasette.readthedocs.io/
+* Comprehensive documentation: http://datasette.readthedocs.io/
 * Examples: https://github.com/simonw/datasette/wiki/Datasettes
 * Live demo of current master: https://latest.datasette.io/
 
@@ -54,7 +54,7 @@ sqlite-utils: a Python library and CLI tool for building SQLite databases](https
 
     pip3 install datasette
 
-Datasette requires Python 3.5 or higher.
+Datasette requires Python 3.5 or higher. We also have [detailed installation instructions](https://datasette.readthedocs.io/en/stable/installation.html) covering other options such as Docker.
 
 ## Basic usage
 
@@ -72,78 +72,34 @@ Now visiting http://localhost:8001/History/downloads will show you a web interfa
 
 ![Downloads table rendered by datasette](https://static.simonwillison.net/static/2017/datasette-downloads.png)
 
-http://localhost:8001/History/downloads.json will return that data as JSON:
-
-    {
-        "database": "History",
-        "columns": [
-            "id",
-            "current_path",
-            "target_path",
-            "start_time",
-            "received_bytes",
-            "total_bytes",
-            ...
-        ],
-        "rows": [
-            [
-                1,
-                "/Users/simonw/Downloads/DropboxInstaller.dmg",
-                "/Users/simonw/Downloads/DropboxInstaller.dmg",
-                13097290269022132,
-                626688,
-                0,
-                ...
-            ]
-        ]
-    }
-
-
-http://localhost:8001/History/downloads.json?_shape=objects will return that data as JSON in a more convenient but less efficient format:
-
-    {
-        ...
-        "rows": [
-            {
-                "start_time": 13097290269022132,
-                "interrupt_reason": 0,
-                "hash": "",
-                "id": 1,
-                "site_url": "",
-                "referrer": "https://www.dropbox.com/downloading?src=index",
-                ...
-            }
-        ]
-    }
-
 ## datasette serve options
 
     $ datasette serve --help
+
     Usage: datasette serve [OPTIONS] [FILES]...
 
       Serve up specified SQLite database files with a web UI
 
     Options:
-      -h, --host TEXT              host for server, defaults to 127.0.0.1
-      -p, --port INTEGER           port for server, defaults to 8001
-      --debug                      Enable debug mode - useful for development
-      --reload                     Automatically reload if code change detected -
-                                   useful for development
-      --cors                       Enable CORS by serving Access-Control-Allow-
-                                   Origin: *
-      --load-extension PATH        Path to a SQLite extension to load
-      --inspect-file TEXT          Path to JSON file created using "datasette
-                                   inspect"
-      -m, --metadata FILENAME      Path to JSON file containing license/source
-                                   metadata
-      --template-dir DIRECTORY     Path to directory containing custom templates
-      --plugins-dir DIRECTORY      Path to directory containing custom plugins
-      --static STATIC MOUNT        mountpoint:path-to-directory for serving static
-                                   files
-      --config CONFIG              Set config option using configname:value
-                                   datasette.readthedocs.io/en/latest/config.html
-      --help-config                Show available config options
-      --help                       Show this message and exit.
+      -i, --immutable PATH      Database files to open in immutable mode
+      -h, --host TEXT           host for server, defaults to 127.0.0.1
+      -p, --port INTEGER        port for server, defaults to 8001
+      --debug                   Enable debug mode - useful for development
+      --reload                  Automatically reload if database or code change detected -
+                                useful for development
+      --cors                    Enable CORS by serving Access-Control-Allow-Origin: *
+      --load-extension PATH     Path to a SQLite extension to load
+      --inspect-file TEXT       Path to JSON file created using "datasette inspect"
+      -m, --metadata FILENAME   Path to JSON file containing license/source metadata
+      --template-dir DIRECTORY  Path to directory containing custom templates
+      --plugins-dir DIRECTORY   Path to directory containing custom plugins
+      --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
+      --memory                  Make :memory: database available
+      --config CONFIG           Set config option using configname:value
+                                datasette.readthedocs.io/en/latest/config.html
+      --version-note TEXT       Additional note to show on /-/versions
+      --help-config             Show available config options
+      --help                    Show this message and exit.
 
 ## metadata.json
 
@@ -157,118 +113,22 @@ If you want to include licensing and source information in the generated dataset
         "source_url": "https://github.com/fivethirtyeight/data"
     }
 
+Save this in `metadata.json` and run Datasette like so:
+
+    datasette serve fivethirtyeight.db -m metadata.json
+
 The license and source information will be displayed on the index page and in the footer. They will also be included in the JSON produced by the API.
 
 ## datasette publish
 
-If you have [Zeit Now](https://zeit.co/now) or [Heroku](https://heroku.com/) configured, datasette can deploy one or more SQLite databases to the internet with a single command:
-
-    datasette publish now database.db
-
-Or:
+If you have [Heroku](https://heroku.com/), [Google Cloud Run](https://cloud.google.com/run/) or [Zeit Now v1](https://zeit.co/now) configured, Datasette can deploy one or more SQLite databases to the internet with a single command:
 
     datasette publish heroku database.db
 
-This will create a docker image containing both the datasette application and the specified SQLite database files. It will then deploy that image to Zeit Now or Heroku and give you a URL to access the API.
+Or:
 
-    $ datasette publish --help
-    Usage: datasette publish [OPTIONS] PUBLISHER [FILES]...
+    datasette publish cloudrun database.db
 
-      Publish specified SQLite database files to the internet along with a
-      datasette API.
+This will create a docker image containing both the datasette application and the specified SQLite database files. It will then deploy that image to Heroku or Cloud Run and give you a URL to access the resulting website and API.
 
-      Options for PUBLISHER:     * 'now' - You must have Zeit Now installed:
-      https://zeit.co/now     * 'heroku' - You must have Heroku installed:
-      https://cli.heroku.com/
-
-      Example usage: datasette publish now my-database.db
-
-    Options:
-      -n, --name TEXT           Application name to use when deploying to Now
-                                (ignored for Heroku)
-      -m, --metadata FILENAME   Path to JSON file containing metadata to publish
-      --extra-options TEXT      Extra options to pass to datasette serve
-      --force                   Pass --force option to now
-      --branch TEXT             Install datasette from a GitHub branch e.g. master
-      --token TEXT              Auth token to use for deploy (Now only)
-      --template-dir DIRECTORY  Path to directory containing custom templates
-      --plugins-dir DIRECTORY   Path to directory containing custom plugins
-      --static STATIC MOUNT     mountpoint:path-to-directory for serving static
-                                files
-      --install TEXT            Additional packages (e.g. plugins) to install
-      --spatialite              Enable SpatialLite extension
-      --version-note TEXT       Additional note to show on /-/versions
-      --title TEXT              Title for metadata
-      --license TEXT            License label for metadata
-      --license_url TEXT        License URL for metadata
-      --source TEXT             Source label for metadata
-      --source_url TEXT         Source URL for metadata
-      --help                    Show this message and exit.
-
-## datasette package
-
-If you have docker installed you can use `datasette package` to create a new Docker image in your local repository containing the datasette app and selected SQLite databases:
-
-    $ datasette package --help
-    Usage: datasette package [OPTIONS] FILES...
-
-      Package specified SQLite files into a new datasette Docker container
-
-    Options:
-      -t, --tag TEXT            Name for the resulting Docker container, can
-                                optionally use name:tag format
-      -m, --metadata FILENAME   Path to JSON file containing metadata to publish
-      --extra-options TEXT      Extra options to pass to datasette serve
-      --branch TEXT             Install datasette from a GitHub branch e.g. master
-      --template-dir DIRECTORY  Path to directory containing custom templates
-      --plugins-dir DIRECTORY   Path to directory containing custom plugins
-      --static STATIC MOUNT     mountpoint:path-to-directory for serving static
-                                files
-      --install TEXT            Additional packages (e.g. plugins) to install
-      --spatialite              Enable SpatialLite extension
-      --version-note TEXT       Additional note to show on /-/versions
-      --title TEXT              Title for metadata
-      --license TEXT            License label for metadata
-      --license_url TEXT        License URL for metadata
-      --source TEXT             Source label for metadata
-      --source_url TEXT         Source URL for metadata
-      --help                    Show this message and exit.
-
-Both publish and package accept an `extra_options` argument option, which will affect how the resulting application is executed. For example, say you want to increase the SQL time limit for a particular container:
-
-    datasette package parlgov.db \
-        --extra-options="--config sql_time_limit_ms:2500 --config default_page_size:10"
-
-The resulting container will run the application with those options.
-
-Here's example output for the package command:
-
-    $ datasette package parlgov.db --extra-options="--config sql_time_limit_ms:2500"
-    Sending build context to Docker daemon  4.459MB
-    Step 1/7 : FROM python:3
-     ---> 79e1dc9af1c1
-    Step 2/7 : COPY . /app
-     ---> Using cache
-     ---> cd4ec67de656
-    Step 3/7 : WORKDIR /app
-     ---> Using cache
-     ---> 139699e91621
-    Step 4/7 : RUN pip install datasette
-     ---> Using cache
-     ---> 340efa82bfd7
-    Step 5/7 : RUN datasette inspect parlgov.db --inspect-file inspect-data.json
-     ---> Using cache
-     ---> 5fddbe990314
-    Step 6/7 : EXPOSE 8001
-     ---> Using cache
-     ---> 8e83844b0fed
-    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --config sql_time_limit_ms:2500
-     ---> Using cache
-     ---> 1bd380ea8af3
-    Successfully built 1bd380ea8af3
-
-You can now run the resulting container like so:
-
-    docker run -p 8081:8001 1bd380ea8af3
-
-This exposes port 8001 inside the container as port 8081 on your host machine, so you can access the application at http://localhost:8081/
+See [Publishing data](https://datasette.readthedocs.io/en/stable/publish.html) in the documentation for more details.

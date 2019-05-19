@@ -31,7 +31,7 @@ setup(
     name="datasette",
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
-    description="An instant JSON API for your SQLite databases",
+    description="A tool for exploring and publishing data",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
     author="Simon Willison",

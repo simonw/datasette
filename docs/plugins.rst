@@ -24,7 +24,7 @@ Datasette to ``pip install`` specific plugins as part of the process. You can
 use the name of a package on PyPI or any of the other valid arguments to ``pip
 install`` such as a URL to a ``.zip`` file::
 
-    datasette publish now mydb.db \
+    datasette publish cloudrun mydb.db \
         --install=datasette-plugin-demos \
         --install=https://url-to-my-package.zip
 

@@ -128,3 +128,12 @@ The performance of facets can be greatly improved by adding indexes on the colum
     SQLite version 3.19.3 2017-06-27 16:48:08
     Enter ".help" for usage hints.
     sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");
+
+Facet by JSON array
+-------------------
+
+If your SQLite installation provides the ``json1`` extension (you can check using :ref:`JsonDataView_versions`) Datasette will automatically detect columns that contain JSON arrays of values and offer a faceting interface against those columns.
+
+This is useful for modelling things like tags without needing to break them out into a new table.
+
+You can try this functionality out at `latest.datasette.io/fixtures/facetable?_facet_array=tags <https://latest.datasette.io/fixtures/facetable?_facet_array=tags>`__

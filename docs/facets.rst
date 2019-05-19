@@ -129,6 +129,8 @@ The performance of facets can be greatly improved by adding indexes on the colum
     Enter ".help" for usage hints.
     sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");
 
+.. _facet_by_json_array:
+
 Facet by JSON array
 -------------------
 

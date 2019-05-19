@@ -30,6 +30,8 @@ You can specify a custom app name by passing ``-n my-app-name`` to the publish c
 
 .. literalinclude:: datasette-publish-heroku-help.txt
 
+.. _publish_cloud_run:
+
 Publishing to Google Cloud Run
 ------------------------------
 

@@ -57,6 +57,8 @@ You can also provide metadata at the per-database or per-table level, like this:
 
 Each of the top-level metadata fields can be used at the database and table level.
 
+.. _metadata_source_license_about:
+
 Source, license and about
 -------------------------
 

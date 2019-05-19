@@ -248,6 +248,8 @@ You can filter the data returned by the table based on column values using a que
 ``?column__notblank=1``
     Matches rows where the column is not blank.
 
+.. _json_api_table_arguments:
+
 Special table arguments
 ~~~~~~~~~~~~~~~~~~~~~~~
 

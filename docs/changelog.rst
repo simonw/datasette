@@ -4,6 +4,102 @@
 Changelog
 =========
 
+.. _v0_28:
+
+0.28 (2019-05-19)
+-----------------
+
+A `salmagundi <https://adamj.eu/tech/2019/01/18/a-salmagundi-of-django-alpha-announcements/>`__ of new features! 
+
+.. _v0_28_databases_that_change:
+
+Supporting databases that change
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+From the beginning of the project, Datasette has been designed with read-only databases in mind. If a database is guaranteed not to change it opens up all kinds of interesting opportunities - from taking advantage of SQLite immutable mode and HTTP caching to bundling static copies of the database directly in a Docker container. `The interesting ideas in Datasette <https://simonwillison.net/2018/Oct/4/datasette-ideas/>`__ explores this idea in detail.
+
+As my goals for the project have developed, I realized that read-only databases are no longer the right default. SQLite actually supports concurrent access very well provided only one thread attempts to write to a database at a time, and I keep encountering sensible use-cases for running Datasette on top of a database that is processing inserts and updates.
+
+So, as-of version 0.28 Datasette no longer assumes that a database file will not change. It is now safe to point Datasette at a SQLite database which is being updated by another process.
+
+Making this change was a lot of work - see tracking tickets `#418 <https://github.com/simonw/datasette/issues/418>`__, `#419 <https://github.com/simonw/datasette/issues/419>`__ and `#420 <https://github.com/simonw/datasette/issues/420>`__. It required new thinking around how Datasette should calculate table counts (an expensive operation against a large, changing database) and also meant reconsidering the "content hash" URLs Datasette has used in the past to optimize the performance of HTTP caches.
+
+Datasette can still run against immutable files and gains numerous performance benefits from doing so, but this is no longer the default behaviour. Take a look at the new :ref:`performance` documentation section for details on how to make the most of Datasette against data that you know will be staying read-only and immutable.
+
+.. _v0_28_faceting:
+
+Faceting improvements, and faceting plugins
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette :ref:`facets` provide an intuitive way to quickly summarize and interact with data. Previously the only supported faceting technique was column faceting, but 0.28 introduces two powerful new capibilities: facet-by-JSON-array and the ability to define further facet types using plugins.
+
+Facet by array (`#359 <https://github.com/simonw/datasette/issues/359>`__) is only available if your SQLite installation provides the ``json1`` extension. Datasette will automatically detect columns that contain JSON arrays of values and offer a faceting interface against those columns - useful for modelling things like tags without needing to break them out into a new table. See :ref:`facet_by_json_array` for more.
+
+The new :ref:`plugin_register_facet_classes` plugin hook (`#445 <https://github.com/simonw/datasette/pull/445>`__) can be used to register additional custom facet classes. Each facet class should provide two methods: ``suggest()`` which suggests facet selections that might be appropriate for a provided SQL query, and ``facet_results()`` which executes a facet operation and returns results. Datasette's own faceting implementations have been refactored to use the same API as these plugins.
+
+.. _v0_28_publish_cloudrun:
+
+datasette publish cloudrun
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+`Google Cloud Run <https://cloud.google.com/run/>`__ is a brand new serverless hosting platform from Google, which allows you to build a Docker container which will run only when HTTP traffic is recieved and will shut down (and hence cost you nothing) the rest of the time. It's similar to Zeit's Now v1 Docker hosting platform which sadly is `no longer accepting signups <https://hyperion.alpha.spectrum.chat/zeit/now/cannot-create-now-v1-deployments~d206a0d4-5835-4af5-bb5c-a17f0171fb25?m=MTU0Njk2NzgwODM3OA==>`__ from new users.
+
+The new ``datasette publish cloudrun`` command was contributed by Romain Primet (`#434 <https://github.com/simonw/datasette/pull/434>`__) and publishes selected databases to a new Datasette instance running on Google Cloud Run.
+
+See :ref:`publish_cloud_run` for full documentation.
+
+.. _v0_28_register_output_renderer:
+
+register_output_renderer plugins
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Russ Garrett implemented a new Datasette plugin hook called :ref:`register_output_renderer <plugin_register_output_renderer>` (`#441 <https://github.com/simonw/datasette/pull/441>`__) which allows plugins to create additional output renderers in addition to Datasette's default ``.json`` and ``.csv``.
+
+Russ's in-development `datasette-geo <https://github.com/russss/datasette-geo>`__ plugin includes `an example <https://github.com/russss/datasette-geo/blob/d4cecc020848bbde91e9e17bf352f7c70bc3dccf/datasette_plugin_geo/geojson.py>`__ of this hook being used to output ``.geojson`` automatically converted from SpatiaLite.
+
+.. _v0_28_medium_changes:
+
+Medium changes
+~~~~~~~~~~~~~~
+
+- Datasette now conforms to the `Black coding style <https://github.com/python/black>`__ (`#449 <https://github.com/simonw/datasette/pull/449>`__) - and has a unit test to enforce this in the future
+- New :ref:`json_api_table_arguments`:
+   - ``?columnname__in=value1,value2,value3`` filter for executing SQL IN queries against a table, see :ref:`table_arguments` (`#433 <https://github.com/simonw/datasette/issues/433>`__)
+   - ``?columnname__date=yyyy-mm-dd`` filter which returns rows where the spoecified datetime column falls on the specified date (`583b22a <https://github.com/simonw/datasette/commit/583b22aa28e26c318de0189312350ab2688c90b1>`__)
+   - ``?tags__arraycontains=tag`` filter which acts against a JSON array contained in a column (`78e45ea <https://github.com/simonw/datasette/commit/78e45ead4d771007c57b307edf8fc920101f8733>`__)
+   - ``?_where=sql-fragment`` filter for the table view  (`#429 <https://github.com/simonw/datasette/issues/429>`__)
+   - ``?_fts_table=mytable`` and ``?_fts_pk=mycolumn`` querystring options can be used to specify which FTS table to use for a search query - see :ref:`full_text_search_table_or_view` (`#428 <https://github.com/simonw/datasette/issues/428>`__)
+- You can now pass the same table filter multiple times - for example, ``?content__not=world&content__not=hello`` will return all rows where the content column is neither ``hello`` or ``world`` (`#288 <https://github.com/simonw/datasette/issues/288>`__)
+- You can now specify ``about`` and ``about_url`` metadata (in addition to ``source`` and ``license``) linking to further information about a project - see :ref:`metadata_source_license_about`
+- New ``?_trace=1`` parameter now adds debug information showing every SQL query that was executed while constructing the page (`#435 <https://github.com/simonw/datasette/issues/435>`__)
+- ``datasette inspect`` now just calculates table counts, and does not introspect other database metadata (`#462 <https://github.com/simonw/datasette/issues/462>`__)
+- Removed ``/-/inspect`` page entirely - this will be replaced by something similar in the future, see `#465 <https://github.com/simonw/datasette/issues/465>`__
+- Datasette can now run against an in-memory SQLite database. You can do this by starting it without passing any files or by using the new ``--memory`` option to ``datasette serve``. This can be useful for experimenting with SQLite queries that do not access any data, such as ``SELECT 1+1`` or ``SELECT sqlite_version()``.
+
+.. _v0_28_small_changes:
+
+Small changes
+~~~~~~~~~~~~~
+
+- We now show the size of the database file next to the download link (`#172 <https://github.com/simonw/datasette/issues/172>`__)
+- New ``/-/databases`` introspection page shows currently connected databases (`#470 <https://github.com/simonw/datasette/issues/470>`__)
+- Binary data is no longer displayed on the table and row pages (`#442 <https://github.com/simonw/datasette/pull/442>`__ - thanks, Russ Garrett)
+- New show/hide SQL links on custom query pages (`#415 <https://github.com/simonw/datasette/issues/415>`__)
+- The :ref:`extra_body_script <plugin_hook_extra_body_script>` plugin hook now accepts an optional ``view_name`` argument (`#443 <https://github.com/simonw/datasette/pull/443>`__ - thanks, Russ Garrett)
+- Bumped Jinja2 dependency to 2.10.1 (`#426 <https://github.com/simonw/datasette/pull/426>`__)
+- All table filters are now documented, and documentation is enforced via unit tests (`2c19a27 <https://github.com/simonw/datasette/commit/2c19a27d15a913e5f3dd443f04067169a6f24634>`__)
+- New project guideline: master should stay shippable at all times! (`31f36e1 <https://github.com/simonw/datasette/commit/31f36e1b97ccc3f4387c80698d018a69798b6228>`__)
+- Fixed a bug where ``sqlite_timelimit()`` occasionally failed to clean up after itself (`bac4e01 <https://github.com/simonw/datasette/commit/bac4e01f40ae7bd19d1eab1fb9349452c18de8f5>`__)
+- We no longer load additional plugins when executing pytest (`#438 <https://github.com/simonw/datasette/issues/438>`__)
+- Homepage now links to database views if there are less than five tables in a database (`#373 <https://github.com/simonw/datasette/issues/373>`__)
+- The ``--cors`` option is now respected by error pages (`#453 <https://github.com/simonw/datasette/issues/453>`__)
+- ``datasette publish heroku`` now uses the ``--include-vcs-ignore`` option, which means it works under Travis CI (`#407 <https://github.com/simonw/datasette/pull/407>`__)
+- ``datasette publish heroku`` now publishes using Python 3.6.8 (`666c374 <https://github.com/simonw/datasette/commit/666c37415a898949fae0437099d62a35b1e9c430>`__)
+- Renamed ``datasette publish now`` to ``datasette publish nowv1`` (`#472 <https://github.com/simonw/datasette/issues/472>`__)
+- ``datasette publish nowv1`` now accepts multiple ``--alias`` parameters (`09ef305 <https://github.com/simonw/datasette/commit/09ef305c687399384fe38487c075e8669682deb4>`__)
+- Removed the ``datasette skeleton`` command (`#476 <https://github.com/simonw/datasette/issues/476>`__)
+- The :ref:`documentation on how to build the documentation <contributing_documentation>` now recommends ``sphinx-autobuild``
+
 .. _v0_27_1:
 
 0.27.1 (2019-05-09)

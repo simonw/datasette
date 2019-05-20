@@ -63,7 +63,7 @@ Hashed URL mode
 
 When you open a database file in immutable mode using the ``-i`` option, Datasette calculates a SHA-256 hash of the contents of that file on startup. This content hash can then optionally be used to create URLs that are guaranteed to change if the contents of the file changes in the future. This results in URLs that can then be cached indefinitely by both browsers and caching proxies - an enormous potential performance optimization.
 
-You can enable these hashed URLs in two ways: using the :ref:`config_hash_urls` configuration setting (which affects all requests to Dataslette) or via the ``?_hash=1`` querystring parameter (which only applies to the current request).
+You can enable these hashed URLs in two ways: using the :ref:`config_hash_urls` configuration setting (which affects all requests to Datasette) or via the ``?_hash=1`` querystring parameter (which only applies to the current request).
 
 With hashed URLs enabled, any request to e.g. ``/mydatabase/mytable`` will 302 redirect to ``mydatabase-455fe3a/mytable``. The URL containing the hash will be served with a very long cache expire header - configured using :ref:`config_default_cache_ttl_hashed` which defaults to 365 days.
 

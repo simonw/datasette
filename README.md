@@ -20,6 +20,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 21st May 2019: The anonymized raw data from [the Stack Overflow Developer Survey 2019](https://stackoverflow.blog/2019/05/21/public-data-release-of-stack-overflows-2019-developer-survey/) has been [published in partnership with Glitch](https://glitch.com/culture/discover-insights-explore-developer-survey-results-2019/), powered by Datasette.
  * 19th May 2019: [Datasette 0.28](https://datasette.readthedocs.io/en/stable/changelog.html#v0-28) - a salmagundi of new features!
    * No longer immutable! Datasette now supports [databases that change](https://datasette.readthedocs.io/en/stable/changelog.html#supporting-databases-that-change).
    * [Faceting improvements](https://datasette.readthedocs.io/en/stable/changelog.html#faceting-improvements-and-faceting-plugins) including facet-by-JSON-array and the ability to define custom faceting using plugins.

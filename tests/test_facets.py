@@ -1,4 +1,4 @@
-from datasette.facets import ColumnFacet, ArrayFacet
+from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
 from datasette.utils import detect_json1
 from .fixtures import app_client  # noqa
 from .utils import MockRequest
@@ -17,6 +17,7 @@ async def test_column_facet_suggest(app_client):
     )
     suggestions = await facet.suggest()
     assert [
+        {"name": "created", "toggle_url": "http://localhost/?_facet=created"},
         {"name": "planet_int", "toggle_url": "http://localhost/?_facet=planet_int"},
         {"name": "on_earth", "toggle_url": "http://localhost/?_facet=on_earth"},
         {"name": "state", "toggle_url": "http://localhost/?_facet=state"},
@@ -37,6 +38,10 @@ async def test_column_facet_suggest_skip_if_already_selected(app_client):
     )
     suggestions = await facet.suggest()
     assert [
+        {
+            "name": "created",
+            "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=created",
+        },
         {
             "name": "state",
             "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=state",
@@ -67,7 +72,14 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
         metadata={"facets": ["city_id"]},
     )
     suggestions = [s["name"] for s in await facet.suggest()]
-    assert ["planet_int", "on_earth", "state", "neighborhood", "tags"] == suggestions
+    assert [
+        "created",
+        "planet_int",
+        "on_earth",
+        "state",
+        "neighborhood",
+        "tags",
+    ] == suggestions
 
 
 @pytest.mark.asyncio
@@ -231,6 +243,58 @@ async def test_array_facet_results(app_client):
                     "label": "tag3",
                     "count": 1,
                     "toggle_url": "http://localhost/?_facet_array=tags&tags__arraycontains=tag3",
+                    "selected": False,
+                },
+            ],
+            "hideable": True,
+            "toggle_url": "/",
+            "truncated": False,
+        }
+    } == buckets
+
+
+@pytest.mark.asyncio
+async def test_date_facet_results(app_client):
+    facet = DateFacet(
+        app_client.ds,
+        MockRequest("http://localhost/?_facet_date=created"),
+        database="fixtures",
+        sql="select * from facetable",
+        table="facetable",
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert [] == timed_out
+    assert {
+        "created": {
+            "name": "created",
+            "type": "date",
+            "results": [
+                {
+                    "value": "2019-01-14",
+                    "label": "2019-01-14",
+                    "count": 4,
+                    "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-14",
+                    "selected": False,
+                },
+                {
+                    "value": "2019-01-15",
+                    "label": "2019-01-15",
+                    "count": 4,
+                    "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-15",
+                    "selected": False,
+                },
+                {
+                    "value": "2019-01-17",
+                    "label": "2019-01-17",
+                    "count": 4,
+                    "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-17",
+                    "selected": False,
+                },
+                {
+                    "value": "2019-01-16",
+                    "label": "2019-01-16",
+                    "count": 3,
+                    "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-16",
                     "selected": False,
                 },
             ],

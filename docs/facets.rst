@@ -139,3 +139,10 @@ If your SQLite installation provides the ``json1`` extension (you can check usin
 This is useful for modelling things like tags without needing to break them out into a new table.
 
 You can try this functionality out at `latest.datasette.io/fixtures/facetable?_facet_array=tags <https://latest.datasette.io/fixtures/facetable?_facet_array=tags>`__
+
+Facet by date
+-------------
+
+If Datasette finds any columns that contain dates in the first 100 values, it will offer a faceting interface against the dates of those values. This works especially well against timestamp values such as ``2019-03-01 12:44:00``.
+
+Demo here: `latest.datasette.io/fixtures/facetable?_facet_date=created <https://latest.datasette.io/fixtures/facetable?_facet_date=created>`__

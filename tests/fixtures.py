@@ -518,6 +518,7 @@ INSERT INTO facet_cities (id, name) VALUES
 
 CREATE TABLE facetable (
     pk integer primary key,
+    created text,
     planet_int integer,
     on_earth integer,
     state text,
@@ -527,23 +528,23 @@ CREATE TABLE facetable (
     FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (planet_int, on_earth, state, city_id, neighborhood, tags)
+    (created, planet_int, on_earth, state, city_id, neighborhood, tags)
 VALUES
-    (1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]'),
-    (1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]'),
-    (1, 1, 'CA', 1, 'SOMA', '[]'),
-    (1, 1, 'CA', 1, 'Tenderloin', '[]'),
-    (1, 1, 'CA', 1, 'Bernal Heights', '[]'),
-    (1, 1, 'CA', 1, 'Hayes Valley', '[]'),
-    (1, 1, 'CA', 2, 'Hollywood', '[]'),
-    (1, 1, 'CA', 2, 'Downtown', '[]'),
-    (1, 1, 'CA', 2, 'Los Feliz', '[]'),
-    (1, 1, 'CA', 2, 'Koreatown', '[]'),
-    (1, 1, 'MI', 3, 'Downtown', '[]'),
-    (1, 1, 'MI', 3, 'Greektown', '[]'),
-    (1, 1, 'MI', 3, 'Corktown', '[]'),
-    (1, 1, 'MI', 3, 'Mexicantown', '[]'),
-    (2, 0, 'MC', 4, 'Arcadia Planitia', '[]')
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]'),
+    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]')
 ;
 
 CREATE TABLE binary_data (

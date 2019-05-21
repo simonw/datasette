@@ -30,7 +30,6 @@ def load_facet_configs(request, table_metadata):
             type = "column"
             metadata_config = {"simple": metadata_config}
         else:
-            # This should have a single key and a single value
             assert (
                 len(metadata_config.values()) == 1
             ), "Metadata config dicts should be {type: config}"
@@ -62,7 +61,7 @@ def load_facet_configs(request, table_metadata):
 
 @hookimpl
 def register_facet_classes():
-    classes = [ColumnFacet]
+    classes = [ColumnFacet, DateFacet]
     if detect_json1():
         classes.append(ArrayFacet)
     return classes
@@ -354,6 +353,119 @@ class ArrayFacet(Facet):
                         {
                             "value": value,
                             "label": value,
+                            "count": row["count"],
+                            "toggle_url": self.ds.absolute_url(
+                                self.request, toggle_path
+                            ),
+                            "selected": selected,
+                        }
+                    )
+            except InterruptedError:
+                facets_timed_out.append(column)
+
+        return facet_results, facets_timed_out
+
+
+class DateFacet(Facet):
+    type = "date"
+
+    async def suggest(self):
+        columns = await self.get_columns(self.sql, self.params)
+        already_enabled = [c["config"]["simple"] for c in self.get_configs()]
+        suggested_facets = []
+        for column in columns:
+            if column in already_enabled:
+                continue
+            # Does this column contain any dates in the first 100 rows?
+            suggested_facet_sql = """
+                select date({column}) from (
+                    {sql}
+                ) where {column} glob "????-??-*" limit 100;
+            """.format(
+                column=escape_sqlite(column), sql=self.sql
+            )
+            try:
+                results = await self.ds.execute(
+                    self.database,
+                    suggested_facet_sql,
+                    self.params,
+                    truncate=False,
+                    custom_time_limit=self.ds.config("facet_suggest_time_limit_ms"),
+                    log_sql_errors=False,
+                )
+                values = tuple(r[0] for r in results.rows)
+                if any(values):
+                    suggested_facets.append(
+                        {
+                            "name": column,
+                            "type": "date",
+                            "toggle_url": self.ds.absolute_url(
+                                self.request,
+                                path_with_added_args(
+                                    self.request, {"_facet_date": column}
+                                ),
+                            ),
+                        }
+                    )
+            except (InterruptedError, sqlite3.OperationalError):
+                continue
+        return suggested_facets
+
+    async def facet_results(self):
+        facet_results = {}
+        facets_timed_out = []
+        args = dict(self.get_querystring_pairs())
+        facet_size = self.ds.config("default_facet_size")
+        for source_and_config in self.get_configs():
+            config = source_and_config["config"]
+            source = source_and_config["source"]
+            column = config.get("column") or config["simple"]
+            # TODO: does this query break if inner sql produces value or count columns?
+            facet_sql = """
+                select date({col}) as value, count(*) as count from (
+                    {sql}
+                )
+                where date({col}) is not null
+                group by date({col}) order by count desc limit {limit}
+            """.format(
+                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
+            )
+            try:
+                facet_rows_results = await self.ds.execute(
+                    self.database,
+                    facet_sql,
+                    self.params,
+                    truncate=False,
+                    custom_time_limit=self.ds.config("facet_time_limit_ms"),
+                )
+                facet_results_values = []
+                facet_results[column] = {
+                    "name": column,
+                    "type": self.type,
+                    "results": facet_results_values,
+                    "hideable": source != "metadata",
+                    "toggle_url": path_with_removed_args(
+                        self.request, {"_facet_date": column}
+                    ),
+                    "truncated": len(facet_rows_results) > facet_size,
+                }
+                facet_rows = facet_rows_results.rows[:facet_size]
+                for row in facet_rows:
+                    selected = str(args.get("{}__date".format(column))) == str(
+                        row["value"]
+                    )
+                    if selected:
+                        toggle_path = path_with_removed_args(
+                            self.request, {"{}__date".format(column): str(row["value"])}
+                        )
+                    else:
+                        toggle_path = path_with_added_args(
+                            self.request, {"{}__date".format(column): row["value"]}
+                        )
+                    facet_results_values.append(
+                        {
+                            "value": row["value"],
+                            "label": row["value"],
                             "count": row["count"],
                             "toggle_url": self.ds.absolute_url(
                                 self.request, toggle_path

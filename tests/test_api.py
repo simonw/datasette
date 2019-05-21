@@ -167,6 +167,7 @@ def test_database_page(app_client):
         {
             "columns": [
                 "pk",
+                "created",
                 "planet_int",
                 "on_earth",
                 "state",
@@ -955,14 +956,16 @@ def test_table_filter_queries_multiple_of_same_type(app_client):
 def test_table_filter_json_arraycontains(app_client):
     response = app_client.get("/fixtures/facetable.json?tags__arraycontains=tag1")
     assert [
-        [1, 1, 1, "CA", 1, "Mission", '["tag1", "tag2"]'],
-        [2, 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]'],
+        [1, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Mission", '["tag1", "tag2"]'],
+        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]'],
     ] == response.json["rows"]
 
 
 def test_table_filter_extra_where(app_client):
     response = app_client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
-    assert [[2, 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]']] == response.json["rows"]
+    assert [
+        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]']
+    ] == response.json["rows"]
 
 
 def test_table_filter_extra_where_invalid(app_client):
@@ -1331,12 +1334,14 @@ def test_suggested_facets(app_client):
         ]
     ]
     expected = [
+        {"name": "created", "querystring": "_facet=created"},
         {"name": "planet_int", "querystring": "_facet=planet_int"},
         {"name": "on_earth", "querystring": "_facet=on_earth"},
         {"name": "state", "querystring": "_facet=state"},
         {"name": "city_id", "querystring": "_facet=city_id"},
         {"name": "neighborhood", "querystring": "_facet=neighborhood"},
         {"name": "tags", "querystring": "_facet=tags"},
+        {"name": "created", "querystring": "_facet_date=created"},
     ]
     if detect_json1():
         expected.append({"name": "tags", "querystring": "_facet_array=tags"})
@@ -1364,6 +1369,7 @@ def test_expand_labels(app_client):
     assert {
         "2": {
             "pk": 2,
+            "created": "2019-01-14 08:00:00",
             "planet_int": 1,
             "on_earth": 1,
             "state": "CA",
@@ -1373,6 +1379,7 @@ def test_expand_labels(app_client):
         },
         "13": {
             "pk": 13,
+            "created": "2019-01-17 08:00:00",
             "planet_int": 1,
             "on_earth": 1,
             "state": "MI",

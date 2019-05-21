@@ -26,6 +26,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
    * [datasette publish cloudrun](https://datasette.readthedocs.io/en/stable/changelog.html#datasette-publish-cloudrun) lets you publish databasese to Google's new Cloud Run hosting service.
    * New [register_output_renderer](https://datasette.readthedocs.io/en/stable/changelog.html#register-output-renderer-plugins) plugin hook for adding custom output extensions to Datasette in addition to the default `.json` and `.csv`.
    * Dozens of other smaller features and tweaks - see [the release notes](https://datasette.readthedocs.io/en/stable/changelog.html#v0-28) for full details.
+   * Read more about this release here: [Datasette 0.28—and why master should always be releasable](https://simonwillison.net/2019/May/19/datasette-0-28/)
  * 24th February 2019: [
 sqlite-utils: a Python library and CLI tool for building SQLite databases](https://simonwillison.net/2019/Feb/25/sqlite-utils/) - a partner tool for easily creating SQLite databases for use with Datasette.
  * 31st Janary 2019: [Datasette 0.27](https://datasette.readthedocs.io/en/latest/changelog.html#v0-27) - `datasette plugins` command, newline-delimited JSON export option, new documentation on [The Datasette Ecosystem](https://datasette.readthedocs.io/en/latest/ecosystem.html).

@@ -145,7 +145,9 @@ class Filters:
             else []
         )
         + [
-            TemplatedFilter("date", "date", "date({c}) = :{p}", '"{c}" is on date {v}'),
+            TemplatedFilter(
+                "date", "date", 'date("{c}") = :{p}', '"{c}" is on date {v}'
+            ),
             TemplatedFilter(
                 "isnull", "is null", '"{c}" is null', "{c} is null", no_argument=True
             ),

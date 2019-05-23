@@ -551,6 +551,63 @@ CREATE TABLE binary_data (
     data BLOB
 );
 
+-- Many 2 Many demo: roadside attractions!
+
+CREATE TABLE roadside_attractions (
+    pk integer primary key,
+    name text,
+    address text,
+    latitude real,
+    longitude real
+);
+INSERT INTO roadside_attractions VALUES (
+    1, "The Mystery Spot", "465 Mystery Spot Road, Santa Cruz, CA 95065",
+    37.0167, -122.0024
+);
+INSERT INTO roadside_attractions VALUES (
+    2, "Winchester Mystery House", "525 South Winchester Boulevard, San Jose, CA 95128",
+    37.3184, -121.9511
+);
+INSERT INTO roadside_attractions VALUES (
+    3, "Burlingame Museum of PEZ Memorabilia", "214 California Drive, Burlingame, CA 94010",
+    37.5793, -122.3442
+);
+INSERT INTO roadside_attractions VALUES (
+    4, "Bigfoot Discovery Museum", "5497 Highway 9, Felton, CA 95018",
+    37.0414, -122.0725
+);
+
+CREATE TABLE attraction_characteristic (
+    pk integer primary key,
+    name text
+);
+INSERT INTO attraction_characteristic VALUES (
+    1, "Museum"
+);
+INSERT INTO attraction_characteristic VALUES (
+    2, "Paranormal"
+);
+
+CREATE TABLE roadside_attraction_characteristics (
+    attraction_id INTEGER REFERENCES roadside_attractions(pk),
+    characteristic_id INTEGER REFERENCES attraction_characteristic(pk)
+);
+INSERT INTO roadside_attraction_characteristics VALUES (
+    1, 2
+);
+INSERT INTO roadside_attraction_characteristics VALUES (
+    2, 2
+);
+INSERT INTO roadside_attraction_characteristics VALUES (
+    4, 2
+);
+INSERT INTO roadside_attraction_characteristics VALUES (
+    3, 1
+);
+INSERT INTO roadside_attraction_characteristics VALUES (
+    4, 1
+);
+
 INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');

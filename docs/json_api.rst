@@ -293,6 +293,32 @@ Special table arguments
     * `facetable?_where=neighborhood like "%c%"&_where=city_id=3 <https://latest.datasette.io/fixtures/facetable?_where=neighborhood%20like%20%22%c%%22&_where=city_id=3>`__
     * `facetable?_where=city_id in (select id from facet_cities where name != "Detroit") <https://latest.datasette.io/fixtures/facetable?_where=city_id%20in%20(select%20id%20from%20facet_cities%20where%20name%20!=%20%22Detroit%22)>`__
 
+``?_through={json}``
+    This can be used to filter rows via a join against another table.
+
+    The JSON parameter must include three keys: ``table``, ``column`` and ``value``.
+
+    ``table`` must be a table that the current table is related to via a foreign key relationship.
+
+    ``column`` must be a column in that other table.
+
+    ``value`` is the value that you want to match against.
+
+    For example, to filter ``roadside_attractions`` to just show the attractions that have a characteristic of "museum", you would construct this JSON::
+
+        {
+            "table": "roadside_attraction_characteristics",
+            "column": "characteristic_id",
+            "value": "1"
+        }
+
+    As a URL, that looks like this:
+
+    ``?_through={%22table%22:%22roadside_attraction_characteristics%22,%22column%22:%22characteristic_id%22,%22value%22:%221%22}``
+
+    Here's `an example <https://latest.datasette.io/fixtures/roadside_attractions?_through={%22table%22:%22roadside_attraction_characteristics%22,%22column%22:%22characteristic_id%22,%22value%22:%221%22}>`__.
+
+
 ``?_group_count=COLUMN``
     Executes a SQL query that returns a count of the number of rows matching
     each unique value in that column, with the most common ordered first.

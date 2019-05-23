@@ -1,5 +1,6 @@
 import urllib
 import itertools
+import json
 
 import jinja2
 from sanic.exceptions import NotFound
@@ -17,6 +18,7 @@ from datasette.utils import (
     escape_sqlite,
     filters_should_redirect,
     get_all_foreign_keys,
+    get_outbound_foreign_keys,
     is_url,
     path_from_row_pks,
     path_with_added_args,
@@ -289,6 +291,41 @@ class TableView(RowTableShared):
                     for text in request.args["_where"]
                 ]
 
+        # Support for ?_through={table, column, value}
+        extra_human_descriptions = []
+        if "_through" in request.args:
+            for through in request.args["_through"]:
+                through_data = json.loads(through)
+                through_table = through_data["table"]
+                other_column = through_data["column"]
+                value = through_data["value"]
+                outgoing_foreign_keys = await self.ds.execute_against_connection_in_thread(
+                    database,
+                    lambda conn: get_outbound_foreign_keys(conn, through_table),
+                )
+                try:
+                    fk_to_us = [
+                        fk for fk in outgoing_foreign_keys if fk["other_table"] == table
+                    ][0]
+                except IndexError:
+                    raise DatasetteError(
+                        "Invalid _through - could not find corresponding foreign key"
+                    )
+                param = "p{}".format(len(params))
+                where_clauses.append(
+                    "{our_pk} in (select {our_column} from {through_table} where {other_column} = :{param})".format(
+                        through_table=escape_sqlite(through_table),
+                        our_pk=escape_sqlite(fk_to_us["other_column"]),
+                        our_column=escape_sqlite(fk_to_us["column"]),
+                        other_column=escape_sqlite(other_column),
+                        param=param,
+                    )
+                )
+                params[param] = value
+                extra_human_descriptions.append(
+                    '{}.{} = "{}"'.format(through_table, other_column, value)
+                )
+
         # _search support:
         fts_table = special_args.get("_fts_table")
         fts_table = fts_table or table_metadata.get("fts_table")
@@ -299,7 +336,6 @@ class TableView(RowTableShared):
         search_args = dict(
             pair for pair in special_args.items() if pair[0].startswith("_search")
         )
-        search_descriptions = []
         search = ""
         if fts_table and search_args:
             if "_search" in search_args:
@@ -310,7 +346,7 @@ class TableView(RowTableShared):
                         fts_table=escape_sqlite(fts_table), fts_pk=escape_sqlite(fts_pk)
                     )
                 )
-                search_descriptions.append('search matches "{}"'.format(search))
+                extra_human_descriptions.append('search matches "{}"'.format(search))
                 params["search"] = search
             else:
                 # More complex: search against specific columns
@@ -328,7 +364,7 @@ class TableView(RowTableShared):
                             i=i,
                         )
                     )
-                    search_descriptions.append(
+                    extra_human_descriptions.append(
                         'search column "{}" matches "{}"'.format(
                             search_col, search_text
                         )
@@ -637,7 +673,9 @@ class TableView(RowTableShared):
                 suggested_facets.extend(await facet.suggest())
 
         # human_description_en combines filters AND search, if provided
-        human_description_en = filters.human_description_en(extra=search_descriptions)
+        human_description_en = filters.human_description_en(
+            extra=extra_human_descriptions
+        )
 
         if sort or sort_desc:
             sorted_by = "sorted by {}{}".format(

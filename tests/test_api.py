@@ -25,7 +25,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {"fixtures": 0}.keys()
     d = response.json["fixtures"]
     assert d["name"] == "fixtures"
-    assert d["tables_count"] == 21
+    assert d["tables_count"] == 24
     assert len(d["tables_and_views_truncated"]) == 5
     assert d["tables_and_views_more"] is True
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
@@ -44,9 +44,9 @@ def test_homepage_sort_by_relationships(app_client):
     assert [
         "simple_primary_key",
         "complex_foreign_keys",
+        "roadside_attraction_characteristics",
         "searchable_tags",
         "foreign_key_references",
-        "facetable",
     ] == tables
 
 
@@ -56,115 +56,134 @@ def test_database_page(app_client):
     assert "fixtures" == data["database"]
     assert [
         {
-            "columns": ["content"],
             "name": "123_starts_with_digits",
+            "columns": ["content"],
+            "primary_keys": [],
             "count": 0,
             "hidden": False,
-            "foreign_keys": {"incoming": [], "outgoing": []},
             "fts_table": None,
-            "primary_keys": [],
+            "foreign_keys": {"incoming": [], "outgoing": []},
         },
         {
-            "columns": ["pk", "content"],
             "name": "Table With Space In Name",
+            "columns": ["pk", "content"],
+            "primary_keys": ["pk"],
             "count": 0,
             "hidden": False,
-            "foreign_keys": {"incoming": [], "outgoing": []},
             "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
+        },
+        {
+            "name": "attraction_characteristic",
+            "columns": ["pk", "name"],
             "primary_keys": ["pk"],
-        },
-        {
-            "columns": ["data"],
-            "count": 1,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "fts_table": None,
-            "hidden": False,
-            "name": "binary_data",
-            "primary_keys": [],
-        },
-        {
-            "columns": ["pk", "f1", "f2", "f3"],
-            "name": "complex_foreign_keys",
-            "count": 1,
-            "foreign_keys": {
-                "incoming": [],
-                "outgoing": [
-                    {
-                        "column": "f3",
-                        "other_column": "id",
-                        "other_table": "simple_primary_key",
-                    },
-                    {
-                        "column": "f2",
-                        "other_column": "id",
-                        "other_table": "simple_primary_key",
-                    },
-                    {
-                        "column": "f1",
-                        "other_column": "id",
-                        "other_table": "simple_primary_key",
-                    },
-                ],
-            },
+            "count": 2,
             "hidden": False,
             "fts_table": None,
-            "primary_keys": ["pk"],
-        },
-        {
-            "columns": ["pk1", "pk2", "content"],
-            "name": "compound_primary_key",
-            "count": 1,
-            "hidden": False,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "fts_table": None,
-            "primary_keys": ["pk1", "pk2"],
-        },
-        {
-            "columns": ["pk1", "pk2", "pk3", "content"],
-            "name": "compound_three_primary_keys",
-            "count": 1001,
-            "hidden": False,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "fts_table": None,
-            "primary_keys": ["pk1", "pk2", "pk3"],
-        },
-        {
-            "columns": ["pk", "foreign_key_with_custom_label"],
-            "name": "custom_foreign_key_label",
-            "count": 1,
-            "hidden": False,
-            "foreign_keys": {
-                "incoming": [],
-                "outgoing": [
-                    {
-                        "column": "foreign_key_with_custom_label",
-                        "other_column": "id",
-                        "other_table": "primary_key_multiple_columns_explicit_label",
-                    }
-                ],
-            },
-            "fts_table": None,
-            "primary_keys": ["pk"],
-        },
-        {
-            "columns": ["id", "name"],
-            "name": "facet_cities",
-            "count": 4,
             "foreign_keys": {
                 "incoming": [
                     {
-                        "column": "id",
-                        "other_column": "city_id",
-                        "other_table": "facetable",
+                        "other_table": "roadside_attraction_characteristics",
+                        "column": "pk",
+                        "other_column": "characteristic_id",
                     }
                 ],
                 "outgoing": [],
             },
-            "fts_table": None,
-            "hidden": False,
-            "primary_keys": ["id"],
         },
         {
+            "name": "binary_data",
+            "columns": ["data"],
+            "primary_keys": [],
+            "count": 1,
+            "hidden": False,
+            "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
+        },
+        {
+            "name": "complex_foreign_keys",
+            "columns": ["pk", "f1", "f2", "f3"],
+            "primary_keys": ["pk"],
+            "count": 1,
+            "hidden": False,
+            "fts_table": None,
+            "foreign_keys": {
+                "incoming": [],
+                "outgoing": [
+                    {
+                        "other_table": "simple_primary_key",
+                        "column": "f3",
+                        "other_column": "id",
+                    },
+                    {
+                        "other_table": "simple_primary_key",
+                        "column": "f2",
+                        "other_column": "id",
+                    },
+                    {
+                        "other_table": "simple_primary_key",
+                        "column": "f1",
+                        "other_column": "id",
+                    },
+                ],
+            },
+        },
+        {
+            "name": "compound_primary_key",
+            "columns": ["pk1", "pk2", "content"],
+            "primary_keys": ["pk1", "pk2"],
+            "count": 1,
+            "hidden": False,
+            "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
+        },
+        {
+            "name": "compound_three_primary_keys",
+            "columns": ["pk1", "pk2", "pk3", "content"],
+            "primary_keys": ["pk1", "pk2", "pk3"],
+            "count": 1001,
+            "hidden": False,
+            "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
+        },
+        {
+            "name": "custom_foreign_key_label",
+            "columns": ["pk", "foreign_key_with_custom_label"],
+            "primary_keys": ["pk"],
+            "count": 1,
+            "hidden": False,
+            "fts_table": None,
+            "foreign_keys": {
+                "incoming": [],
+                "outgoing": [
+                    {
+                        "other_table": "primary_key_multiple_columns_explicit_label",
+                        "column": "foreign_key_with_custom_label",
+                        "other_column": "id",
+                    }
+                ],
+            },
+        },
+        {
+            "name": "facet_cities",
+            "columns": ["id", "name"],
+            "primary_keys": ["id"],
+            "count": 4,
+            "hidden": False,
+            "fts_table": None,
+            "foreign_keys": {
+                "incoming": [
+                    {
+                        "other_table": "facetable",
+                        "column": "id",
+                        "other_column": "city_id",
+                    }
+                ],
+                "outgoing": [],
+            },
+        },
+        {
+            "name": "facetable",
             "columns": [
                 "pk",
                 "created",
@@ -175,94 +194,137 @@ def test_database_page(app_client):
                 "neighborhood",
                 "tags",
             ],
-            "name": "facetable",
+            "primary_keys": ["pk"],
             "count": 15,
+            "hidden": False,
+            "fts_table": None,
             "foreign_keys": {
                 "incoming": [],
                 "outgoing": [
                     {
+                        "other_table": "facet_cities",
                         "column": "city_id",
                         "other_column": "id",
-                        "other_table": "facet_cities",
                     }
                 ],
             },
-            "fts_table": None,
-            "hidden": False,
-            "primary_keys": ["pk"],
         },
         {
-            "columns": ["pk", "foreign_key_with_label", "foreign_key_with_no_label"],
             "name": "foreign_key_references",
+            "columns": ["pk", "foreign_key_with_label", "foreign_key_with_no_label"],
+            "primary_keys": ["pk"],
             "count": 1,
             "hidden": False,
+            "fts_table": None,
             "foreign_keys": {
                 "incoming": [],
                 "outgoing": [
                     {
+                        "other_table": "primary_key_multiple_columns",
                         "column": "foreign_key_with_no_label",
                         "other_column": "id",
-                        "other_table": "primary_key_multiple_columns",
                     },
                     {
+                        "other_table": "simple_primary_key",
                         "column": "foreign_key_with_label",
                         "other_column": "id",
-                        "other_table": "simple_primary_key",
                     },
                 ],
             },
-            "fts_table": None,
-            "primary_keys": ["pk"],
         },
         {
             "name": "infinity",
             "columns": ["value"],
-            "count": 3,
             "primary_keys": [],
+            "count": 3,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
         },
         {
-            "columns": ["id", "content", "content2"],
             "name": "primary_key_multiple_columns",
+            "columns": ["id", "content", "content2"],
+            "primary_keys": ["id"],
             "count": 1,
+            "hidden": False,
+            "fts_table": None,
             "foreign_keys": {
                 "incoming": [
                     {
+                        "other_table": "foreign_key_references",
                         "column": "id",
                         "other_column": "foreign_key_with_no_label",
-                        "other_table": "foreign_key_references",
                     }
                 ],
                 "outgoing": [],
             },
-            "hidden": False,
-            "fts_table": None,
-            "primary_keys": ["id"],
         },
         {
-            "columns": ["id", "content", "content2"],
             "name": "primary_key_multiple_columns_explicit_label",
+            "columns": ["id", "content", "content2"],
+            "primary_keys": ["id"],
             "count": 1,
+            "hidden": False,
+            "fts_table": None,
             "foreign_keys": {
                 "incoming": [
                     {
+                        "other_table": "custom_foreign_key_label",
                         "column": "id",
                         "other_column": "foreign_key_with_custom_label",
-                        "other_table": "custom_foreign_key_label",
                     }
                 ],
                 "outgoing": [],
             },
-            "hidden": False,
-            "fts_table": None,
-            "primary_keys": ["id"],
         },
         {
-            "columns": ["pk", "text1", "text2", "name with . and spaces"],
+            "name": "roadside_attraction_characteristics",
+            "columns": ["attraction_id", "characteristic_id"],
+            "primary_keys": [],
+            "count": 5,
+            "hidden": False,
+            "fts_table": None,
+            "foreign_keys": {
+                "incoming": [],
+                "outgoing": [
+                    {
+                        "other_table": "attraction_characteristic",
+                        "column": "characteristic_id",
+                        "other_column": "pk",
+                    },
+                    {
+                        "other_table": "roadside_attractions",
+                        "column": "attraction_id",
+                        "other_column": "pk",
+                    },
+                ],
+            },
+        },
+        {
+            "name": "roadside_attractions",
+            "columns": ["pk", "name", "address", "latitude", "longitude"],
+            "primary_keys": ["pk"],
+            "count": 4,
+            "hidden": False,
+            "fts_table": None,
+            "foreign_keys": {
+                "incoming": [
+                    {
+                        "other_table": "roadside_attraction_characteristics",
+                        "column": "pk",
+                        "other_column": "attraction_id",
+                    }
+                ],
+                "outgoing": [],
+            },
+        },
+        {
             "name": "searchable",
+            "columns": ["pk", "text1", "text2", "name with . and spaces"],
+            "primary_keys": ["pk"],
             "count": 2,
+            "hidden": False,
+            "fts_table": "searchable_fts",
             "foreign_keys": {
                 "incoming": [
                     {
@@ -273,9 +335,6 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
-            "fts_table": "searchable_fts",
-            "hidden": False,
-            "primary_keys": ["pk"],
         },
         {
             "name": "searchable_tags",
@@ -297,48 +356,49 @@ def test_database_page(app_client):
             },
         },
         {
-            "columns": ["group", "having", "and", "json"],
             "name": "select",
+            "columns": ["group", "having", "and", "json"],
+            "primary_keys": [],
             "count": 1,
             "hidden": False,
-            "foreign_keys": {"incoming": [], "outgoing": []},
             "fts_table": None,
-            "primary_keys": [],
+            "foreign_keys": {"incoming": [], "outgoing": []},
         },
         {
-            "columns": ["id", "content"],
             "name": "simple_primary_key",
+            "columns": ["id", "content"],
+            "primary_keys": ["id"],
             "count": 4,
             "hidden": False,
+            "fts_table": None,
             "foreign_keys": {
                 "incoming": [
                     {
+                        "other_table": "foreign_key_references",
                         "column": "id",
                         "other_column": "foreign_key_with_label",
-                        "other_table": "foreign_key_references",
                     },
                     {
+                        "other_table": "complex_foreign_keys",
                         "column": "id",
                         "other_column": "f3",
-                        "other_table": "complex_foreign_keys",
                     },
                     {
+                        "other_table": "complex_foreign_keys",
                         "column": "id",
                         "other_column": "f2",
-                        "other_table": "complex_foreign_keys",
                     },
                     {
+                        "other_table": "complex_foreign_keys",
                         "column": "id",
                         "other_column": "f1",
-                        "other_table": "complex_foreign_keys",
                     },
                 ],
                 "outgoing": [],
             },
-            "fts_table": None,
-            "primary_keys": ["id"],
         },
         {
+            "name": "sortable",
             "columns": [
                 "pk1",
                 "pk2",
@@ -348,21 +408,20 @@ def test_database_page(app_client):
                 "sortable_with_nulls_2",
                 "text",
             ],
-            "name": "sortable",
+            "primary_keys": ["pk1", "pk2"],
             "count": 201,
             "hidden": False,
-            "foreign_keys": {"incoming": [], "outgoing": []},
             "fts_table": None,
-            "primary_keys": ["pk1", "pk2"],
+            "foreign_keys": {"incoming": [], "outgoing": []},
         },
         {
-            "columns": ["pk", "content"],
             "name": "table/with/slashes.csv",
+            "columns": ["pk", "content"],
+            "primary_keys": ["pk"],
             "count": 1,
             "hidden": False,
-            "foreign_keys": {"incoming": [], "outgoing": []},
             "fts_table": None,
-            "primary_keys": ["pk"],
+            "foreign_keys": {"incoming": [], "outgoing": []},
         },
         {
             "name": "tags",
@@ -383,33 +442,34 @@ def test_database_page(app_client):
             },
         },
         {
-            "columns": ["pk", "distance", "frequency"],
             "name": "units",
+            "columns": ["pk", "distance", "frequency"],
+            "primary_keys": ["pk"],
             "count": 3,
             "hidden": False,
-            "foreign_keys": {"incoming": [], "outgoing": []},
             "fts_table": None,
-            "primary_keys": ["pk"],
+            "foreign_keys": {"incoming": [], "outgoing": []},
         },
         {
-            "columns": ["content", "a", "b", "c"],
             "name": "no_primary_key",
+            "columns": ["content", "a", "b", "c"],
+            "primary_keys": [],
             "count": 201,
             "hidden": True,
-            "foreign_keys": {"incoming": [], "outgoing": []},
             "fts_table": None,
-            "primary_keys": [],
-        },
-        {
-            "columns": ["text1", "text2", "name with . and spaces", "content"],
-            "count": 2,
             "foreign_keys": {"incoming": [], "outgoing": []},
-            "fts_table": "searchable_fts",
-            "hidden": True,
-            "name": "searchable_fts",
-            "primary_keys": [],
         },
         {
+            "name": "searchable_fts",
+            "columns": ["text1", "text2", "name with . and spaces", "content"],
+            "primary_keys": [],
+            "count": 2,
+            "hidden": True,
+            "fts_table": "searchable_fts",
+            "foreign_keys": {"incoming": [], "outgoing": []},
+        },
+        {
+            "name": "searchable_fts_content",
             "columns": [
                 "docid",
                 "c0text1",
@@ -417,14 +477,14 @@ def test_database_page(app_client):
                 "c2name with . and spaces",
                 "c3content",
             ],
-            "count": 2,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "fts_table": None,
-            "hidden": True,
-            "name": "searchable_fts_content",
             "primary_keys": ["docid"],
+            "count": 2,
+            "hidden": True,
+            "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
         },
         {
+            "name": "searchable_fts_segdir",
             "columns": [
                 "level",
                 "idx",
@@ -433,21 +493,20 @@ def test_database_page(app_client):
                 "end_block",
                 "root",
             ],
-            "count": 1,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "fts_table": None,
-            "hidden": True,
-            "name": "searchable_fts_segdir",
             "primary_keys": ["level", "idx"],
+            "count": 1,
+            "hidden": True,
+            "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
         },
         {
-            "columns": ["blockid", "block"],
-            "count": 0,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "fts_table": None,
-            "hidden": True,
             "name": "searchable_fts_segments",
+            "columns": ["blockid", "block"],
             "primary_keys": ["blockid"],
+            "count": 0,
+            "hidden": True,
+            "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
         },
     ] == data["tables"]
 
@@ -979,6 +1038,33 @@ def test_table_filter_extra_where_disabled_if_no_sql_allowed():
         response = client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
         assert 400 == response.status
         assert "_where= is not allowed" == response.json["error"]
+
+
+def test_table_through(app_client):
+    # Just the museums:
+    response = app_client.get(
+        '/fixtures/roadside_attractions.json?_through={"table":"roadside_attraction_characteristics","column":"characteristic_id","value":"1"}'
+    )
+    assert [
+        [
+            3,
+            "Burlingame Museum of PEZ Memorabilia",
+            "214 California Drive, Burlingame, CA 94010",
+            37.5793,
+            -122.3442,
+        ],
+        [
+            4,
+            "Bigfoot Discovery Museum",
+            "5497 Highway 9, Felton, CA 95018",
+            37.0414,
+            -122.0725,
+        ],
+    ] == response.json["rows"]
+    assert (
+        'where roadside_attraction_characteristics.characteristic_id = "1"'
+        == response.json["human_description_en"]
+    )
 
 
 def test_max_returned_rows(app_client):

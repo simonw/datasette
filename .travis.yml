@@ -11,7 +11,7 @@ python:
 script:
   - pip install -U pip wheel
   - pip install .[test]
-  - pytest
+  - pytest -v
 
 cache:
     directories:

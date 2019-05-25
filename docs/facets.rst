@@ -129,6 +129,17 @@ The performance of facets can be greatly improved by adding indexes on the colum
     Enter ".help" for usage hints.
     sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");
 
+.. _facet_by_m2m:
+
+Facet by many-to-many
+---------------------
+
+Datasette can detect many-to-many SQL tables - defined as SQL tables which have foreign key relationships to two other tables.
+
+If a many-to-many table exists pointing at the table you are currently viewing, Datasette will suggest you facet the table based on that relationship.
+
+Example here: `latest.datasette.io/fixtures/roadside_attractions?_facet_m2m=attraction_characteristic <https://latest.datasette.io/fixtures/roadside_attractions?_facet_m2m=attraction_characteristic>`__
+
 .. _facet_by_json_array:
 
 Facet by JSON array
@@ -138,11 +149,13 @@ If your SQLite installation provides the ``json1`` extension (you can check usin
 
 This is useful for modelling things like tags without needing to break them out into a new table.
 
-You can try this functionality out at `latest.datasette.io/fixtures/facetable?_facet_array=tags <https://latest.datasette.io/fixtures/facetable?_facet_array=tags>`__
+Example here: `latest.datasette.io/fixtures/facetable?_facet_array=tags <https://latest.datasette.io/fixtures/facetable?_facet_array=tags>`__
+
+.. _facet_by_date:
 
 Facet by date
 -------------
 
 If Datasette finds any columns that contain dates in the first 100 values, it will offer a faceting interface against the dates of those values. This works especially well against timestamp values such as ``2019-03-01 12:44:00``.
 
-Demo here: `latest.datasette.io/fixtures/facetable?_facet_date=created <https://latest.datasette.io/fixtures/facetable?_facet_date=created>`__
+Example here: `latest.datasette.io/fixtures/facetable?_facet_date=created <https://latest.datasette.io/fixtures/facetable?_facet_date=created>`__

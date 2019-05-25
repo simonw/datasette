@@ -1,4 +1,4 @@
-from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
+from datasette.facets import ColumnFacet, ArrayFacet, DateFacet, ManyToManyFacet
 from datasette.utils import detect_json1
 from .fixtures import app_client  # noqa
 from .utils import MockRequest
@@ -295,6 +295,63 @@ async def test_date_facet_results(app_client):
                     "label": "2019-01-16",
                     "count": 3,
                     "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-16",
+                    "selected": False,
+                },
+            ],
+            "hideable": True,
+            "toggle_url": "/",
+            "truncated": False,
+        }
+    } == buckets
+
+
+@pytest.mark.asyncio
+async def test_m2m_facet_suggest(app_client):
+    facet = ManyToManyFacet(
+        app_client.ds,
+        MockRequest("http://localhost/"),
+        database="fixtures",
+        sql="select * from roadside_attractions",
+        table="roadside_attractions",
+    )
+    suggestions = await facet.suggest()
+    assert [
+        {
+            "name": "attraction_characteristic",
+            "type": "m2m",
+            "toggle_url": "http://localhost/?_facet_m2m=attraction_characteristic",
+        }
+    ] == suggestions
+
+
+@pytest.mark.asyncio
+async def test_m2m_facet_results(app_client):
+    facet = ManyToManyFacet(
+        app_client.ds,
+        MockRequest("http://localhost/?_facet_m2m=attraction_characteristic"),
+        database="fixtures",
+        sql="select * from roadside_attractions",
+        table="roadside_attractions",
+    )
+    buckets, timed_out = await facet.facet_results()
+    assert [] == timed_out
+    assert {
+        "attraction_characteristic": {
+            "name": "attraction_characteristic",
+            "type": "m2m",
+            "results": [
+                {
+                    "value": 2,
+                    "label": "Paranormal",
+                    "count": 3,
+                    "toggle_url": "http://localhost/?_facet_m2m=attraction_characteristic&_through=%7B%22table%22%3A%22roadside_attraction_characteristics%22%2C%22column%22%3A%22characteristic_id%22%2C%22value%22%3A%222%22%7D",
+                    "selected": False,
+                },
+                {
+                    "value": 1,
+                    "label": "Museum",
+                    "count": 2,
+                    "toggle_url": "http://localhost/?_facet_m2m=attraction_characteristic&_through=%7B%22table%22%3A%22roadside_attraction_characteristics%22%2C%22column%22%3A%22characteristic_id%22%2C%22value%22%3A%221%22%7D",
                     "selected": False,
                 },
             ],

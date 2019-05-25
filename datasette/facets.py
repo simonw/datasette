@@ -638,6 +638,7 @@ class ManyToManyFacet(Facet):
                             "value": str(row["value"]),
                         },
                         separators=(",", ":"),
+                        sort_keys=True,
                     )
                     selected = ("_through", through) in args
                     if selected:

@@ -647,8 +647,16 @@ class Datasette:
             return explicit_label_column
         # If a table has two columns, one of which is ID, then label_column is the other one
         column_names = await self.table_columns(db_name, table)
-        if column_names and len(column_names) == 2 and "id" in column_names:
-            return [c for c in column_names if c != "id"][0]
+        # Is there a name or title column?
+        name_or_title = [c for c in column_names if c in ("name", "title")]
+        if name_or_title:
+            return name_or_title[0]
+        if (
+            column_names
+            and len(column_names) == 2
+            and ("id" in column_names or "pk" in column_names)
+        ):
+            return [c for c in column_names if c not in ("id", "pk")][0]
         # Couldn't find a label:
         return None
 

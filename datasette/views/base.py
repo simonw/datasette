@@ -183,7 +183,7 @@ class BaseView(RenderMixin):
             if "table_and_format" in kwargs:
 
                 async def async_table_exists(t):
-                    return await self.ds.table_exists(name, t)
+                    return await db.table_exists(t)
 
                 table, _format = await resolve_table_and_format(
                     table_and_format=urllib.parse.unquote_plus(
@@ -328,9 +328,10 @@ class BaseView(RenderMixin):
         if not _format:
             _format = (args.pop("as_format", None) or "").lstrip(".")
         if "table_and_format" in args:
+            db = self.ds.databases[database]
 
             async def async_table_exists(t):
-                return await self.ds.table_exists(database, t)
+                return await db.table_exists(t)
 
             table, _ext_format = await resolve_table_and_format(
                 table_and_format=urllib.parse.unquote_plus(args["table_and_format"]),

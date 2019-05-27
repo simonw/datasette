@@ -42,7 +42,7 @@ class IndexView(RenderMixin):
                     table_counts = {}
             tables = {}
             for table in table_names:
-                table_columns = await self.ds.table_columns(name, table)
+                table_columns = await db.table_columns(table)
                 tables[table] = {
                     "name": table,
                     "columns": table_columns,

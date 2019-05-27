@@ -36,7 +36,7 @@ class DatabaseView(BaseView):
 
         tables = []
         for table in table_counts:
-            table_columns = await self.ds.table_columns(database, table)
+            table_columns = await db.table_columns(table)
             tables.append(
                 {
                     "name": table,

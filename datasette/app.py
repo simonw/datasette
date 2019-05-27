@@ -197,11 +197,52 @@ class ConnectedDatabase:
         else:
             return Path(self.path).stem
 
+    async def table_exists(self, table):
+        results = await self.ds.execute(
+            self.name,
+            "select 1 from sqlite_master where type='table' and name=?",
+            params=(table,),
+        )
+        return bool(results.rows)
+
     async def table_names(self):
         results = await self.ds.execute(
             self.name, "select name from sqlite_master where type='table'"
         )
         return [r[0] for r in results.rows]
+
+    async def table_columns(self, table):
+        return await self.ds.execute_against_connection_in_thread(
+            self.name, lambda conn: table_columns(conn, table)
+        )
+
+    async def label_column_for_table(self, table):
+        explicit_label_column = self.ds.table_metadata(self.name, table).get(
+            "label_column"
+        )
+        if explicit_label_column:
+            return explicit_label_column
+        # If a table has two columns, one of which is ID, then label_column is the other one
+        column_names = await self.ds.execute_against_connection_in_thread(
+            self.name, lambda conn: table_columns(conn, table)
+        )
+        # Is there a name or title column?
+        name_or_title = [c for c in column_names if c in ("name", "title")]
+        if name_or_title:
+            return name_or_title[0]
+        if (
+            column_names
+            and len(column_names) == 2
+            and ("id" in column_names or "pk" in column_names)
+        ):
+            return [c for c in column_names if c not in ("id", "pk")][0]
+        # Couldn't find a label:
+        return None
+
+    async def foreign_keys_for_table(self, table):
+        return await self.ds.execute_against_connection_in_thread(
+            self.name, lambda conn: get_outbound_foreign_keys(conn, table)
+        )
 
     async def hidden_table_names(self):
         # Mark tables 'hidden' if they relate to FTS virtual tables
@@ -274,6 +315,21 @@ class ConnectedDatabase:
         return await self.ds.execute_against_connection_in_thread(
             self.name, get_all_foreign_keys
         )
+
+    async def get_table_definition(self, table, type_="table"):
+        table_definition_rows = list(
+            await self.ds.execute(
+                self.name,
+                "select sql from sqlite_master where name = :n and type=:t",
+                {"n": table, "t": type_},
+            )
+        )
+        if not table_definition_rows:
+            return None
+        return table_definition_rows[0][0]
+
+    async def get_view_definition(self, view):
+        return await self.get_table_definition(view, "view")
 
     def __repr__(self):
         tags = []
@@ -451,21 +507,6 @@ class Datasette:
             query["name"] = query_name
             return query
 
-    async def get_table_definition(self, database_name, table, type_="table"):
-        table_definition_rows = list(
-            await self.execute(
-                database_name,
-                "select sql from sqlite_master where name = :n and type=:t",
-                {"n": table, "t": type_},
-            )
-        )
-        if not table_definition_rows:
-            return None
-        return table_definition_rows[0][0]
-
-    def get_view_definition(self, database_name, view):
-        return self.get_table_definition(database_name, view, "view")
-
     def update_with_inherited_metadata(self, metadata):
         # Fills in source/license with defaults, if available
         metadata.update(
@@ -494,18 +535,11 @@ class Datasette:
         # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn)
 
-    async def table_exists(self, database, table):
-        results = await self.execute(
-            database,
-            "select 1 from sqlite_master where type='table' and name=?",
-            params=(table,),
-        )
-        return bool(results.rows)
-
     async def expand_foreign_keys(self, database, table, column, values):
         "Returns dict mapping (column, value) -> label"
         labeled_fks = {}
-        foreign_keys = await self.foreign_keys_for_table(database, table)
+        db = self.databases[database]
+        foreign_keys = await db.foreign_keys_for_table(table)
         # Find the foreign_key for this column
         try:
             fk = [
@@ -515,7 +549,7 @@ class Datasette:
             ][0]
         except IndexError:
             return {}
-        label_column = await self.label_column_for_table(database, fk["other_table"])
+        label_column = await db.label_column_for_table(fk["other_table"])
         if not label_column:
             return {(fk["column"], value): str(value) for value in values}
         labeled_fks = {}
@@ -630,35 +664,6 @@ class Datasette:
             .get("tables", {})
             .get(table, {})
         )
-
-    async def table_columns(self, db_name, table):
-        return await self.execute_against_connection_in_thread(
-            db_name, lambda conn: table_columns(conn, table)
-        )
-
-    async def foreign_keys_for_table(self, database, table):
-        return await self.execute_against_connection_in_thread(
-            database, lambda conn: get_outbound_foreign_keys(conn, table)
-        )
-
-    async def label_column_for_table(self, db_name, table):
-        explicit_label_column = self.table_metadata(db_name, table).get("label_column")
-        if explicit_label_column:
-            return explicit_label_column
-        # If a table has two columns, one of which is ID, then label_column is the other one
-        column_names = await self.table_columns(db_name, table)
-        # Is there a name or title column?
-        name_or_title = [c for c in column_names if c in ("name", "title")]
-        if name_or_title:
-            return name_or_title[0]
-        if (
-            column_names
-            and len(column_names) == 2
-            and ("id" in column_names or "pk" in column_names)
-        ):
-            return [c for c in column_names if c not in ("id", "pk")][0]
-        # Couldn't find a label:
-        return None
 
     async def execute_against_connection_in_thread(self, db_name, fn):
         def in_thread():

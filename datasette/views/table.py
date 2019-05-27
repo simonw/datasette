@@ -41,11 +41,12 @@ LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
 
 class RowTableShared(BaseView):
     async def sortable_columns_for_table(self, database, table, use_rowid):
+        db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
         if "sortable_columns" in table_metadata:
             sortable_columns = set(table_metadata["sortable_columns"])
         else:
-            sortable_columns = set(await self.ds.table_columns(database, table))
+            sortable_columns = set(await db.table_columns(table))
         if use_rowid:
             sortable_columns.add("rowid")
         return sortable_columns
@@ -53,10 +54,9 @@ class RowTableShared(BaseView):
     async def expandable_columns(self, database, table):
         # Returns list of (fk_dict, label_column-or-None) pairs for that table
         expandables = []
-        for fk in await self.ds.foreign_keys_for_table(database, table):
-            label_column = await self.ds.label_column_for_table(
-                database, fk["other_table"]
-            )
+        db = self.ds.databases[database]
+        for fk in await db.foreign_keys_for_table(table):
+            label_column = await db.label_column_for_table(fk["other_table"])
             expandables.append((fk, label_column))
         return expandables
 
@@ -64,6 +64,7 @@ class RowTableShared(BaseView):
         self, database, table, description, rows, link_column=False, truncate_cells=0
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
+        db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
         sortable_columns = await self.sortable_columns_for_table(database, table, True)
         columns = [
@@ -74,7 +75,7 @@ class RowTableShared(BaseView):
         )
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
-            for fk in await self.ds.foreign_keys_for_table(database, table)
+            for fk in await db.foreign_keys_for_table(table)
         }
 
         cell_rows = []
@@ -206,11 +207,12 @@ class TableView(RowTableShared):
                 editable=False,
                 canned_query=table,
             )
-
-        is_view = bool(await self.ds.get_view_definition(database, table))
-        table_exists = bool(await self.ds.table_exists(database, table))
+        db = self.ds.databases[database]
+        is_view = bool(await db.get_view_definition(table))
+        table_exists = bool(await db.table_exists(table))
         if not is_view and not table_exists:
             raise NotFound("Table not found: {}".format(table))
+
         pks = await self.ds.execute_against_connection_in_thread(
             database, lambda conn: detect_primary_keys(conn, table)
         )
@@ -352,9 +354,7 @@ class TableView(RowTableShared):
                 # More complex: search against specific columns
                 for i, (key, search_text) in enumerate(search_args.items()):
                     search_col = key.split("_search_", 1)[1]
-                    if search_col not in await self.ds.table_columns(
-                        database, fts_table
-                    ):
+                    if search_col not in await db.table_columns(fts_table):
                         raise DatasetteError("Cannot search by that column", status=400)
 
                     where_clauses.append(
@@ -739,8 +739,8 @@ class TableView(RowTableShared):
                     "_rows_and_columns.html",
                 ],
                 "metadata": metadata,
-                "view_definition": await self.ds.get_view_definition(database, table),
-                "table_definition": await self.ds.get_table_definition(database, table),
+                "view_definition": await db.get_view_definition(table),
+                "table_definition": await db.get_table_definition(table),
             }
 
         return (

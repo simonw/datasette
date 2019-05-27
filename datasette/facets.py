@@ -4,7 +4,6 @@ import re
 from datasette import hookimpl
 from datasette.utils import (
     escape_sqlite,
-    get_all_foreign_keys,
     path_with_added_args,
     path_with_removed_args,
     detect_json1,
@@ -486,9 +485,8 @@ class ManyToManyFacet(Facet):
         # This is calculated based on foreign key relationships to this table
         # Are there any many-to-many tables pointing here?
         suggested_facets = []
-        all_foreign_keys = await self.ds.execute_against_connection_in_thread(
-            self.database, get_all_foreign_keys
-        )
+        db = self.ds.databases[self.database]
+        all_foreign_keys = await db.get_all_foreign_keys()
         if not all_foreign_keys.get(self.table):
             # It's probably a view
             return []
@@ -528,9 +526,8 @@ class ManyToManyFacet(Facet):
         facets_timed_out = []
         args = set(self.get_querystring_pairs())
         facet_size = self.ds.config("default_facet_size")
-        all_foreign_keys = await self.ds.execute_against_connection_in_thread(
-            self.database, get_all_foreign_keys
-        )
+        db = self.ds.databases[self.database]
+        all_foreign_keys = await db.get_all_foreign_keys()
         if not all_foreign_keys.get(self.table):
             return [], []
         # We care about three tables: self.table, middle_table and destination_table

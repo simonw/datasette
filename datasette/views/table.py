@@ -14,8 +14,6 @@ from datasette.utils import (
     compound_keys_after_sql,
     escape_sqlite,
     filters_should_redirect,
-    get_all_foreign_keys,
-    get_outbound_foreign_keys,
     is_url,
     path_from_row_pks,
     path_with_added_args,
@@ -293,9 +291,8 @@ class TableView(RowTableShared):
                 through_table = through_data["table"]
                 other_column = through_data["column"]
                 value = through_data["value"]
-                outgoing_foreign_keys = await self.ds.execute_against_connection_in_thread(
-                    database,
-                    lambda conn: get_outbound_foreign_keys(conn, through_table),
+                outgoing_foreign_keys = await db.get_outbound_foreign_keys(
+                    through_table
                 )
                 try:
                     fk_to_us = [
@@ -843,10 +840,8 @@ class RowView(RowTableShared):
     async def foreign_key_tables(self, database, table, pk_values):
         if len(pk_values) != 1:
             return []
-
-        all_foreign_keys = await self.ds.execute_against_connection_in_thread(
-            database, get_all_foreign_keys
-        )
+        db = self.ds.databases[database]
+        all_foreign_keys = await db.get_all_foreign_keys()
         foreign_keys = all_foreign_keys[table]["incoming"]
         if len(foreign_keys) == 0:
             return []

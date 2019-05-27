@@ -3,15 +3,10 @@ import json
 
 from sanic import response
 
-from datasette.utils import (
-    CustomJSONEncoder,
-    InterruptedError,
-    detect_primary_keys,
-    detect_fts,
-)
+from datasette.utils import CustomJSONEncoder
 from datasette.version import __version__
 
-from .base import HASH_LENGTH, RenderMixin
+from .base import RenderMixin
 
 
 # Truncate table list on homepage at:
@@ -46,14 +41,10 @@ class IndexView(RenderMixin):
                 tables[table] = {
                     "name": table,
                     "columns": table_columns,
-                    "primary_keys": await self.ds.execute_against_connection_in_thread(
-                        name, lambda conn: detect_primary_keys(conn, table)
-                    ),
+                    "primary_keys": await db.primary_keys(table),
                     "count": table_counts.get(table),
                     "hidden": table in hidden_table_names,
-                    "fts_table": await self.ds.execute_against_connection_in_thread(
-                        name, lambda conn: detect_fts(conn, table)
-                    ),
+                    "fts_table": await db.fts_table(table),
                     "num_relationships_for_sorting": 0,
                 }
 

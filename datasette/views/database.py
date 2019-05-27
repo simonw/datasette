@@ -2,12 +2,7 @@ import os
 
 from sanic import response
 
-from datasette.utils import (
-    detect_fts,
-    detect_primary_keys,
-    to_css_class,
-    validate_sql_select,
-)
+from datasette.utils import to_css_class, validate_sql_select
 
 from .base import BaseView, DatasetteError
 
@@ -40,14 +35,10 @@ class DatabaseView(BaseView):
                 {
                     "name": table,
                     "columns": table_columns,
-                    "primary_keys": await self.ds.execute_against_connection_in_thread(
-                        database, lambda conn: detect_primary_keys(conn, table)
-                    ),
+                    "primary_keys": await db.primary_keys(table),
                     "count": table_counts[table],
                     "hidden": table in hidden_table_names,
-                    "fts_table": await self.ds.execute_against_connection_in_thread(
-                        database, lambda conn: detect_fts(conn, table)
-                    ),
+                    "fts_table": await db.fts_table(table),
                     "foreign_keys": all_foreign_keys[table],
                 }
             )

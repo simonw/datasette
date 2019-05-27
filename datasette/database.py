@@ -2,6 +2,8 @@ from pathlib import Path
 
 from .utils import (
     InterruptedError,
+    detect_fts,
+    detect_primary_keys,
     detect_spatialite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
@@ -91,6 +93,16 @@ class Database:
     async def table_columns(self, table):
         return await self.ds.execute_against_connection_in_thread(
             self.name, lambda conn: table_columns(conn, table)
+        )
+
+    async def primary_keys(self, table):
+        return await self.ds.execute_against_connection_in_thread(
+            self.name, lambda conn: detect_primary_keys(conn, table)
+        )
+
+    async def fts_table(self, table):
+        return await self.ds.execute_against_connection_in_thread(
+            self.name, lambda conn: detect_fts(conn, table)
         )
 
     async def label_column_for_table(self, table):

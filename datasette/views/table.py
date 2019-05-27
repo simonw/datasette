@@ -6,15 +6,12 @@ import jinja2
 from sanic.exceptions import NotFound
 from sanic.request import RequestParameters
 
-from datasette.facets import load_facet_configs
 from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
     InterruptedError,
     append_querystring,
     compound_keys_after_sql,
-    detect_fts,
-    detect_primary_keys,
     escape_sqlite,
     filters_should_redirect,
     get_all_foreign_keys,
@@ -25,7 +22,6 @@ from datasette.utils import (
     path_with_removed_args,
     path_with_replaced_args,
     sqlite3,
-    table_columns,
     to_css_class,
     urlsafe_components,
     value_as_boolean,
@@ -70,9 +66,7 @@ class RowTableShared(BaseView):
         columns = [
             {"name": r[0], "sortable": r[0] in sortable_columns} for r in description
         ]
-        pks = await self.ds.execute_against_connection_in_thread(
-            database, lambda conn: detect_primary_keys(conn, table)
-        )
+        pks = await db.primary_keys(table)
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
             for fk in await db.foreign_keys_for_table(table)
@@ -213,9 +207,7 @@ class TableView(RowTableShared):
         if not is_view and not table_exists:
             raise NotFound("Table not found: {}".format(table))
 
-        pks = await self.ds.execute_against_connection_in_thread(
-            database, lambda conn: detect_primary_keys(conn, table)
-        )
+        pks = await db.primary_keys(table)
         use_rowid = not pks and not is_view
         if use_rowid:
             select = "rowid, *"
@@ -331,9 +323,7 @@ class TableView(RowTableShared):
         # _search support:
         fts_table = special_args.get("_fts_table")
         fts_table = fts_table or table_metadata.get("fts_table")
-        fts_table = fts_table or await self.ds.execute_against_connection_in_thread(
-            database, lambda conn: detect_fts(conn, table)
-        )
+        fts_table = fts_table or await db.fts_table(table)
         fts_pk = special_args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
         search_args = dict(
             pair for pair in special_args.items() if pair[0].startswith("_search")
@@ -668,8 +658,6 @@ class TableView(RowTableShared):
             and not _next
         ):
             for facet in facet_instances:
-                # TODO: ensure facet is not suggested if it is already active
-                # used to use 'if facet_column in facets' for this
                 suggested_facets.extend(await facet.suggest())
 
         # human_description_en combines filters AND search, if provided
@@ -776,9 +764,8 @@ class RowView(RowTableShared):
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
-        pks = await self.ds.execute_against_connection_in_thread(
-            database, lambda conn: detect_primary_keys(conn, table)
-        )
+        db = self.ds.databases[database]
+        pks = await db.primary_keys(table)
         use_rowid = not pks
         select = "*"
         if use_rowid:

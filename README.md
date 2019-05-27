@@ -24,7 +24,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
  * 19th May 2019: [Datasette 0.28](https://datasette.readthedocs.io/en/stable/changelog.html#v0-28) - a salmagundi of new features!
    * No longer immutable! Datasette now supports [databases that change](https://datasette.readthedocs.io/en/stable/changelog.html#supporting-databases-that-change).
    * [Faceting improvements](https://datasette.readthedocs.io/en/stable/changelog.html#faceting-improvements-and-faceting-plugins) including facet-by-JSON-array and the ability to define custom faceting using plugins.
-   * [datasette publish cloudrun](https://datasette.readthedocs.io/en/stable/changelog.html#datasette-publish-cloudrun) lets you publish databasese to Google's new Cloud Run hosting service.
+   * [datasette publish cloudrun](https://datasette.readthedocs.io/en/stable/changelog.html#datasette-publish-cloudrun) lets you publish databases to Google's new Cloud Run hosting service.
    * New [register_output_renderer](https://datasette.readthedocs.io/en/stable/changelog.html#register-output-renderer-plugins) plugin hook for adding custom output extensions to Datasette in addition to the default `.json` and `.csv`.
    * Dozens of other smaller features and tweaks - see [the release notes](https://datasette.readthedocs.io/en/stable/changelog.html#v0-28) for full details.
    * Read more about this release here: [Datasette 0.28—and why master should always be releasable](https://simonwillison.net/2019/May/19/datasette-0-28/)

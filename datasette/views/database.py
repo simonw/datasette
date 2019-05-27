@@ -5,7 +5,6 @@ from sanic import response
 from datasette.utils import (
     detect_fts,
     detect_primary_keys,
-    get_all_foreign_keys,
     to_css_class,
     validate_sql_select,
 )

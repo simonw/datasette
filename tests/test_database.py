@@ -49,7 +49,7 @@ async def test_get_all_foreign_keys(app_client):
 
 
 @pytest.mark.asyncio
-async def test_table_exists(app_client):
+async def test_table_names(app_client):
     db = app_client.ds.databases["fixtures"]
     table_names = await db.table_names()
     assert [

@@ -629,6 +629,8 @@ class TableView(RowTableShared):
             # If there's a sort or sort_desc, add that value as a prefix
             if (sort or sort_desc) and not is_view:
                 prefix = rows[-2][sort or sort_desc]
+                if isinstance(prefix, dict) and "value" in prefix:
+                    prefix = prefix["value"]
                 if prefix is None:
                     prefix = "$null"
                 else:

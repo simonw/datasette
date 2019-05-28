@@ -753,6 +753,8 @@ def test_table_with_reserved_word_name(app_client):
         ("/fixtures/123_starts_with_digits.json", 0, 1),
         # Ensure faceting doesn't break pagination:
         ("/fixtures/compound_three_primary_keys.json?_facet=pk1", 1001, 21),
+        # Paginating while sorted by an expanded foreign key should work
+        ("/fixtures/roadside_attraction_characteristics.json?_size=2&_sort=attraction_id&_labels=on", 5, 3),
     ],
 )
 def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pages):

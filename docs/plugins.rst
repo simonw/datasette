@@ -652,7 +652,7 @@ Each Facet subclass implements a new type of facet operation. The class should l
                         "results": facet_results_values,
                         "truncated": len(facet_rows_results) > facet_size,
                     }
-                except InterruptedError:
+                except QueryInterrupted:
                     facets_timed_out.append(column)
 
             return facet_results, facets_timed_out

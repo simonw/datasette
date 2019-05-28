@@ -7,7 +7,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
     detect_json1,
-    InterruptedError,
+    QueryInterrupted,
     InvalidSql,
     sqlite3,
 )
@@ -175,7 +175,7 @@ class ColumnFacet(Facet):
                             ),
                         }
                     )
-            except InterruptedError:
+            except QueryInterrupted:
                 continue
         return suggested_facets
 
@@ -248,7 +248,7 @@ class ColumnFacet(Facet):
                             "selected": selected,
                         }
                     )
-            except InterruptedError:
+            except QueryInterrupted:
                 facets_timed_out.append(column)
 
         return facet_results, facets_timed_out
@@ -294,7 +294,7 @@ class ArrayFacet(Facet):
                             ),
                         }
                     )
-            except (InterruptedError, sqlite3.OperationalError):
+            except (QueryInterrupted, sqlite3.OperationalError):
                 continue
         return suggested_facets
 
@@ -359,7 +359,7 @@ class ArrayFacet(Facet):
                             "selected": selected,
                         }
                     )
-            except InterruptedError:
+            except QueryInterrupted:
                 facets_timed_out.append(column)
 
         return facet_results, facets_timed_out
@@ -406,7 +406,7 @@ class DateFacet(Facet):
                             ),
                         }
                     )
-            except (InterruptedError, sqlite3.OperationalError):
+            except (QueryInterrupted, sqlite3.OperationalError):
                 continue
         return suggested_facets
 
@@ -472,7 +472,7 @@ class DateFacet(Facet):
                             "selected": selected,
                         }
                     )
-            except InterruptedError:
+            except QueryInterrupted:
                 facets_timed_out.append(column)
 
         return facet_results, facets_timed_out
@@ -659,7 +659,7 @@ class ManyToManyFacet(Facet):
                             "selected": selected,
                         }
                     )
-            except InterruptedError:
+            except QueryInterrupted:
                 facets_timed_out.append(destination_table)
 
         return facet_results, facets_timed_out

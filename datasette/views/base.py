@@ -14,7 +14,7 @@ from sanic.views import HTTPMethodView
 from datasette import __version__
 from datasette.plugins import pm
 from datasette.utils import (
-    InterruptedError,
+    QueryInterrupted,
     InvalidSql,
     LimitedWriter,
     format_bytes,
@@ -368,7 +368,7 @@ class BaseView(RenderMixin):
 
             else:
                 data, extra_template_data, templates = response_or_template_contexts
-        except InterruptedError:
+        except QueryInterrupted:
             raise DatasetteError(
                 """
                 SQL query took too long. The time limit is controlled by the

@@ -9,7 +9,7 @@ from sanic.request import RequestParameters
 from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
-    InterruptedError,
+    QueryInterrupted,
     append_querystring,
     compound_keys_after_sql,
     escape_sqlite,
@@ -527,7 +527,7 @@ class TableView(RowTableShared):
                     await self.ds.execute(database, count_sql, from_sql_params)
                 )
                 filtered_table_rows_count = count_rows[0][0]
-            except InterruptedError:
+            except QueryInterrupted:
                 pass
 
         # facets support

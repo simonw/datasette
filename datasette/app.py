@@ -26,7 +26,7 @@ from .renderer import json_renderer
 from .database import Database
 
 from .utils import (
-    InterruptedError,
+    QueryInterrupted,
     Results,
     escape_css_string,
     escape_sqlite,
@@ -346,7 +346,7 @@ class Datasette:
         )
         try:
             results = await self.execute(database, sql, list(set(values)))
-        except InterruptedError:
+        except QueryInterrupted:
             pass
         else:
             for id, value in results:
@@ -504,7 +504,7 @@ class Datasette:
                         truncated = False
                 except sqlite3.OperationalError as e:
                     if e.args == ("interrupted",):
-                        raise InterruptedError(e, sql, params)
+                        raise QueryInterrupted(e, sql, params)
                     if log_sql_errors:
                         print(
                             "ERROR: conn={}, sql = {}, params = {}: {}".format(

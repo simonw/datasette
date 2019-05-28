@@ -46,7 +46,7 @@ ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
 """
 
 
-class InterruptedError(Exception):
+class QueryInterrupted(Exception):
     pass
 
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from .utils import (
-    InterruptedError,
+    QueryInterrupted,
     detect_fts,
     detect_primary_keys,
     detect_spatialite,
@@ -58,8 +58,8 @@ class Database:
                 ).rows[0][0]
                 counts[table] = table_count
             # In some cases I saw "SQL Logic Error" here in addition to
-            # InterruptedError - so we catch that too:
-            except (InterruptedError, sqlite3.OperationalError):
+            # QueryInterrupted - so we catch that too:
+            except (QueryInterrupted, sqlite3.OperationalError):
                 counts[table] = None
         if not self.is_mutable:
             self.cached_table_counts = counts

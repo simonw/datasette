@@ -61,9 +61,6 @@ class InFilter(Filter):
     key = "in"
     display = "in"
 
-    def __init__(self):
-        pass
-
     def split_value(self, value):
         if value.startswith("["):
             return json.loads(value)

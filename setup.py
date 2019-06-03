@@ -47,7 +47,7 @@ setup(
         "Jinja2==2.10.1",
         "hupper==1.0",
         "pint==0.8.1",
-        "pluggy>=0.7.1",
+        "pluggy>=0.12.0",
     ],
     entry_points="""
         [console_scripts]

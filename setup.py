@@ -47,7 +47,7 @@ setup(
         "Jinja2==2.10.1",
         "hupper==1.0",
         "pint==0.8.1",
-        "pluggy>=0.7.1",
+        "pluggy>=0.12.0",
     ],
     entry_points="""
         [console_scripts]
@@ -56,7 +56,7 @@ setup(
     setup_requires=["pytest-runner"],
     extras_require={
         "test": [
-            "pytest==4.0.2",
+            "pytest==4.6.1",
             "pytest-asyncio==0.10.0",
             "aiohttp==3.5.3",
             "beautifulsoup4==4.6.1",

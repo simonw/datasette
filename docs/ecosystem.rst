@@ -90,6 +90,11 @@ datasette-render-images
 
 `datasette-render-images <https://github.com/simonw/datasette-render-images>`__ works with SQLite tables that contain binary image data in BLOB columns. It converts any images it finds into ``data-uri`` image elements, allowing you to view them directly in the Datasette interface.
 
+datasette-render-binary
+-----------------------
+
+`datasette-render-binary <https://github.com/simonw/datasette-render-binary>`__ renders binary data in a slightly more readable fashion: it shows ASCII characters as they are, and shows all other data as monospace octets. Useful as a tool for exploring new unfamiliar databases as it makes it easier to spot if a binary column may contain a decipherable binary format.
+
 datasette-pretty-json
 ---------------------
 

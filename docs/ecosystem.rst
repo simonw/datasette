@@ -99,3 +99,8 @@ datasette-sqlite-fts4
 ---------------------
 
 `datasette-sqlite-fts4 <https://github.com/simonw/datasette-sqlite-fts4>`__ provides search relevance ranking algorithms that can be used with SQLite's FTS4 search module. You can read more about it in `Exploring search relevance algorithms with SQLite <https://simonwillison.net/2019/Jan/7/exploring-search-relevance-algorithms-sqlite/>`__.
+
+datasette-bplist
+----------------
+
+`datasette-bplist <https://github.com/simonw/datasette-bplist>`__ provides tools for working with Apple's binary plist format embedded in SQLite database tables. If you use OS X you already have dozens of SQLite databases hidden away in your ``~/Library`` folder that include data in this format - this plugin allows you to view the decoded data and run SQL queries against embedded values using a ``bplist_to_json(value)`` custom SQL function.

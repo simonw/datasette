@@ -66,6 +66,15 @@ def register_facet_classes():
     return classes
 
 
+def json_split(value, sep):
+    tokens = [s.strip() for s in str(value).split(sep) if s.strip()]
+    return json.dumps(tokens)
+
+
+@hookimpl
+def prepare_connection(conn):
+    conn.create_function("json_split", 2, json_split)
+
 class Facet:
     type = None
 
@@ -138,7 +147,7 @@ class ColumnFacet(Facet):
         columns = await self.get_columns(self.sql, self.params)
         facet_size = self.ds.config("default_facet_size")
         suggested_facets = []
-        already_enabled = [c["config"]["simple"] for c in self.get_configs()]
+        already_enabled = [c["config"]["simple"] for c in self.get_configs() if c["config"].get("simple")]
         for column in columns:
             if column in already_enabled:
                 continue
@@ -260,7 +269,7 @@ class ArrayFacet(Facet):
     async def suggest(self):
         columns = await self.get_columns(self.sql, self.params)
         suggested_facets = []
-        already_enabled = [c["config"]["simple"] for c in self.get_configs()]
+        already_enabled = [c["config"]["simple"] for c in self.get_configs() if c["config"].get("simple")]
         for column in columns:
             if column in already_enabled:
                 continue
@@ -308,19 +317,25 @@ class ArrayFacet(Facet):
             config = source_and_config["config"]
             source = source_and_config["source"]
             column = config.get("column") or config["simple"]
+            sep = config.get("sep")
+            select_column = escape_sqlite(column)
+            extra_params = []
+            if sep:
+                select_column = "json_split({}, :json_split_sep)".format(select_column)
+                extra_params.append(sep)
             facet_sql = """
                 select j.value as value, count(*) as count from (
                     {sql}
-                ) join json_each({col}) j
+                ) join json_each({select_column}) j
                 group by j.value order by count desc limit {limit}
             """.format(
-                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
+                select_column=select_column, sql=self.sql, limit=facet_size + 1
             )
             try:
                 facet_rows_results = await self.ds.execute(
                     self.database,
                     facet_sql,
-                    self.params,
+                    self.params + extra_params,
                     truncate=False,
                     custom_time_limit=self.ds.config("facet_time_limit_ms"),
                 )

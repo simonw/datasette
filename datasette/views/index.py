@@ -6,7 +6,7 @@ from sanic import response
 from datasette.utils import CustomJSONEncoder
 from datasette.version import __version__
 
-from .base import RenderMixin
+from .base import BaseView
 
 
 # Truncate table list on homepage at:
@@ -16,7 +16,7 @@ TRUNCATE_AT = 5
 COUNT_TABLE_LIMIT = 30
 
 
-class IndexView(RenderMixin):
+class IndexView(BaseView):
     name = "index"
 
     def __init__(self, datasette):

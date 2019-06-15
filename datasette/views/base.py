@@ -49,7 +49,68 @@ class DatasetteError(Exception):
         self.messagge_is_html = messagge_is_html
 
 
-class BaseView(HTTPMethodView):
+class AsgiRouter:
+    def __init__(self, routes=None):
+        routes = routes or []
+        self.routes = [
+            # Compile any strings to regular expressions
+            (re.compile(pattern) if isinstance(pattern, str) else pattern, view)
+            for pattern, view in routes
+        ]
+
+    async def __call__(self, scope, receive, send):
+        for regex, view in self.routes:
+            match = regex.match(scope["path"])
+            if match is not None:
+                new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
+                return await view(new_scope, receive, send)
+        return await self.handle_404(scope, receive, send)
+
+    async def handle_404(self, scope, receive, send):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 404,
+                "headers": [[b"content-type", b"text/html"]],
+            }
+        )
+        await send({"type": "http.response.body", "body": b"<h1>404</h1>"})
+
+
+async def hello_world(scope, receive, send):
+    assert scope['type'] == 'http'
+    await send({
+        'type': 'http.response.start',
+        'status': 200,
+        'headers': [
+            [b'content-type', b'text/html'],
+        ]
+    })
+    await send({
+        'type': 'http.response.body',
+        'body': b'<h1>Hello world!</h1>',
+    })
+
+
+
+app = AsgiRouter([
+    ('/hello/', hello_world),
+])
+
+
+class AsgiView(HTTPMethodView):
+    async def asgi(self, scope, receive, send):
+        # Uses scope to create a Sanic-compatible request object,
+        # then dispatches that to self.get(...) or self.options(...)
+        # along with keyword arguments that were already tucked
+        # into scope["url_route"]["kwargs"] by the router
+        # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
+        pass
+
+
+class BaseView(AsgiView):
+    ds = None
+
     def _asset_urls(self, key, template, context):
         # Flatten list-of-lists from plugins:
         seen_urls = set()

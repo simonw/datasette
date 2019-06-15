@@ -4,10 +4,10 @@ from sanic import response
 
 from datasette.utils import to_css_class, validate_sql_select
 
-from .base import BaseView, DatasetteError
+from .base import DataView, DatasetteError
 
 
-class DatabaseView(BaseView):
+class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
@@ -65,7 +65,7 @@ class DatabaseView(BaseView):
         )
 
 
-class DatabaseDownload(BaseView):
+class DatabaseDownload(DataView):
     name = "database_download"
 
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):

@@ -49,7 +49,7 @@ class DatasetteError(Exception):
         self.messagge_is_html = messagge_is_html
 
 
-class RenderMixin(HTTPMethodView):
+class BaseView(HTTPMethodView):
     def _asset_urls(self, key, template, context):
         # Flatten list-of-lists from plugins:
         seen_urls = set()
@@ -128,7 +128,7 @@ class RenderMixin(HTTPMethodView):
         )
 
 
-class BaseView(RenderMixin):
+class DataView(BaseView):
     name = ""
     re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
 

@@ -1,9 +1,9 @@
 import json
 from sanic import response
-from .base import RenderMixin
+from .base import BaseView
 
 
-class JsonDataView(RenderMixin):
+class JsonDataView(BaseView):
     name = "json_data"
 
     def __init__(self, datasette, filename, data_callback):

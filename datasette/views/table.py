@@ -25,7 +25,7 @@ from datasette.utils import (
     value_as_boolean,
 )
 from datasette.filters import Filters
-from .base import BaseView, DatasetteError, ureg
+from .base import DataView, DatasetteError, ureg
 
 LINK_WITH_LABEL = (
     '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
@@ -33,7 +33,7 @@ LINK_WITH_LABEL = (
 LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
 
 
-class RowTableShared(BaseView):
+class RowTableShared(DataView):
     async def sortable_columns_for_table(self, database, table, use_rowid):
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)

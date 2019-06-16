@@ -78,24 +78,18 @@ class AsgiRouter:
 
 
 async def hello_world(scope, receive, send):
-    assert scope['type'] == 'http'
-    await send({
-        'type': 'http.response.start',
-        'status': 200,
-        'headers': [
-            [b'content-type', b'text/html'],
-        ]
-    })
-    await send({
-        'type': 'http.response.body',
-        'body': b'<h1>Hello world!</h1>',
-    })
+    assert scope["type"] == "http"
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [[b"content-type", b"text/html"]],
+        }
+    )
+    await send({"type": "http.response.body", "body": b"<h1>Hello world!</h1>"})
 
 
-
-app = AsgiRouter([
-    ('/hello/', hello_world),
-])
+app = AsgiRouter([("/hello/", hello_world)])
 
 
 class AsgiView(HTTPMethodView):

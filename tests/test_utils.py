@@ -381,19 +381,3 @@ def test_path_with_format(path, format, extra_qs, expected):
 )
 def test_format_bytes(bytes, expected):
     assert expected == utils.format_bytes(bytes)
-
-
-@pytest.mark.parametrize(
-    "name,expected",
-    [
-        ("table", "table"),
-        ("table/and/slashes", "tableU+002FandU+002Fslashes"),
-        ("~table", "U+007Etable"),
-        ("+bobcats!", "U+002Bbobcats!"),
-        ("U+007Etable", "UU+002B007Etable"),
-    ],
-)
-def test_encode_decode_path_component(name, expected):
-    encoded = utils.encode_path_component(name)
-    assert encoded == expected
-    assert name == utils.decode_path_component(encoded)

@@ -261,27 +261,6 @@ def escape_sqlite(s):
         return "[{}]".format(s)
 
 
-_decode_path_component_re = re.compile(r"U\+([\da-h]{4})", re.IGNORECASE)
-_encode_path_component_re = re.compile(
-    "[{}]".format(
-        "".join(
-            re.escape(c)
-            for c in (";", "/", "?", ":", "@", "&", "=", "+", "$", ",", "~")
-        )
-    )
-)
-
-
-def decode_path_component(table_name):
-    return _decode_path_component_re.sub(lambda m: chr(int(m.group(1), 16)), table_name)
-
-
-def encode_path_component(table_name):
-    return _encode_path_component_re.sub(
-        lambda m: "U+{0:0{1}x}".format(ord(m.group(0)), 4).upper(), table_name
-    )
-
-
 def make_dockerfile(
     files,
     metadata_file,

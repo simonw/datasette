@@ -600,8 +600,8 @@ class Datasette:
         add_route(
             asgi_static(app_root / "datasette" / "static"), r"/-/static/(?P<path>.*)$"
         )
-        # for path, dirname in self.static_mounts:
-        #     app.static(path, dirname)
+        for path, dirname in self.static_mounts:
+            add_route(asgi_static(dirname), r"/" + path + "/(?P<path>.*)$")
 
         # Mount any plugin static/ directories
         for plugin in get_plugins(pm):

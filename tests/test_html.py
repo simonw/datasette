@@ -8,6 +8,7 @@ from .fixtures import (  # noqa
     METADATA,
 )
 import json
+import pathlib
 import pytest
 import re
 import urllib.parse
@@ -50,6 +51,16 @@ def test_static(app_client):
     response = app_client.get("/-/static/app.css")
     assert response.status == 200
     assert "text/css" == response.headers["content-type"]
+
+
+def test_static_mounts():
+    for client in make_app_client(
+        static_mounts=[("custom-static", str(pathlib.Path(__file__).parent))]
+    ):
+        response = client.get("/custom-static/test_html.py")
+        assert response.status == 200
+        response = client.get("/custom-static/not_exists.py")
+        assert response.status == 404
 
 
 def test_memory_database_page():

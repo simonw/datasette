@@ -106,7 +106,17 @@ class AsgiView(HTTPMethodView):
             path = scope.get("raw_path", scope["path"].encode("utf8"))
             if scope["query_string"]:
                 path = path + b"?" + scope["query_string"]
-            request = SanicRequest(path, {}, "1.1", scope["method"], None)
+            request = SanicRequest(
+                path,
+                {
+                    "Host": dict(scope.get("headers") or [])
+                    .get(b"host", b"")
+                    .decode("utf8")
+                },
+                "1.1",
+                scope["method"],
+                None,
+            )
 
             class Woo:
                 def get_extra_info(self, key):

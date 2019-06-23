@@ -47,6 +47,7 @@ class TestClient:
                 "method": "GET",
                 "path": path,
                 "query_string": query_string,
+                "headers": [[b"host", b"localhost"]],
             },
         )
         await instance.send_input({"type": "http.request"})

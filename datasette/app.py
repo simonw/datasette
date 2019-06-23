@@ -638,9 +638,9 @@ class Datasette:
         )
         add_route(
             RowView.as_asgi(self),
-            r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:("
+            r"/(?P<db_name>[^/]+)/(?P<table>[^/]+?)/(?P<pk_path>[^/]+?)(?P<as_format>"
             + renderer_regex
-            + r")?$>",
+            + r")?$",
         )
         self.register_custom_units()
 

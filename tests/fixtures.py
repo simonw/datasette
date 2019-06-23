@@ -30,11 +30,16 @@ class TestResponse:
 
 
 class TestClient:
+    max_redirects = 5
+
     def __init__(self, asgi_app):
         self.asgi_app = asgi_app
 
     @async_to_sync
-    async def get(self, path, allow_redirects=True):
+    async def get(self, path, allow_redirects=True, redirect_count=0):
+        return await self._get(path, allow_redirects, redirect_count)
+
+    async def _get(self, path, allow_redirects=True, redirect_count=0):
         query_string = b""
         if "?" in path:
             path, _, query_string = path.partition("?")
@@ -69,7 +74,18 @@ class TestClient:
             body += message["body"]
             if not message.get("more_body"):
                 break
-        return TestResponse(status, headers, body)
+        response = TestResponse(status, headers, body)
+        if allow_redirects and response.status in (301, 302):
+            assert (
+                redirect_count < self.max_redirects
+            ), "Redirected {} times, max_redirects={}".format(
+                redirect_count, self.max_redirects
+            )
+            location = response.headers["Location"]
+            return await self._get(
+                location, allow_redirects=True, redirect_count=redirect_count + 1
+            )
+        return response
 
 
 def make_app_client(

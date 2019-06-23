@@ -129,23 +129,68 @@ class AsgiView(HTTPMethodView):
             response = await self.dispatch_request(
                 request, **scope["url_route"]["kwargs"]
             )
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": response.status,
-                    "headers": [
-                        [key.encode("utf-8"), value.encode("utf-8")]
-                        for key, value in response.headers.items()
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": response.body})
+            if hasattr(response, "asgi_send"):
+                await response.asgi_send(send)
+            else:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": response.status,
+                        "headers": [
+                            [key.encode("utf-8"), value.encode("utf-8")]
+                            for key, value in response.headers.items()
+                        ],
+                    }
+                )
+                await send({"type": "http.response.body", "body": response.body})
 
         view.view_class = cls
         view.__doc__ = cls.__doc__
         view.__module__ = cls.__module__
         view.__name__ = cls.__name__
         return view
+
+
+class AsgiStream:
+    def __init__(self, stream_fn, status=200, headers=None, content_type="text/plain"):
+        self.stream_fn = stream_fn
+        self.status = status
+        self.headers = headers or {}
+        self.content_type = content_type
+
+    async def asgi_send(self, send):
+        # Remove any existing content-type header
+        headers = dict(
+            [(k, v) for k, v in self.headers.items() if k.lower() != "content-type"]
+        )
+        headers["content-type"] = self.content_type
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status,
+                "headers": [
+                    [key.encode("utf-8"), value.encode("utf-8")]
+                    for key, value in headers.items()
+                ],
+            }
+        )
+        w = AsgiWriter(send)
+        await self.stream_fn(w)
+        await send({"type": "http.response.body", "body": b""})
+
+
+class AsgiWriter:
+    def __init__(self, send):
+        self.send = send
+
+    async def write(self, chunk):
+        await self.send(
+            {
+                "type": "http.response.body",
+                "body": chunk.encode("utf8"),
+                "more_body": True,
+            }
+        )
 
 
 class BaseView(AsgiView):
@@ -383,13 +428,13 @@ class DataView(BaseView):
                     if not first:
                         data, _, _ = await self.data(request, database, hash, **kwargs)
                     if first:
-                        writer.writerow(headings)
+                        await writer.writerow(headings)
                         first = False
                     next = data.get("next")
                     for row in data["rows"]:
                         if not expanded_columns:
                             # Simple path
-                            writer.writerow(row)
+                            await writer.writerow(row)
                         else:
                             # Look for {"value": "label": } dicts and expand
                             new_row = []
@@ -399,10 +444,10 @@ class DataView(BaseView):
                                     new_row.append(cell["label"])
                                 else:
                                     new_row.append(cell)
-                            writer.writerow(new_row)
+                            await writer.writerow(new_row)
                 except Exception as e:
                     print("caught this", e)
-                    r.write(str(e))
+                    await r.write(str(e))
                     return
 
         content_type = "text/plain; charset=utf-8"
@@ -416,7 +461,7 @@ class DataView(BaseView):
             )
             headers["Content-Disposition"] = disposition
 
-        return response.stream(stream_fn, headers=headers, content_type=content_type)
+        return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
     async def get_format(self, request, database, args):
         """ Determine the format of the response from the request, from URL

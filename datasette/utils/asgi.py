@@ -205,7 +205,7 @@ async def asgi_send_file(
     if filename:
         headers["Content-Disposition"] = 'attachment; filename="{}"'.format(filename)
     first = True
-    async with aiofiles.open(filepath, mode="rb") as fp:
+    async with aiofiles.open(str(filepath), mode="rb") as fp:
         if first:
             await asgi_start(
                 send,

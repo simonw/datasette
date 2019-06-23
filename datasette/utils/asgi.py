@@ -7,6 +7,10 @@ import re
 import aiofiles
 
 
+class NotFound(Exception):
+    pass
+
+
 class AsgiRouter:
     def __init__(self, routes=None):
         routes = routes or []

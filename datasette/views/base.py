@@ -8,7 +8,6 @@ import urllib
 import jinja2
 import pint
 from sanic import response
-from sanic.exceptions import NotFound
 
 from html import escape
 
@@ -27,7 +26,7 @@ from datasette.utils import (
     sqlite3,
     to_css_class,
 )
-from datasette.utils.asgi import AsgiStream, AsgiWriter, AsgiRouter, AsgiView
+from datasette.utils.asgi import AsgiStream, AsgiWriter, AsgiRouter, AsgiView, NotFound
 
 ureg = pint.UnitRegistry()
 

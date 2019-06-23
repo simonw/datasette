@@ -12,7 +12,6 @@ from pathlib import Path
 import click
 from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
-from sanic.exceptions import NotFound
 
 from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
@@ -35,6 +34,7 @@ from .utils import (
 )
 from .utils.asgi import (
     AsgiLifespan,
+    NotFound,
     asgi_static,
     asgi_send,
     asgi_send_html,

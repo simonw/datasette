@@ -3,7 +3,6 @@ import itertools
 import json
 
 import jinja2
-from sanic.exceptions import NotFound
 
 from datasette.plugins import pm
 from datasette.utils import (
@@ -24,6 +23,7 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
 )
+from datasette.utils.asgi import NotFound
 from datasette.filters import Filters
 from .base import DataView, DatasetteError, ureg
 

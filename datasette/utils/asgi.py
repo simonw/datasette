@@ -17,8 +17,10 @@ class AsgiRouter:
         ]
 
     async def __call__(self, scope, receive, send):
+        # Because we care about "foo/bar" v.s. "foo%2Fbar" we decode raw_path ourselves
+        path = scope["raw_path"].decode("ascii")
         for regex, view in self.routes:
-            match = regex.match(scope["path"])
+            match = regex.match(path)
             if match is not None:
                 new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
                 try:

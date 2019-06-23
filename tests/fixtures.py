@@ -22,7 +22,7 @@ class TestResponse:
 
     @property
     def json(self):
-        return json.loads(self.body)
+        return json.loads(self.text)
 
     @property
     def text(self):

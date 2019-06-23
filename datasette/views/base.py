@@ -9,7 +9,6 @@ import jinja2
 import pint
 from sanic import response
 from sanic.exceptions import NotFound
-from sanic.views import HTTPMethodView
 from sanic.request import Request as SanicRequest
 
 from html import escape
@@ -29,6 +28,7 @@ from datasette.utils import (
     sqlite3,
     to_css_class,
 )
+from datasette.utils.asgi import AsgiStream, AsgiWriter, AsgiRouter, AsgiView
 
 ureg = pint.UnitRegistry()
 
@@ -50,147 +50,6 @@ class DatasetteError(Exception):
         self.error_dict = error_dict or {}
         self.status = status
         self.messagge_is_html = messagge_is_html
-
-
-class AsgiRouter:
-    def __init__(self, routes=None):
-        routes = routes or []
-        self.routes = [
-            # Compile any strings to regular expressions
-            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
-            for pattern, view in routes
-        ]
-
-    async def __call__(self, scope, receive, send):
-        for regex, view in self.routes:
-            match = regex.match(scope["path"])
-            if match is not None:
-                new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
-                try:
-                    return await view(new_scope, receive, send)
-                except Exception as exception:
-                    return await self.handle_500(scope, receive, send, exception)
-        return await self.handle_404(scope, receive, send)
-
-    async def handle_404(self, scope, receive, send):
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 404,
-                "headers": [[b"content-type", b"text/html"]],
-            }
-        )
-        await send({"type": "http.response.body", "body": b"<h1>404</h1>"})
-
-    async def handle_500(self, scope, receive, send, exception):
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 404,
-                "headers": [[b"content-type", b"text/html"]],
-            }
-        )
-        html = "<h1>500</h1><pre{}></pre>".format(escape(repr(exception)))
-        await send({"type": "http.response.body", "body": html.encode("utf8")})
-
-
-class AsgiView(HTTPMethodView):
-    @classmethod
-    def as_asgi(cls, *class_args, **class_kwargs):
-        async def view(scope, receive, send):
-            # Uses scope to create a Sanic-compatible request object,
-            # then dispatches that to self.get(...) or self.options(...)
-            # along with keyword arguments that were already tucked
-            # into scope["url_route"]["kwargs"] by the router
-            # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
-            path = scope.get("raw_path", scope["path"].encode("utf8"))
-            if scope["query_string"]:
-                path = path + b"?" + scope["query_string"]
-            request = SanicRequest(
-                path,
-                {
-                    "Host": dict(scope.get("headers") or [])
-                    .get(b"host", b"")
-                    .decode("utf8")
-                },
-                "1.1",
-                scope["method"],
-                None,
-            )
-
-            class Woo:
-                def get_extra_info(self, key):
-                    return False
-
-            request.app = Woo()
-            request.app.websocket_enabled = False
-            request.transport = Woo()
-            self = view.view_class(*class_args, **class_kwargs)
-            response = await self.dispatch_request(
-                request, **scope["url_route"]["kwargs"]
-            )
-            if hasattr(response, "asgi_send"):
-                await response.asgi_send(send)
-            else:
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": response.status,
-                        "headers": [
-                            [key.encode("utf-8"), value.encode("utf-8")]
-                            for key, value in response.headers.items()
-                        ],
-                    }
-                )
-                await send({"type": "http.response.body", "body": response.body})
-
-        view.view_class = cls
-        view.__doc__ = cls.__doc__
-        view.__module__ = cls.__module__
-        view.__name__ = cls.__name__
-        return view
-
-
-class AsgiStream:
-    def __init__(self, stream_fn, status=200, headers=None, content_type="text/plain"):
-        self.stream_fn = stream_fn
-        self.status = status
-        self.headers = headers or {}
-        self.content_type = content_type
-
-    async def asgi_send(self, send):
-        # Remove any existing content-type header
-        headers = dict(
-            [(k, v) for k, v in self.headers.items() if k.lower() != "content-type"]
-        )
-        headers["content-type"] = self.content_type
-        await send(
-            {
-                "type": "http.response.start",
-                "status": self.status,
-                "headers": [
-                    [key.encode("utf-8"), value.encode("utf-8")]
-                    for key, value in headers.items()
-                ],
-            }
-        )
-        w = AsgiWriter(send)
-        await self.stream_fn(w)
-        await send({"type": "http.response.body", "body": b""})
-
-
-class AsgiWriter:
-    def __init__(self, send):
-        self.send = send
-
-    async def write(self, chunk):
-        await self.send(
-            {
-                "type": "http.response.body",
-                "body": chunk.encode("utf8"),
-                "more_body": True,
-            }
-        )
 
 
 class BaseView(AsgiView):

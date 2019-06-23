@@ -37,7 +37,7 @@ from .utils import (
     to_css_class,
 )
 from .utils.asgi import asgi_static, asgi_send_html, asgi_send_json, asgi_send_redirect
-from .tracer import capture_traces, trace
+from .tracer import capture_traces, trace, AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
@@ -127,7 +127,7 @@ CONFIG_OPTIONS = (
 DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
 
 
-async def favicon(scope, recieve, send):
+async def favicon(scope, receive, send):
     await send(
         {
             "type": "http.response.start",
@@ -712,4 +712,4 @@ class Datasette:
         #         if not database.is_mutable:
         #             await database.table_counts(limit=60 * 60 * 1000)
 
-        return app
+        return AsgiTracer(app)

@@ -645,59 +645,62 @@ class Datasette:
         )
         self.register_custom_units()
 
-        outer_self = self
-
-        class DatasetteRouter(AsgiRouter):
-            async def handle_404(self, scope, receive, send):
-                # If URL has a trailing slash, redirect to URL without it
-                path = scope.get("raw_path", scope["path"].encode("utf8"))
-                if path.endswith(b"/"):
-                    path = path.rstrip(b"/")
-                    if scope["query_string"]:
-                        path += b"?" + scope["query_string"]
-                    await asgi_send_redirect(send, path.decode("latin1"))
-                else:
-                    await super().handle_404(scope, receive, send)
-
-            async def handle_500(self, scope, receive, send, exception):
-                title = None
-                if isinstance(exception, NotFound):
-                    status = 404
-                    info = {}
-                    message = exception.args[0]
-                elif isinstance(exception, DatasetteError):
-                    status = exception.status
-                    info = exception.error_dict
-                    message = exception.message
-                    if exception.messagge_is_html:
-                        message = Markup(message)
-                    title = exception.title
-                else:
-                    status = 500
-                    info = {}
-                    message = str(exception)
-                    traceback.print_exc()
-                templates = ["500.html"]
-                if status != 500:
-                    templates = ["{}.html".format(status)] + templates
-                info.update(
-                    {"ok": False, "error": message, "status": status, "title": title}
-                )
-                headers = {}
-                if outer_self.cors:
-                    headers["Access-Control-Allow-Origin"] = "*"
-                if scope["path"].split("?")[0].endswith(".json"):
-                    await asgi_send_json(send, info, status=status, headers=headers)
-                else:
-                    template = outer_self.jinja_env.select_template(templates)
-                    await asgi_send_html(
-                        send, template.render(info), status=status, headers=headers
-                    )
-
         async def setup_db():
             # First time server starts up, calculate table counts for immutable databases
             for dbname, database in self.databases.items():
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
-        return AsgiLifespan(AsgiTracer(DatasetteRouter(routes)), on_startup=setup_db)
+        return AsgiLifespan(
+            AsgiTracer(DatasetteRouter(self, routes)), on_startup=setup_db
+        )
+
+
+class DatasetteRouter(AsgiRouter):
+    def __init__(self, datasette, routes):
+        self.ds = datasette
+        super().__init__(routes)
+
+    async def handle_404(self, scope, receive, send):
+        # If URL has a trailing slash, redirect to URL without it
+        path = scope.get("raw_path", scope["path"].encode("utf8"))
+        if path.endswith(b"/"):
+            path = path.rstrip(b"/")
+            if scope["query_string"]:
+                path += b"?" + scope["query_string"]
+            await asgi_send_redirect(send, path.decode("latin1"))
+        else:
+            await super().handle_404(scope, receive, send)
+
+    async def handle_500(self, scope, receive, send, exception):
+        title = None
+        if isinstance(exception, NotFound):
+            status = 404
+            info = {}
+            message = exception.args[0]
+        elif isinstance(exception, DatasetteError):
+            status = exception.status
+            info = exception.error_dict
+            message = exception.message
+            if exception.messagge_is_html:
+                message = Markup(message)
+            title = exception.title
+        else:
+            status = 500
+            info = {}
+            message = str(exception)
+            traceback.print_exc()
+        templates = ["500.html"]
+        if status != 500:
+            templates = ["{}.html".format(status)] + templates
+        info.update({"ok": False, "error": message, "status": status, "title": title})
+        headers = {}
+        if self.ds.cors:
+            headers["Access-Control-Allow-Origin"] = "*"
+        if scope["path"].split("?")[0].endswith(".json"):
+            await asgi_send_json(send, info, status=status, headers=headers)
+        else:
+            template = self.ds.jinja_env.select_template(templates)
+            await asgi_send_html(
+                send, template.render(info), status=status, headers=headers
+            )

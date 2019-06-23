@@ -49,6 +49,7 @@ setup(
         "pint==0.8.1",
         "pluggy>=0.12.0",
         "uvicorn>=0.8.1",
+        "aiofiles==0.4.0",
     ],
     entry_points="""
         [console_scripts]

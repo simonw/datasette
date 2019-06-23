@@ -1,4 +1,5 @@
 import asyncio
+import aiofiles
 from mimetypes import guess_type
 import collections
 import hashlib
@@ -733,7 +734,13 @@ async def asgi_send_html(send, html, status=200, headers=None):
 
 
 async def asgi_send(send, content, status, headers, content_type="text/plain"):
-    # TODO: watch out for Content-Type due to mixed case:
+    await asgi_start(send, status, headers, content_type)
+    await send({"type": "http.response.body", "body": content.encode("utf8")})
+
+
+async def asgi_start(send, status, headers, content_type="text/plain"):
+    # Remove any existing content-type header
+    headers = dict([(k, v) for k, v in headers.items() if k.lower() != "content-type"])
     headers["content-type"] = content_type
     await send(
         {
@@ -745,20 +752,39 @@ async def asgi_send(send, content, status, headers, content_type="text/plain"):
             ],
         }
     )
-    await send({"type": "http.response.body", "body": content.encode("utf8")})
 
 
-def asgi_static(root_path):
+def asgi_static(root_path, chunk_size=4096):
     async def inner_static(scope, receive, send):
         path = scope["url_route"]["kwargs"]["path"]
-        # TODO: prevent ../../ style paths
-        full_path = Path(root_path) / path
-        await asgi_send(
-            send,
-            full_path.open().read(),
-            200,
-            {},
-            content_type=guess_type(str(full_path))[0] or "text/plain",
-        )
+        full_path = (Path(root_path) / path).absolute()
+        # Ensure full_path is within root_path to avoid weird "../" tricks
+        try:
+            full_path.relative_to(root_path)
+        except ValueError:
+            await asgi_send_html(send, "404", 404)
+            return
+        first = True
+        try:
+            async with aiofiles.open(full_path, mode="rb") as fp:
+                if first:
+                    await asgi_start(
+                        send, 200, {}, guess_type(str(full_path))[0] or "text/plain"
+                    )
+                    first = False
+                more_body = True
+                while more_body:
+                    chunk = await fp.read(chunk_size)
+                    more_body = len(chunk) == chunk_size
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": chunk,
+                            "more_body": more_body,
+                        }
+                    )
+        except FileNotFoundError:
+            await asgi_send_html(send, "404", 404)
+            return
 
     return inner_static

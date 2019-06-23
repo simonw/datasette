@@ -44,6 +44,14 @@ def test_homepage(app_client_two_attached_databases):
     ] == table_links
 
 
+def test_static(app_client):
+    response = app_client.get("/-/static/app2.css")
+    assert response.status == 404
+    response = app_client.get("/-/static/app.css")
+    assert response.status == 200
+    assert "text/css" == response.headers["content-type"]
+
+
 def test_memory_database_page():
     for client in make_app_client(memory=True):
         response = client.get("/:memory:")

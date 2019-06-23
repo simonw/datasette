@@ -52,7 +52,9 @@ class TestClient:
         )
         await instance.send_input({"type": "http.request"})
         # First message back should be response.start with headers and status
+        messages = []
         start = await instance.receive_output(2)
+        messages.append(start)
         assert start["type"] == "http.response.start"
         headers = dict(
             [(k.decode("utf8"), v.decode("utf8")) for k, v in start["headers"]]
@@ -62,6 +64,7 @@ class TestClient:
         body = b""
         while True:
             message = await instance.receive_output(2)
+            messages.append(message)
             assert message["type"] == "http.response.body"
             body += message["body"]
             if not message.get("more_body"):

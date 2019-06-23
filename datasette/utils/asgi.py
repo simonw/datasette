@@ -1,6 +1,7 @@
 import json
 from mimetypes import guess_type
 from sanic.views import HTTPMethodView
+from sanic.request import Request as SanicRequest
 from pathlib import Path
 import re
 import aiofiles
@@ -163,6 +164,16 @@ async def asgi_send_html(send, html, status=200, headers=None):
     headers = headers or {}
     await asgi_send(
         send, html, status=status, headers=headers, content_type="text/html"
+    )
+
+
+async def asgi_send_redirect(send, location, status=302):
+    await asgi_send(
+        send,
+        "",
+        status=status,
+        headers={"Location": location},
+        content_type="text/html",
     )
 
 

@@ -36,7 +36,7 @@ from .utils import (
     sqlite_timelimit,
     to_css_class,
 )
-from .utils.asgi import asgi_static, asgi_send_html, asgi_send_json
+from .utils.asgi import asgi_static, asgi_send_html, asgi_send_json, asgi_send_redirect
 from .tracer import capture_traces, trace
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
@@ -652,6 +652,17 @@ class Datasette:
         outer_self = self
 
         class DatasetteRouter(AsgiRouter):
+            async def handle_404(self, scope, receive, send):
+                # If URL has a trailing slash, redirect to URL without it
+                path = scope.get("raw_path", scope["path"].encode("utf8"))
+                if path.endswith(b"/"):
+                    path = path.rstrip(b"/")
+                    if scope["query_string"]:
+                        path += b"?" + scope["query_string"]
+                    await asgi_send_redirect(send, path.decode("latin1"))
+                else:
+                    await super().handle_404(scope, receive, send)
+
             async def handle_500(self, scope, receive, send, exception):
                 title = None
                 help = None
@@ -693,17 +704,6 @@ class Datasette:
                     )
 
         app = DatasetteRouter(routes)
-        # On 404 with a trailing slash redirect to path without that slash:
-        # pylint: disable=unused-variable
-        # TODO: re-enable this
-        # @app.middleware("response")
-        # def redirect_on_404_with_trailing_slash(request, original_response):
-        #     if original_response.status == 404 and request.path.endswith("/"):
-        #         path = request.path.rstrip("/")
-        #         if request.query_string:
-        #             path = "{}?{}".format(path, request.query_string)
-        #         return response.redirect(path)
-
         # First time server starts up, calculate table counts for immutable databases
         # TODO: re-enable this mechanism
         # @app.listener("before_server_start")

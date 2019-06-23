@@ -9,7 +9,6 @@ import jinja2
 import pint
 from sanic import response
 from sanic.exceptions import NotFound
-from sanic.request import Request as SanicRequest
 
 from html import escape
 

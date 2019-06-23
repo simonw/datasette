@@ -33,15 +33,15 @@ def trace(type, **kwargs):
     start = time.time()
     yield
     end = time.time()
-    trace = {
+    trace_info = {
         "type": type,
         "start": start,
         "end": end,
         "duration_ms": (end - start) * 1000,
         "traceback": traceback.format_list(traceback.extract_stack(limit=6)[:-3]),
     }
-    trace.update(kwargs)
-    tracer.append(trace)
+    trace_info.update(kwargs)
+    tracer.append(trace_info)
 
 
 @contextmanager

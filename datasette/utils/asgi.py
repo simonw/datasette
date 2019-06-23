@@ -3,6 +3,7 @@ from mimetypes import guess_type
 from sanic.views import HTTPMethodView
 from sanic.request import Request as SanicRequest
 from pathlib import Path
+from html import escape
 import re
 import aiofiles
 
@@ -49,6 +50,36 @@ class AsgiRouter:
         )
         html = "<h1>500</h1><pre{}></pre>".format(escape(repr(exception)))
         await send({"type": "http.response.body", "body": html.encode("utf8")})
+
+
+class AsgiLifespan:
+    def __init__(self, app, on_startup=None, on_shutdown=None):
+        print("Wrapping {}".format(app))
+        self.app = app
+        on_startup = on_startup or []
+        on_shutdown = on_shutdown or []
+        if not isinstance(on_startup or [], list):
+            on_startup = [on_startup]
+        if not isinstance(on_shutdown or [], list):
+            on_shutdown = [on_shutdown]
+        self.on_startup = on_startup
+        self.on_shutdown = on_shutdown
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    for fn in self.on_startup:
+                        await fn()
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    for fn in self.on_shutdown:
+                        await fn()
+                    await send({"type": "lifespan.shutdown.complete"})
+                    return
+        else:
+            await self.app(scope, receive, send)
 
 
 class AsgiView(HTTPMethodView):

@@ -1,11 +1,9 @@
 import asyncio
 import collections
 import hashlib
-import json
 import os
 import sys
 import threading
-import time
 import traceback
 import urllib.parse
 from concurrent import futures
@@ -14,7 +12,6 @@ from pathlib import Path
 import click
 from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
-from sanic import Sanic, response
 from sanic.exceptions import InvalidUsage, NotFound
 
 from .views.base import DatasetteError, ureg, AsgiRouter
@@ -36,8 +33,14 @@ from .utils import (
     sqlite_timelimit,
     to_css_class,
 )
-from .utils.asgi import asgi_static, asgi_send_html, asgi_send_json, asgi_send_redirect
-from .tracer import capture_traces, trace, AsgiTracer
+from .utils.asgi import (
+    AsgiLifespan,
+    asgi_static,
+    asgi_send_html,
+    asgi_send_json,
+    asgi_send_redirect,
+)
+from .tracer import trace, AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
@@ -553,7 +556,6 @@ class Datasette:
 
     def app(self):
         "Returns an ASGI app function that serves the whole of Datasette"
-        # TODO: re-implement ?_trace= mechanism, see class TracingSanic
         default_templates = str(app_root / "datasette" / "templates")
         template_paths = []
         if self.template_dir:
@@ -665,7 +667,6 @@ class Datasette:
 
             async def handle_500(self, scope, receive, send, exception):
                 title = None
-                help = None
                 if isinstance(exception, NotFound):
                     status = 404
                     info = {}
@@ -703,13 +704,10 @@ class Datasette:
                         send, template.render(info), status=status, headers=headers
                     )
 
-        app = DatasetteRouter(routes)
-        # First time server starts up, calculate table counts for immutable databases
-        # TODO: re-enable this mechanism
-        # @app.listener("before_server_start")
-        # async def setup_db(app, loop):
-        #     for dbname, database in self.databases.items():
-        #         if not database.is_mutable:
-        #             await database.table_counts(limit=60 * 60 * 1000)
+        async def setup_db():
+            # First time server starts up, calculate table counts for immutable databases
+            for dbname, database in self.databases.items():
+                if not database.is_mutable:
+                    await database.table_counts(limit=60 * 60 * 1000)
 
-        return AsgiTracer(app)
+        return AsgiLifespan(AsgiTracer(DatasetteRouter(routes)), on_startup=setup_db)

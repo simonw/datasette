@@ -1,6 +1,5 @@
 import json
 from mimetypes import guess_type
-from sanic.views import HTTPMethodView
 from sanic.request import Request as SanicRequest
 from pathlib import Path
 from html import escape
@@ -82,7 +81,11 @@ class AsgiLifespan:
             await self.app(scope, receive, send)
 
 
-class AsgiView(HTTPMethodView):
+class AsgiView:
+    def dispatch_request(self, request, *args, **kwargs):
+        handler = getattr(self, request.method.lower(), None)
+        return handler(request, *args, **kwargs)
+
     @classmethod
     def as_asgi(cls, *class_args, **class_kwargs):
         async def view(scope, receive, send):

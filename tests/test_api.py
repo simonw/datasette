@@ -1197,6 +1197,7 @@ def test_plugins_json(app_client):
 def test_versions_json(app_client):
     response = app_client.get("/-/versions.json")
     assert "python" in response.json
+    assert "3.0" == response.json.get("asgi")
     assert "version" in response.json["python"]
     assert "full" in response.json["python"]
     assert "datasette" in response.json

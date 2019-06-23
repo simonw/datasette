@@ -422,6 +422,7 @@ class Datasette:
                 "full": sys.version,
             },
             "datasette": datasette_version,
+            "asgi": "3.0",
             "sqlite": {
                 "version": sqlite_version,
                 "fts_versions": fts_versions,

@@ -748,7 +748,7 @@ class RequestParameters(dict):
         "Return first value in the list, if available"
         try:
             return super().get(name)[0]
-        except KeyError:
+        except (KeyError, TypeError):
             return default
 
     def getlist(self, name, default=None):

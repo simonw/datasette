@@ -1,6 +1,7 @@
 import json
+from datasette.utils import RequestParameters
 from mimetypes import guess_type
-from sanic.request import Request as SanicRequest
+from urllib.parse import parse_qs, urlunparse
 from pathlib import Path
 from html import escape
 import re
@@ -9,6 +10,73 @@ import aiofiles
 
 class NotFound(Exception):
     pass
+
+
+class Request:
+    def __init__(self, scope):
+        self.scope = scope
+
+    @property
+    def method(self):
+        return self.scope["method"]
+
+    @property
+    def url(self):
+        return urlunparse(
+            (self.scheme, self.host, self.path, None, self.query_string, None)
+        )
+
+    @property
+    def scheme(self):
+        return self.scope.get("scheme") or "http"
+
+    @property
+    def headers(self):
+        return dict(
+            [
+                (k.decode("latin-1").lower(), v.decode("latin-1"))
+                for k, v in self.scope.get("headers") or []
+            ]
+        )
+
+    @property
+    def host(self):
+        return self.headers.get("host") or "localhost"
+
+    @property
+    def path(self):
+        return (
+            self.scope.get("raw_path", self.scope["path"].encode("latin-1"))
+        ).decode("latin-1")
+
+    @property
+    def query_string(self):
+        return (self.scope.get("query_string") or b"").decode("latin-1")
+
+    @property
+    def args(self):
+        return RequestParameters(parse_qs(qs=self.query_string))
+
+    @property
+    def raw_args(self):
+        return {key: value[0] for key, value in self.args.items()}
+
+    @classmethod
+    def from_path_with_query_string(
+        cls, path_with_query_string, method="GET", scheme="http"
+    ):
+        "Useful for constructing Request objects for tests"
+        path, _, query_string = path_with_query_string.partition("?")
+        scope = {
+            "http_version": "1.1",
+            "method": method,
+            "path": path,
+            "raw_path": path.encode("latin-1"),
+            "query_string": query_string.encode("latin-1"),
+            "scheme": scheme,
+            "type": "http",
+        }
+        return cls(scope)
 
 
 class AsgiRouter:
@@ -52,7 +120,7 @@ class AsgiRouter:
             }
         )
         html = "<h1>500</h1><pre{}></pre>".format(escape(repr(exception)))
-        await send({"type": "http.response.body", "body": html.encode("utf8")})
+        await send({"type": "http.response.body", "body": html.encode("latin-1")})
 
 
 class AsgiLifespan:
@@ -92,34 +160,12 @@ class AsgiView:
     @classmethod
     def as_asgi(cls, *class_args, **class_kwargs):
         async def view(scope, receive, send):
-            # Uses scope to create a Sanic-compatible request object,
-            # then dispatches that to self.get(...) or self.options(...)
-            # along with keyword arguments that were already tucked
-            # into scope["url_route"]["kwargs"] by the router
+            # Uses scope to create a request object, then dispatches that to
+            # self.get(...) or self.options(...) along with keyword arguments
+            # that were already tucked into scope["url_route"]["kwargs"] by
+            # the router, similar to how Django Channels works:
             # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
-            path = scope.get("raw_path", scope["path"].encode("utf8"))
-            if scope["query_string"]:
-                path = path + b"?" + scope["query_string"]
-            request = SanicRequest(
-                path,
-                {
-                    "Host": dict(scope.get("headers") or [])
-                    .get(b"host", b"")
-                    .decode("utf8")
-                },
-                "1.1",
-                scope["method"],
-                None,
-            )
-
-            # TODO: Remove need for this
-            class Woo:
-                def get_extra_info(self, key):
-                    return False
-
-            request.app = Woo()
-            request.app.websocket_enabled = False
-            request.transport = Woo()
+            request = Request(scope)
             self = view.view_class(*class_args, **class_kwargs)
             response = await self.dispatch_request(
                 request, **scope["url_route"]["kwargs"]
@@ -185,7 +231,7 @@ class AsgiWriter:
         await self.send(
             {
                 "type": "http.response.body",
-                "body": chunk.encode("utf8"),
+                "body": chunk.encode("latin-1"),
                 "more_body": True,
             }
         )
@@ -221,7 +267,7 @@ async def asgi_send_redirect(send, location, status=302):
 
 async def asgi_send(send, content, status, headers=None, content_type="text/plain"):
     await asgi_start(send, status, headers, content_type)
-    await send({"type": "http.response.body", "body": content.encode("utf8")})
+    await send({"type": "http.response.body", "body": content.encode("latin-1")})
 
 
 async def asgi_start(send, status, headers=None, content_type="text/plain"):

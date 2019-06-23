@@ -24,6 +24,10 @@ class TestResponse:
     def json(self):
         return json.loads(self.body)
 
+    @property
+    def text(self):
+        return self.body.decode("utf8")
+
 
 class TestClient:
     def __init__(self, asgi_app):
@@ -49,7 +53,9 @@ class TestClient:
         # First message back should be response.start with headers and status
         start = await instance.receive_output(2)
         assert start["type"] == "http.response.start"
-        headers = start["headers"]
+        headers = dict(
+            [(k.decode("utf8"), v.decode("utf8")) for k, v in start["headers"]]
+        )
         status = start["status"]
         # Now loop until we run out of response.body
         body = b""

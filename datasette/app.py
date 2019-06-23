@@ -644,7 +644,50 @@ class Datasette:
         )
         self.register_custom_units()
 
-        app = AsgiRouter(routes)
+        outer_self = self
+
+        class DatasetteRouter(AsgiRouter):
+            async def handle_500(self, scope, receive, send, exception):
+                title = None
+                help = None
+                if isinstance(exception, NotFound):
+                    status = 404
+                    info = {}
+                    message = exception.args[0]
+                elif isinstance(exception, InvalidUsage):
+                    status = 405
+                    info = {}
+                    message = exception.args[0]
+                elif isinstance(exception, DatasetteError):
+                    status = exception.status
+                    info = exception.error_dict
+                    message = exception.message
+                    if exception.messagge_is_html:
+                        message = Markup(message)
+                    title = exception.title
+                else:
+                    status = 500
+                    info = {}
+                    message = str(exception)
+                    traceback.print_exc()
+                templates = ["500.html"]
+                if status != 500:
+                    templates = ["{}.html".format(status)] + templates
+                info.update(
+                    {"ok": False, "error": message, "status": status, "title": title}
+                )
+                headers = {}
+                if outer_self.cors:
+                    headers["Access-Control-Allow-Origin"] = "*"
+                if scope["path"].split("?")[0].endswith(".json"):
+                    await asgi_send_json(send, info, status=status, headers=headers)
+                else:
+                    template = outer_self.jinja_env.select_template(templates)
+                    await asgi_send_html(
+                        send, template.render(info), status=status, headers=headers
+                    )
+
+        app = DatasetteRouter(routes)
         # On 404 with a trailing slash redirect to path without that slash:
         # pylint: disable=unused-variable
         # TODO: re-enable this
@@ -665,3 +708,37 @@ class Datasette:
         #             await database.table_counts(limit=60 * 60 * 1000)
 
         return app
+
+
+async def asgi_send_json(send, info, status=200, headers=None):
+    headers = headers or {}
+    await asgi_send(
+        send,
+        json.dumps(info),
+        status=status,
+        headers=headers,
+        content_type="application/json",
+    )
+
+
+async def asgi_send_html(send, html, status=200, headers=None):
+    headers = headers or {}
+    await asgi_send(
+        send, html, status=status, headers=headers, content_type="text/html"
+    )
+
+
+async def asgi_send(send, content, status, headers, content_type="text/plain"):
+    # TODO: watch out for Content-Type due to mixed case:
+    headers["content-type"] = content_type
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                [key.encode("latin1"), value.encode("latin1")]
+                for key, value in headers.items()
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": content.encode("utf8")})

@@ -12,6 +12,8 @@ from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
 from sanic.request import Request as SanicRequest
 
+from html import escape
+
 from datasette import __version__
 from datasette.plugins import pm
 from datasette.utils import (
@@ -64,7 +66,10 @@ class AsgiRouter:
             match = regex.match(scope["path"])
             if match is not None:
                 new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
-                return await view(new_scope, receive, send)
+                try:
+                    return await view(new_scope, receive, send)
+                except Exception as exception:
+                    return await self.handle_500(scope, receive, send, exception)
         return await self.handle_404(scope, receive, send)
 
     async def handle_404(self, scope, receive, send):
@@ -76,6 +81,17 @@ class AsgiRouter:
             }
         )
         await send({"type": "http.response.body", "body": b"<h1>404</h1>"})
+
+    async def handle_500(self, scope, receive, send, exception):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 404,
+                "headers": [[b"content-type", b"text/html"]],
+            }
+        )
+        html = "<h1>500</h1><pre{}></pre>".format(escape(repr(exception)))
+        await send({"type": "http.response.body", "body": html.encode("utf8")})
 
 
 class AsgiView(HTTPMethodView):

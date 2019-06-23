@@ -57,7 +57,6 @@ class AsgiRouter:
 
 class AsgiLifespan:
     def __init__(self, app, on_startup=None, on_shutdown=None):
-        print("Wrapping {}".format(app))
         self.app = app
         on_startup = on_startup or []
         on_shutdown = on_shutdown or []

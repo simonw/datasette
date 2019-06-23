@@ -36,6 +36,7 @@ from .utils import (
 from .utils.asgi import (
     AsgiLifespan,
     asgi_static,
+    asgi_send,
     asgi_send_html,
     asgi_send_json,
     asgi_send_redirect,
@@ -131,14 +132,7 @@ DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
 
 
 async def favicon(scope, receive, send):
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [[b"content-type", b"text/plain"]],
-        }
-    )
-    await send({"type": "http.response.body", "body": b""})
+    await asgi_send(send, "", 200)
 
 
 class Datasette:

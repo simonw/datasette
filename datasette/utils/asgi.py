@@ -213,12 +213,13 @@ async def asgi_send_redirect(send, location, status=302):
     )
 
 
-async def asgi_send(send, content, status, headers, content_type="text/plain"):
+async def asgi_send(send, content, status, headers=None, content_type="text/plain"):
     await asgi_start(send, status, headers, content_type)
     await send({"type": "http.response.body", "body": content.encode("utf8")})
 
 
-async def asgi_start(send, status, headers, content_type="text/plain"):
+async def asgi_start(send, status, headers=None, content_type="text/plain"):
+    headers = headers or {}
     # Remove any existing content-type header
     headers = dict([(k, v) for k, v in headers.items() if k.lower() != "content-type"])
     headers["content-type"] = content_type

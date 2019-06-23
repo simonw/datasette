@@ -12,6 +12,7 @@ import sys
 import string
 import tempfile
 import time
+from urllib.parse import unquote
 
 
 class TestResponse:
@@ -50,7 +51,8 @@ class TestClient:
                 "type": "http",
                 "http_version": "1.0",
                 "method": "GET",
-                "path": path,
+                "path": unquote(path),
+                "raw_path": path.encode("ascii"),
                 "query_string": query_string,
                 "headers": [[b"host", b"localhost"]],
             },

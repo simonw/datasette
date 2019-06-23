@@ -12,7 +12,7 @@ from pathlib import Path
 import click
 from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
-from sanic.exceptions import InvalidUsage, NotFound
+from sanic.exceptions import NotFound
 
 from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
@@ -663,10 +663,6 @@ class Datasette:
                 title = None
                 if isinstance(exception, NotFound):
                     status = 404
-                    info = {}
-                    message = exception.args[0]
-                elif isinstance(exception, InvalidUsage):
-                    status = 405
                     info = {}
                     message = exception.args[0]
                 elif isinstance(exception, DatasetteError):

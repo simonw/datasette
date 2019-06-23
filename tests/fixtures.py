@@ -37,10 +37,10 @@ class TestClient:
         self.asgi_app = asgi_app
 
     @async_to_sync
-    async def get(self, path, allow_redirects=True, redirect_count=0):
-        return await self._get(path, allow_redirects, redirect_count)
+    async def get(self, path, allow_redirects=True, redirect_count=0, method="GET"):
+        return await self._get(path, allow_redirects, redirect_count, method)
 
-    async def _get(self, path, allow_redirects=True, redirect_count=0):
+    async def _get(self, path, allow_redirects=True, redirect_count=0, method="GET"):
         query_string = b""
         if "?" in path:
             path, _, query_string = path.partition("?")
@@ -50,7 +50,7 @@ class TestClient:
             {
                 "type": "http",
                 "http_version": "1.0",
-                "method": "GET",
+                "method": method,
                 "path": unquote(path),
                 "raw_path": path.encode("ascii"),
                 "query_string": query_string,

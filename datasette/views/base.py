@@ -54,6 +54,11 @@ class DatasetteError(Exception):
 class BaseView(AsgiView):
     ds = None
 
+    async def head(self, *args, **kwargs):
+        response = await self.get(*args, **kwargs)
+        response.body = b""
+        return response
+
     def _asset_urls(self, key, template, context):
         # Flatten list-of-lists from plugins:
         seen_urls = set()

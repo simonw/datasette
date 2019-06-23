@@ -10,6 +10,7 @@ import pint
 from sanic import response
 from sanic.exceptions import NotFound
 from sanic.views import HTTPMethodView
+from sanic.request import Request as SanicRequest
 
 from datasette import __version__
 from datasette.plugins import pm
@@ -54,7 +55,7 @@ class AsgiRouter:
         routes = routes or []
         self.routes = [
             # Compile any strings to regular expressions
-            (re.compile(pattern) if isinstance(pattern, str) else pattern, view)
+            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
             for pattern, view in routes
         ]
 
@@ -77,29 +78,48 @@ class AsgiRouter:
         await send({"type": "http.response.body", "body": b"<h1>404</h1>"})
 
 
-async def hello_world(scope, receive, send):
-    assert scope["type"] == "http"
-    await send(
-        {
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [[b"content-type", b"text/html"]],
-        }
-    )
-    await send({"type": "http.response.body", "body": b"<h1>Hello world!</h1>"})
-
-
-app = AsgiRouter([("/hello/", hello_world)])
-
-
 class AsgiView(HTTPMethodView):
-    async def asgi(self, scope, receive, send):
-        # Uses scope to create a Sanic-compatible request object,
-        # then dispatches that to self.get(...) or self.options(...)
-        # along with keyword arguments that were already tucked
-        # into scope["url_route"]["kwargs"] by the router
-        # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
-        pass
+    @classmethod
+    def as_asgi(cls, *class_args, **class_kwargs):
+        async def view(scope, receive, send):
+            # Uses scope to create a Sanic-compatible request object,
+            # then dispatches that to self.get(...) or self.options(...)
+            # along with keyword arguments that were already tucked
+            # into scope["url_route"]["kwargs"] by the router
+            # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
+            path = scope.get("raw_path", scope["path"].encode("utf8"))
+            if scope["query_string"]:
+                path = path + b"?" + scope["query_string"]
+            request = SanicRequest(path, {}, "1.1", scope["method"], None)
+
+            class Woo:
+                def get_extra_info(self, key):
+                    return False
+
+            request.app = Woo()
+            request.app.websocket_enabled = False
+            request.transport = Woo()
+            self = view.view_class(*class_args, **class_kwargs)
+            response = await self.dispatch_request(
+                request, **scope["url_route"]["kwargs"]
+            )
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": response.status,
+                    "headers": [
+                        [key.encode("utf-8"), value.encode("utf-8")]
+                        for key, value in response.headers.items()
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": response.body})
+
+        view.view_class = cls
+        view.__doc__ = cls.__doc__
+        view.__module__ = cls.__module__
+        view.__name__ = cls.__name__
+        return view
 
 
 class BaseView(AsgiView):
@@ -250,17 +270,17 @@ class DataView(BaseView):
                 kwargs["table"] = table
                 if _format:
                     kwargs["as_format"] = ".{}".format(_format)
-            elif "table" in kwargs:
+            elif kwargs.get("table"):
                 kwargs["table"] = urllib.parse.unquote_plus(kwargs["table"])
 
             should_redirect = "/{}-{}".format(name, expected)
-            if "table" in kwargs:
+            if kwargs.get("table"):
                 should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
-            if "pk_path" in kwargs:
+            if kwargs.get("pk_path"):
                 should_redirect += "/" + kwargs["pk_path"]
-            if "as_format" in kwargs:
+            if kwargs.get("as_format"):
                 should_redirect += kwargs["as_format"]
-            if "as_db" in kwargs:
+            if kwargs.get("as_db"):
                 should_redirect += kwargs["as_db"]
 
             if (

@@ -17,7 +17,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from sanic import Sanic, response
 from sanic.exceptions import InvalidUsage, NotFound
 
-from .views.base import DatasetteError, ureg
+from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
 from .views.special import JsonDataView
@@ -126,8 +126,15 @@ CONFIG_OPTIONS = (
 DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
 
 
-async def favicon(request):
-    return response.text("")
+async def favicon(scope, recieve, send):
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [[b"content-type", b"text/plain"]],
+        }
+    )
+    await send({"type": "http.response.body", "body": b""})
 
 
 class Datasette:
@@ -543,21 +550,8 @@ class Datasette:
             self.renderers[renderer["extension"]] = renderer["callback"]
 
     def app(self):
-        class TracingSanic(Sanic):
-            async def handle_request(self, request, write_callback, stream_callback):
-                if request.args.get("_trace"):
-                    request["traces"] = []
-                    request["trace_start"] = time.time()
-                    with capture_traces(request["traces"]):
-                        await super().handle_request(
-                            request, write_callback, stream_callback
-                        )
-                else:
-                    await super().handle_request(
-                        request, write_callback, stream_callback
-                    )
-
-        app = TracingSanic(__name__)
+        "Returns an ASGI app function that serves the whole of Datasette"
+        # TODO: re-implement ?_trace= mechanism, see class TracingSanic
         default_templates = str(app_root / "datasette" / "templates")
         template_paths = []
         if self.template_dir:
@@ -588,134 +582,86 @@ class Datasette:
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 
         self.register_renderers()
+
+        routes = []
+
+        def add_route(view, regex):
+            routes.append((regex, view))
+
         # Generate a regex snippet to match all registered renderer file extensions
         renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
 
-        app.add_route(IndexView.as_view(self), r"/<as_format:(\.jsono?)?$>")
+        add_route(IndexView.as_asgi(self), r"/(?P<as_format>(\.jsono?)?$)")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
-        app.add_route(favicon, "/favicon.ico")
-        app.static("/-/static/", str(app_root / "datasette" / "static"))
-        for path, dirname in self.static_mounts:
-            app.static(path, dirname)
-        # Mount any plugin static/ directories
-        for plugin in get_plugins(pm):
-            if plugin["static_path"]:
-                modpath = "/-/static-plugins/{}/".format(plugin["name"])
-                app.static(modpath, plugin["static_path"])
-        app.add_route(
-            JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
-            r"/-/metadata<as_format:(\.json)?$>",
+        add_route(favicon, "/favicon.ico")
+        # # TODO: re-enable the static bits
+        # app.static("/-/static/", str(app_root / "datasette" / "static"))
+        # for path, dirname in self.static_mounts:
+        #     app.static(path, dirname)
+        # # Mount any plugin static/ directories
+        # for plugin in get_plugins(pm):
+        #     if plugin["static_path"]:
+        #         modpath = "/-/static-plugins/{}/".format(plugin["name"])
+        #         app.static(modpath, plugin["static_path"])
+        add_route(
+            JsonDataView.as_asgi(self, "metadata.json", lambda: self._metadata),
+            r"/-/metadata(?P<as_format>(\.json)?)$",
         )
-        app.add_route(
-            JsonDataView.as_view(self, "versions.json", self.versions),
-            r"/-/versions<as_format:(\.json)?$>",
+        add_route(
+            JsonDataView.as_asgi(self, "versions.json", self.versions),
+            r"/-/versions(?P<as_format>(\.json)?)$",
         )
-        app.add_route(
-            JsonDataView.as_view(self, "plugins.json", self.plugins),
-            r"/-/plugins<as_format:(\.json)?$>",
+        add_route(
+            JsonDataView.as_asgi(self, "plugins.json", self.plugins),
+            r"/-/plugins(?P<as_format>(\.json)?)$",
         )
-        app.add_route(
-            JsonDataView.as_view(self, "config.json", lambda: self._config),
-            r"/-/config<as_format:(\.json)?$>",
+        add_route(
+            JsonDataView.as_asgi(self, "config.json", lambda: self._config),
+            r"/-/config(?P<as_format>(\.json)?)$",
         )
-        app.add_route(
-            JsonDataView.as_view(self, "databases.json", self.connected_databases),
-            r"/-/databases<as_format:(\.json)?$>",
+        add_route(
+            JsonDataView.as_asgi(self, "databases.json", self.connected_databases),
+            r"/-/databases(?P<as_format>(\.json)?)$",
         )
-        app.add_route(
-            DatabaseDownload.as_view(self), r"/<db_name:[^/]+?><as_db:(\.db)$>"
+        add_route(
+            DatabaseDownload.as_asgi(self), r"/(?P<db_name>[^/]+?)(?P<as_db>\.db)$"
         )
-        app.add_route(
-            DatabaseView.as_view(self),
-            r"/<db_name:[^/]+?><as_format:(" + renderer_regex + r"|.jsono|\.csv)?$>",
+        add_route(
+            DatabaseView.as_asgi(self),
+            r"/(?P<db_name>[^/]+?)(?P<as_format>"
+            + renderer_regex
+            + r"|.jsono|\.csv)?$",
         )
-        app.add_route(
-            TableView.as_view(self), r"/<db_name:[^/]+>/<table_and_format:[^/]+?$>"
+        add_route(
+            TableView.as_asgi(self),
+            r"/(?P<db_name>[^/]+)/(?P<table_and_format>[^/]+?$)",
         )
-        app.add_route(
-            RowView.as_view(self),
+        add_route(
+            RowView.as_asgi(self),
             r"/<db_name:[^/]+>/<table:[^/]+?>/<pk_path:[^/]+?><as_format:("
             + renderer_regex
             + r")?$>",
         )
         self.register_custom_units()
 
+        app = AsgiRouter(routes)
         # On 404 with a trailing slash redirect to path without that slash:
         # pylint: disable=unused-variable
-        @app.middleware("response")
-        def redirect_on_404_with_trailing_slash(request, original_response):
-            if original_response.status == 404 and request.path.endswith("/"):
-                path = request.path.rstrip("/")
-                if request.query_string:
-                    path = "{}?{}".format(path, request.query_string)
-                return response.redirect(path)
-
-        @app.middleware("response")
-        async def add_traces_to_response(request, response):
-            if request.get("traces") is None:
-                return
-            traces = request["traces"]
-            trace_info = {
-                "request_duration_ms": 1000 * (time.time() - request["trace_start"]),
-                "sum_trace_duration_ms": sum(t["duration_ms"] for t in traces),
-                "num_traces": len(traces),
-                "traces": traces,
-            }
-            if "text/html" in response.content_type and b"</body>" in response.body:
-                extra = json.dumps(trace_info, indent=2)
-                extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
-                response.body = response.body.replace(b"</body>", extra_html)
-            elif "json" in response.content_type and response.body.startswith(b"{"):
-                data = json.loads(response.body.decode("utf8"))
-                if "_trace" not in data:
-                    data["_trace"] = trace_info
-                    response.body = json.dumps(data).encode("utf8")
-
-        @app.exception(Exception)
-        def on_exception(request, exception):
-            title = None
-            help = None
-            if isinstance(exception, NotFound):
-                status = 404
-                info = {}
-                message = exception.args[0]
-            elif isinstance(exception, InvalidUsage):
-                status = 405
-                info = {}
-                message = exception.args[0]
-            elif isinstance(exception, DatasetteError):
-                status = exception.status
-                info = exception.error_dict
-                message = exception.message
-                if exception.messagge_is_html:
-                    message = Markup(message)
-                title = exception.title
-            else:
-                status = 500
-                info = {}
-                message = str(exception)
-                traceback.print_exc()
-            templates = ["500.html"]
-            if status != 500:
-                templates = ["{}.html".format(status)] + templates
-            info.update(
-                {"ok": False, "error": message, "status": status, "title": title}
-            )
-            if request is not None and request.path.split("?")[0].endswith(".json"):
-                r = response.json(info, status=status)
-
-            else:
-                template = self.jinja_env.select_template(templates)
-                r = response.html(template.render(info), status=status)
-            if self.cors:
-                r.headers["Access-Control-Allow-Origin"] = "*"
-            return r
+        # TODO: re-enable this
+        # @app.middleware("response")
+        # def redirect_on_404_with_trailing_slash(request, original_response):
+        #     if original_response.status == 404 and request.path.endswith("/"):
+        #         path = request.path.rstrip("/")
+        #         if request.query_string:
+        #             path = "{}?{}".format(path, request.query_string)
+        #         return response.redirect(path)
 
         # First time server starts up, calculate table counts for immutable databases
-        @app.listener("before_server_start")
-        async def setup_db(app, loop):
-            for dbname, database in self.databases.items():
-                if not database.is_mutable:
-                    await database.table_counts(limit=60 * 60 * 1000)
+        # TODO: re-enable this mechanism
+        # @app.listener("before_server_start")
+        # async def setup_db(app, loop):
+        #     for dbname, database in self.databases.items():
+        #         if not database.is_mutable:
+        #             await database.table_counts(limit=60 * 60 * 1000)
 
         return app

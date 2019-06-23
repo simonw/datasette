@@ -37,7 +37,7 @@ setup(
     author="Simon Willison",
     license="Apache License, Version 2.0",
     url="https://github.com/simonw/datasette",
-    packages=find_packages(exclude='tests'),
+    packages=find_packages(exclude="tests"),
     package_data={"datasette": ["templates/*.html"]},
     include_package_data=True,
     install_requires=[
@@ -48,6 +48,7 @@ setup(
         "hupper==1.0",
         "pint==0.8.1",
         "pluggy>=0.12.0",
+        "uvicorn>=0.8.1",
     ],
     entry_points="""
         [console_scripts]

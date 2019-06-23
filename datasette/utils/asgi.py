@@ -62,9 +62,7 @@ class Request:
         return {key: value[0] for key, value in self.args.items()}
 
     @classmethod
-    def from_path_with_query_string(
-        cls, path_with_query_string, method="GET", scheme="http"
-    ):
+    def fake(cls, path_with_query_string, method="GET", scheme="http"):
         "Useful for constructing Request objects for tests"
         path, _, query_string = path_with_query_string.partition("?")
         scope = {

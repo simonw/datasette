@@ -18,7 +18,9 @@ class JsonDataView(BaseView):
             if self.ds.cors:
                 headers["Access-Control-Allow-Origin"] = "*"
             return response.HTTPResponse(
-                json.dumps(data), content_type="application/json", headers=headers
+                json.dumps(data),
+                content_type="application/json; charset=utf-8",
+                headers=headers,
             )
 
         else:

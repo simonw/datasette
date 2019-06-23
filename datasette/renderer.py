@@ -88,5 +88,5 @@ def json_renderer(args, data, view_name):
         content_type = "text/plain"
     else:
         body = json.dumps(data, cls=CustomJSONEncoder)
-        content_type = "application/json"
+        content_type = "application/json; charset=utf-8"
     return {"body": body, "status_code": status_code, "content_type": content_type}

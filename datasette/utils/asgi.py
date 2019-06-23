@@ -90,13 +90,16 @@ class AsgiView(HTTPMethodView):
             if hasattr(response, "asgi_send"):
                 await response.asgi_send(send)
             else:
+                headers = {}
+                headers.update(response.headers)
+                headers["content-type"] = response.content_type
                 await send(
                     {
                         "type": "http.response.start",
                         "status": response.status,
                         "headers": [
                             [key.encode("utf-8"), value.encode("utf-8")]
-                            for key, value in response.headers.items()
+                            for key, value in headers.items()
                         ],
                     }
                 )
@@ -158,7 +161,7 @@ async def asgi_send_json(send, info, status=200, headers=None):
         json.dumps(info),
         status=status,
         headers=headers,
-        content_type="application/json",
+        content_type="application/json; charset=utf-8",
     )
 
 

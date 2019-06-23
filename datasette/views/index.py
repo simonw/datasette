@@ -106,7 +106,7 @@ class IndexView(BaseView):
                 headers["Access-Control-Allow-Origin"] = "*"
             return response.HTTPResponse(
                 json.dumps({db["name"]: db for db in databases}, cls=CustomJSONEncoder),
-                content_type="application/json",
+                content_type="application/json; charset=utf-8",
                 headers=headers,
             )
         else:

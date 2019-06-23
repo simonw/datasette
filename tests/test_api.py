@@ -22,6 +22,7 @@ import urllib
 def test_homepage(app_client):
     response = app_client.get("/.json")
     assert response.status == 200
+    assert "application/json; charset=utf-8" == response.headers["content-type"]
     assert response.json.keys() == {"fixtures": 0}.keys()
     d = response.json["fixtures"]
     assert d["name"] == "fixtures"

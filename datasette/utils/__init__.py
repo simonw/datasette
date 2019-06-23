@@ -741,3 +741,16 @@ def format_bytes(bytes):
         return "{} {}".format(int(current), unit)
     else:
         return "{:.1f} {}".format(current, unit)
+
+
+class RequestParameters(dict):
+    def get(self, name, default=None):
+        "Return first value in the list, if available"
+        try:
+            return super().get(name)[0]
+        except KeyError:
+            return default
+
+    def getlist(self, name, default=None):
+        "Return full list"
+        return super().get(name, default)

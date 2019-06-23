@@ -4,12 +4,12 @@ import json
 
 import jinja2
 from sanic.exceptions import NotFound
-from sanic.request import RequestParameters
 
 from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
     QueryInterrupted,
+    RequestParameters,
     append_querystring,
     compound_keys_after_sql,
     escape_sqlite,
@@ -219,8 +219,7 @@ class TableView(RowTableShared):
         if is_view:
             order_by = ""
 
-        # We roll our own query_string decoder because by default Sanic
-        # drops anything with an empty value e.g. ?name__exact=
+        # Ensure we don't drop anything with an empty value e.g. ?name__exact=
         args = RequestParameters(
             urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
         )

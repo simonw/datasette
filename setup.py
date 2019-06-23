@@ -61,6 +61,7 @@ setup(
             "pytest-asyncio==0.10.0",
             "aiohttp==3.5.3",
             "beautifulsoup4==4.6.1",
+            "asgiref==3.1.2",
         ]
         + maybe_black
     },

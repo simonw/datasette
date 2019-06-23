@@ -1,5 +1,7 @@
 from datasette.app import Datasette
 from datasette.utils import sqlite3
+from asgiref.testing import ApplicationCommunicator
+from asgiref.sync import async_to_sync
 import itertools
 import json
 import os
@@ -12,14 +14,52 @@ import tempfile
 import time
 
 
-class TestClient:
-    def __init__(self, sanic_test_client):
-        self.sanic_test_client = sanic_test_client
+class TestResponse:
+    def __init__(self, status, headers, body):
+        self.status = status
+        self.headers = headers
+        self.body = body
 
-    def get(self, path, allow_redirects=True):
-        return self.sanic_test_client.get(
-            path, allow_redirects=allow_redirects, gather_request=False
+    @property
+    def json(self):
+        return json.loads(self.body)
+
+
+class TestClient:
+    def __init__(self, asgi_app):
+        self.asgi_app = asgi_app
+
+    @async_to_sync
+    async def get(self, path, allow_redirects=True):
+        query_string = b""
+        if "?" in path:
+            path, _, query_string = path.partition("?")
+            query_string = query_string.encode("utf8")
+        instance = ApplicationCommunicator(
+            self.asgi_app,
+            {
+                "type": "http",
+                "http_version": "1.0",
+                "method": "GET",
+                "path": path,
+                "query_string": query_string,
+            },
         )
+        await instance.send_input({"type": "http.request"})
+        # First message back should be response.start with headers and status
+        start = await instance.receive_output(2)
+        assert start["type"] == "http.response.start"
+        headers = start["headers"]
+        status = start["status"]
+        # Now loop until we run out of response.body
+        body = b""
+        while True:
+            message = await instance.receive_output(2)
+            assert message["type"] == "http.response.body"
+            body += message["body"]
+            if not message.get("more_body"):
+                break
+        return TestResponse(status, headers, body)
 
 
 def make_app_client(
@@ -75,7 +115,7 @@ def make_app_client(
             inspect_data=inspect_data,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
-        client = TestClient(ds.app().test_client)
+        client = TestClient(ds.app())
         client.ds = ds
         yield client
 
@@ -88,7 +128,7 @@ def app_client():
 @pytest.fixture(scope="session")
 def app_client_no_files():
     ds = Datasette([])
-    client = TestClient(ds.app().test_client)
+    client = TestClient(ds.app())
     client.ds = ds
     yield client
 

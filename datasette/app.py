@@ -1,4 +1,5 @@
 import asyncio
+from mimetypes import guess_type
 import collections
 import hashlib
 import json
@@ -594,15 +595,18 @@ class Datasette:
         add_route(IndexView.as_asgi(self), r"/(?P<as_format>(\.jsono?)?$)")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         add_route(favicon, "/favicon.ico")
-        # # TODO: re-enable the static bits
-        # app.static("/-/static/", str(app_root / "datasette" / "static"))
+
+        add_route(
+            asgi_static(app_root / "datasette" / "static"), r"/-/static/(?P<path>.*)$"
+        )
         # for path, dirname in self.static_mounts:
         #     app.static(path, dirname)
-        # # Mount any plugin static/ directories
-        # for plugin in get_plugins(pm):
-        #     if plugin["static_path"]:
-        #         modpath = "/-/static-plugins/{}/".format(plugin["name"])
-        #         app.static(modpath, plugin["static_path"])
+
+        # Mount any plugin static/ directories
+        for plugin in get_plugins(pm):
+            if plugin["static_path"]:
+                modpath = "/-/static-plugins/{}/(?P<path>.*)$".format(plugin["name"])
+                add_route(asgi_static(plugin["static_path"]), modpath)
         add_route(
             JsonDataView.as_asgi(self, "metadata.json", lambda: self._metadata),
             r"/-/metadata(?P<as_format>(\.json)?)$",
@@ -742,3 +746,19 @@ async def asgi_send(send, content, status, headers, content_type="text/plain"):
         }
     )
     await send({"type": "http.response.body", "body": content.encode("utf8")})
+
+
+def asgi_static(root_path):
+    async def inner_static(scope, receive, send):
+        path = scope["url_route"]["kwargs"]["path"]
+        # TODO: prevent ../../ style paths
+        full_path = Path(root_path) / path
+        await asgi_send(
+            send,
+            full_path.open().read(),
+            200,
+            {},
+            content_type=guess_type(str(full_path))[0] or "text/plain",
+        )
+
+    return inner_static

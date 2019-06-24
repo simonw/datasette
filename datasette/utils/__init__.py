@@ -1,19 +1,20 @@
-from contextlib import contextmanager
-from collections import OrderedDict
 import base64
-import click
 import hashlib
 import imp
 import json
+import numbers
 import os
-import pkg_resources
 import re
 import shlex
+import shutil
 import tempfile
 import time
-import shutil
 import urllib
-import numbers
+from collections import OrderedDict
+from contextlib import contextmanager
+
+import click
+import pkg_resources
 
 try:
     import pysqlite3 as sqlite3

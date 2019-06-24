@@ -1,22 +1,25 @@
+import json
+import urllib
+
+import pytest
+
 from datasette.utils import detect_json1
+
 from .fixtures import (  # noqa
+    METADATA,
     app_client,
-    app_client_no_files,
-    app_client_with_hash,
-    app_client_shorter_time_limit,
     app_client_larger_cache_size,
+    app_client_no_files,
     app_client_returned_rows_matches_page_size,
+    app_client_shorter_time_limit,
     app_client_two_attached_databases_one_immutable,
     app_client_with_cors,
     app_client_with_dot,
+    app_client_with_hash,
     generate_compound_rows,
     generate_sortable_rows,
     make_app_client,
-    METADATA,
 )
-import json
-import pytest
-import urllib
 
 
 def test_homepage(app_client):

@@ -1,10 +1,12 @@
-from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client  # noqa
 import base64
 import json
 import re
-import pytest
 import urllib
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
+from .fixtures import app_client  # noqa
 
 
 def test_plugins_dir_plugin(app_client):

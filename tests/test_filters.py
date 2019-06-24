@@ -1,5 +1,6 @@
-from datasette.filters import Filters
 import pytest
+
+from datasette.filters import Filters
 
 
 @pytest.mark.parametrize(

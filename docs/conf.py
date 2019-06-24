@@ -164,6 +164,3 @@ texinfo_documents = [
      author, 'Datasette', 'One line description of project.',
      'Miscellaneous'),
 ]
-
-
-

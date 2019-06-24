@@ -1,11 +1,13 @@
 import json
-from datasette.utils import RequestParameters
-from mimetypes import guess_type
-from urllib.parse import parse_qs, urlunparse
-from pathlib import Path
-from html import escape
 import re
+from html import escape
+from mimetypes import guess_type
+from pathlib import Path
+from urllib.parse import parse_qs, urlunparse
+
 import aiofiles
+
+from datasette.utils import RequestParameters
 
 
 class NotFound(Exception):

@@ -1,9 +1,12 @@
-from datasette.facets import ColumnFacet, ArrayFacet, DateFacet, ManyToManyFacet
+from collections import namedtuple
+
+import pytest
+
+from datasette.facets import ArrayFacet, ColumnFacet, DateFacet, ManyToManyFacet
 from datasette.utils import detect_json1
+
 from .fixtures import app_client  # noqa
 from .utils import MockRequest
-from collections import namedtuple
-import pytest
 
 
 @pytest.mark.asyncio

@@ -4,32 +4,31 @@ import itertools
 import re
 import time
 import urllib
+from html import escape
 
 import jinja2
 import pint
 
-from html import escape
-
 from datasette import __version__
 from datasette.plugins import pm
 from datasette.utils import (
-    QueryInterrupted,
     InvalidSql,
     LimitedWriter,
+    QueryInterrupted,
     format_bytes,
     is_url,
     path_with_added_args,
-    path_with_removed_args,
     path_with_format,
+    path_with_removed_args,
     resolve_table_and_format,
     sqlite3,
     to_css_class,
 )
 from datasette.utils.asgi import (
-    AsgiStream,
-    AsgiWriter,
     AsgiRouter,
+    AsgiStream,
     AsgiView,
+    AsgiWriter,
     NotFound,
     Response,
 )

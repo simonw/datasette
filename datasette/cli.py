@@ -1,19 +1,21 @@
 import asyncio
-import uvicorn
-import click
-from click import formatting
-from click_default_group import DefaultGroup
 import json
 import os
 import shutil
-from subprocess import call
 import sys
-from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
+from subprocess import call
+
+import click
+import uvicorn
+from click import formatting
+from click_default_group import DefaultGroup
+
+from .app import CONFIG_OPTIONS, DEFAULT_CONFIG, Datasette, pm
 from .utils import (
-    temporary_docker_directory,
-    value_as_boolean,
     StaticMount,
     ValueAsBooleanError,
+    temporary_docker_directory,
+    value_as_boolean,
 )
 
 

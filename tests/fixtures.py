@@ -1,18 +1,20 @@
-from datasette.app import Datasette
-from datasette.utils import sqlite3
-from asgiref.testing import ApplicationCommunicator
-from asgiref.sync import async_to_sync
 import itertools
 import json
 import os
 import pathlib
-import pytest
 import random
-import sys
 import string
+import sys
 import tempfile
 import time
 from urllib.parse import unquote
+
+import pytest
+from asgiref.sync import async_to_sync
+from asgiref.testing import ApplicationCommunicator
+
+from datasette.app import Datasette
+from datasette.utils import sqlite3
 
 
 class TestResponse:

@@ -1,6 +1,8 @@
-from click.testing import CliRunner
-from datasette.cli import cli
 from pathlib import Path
+
+from click.testing import CliRunner
+
+from datasette.cli import cli
 
 docs_path = Path(__file__).parent / "docs"
 

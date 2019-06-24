@@ -7,7 +7,6 @@ from datasette.version import __version__
 
 from .base import BaseView
 
-
 # Truncate table list on homepage at:
 TRUNCATE_AT = 5
 

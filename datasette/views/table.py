@@ -1,9 +1,10 @@
-import urllib
 import itertools
 import json
+import urllib
 
 import jinja2
 
+from datasette.filters import Filters
 from datasette.plugins import pm
 from datasette.utils import (
     CustomRow,
@@ -24,8 +25,8 @@ from datasette.utils import (
     value_as_boolean,
 )
 from datasette.utils.asgi import NotFound
-from datasette.filters import Filters
-from .base import DataView, DatasetteError, ureg
+
+from .base import DatasetteError, DataView, ureg
 
 LINK_WITH_LABEL = (
     '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'

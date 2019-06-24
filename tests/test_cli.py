@@ -1,8 +1,11 @@
-from .fixtures import app_client, make_app_client
-from datasette.cli import cli
-from click.testing import CliRunner
-import pathlib
 import json
+import pathlib
+
+from click.testing import CliRunner
+
+from datasette.cli import cli
+
+from .fixtures import app_client, make_app_client
 
 
 def test_inspect_cli(app_client):

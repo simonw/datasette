@@ -10,17 +10,13 @@ from concurrent import futures
 from pathlib import Path
 
 import click
-from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+from markupsafe import Markup
 
-from .views.base import DatasetteError, ureg, AsgiRouter
-from .views.database import DatabaseDownload, DatabaseView
-from .views.index import IndexView
-from .views.special import JsonDataView
-from .views.table import RowView, TableView
-from .renderer import json_renderer
 from .database import Database
-
+from .plugins import DEFAULT_PLUGINS, pm
+from .renderer import json_renderer
+from .tracer import AsgiTracer, trace
 from .utils import (
     QueryInterrupted,
     Results,
@@ -35,15 +31,18 @@ from .utils import (
 from .utils.asgi import (
     AsgiLifespan,
     NotFound,
-    asgi_static,
     asgi_send,
     asgi_send_html,
     asgi_send_json,
     asgi_send_redirect,
+    asgi_static,
 )
-from .tracer import trace, AsgiTracer
-from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
+from .views.base import AsgiRouter, DatasetteError, ureg
+from .views.database import DatabaseDownload, DatabaseView
+from .views.index import IndexView
+from .views.special import JsonDataView
+from .views.table import RowView, TableView
 
 app_root = Path(__file__).parent.parent
 

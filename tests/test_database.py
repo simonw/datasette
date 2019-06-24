@@ -1,5 +1,6 @@
-from .fixtures import app_client
 import pytest
+
+from .fixtures import app_client
 
 
 @pytest.mark.parametrize(

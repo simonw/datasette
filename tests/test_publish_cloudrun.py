@@ -1,6 +1,8 @@
-from click.testing import CliRunner
-from datasette import cli
 from unittest import mock
+
+from click.testing import CliRunner
+
+from datasette import cli
 
 
 @mock.patch("shutil.which")

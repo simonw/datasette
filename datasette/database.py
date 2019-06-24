@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from .inspect import inspect_hash
 from .utils import (
     QueryInterrupted,
     detect_fts,
@@ -10,7 +11,6 @@ from .utils import (
     sqlite3,
     table_columns,
 )
-from .inspect import inspect_hash
 
 
 class Database:

@@ -1,8 +1,8 @@
 import asyncio
-from contextlib import contextmanager
-import time
 import json
+import time
 import traceback
+from contextlib import contextmanager
 
 tracers = {}
 

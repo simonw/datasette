@@ -1,14 +1,15 @@
 import json
-import urllib
 import re
+import urllib
+
 from datasette import hookimpl
 from datasette.utils import (
+    InvalidSql,
+    QueryInterrupted,
+    detect_json1,
     escape_sqlite,
     path_with_added_args,
     path_with_removed_args,
-    detect_json1,
-    QueryInterrupted,
-    InvalidSql,
     sqlite3,
 )
 

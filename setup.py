@@ -1,6 +1,7 @@
-from setuptools import setup, find_packages
 import os
 import sys
+
+from setuptools import find_packages, setup
 
 import versioneer
 
@@ -62,6 +63,7 @@ setup(
             "aiohttp==3.5.3",
             "beautifulsoup4==4.6.1",
             "asgiref==3.1.2",
+            "isort==4.3.20",
         ]
         + maybe_black
     },

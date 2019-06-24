@@ -1,9 +1,10 @@
 import json
+
 from datasette.utils import (
-    value_as_boolean,
-    remove_infinites,
     CustomJSONEncoder,
     path_from_row_pks,
+    remove_infinites,
+    value_as_boolean,
 )
 
 

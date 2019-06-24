@@ -1,5 +1,7 @@
 import json
+
 from datasette.utils.asgi import Response
+
 from .base import BaseView
 
 

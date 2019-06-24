@@ -1,17 +1,19 @@
+import json
+import pathlib
+import re
+import urllib.parse
+
+import pytest
 from bs4 import BeautifulSoup as Soup
+
 from .fixtures import (  # noqa
+    METADATA,
     app_client,
     app_client_shorter_time_limit,
     app_client_two_attached_databases,
     app_client_with_hash,
     make_app_client,
-    METADATA,
 )
-import json
-import pathlib
-import pytest
-import re
-import urllib.parse
 
 
 def test_homepage(app_client_two_attached_databases):

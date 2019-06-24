@@ -7,7 +7,6 @@ import urllib
 
 import jinja2
 import pint
-from sanic import response
 
 from html import escape
 
@@ -26,7 +25,14 @@ from datasette.utils import (
     sqlite3,
     to_css_class,
 )
-from datasette.utils.asgi import AsgiStream, AsgiWriter, AsgiRouter, AsgiView, NotFound
+from datasette.utils.asgi import (
+    AsgiStream,
+    AsgiWriter,
+    AsgiRouter,
+    AsgiView,
+    NotFound,
+    Response,
+)
 
 ureg = pint.UnitRegistry()
 
@@ -112,7 +118,7 @@ class BaseView(AsgiView):
             datasette=self.ds,
         ):
             body_scripts.append(jinja2.Markup(script))
-        return response.html(
+        return Response.html(
             template.render(
                 {
                     **context,
@@ -144,7 +150,7 @@ class DataView(BaseView):
         self.ds = datasette
 
     def options(self, request, *args, **kwargs):
-        r = response.text("ok")
+        r = Response.text("ok")
         if self.ds.cors:
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
@@ -154,7 +160,7 @@ class DataView(BaseView):
             path = "{}?{}".format(path, request.query_string)
         if remove_args:
             path = path_with_removed_args(request, remove_args, path=path)
-        r = response.redirect(path)
+        r = Response.redirect(path)
         r.headers["Link"] = "<{}>; rel=preload".format(path)
         if self.ds.cors:
             r.headers["Access-Control-Allow-Origin"] = "*"
@@ -254,7 +260,7 @@ class DataView(BaseView):
             response_or_template_contexts = await self.data(
                 request, database, hash, **kwargs
             )
-            if isinstance(response_or_template_contexts, response.HTTPResponse):
+            if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
             else:
                 data, _, _ = response_or_template_contexts
@@ -371,7 +377,7 @@ class DataView(BaseView):
             response_or_template_contexts = await self.data(
                 request, database, hash, **kwargs
             )
-            if isinstance(response_or_template_contexts, response.HTTPResponse):
+            if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
 
             else:
@@ -422,17 +428,11 @@ class DataView(BaseView):
             if result is None:
                 raise NotFound("No data")
 
-            response_args = {
-                "content_type": result.get("content_type", "text/plain"),
-                "status": result.get("status_code", 200),
-            }
-
-            if type(result.get("body")) == bytes:
-                response_args["body_bytes"] = result.get("body")
-            else:
-                response_args["body"] = result.get("body")
-
-            r = response.HTTPResponse(**response_args)
+            r = Response(
+                body=result.get("body"),
+                status=result.get("status_code", 200),
+                content_type=result.get("content_type", "text/plain"),
+            )
         else:
             extras = {}
             if callable(extra_template_data):

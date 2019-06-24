@@ -168,23 +168,7 @@ class AsgiView:
             response = await self.dispatch_request(
                 request, **scope["url_route"]["kwargs"]
             )
-            if hasattr(response, "asgi_send"):
-                await response.asgi_send(send)
-            else:
-                headers = {}
-                headers.update(response.headers)
-                headers["content-type"] = response.content_type
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": response.status,
-                        "headers": [
-                            [key.encode("utf-8"), value.encode("utf-8")]
-                            for key, value in headers.items()
-                        ],
-                    }
-                )
-                await send({"type": "http.response.body", "body": response.body})
+            await response.asgi_send(send)
 
         view.view_class = cls
         view.__doc__ = cls.__doc__
@@ -328,6 +312,57 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
             return
 
     return inner_static
+
+
+class Response:
+    def __init__(self, body=None, status=200, headers=None, content_type="text/plain"):
+        self.body = body
+        self.status = status
+        self.headers = headers or {}
+        self.content_type = content_type
+
+    async def asgi_send(self, send):
+        headers = {}
+        headers.update(self.headers)
+        headers["content-type"] = self.content_type
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status,
+                "headers": [
+                    [key.encode("utf-8"), value.encode("utf-8")]
+                    for key, value in headers.items()
+                ],
+            }
+        )
+        body = self.body
+        if not isinstance(body, bytes):
+            body = body.encode("utf-8")
+        await send({"type": "http.response.body", "body": body})
+
+    @classmethod
+    def html(cls, body, status=200, headers=None):
+        return cls(
+            body,
+            status=status,
+            headers=headers,
+            content_type="text/html; charset=utf-8",
+        )
+
+    @classmethod
+    def text(cls, body, status=200, headers=None):
+        return cls(
+            body,
+            status=status,
+            headers=headers,
+            content_type="text/plain; charset=utf-8",
+        )
+
+    @classmethod
+    def redirect(cls, path, status=302, headers=None):
+        headers = headers or {}
+        headers["Location"] = path
+        return cls("", status=status, headers=headers)
 
 
 class AsgiFileDownload:

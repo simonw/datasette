@@ -1,5 +1,5 @@
 import json
-from sanic import response
+from datasette.utils.asgi import Response
 from .base import BaseView
 
 
@@ -17,7 +17,7 @@ class JsonDataView(BaseView):
             headers = {}
             if self.ds.cors:
                 headers["Access-Control-Allow-Origin"] = "*"
-            return response.HTTPResponse(
+            return Response(
                 json.dumps(data),
                 content_type="application/json; charset=utf-8",
                 headers=headers,

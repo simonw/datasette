@@ -1,7 +1,5 @@
 import os
 
-from sanic import response
-
 from datasette.utils import to_css_class, validate_sql_select
 from datasette.utils.asgi import AsgiFileDownload
 

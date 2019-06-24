@@ -46,7 +46,7 @@ def test_table_csv(app_client):
     response = app_client.get("/fixtures/simple_primary_key.csv")
     assert response.status == 200
     assert not response.headers.get("Access-Control-Allow-Origin")
-    assert "text/plain; charset=utf-8" == response.headers["Content-Type"]
+    assert "text/plain; charset=utf-8" == response.headers["content-type"]
     assert EXPECTED_TABLE_CSV == response.text
 
 
@@ -59,7 +59,7 @@ def test_table_csv_cors_headers(app_client_with_cors):
 def test_table_csv_with_labels(app_client):
     response = app_client.get("/fixtures/facetable.csv?_labels=1")
     assert response.status == 200
-    assert "text/plain; charset=utf-8" == response.headers["Content-Type"]
+    assert "text/plain; charset=utf-8" == response.headers["content-type"]
     assert EXPECTED_TABLE_WITH_LABELS_CSV == response.text
 
 
@@ -68,14 +68,14 @@ def test_custom_sql_csv(app_client):
         "/fixtures.csv?sql=select+content+from+simple_primary_key+limit+2"
     )
     assert response.status == 200
-    assert "text/plain; charset=utf-8" == response.headers["Content-Type"]
+    assert "text/plain; charset=utf-8" == response.headers["content-type"]
     assert EXPECTED_CUSTOM_CSV == response.text
 
 
 def test_table_csv_download(app_client):
     response = app_client.get("/fixtures/simple_primary_key.csv?_dl=1")
     assert response.status == 200
-    assert "text/csv; charset=utf-8" == response.headers["Content-Type"]
+    assert "text/csv; charset=utf-8" == response.headers["content-type"]
     expected_disposition = 'attachment; filename="simple_primary_key.csv"'
     assert expected_disposition == response.headers["Content-Disposition"]
 

@@ -1,9 +1,8 @@
 import hashlib
 import json
 
-from sanic import response
-
 from datasette.utils import CustomJSONEncoder
+from datasette.utils.asgi import Response
 from datasette.version import __version__
 
 from .base import BaseView
@@ -104,9 +103,9 @@ class IndexView(BaseView):
             headers = {}
             if self.ds.cors:
                 headers["Access-Control-Allow-Origin"] = "*"
-            return response.HTTPResponse(
+            return Response(
                 json.dumps({db["name"]: db for db in databases}, cls=CustomJSONEncoder),
-                content_type="application/json",
+                content_type="application/json; charset=utf-8",
                 headers=headers,
             )
         else:

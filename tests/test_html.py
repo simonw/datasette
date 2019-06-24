@@ -8,6 +8,7 @@ from .fixtures import (  # noqa
     METADATA,
 )
 import json
+import pathlib
 import pytest
 import re
 import urllib.parse
@@ -16,6 +17,7 @@ import urllib.parse
 def test_homepage(app_client_two_attached_databases):
     response = app_client_two_attached_databases.get("/")
     assert response.status == 200
+    assert "text/html; charset=utf-8" == response.headers["content-type"]
     soup = Soup(response.body, "html.parser")
     assert "Datasette Fixtures" == soup.find("h1").text
     assert (
@@ -42,6 +44,29 @@ def test_homepage(app_client_two_attached_databases):
         {"href": "/extra_database/searchable", "text": "searchable"},
         {"href": "/extra_database/searchable_view", "text": "searchable_view"},
     ] == table_links
+
+
+def test_http_head(app_client):
+    response = app_client.get("/", method="HEAD")
+    assert response.status == 200
+
+
+def test_static(app_client):
+    response = app_client.get("/-/static/app2.css")
+    assert response.status == 404
+    response = app_client.get("/-/static/app.css")
+    assert response.status == 200
+    assert "text/css" == response.headers["content-type"]
+
+
+def test_static_mounts():
+    for client in make_app_client(
+        static_mounts=[("custom-static", str(pathlib.Path(__file__).parent))]
+    ):
+        response = client.get("/custom-static/test_html.py")
+        assert response.status == 200
+        response = client.get("/custom-static/not_exists.py")
+        assert response.status == 404
 
 
 def test_memory_database_page():

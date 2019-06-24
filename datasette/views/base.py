@@ -7,9 +7,8 @@ import urllib
 
 import jinja2
 import pint
-from sanic import response
-from sanic.exceptions import NotFound
-from sanic.views import HTTPMethodView
+
+from html import escape
 
 from datasette import __version__
 from datasette.plugins import pm
@@ -25,6 +24,14 @@ from datasette.utils import (
     resolve_table_and_format,
     sqlite3,
     to_css_class,
+)
+from datasette.utils.asgi import (
+    AsgiStream,
+    AsgiWriter,
+    AsgiRouter,
+    AsgiView,
+    NotFound,
+    Response,
 )
 
 ureg = pint.UnitRegistry()
@@ -49,7 +56,14 @@ class DatasetteError(Exception):
         self.messagge_is_html = messagge_is_html
 
 
-class BaseView(HTTPMethodView):
+class BaseView(AsgiView):
+    ds = None
+
+    async def head(self, *args, **kwargs):
+        response = await self.get(*args, **kwargs)
+        response.body = b""
+        return response
+
     def _asset_urls(self, key, template, context):
         # Flatten list-of-lists from plugins:
         seen_urls = set()
@@ -104,7 +118,7 @@ class BaseView(HTTPMethodView):
             datasette=self.ds,
         ):
             body_scripts.append(jinja2.Markup(script))
-        return response.html(
+        return Response.html(
             template.render(
                 {
                     **context,
@@ -136,7 +150,7 @@ class DataView(BaseView):
         self.ds = datasette
 
     def options(self, request, *args, **kwargs):
-        r = response.text("ok")
+        r = Response.text("ok")
         if self.ds.cors:
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
@@ -146,7 +160,7 @@ class DataView(BaseView):
             path = "{}?{}".format(path, request.query_string)
         if remove_args:
             path = path_with_removed_args(request, remove_args, path=path)
-        r = response.redirect(path)
+        r = Response.redirect(path)
         r.headers["Link"] = "<{}>; rel=preload".format(path)
         if self.ds.cors:
             r.headers["Access-Control-Allow-Origin"] = "*"
@@ -195,17 +209,17 @@ class DataView(BaseView):
                 kwargs["table"] = table
                 if _format:
                     kwargs["as_format"] = ".{}".format(_format)
-            elif "table" in kwargs:
+            elif kwargs.get("table"):
                 kwargs["table"] = urllib.parse.unquote_plus(kwargs["table"])
 
             should_redirect = "/{}-{}".format(name, expected)
-            if "table" in kwargs:
+            if kwargs.get("table"):
                 should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
-            if "pk_path" in kwargs:
+            if kwargs.get("pk_path"):
                 should_redirect += "/" + kwargs["pk_path"]
-            if "as_format" in kwargs:
+            if kwargs.get("as_format"):
                 should_redirect += kwargs["as_format"]
-            if "as_db" in kwargs:
+            if kwargs.get("as_db"):
                 should_redirect += kwargs["as_db"]
 
             if (
@@ -246,7 +260,7 @@ class DataView(BaseView):
             response_or_template_contexts = await self.data(
                 request, database, hash, **kwargs
             )
-            if isinstance(response_or_template_contexts, response.HTTPResponse):
+            if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
             else:
                 data, _, _ = response_or_template_contexts
@@ -282,13 +296,13 @@ class DataView(BaseView):
                     if not first:
                         data, _, _ = await self.data(request, database, hash, **kwargs)
                     if first:
-                        writer.writerow(headings)
+                        await writer.writerow(headings)
                         first = False
                     next = data.get("next")
                     for row in data["rows"]:
                         if not expanded_columns:
                             # Simple path
-                            writer.writerow(row)
+                            await writer.writerow(row)
                         else:
                             # Look for {"value": "label": } dicts and expand
                             new_row = []
@@ -298,10 +312,10 @@ class DataView(BaseView):
                                     new_row.append(cell["label"])
                                 else:
                                     new_row.append(cell)
-                            writer.writerow(new_row)
+                            await writer.writerow(new_row)
                 except Exception as e:
                     print("caught this", e)
-                    r.write(str(e))
+                    await r.write(str(e))
                     return
 
         content_type = "text/plain; charset=utf-8"
@@ -315,7 +329,7 @@ class DataView(BaseView):
             )
             headers["Content-Disposition"] = disposition
 
-        return response.stream(stream_fn, headers=headers, content_type=content_type)
+        return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
     async def get_format(self, request, database, args):
         """ Determine the format of the response from the request, from URL
@@ -363,7 +377,7 @@ class DataView(BaseView):
             response_or_template_contexts = await self.data(
                 request, database, hash, **kwargs
             )
-            if isinstance(response_or_template_contexts, response.HTTPResponse):
+            if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
 
             else:
@@ -414,17 +428,11 @@ class DataView(BaseView):
             if result is None:
                 raise NotFound("No data")
 
-            response_args = {
-                "content_type": result.get("content_type", "text/plain"),
-                "status": result.get("status_code", 200),
-            }
-
-            if type(result.get("body")) == bytes:
-                response_args["body_bytes"] = result.get("body")
-            else:
-                response_args["body"] = result.get("body")
-
-            r = response.HTTPResponse(**response_args)
+            r = Response(
+                body=result.get("body"),
+                status=result.get("status_code", 200),
+                content_type=result.get("content_type", "text/plain"),
+            )
         else:
             extras = {}
             if callable(extra_template_data):

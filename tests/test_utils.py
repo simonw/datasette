@@ -3,11 +3,11 @@ Tests for various datasette helper functions.
 """
 
 from datasette import utils
+from datasette.utils.asgi import Request
 from datasette.filters import Filters
 import json
 import os
 import pytest
-from sanic.request import Request
 import sqlite3
 import tempfile
 from unittest.mock import patch
@@ -53,7 +53,7 @@ def test_urlsafe_components(path, expected):
     ],
 )
 def test_path_with_added_args(path, added_args, expected):
-    request = Request(path.encode("utf8"), {}, "1.1", "GET", None)
+    request = Request.fake(path)
     actual = utils.path_with_added_args(request, added_args)
     assert expected == actual
 
@@ -67,11 +67,11 @@ def test_path_with_added_args(path, added_args, expected):
     ],
 )
 def test_path_with_removed_args(path, args, expected):
-    request = Request(path.encode("utf8"), {}, "1.1", "GET", None)
+    request = Request.fake(path)
     actual = utils.path_with_removed_args(request, args)
     assert expected == actual
     # Run the test again but this time use the path= argument
-    request = Request("/".encode("utf8"), {}, "1.1", "GET", None)
+    request = Request.fake("/")
     actual = utils.path_with_removed_args(request, args, path=path)
     assert expected == actual
 
@@ -84,7 +84,7 @@ def test_path_with_removed_args(path, args, expected):
     ],
 )
 def test_path_with_replaced_args(path, args, expected):
-    request = Request(path.encode("utf8"), {}, "1.1", "GET", None)
+    request = Request.fake(path)
     actual = utils.path_with_replaced_args(request, args)
     assert expected == actual
 
@@ -363,7 +363,7 @@ def test_table_columns():
     ],
 )
 def test_path_with_format(path, format, extra_qs, expected):
-    request = Request(path.encode("utf8"), {}, "1.1", "GET", None)
+    request = Request.fake(path)
     actual = utils.path_with_format(request, format, extra_qs)
     assert expected == actual
 

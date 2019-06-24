@@ -1,4 +1,5 @@
 import asyncio
+import uvicorn
 import click
 from click import formatting
 from click_default_group import DefaultGroup
@@ -354,4 +355,4 @@ def serve(
     asyncio.get_event_loop().run_until_complete(ds.run_sanity_checks())
 
     # Start the server
-    ds.app().run(host=host, port=port, debug=debug)
+    uvicorn.run(ds.app(), host=host, port=port, log_level="info")

@@ -37,17 +37,18 @@ setup(
     author="Simon Willison",
     license="Apache License, Version 2.0",
     url="https://github.com/simonw/datasette",
-    packages=find_packages(exclude='tests'),
+    packages=find_packages(exclude="tests"),
     package_data={"datasette": ["templates/*.html"]},
     include_package_data=True,
     install_requires=[
         "click>=6.7",
         "click-default-group==1.2",
-        "Sanic==0.7.0",
         "Jinja2==2.10.1",
         "hupper==1.0",
         "pint==0.8.1",
         "pluggy>=0.12.0",
+        "uvicorn>=0.8.1",
+        "aiofiles==0.4.0",
     ],
     entry_points="""
         [console_scripts]
@@ -60,6 +61,7 @@ setup(
             "pytest-asyncio==0.10.0",
             "aiohttp==3.5.3",
             "beautifulsoup4==4.6.1",
+            "asgiref==3.1.2",
         ]
         + maybe_black
     },

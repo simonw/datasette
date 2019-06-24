@@ -1,10 +1,9 @@
 import os
 
-from sanic import response
-
 from datasette.utils import to_css_class, validate_sql_select
+from datasette.utils.asgi import AsgiFileDownload
 
-from .base import DataView, DatasetteError
+from .base import DatasetteError, DataView
 
 
 class DatabaseView(DataView):
@@ -79,8 +78,8 @@ class DatabaseDownload(DataView):
         if not db.path:
             raise DatasetteError("Cannot download database", status=404)
         filepath = db.path
-        return await response.file_stream(
+        return AsgiFileDownload(
             filepath,
             filename=os.path.basename(filepath),
-            mime_type="application/octet-stream",
+            content_type="application/octet-stream",
         )

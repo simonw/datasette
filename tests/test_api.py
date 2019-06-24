@@ -22,6 +22,7 @@ import urllib
 def test_homepage(app_client):
     response = app_client.get("/.json")
     assert response.status == 200
+    assert "application/json; charset=utf-8" == response.headers["content-type"]
     assert response.json.keys() == {"fixtures": 0}.keys()
     d = response.json["fixtures"]
     assert d["name"] == "fixtures"
@@ -771,8 +772,8 @@ def test_paginate_tables_and_views(app_client, path, expected_rows, expected_pag
         fetched.extend(response.json["rows"])
         path = response.json["next_url"]
         if path:
-            assert response.json["next"]
             assert urllib.parse.urlencode({"_next": response.json["next"]}) in path
+            path = path.replace("http://localhost", "")
         assert count < 30, "Possible infinite loop detected"
 
     assert expected_rows == len(fetched)
@@ -812,6 +813,8 @@ def test_paginate_compound_keys(app_client):
         response = app_client.get(path)
         fetched.extend(response.json["rows"])
         path = response.json["next_url"]
+        if path:
+            path = path.replace("http://localhost", "")
         assert page < 100
     assert 1001 == len(fetched)
     assert 21 == page
@@ -833,6 +836,8 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
         response = app_client.get(path)
         fetched.extend(response.json["rows"])
         path = response.json["next_url"]
+        if path:
+            path = path.replace("http://localhost", "")
     assert 2 == page
     expected = [r[3] for r in generate_compound_rows(1001) if "d" in r[3]]
     assert expected == [f["content"] for f in fetched]
@@ -881,6 +886,8 @@ def test_sortable(app_client, query_string, sort_key, human_description_en):
         assert human_description_en == response.json["human_description_en"]
         fetched.extend(response.json["rows"])
         path = response.json["next_url"]
+        if path:
+            path = path.replace("http://localhost", "")
     assert 5 == page
     expected = list(generate_sortable_rows(201))
     expected.sort(key=sort_key)
@@ -1191,6 +1198,7 @@ def test_plugins_json(app_client):
 def test_versions_json(app_client):
     response = app_client.get("/-/versions.json")
     assert "python" in response.json
+    assert "3.0" == response.json.get("asgi")
     assert "version" in response.json["python"]
     assert "full" in response.json["python"]
     assert "datasette" in response.json
@@ -1236,6 +1244,8 @@ def test_page_size_matching_max_returned_rows(
         fetched.extend(response.json["rows"])
         assert len(response.json["rows"]) in (1, 50)
         path = response.json["next_url"]
+        if path:
+            path = path.replace("http://localhost", "")
     assert 201 == len(fetched)
 
 

@@ -28,7 +28,28 @@ To set up full-text search for a table, you need to do two things:
 * Create a new FTS virtual table associated with your table
 * Populate that FTS table with the data that you would like to be able to run searches against
 
-To enable full-text search for a table called ``items`` that works against the ``name`` and ``description`` columns, you would run the following SQL to create a new ``items_fts`` FTS virtual table:
+Configuring FTS using sqlite-utils
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+`sqlite-utils <https://sqlite-utils.readthedocs.io/>`__ is a CLI utility and Python library for manipulating SQLite databases. You can use `it from Python code <https://sqlite-utils.readthedocs.io/en/latest/python-api.html#enabling-full-text-search>`__ to configure FTS search, or you can achieve the same goal `using the accompanying command-line tool <https://sqlite-utils.readthedocs.io/en/latest/cli.html#configuring-full-text-search>`__.
+
+Here's how to use ``sqlite-utils`` to enable full-text search for an ``items`` table across the ``name`` and ``description`` columns::
+
+    $ sqlite-utils enable-fts mydatabase.db items name description
+
+Configuring FTS using csvs-to-sqlite
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your data starts out in CSV files, you can use Datasette's companion tool `csvs-to-sqlite <https://github.com/simonw/csvs-to-sqlite>`__ to convert that file into a SQLite database and enable full-text search on specific columns. For a file called ``items.csv`` where you want full-text search to operate against the ``name`` and ``description`` columns you would run the following::
+
+    $ csvs-to-sqlite items.csv items.db -f name -f description
+
+Configuring FTS by hand
+~~~~~~~~~~~~~~~~~~~~~~~
+
+We recommend using `sqlite-utils <https://sqlite-utils.readthedocs.io/>`__, but if you want to hand-roll a SQLite full-text search table you can do so using the following SQL.
+
+To enable full-text search for a table called ``items`` that works against the ``name`` and ``description`` columns, you would run this SQL to create a new ``items_fts`` FTS virtual table:
 
 .. code-block:: sql
 
@@ -71,8 +92,6 @@ And then populate it like this:
 
 You can use this technique to populate the full-text search index from any combination of tables and joins that makes sense for your project.
 
-The `sqlite-utils tool <https://sqlite-utils.readthedocs.io/en/latest/cli.html#configuring-full-text-search>`__ provides a command-line mechanism that can be used to implement the above steps.
-
 .. _full_text_search_table_or_view:
 
 Configuring full-text search for a table or view
@@ -102,13 +121,6 @@ Here is an example which enables full-text search for a ``display_ads`` view whi
         }
       }
     }
-
-Setting up full-text search using csvs-to-sqlite
-------------------------------------------------
-
-If your data starts out in CSV files, you can use Datasette's companion tool `csvs-to-sqlite <https://github.com/simonw/csvs-to-sqlite>`_ to convert that file into a SQLite database and enable full-text search on specific columns. For a file called ``items.csv`` where you want full-text search to operate against the ``name`` and ``description`` columns you would run the following::
-
-    csvs-to-sqlite items.csv items.db -f name -f description
 
 The table view API
 ------------------

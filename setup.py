@@ -56,6 +56,10 @@ setup(
     """,
     setup_requires=["pytest-runner"],
     extras_require={
+        "docs": [
+            "sphinx_rtd_theme",
+            "sphinx-autobuild",
+        ],
         "test": [
             "pytest==4.6.1",
             "pytest-asyncio==0.10.0",

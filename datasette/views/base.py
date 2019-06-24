@@ -4,7 +4,6 @@ import itertools
 import re
 import time
 import urllib
-from html import escape
 
 import jinja2
 import pint

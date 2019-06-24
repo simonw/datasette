@@ -1,5 +1,4 @@
 import json
-import re
 import urllib
 
 from datasette import hookimpl

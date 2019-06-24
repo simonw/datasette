@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import shutil
 import sys
 from subprocess import call
@@ -113,7 +112,6 @@ class PublishAliases(click.Group):
 @cli.group(cls=PublishAliases)
 def publish():
     "Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"
-    pass
 
 
 # Register publish plugins

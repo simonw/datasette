@@ -34,5 +34,7 @@ def test_isort(path):
     result = isort.SortImports(path, check=True)
     assert (
         not result.incorrectly_sorted
-    ), "{} has incorrectly sorted imports, fix with 'isort -rc tests && isort -rc datasette && black tests datasette'"
+    ), "{} has incorrectly sorted imports, fix with 'isort -rc tests && isort -rc datasette && black tests datasette'".format(
+        path
+    )
     sys.stdout = stdout

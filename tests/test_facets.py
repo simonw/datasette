@@ -1,5 +1,3 @@
-from collections import namedtuple
-
 import pytest
 
 from datasette.facets import ArrayFacet, ColumnFacet, DateFacet, ManyToManyFacet

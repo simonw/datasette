@@ -21,7 +21,6 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
                     value = json.loads(value)
                 except (TypeError, ValueError) as e:
                     print(e)
-                    pass
             new_row.append(value)
         new_rows.append(new_row)
     return new_rows

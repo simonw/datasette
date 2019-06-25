@@ -56,10 +56,7 @@ setup(
     """,
     setup_requires=["pytest-runner"],
     extras_require={
-        "docs": [
-            "sphinx_rtd_theme",
-            "sphinx-autobuild",
-        ],
+        "docs": ["sphinx_rtd_theme", "sphinx-autobuild"],
         "test": [
             "pytest==4.6.1",
             "pytest-asyncio==0.10.0",
@@ -67,7 +64,7 @@ setup(
             "beautifulsoup4==4.6.1",
             "asgiref==3.1.2",
         ]
-        + maybe_black
+        + maybe_black,
     },
     tests_require=["datasette[test]"],
     classifiers=[

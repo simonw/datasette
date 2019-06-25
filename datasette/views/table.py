@@ -43,13 +43,13 @@ class Row:
     def __getitem__(self, key):
         for cell in self.cells:
             if cell["column"] == key:
-                return cell["value"]
+                return cell["raw"]
         raise KeyError
 
-    def raw(self, key):
+    def display(self, key):
         for cell in self.cells:
             if cell["column"] == key:
-                return cell["raw"]
+                return cell["value"]
         return None
 
     def __str__(self):

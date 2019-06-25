@@ -109,7 +109,7 @@ For added productivity, you can use use `sphinx-autobuild <https://pypi.org/proj
 
     make livehtml
 
-Now browse to ``http://localhost:8000/`` to view the documentation. Any edits you make should be instantly relected in your browser.
+Now browse to ``http://localhost:8000/`` to view the documentation. Any edits you make should be instantly reflected in your browser.
 
 .. _contributing_release:
 

@@ -33,6 +33,35 @@ LINK_WITH_LABEL = (
 LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
 
 
+class Row:
+    def __init__(self, cells):
+        self.cells = cells
+
+    def __iter__(self):
+        return iter(self.cells)
+
+    def __getitem__(self, key):
+        for cell in self.cells:
+            if cell["column"] == key:
+                return cell["value"]
+        raise KeyError
+
+    def raw(self, key):
+        for cell in self.cells:
+            if cell["column"] == key:
+                return cell["raw"]
+        return None
+
+    def __str__(self):
+        d = {
+            key: self[key]
+            for key in [
+                c["column"] for c in self.cells if not c.get("is_special_link_column")
+            ]
+        }
+        return json.dumps(d, default=repr, indent=2)
+
+
 class RowTableShared(DataView):
     async def sortable_columns_for_table(self, database, table, use_rowid):
         db = self.ds.databases[database]
@@ -76,18 +105,18 @@ class RowTableShared(DataView):
             # Unless we are a view, the first column is a link - either to the rowid
             # or to the simple or compound primary key
             if link_column:
+                is_special_link_column = len(pks) != 1
+                pk_path = path_from_row_pks(row, pks, not pks, False)
                 cells.append(
                     {
                         "column": pks[0] if len(pks) == 1 else "Link",
+                        "is_special_link_column": is_special_link_column,
+                        "raw": pk_path,
                         "value": jinja2.Markup(
                             '<a href="/{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                                 database=database,
                                 table=urllib.parse.quote_plus(table),
-                                flat_pks=str(
-                                    jinja2.escape(
-                                        path_from_row_pks(row, pks, not pks, False)
-                                    )
-                                ),
+                                flat_pks=str(jinja2.escape(pk_path)),
                                 flat_pks_quoted=path_from_row_pks(row, pks, not pks),
                             )
                         ),
@@ -159,8 +188,8 @@ class RowTableShared(DataView):
                     if truncate_cells and len(display_value) > truncate_cells:
                         display_value = display_value[:truncate_cells] + u"\u2026"
 
-                cells.append({"column": column, "value": display_value})
-            cell_rows.append(cells)
+                cells.append({"column": column, "value": display_value, "raw": value})
+            cell_rows.append(Row(cells))
 
         if link_column:
             # Add the link column header.

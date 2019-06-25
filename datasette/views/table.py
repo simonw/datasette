@@ -699,6 +699,10 @@ class TableView(RowTableShared):
                 "display_columns": display_columns,
                 "filter_columns": filter_columns,
                 "display_rows": display_rows,
+                "display_rows_keyed": [
+                    {cell["column"]: cell["value"] for cell in row}
+                    for row in display_rows
+                ],
                 "facets_timed_out": facets_timed_out,
                 "sorted_facet_results": sorted(
                     facet_results.values(),
@@ -799,6 +803,10 @@ class RowView(RowTableShared):
                 ),
                 "display_columns": display_columns,
                 "display_rows": display_rows,
+                "display_rows_keyed": [
+                    {cell["column"]: cell["value"] for cell in row}
+                    for row in display_rows
+                ],
                 "custom_rows_and_columns_templates": [
                     "_rows_and_columns-{}-{}.html".format(
                         to_css_class(database), to_css_class(table)

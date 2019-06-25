@@ -17,10 +17,10 @@
         </tr>
     </thead>
     <tbody>
-    {% for row in display_rows %}
+    {% for row in display_rows_keyed %}
         <tr>
-            {% for cell in row %}
-                <td class="col-{{ cell.column|to_css_class }}">{{ cell.value }}</td>
+            {% for column in display_columns %}
+                <td class="col-{{ column.name|to_css_class }}">{{ row[column.name] }}</td>
             {% endfor %}
         </tr>
     {% endfor %}

@@ -91,7 +91,7 @@ You can build it locally by installing ``sphinx`` and ``sphinx_rtd_theme`` in yo
     source venv/bin/activate
 
     # Install the dependencies needed to build the docs
-    pip install sphinx sphinx_rtd_theme
+    pip install -e .[docs]
 
     # Now build the docs
     cd docs/
@@ -103,15 +103,13 @@ This will create the HTML version of the documentation in ``docs/_build/html``. 
 
 Any time you make changes to a ``.rst`` file you can re-run ``make html`` to update the built documents, then refresh them in your browser.
 
-For added productivity, you can run Sphinx in auto-build mode. This will run a local webserver serving the docs that automatically rebuilds them and refreshes the page any time you hit save in your editor.
+For added productivity, you can use use `sphinx-autobuild <https://pypi.org/project/sphinx-autobuild/>`__ to run Sphinx in auto-build mode. This will run a local webserver serving the docs that automatically rebuilds them and refreshes the page any time you hit save in your editor.
 
-To enable auto-build mode, first install `sphinx-autobuild <https://pypi.org/project/sphinx-autobuild/>`__::
-
-    pip install sphinx-autobuild
-
-Now start the server by running::
+``sphinx-autobuild`` will have been installed when you ran ``pip install -e .[docs]``. In your ``docs/`` directory you can start the server by running the following::
 
     make livehtml
+
+Now browse to ``http://localhost:8000/`` to view the documentation. Any edits you make should be instantly relected in your browser.
 
 .. _contributing_release:
 

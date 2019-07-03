@@ -6,6 +6,11 @@ hookimpl = HookimplMarker("datasette")
 
 
 @hookspec
+def asgi_wrapper(datasette):
+    "Returns an ASGI middleware callable to wrap our ASGI application with"
+
+
+@hookspec
 def prepare_connection(conn):
     "Modify SQLite connection in some way e.g. register custom SQL functions"
 

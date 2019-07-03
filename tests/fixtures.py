@@ -372,6 +372,7 @@ def render_cell(value, column, table, database, datasette):
 
 PLUGIN2 = """
 from datasette import hookimpl
+from functools import wraps
 import jinja2
 import json
 
@@ -413,6 +414,28 @@ def render_cell(value, database):
             label=jinja2.escape(data["label"] or "") or "&nbsp;"
         )
     )
+
+
+@hookimpl
+def asgi_wrapper(datasette):
+    def wrap_with_databases_header(app):
+        @wraps(app)
+        async def add_x_databases_header(scope, recieve, send):
+            async def wrapped_send(event):
+                if event["type"] == "http.response.start":
+                    original_headers = event.get("headers") or []
+                    event = {
+                        "type": event["type"],
+                        "status": event["status"],
+                        "headers": original_headers + [
+                            [b"x-databases",
+                            ", ".join(datasette.databases.keys()).encode("utf-8")]
+                        ],
+                    }
+                await send(event)
+            await app(scope, recieve, wrapped_send)
+        return add_x_databases_header
+    return wrap_with_databases_header
 """
 
 TABLES = (

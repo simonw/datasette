@@ -162,3 +162,8 @@ def test_plugins_extra_body_script(app_client, path, expected_extra_body_script)
     json_data = r.search(app_client.get(path).body.decode("utf8")).group(1)
     actual_data = json.loads(json_data)
     assert expected_extra_body_script == actual_data
+
+
+def test_plugins_asgi_wrapper(app_client):
+    response = app_client.get("/fixtures")
+    assert "fixtures" == response.headers["x-databases"]

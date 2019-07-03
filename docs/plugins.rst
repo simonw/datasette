@@ -666,3 +666,44 @@ The plugin hook can then be used to register the new facet class like this:
     @hookimpl
     def register_facet_classes():
         return [SpecialFacet]
+
+
+.. _plugin_asgi_wrapper:
+
+asgi_wrapper(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Return an `ASGI <https://asgi.readthedocs.io/>`__ middleware wrapper function that will be applied to the Datasette ASGI application.
+
+This is a very powerful hook. You can use it to manipulate the entire Datasette response, or even to configure new URL routes that will be handled by your own custom code.
+
+You can write your ASGI code directly against the low-level specification, or you can use the middleware utilites provided by an ASGI framework such as `Starlette <https://www.starlette.io/middleware/>`__.
+
+This example plugin adds a ``x-databases`` HTTP header listing the currently attached databases:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from functools import wraps
+
+
+    @hookimpl
+    def asgi_wrapper(datasette):
+        def wrap_with_databases_header(app):
+            @wraps(app)
+            async def add_x_databases_header(scope, recieve, send):
+                async def wrapped_send(event):
+                    if event["type"] == "http.response.start":
+                        original_headers = event.get("headers") or []
+                        event = {
+                            "type": event["type"],
+                            "status": event["status"],
+                            "headers": original_headers + [
+                                [b"x-databases",
+                                ", ".join(datasette.databases.keys()).encode("utf-8")]
+                            ],
+                        }
+                    await send(event)
+                await app(scope, recieve, wrapped_send)
+            return add_x_databases_header
+        return wrap_with_databases_header

@@ -3,7 +3,6 @@ from collections import OrderedDict
 import base64
 import click
 import hashlib
-import imp
 import json
 import os
 import pkg_resources
@@ -11,6 +10,7 @@ import re
 import shlex
 import tempfile
 import time
+import types
 import shutil
 import urllib
 import numbers
@@ -588,7 +588,7 @@ def link_or_copy_directory(src, dst):
 
 def module_from_path(path, name):
     # Adapted from http://sayspy.blogspot.com/2011/07/how-to-import-module-from-just-file.html
-    mod = imp.new_module(name)
+    mod = types.ModuleType(name)
     mod.__file__ = path
     with open(path, "r") as file:
         code = compile(file.read(), path, "exec", dont_inherit=True)

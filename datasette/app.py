@@ -651,9 +651,12 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
-        return AsgiLifespan(
+        asgi = AsgiLifespan(
             AsgiTracer(DatasetteRouter(self, routes)), on_startup=setup_db
         )
+        for wrapper in pm.hook.asgi_wrapper(datasette=self):
+            asgi = wrapper(asgi)
+        return asgi
 
 
 class DatasetteRouter(AsgiRouter):

@@ -41,14 +41,14 @@ setup(
     package_data={"datasette": ["templates/*.html"]},
     include_package_data=True,
     install_requires=[
-        "click>=6.7",
-        "click-default-group==1.2",
-        "Jinja2==2.10.1",
-        "hupper==1.0",
-        "pint==0.8.1",
-        "pluggy>=0.12.0",
-        "uvicorn>=0.8.1",
-        "aiofiles==0.4.0",
+        "click~=7.0",
+        "click-default-group~=1.2.1",
+        "Jinja2~=2.10.1",
+        "hupper~=1.0",
+        "pint~=0.8.1",
+        "pluggy~=0.12.0",
+        "uvicorn~=0.8.1",
+        "aiofiles~=0.4.0",
     ],
     entry_points="""
         [console_scripts]
@@ -58,11 +58,11 @@ setup(
     extras_require={
         "docs": ["sphinx_rtd_theme", "sphinx-autobuild"],
         "test": [
-            "pytest==4.6.1",
-            "pytest-asyncio==0.10.0",
-            "aiohttp==3.5.3",
-            "beautifulsoup4==4.6.1",
-            "asgiref==3.1.2",
+            "pytest~=5.0.0",
+            "pytest-asyncio~=0.10.0",
+            "aiohttp~=3.5.3",
+            "beautifulsoup4~=4.6.1",
+            "asgiref~=3.1.2",
         ]
         + maybe_black,
     },

@@ -964,3 +964,16 @@ def test_metadata_json_html(app_client):
     assert response.status == 200
     pre = Soup(response.body, "html.parser").find("pre")
     assert METADATA == json.loads(pre.text)
+
+
+def test_custom_table_include():
+    for client in make_app_client(
+        template_dir=str(pathlib.Path(__file__).parent / "test_templates")
+    ):
+        response = client.get("/fixtures/complex_foreign_keys")
+        assert response.status == 200
+        assert (
+            '<div class="custom-table-row">'
+            '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
+            "</div>"
+        ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))

@@ -145,14 +145,14 @@ The lookup rules Datasette uses are as follows::
         row.html
 
     Rows and columns include on table page:
-        _rows_and_columns-table-mydatabase-mytable.html
-        _rows_and_columns-mydatabase-mytable.html
-        _rows_and_columns.html
+        _table-table-mydatabase-mytable.html
+        _table-mydatabase-mytable.html
+        _table.html
 
     Rows and columns include on row page:
-        _rows_and_columns-row-mydatabase-mytable.html
-        _rows_and_columns-mydatabase-mytable.html
-        _rows_and_columns.html
+        _table-row-mydatabase-mytable.html
+        _table-mydatabase-mytable.html
+        _table.html
 
 If a table name has spaces or other unexpected characters in it, the template
 filename will follow the same rules as our custom ``<body>`` CSS classes - for
@@ -189,16 +189,16 @@ content you can do so by creating a ``row.html`` template like this::
 Note the ``default:row.html`` template name, which ensures Jinja will inherit
 from the default template.
 
-The ``_rows_and_columns.html`` template is included on both the row and the table
-page, and displays the content of the row. The default ``_rows_and_columns.html`` template
-`can be seen here <https://github.com/simonw/datasette/blob/master/datasette/templates/_rows_and_columns.html>`_.
+The ``_table.html`` template is included on both the row and the table
+page, and displays the content of the row. The default ``_table.html`` template
+`can be seen here <https://github.com/simonw/datasette/blob/master/datasette/templates/_table.html>`_.
 
 You can provide a custom template that applies to all of your databases and
 tables, or you can provide custom templates for specific tables using the
 template naming scheme described above.
 
 Say for example you want to output a certain column as unescaped HTML. You could
-provide a custom ``_rows_and_columns.html`` template like this::
+provide a custom ``_table.html`` template like this::
 
     <table>
         <thead>

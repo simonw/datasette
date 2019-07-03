@@ -24,7 +24,7 @@
 
 <p>This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}</p>
 
-{% include custom_rows_and_columns_templates %}
+{% include custom_table_templates %}
 
 {% if foreign_key_tables %}
     <h2>Links from other tables</h2>

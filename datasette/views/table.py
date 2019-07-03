@@ -744,14 +744,14 @@ class TableView(RowTableShared):
                 "sort": sort,
                 "sort_desc": sort_desc,
                 "disable_sort": is_view,
-                "custom_rows_and_columns_templates": [
-                    "_rows_and_columns-{}-{}.html".format(
+                "custom_table_templates": [
+                    "_table-{}-{}.html".format(
                         to_css_class(database), to_css_class(table)
                     ),
-                    "_rows_and_columns-table-{}-{}.html".format(
+                    "_table-table-{}-{}.html".format(
                         to_css_class(database), to_css_class(table)
                     ),
-                    "_rows_and_columns.html",
+                    "_table.html",
                 ],
                 "metadata": metadata,
                 "view_definition": await db.get_view_definition(table),
@@ -828,14 +828,14 @@ class RowView(RowTableShared):
                 ),
                 "display_columns": display_columns,
                 "display_rows": display_rows,
-                "custom_rows_and_columns_templates": [
-                    "_rows_and_columns-{}-{}.html".format(
+                "custom_table_templates": [
+                    "_table-{}-{}.html".format(
                         to_css_class(database), to_css_class(table)
                     ),
-                    "_rows_and_columns-row-{}-{}.html".format(
+                    "_table-row-{}-{}.html".format(
                         to_css_class(database), to_css_class(table)
                     ),
-                    "_rows_and_columns.html",
+                    "_table.html",
                 ],
                 "metadata": (self.ds.metadata("databases") or {})
                 .get(database, {})

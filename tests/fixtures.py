@@ -101,6 +101,7 @@ def make_app_client(
     extra_databases=None,
     inspect_data=None,
     static_mounts=None,
+    template_dir=None,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -143,6 +144,7 @@ def make_app_client(
             config=config,
             inspect_data=inspect_data,
             static_mounts=static_mounts,
+            template_dir=template_dir,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         client = TestClient(ds.app())

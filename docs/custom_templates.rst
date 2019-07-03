@@ -144,12 +144,12 @@ The lookup rules Datasette uses are as follows::
         row-mydatabase-mytable.html
         row.html
 
-    Rows and columns include on table page:
+    Table of rows and columns include on table page:
         _table-table-mydatabase-mytable.html
         _table-mydatabase-mytable.html
         _table.html
 
-    Rows and columns include on row page:
+    Table of rows and columns include on row page:
         _table-row-mydatabase-mytable.html
         _table-mydatabase-mytable.html
         _table.html
@@ -189,38 +189,28 @@ content you can do so by creating a ``row.html`` template like this::
 Note the ``default:row.html`` template name, which ensures Jinja will inherit
 from the default template.
 
-The ``_table.html`` template is included on both the row and the table
-page, and displays the content of the row. The default ``_table.html`` template
-`can be seen here <https://github.com/simonw/datasette/blob/master/datasette/templates/_table.html>`_.
+The ``_table.html`` template is included by both the row and the table pages,
+and a list of rows. The default ``_table.html`` template renders them as an
+HTML template and `can be seen here <https://github.com/simonw/datasette/blob/master/datasette/templates/_table.html>`_.
 
 You can provide a custom template that applies to all of your databases and
 tables, or you can provide custom templates for specific tables using the
 template naming scheme described above.
 
-Say for example you want to output a certain column as unescaped HTML. You could
-provide a custom ``_table.html`` template like this::
+If you want to present your data in a format other than an HTML table, you
+can do so by looping through ``display_rows`` in your own ``_table.html``
+template. You can use ``{{ row["column_name"] }}`` to output the raw value
+of a specific column.
 
-    <table>
-        <thead>
-            <tr>
-                {% for column in display_columns %}
-                    <th scope="col">{{ column }}</th>
-                {% endfor %}
-            </tr>
-        </thead>
-        <tbody>
-        {% for row in display_rows %}
-            <tr>
-                {% for cell in row %}
-                    <td>
-                        {% if cell.column == 'description' %}
-                            {{ cell.value|safe }}
-                        {% else %}
-                            {{ cell.value }}
-                        {% endif %}
-                    </td>
-                {% endfor %}
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+If you want to output the rendered HTML version of a column, including any
+links to foreign keys, you can use ``{{ row.display("column_name") }}``.
+
+Here is an example of a custom ``_table.html`` template::
+
+    {% for row in display_rows %}
+        <div>
+            <h2>{{ row["title"] }}</h2>
+            <p>{{ row["description"] }}<lp>
+            <p>Category: {{ row.display("category_id") }}</p>
+        </div>
+    {% endfor %}

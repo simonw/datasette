@@ -276,7 +276,9 @@ class Datasette:
             for key, value in plugin_config_copy.items():
                 if isinstance(value, dict):
                     if list(value.keys()) == ["$env"]:
-                        plugin_config_copy[key] = os.environ.get(list(value.values())[0])
+                        plugin_config_copy[key] = os.environ.get(
+                            list(value.values())[0]
+                        )
                     elif list(value.keys()) == ["$file"]:
                         plugin_config_copy[key] = open(list(value.values())[0]).read()
             return plugin_config_copy

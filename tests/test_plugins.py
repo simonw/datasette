@@ -1,5 +1,5 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client, make_app_client  # noqa
+from .fixtures import app_client, make_app_client, TEMP_PLUGIN_SECRET_FILE  # noqa
 import base64
 import json
 import os
@@ -126,22 +126,16 @@ def test_plugin_config(app_client):
     assert None is app_client.ds.plugin_config("unknown-plugin")
 
 
-def test_plugin_config_env():
+def test_plugin_config_env(app_client):
     os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
-    for client in make_app_client(
-        metadata={"plugins": {"env-plugin": {"foo": {"$env": "FOO_ENV"}}}}
-    ):
-        assert {"foo": "FROM_ENVIRONMENT"} == client.ds.plugin_config("env-plugin")
+    assert {"foo": "FROM_ENVIRONMENT"} == app_client.ds.plugin_config("env-plugin")
     del os.environ["FOO_ENV"]
 
 
-def test_plugin_config_file(tmpdir):
-    filepath = str(tmpdir / "secret-file")
-    open(filepath, "w").write("FROM_FILE")
-    for client in make_app_client(
-        metadata={"plugins": {"file-plugin": {"foo": {"$file": filepath}}}}
-    ):
-        assert {"foo": "FROM_FILE"} == client.ds.plugin_config("file-plugin")
+def test_plugin_config_file(app_client):
+    open(TEMP_PLUGIN_SECRET_FILE, "w").write("FROM_FILE")
+    assert {"foo": "FROM_FILE"} == app_client.ds.plugin_config("file-plugin")
+    os.remove(TEMP_PLUGIN_SECRET_FILE)
 
 
 @pytest.mark.parametrize(

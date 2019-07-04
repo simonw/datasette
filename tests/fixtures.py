@@ -15,6 +15,10 @@ import time
 from urllib.parse import unquote
 
 
+# This temp file is used by one of the plugin config tests
+TEMP_PLUGIN_SECRET_FILE = os.path.join(tempfile.gettempdir(), "plugin-secret")
+
+
 class TestResponse:
     def __init__(self, status, headers, body):
         self.status = status
@@ -246,7 +250,11 @@ METADATA = {
     "source_url": "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
     "about": "About Datasette",
     "about_url": "https://github.com/simonw/datasette",
-    "plugins": {"name-of-plugin": {"depth": "root"}},
+    "plugins": {
+        "name-of-plugin": {"depth": "root"},
+        "env-plugin": {"foo": {"$env": "FOO_ENV"}},
+        "file-plugin": {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}},
+    },
     "databases": {
         "fixtures": {
             "description": "Test tables description",

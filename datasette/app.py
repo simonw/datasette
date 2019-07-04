@@ -268,7 +268,16 @@ class Datasette:
         )
         if plugins is None:
             return None
-        return plugins.get(plugin_name)
+        plugin_config = plugins.get(plugin_name)
+        # Resolve any $file and $env keys
+        if isinstance(plugin_config, dict):
+            for key, value in plugin_config.items():
+                if isinstance(value, dict):
+                    if list(value.keys()) == ["$env"]:
+                        plugin_config[key] = os.environ.get(list(value.values())[0])
+                    elif list(value.keys()) == ["$file"]:
+                        plugin_config[key] = open(list(value.values())[0]).read()
+        return plugin_config
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):

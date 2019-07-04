@@ -1,7 +1,8 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client  # noqa
+from .fixtures import app_client, make_app_client  # noqa
 import base64
 import json
+import os
 import re
 import pytest
 import urllib
@@ -123,6 +124,24 @@ def test_plugin_config(app_client):
     )
     assert {"depth": "root"} == app_client.ds.plugin_config("name-of-plugin")
     assert None is app_client.ds.plugin_config("unknown-plugin")
+
+
+def test_plugin_config_env():
+    os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
+    for client in make_app_client(
+        metadata={"plugins": {"env-plugin": {"foo": {"$env": "FOO_ENV"}}}}
+    ):
+        assert {"foo": "FROM_ENVIRONMENT"} == client.ds.plugin_config("env-plugin")
+    del os.environ["FOO_ENV"]
+
+
+def test_plugin_config_file(tmpdir):
+    filepath = str(tmpdir / "secret-file")
+    open(filepath, "w").write("FROM_FILE")
+    for client in make_app_client(
+        metadata={"plugins": {"file-plugin": {"foo": {"$file": filepath}}}}
+    ):
+        assert {"foo": "FROM_FILE"} == client.ds.plugin_config("file-plugin")
 
 
 @pytest.mark.parametrize(

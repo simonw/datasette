@@ -219,6 +219,39 @@ Here is an example of some plugin configuration for a specific table::
 
 This tells the ``datasette-cluster-map`` column which latitude and longitude columns should be used for a table called ``Street_Tree_List`` inside a database file called ``sf-trees.db``.
 
+Secret configuration values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Any values embedded in ``metadata.json`` will be visible to anyone who views the ``/-/metadata`` page of your Datasette instance. Some plugins may need configuration that should stay secret - API keys for example. There are two ways in which you can store secret configuration values.
+
+**As environment variables**. If your secret lives in an environment variable that is available to the Datasette process, you can indicate that the configuration value should be read from that environment variable like so::
+
+    {
+        "plugins": {
+            "datasette-auth-github": {
+                "client_secret": {
+                    "$env": "GITHUB_CLIENT_SECRET"
+                }
+            }
+        }
+    }
+
+
+**As values in separate files**. Your secrets can also live in files on disk. To specify a secret should be read from a file, provide the full file path like this::
+
+    {
+        "plugins": {
+            "datasette-auth-github": {
+                "client_secret": {
+                    "$file": "/secrets/client-secret"
+                }
+            }
+        }
+    }
+
+Writing plugins that accept configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 When you are writing plugins, you can access plugin configuration like this using the ``datasette.plugin_config()`` method. If you know you need plugin configuration for a specific table, you can access it like this::
 
     plugin_config = datasette.plugin_config(

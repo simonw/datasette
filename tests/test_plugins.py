@@ -129,12 +129,20 @@ def test_plugin_config(app_client):
 def test_plugin_config_env(app_client):
     os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
     assert {"foo": "FROM_ENVIRONMENT"} == app_client.ds.plugin_config("env-plugin")
+    # Ensure secrets aren't visible in /-/metadata.json
+    metadata = app_client.get("/-/metadata.json")
+    assert {"foo": {"$env": "FOO_ENV"}} == metadata.json["plugins"]["env-plugin"]
     del os.environ["FOO_ENV"]
 
 
 def test_plugin_config_file(app_client):
     open(TEMP_PLUGIN_SECRET_FILE, "w").write("FROM_FILE")
     assert {"foo": "FROM_FILE"} == app_client.ds.plugin_config("file-plugin")
+    # Ensure secrets aren't visible in /-/metadata.json
+    metadata = app_client.get("/-/metadata.json")
+    assert {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}} == metadata.json["plugins"][
+        "file-plugin"
+    ]
     os.remove(TEMP_PLUGIN_SECRET_FILE)
 
 

@@ -88,7 +88,10 @@ class AsgiRouter:
 
     async def __call__(self, scope, receive, send):
         # Because we care about "foo/bar" v.s. "foo%2Fbar" we decode raw_path ourselves
-        path = scope["raw_path"].decode("ascii")
+        path = scope["path"]
+        raw_path = scope.get("raw_path")
+        if raw_path:
+            path = raw_path.decode("ascii")
         for regex, view in self.routes:
             match = regex.match(path)
             if match is not None:

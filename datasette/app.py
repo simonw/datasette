@@ -271,12 +271,15 @@ class Datasette:
         plugin_config = plugins.get(plugin_name)
         # Resolve any $file and $env keys
         if isinstance(plugin_config, dict):
-            for key, value in plugin_config.items():
+            # Create a copy so we don't mutate the version visible at /-/metadata.json
+            plugin_config_copy = dict(plugin_config)
+            for key, value in plugin_config_copy.items():
                 if isinstance(value, dict):
                     if list(value.keys()) == ["$env"]:
-                        plugin_config[key] = os.environ.get(list(value.values())[0])
+                        plugin_config_copy[key] = os.environ.get(list(value.values())[0])
                     elif list(value.keys()) == ["$file"]:
-                        plugin_config[key] = open(list(value.values())[0]).read()
+                        plugin_config_copy[key] = open(list(value.values())[0]).read()
+            return plugin_config_copy
         return plugin_config
 
     def app_css_hash(self):

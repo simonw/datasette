@@ -191,7 +191,7 @@ def test_plugins_asgi_wrapper(app_client):
     assert "fixtures" == response.headers["x-databases"]
 
 
-def test_plugins_extra_template_vars():
+def test_plugins_extra_template_vars(restore_working_directory):
     for client in make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
     ):

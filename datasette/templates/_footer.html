@@ -1,0 +1,21 @@
+Powered by <a href="https://github.com/simonw/datasette" title="Datasette v{{ datasette_version }}">Datasette</a>
+{% if query_ms %}&middot; Query took {{ query_ms|round(3) }}ms{% endif %}
+{% if metadata %}
+    {% if metadata.license or metadata.license_url %}&middot; Data license:
+        {% if metadata.license_url %}
+            <a href="{{ metadata.license_url }}">{{ metadata.license or metadata.license_url }}</a>
+        {% else %}
+            {{ metadata.license }}
+        {% endif %}
+    {% endif %}
+    {% if metadata.source or metadata.source_url %}&middot;
+        Data source: {% if metadata.source_url %}
+            <a href="{{ metadata.source_url }}">
+        {% endif %}{{ metadata.source or metadata.source_url }}{% if metadata.source_url %}</a>{% endif %}
+    {% endif %}
+    {% if metadata.about or metadata.about_url %}&middot;
+        About: {% if metadata.about_url %}
+            <a href="{{ metadata.about_url }}">
+        {% endif %}{{ metadata.about or metadata.about_url }}{% if metadata.about_url %}</a>{% endif %}
+    {% endif %}
+{% endif %}

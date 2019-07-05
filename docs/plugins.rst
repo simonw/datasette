@@ -562,6 +562,8 @@ If the value matches that pattern, the plugin returns an HTML link element:
 extra_body_script(template, database, table, view_name, datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
+
 ``template`` - string
     The template that is being rendered, e.g. ``database.html``
 
@@ -577,13 +579,73 @@ extra_body_script(template, database, table, view_name, datasette)
 ``datasette`` - Datasette instance
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
-Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
-
 The ``template``, ``database`` and ``table`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
 
 The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
 
 The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
+
+
+.. _plugin_hook_extra_template_vars:
+
+extra_template_vars(template, database, table, view_name, request, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Extra template variables that should be made available in the rendered template context.
+
+``template`` - string
+    The template that is being rendered, e.g. ``database.html``
+
+``database`` - string or None
+    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
+
+``table`` - string or None
+    The name of the table, or ``None`` if the page does not correct to a table
+
+``view_name`` - string
+    The name of the view being displayed. (`database`, `table`, and `row` are the most important ones.)
+
+``request`` - object
+    The current HTTP request object. ``request.scope`` provides access to the ASGI scope.
+
+``datasette`` - Datasette instance
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+This hook can return one of three different types:
+
+Dictionary
+    If you return a dictionary its keys and values will be merged into the template context.
+
+Function that returns a dictionary
+    If you return a function it will be executed. If it returns a dictionary those values will will be merged into the template context.
+
+Function that returns an awaitable function that returns a dictionary
+    You can also return a function which returns an awaitable function which returns a dictionary. This means you can execute additional SQL queries using ``datasette.execute()``.
+
+Here's an example plugin that returns an authentication object from the ASGI scope:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_template_vars(request):
+        return {
+            "auth": request.scope.get("auth")
+        }
+
+And here's an example which returns the current version of SQLite:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_template_vars(datasette):
+        async def inner():
+            first_db = list(datasette.databases.keys())[0]
+            return {
+                "sqlite_version": (
+                    await datasette.execute(first_db, "select sqlite_version()")
+                ).rows[0][0]
+            }
+        return inner
 
 .. _plugin_register_output_renderer:
 
@@ -597,12 +659,12 @@ Allows the plugin to register a new output renderer, to output data in a custom 
 
 .. code-block:: python
 
-        @hookimpl
-        def register_output_renderer(datasette):
-            return {
-                'extension': 'test',
-                'callback': render_test
-            }
+    @hookimpl
+    def register_output_renderer(datasette):
+        return {
+            'extension': 'test',
+            'callback': render_test
+        }
 
 This will register `render_test` to be called when paths with the extension `.test` (for example `/database.test`, `/database/table.test`, or `/database/table/row.test`) are requested. When a request is received, the callback function is called with three positional arguments:
 
@@ -630,10 +692,10 @@ A simple example of an output renderer callback function:
 
 .. code-block:: python
 
-        def render_test(args, data, view_name):
-            return {
-                'body': 'Hello World'
-            }
+    def render_test(args, data, view_name):
+        return {
+            'body': 'Hello World'
+        }
 
 .. _plugin_register_facet_classes:
 

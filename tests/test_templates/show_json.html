@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+
+{% block content %}
+{{ super() }}
+Test data for extra_template_vars:
+<pre class="extra_template_vars">{{ extra_template_vars|safe }}</pre>
+<pre class="extra_template_vars_from_awaitable">{{ extra_template_vars_from_awaitable|safe }}</pre>
+{% endblock %}

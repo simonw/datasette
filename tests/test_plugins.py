@@ -3,6 +3,7 @@ from .fixtures import app_client, make_app_client, TEMP_PLUGIN_SECRET_FILE  # no
 import base64
 import json
 import os
+import pathlib
 import re
 import pytest
 import urllib
@@ -188,3 +189,28 @@ def test_plugins_extra_body_script(app_client, path, expected_extra_body_script)
 def test_plugins_asgi_wrapper(app_client):
     response = app_client.get("/fixtures")
     assert "fixtures" == response.headers["x-databases"]
+
+
+def test_plugins_extra_template_vars():
+    for client in make_app_client(
+        template_dir=str(pathlib.Path(__file__).parent / "test_templates")
+    ):
+        response = client.get("/-/metadata")
+        assert response.status == 200
+        extra_template_vars = json.loads(
+            Soup(response.body, "html.parser").select("pre.extra_template_vars")[0].text
+        )
+        assert {
+            "template": "show_json.html",
+            "scope_path": "/-/metadata",
+        } == extra_template_vars
+        extra_template_vars_from_awaitable = json.loads(
+            Soup(response.body, "html.parser")
+            .select("pre.extra_template_vars_from_awaitable")[0]
+            .text
+        )
+        assert {
+            "template": "show_json.html",
+            "awaitable": True,
+            "scope_path": "/-/metadata",
+        } == extra_template_vars_from_awaitable

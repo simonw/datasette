@@ -36,6 +36,11 @@ def extra_body_script(template, database, table, view_name, datasette):
 
 
 @hookspec
+def extra_template_vars(template, database, table, view_name, request, datasette):
+    "Extra template variables to be made available to the template - can return dict or callable or awaitable"
+
+
+@hookspec
 def publish_subcommand(publish):
     "Subcommands for 'datasette publish'"
 

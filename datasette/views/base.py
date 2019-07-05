@@ -102,7 +102,7 @@ class BaseView(AsgiView):
     def database_color(self, database):
         return "ff0000"
 
-    def render(self, templates, **context):
+    async def render(self, templates, request, context):
         template = self.ds.jinja_env.select_template(templates)
         select_templates = [
             "{}{}".format("*" if template_name == template.name else "", template_name)
@@ -118,6 +118,26 @@ class BaseView(AsgiView):
             datasette=self.ds,
         ):
             body_scripts.append(jinja2.Markup(script))
+
+        extra_template_vars = {}
+        # pylint: disable=no-member
+        for extra_vars in pm.hook.extra_template_vars(
+            template=template.name,
+            database=context.get("database"),
+            table=context.get("table"),
+            view_name=self.name,
+            request=request,
+            datasette=self.ds,
+        ):
+            if callable(extra_vars):
+                extra_vars = extra_vars()
+            if asyncio.iscoroutine(extra_vars):
+                extra_vars = await extra_vars
+            assert isinstance(extra_vars, dict), "extra_vars is of type {}".format(
+                type(extra_vars)
+            )
+            extra_template_vars.update(extra_vars)
+
         return Response.html(
             template.render(
                 {
@@ -137,6 +157,7 @@ class BaseView(AsgiView):
                         "database_url": self.database_url,
                         "database_color": self.database_color,
                     },
+                    **extra_template_vars,
                 }
             )
         )
@@ -471,7 +492,7 @@ class DataView(BaseView):
             }
             if "metadata" not in context:
                 context["metadata"] = self.ds.metadata
-            r = self.render(templates, **context)
+            r = await self.render(templates, request=request, context=context)
             r.status = status_code
 
         ttl = request.args.get("_ttl", None)

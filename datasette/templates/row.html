@@ -15,9 +15,16 @@
 
 {% block body_class %}row db-{{ database|to_css_class }} table-{{ table|to_css_class }}{% endblock %}
 
-{% block content %}
-<div class="hd"><a href="/">home</a> / <a href="{{ database_url(database) }}">{{ database }}</a> / <a href="{{ database_url(database) }}/{{ table|quote_plus }}">{{ table }}</a></div>
+{% block nav %}
+    <p class="crumbs">
+        <a href="/">home</a> /
+        <a href="{{ database_url(database) }}">{{ database }}</a> /
+        <a href="{{ database_url(database) }}/{{ table|quote_plus }}">{{ table }}</a>
+    </p>
+    {{ super() }}
+{% endblock %}
 
+{% block content %}
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ table }}: {{ ', '.join(primary_key_values) }}</a></h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}

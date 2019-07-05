@@ -1,5 +1,6 @@
 body {
-    margin: 0 1em;
+    margin: 0;
+    padding: 0;
     font-family: "Helvetica Neue", sans-serif;
     font-size: 1rem;
     font-weight: 400;
@@ -7,6 +8,9 @@ body {
     color: #212529;
     text-align: left;
     background-color: #fff;
+}
+.bd {
+    margin: 0 1em;
 }
 table {
     border-collapse: collapse;
@@ -82,9 +86,21 @@ table a:visited {
 
 .hd {
     border-bottom: 2px solid #ccc;
+    padding: 0.2em 1em;
+    background-color: #eee;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.hd p {
+    margin: 0;
+    padding: 0;
+}
+.hd .crumbs {
+    float: left;
 }
 .ft {
     margin: 1em 0;
+    padding: 0.5em 1em 0 1em;
     border-top: 1px solid #ccc;
     font-size: 0.8em;
 }

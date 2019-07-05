@@ -16,8 +16,15 @@
 
 {% block body_class %}table db-{{ database|to_css_class }} table-{{ table|to_css_class }}{% endblock %}
 
+{% block nav %}
+    <p class="crumbs">
+        <a href="/">home</a> /
+        <a href="{{ database_url(database) }}">{{ database }}</a>
+    </p>
+    {{ super() }}
+{% endblock %}
+
 {% block content %}
-<div class="hd"><a href="/">home</a> / <a href="{{ database_url(database) }}">{{ database }}</a></div>
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or table }}{% if is_view %} (view){% endif %}</h1>
 

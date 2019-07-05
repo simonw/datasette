@@ -112,9 +112,9 @@ class IndexView(BaseView):
             return await self.render(
                 ["index.html"],
                 request=request,
-                context=dict(
-                    databases=databases,
-                    metadata=self.ds.metadata(),
-                    datasette_version=__version__,
-                ),
+                context={
+                    "databases": databases,
+                    "metadata": self.ds.metadata(),
+                    "datasette_version": __version__,
+                },
             )

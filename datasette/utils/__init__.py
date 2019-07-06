@@ -316,7 +316,7 @@ EXPOSE 8001
 CMD {cmd}""".format(
         environment_variables="\n".join(
             [
-                "ENV {} {}".format(key, value)
+                "ENV {} '{}'".format(key, value)
                 for key, value in (environment_variables or {}).items()
             ]
         ),

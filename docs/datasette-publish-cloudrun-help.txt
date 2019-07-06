@@ -3,24 +3,25 @@ $ datasette publish cloudrun --help
 Usage: datasette publish cloudrun [OPTIONS] [FILES]...
 
 Options:
-  -m, --metadata FILENAME   Path to JSON file containing metadata to publish
-  --extra-options TEXT      Extra options to pass to datasette serve
-  --branch TEXT             Install datasette from a GitHub branch e.g. master
-  --template-dir DIRECTORY  Path to directory containing custom templates
-  --plugins-dir DIRECTORY   Path to directory containing custom plugins
-  --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
-  --install TEXT            Additional packages (e.g. plugins) to install
-  --plugin-secret TEXT...   Secrets to pass to plugins, e.g. --plugin-secret datasette-
-                            auth-github client_id xxx
-  --version-note TEXT       Additional note to show on /-/versions
-  --title TEXT              Title for metadata
-  --license TEXT            License label for metadata
-  --license_url TEXT        License URL for metadata
-  --source TEXT             Source label for metadata
-  --source_url TEXT         Source URL for metadata
-  --about TEXT              About label for metadata
-  --about_url TEXT          About URL for metadata
-  -n, --name TEXT           Application name to use when building
-  --service TEXT            Cloud Run service to deploy (or over-write)
-  --spatialite              Enable SpatialLite extension
-  --help                    Show this message and exit.
+  -m, --metadata FILENAME         Path to JSON file containing metadata to publish
+  --extra-options TEXT            Extra options to pass to datasette serve
+  --branch TEXT                   Install datasette from a GitHub branch e.g. master
+  --template-dir DIRECTORY        Path to directory containing custom templates
+  --plugins-dir DIRECTORY         Path to directory containing custom plugins
+  --static STATIC MOUNT           mountpoint:path-to-directory for serving static files
+  --install TEXT                  Additional packages (e.g. plugins) to install
+  --plugin-secret <TEXT TEXT TEXT>...
+                                  Secrets to pass to plugins, e.g. --plugin-secret
+                                  datasette-auth-github client_id xxx
+  --version-note TEXT             Additional note to show on /-/versions
+  --title TEXT                    Title for metadata
+  --license TEXT                  License label for metadata
+  --license_url TEXT              License URL for metadata
+  --source TEXT                   Source label for metadata
+  --source_url TEXT               Source URL for metadata
+  --about TEXT                    About label for metadata
+  --about_url TEXT                About URL for metadata
+  -n, --name TEXT                 Application name to use when building
+  --service TEXT                  Cloud Run service to deploy (or over-write)
+  --spatialite                    Enable SpatialLite extension
+  --help                          Show this message and exit.

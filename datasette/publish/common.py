@@ -44,7 +44,8 @@ def add_common_publish_arguments_and_options(subcommand):
             click.option(
                 "--plugin-secret",
                 nargs=3,
-                type=str,
+                type=(str, str, str),
+                callback=validate_plugin_secret,
                 multiple=True,
                 help="Secrets to pass to plugins, e.g. --plugin-secret datasette-auth-github client_id xxx",
             ),
@@ -83,3 +84,10 @@ def fail_if_publish_binary_not_installed(binary, publish_target, install_link):
             err=True,
         )
         sys.exit(1)
+
+
+def validate_plugin_secret(ctx, param, value):
+    for plugin_name, plugin_setting, setting_value in value:
+        if "'" in setting_value:
+            raise click.BadParameter("--plugin-secret cannot contain single quotes")
+    return value

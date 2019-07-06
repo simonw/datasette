@@ -1,3 +1,7 @@
+import os
+import pytest
+
+
 def pytest_configure(config):
     import sys
 
@@ -22,3 +26,14 @@ def move_to_front(items, test_name):
     test = [fn for fn in items if fn.name == test_name]
     if test:
         items.insert(0, items.pop(items.index(test[0])))
+
+
+@pytest.fixture
+def restore_working_directory(tmpdir, request):
+    previous_cwd = os.getcwd()
+    tmpdir.chdir()
+
+    def return_to_previous():
+        os.chdir(previous_cwd)
+
+    request.addfinalizer(return_to_previous)

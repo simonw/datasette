@@ -42,6 +42,13 @@ def add_common_publish_arguments_and_options(subcommand):
                 multiple=True,
             ),
             click.option(
+                "--plugin-secret",
+                nargs=3,
+                type=str,
+                multiple=True,
+                help="Secrets to pass to plugins, e.g. --plugin-secret datasette-auth-github client_id xxx",
+            ),
+            click.option(
                 "--version-note", help="Additional note to show on /-/versions"
             ),
             click.option("--title", help="Title for metadata"),

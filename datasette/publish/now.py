@@ -33,6 +33,7 @@ def publish_subcommand(publish):
         plugins_dir,
         static,
         install,
+        plugin_secret,
         version_note,
         title,
         license,
@@ -54,6 +55,30 @@ def publish_subcommand(publish):
             extra_options = ""
         extra_options += "--config force_https_urls:on"
 
+        extra_metadata = {
+            "title": title,
+            "license": license,
+            "license_url": license_url,
+            "source": source,
+            "source_url": source_url,
+            "about": about,
+            "about_url": about_url,
+        }
+
+        environment_variables = {}
+        if plugin_secret:
+            extra_metadata["plugins"] = {}
+            for plugin_name, plugin_setting, setting_value in plugin_secret:
+                environment_variable = (
+                    "{}_{}".format(plugin_name, plugin_setting)
+                    .upper()
+                    .replace("-", "_")
+                )
+                environment_variables[environment_variable] = setting_value
+                extra_metadata["plugins"].setdefault(plugin_name, {})[
+                    plugin_setting
+                ] = {"$env": environment_variable}
+
         with temporary_docker_directory(
             files,
             name,
@@ -66,15 +91,8 @@ def publish_subcommand(publish):
             install,
             spatialite,
             version_note,
-            {
-                "title": title,
-                "license": license,
-                "license_url": license_url,
-                "source": source,
-                "source_url": source_url,
-                "about": about,
-                "about_url": about_url,
-            },
+            extra_metadata,
+            environment_variables,
         ):
             now_json = {"version": 1}
             open("now.json", "w").write(json.dumps(now_json, indent=4))

@@ -33,6 +33,7 @@ def publish_subcommand(publish):
         plugins_dir,
         static,
         install,
+        plugin_secret,
         version_note,
         title,
         license,

@@ -272,6 +272,7 @@ def make_dockerfile(
     install,
     spatialite,
     version_note,
+    environment_variables=None,
 ):
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
     for filename in files:
@@ -307,11 +308,18 @@ FROM python:3.6
 COPY . /app
 WORKDIR /app
 {spatialite_extras}
+{environment_variables}
 RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
 ENV PORT 8001
 EXPOSE 8001
 CMD {cmd}""".format(
+        environment_variables="\n".join(
+            [
+                "ENV {} {}".format(key, value)
+                for key, value in (environment_variables or {}).items()
+            ]
+        ),
         files=" ".join(files),
         cmd=cmd,
         install_from=" ".join(install),
@@ -333,6 +341,7 @@ def temporary_docker_directory(
     spatialite,
     version_note,
     extra_metadata=None,
+    environment_variables=None,
 ):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
@@ -361,6 +370,7 @@ def temporary_docker_directory(
             install,
             spatialite,
             version_note,
+            environment_variables,
         )
         os.chdir(datasette_dir)
         if metadata_content:

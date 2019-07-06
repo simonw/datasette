@@ -376,6 +376,16 @@ def render_cell(value, column, table, database, datasette):
             table=table,
         )
     })
+
+
+@hookimpl
+def extra_template_vars(template, database, table, view_name, request, datasette):
+    return {
+        "extra_template_vars": json.dumps({
+            "template": template,
+            "scope_path": request.scope["path"]
+        }, default=lambda b: b.decode("utf8"))
+    }
 """
 
 PLUGIN2 = """
@@ -422,6 +432,19 @@ def render_cell(value, database):
             label=jinja2.escape(data["label"] or "") or "&nbsp;"
         )
     )
+
+
+@hookimpl
+def extra_template_vars(template, database, table, view_name, request, datasette):
+    async def inner():
+        return {
+            "extra_template_vars_from_awaitable": json.dumps({
+                "template": template,
+                "scope_path": request.scope["path"],
+                "awaitable": True,
+            }, default=lambda b: b.decode("utf8"))
+        }
+    return inner
 
 
 @hookimpl

@@ -712,9 +712,9 @@ Each Facet subclass implements a new type of facet operation. The class should l
         # This key must be unique across all facet classes:
         type = "special"
 
-        async def suggest(self, sql, params, filtered_table_rows_count):
+        async def suggest(self):
+            # Use self.sql and self.params to suggest some facets
             suggested_facets = []
-            # Perform calculations to suggest facets
             suggested_facets.append({
                 "name": column, # Or other unique name
                 # Construct the URL that will enable this facet:
@@ -726,8 +726,9 @@ Each Facet subclass implements a new type of facet operation. The class should l
             })
             return suggested_facets
 
-        async def facet_results(self, sql, params):
-            # This should execute the facet operation and return results
+        async def facet_results(self):
+            # This should execute the facet operation and return results, again
+            # using self.sql and self.params as the starting point
             facet_results = {}
             facets_timed_out = []
             # Do some calculations here...
@@ -752,7 +753,7 @@ Each Facet subclass implements a new type of facet operation. The class should l
 
             return facet_results, facets_timed_out
 
-See ``datasette/facets.py`` for examples of how these classes can work.
+See `datasette/facets.py <https://github.com/simonw/datasette/blob/master/datasette/facets.py>`__ for examples of how these classes can work.
 
 The plugin hook can then be used to register the new facet class like this:
 

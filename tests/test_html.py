@@ -385,12 +385,16 @@ def test_facet_display(app_client):
     ] == actual
 
 
-def test_facets_persist_through_filter_form(app_client):
-    response = app_client.get("/fixtures/facetable?_facet=planet_int&_facet=city_id")
+@pytest.mark.parametrize("path,expected_hiddens", [
+    ("/fixtures/facetable?_facet=planet_int&_facet=city_id", [("_facet", "city_id"), ("_facet", "planet_int")]),
+    ("/fixtures/roadside_attractions?_facet_m2m=attraction_characteristic", [("_facet", "city_id"), ("_facet", "planet_int")]),
+])
+def test_facets_persist_through_filter_form(app_client, path, expected_hiddens):
+    response = app_client.get(path)
     assert response.status == 200
     inputs = Soup(response.body, "html.parser").find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
-    assert [("_facet", "city_id"), ("_facet", "planet_int")] == [
+    assert expected_hiddens == [
         (hidden["name"], hidden["value"]) for hidden in hiddens
     ]
 

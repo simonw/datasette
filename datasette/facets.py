@@ -499,22 +499,27 @@ class ManyToManyFacet(Facet):
                 "outgoing"
             ]
             if len(other_table_outgoing_foreign_keys) == 2:
-                destination_table = [
+                fk_from_middle_table_to_other_table = [
                     t
                     for t in other_table_outgoing_foreign_keys
                     if t["other_table"] != self.table
-                ][0]["other_table"]
+                ][0]
+                destination_table = fk_from_middle_table_to_other_table["other_table"]
+                middle_table = other_table
+                m2m_config = json.dumps([
+                    middle_table, destination_table
+                ], separators=(",", ":"), sort_keys=True)
                 # Only suggest if it's not selected already
-                if ("_facet_m2m", destination_table) in args:
+                if ("_facet_m2m", m2m_config) in args:
                     continue
                 suggested_facets.append(
                     {
-                        "name": destination_table,
+                        "name": "{}.{}".format(middle_table, destination_table),
                         "type": "m2m",
                         "toggle_url": self.ds.absolute_url(
                             self.request,
                             path_with_added_args(
-                                self.request, {"_facet_m2m": destination_table}
+                                self.request, {"_facet_m2m": m2m_config}
                             ),
                         ),
                     }
@@ -536,10 +541,10 @@ class ManyToManyFacet(Facet):
             config = source_and_config["config"]
             source = source_and_config["source"]
             # The destination_table is specified in the _facet_m2m=xxx parameter
-            destination_table = config.get("column") or config["simple"]
+            m2m_config = config.get("column") or config["simple"]
             # Find middle table - it has fks to self.table AND destination_table
+            middle_table, destination_table = json.loads(m2m_config)
             fks = None
-            middle_table = None
             for fk in incoming:
                 other_table = fk["other_table"]
                 other_table_outgoing_foreign_keys = all_foreign_keys[other_table][
@@ -554,7 +559,6 @@ class ManyToManyFacet(Facet):
                     and len(other_table_outgoing_foreign_keys) == 2
                 ):
                     fks = other_table_outgoing_foreign_keys
-                    middle_table = other_table
                     break
             if middle_table is None or fks is None:
                 return [], []

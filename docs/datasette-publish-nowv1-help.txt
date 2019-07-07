@@ -26,4 +26,5 @@ Options:
   --token TEXT                    Auth token to use for deploy
   --alias TEXT                    Desired alias e.g. yoursite.now.sh
   --spatialite                    Enable SpatialLite extension
+  --show-files                    Output the generated Dockerfile and metadata.json
   --help                          Show this message and exit.

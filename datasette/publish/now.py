@@ -1,6 +1,7 @@
 from datasette import hookimpl
 import click
 import json
+import os
 from subprocess import run, PIPE
 
 from .common import (
@@ -24,6 +25,11 @@ def publish_subcommand(publish):
     @click.option("--token", help="Auth token to use for deploy")
     @click.option("--alias", multiple=True, help="Desired alias e.g. yoursite.now.sh")
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
+    @click.option(
+        "--show-files",
+        is_flag=True,
+        help="Output the generated Dockerfile and metadata.json",
+    )
     def nowv1(
         files,
         metadata,
@@ -47,6 +53,7 @@ def publish_subcommand(publish):
         token,
         alias,
         spatialite,
+        show_files,
     ):
         fail_if_publish_binary_not_installed("now", "Zeit Now", "https://zeit.co/now")
         if extra_options:
@@ -106,6 +113,13 @@ def publish_subcommand(publish):
             else:
                 done = run("now", stdout=PIPE)
             deployment_url = done.stdout
+            if show_files:
+                if os.path.exists("metadata.json"):
+                    print("=== metadata.json ===\n")
+                    print(open("metadata.json").read())
+                print("\n==== Dockerfile ====\n")
+                print(open("Dockerfile").read())
+                print("\n====================\n")
             if alias:
                 # I couldn't get --target=production working, so I call
                 # 'now alias' with arguments directly instead - but that

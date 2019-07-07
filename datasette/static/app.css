@@ -90,6 +90,7 @@ table a:visited {
     background-color: #eee;
     overflow: hidden;
     box-sizing: border-box;
+    min-height: 2rem;
 }
 .hd p {
     margin: 0;

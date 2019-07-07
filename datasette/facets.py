@@ -75,6 +75,7 @@ def json_split(value, sep):
 def prepare_connection(conn):
     conn.create_function("json_split", 2, json_split)
 
+
 class Facet:
     type = None
 
@@ -147,7 +148,11 @@ class ColumnFacet(Facet):
         columns = await self.get_columns(self.sql, self.params)
         facet_size = self.ds.config("default_facet_size")
         suggested_facets = []
-        already_enabled = [c["config"]["simple"] for c in self.get_configs() if c["config"].get("simple")]
+        already_enabled = [
+            c["config"]["simple"]
+            for c in self.get_configs()
+            if c["config"].get("simple")
+        ]
         for column in columns:
             if column in already_enabled:
                 continue
@@ -269,7 +274,11 @@ class ArrayFacet(Facet):
     async def suggest(self):
         columns = await self.get_columns(self.sql, self.params)
         suggested_facets = []
-        already_enabled = [c["config"]["simple"] for c in self.get_configs() if c["config"].get("simple")]
+        already_enabled = [
+            c["config"]["simple"]
+            for c in self.get_configs()
+            if c["config"].get("simple")
+        ]
         for column in columns:
             if column in already_enabled:
                 continue

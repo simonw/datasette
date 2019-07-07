@@ -32,6 +32,17 @@ jobs:
     - stage: release tagged version
       if: tag IS present
       python: 3.6
+      deploy:
+        - provider: pypi
+          user: simonw
+          distributions: bdist_wheel
+          password: ${PYPI_PASSWORD}
+          on:
+            branch: master
+            tags: true
+    - stage: publish docker image
+      if: tag IS present
+      python: 3.6
       script:
         - npm install -g now
         - export ALIAS=`echo $TRAVIS_COMMIT | cut -c 1-7`
@@ -43,11 +54,3 @@ jobs:
         - docker build -f Dockerfile -t $REPO:$TRAVIS_TAG .
         - docker tag $REPO:$TRAVIS_TAG $REPO:latest
         - docker push $REPO
-      deploy:
-        - provider: pypi
-          user: simonw
-          distributions: bdist_wheel
-          password: ${PYPI_PASSWORD}
-          on:
-            branch: master
-            tags: true

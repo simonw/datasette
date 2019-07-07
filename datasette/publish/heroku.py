@@ -122,7 +122,9 @@ def publish_subcommand(publish):
                 app_name = json.loads(create_output)["name"]
 
             for key, value in environment_variables.items():
-                call(["heroku", "config:set", "-a", app_name, "{}={}".format(key, value)])
+                call(
+                    ["heroku", "config:set", "-a", app_name, "{}={}".format(key, value)]
+                )
 
             call(["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"])
 

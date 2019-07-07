@@ -312,3 +312,7 @@ a.not-underlined {
     font-style: normal;
     font-size: 0.8em;
 }
+
+pre.wrapped-sql {
+    white-space: pre-wrap;
+}

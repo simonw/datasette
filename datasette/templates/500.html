@@ -2,8 +2,14 @@
 
 {% block title %}{% if title %}{{ title }}{% else %}Error {{ status }}{% endif %}{% endblock %}
 
+{% block nav %}
+    <p class="crumbs">
+        <a href="/">home</a>
+    </p>
+    {{ super() }}
+{% endblock %}
+
 {% block content %}
-<div class="hd"><a href="/">home</a></div>
 
 <h1>{% if title %}{{ title }}{% else %}Error {{ status }}{% endif %}</h1>
 

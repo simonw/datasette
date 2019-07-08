@@ -24,4 +24,5 @@ Options:
   -n, --name TEXT                 Application name to use when building
   --service TEXT                  Cloud Run service to deploy (or over-write)
   --spatialite                    Enable SpatialLite extension
+  --show-files                    Output the generated Dockerfile and metadata.json
   --help                          Show this message and exit.

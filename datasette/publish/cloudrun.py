@@ -1,6 +1,7 @@
 from datasette import hookimpl
 import click
 import json
+import os
 from subprocess import check_call, check_output
 
 from .common import (
@@ -24,6 +25,11 @@ def publish_subcommand(publish):
         "--service", default="", help="Cloud Run service to deploy (or over-write)"
     )
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
+    @click.option(
+        "--show-files",
+        is_flag=True,
+        help="Output the generated Dockerfile and metadata.json",
+    )
     def cloudrun(
         files,
         metadata,
@@ -33,6 +39,7 @@ def publish_subcommand(publish):
         plugins_dir,
         static,
         install,
+        plugin_secret,
         version_note,
         title,
         license,
@@ -44,6 +51,7 @@ def publish_subcommand(publish):
         name,
         service,
         spatialite,
+        show_files,
     ):
         fail_if_publish_binary_not_installed(
             "gcloud", "Google Cloud", "https://cloud.google.com/sdk/"
@@ -51,6 +59,30 @@ def publish_subcommand(publish):
         project = check_output(
             "gcloud config get-value project", shell=True, universal_newlines=True
         ).strip()
+
+        extra_metadata = {
+            "title": title,
+            "license": license,
+            "license_url": license_url,
+            "source": source,
+            "source_url": source_url,
+            "about": about,
+            "about_url": about_url,
+        }
+
+        environment_variables = {}
+        if plugin_secret:
+            extra_metadata["plugins"] = {}
+            for plugin_name, plugin_setting, setting_value in plugin_secret:
+                environment_variable = (
+                    "{}_{}".format(plugin_name, plugin_setting)
+                    .upper()
+                    .replace("-", "_")
+                )
+                environment_variables[environment_variable] = setting_value
+                extra_metadata["plugins"].setdefault(plugin_name, {})[
+                    plugin_setting
+                ] = {"$env": environment_variable}
 
         with temporary_docker_directory(
             files,
@@ -64,16 +96,17 @@ def publish_subcommand(publish):
             install,
             spatialite,
             version_note,
-            {
-                "title": title,
-                "license": license,
-                "license_url": license_url,
-                "source": source,
-                "source_url": source_url,
-                "about": about,
-                "about_url": about_url,
-            },
+            extra_metadata,
+            environment_variables,
         ):
+            if show_files:
+                if os.path.exists("metadata.json"):
+                    print("=== metadata.json ===\n")
+                    print(open("metadata.json").read())
+                print("\n==== Dockerfile ====\n")
+                print(open("Dockerfile").read())
+                print("\n====================\n")
+
             image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
             check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
         check_call(

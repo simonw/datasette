@@ -219,6 +219,8 @@ Here is an example of some plugin configuration for a specific table::
 
 This tells the ``datasette-cluster-map`` column which latitude and longitude columns should be used for a table called ``Street_Tree_List`` inside a database file called ``sf-trees.db``.
 
+.. _plugins_configuration_secret:
+
 Secret configuration values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -236,7 +238,6 @@ Any values embedded in ``metadata.json`` will be visible to anyone who views the
         }
     }
 
-
 **As values in separate files**. Your secrets can also live in files on disk. To specify a secret should be read from a file, provide the full file path like this::
 
     {
@@ -248,6 +249,14 @@ Any values embedded in ``metadata.json`` will be visible to anyone who views the
             }
         }
     }
+
+If you are publishing your data using the :ref:`datasette publish <cli_publish>` family of commands, you can use the ``--plugin-secret`` option to set these secrets at publish time. For example, using Heroku you might run the following command::
+
+    $ datasette publish heroku my_database.db \
+        --name my-heroku-app-demo \
+        --install=datasette-auth-github \
+        --plugin-secret datasette-auth-github client_id your_client_id \
+        --plugin-secret datasette-auth-github client_secret your_client_secret
 
 Writing plugins that accept configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

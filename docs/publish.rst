@@ -6,6 +6,8 @@
 
 Datasette includes tools for publishing and deploying your data to the internet. The ``datasette publish`` command will deploy a new Datasette instance containing your databases directly to a Heroku, Google Cloud or Zeit Now hosting account. You can also use ``datasette package`` to create a Docker image that bundles your databases together with the datasette application that is used to serve them.
 
+.. _cli_publish:
+
 datasette publish
 =================
 
@@ -99,6 +101,13 @@ You can also specify plugins you would like to install. For example, if you want
 
     datasette publish nowv1 mydatabase.db --install=datasette-vega
 
+If a plugin has any :ref:`plugins_configuration_secret` you can use the ``--plugin-secret`` option to set those secrets at publish time. For example, using Heroku with `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ you might run the following command::
+
+    $ datasette publish heroku my_database.db \
+        --name my-heroku-app-demo \
+        --install=datasette-auth-github \
+        --plugin-secret datasette-auth-github client_id your_client_id \
+        --plugin-secret datasette-auth-github client_secret your_client_secret
 
 datasette package
 =================

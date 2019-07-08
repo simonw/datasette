@@ -102,6 +102,8 @@ database column they are representing, for example::
         </tbody>
     </table>
 
+.. _customization_custom_templates:
+
 Custom templates
 ----------------
 

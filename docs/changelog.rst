@@ -4,6 +4,100 @@
 Changelog
 =========
 
+.. _v0_29:
+
+0.29 (2019-07-07)
+-----------------
+
+ASGI, new plugin hooks, facet by date and much, much more...
+
+ASGI
+~~~~
+
+`ASGI <https://asgi.readthedocs.io/>`__ is the Asynchronous Server Gateway Interface standard. I've been wanting to convert Datasette into an ASGI application for over a year - `Port Datasette to ASGI #272 <https://github.com/simonw/datasette/issues/272>`__ tracks thirteen months of intermittent development - but with Datasette 0.29 the change is finally released. This also means Datasette now runs on top of `Uvicorn <https://www.uvicorn.org/>`__ and no longer depends on `Sanic <https://github.com/huge-success/sanic>`__.
+
+I wrote about the significance of this change in `Porting Datasette to ASGI, and Turtles all the way down <https://simonwillison.net/2019/Jun/23/datasette-asgi/>`__.
+
+The most exciting consequence of this change is that Datasette plugins can now take advantage of the ASGI standard.
+
+New plugin hook: asgi_wrapper
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`plugin_asgi_wrapper` plugin hook allows plugins to entirely wrap the Datasette ASGI application in their own ASGI middleware. (`#520 <https://github.com/simonw/datasette/issues/520>`__)
+
+Two new plugins take advantage of this hook:
+
+* `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ adds a authentication layer: users will have to sign in using their GitHub account before they can view data or interact with Datasette. You can also use it to restrict access to specific GitHub users, or to members of specified GitHub `organizations <https://help.github.com/en/articles/about-organizations>`__ or `teams <https://help.github.com/en/articles/organizing-members-into-teams>`__.
+
+* `datasette-cors <https://github.com/simonw/datasette-cors>`__ allows you to configure `CORS headers <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`__ for your Datasette instance. You can use this to enable JavaScript running on a whitelisted set of domains to make ``fetch()`` calls to the JSON API provided by your Datasette instance.
+
+New plugin hook: extra_template_vars
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`plugin_extra_template_vars` plugin hook allows plugins to inject their own additional variables into the Datasette template context. This can be used in conjunction with custom templates to customize the Datasette interface. `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ uses this hook to add custom HTML to the new top navigation bar (which is designed to be modified by plugins, see `#540 <https://github.com/simonw/datasette/issues/540>`__).
+
+Secret plugin configuration options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Plugins like `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ need a safe way to set secret configuration options. Since the default mechanism for configuring plugins exposes those settings in ``/-/metadata`` a new mechanism was needed. :ref:`plugins_configuration_secret` describes how plugins can now specify that their settings should be read from a file or an environment variable::
+
+    {
+        "plugins": {
+            "datasette-auth-github": {
+                "client_secret": {
+                    "$env": "GITHUB_CLIENT_SECRET"
+                }
+            }
+        }
+    }
+
+These plugin secrets can be set directly using ``datasette publish``. See :ref:`publish_custom_metadata_and_plugins` for details. (`#538 <https://github.com/simonw/datasette/issues/538>`__ and `#543 <https://github.com/simonw/datasette/issues/543>`__)
+
+Facet by date
+~~~~~~~~~~~~~
+
+If a column contains datetime values, Datasette can now facet that column by date. (`#481 <https://github.com/simonw/datasette/issues/481>`__)
+
+.. _v0_29_medium_changes:
+
+Easier custom templates for table rows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you want to customize the display of individual table rows, you can do so using a ``_table.html`` template include that looks something like this::
+
+    {% for row in display_rows %}
+        <div>
+            <h2>{{ row["title"] }}</h2>
+            <p>{{ row["description"] }}<lp>
+            <p>Category: {{ row.display("category_id") }}</p>
+        </div>
+    {% endfor %}
+
+This is a **backwards incompatible change**. If you previously had a custom template called ``_rows_and_columns.html`` you need to rename it to ``_table.html``.
+
+See :ref:`customization_custom_templates` for full details.
+
+?_through= for joins through many-to-many tables
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The new ``?_through={json}`` argument to the Table view allows records to be filtered based on a many-to-many relationship. See :ref:`json_api_table_arguments` for full documentation - here's `an example <https://latest.datasette.io/fixtures/roadside_attractions?_through={%22table%22:%22roadside_attraction_characteristics%22,%22column%22:%22characteristic_id%22,%22value%22:%221%22}>`__. (`#355 <https://github.com/simonw/datasette/issues/355>`__)
+
+This feature was added to help support `facet by many-to-many <https://github.com/simonw/datasette/issues/551>`__, which isn't quite ready yet but will be coming in the next Datasette release.
+
+Small changes
+~~~~~~~~~~~~~
+
+* Databases published using ``datasette publish`` now open in :ref:`performance_immutable_mode`. (`#469 <https://github.com/simonw/datasette/issues/469>`__)
+* ``?col__date=`` now works for columns containing spaces
+* Automatic label detection (for deciding which column to show when linking to a foreign key) has been improved. (`#485 <https://github.com/simonw/datasette/issues/485>`__)
+* Fixed bug where pagination broke when combined with an expanded foreign key. (`#489 <https://github.com/simonw/datasette/issues/489>`__)
+* Contributors can now run ``pip install -e .[docs]`` to get all of the dependencies needed to build the documentation, including ``cd docs && make livehtml`` support.
+* Datasette's dependencies are now all specified using the ``~=`` match operator. (`#532 <https://github.com/simonw/datasette/issues/532>`__)
+* ``white-space: pre-wrap`` now used for table creation SQL. (`#505 <https://github.com/simonw/datasette/issues/505>`__)
+
+
+`Full list of commits <https://github.com/simonw/datasette/compare/0.28...0.29>`__ between 0.28 and 0.29.
+
 .. _v0_28:
 
 0.28 (2019-05-19)

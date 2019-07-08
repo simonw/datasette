@@ -20,6 +20,9 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 7th July 2019: [Datasette 0.29](https://datasette.readthedocs.io/en/stable/changelog.html#v0-29) - ASGI, new plugin hooks, facet by date and much, much more...
+   * [datasette-auth-github](https://github.com/simonw/datasette-auth-github) - a new plugin for Datasette 0.29 that lets you require users to authenticate against GitHub before accessing your Datasette instance. You can whitelist specific users, or you can restrict access to members of specific GitHub organizations or teams.
+   * [datasette-cors](https://github.com/simonw/datasette-cors) - a plugin that lets you configure CORS access from a list of domains (or a set of domain wildcards) so you can make JavaScript calls to a Datasette instance from a specific set of other hosts.
  * 23rd June 2019: [Porting Datasette to ASGI, and Turtles all the way down](https://simonwillison.net/2019/Jun/23/datasette-asgi/)
  * 21st May 2019: The anonymized raw data from [the Stack Overflow Developer Survey 2019](https://stackoverflow.blog/2019/05/21/public-data-release-of-stack-overflows-2019-developer-survey/) has been [published in partnership with Glitch](https://glitch.com/culture/discover-insights-explore-developer-survey-results-2019/), powered by Datasette.
  * 19th May 2019: [Datasette 0.28](https://datasette.readthedocs.io/en/stable/changelog.html#v0-28) - a salmagundi of new features!

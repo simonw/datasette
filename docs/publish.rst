@@ -81,6 +81,8 @@ You can also use custom domains, if you `first register them with Zeit Now <http
 
 .. literalinclude:: datasette-publish-nowv1-help.txt
 
+.. _publish_custom_metadata_and_plugins:
+
 Custom metadata and plugins
 ---------------------------
 

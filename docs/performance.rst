@@ -7,6 +7,8 @@ Datasette runs on top of SQLite, and SQLite has excellent performance.  For smal
 
 That said, there are a number of tricks you can use to improve Datasette's performance.
 
+.. _performance_immutable_mode:
+
 Immutable mode
 --------------
 

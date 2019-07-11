@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_29_1:
+
+0.29.1 (2019-07-11)
+-------------------
+
+- Fixed bug with static mounts using relative paths which could lead to traversal exploits (`#555 <https://github.com/simonw/datasette/issues/555>`__) - thanks Abdussamet Kocak!
+
 .. _v0_29:
 
 0.29 (2019-07-07)

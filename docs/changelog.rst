@@ -10,6 +10,7 @@ Changelog
 -------------------
 
 - Fixed bug with static mounts using relative paths which could lead to traversal exploits (`#555 <https://github.com/simonw/datasette/issues/555>`__) - thanks Abdussamet Kocak!
+- Datasette can now be run as a module: ``python -m datasette`` (`#556 <https://github.com/simonw/datasette/issues/556>`__) - thanks, Abdussamet Kocak!
 
 .. _v0_29:
 

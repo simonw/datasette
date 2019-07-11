@@ -735,7 +735,8 @@ class StaticMount(click.ParamType):
                 param,
                 ctx,
             )
-        path, dirpath = value.split(":")
+        path, dirpath = value.split(":", 1)
+        dirpath = os.path.abspath(dirpath)
         if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
             self.fail("%s is not a valid directory path" % value, param, ctx)
         return path, dirpath

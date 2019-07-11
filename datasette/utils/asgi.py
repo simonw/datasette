@@ -311,7 +311,6 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
         except ValueError:
             await asgi_send_html(send, "404", 404)
             return
-        first = True
         try:
             await asgi_send_file(send, full_path, chunk_size=chunk_size)
         except FileNotFoundError:

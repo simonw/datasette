@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_29_2:
+
+0.29.2 (2019-07-13)
+-------------------
+
+- Bumped `Uvicorn <https://www.uvicorn.org/>`__ to 0.8.4, fixing a bug where the querystring was not included in the server logs. (`#559 <https://github.com/simonw/datasette/issues/559>`__)
+- Fixed bug where the navigation breadcrumbs were not displayed correctly on the page for a custom query. (`#558 <https://github.com/simonw/datasette/issues/558>`__)
+- Fixed bug where custom query names containing unicode characters caused errors.
+
 .. _v0_29_1:
 
 0.29.1 (2019-07-11)

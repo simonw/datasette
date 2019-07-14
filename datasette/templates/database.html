@@ -25,7 +25,7 @@
 {% if config.allow_sql %}
     <form class="sql" action="{{ database_url(database) }}" method="get">
         <h3>Custom SQL query</h3>
-        <p><textarea name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
+        <p><textarea id="sql-editor" name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
         <p><input type="submit" value="Run SQL"></p>
     </form>
 {% endif %}

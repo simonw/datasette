@@ -45,9 +45,10 @@ class Request:
 
     @property
     def path(self):
-        return (
-            self.scope.get("raw_path", self.scope["path"].encode("latin-1"))
-        ).decode("latin-1")
+        if "raw_path" in self.scope:
+            return self.scope["raw_path"].decode("latin-1")
+        else:
+            return self.scope["path"].decode("utf-8")
 
     @property
     def query_string(self):

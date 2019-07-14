@@ -12,7 +12,7 @@ import sys
 import string
 import tempfile
 import time
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 
 # This temp file is used by one of the plugin config tests
@@ -49,18 +49,20 @@ class TestClient:
         if "?" in path:
             path, _, query_string = path.partition("?")
             query_string = query_string.encode("utf8")
-        instance = ApplicationCommunicator(
-            self.asgi_app,
-            {
-                "type": "http",
-                "http_version": "1.0",
-                "method": method,
-                "path": unquote(path),
-                "raw_path": path.encode("ascii"),
-                "query_string": query_string,
-                "headers": [[b"host", b"localhost"]],
-            },
-        )
+        if "%" in path:
+            raw_path = path.encode("latin-1")
+        else:
+            raw_path = quote(path, safe="/:,").encode("latin-1")
+        scope = {
+            "type": "http",
+            "http_version": "1.0",
+            "method": method,
+            "path": unquote(path),
+            "raw_path": raw_path,
+            "query_string": query_string,
+            "headers": [[b"host", b"localhost"]],
+        }
+        instance = ApplicationCommunicator(self.asgi_app, scope)
         await instance.send_input({"type": "http.request"})
         # First message back should be response.start with headers and status
         messages = []
@@ -291,6 +293,7 @@ METADATA = {
                 },
             },
             "queries": {
+                "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
                 "pragma_cache_size": "PRAGMA cache_size;",
                 "neighborhood_search": {
                     "sql": """

@@ -1613,6 +1613,11 @@ def test_infinity_returned_as_invalid_json_if_requested(app_client):
     ] == response.json
 
 
+def test_custom_query_with_unicode_characters(app_client):
+    response = app_client.get("/fixtures/𝐜𝐢𝐭𝐢𝐞𝐬.json?_shape=array")
+    assert [{"id": 1, "name": "San Francisco"}] == response.json
+
+
 def test_trace(app_client):
     response = app_client.get("/fixtures/simple_primary_key.json?_trace=1")
     data = response.json

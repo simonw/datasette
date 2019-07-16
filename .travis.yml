@@ -18,9 +18,9 @@ install:
     - if [ "$TRAVIS_OS_NAME" = "windows" ]; then
         choco install python3;
         export PATH=/c/Python37:/c/Python37/Scripts:/c/Python38:/c/Python38/Scripts:$PATH;
-        python -m pip install -e .[test]
+        python -m pip install -e .[test];
       else
-        pip install -e .[test]
+        pip install -e .[test];
       fi;
 
 script:

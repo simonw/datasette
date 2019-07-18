@@ -142,7 +142,7 @@ Datasette can still run against immutable files and gains numerous performance b
 Faceting improvements, and faceting plugins
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Datasette :ref:`facets` provide an intuitive way to quickly summarize and interact with data. Previously the only supported faceting technique was column faceting, but 0.28 introduces two powerful new capibilities: facet-by-JSON-array and the ability to define further facet types using plugins.
+Datasette :ref:`facets` provide an intuitive way to quickly summarize and interact with data. Previously the only supported faceting technique was column faceting, but 0.28 introduces two powerful new capabilities: facet-by-JSON-array and the ability to define further facet types using plugins.
 
 Facet by array (`#359 <https://github.com/simonw/datasette/issues/359>`__) is only available if your SQLite installation provides the ``json1`` extension. Datasette will automatically detect columns that contain JSON arrays of values and offer a faceting interface against those columns - useful for modelling things like tags without needing to break them out into a new table. See :ref:`facet_by_json_array` for more.
 
@@ -153,7 +153,7 @@ The new :ref:`plugin_register_facet_classes` plugin hook (`#445 <https://github.
 datasette publish cloudrun
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`Google Cloud Run <https://cloud.google.com/run/>`__ is a brand new serverless hosting platform from Google, which allows you to build a Docker container which will run only when HTTP traffic is recieved and will shut down (and hence cost you nothing) the rest of the time. It's similar to Zeit's Now v1 Docker hosting platform which sadly is `no longer accepting signups <https://hyperion.alpha.spectrum.chat/zeit/now/cannot-create-now-v1-deployments~d206a0d4-5835-4af5-bb5c-a17f0171fb25?m=MTU0Njk2NzgwODM3OA==>`__ from new users.
+`Google Cloud Run <https://cloud.google.com/run/>`__ is a brand new serverless hosting platform from Google, which allows you to build a Docker container which will run only when HTTP traffic is received and will shut down (and hence cost you nothing) the rest of the time. It's similar to Zeit's Now v1 Docker hosting platform which sadly is `no longer accepting signups <https://hyperion.alpha.spectrum.chat/zeit/now/cannot-create-now-v1-deployments~d206a0d4-5835-4af5-bb5c-a17f0171fb25?m=MTU0Njk2NzgwODM3OA==>`__ from new users.
 
 The new ``datasette publish cloudrun`` command was contributed by Romain Primet (`#434 <https://github.com/simonw/datasette/pull/434>`__) and publishes selected databases to a new Datasette instance running on Google Cloud Run.
 
@@ -592,7 +592,7 @@ Mostly new work on the :ref:`plugins` mechanism: plugins can now bundle static a
 - Longer time limit for test_paginate_compound_keys
 
   It was failing intermittently in Travis - see `#209 <https://github.com/simonw/datasette/issues/209>`_
-- Use application/octet-stream for downloadable databses
+- Use application/octet-stream for downloadable databases
 - Updated PyPI classifiers
 - Updated PyPI link to pypi.org
 

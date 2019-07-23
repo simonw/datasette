@@ -203,6 +203,8 @@ class DataView(BaseView):
                 hash = None
         else:
             name = db_name
+        if "%" in name:
+            name = urllib.parse.unquote_plus(name)
         # Verify the hash
         try:
             db = self.ds.databases[name]

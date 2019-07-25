@@ -51,7 +51,7 @@ Two new plugins take advantage of this hook:
 New plugin hook: extra_template_vars
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`plugin_extra_template_vars` plugin hook allows plugins to inject their own additional variables into the Datasette template context. This can be used in conjunction with custom templates to customize the Datasette interface. `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ uses this hook to add custom HTML to the new top navigation bar (which is designed to be modified by plugins, see `#540 <https://github.com/simonw/datasette/issues/540>`__).
+The :ref:`plugin_hook_extra_template_vars` plugin hook allows plugins to inject their own additional variables into the Datasette template context. This can be used in conjunction with custom templates to customize the Datasette interface. `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ uses this hook to add custom HTML to the new top navigation bar (which is designed to be modified by plugins, see `#540 <https://github.com/simonw/datasette/issues/540>`__).
 
 Secret plugin configuration options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

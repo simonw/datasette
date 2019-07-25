@@ -203,7 +203,7 @@ def test_plugins_extra_template_vars(restore_working_directory):
         assert {
             "template": "show_json.html",
             "scope_path": "/-/metadata",
-            "plugin_extra_options": {},
+            "extra_serve_options": {},
         } == extra_template_vars
         extra_template_vars_from_awaitable = json.loads(
             Soup(response.body, "html.parser")
@@ -217,14 +217,14 @@ def test_plugins_extra_template_vars(restore_working_directory):
         } == extra_template_vars_from_awaitable
 
 
-def test_plugin_extra_options_available_on_datasette(restore_working_directory):
+def test_extra_serve_options_available_on_datasette(restore_working_directory):
     for client in make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates"),
-        plugin_extra_options={"foo": "bar"},
+        extra_serve_options={"foo": "bar"},
     ):
         response = client.get("/-/metadata")
         assert response.status == 200
         extra_template_vars = json.loads(
             Soup(response.body, "html.parser").select("pre.extra_template_vars")[0].text
         )
-        assert {"foo": "bar"} == extra_template_vars["plugin_extra_options"]
+        assert {"foo": "bar"} == extra_template_vars["extra_serve_options"]

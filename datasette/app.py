@@ -151,7 +151,7 @@ class Datasette:
         memory=False,
         config=None,
         version_note=None,
-        plugin_extra_options=None,
+        extra_serve_options=None,
     ):
         immutables = immutables or []
         self.files = tuple(files) + tuple(immutables)
@@ -160,7 +160,7 @@ class Datasette:
             self.files = [MEMORY]
         elif memory:
             self.files = (MEMORY,) + self.files
-        self.plugin_extra_options = plugin_extra_options or {}
+        self.extra_serve_options = extra_serve_options or {}
         self.databases = {}
         self.inspect_data = inspect_data
         for file in self.files:

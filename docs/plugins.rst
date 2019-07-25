@@ -818,7 +818,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
 extra_serve_options()
 ~~~~~~~~~~~~~~~~~~~~~
 
-Add extra Click options to the ``datasette serve`` command. Options you add here will be displayed in ``datasette serve --help`` and their values will be available to your plugin anywhere it can access the ``datasette`` object by reading from ``datasette.plugin_extra_options``.
+Add extra Click options to the ``datasette serve`` command. Options you add here will be displayed in ``datasette serve --help`` and their values will be available to your plugin anywhere it can access the ``datasette`` object by reading from ``datasette.extra_serve_options``.
 
 .. code-block:: python
 
@@ -850,7 +850,7 @@ Your other plugin hooks can then access these settings like so:
     @hookimpl
     def extra_template_vars(datasette):
         return {
-            "my_plugin_paths": datasette.plugin_extra_options.get("my_plugin_paths") or []
+            "my_plugin_paths": datasette.extra_serve_options.get("my_plugin_paths") or []
         }
 
 Be careful not to define an option which clashes with a Datasette default option, or with options provided by another plugin. For this reason we recommend using a common prefix for your plugin, as shown above.

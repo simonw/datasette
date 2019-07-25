@@ -312,7 +312,7 @@ def serve(
     config,
     version_note,
     help_config,
-    **plugin_extra_options,
+    **extra_serve_options,
 ):
     """Serve up specified SQLite database files with a web UI"""
     if help_config:
@@ -359,7 +359,7 @@ def serve(
         config=dict(config),
         memory=memory,
         version_note=version_note,
-        plugin_extra_options=plugin_extra_options,
+        extra_serve_options=extra_serve_options,
     )
     # Run async sanity checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(ds.run_sanity_checks())

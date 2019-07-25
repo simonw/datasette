@@ -218,6 +218,11 @@ def app_client_with_dot():
 
 
 @pytest.fixture(scope="session")
+def app_client_with_space():
+    yield from make_app_client(filename="fixtures with space.db")
+
+
+@pytest.fixture(scope="session")
 def app_client_with_cors():
     yield from make_app_client(cors=True)
 

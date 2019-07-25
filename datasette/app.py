@@ -470,20 +470,7 @@ class Datasette:
         def in_thread():
             conn = getattr(connections, db_name, None)
             if not conn:
-                db = self.databases[db_name]
-                if db.is_memory:
-                    conn = sqlite3.connect(":memory:")
-                else:
-                    # mode=ro or immutable=1?
-                    if db.is_mutable:
-                        qs = "mode=ro"
-                    else:
-                        qs = "immutable=1"
-                    conn = sqlite3.connect(
-                        "file:{}?{}".format(db.path, qs),
-                        uri=True,
-                        check_same_thread=False,
-                    )
+                conn = self.databases[db_name].connect()
                 self.prepare_connection(conn)
                 setattr(connections, db_name, conn)
             return fn(conn)

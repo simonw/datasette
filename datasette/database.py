@@ -33,6 +33,18 @@ class Database:
                     for key, value in self.ds.inspect_data[self.name]["tables"].items()
                 }
 
+    def connect(self):
+        if self.is_memory:
+            return sqlite3.connect(":memory:")
+        # mode=ro or immutable=1?
+        if self.is_mutable:
+            qs = "mode=ro"
+        else:
+            qs = "immutable=1"
+        return sqlite3.connect(
+            "file:{}?{}".format(self.path, qs), uri=True, check_same_thread=False
+        )
+
     @property
     def size(self):
         if self.is_memory:

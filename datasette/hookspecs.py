@@ -58,3 +58,8 @@ def register_output_renderer(datasette):
 @hookspec
 def register_facet_classes():
     "Register Facet subclasses"
+
+
+@hookspec
+def extra_serve_options():
+    "Return list of extra click.option decorators to be applied to 'datasette serve'"

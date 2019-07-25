@@ -108,6 +108,7 @@ def make_app_client(
     inspect_data=None,
     static_mounts=None,
     template_dir=None,
+    plugin_extra_options=None,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -151,6 +152,7 @@ def make_app_client(
             inspect_data=inspect_data,
             static_mounts=static_mounts,
             template_dir=template_dir,
+            plugin_extra_options=plugin_extra_options,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         client = TestClient(ds.app())
@@ -386,7 +388,8 @@ def extra_template_vars(template, database, table, view_name, request, datasette
     return {
         "extra_template_vars": json.dumps({
             "template": template,
-            "scope_path": request.scope["path"]
+            "scope_path": request.scope["path"],
+            "plugin_extra_options": datasette.plugin_extra_options,
         }, default=lambda b: b.decode("utf8"))
     }
 """

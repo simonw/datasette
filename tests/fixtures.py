@@ -321,6 +321,8 @@ METADATA = {
 
 PLUGIN1 = """
 from datasette import hookimpl
+from datasette.database import Database
+from datasette.utils import sqlite3
 import base64
 import pint
 import json
@@ -397,6 +399,20 @@ def extra_template_vars(template, database, table, view_name, request, datasette
             "extra_serve_options": datasette.extra_serve_options,
         }, default=lambda b: b.decode("utf8"))
     }
+
+
+class SpecialDatabase(Database):
+    def connect(self):
+        db = sqlite3.connect(":memory:")
+        db.executescript("CREATE TABLE foo (id integer primary key, bar text)")
+        db.executescript("INSERT INTO foo (id, bar) VALUES (1, 'hello')")
+        return db
+
+@hookimpl
+def available_databases(datasette):
+    return [
+        ("special", SpecialDatabase(datasette, name="special")),
+    ]
 """
 
 PLUGIN2 = """

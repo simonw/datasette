@@ -161,7 +161,7 @@ class Datasette:
         elif memory:
             self.files = (MEMORY,) + self.files
         self.extra_serve_options = extra_serve_options or {}
-        self.databases = {}
+        self._databases = {}
         self.inspect_data = inspect_data
         for file in self.files:
             path = file
@@ -173,7 +173,7 @@ class Datasette:
             db = Database(self, path, is_mutable=is_mutable, is_memory=is_memory)
             if db.name in self.databases:
                 raise Exception("Multiple files with same stem: {}".format(db.name))
-            self.databases[db.name] = db
+            self._databases[db.name] = db
         self.cache_headers = cache_headers
         self.cors = cors
         self._metadata = metadata or {}
@@ -202,6 +202,14 @@ class Datasette:
                 except ValueError:
                     # Plugin already registered
                     pass
+
+    @property
+    def databases(self):
+        databases = dict(self._databases)
+        # pylint: disable=no-member
+        for pairs in pm.hook.available_databases(datasette=self):
+            databases.update(pairs)
+        return databases
 
     async def run_sanity_checks(self):
         # Only one check right now, for Spatialite

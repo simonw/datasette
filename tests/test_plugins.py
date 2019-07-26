@@ -188,7 +188,7 @@ def test_plugins_extra_body_script(app_client, path, expected_extra_body_script)
 
 def test_plugins_asgi_wrapper(app_client):
     response = app_client.get("/fixtures")
-    assert "fixtures" == response.headers["x-databases"]
+    assert "fixtures, special" == response.headers["x-databases"]
 
 
 def test_plugins_extra_template_vars(restore_working_directory):
@@ -228,3 +228,19 @@ def test_extra_serve_options_available_on_datasette(restore_working_directory):
             Soup(response.body, "html.parser").select("pre.extra_template_vars")[0].text
         )
         assert {"foo": "bar"} == extra_template_vars["extra_serve_options"]
+
+
+def test_plugins_available_databases(app_client):
+    response = app_client.get("/-/databases.json")
+    assert 200 == response.status
+    assert {
+        "name": "special",
+        "path": None,
+        "size": 0,
+        "is_mutable": False,
+        "is_memory": False,
+        "hash": None,
+    } in response.json
+    assert [{"id": 1, "bar": "hello"}] == app_client.get(
+        "/special/foo.json?_shape=array"
+    ).json

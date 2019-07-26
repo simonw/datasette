@@ -9,7 +9,6 @@ def test_inspect_cli(app_client):
     runner = CliRunner()
     result = runner.invoke(cli, ["inspect", "fixtures.db"])
     data = json.loads(result.output)
-    assert ["fixtures"] == list(data.keys())
     database = data["fixtures"]
     assert "fixtures.db" == database["file"]
     assert isinstance(database["hash"], str)
@@ -28,7 +27,7 @@ def test_inspect_cli_writes_to_file(app_client):
     )
     assert 0 == result.exit_code, result.output
     data = json.load(open("foo.json"))
-    assert ["fixtures"] == list(data.keys())
+    assert {"fixtures", "special"} == set(data.keys())
 
 
 def test_serve_with_inspect_file_prepopulates_table_counts_cache():

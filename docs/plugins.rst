@@ -854,3 +854,25 @@ Your other plugin hooks can then access these settings like so:
         }
 
 Be careful not to define an option which clashes with a Datasette default option, or with options provided by another plugin. For this reason we recommend using a common prefix for your plugin, as shown above.
+
+.. _plugin_hook_available_databases:
+
+available_databases(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Return a list of ``(name, database)`` pairs to be added to the available databases.
+
+``name`` should be a string. ``database`` should be a ``datasette.database.Database`` instance.
+
+This allows plugins to make databases available from new sources.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.database import Database
+
+    @hookimpl
+    def available_databases(datasette):
+        return [
+            ("hardcoded_database", Database(datasette, "/mnt/hard_coded.db"))
+        ]

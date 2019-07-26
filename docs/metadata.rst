@@ -62,7 +62,7 @@ Each of the top-level metadata fields can be used at the database and table leve
 Source, license and about
 -------------------------
 
-The three visible metadata fields you can apply to everything, specific databases or specific tables are source, license and about. All three are optionaly.
+The three visible metadata fields you can apply to everything, specific databases or specific tables are source, license and about. All three are optional.
 
 **source** and **source_url** should be used to indicate where the underlying data came from.
 

@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_29_3:
+
+0.29.3 (2019-09-02)
+-------------------
+
+- Fixed implementation of CodeMirror on database page (`#560 <https://github.com/simonw/datasette/issues/560>`__)
+- Documentation typo fixes - thanks, Min ho Kim (`#561 <https://github.com/simonw/datasette/pull/561>`__)
+- Mechanism for detecting if a table has FTS enabled now works if the table name used alternative escaping mechanisms (`#570 <https://github.com/simonw/datasette/issues/570>`__) - for compatibility with `a recent change to sqlite-utils <https://github.com/simonw/sqlite-utils/pull/57>`__.
+
 .. _v0_29_2:
 
 0.29.2 (2019-07-13)

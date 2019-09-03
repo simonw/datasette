@@ -159,7 +159,8 @@ def test_validate_sql_select_good(good_sql):
     utils.validate_sql_select(good_sql)
 
 
-def test_detect_fts():
+@pytest.mark.parametrize("open_quote,close_quote", [('"', '"'), ("[", "]")])
+def test_detect_fts(open_quote, close_quote):
     sql = """
     CREATE TABLE "Dumb_Table" (
       "TreeID" INTEGER,
@@ -175,9 +176,11 @@ def test_detect_fts():
       "qCaretaker" TEXT
     );
     CREATE VIEW Test_View AS SELECT * FROM Dumb_Table;
-    CREATE VIRTUAL TABLE "Street_Tree_List_fts" USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content="Street_Tree_List");
+    CREATE VIRTUAL TABLE {open}Street_Tree_List_fts{close} USING FTS4 ("qAddress", "qCaretaker", "qSpecies", content={open}Street_Tree_List{close});
     CREATE VIRTUAL TABLE r USING rtree(a, b, c);
-    """
+    """.format(
+        open=open_quote, close=close_quote
+    )
     conn = utils.sqlite3.connect(":memory:")
     conn.executescript(sql)
     assert None is utils.detect_fts(conn, "Dumb_Table")

@@ -14,15 +14,19 @@ from .inspect import inspect_hash
 
 
 class Database:
-    def __init__(self, ds, path=None, is_mutable=False, is_memory=False):
+    def __init__(
+        self, ds, path=None, name=None, is_mutable=False, is_memory=False, comment=None
+    ):
         self.ds = ds
+        self._name = name
         self.path = path
         self.is_mutable = is_mutable
         self.is_memory = is_memory
         self.hash = None
         self.cached_size = None
         self.cached_table_counts = None
-        if not self.is_mutable:
+        self.comment = comment
+        if not self.is_mutable and path is not None:
             p = Path(path)
             self.hash = inspect_hash(p)
             self.cached_size = p.stat().st_size
@@ -47,7 +51,7 @@ class Database:
 
     @property
     def size(self):
-        if self.is_memory:
+        if self.is_memory or self.path is None:
             return 0
         if self.cached_size is not None:
             return self.cached_size
@@ -83,6 +87,8 @@ class Database:
 
     @property
     def name(self):
+        if self._name:
+            return self._name
         if self.is_memory:
             return ":memory:"
         else:

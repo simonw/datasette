@@ -812,3 +812,67 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
                 await app(scope, recieve, wrapped_send)
             return add_x_databases_header
         return wrap_with_databases_header
+
+.. _plugin_hook_extra_serve_options:
+
+extra_serve_options()
+~~~~~~~~~~~~~~~~~~~~~
+
+Add extra Click options to the ``datasette serve`` command. Options you add here will be displayed in ``datasette serve --help`` and their values will be available to your plugin anywhere it can access the ``datasette`` object by reading from ``datasette.extra_serve_options``.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import click
+
+    @hookimpl
+    def extra_serve_options():
+        return [
+            click.option(
+                "--my-plugin-paths",
+                type=click.Path(exists=True, file_okay=False, dir_okay=True),
+                help="Directories to use with my-plugin",
+                multiple=True,
+            ),
+            click.option(
+                "--my-plugin-enable",
+                is_flag=True,
+                help="Enable functionality from my-plugin",
+            ),
+        ]
+
+Your other plugin hooks can then access these settings like so:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_template_vars(datasette):
+        return {
+            "my_plugin_paths": datasette.extra_serve_options.get("my_plugin_paths") or []
+        }
+
+Be careful not to define an option which clashes with a Datasette default option, or with options provided by another plugin. For this reason we recommend using a common prefix for your plugin, as shown above.
+
+.. _plugin_hook_available_databases:
+
+available_databases(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Return a list of ``(name, database)`` pairs to be added to the available databases.
+
+``name`` should be a string. ``database`` should be a ``datasette.database.Database`` instance.
+
+This allows plugins to make databases available from new sources.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.database import Database
+
+    @hookimpl
+    def available_databases(datasette):
+        return [
+            ("hardcoded_database", Database(datasette, "/mnt/hard_coded.db"))
+        ]

@@ -79,6 +79,7 @@ class IndexView(BaseView):
                 {
                     "name": name,
                     "hash": db.hash,
+                    "comment": db.comment,
                     "color": db.hash[:6]
                     if db.hash
                     else hashlib.md5(name.encode("utf8")).hexdigest()[:6],

@@ -108,6 +108,7 @@ def make_app_client(
     inspect_data=None,
     static_mounts=None,
     template_dir=None,
+    extra_serve_options=None,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -151,6 +152,7 @@ def make_app_client(
             inspect_data=inspect_data,
             static_mounts=static_mounts,
             template_dir=template_dir,
+            extra_serve_options=extra_serve_options,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         client = TestClient(ds.app())
@@ -213,6 +215,11 @@ def app_client_csv_max_mb_one():
 @pytest.fixture(scope="session")
 def app_client_with_dot():
     yield from make_app_client(filename="fixtures.dot.db")
+
+
+@pytest.fixture(scope="session")
+def app_client_with_space():
+    yield from make_app_client(filename="fixtures with space.db")
 
 
 @pytest.fixture(scope="session")
@@ -314,6 +321,8 @@ METADATA = {
 
 PLUGIN1 = """
 from datasette import hookimpl
+from datasette.database import Database
+from datasette.utils import sqlite3
 import base64
 import pint
 import json
@@ -386,9 +395,24 @@ def extra_template_vars(template, database, table, view_name, request, datasette
     return {
         "extra_template_vars": json.dumps({
             "template": template,
-            "scope_path": request.scope["path"]
+            "scope_path": request.scope["path"],
+            "extra_serve_options": datasette.extra_serve_options,
         }, default=lambda b: b.decode("utf8"))
     }
+
+
+class SpecialDatabase(Database):
+    def connect(self):
+        db = sqlite3.connect(":memory:")
+        db.executescript("CREATE TABLE foo (id integer primary key, bar text)")
+        db.executescript("INSERT INTO foo (id, bar) VALUES (1, 'hello')")
+        return db
+
+@hookimpl
+def available_databases(datasette):
+    return [
+        ("special", SpecialDatabase(datasette, name="special")),
+    ]
 """
 
 PLUGIN2 = """

@@ -9,6 +9,7 @@ from .fixtures import (  # noqa
     app_client_two_attached_databases_one_immutable,
     app_client_with_cors,
     app_client_with_dot,
+    app_client_with_space,
     generate_compound_rows,
     generate_sortable_rows,
     make_app_client,
@@ -23,7 +24,7 @@ def test_homepage(app_client):
     response = app_client.get("/.json")
     assert response.status == 200
     assert "application/json; charset=utf-8" == response.headers["content-type"]
-    assert response.json.keys() == {"fixtures": 0}.keys()
+    assert {"fixtures", "special"} == set(response.json.keys())
     d = response.json["fixtures"]
     assert d["name"] == "fixtures"
     assert d["tables_count"] == 24
@@ -517,19 +518,45 @@ def test_no_files_uses_memory_database(app_client_no_files):
     assert response.status == 200
     assert {
         ":memory:": {
+            "name": ":memory:",
             "hash": None,
+            "comment": None,
             "color": "f7935d",
+            "path": "/:memory:",
+            "tables_and_views_truncated": [],
+            "tables_and_views_more": False,
+            "tables_count": 0,
+            "table_rows_sum": 0,
+            "show_table_row_counts": False,
             "hidden_table_rows_sum": 0,
             "hidden_tables_count": 0,
-            "name": ":memory:",
-            "show_table_row_counts": False,
-            "path": "/:memory:",
-            "table_rows_sum": 0,
-            "tables_count": 0,
-            "tables_and_views_more": False,
-            "tables_and_views_truncated": [],
             "views_count": 0,
-        }
+        },
+        "special": {
+            "name": "special",
+            "hash": None,
+            "comment": None,
+            "color": "0bd650",
+            "path": "/special",
+            "tables_and_views_truncated": [
+                {
+                    "name": "foo",
+                    "columns": ["id", "bar"],
+                    "primary_keys": ["id"],
+                    "count": 1,
+                    "hidden": False,
+                    "fts_table": None,
+                    "num_relationships_for_sorting": 0,
+                }
+            ],
+            "tables_and_views_more": False,
+            "tables_count": 1,
+            "table_rows_sum": 1,
+            "show_table_row_counts": True,
+            "hidden_table_rows_sum": 0,
+            "hidden_tables_count": 0,
+            "views_count": 0,
+        },
     } == response.json
     # Try that SQL query
     response = app_client_no_files.get(
@@ -541,6 +568,11 @@ def test_no_files_uses_memory_database(app_client_no_files):
 
 def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
     response = app_client_with_dot.get("/fixtures.dot.json")
+    assert 200 == response.status
+
+
+def test_database_page_for_database_with_space_in_name(app_client_with_space):
+    response = app_client_with_space.get("/fixtures%20with%20space.json")
     assert 200 == response.status
 
 
@@ -1164,8 +1196,10 @@ def test_unit_filters(app_client):
 def test_databases_json(app_client_two_attached_databases_one_immutable):
     response = app_client_two_attached_databases_one_immutable.get("/-/databases.json")
     databases = response.json
-    assert 2 == len(databases)
-    extra_database, fixtures_database = databases
+    assert 3 == len(databases)
+    by_name = {database["name"]: database for database in databases}
+    extra_database = by_name["extra_database"]
+    fixtures_database = by_name["fixtures"]
     assert "extra_database" == extra_database["name"]
     assert None == extra_database["hash"]
     assert True == extra_database["is_mutable"]

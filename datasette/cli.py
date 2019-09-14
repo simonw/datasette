@@ -186,7 +186,7 @@ def package(
     install,
     spatialite,
     version_note,
-    **extra_metadata
+    **extra_metadata,
 ):
     "Package specified SQLite files into a new datasette Docker container"
     if not shutil.which("docker"):
@@ -218,6 +218,13 @@ def package(
             args.append(tag)
         args.append(".")
         call(args)
+
+
+def extra_serve_options(serve):
+    for options in pm.hook.extra_serve_options():
+        for option in reversed(options):
+            serve = option(serve)
+    return serve
 
 
 @cli.command()
@@ -286,6 +293,7 @@ def package(
 )
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")
+@extra_serve_options
 def serve(
     files,
     immutable,
@@ -304,6 +312,7 @@ def serve(
     config,
     version_note,
     help_config,
+    **extra_serve_options,
 ):
     """Serve up specified SQLite database files with a web UI"""
     if help_config:
@@ -350,6 +359,7 @@ def serve(
         config=dict(config),
         memory=memory,
         version_note=version_note,
+        extra_serve_options=extra_serve_options,
     )
     # Run async sanity checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(ds.run_sanity_checks())

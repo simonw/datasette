@@ -47,6 +47,7 @@ class DatabaseView(DataView):
             {
                 "database": database,
                 "size": db.size,
+                "comment": db.comment,
                 "tables": tables,
                 "hidden_count": len([t for t in tables if t["hidden"]]),
                 "views": views,

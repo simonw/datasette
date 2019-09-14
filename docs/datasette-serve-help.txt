@@ -23,4 +23,6 @@ Options:
                             datasette.readthedocs.io/en/latest/config.html
   --version-note TEXT       Additional note to show on /-/versions
   --help-config             Show available config options
+  -d, --dir DIRECTORY       Directories to scan for SQLite databases
+  --scan                    Continually scan directories for new database files
   --help                    Show this message and exit.

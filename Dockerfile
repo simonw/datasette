@@ -34,7 +34,7 @@ COPY --from=build /usr/local/lib/ /usr/local/lib/
 # Copy executables
 COPY --from=build /usr/local/bin /usr/local/bin
 # Copy spatial extensions
-COPY --from=build /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
+COPY --from=build /usr/lib/*-linux-gnu /usr/lib/
 
 ENV LD_LIBRARY_PATH=/usr/local/lib
 

@@ -457,6 +457,15 @@ class Datasette:
             for p in ps
         ]
 
+    def threads(self):
+        threads = list(threading.enumerate())
+        return {
+            "num_threads": len(threads),
+            "threads": [
+                {"name": t.name, "ident": t.ident, "daemon": t.daemon} for t in threads
+            ],
+        }
+
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."
         return (
@@ -620,6 +629,10 @@ class Datasette:
         add_route(
             JsonDataView.as_asgi(self, "config.json", lambda: self._config),
             r"/-/config(?P<as_format>(\.json)?)$",
+        )
+        add_route(
+            JsonDataView.as_asgi(self, "threads.json", self.threads),
+            r"/-/threads(?P<as_format>(\.json)?)$",
         )
         add_route(
             JsonDataView.as_asgi(self, "databases.json", self.connected_databases),

@@ -90,6 +90,8 @@ Shows the :ref:`config` options for this instance of Datasette. `Config example 
         "sql_time_limit_ms": 1000
     }
 
+.. _JsonDataView_databases:
+
 /-/databases
 ------------
 
@@ -105,3 +107,26 @@ Shows currently attached databases. `Databases example <https://latest.datasette
             "size": 225280
         }
     ]
+
+.. _JsonDataView_threads:
+
+/-/threads
+----------
+
+Shows details of threads. `Threads example <https://latest.datasette.io/-/threads>`_::
+
+    {
+        "num_threads": 2,
+        "threads": [
+            {
+                "daemon": false,
+                "ident": 4759197120,
+                "name": "MainThread"
+            },
+            {
+                "daemon": true,
+                "ident": 123145319682048,
+                "name": "Thread-1"
+            },
+        ]
+    }

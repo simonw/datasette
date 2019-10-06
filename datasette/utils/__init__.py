@@ -167,6 +167,8 @@ allowed_sql_res = [
     re.compile(r"^explain select\b"),
     re.compile(r"^explain query plan select\b"),
     re.compile(r"^with\b"),
+    re.compile(r"^explain with\b"),
+    re.compile(r"^explain query plan with\b"),
 ]
 disallawed_sql_res = [(re.compile("pragma"), "Statement may not contain PRAGMA")]
 

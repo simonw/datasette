@@ -151,8 +151,12 @@ def test_validate_sql_select_bad(bad_sql):
         "select count(*) from airports",
         "select foo from bar",
         "select 1 + 1",
+        "explain select 1 + 1",
+        "explain query plan select 1 + 1",
         "SELECT\nblah FROM foo",
         "WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt LIMIT 10) SELECT x FROM cnt;",
+        "explain WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt LIMIT 10) SELECT x FROM cnt;",
+        "explain query plan WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt LIMIT 10) SELECT x FROM cnt;",
     ],
 )
 def test_validate_sql_select_good(good_sql):

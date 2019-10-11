@@ -174,14 +174,14 @@ def app_client_no_files():
 @pytest.fixture(scope="session")
 def app_client_two_attached_databases():
     yield from make_app_client(
-        extra_databases={"extra_database.db": EXTRA_DATABASE_SQL}
+        extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
     )
 
 
 @pytest.fixture(scope="session")
 def app_client_two_attached_databases_one_immutable():
     yield from make_app_client(
-        is_immutable=True, extra_databases={"extra_database.db": EXTRA_DATABASE_SQL}
+        is_immutable=True, extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
     )
 
 

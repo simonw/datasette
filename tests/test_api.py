@@ -6,6 +6,7 @@ from .fixtures import (  # noqa
     app_client_shorter_time_limit,
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
+    app_client_two_attached_databases,
     app_client_two_attached_databases_one_immutable,
     app_client_with_cors,
     app_client_with_dot,
@@ -1166,7 +1167,7 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
     databases = response.json
     assert 2 == len(databases)
     extra_database, fixtures_database = databases
-    assert "extra_database" == extra_database["name"]
+    assert "extra database" == extra_database["name"]
     assert None == extra_database["hash"]
     assert True == extra_database["is_mutable"]
     assert False == extra_database["is_memory"]
@@ -1652,3 +1653,19 @@ def test_cors(app_client_with_cors, path, status_code):
     response = app_client_with_cors.get(path)
     assert response.status == status_code
     assert "*" == response.headers["Access-Control-Allow-Origin"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/",
+        ".json",
+        "/searchable",
+        "/searchable.json",
+        "/searchable_view",
+        "/searchable_view.json",
+    ),
+)
+def test_database_with_space_in_name(app_client_two_attached_databases, path):
+    response = app_client_two_attached_databases.get("/extra database" + path)
+    assert response.status == 200

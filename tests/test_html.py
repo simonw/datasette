@@ -26,11 +26,11 @@ def test_homepage(app_client_two_attached_databases):
     )
     # Should be two attached databases
     assert [
-        {"href": "/extra_database", "text": "extra_database"},
         {"href": "/fixtures", "text": "fixtures"},
+        {"href": "/extra_database", "text": "extra_database"},
     ] == [{"href": a["href"], "text": a.text.strip()} for a in soup.select("h2 a")]
     # The first attached database should show count text and attached tables
-    h2 = soup.select("h2")[0]
+    h2 = soup.select("h2")[1]
     assert "extra_database" == h2.text.strip()
     counts_p, links_p = h2.find_all_next("p")[:2]
     assert (

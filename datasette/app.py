@@ -159,7 +159,7 @@ class Datasette:
             self.files = [MEMORY]
         elif memory:
             self.files = (MEMORY,) + self.files
-        self.databases = {}
+        self.databases = collections.OrderedDict()
         self.inspect_data = inspect_data
         for file in self.files:
             path = file

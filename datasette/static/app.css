@@ -166,20 +166,30 @@ form input[type=search] {
         width: 95%;
     }
 }
-form input[type=submit] {
-    color: #fff;
-    background-color: #007bff;
-    border-color: #007bff;
+form input[type=submit], form button[type=button] {
     font-weight: 400;
     cursor: pointer;
     text-align: center;
     vertical-align: middle;
-    border: 1px solid blue;
+    border-width: 1px;
+    border-style: solid;
     padding: .5em 0.8em;
     font-size: 0.9rem;
     line-height: 1;
     border-radius: .25rem;
+}
+
+form input[type=submit] {
+    color: #fff;
+    background-color: #007bff;
+    border-color: #007bff;
     -webkit-appearance: button;
+}
+
+form button[type=button] {
+    color: #007bff;
+    background-color: #fff;
+    border-color: #007bff;
 }
 
 .filter-row {

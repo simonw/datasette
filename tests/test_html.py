@@ -737,6 +737,18 @@ def test_database_metadata(app_client):
     assert_footer_links(soup)
 
 
+def test_database_metadata_with_custom_sql(app_client):
+    response = app_client.get("/fixtures?sql=select+*+from+simple_primary_key")
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    # Page title should be the default
+    assert "fixtures" == soup.find("h1").text
+    # Description should be custom
+    assert "Custom SQL query returning" in soup.find("h3").text
+    # The source/license should be inherited
+    assert_footer_links(soup)
+
+
 def test_table_metadata(app_client):
     response = app_client.get("/fixtures/simple_primary_key")
     assert response.status == 200

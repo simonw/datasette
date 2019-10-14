@@ -10,12 +10,17 @@ class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
+        metadata = (self.ds.metadata("databases") or {}).get(database, {})
+        self.ds.update_with_inherited_metadata(metadata)
+
         if request.args.get("sql"):
             if not self.ds.config("allow_sql"):
                 raise DatasetteError("sql= is not allowed", status=400)
             sql = request.raw_args.pop("sql")
             validate_sql_select(sql)
-            return await self.custom_sql(request, database, hash, sql, _size=_size)
+            return await self.custom_sql(
+                request, database, hash, sql, _size=_size, metadata=metadata
+            )
 
         db = self.ds.databases[database]
 
@@ -23,9 +28,6 @@ class DatabaseView(DataView):
         views = await db.view_names()
         hidden_table_names = set(await db.hidden_table_names())
         all_foreign_keys = await db.get_all_foreign_keys()
-
-        metadata = (self.ds.metadata("databases") or {}).get(database, {})
-        self.ds.update_with_inherited_metadata(metadata)
 
         tables = []
         for table in table_counts:

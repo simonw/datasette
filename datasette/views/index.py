@@ -97,8 +97,6 @@ class IndexView(BaseView):
                 }
             )
 
-        databases.sort(key=lambda database: database["name"])
-
         if as_format:
             headers = {}
             if self.ds.cors:

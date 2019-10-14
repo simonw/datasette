@@ -26,7 +26,10 @@
     <form class="sql" action="{{ database_url(database) }}" method="get">
         <h3>Custom SQL query</h3>
         <p><textarea id="sql-editor" name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
-        <p><input type="submit" value="Run SQL"></p>
+        <p>
+            <button id="sql-format" type="button" hidden>Format SQL</button>
+            <input type="submit" value="Run SQL">
+        </p>
     </form>
 {% endif %}
 

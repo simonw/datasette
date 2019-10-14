@@ -37,7 +37,7 @@
         {% if editable and config.allow_sql %}
             <p><textarea id="sql-editor" name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
         {% else %}
-            <pre>{% if query %}{{ query.sql }}{% endif %}</pre>
+            <pre id="sql-query">{% if query %}{{ query.sql }}{% endif %}</pre>
         {% endif %}
     {% else %}
         <input type="hidden" name="sql" value="{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}">
@@ -49,7 +49,10 @@
             <p><label for="qp{{ loop.index }}">{{ name }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ name }}" value="{{ value }}"></p>
         {% endfor %}
     {% endif %}
-    <p><input type="submit" value="Run SQL"></p>
+    <p>
+        <button id="sql-format" type="button" hidden>Format SQL</button>
+        <input type="submit" value="Run SQL">
+    </p>
 </form>
 
 {% if display_rows %}

@@ -40,7 +40,7 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which):
             [
                 mock.call("gcloud builds submit --tag {}".format(tag), shell=True),
                 mock.call(
-                    "gcloud beta run deploy --allow-unauthenticated --image {}".format(
+                    "gcloud beta run deploy --allow-unauthenticated --platform=managed --image {}".format(
                         tag
                     ),
                     shell=True,

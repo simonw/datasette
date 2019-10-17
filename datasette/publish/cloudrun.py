@@ -110,7 +110,7 @@ def publish_subcommand(publish):
             image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
             check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
         check_call(
-            "gcloud beta run deploy --allow-unauthenticated --image {}{}".format(
+            "gcloud beta run deploy --allow-unauthenticated --platform=managed --image {}{}".format(
                 image_id, " {}".format(service) if service else ""
             ),
             shell=True,

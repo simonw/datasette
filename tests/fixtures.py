@@ -179,6 +179,13 @@ def app_client_two_attached_databases():
 
 
 @pytest.fixture(scope="session")
+def app_client_conflicting_database_names():
+    yield from make_app_client(
+        extra_databases={"foo.db": EXTRA_DATABASE_SQL, "foo-bar.db": EXTRA_DATABASE_SQL}
+    )
+
+
+@pytest.fixture(scope="session")
 def app_client_two_attached_databases_one_immutable():
     yield from make_app_client(
         is_immutable=True, extra_databases={"extra_database.db": EXTRA_DATABASE_SQL}

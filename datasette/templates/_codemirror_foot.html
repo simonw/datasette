@@ -6,12 +6,6 @@ window.onload = () => {
     if (sqlFormat && !readOnly) {
         sqlFormat.hidden = false;
     }
-    if (readOnly) {
-        readOnly.innerHTML = sqlFormatter.format(readOnly.innerHTML);
-    }
-    if (sqlInput) {
-        sqlInput.value = sqlFormatter.format(sqlInput.value);
-    }
     var editor = CodeMirror.fromTextArea(sqlInput, {
       lineNumbers: true,
       mode: "text/x-sql",

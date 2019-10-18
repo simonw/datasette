@@ -7,6 +7,7 @@ from .fixtures import (  # noqa
     app_client_larger_cache_size,
     app_client_returned_rows_matches_page_size,
     app_client_two_attached_databases_one_immutable,
+    app_client_conflicting_database_names,
     app_client_with_cors,
     app_client_with_dot,
     generate_compound_rows,
@@ -1652,3 +1653,20 @@ def test_cors(app_client_with_cors, path, status_code):
     response = app_client_with_cors.get(path)
     assert response.status == status_code
     assert "*" == response.headers["Access-Control-Allow-Origin"]
+
+
+def test_common_prefix_database_names(app_client_conflicting_database_names):
+    # https://github.com/simonw/datasette/issues/597
+    assert ["fixtures", "foo", "foo-bar"] == [
+        d["name"]
+        for d in json.loads(
+            app_client_conflicting_database_names.get("/-/databases.json").body.decode(
+                "utf8"
+            )
+        )
+    ]
+    for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
+        data = json.loads(
+            app_client_conflicting_database_names.get(path).body.decode("utf8")
+        )
+        assert db_name == data["database"]

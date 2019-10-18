@@ -1660,7 +1660,9 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
     assert ["fixtures", "foo", "foo-bar"] == [
         d["name"]
         for d in json.loads(
-            app_client_conflicting_database_names.get("/-/databases.json").body
+            app_client_conflicting_database_names.get("/-/databases.json").body.decode(
+                "utf8"
+            )
         )
     ]
     for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):

@@ -80,6 +80,15 @@ def test_table_csv_download(app_client):
     assert expected_disposition == response.headers["Content-Disposition"]
 
 
+def test_csv_with_non_ascii_characters(app_client):
+    response = app_client.get(
+        "/fixtures.csv?sql=select%0D%0A++%27%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC%27+as+text%2C%0D%0A++1+as+number%0D%0Aunion%0D%0Aselect%0D%0A++%27bob%27+as+text%2C%0D%0A++2+as+number%0D%0Aorder+by%0D%0A++number"
+    )
+    assert response.status == 200
+    assert "text/plain; charset=utf-8" == response.headers["content-type"]
+    assert "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n" == response.body.decode("utf8")
+
+
 def test_max_csv_mb(app_client_csv_max_mb_one):
     response = app_client_csv_max_mb_one.get(
         "/fixtures.csv?sql=select+randomblob(10000)+"

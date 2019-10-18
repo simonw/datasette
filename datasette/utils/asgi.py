@@ -217,7 +217,7 @@ class AsgiWriter:
         await self.send(
             {
                 "type": "http.response.body",
-                "body": chunk.encode("latin-1"),
+                "body": chunk.encode("utf-8"),
                 "more_body": True,
             }
         )

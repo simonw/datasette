@@ -21,6 +21,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 18th October 2019: [Datasette 0.30](https://datasette.readthedocs.io/en/stable/changelog.html#v0-30)
  * 13th July 2019: [Single sign-on against GitHub using ASGI middleware](https://simonwillison.net/2019/Jul/14/sso-asgi/) talks about the implementation of [datasette-auth-github](https://github.com/simonw/datasette-auth-github) in more detail.
  * 7th July 2019: [Datasette 0.29](https://datasette.readthedocs.io/en/stable/changelog.html#v0-29) - ASGI, new plugin hooks, facet by date and much, much more...
    * [datasette-auth-github](https://github.com/simonw/datasette-auth-github) - a new plugin for Datasette 0.29 that lets you require users to authenticate against GitHub before accessing your Datasette instance. You can whitelist specific users, or you can restrict access to members of specific GitHub organizations or teams.

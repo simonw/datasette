@@ -4,6 +4,20 @@
 Changelog
 =========
 
+.. _v0_30:
+
+0.30 (2019-10-18)
+-----------------
+
+- Added ``/-/threads`` debugging page
+- Allow ``EXPLAIN WITH...`` (`#583 <https://github.com/simonw/datasette/issues/583>`__)
+- Button to format SQL - thanks, Tobias Kunze (`#136 <https://github.com/simonw/datasette/issues/136>`__)
+- Sort databases on homepage by argument order - thanks, Tobias Kunze (`#585 <https://github.com/simonw/datasette/issues/585>`__)
+- Display metadata footer on custom SQL queries - thanks, Tobias Kunze (`#589 <https://github.com/simonw/datasette/pull/589>`__)
+- Use ``--platform=managed`` for ``publish cloudrun`` (`#587 <https://github.com/simonw/datasette/issues/587>`__)
+- Fixed bug returning non-ASCII characters in CSV (`#584 <https://github.com/simonw/datasette/issues/584>`__)
+- Fix for ``/foo`` v.s. ``/foo-bar`` bug (`#601 <https://github.com/simonw/datasette/issues/601>`__)
+
 .. _v0_29_3:
 
 0.29.3 (2019-09-02)

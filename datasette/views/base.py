@@ -362,6 +362,8 @@ class DataView(BaseView):
         _format = request.args.get("_format", None)
         if not _format:
             _format = (args.pop("as_format", None) or "").lstrip(".")
+        else:
+            args.pop("as_format", None)
         if "table_and_format" in args:
             db = self.ds.databases[database]
 

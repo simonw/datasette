@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_30_1:
+
+0.30.1 (2019-10-30)
+-------------------
+
+- Fixed bug where ``?_where=`` parameter was not persisted in hidden form fields (`#604 <https://github.com/simonw/datasette/issues/604>`__)
+- Fixed bug with .JSON representation of row pages - thanks, Chris Shaw (`#603 <https://github.com/simonw/datasette/issues/603>`__)
+
 .. _v0_30:
 
 0.30 (2019-10-18)

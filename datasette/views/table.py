@@ -721,6 +721,9 @@ class TableView(RowTableShared):
             for arg in ("_fts_table", "_fts_pk"):
                 if arg in special_args:
                     form_hidden_args.append((arg, special_args[arg]))
+            if request.args["_where"]:
+                for where_text in request.args["_where"]:
+                    form_hidden_args.append(("_where", where_text))
             return {
                 "supports_search": bool(fts_table),
                 "search": search or "",

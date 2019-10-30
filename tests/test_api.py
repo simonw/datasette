@@ -1245,7 +1245,7 @@ def test_config_json(app_client):
 
 
 def test_page_size_matching_max_returned_rows(
-    app_client_returned_rows_matches_page_size
+    app_client_returned_rows_matches_page_size,
 ):
     fetched = []
     path = "/fixtures/no_primary_key.json"

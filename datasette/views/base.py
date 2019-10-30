@@ -257,9 +257,12 @@ class DataView(BaseView):
         assert NotImplemented
 
     async def get(self, request, db_name, **kwargs):
-        database, hash, correct_hash_provided, should_redirect = await self.resolve_db_name(
-            request, db_name, **kwargs
-        )
+        (
+            database,
+            hash,
+            correct_hash_provided,
+            should_redirect,
+        ) = await self.resolve_db_name(request, db_name, **kwargs)
         if should_redirect:
             return self.redirect(request, should_redirect, remove_args={"_hash"})
 

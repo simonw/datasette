@@ -586,9 +586,10 @@ class TableView(RowTableShared):
             )
 
         for facet in facet_instances:
-            instance_facet_results, instance_facets_timed_out = (
-                await facet.facet_results()
-            )
+            (
+                instance_facet_results,
+                instance_facets_timed_out,
+            ) = await facet.facet_results()
             facet_results.update(instance_facet_results)
             facets_timed_out.extend(instance_facets_timed_out)
 

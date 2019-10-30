@@ -25,7 +25,7 @@ def get_version():
 # Only install black on Python 3.6 or higher
 maybe_black = []
 if sys.version_info > (3, 6):
-    maybe_black = ["black"]
+    maybe_black = ["black~=19.10b0"]
 
 setup(
     name="datasette",

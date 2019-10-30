@@ -955,6 +955,12 @@ def test_extra_where_clauses(app_client):
         "/fixtures/facetable?_where=city_id%3D1",
         "/fixtures/facetable?_where=neighborhood%3D%27Dogpatch%27",
     ] == hrefs
+    # These should also be persisted as hidden fields
+    inputs = soup.find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [("_where", "neighborhood='Dogpatch'"), ("_where", "city_id=1")] == [
+        (hidden["name"], hidden["value"]) for hidden in hiddens
+    ]
 
 
 def test_binary_data_display(app_client):

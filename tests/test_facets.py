@@ -217,6 +217,20 @@ async def test_array_facet_suggest(app_client):
 
 @pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+async def test_array_facet_suggest_not_if_all_empty_arrays(app_client):
+    facet = ArrayFacet(
+        app_client.ds,
+        MockRequest("http://localhost/"),
+        database="fixtures",
+        sql="select * from facetable where tags = '[]'",
+        table="facetable",
+    )
+    suggestions = await facet.suggest()
+    assert [] == suggestions
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_results(app_client):
     facet = ArrayFacet(
         app_client.ds,

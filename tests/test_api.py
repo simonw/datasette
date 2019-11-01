@@ -195,6 +195,7 @@ def test_database_page(app_client):
                 "city_id",
                 "neighborhood",
                 "tags",
+                "complex_array",
             ],
             "primary_keys": ["pk"],
             "count": 15,
@@ -1029,15 +1030,25 @@ def test_table_filter_queries_multiple_of_same_type(app_client):
 def test_table_filter_json_arraycontains(app_client):
     response = app_client.get("/fixtures/facetable.json?tags__arraycontains=tag1")
     assert [
-        [1, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Mission", '["tag1", "tag2"]'],
-        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]'],
+        [
+            1,
+            "2019-01-14 08:00:00",
+            1,
+            1,
+            "CA",
+            1,
+            "Mission",
+            '["tag1", "tag2"]',
+            '[{"foo": "bar"}]',
+        ],
+        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]', "[]"],
     ] == response.json["rows"]
 
 
 def test_table_filter_extra_where(app_client):
     response = app_client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
     assert [
-        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]']
+        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]', "[]"]
     ] == response.json["rows"]
 
 
@@ -1453,6 +1464,7 @@ def test_suggested_facets(app_client):
         {"name": "city_id", "querystring": "_facet=city_id"},
         {"name": "neighborhood", "querystring": "_facet=neighborhood"},
         {"name": "tags", "querystring": "_facet=tags"},
+        {"name": "complex_array", "querystring": "_facet=complex_array"},
         {"name": "created", "querystring": "_facet_date=created"},
     ]
     if detect_json1():
@@ -1488,6 +1500,7 @@ def test_expand_labels(app_client):
             "city_id": {"value": 1, "label": "San Francisco"},
             "neighborhood": "Dogpatch",
             "tags": '["tag1", "tag3"]',
+            "complex_array": "[]",
         },
         "13": {
             "pk": 13,
@@ -1498,6 +1511,7 @@ def test_expand_labels(app_client):
             "city_id": {"value": 3, "label": "Detroit"},
             "neighborhood": "Corktown",
             "tags": "[]",
+            "complex_array": "[]",
         },
     } == response.json
 

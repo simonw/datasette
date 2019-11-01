@@ -23,6 +23,10 @@ async def test_column_facet_suggest(app_client):
         {"name": "city_id", "toggle_url": "http://localhost/?_facet=city_id"},
         {"name": "neighborhood", "toggle_url": "http://localhost/?_facet=neighborhood"},
         {"name": "tags", "toggle_url": "http://localhost/?_facet=tags"},
+        {
+            "name": "complex_array",
+            "toggle_url": "http://localhost/?_facet=complex_array",
+        },
     ] == suggestions
 
 
@@ -57,6 +61,10 @@ async def test_column_facet_suggest_skip_if_already_selected(app_client):
             "name": "tags",
             "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=tags",
         },
+        {
+            "name": "complex_array",
+            "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=complex_array",
+        },
     ] == suggestions
 
 
@@ -78,6 +86,7 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
         "state",
         "neighborhood",
         "tags",
+        "complex_array",
     ] == suggestions
 
 

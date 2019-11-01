@@ -21,22 +21,22 @@ world
 )
 
 EXPECTED_TABLE_WITH_LABELS_CSV = """
-pk,created,planet_int,on_earth,state,city_id,city_id_label,neighborhood,tags
-1,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Mission,"[""tag1"", ""tag2""]"
-2,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Dogpatch,"[""tag1"", ""tag3""]"
-3,2019-01-14 08:00:00,1,1,CA,1,San Francisco,SOMA,[]
-4,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Tenderloin,[]
-5,2019-01-15 08:00:00,1,1,CA,1,San Francisco,Bernal Heights,[]
-6,2019-01-15 08:00:00,1,1,CA,1,San Francisco,Hayes Valley,[]
-7,2019-01-15 08:00:00,1,1,CA,2,Los Angeles,Hollywood,[]
-8,2019-01-15 08:00:00,1,1,CA,2,Los Angeles,Downtown,[]
-9,2019-01-16 08:00:00,1,1,CA,2,Los Angeles,Los Feliz,[]
-10,2019-01-16 08:00:00,1,1,CA,2,Los Angeles,Koreatown,[]
-11,2019-01-16 08:00:00,1,1,MI,3,Detroit,Downtown,[]
-12,2019-01-17 08:00:00,1,1,MI,3,Detroit,Greektown,[]
-13,2019-01-17 08:00:00,1,1,MI,3,Detroit,Corktown,[]
-14,2019-01-17 08:00:00,1,1,MI,3,Detroit,Mexicantown,[]
-15,2019-01-17 08:00:00,2,0,MC,4,Memnonia,Arcadia Planitia,[]
+pk,created,planet_int,on_earth,state,city_id,city_id_label,neighborhood,tags,complex_array
+1,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Mission,"[""tag1"", ""tag2""]","[{""foo"": ""bar""}]"
+2,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Dogpatch,"[""tag1"", ""tag3""]",[]
+3,2019-01-14 08:00:00,1,1,CA,1,San Francisco,SOMA,[],[]
+4,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Tenderloin,[],[]
+5,2019-01-15 08:00:00,1,1,CA,1,San Francisco,Bernal Heights,[],[]
+6,2019-01-15 08:00:00,1,1,CA,1,San Francisco,Hayes Valley,[],[]
+7,2019-01-15 08:00:00,1,1,CA,2,Los Angeles,Hollywood,[],[]
+8,2019-01-15 08:00:00,1,1,CA,2,Los Angeles,Downtown,[],[]
+9,2019-01-16 08:00:00,1,1,CA,2,Los Angeles,Los Feliz,[],[]
+10,2019-01-16 08:00:00,1,1,CA,2,Los Angeles,Koreatown,[],[]
+11,2019-01-16 08:00:00,1,1,MI,3,Detroit,Downtown,[],[]
+12,2019-01-17 08:00:00,1,1,MI,3,Detroit,Greektown,[],[]
+13,2019-01-17 08:00:00,1,1,MI,3,Detroit,Corktown,[],[]
+14,2019-01-17 08:00:00,1,1,MI,3,Detroit,Mexicantown,[],[]
+15,2019-01-17 08:00:00,2,0,MC,4,Memnonia,Arcadia Planitia,[],[]
 """.lstrip().replace(
     "\n", "\r\n"
 )

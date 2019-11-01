@@ -633,6 +633,7 @@ def get_plugins(pm):
         distinfo = plugin_to_distinfo.get(plugin)
         if distinfo:
             plugin_info["version"] = distinfo.version
+            plugin_info["name"] = distinfo.project_name
         plugins.append(plugin_info)
     return plugins
 

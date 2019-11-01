@@ -6,8 +6,11 @@ Usage: datasette serve [OPTIONS] [FILES]...
 
 Options:
   -i, --immutable PATH      Database files to open in immutable mode
-  -h, --host TEXT           host for server, defaults to 127.0.0.1
-  -p, --port INTEGER        port for server, defaults to 8001
+  -h, --host TEXT           Host for server. Defaults to 127.0.0.1 which means only
+                            connections from the local machine will be allowed. Use
+                            0.0.0.0 to listen to all IPs and allow access from other
+                            machines.
+  -p, --port INTEGER        Port for server, defaults to 8001
   --debug                   Enable debug mode - useful for development
   --reload                  Automatically reload if database or code change detected -
                             useful for development

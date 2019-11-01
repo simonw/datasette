@@ -612,8 +612,17 @@ class Datasette:
         # Mount any plugin static/ directories
         for plugin in get_plugins(pm):
             if plugin["static_path"]:
-                modpath = "/-/static-plugins/{}/(?P<path>.*)$".format(plugin["name"])
-                add_route(asgi_static(plugin["static_path"]), modpath)
+                add_route(
+                    asgi_static(plugin["static_path"]),
+                    "/-/static-plugins/{}/(?P<path>.*)$".format(plugin["name"]),
+                )
+                # Support underscores in name in addition to hyphens, see https://github.com/simonw/datasette/issues/611
+                add_route(
+                    asgi_static(plugin["static_path"]),
+                    "/-/static-plugins/{}/(?P<path>.*)$".format(
+                        plugin["name"].replace("-", "_")
+                    ),
+                )
         add_route(
             JsonDataView.as_asgi(self, "metadata.json", lambda: self._metadata),
             r"/-/metadata(?P<as_format>(\.json)?)$",

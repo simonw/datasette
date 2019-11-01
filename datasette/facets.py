@@ -295,7 +295,7 @@ class ArrayFacet(Facet):
                     # Now sanity check that first 100 arrays contain only strings
                     first_100 = await self.ds.execute(
                         self.database,
-                        "select {column} from ({sql}) where {column} is not null".format(
+                        "select {column} from ({sql}) where {column} is not null limit 100".format(
                             column=escape_sqlite(column), sql=self.sql
                         ),
                         self.params,

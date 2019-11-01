@@ -442,7 +442,7 @@ you have one:
     @hookimpl
     def extra_js_urls():
         return [
-            '/-/static-plugins/your_plugin/app.js'
+            '/-/static-plugins/your-plugin/app.js'
         ]
 
 .. _plugin_hook_publish_subcommand:

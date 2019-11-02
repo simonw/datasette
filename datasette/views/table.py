@@ -637,7 +637,7 @@ class TableView(RowTableShared):
                     new_row = CustomRow(columns)
                     for column in row.keys():
                         value = row[column]
-                        if (column, value) in expanded_labels:
+                        if (column, value) in expanded_labels and value is not None:
                             new_row[column] = {
                                 "value": value,
                                 "label": expanded_labels[(column, value)],

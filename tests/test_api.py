@@ -216,7 +216,7 @@ def test_database_page(app_client):
             "name": "foreign_key_references",
             "columns": ["pk", "foreign_key_with_label", "foreign_key_with_no_label"],
             "primary_keys": ["pk"],
-            "count": 1,
+            "count": 2,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {
@@ -1519,7 +1519,7 @@ def test_expand_labels(app_client):
 def test_expand_label(app_client):
     response = app_client.get(
         "/fixtures/foreign_key_references.json?_shape=object"
-        "&_label=foreign_key_with_label"
+        "&_label=foreign_key_with_label&_size=1"
     )
     assert {
         "1": {
@@ -1693,3 +1693,17 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
             app_client_conflicting_database_names.get(path).body.decode("utf8")
         )
         assert db_name == data["database"]
+
+
+def test_null_foreign_keys_are_not_expanded(app_client):
+    response = app_client.get(
+        "/fixtures/foreign_key_references.json?_shape=array&_labels=on"
+    )
+    assert [
+        {
+            "pk": "1",
+            "foreign_key_with_label": {"value": "1", "label": "hello"},
+            "foreign_key_with_no_label": {"value": "1", "label": "1"},
+        },
+        {"pk": "2", "foreign_key_with_label": None, "foreign_key_with_no_label": None,},
+    ] == response.json

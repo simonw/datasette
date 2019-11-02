@@ -41,6 +41,14 @@ pk,created,planet_int,on_earth,state,city_id,city_id_label,neighborhood,tags,com
     "\n", "\r\n"
 )
 
+EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV = """
+pk,foreign_key_with_label,foreign_key_with_label_label,foreign_key_with_no_label,foreign_key_with_no_label_label
+1,1,hello,1,1
+2,,,,
+""".lstrip().replace(
+    "\n", "\r\n"
+)
+
 
 def test_table_csv(app_client):
     response = app_client.get("/fixtures/simple_primary_key.csv")
@@ -61,6 +69,13 @@ def test_table_csv_with_labels(app_client):
     assert response.status == 200
     assert "text/plain; charset=utf-8" == response.headers["content-type"]
     assert EXPECTED_TABLE_WITH_LABELS_CSV == response.text
+
+
+def test_table_csv_with_nullable_labels(app_client):
+    response = app_client.get("/fixtures/foreign_key_references.csv?_labels=1")
+    assert response.status == 200
+    assert "text/plain; charset=utf-8" == response.headers["content-type"]
+    assert EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV == response.text
 
 
 def test_custom_sql_csv(app_client):

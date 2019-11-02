@@ -330,10 +330,14 @@ class DataView(BaseView):
                         else:
                             # Look for {"value": "label": } dicts and expand
                             new_row = []
-                            for cell in row:
-                                if isinstance(cell, dict):
-                                    new_row.append(cell["value"])
-                                    new_row.append(cell["label"])
+                            for heading, cell in zip(data["columns"], row):
+                                if heading in expanded_columns:
+                                    if cell is None:
+                                        new_row.extend(("", ""))
+                                    else:
+                                        assert isinstance(cell, dict)
+                                        new_row.append(cell["value"])
+                                        new_row.append(cell["label"])
                                 else:
                                     new_row.append(cell)
                             await writer.writerow(new_row)

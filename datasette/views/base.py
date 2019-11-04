@@ -203,12 +203,13 @@ class DataView(BaseView):
                 hash = hash_bit
         else:
             name = db_name
-        # Verify the hash
+        name = urllib.parse.unquote_plus(name)
         try:
             db = self.ds.databases[name]
         except KeyError:
             raise NotFound("Database not found: {}".format(name))
 
+        # Verify the hash
         expected = "000"
         if db.hash is not None:
             expected = db.hash[:HASH_LENGTH]

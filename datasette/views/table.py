@@ -235,13 +235,17 @@ class TableView(RowTableShared):
             raise NotFound("Table not found: {}".format(table))
 
         pks = await db.primary_keys(table)
+        table_columns = await db.table_columns(table)
+
+        select_columns = ", ".join(escape_sqlite(t) for t in table_columns)
+
         use_rowid = not pks and not is_view
         if use_rowid:
-            select = "rowid, *"
+            select = "rowid, {}".format(select_columns)
             order_by = "rowid"
             order_by_pks = "rowid"
         else:
-            select = "*"
+            select = select_columns
             order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
             order_by = order_by_pks
 

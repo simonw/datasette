@@ -47,6 +47,9 @@ import pytest
             ["foo in (:p0, :p1)"],
             ["dog,cat", "cat[dog]"],
         ),
+        # Not in, and JSON array not in
+        ((("foo__notin", "1,2,3"),), ["foo not in (:p0, :p1, :p2)"], ["1", "2", "3"]),
+        ((("foo__notin", "[1,2,3]"),), ["foo not in (:p0, :p1, :p2)"], [1, 2, 3]),
     ],
 )
 def test_build_where(args, expected_where, expected_params):

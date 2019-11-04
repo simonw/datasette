@@ -4,6 +4,39 @@
 Changelog
 =========
 
+.. _v0_30_2:
+
+0.30.2 (2019-11-02)
+-------------------
+
+- ``/-/plugins`` page now uses distribution name e.g. ``datasette-cluster-map`` instead of the name of the underlying Python package (``datasette_cluster_map``) (`#606 <https://github.com/simonw/datasette/issues/606>`__)
+- Array faceting is now only suggested for columns that contain arrays of strings (`#562 <https://github.com/simonw/datasette/issues/562>`__)
+- Better documentation for the ``--host`` argument (`#574 <https://github.com/simonw/datasette/issues/574>`__)
+- Don't show ``None`` with a broken link for the label on a nullable foreign key (`#406 <https://github.com/simonw/datasette/issues/406>`__)
+
+.. _v0_30_1:
+
+0.30.1 (2019-10-30)
+-------------------
+
+- Fixed bug where ``?_where=`` parameter was not persisted in hidden form fields (`#604 <https://github.com/simonw/datasette/issues/604>`__)
+- Fixed bug with .JSON representation of row pages - thanks, Chris Shaw (`#603 <https://github.com/simonw/datasette/issues/603>`__)
+
+.. _v0_30:
+
+
+0.30 (2019-10-18)
+-----------------
+
+- Added ``/-/threads`` debugging page
+- Allow ``EXPLAIN WITH...`` (`#583 <https://github.com/simonw/datasette/issues/583>`__)
+- Button to format SQL - thanks, Tobias Kunze (`#136 <https://github.com/simonw/datasette/issues/136>`__)
+- Sort databases on homepage by argument order - thanks, Tobias Kunze (`#585 <https://github.com/simonw/datasette/issues/585>`__)
+- Display metadata footer on custom SQL queries - thanks, Tobias Kunze (`#589 <https://github.com/simonw/datasette/pull/589>`__)
+- Use ``--platform=managed`` for ``publish cloudrun`` (`#587 <https://github.com/simonw/datasette/issues/587>`__)
+- Fixed bug returning non-ASCII characters in CSV (`#584 <https://github.com/simonw/datasette/issues/584>`__)
+- Fix for ``/foo`` v.s. ``/foo-bar`` bug (`#601 <https://github.com/simonw/datasette/issues/601>`__)
+
 .. _v0_29_3:
 
 0.29.3 (2019-09-02)
@@ -60,7 +93,7 @@ Two new plugins take advantage of this hook:
 New plugin hook: extra_template_vars
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`plugin_extra_template_vars` plugin hook allows plugins to inject their own additional variables into the Datasette template context. This can be used in conjunction with custom templates to customize the Datasette interface. `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ uses this hook to add custom HTML to the new top navigation bar (which is designed to be modified by plugins, see `#540 <https://github.com/simonw/datasette/issues/540>`__).
+The :ref:`plugin_hook_extra_template_vars` plugin hook allows plugins to inject their own additional variables into the Datasette template context. This can be used in conjunction with custom templates to customize the Datasette interface. `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ uses this hook to add custom HTML to the new top navigation bar (which is designed to be modified by plugins, see `#540 <https://github.com/simonw/datasette/issues/540>`__).
 
 Secret plugin configuration options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

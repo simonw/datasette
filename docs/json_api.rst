@@ -228,6 +228,9 @@ You can filter the data returned by the table based on column values using a que
 
     ``?column__in=["value","value,with,commas"]``
 
+``?column__notin=value1,value2,value3``
+    Rows where column does not match any of the provided values. The inverse of ``__in=``. Also supports JSON arrays.
+
 ``?column__arraycontains=value``
     Works against columns that contain JSON arrays - matches if any of the values in that array match.
 

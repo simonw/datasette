@@ -257,6 +257,16 @@ class ColumnFacet(Facet):
 class ArrayFacet(Facet):
     type = "array"
 
+    def _is_json_array_of_strings(self, json_string):
+        try:
+            array = json.loads(json_string)
+        except ValueError:
+            return False
+        for item in array:
+            if not isinstance(item, str):
+                return False
+        return True
+
     async def suggest(self):
         columns = await self.get_columns(self.sql, self.params)
         suggested_facets = []
@@ -282,18 +292,37 @@ class ArrayFacet(Facet):
                 )
                 types = tuple(r[0] for r in results.rows)
                 if types in (("array",), ("array", None)):
-                    suggested_facets.append(
-                        {
-                            "name": column,
-                            "type": "array",
-                            "toggle_url": self.ds.absolute_url(
-                                self.request,
-                                path_with_added_args(
-                                    self.request, {"_facet_array": column}
-                                ),
+                    # Now sanity check that first 100 arrays contain only strings
+                    first_100 = [
+                        v[0]
+                        for v in await self.ds.execute(
+                            self.database,
+                            "select {column} from ({sql}) where {column} is not null and json_array_length({column}) > 0 limit 100".format(
+                                column=escape_sqlite(column), sql=self.sql
                             ),
-                        }
-                    )
+                            self.params,
+                            truncate=False,
+                            custom_time_limit=self.ds.config(
+                                "facet_suggest_time_limit_ms"
+                            ),
+                            log_sql_errors=False,
+                        )
+                    ]
+                    if first_100 and all(
+                        self._is_json_array_of_strings(r) for r in first_100
+                    ):
+                        suggested_facets.append(
+                            {
+                                "name": column,
+                                "type": "array",
+                                "toggle_url": self.ds.absolute_url(
+                                    self.request,
+                                    path_with_added_args(
+                                        self.request, {"_facet_array": column}
+                                    ),
+                                ),
+                            }
+                        )
             except (QueryInterrupted, sqlite3.OperationalError):
                 continue
         return suggested_facets

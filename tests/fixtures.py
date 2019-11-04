@@ -179,6 +179,13 @@ def app_client_two_attached_databases():
 
 
 @pytest.fixture(scope="session")
+def app_client_conflicting_database_names():
+    yield from make_app_client(
+        extra_databases={"foo.db": EXTRA_DATABASE_SQL, "foo-bar.db": EXTRA_DATABASE_SQL}
+    )
+
+
+@pytest.fixture(scope="session")
 def app_client_two_attached_databases_one_immutable():
     yield from make_app_client(
         is_immutable=True, extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
@@ -654,26 +661,27 @@ CREATE TABLE facetable (
     city_id integer,
     neighborhood text,
     tags text,
+    complex_array text,
     FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (created, planet_int, on_earth, state, city_id, neighborhood, tags)
+    (created, planet_int, on_earth, state, city_id, neighborhood, tags, complex_array)
 VALUES
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]'),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]'),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]'),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]'),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]'),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]'),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]'),
-    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]'),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]'),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]'),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]'),
-    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]')
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]', '[]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]', '[]'),
+    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]', '[]')
 ;
 
 CREATE TABLE binary_data (
@@ -746,6 +754,7 @@ INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
 INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');
 
 INSERT INTO foreign_key_references VALUES (1, 1, 1);
+INSERT INTO foreign_key_references VALUES (2, null, null);
 
 INSERT INTO complex_foreign_keys VALUES (1, 1, 2, 1);
 INSERT INTO custom_foreign_key_label VALUES (1, 1);

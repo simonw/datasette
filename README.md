@@ -1,6 +1,7 @@
 # Datasette
 
 [![PyPI](https://img.shields.io/pypi/v/datasette.svg)](https://pypi.org/project/datasette/)
+[![Python 3.x](https://img.shields.io/pypi/pyversions/datasette.svg?logo=python&logoColor=white)](https://pypi.org/project/datasette/)
 [![Travis CI](https://travis-ci.org/simonw/datasette.svg?branch=master)](https://travis-ci.org/simonw/datasette)
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](http://datasette.readthedocs.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/master/LICENSE)
@@ -20,6 +21,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 18th October 2019: [Datasette 0.30](https://datasette.readthedocs.io/en/stable/changelog.html#v0-30)
  * 13th July 2019: [Single sign-on against GitHub using ASGI middleware](https://simonwillison.net/2019/Jul/14/sso-asgi/) talks about the implementation of [datasette-auth-github](https://github.com/simonw/datasette-auth-github) in more detail.
  * 7th July 2019: [Datasette 0.29](https://datasette.readthedocs.io/en/stable/changelog.html#v0-29) - ASGI, new plugin hooks, facet by date and much, much more...
    * [datasette-auth-github](https://github.com/simonw/datasette-auth-github) - a new plugin for Datasette 0.29 that lets you require users to authenticate against GitHub before accessing your Datasette instance. You can whitelist specific users, or you can restrict access to members of specific GitHub organizations or teams.
@@ -87,26 +89,31 @@ Now visiting http://localhost:8001/History/downloads will show you a web interfa
 
 ## datasette serve options
 
-    $ datasette serve --help
-
     Usage: datasette serve [OPTIONS] [FILES]...
 
       Serve up specified SQLite database files with a web UI
 
     Options:
       -i, --immutable PATH      Database files to open in immutable mode
-      -h, --host TEXT           host for server, defaults to 127.0.0.1
-      -p, --port INTEGER        port for server, defaults to 8001
+      -h, --host TEXT           Host for server. Defaults to 127.0.0.1 which means
+                                only connections from the local machine will be
+                                allowed. Use 0.0.0.0 to listen to all IPs and
+                                allow access from other machines.
+      -p, --port INTEGER        Port for server, defaults to 8001
       --debug                   Enable debug mode - useful for development
-      --reload                  Automatically reload if database or code change detected -
-                                useful for development
-      --cors                    Enable CORS by serving Access-Control-Allow-Origin: *
+      --reload                  Automatically reload if database or code change
+                                detected - useful for development
+      --cors                    Enable CORS by serving Access-Control-Allow-
+                                Origin: *
       --load-extension PATH     Path to a SQLite extension to load
-      --inspect-file TEXT       Path to JSON file created using "datasette inspect"
-      -m, --metadata FILENAME   Path to JSON file containing license/source metadata
+      --inspect-file TEXT       Path to JSON file created using "datasette
+                                inspect"
+      -m, --metadata FILENAME   Path to JSON file containing license/source
+                                metadata
       --template-dir DIRECTORY  Path to directory containing custom templates
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
-      --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
+      --static STATIC MOUNT     mountpoint:path-to-directory for serving static
+                                files
       --memory                  Make :memory: database available
       --config CONFIG           Set config option using configname:value
                                 datasette.readthedocs.io/en/latest/config.html

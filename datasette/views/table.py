@@ -235,13 +235,17 @@ class TableView(RowTableShared):
             raise NotFound("Table not found: {}".format(table))
 
         pks = await db.primary_keys(table)
+        table_columns = await db.table_columns(table)
+
+        select_columns = ", ".join(escape_sqlite(t) for t in table_columns)
+
         use_rowid = not pks and not is_view
         if use_rowid:
-            select = "rowid, *"
+            select = "rowid, {}".format(select_columns)
             order_by = "rowid"
             order_by_pks = "rowid"
         else:
-            select = "*"
+            select = select_columns
             order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
             order_by = order_by_pks
 
@@ -586,9 +590,10 @@ class TableView(RowTableShared):
             )
 
         for facet in facet_instances:
-            instance_facet_results, instance_facets_timed_out = (
-                await facet.facet_results()
-            )
+            (
+                instance_facet_results,
+                instance_facets_timed_out,
+            ) = await facet.facet_results()
             facet_results.update(instance_facet_results)
             facets_timed_out.extend(instance_facets_timed_out)
 
@@ -636,7 +641,7 @@ class TableView(RowTableShared):
                     new_row = CustomRow(columns)
                     for column in row.keys():
                         value = row[column]
-                        if (column, value) in expanded_labels:
+                        if (column, value) in expanded_labels and value is not None:
                             new_row[column] = {
                                 "value": value,
                                 "label": expanded_labels[(column, value)],
@@ -720,6 +725,9 @@ class TableView(RowTableShared):
             for arg in ("_fts_table", "_fts_pk"):
                 if arg in special_args:
                     form_hidden_args.append((arg, special_args[arg]))
+            if request.args.get("_where"):
+                for where_text in request.args["_where"]:
+                    form_hidden_args.append(("_where", where_text))
             return {
                 "supports_search": bool(fts_table),
                 "search": search or "",

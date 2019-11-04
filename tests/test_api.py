@@ -8,6 +8,7 @@ from .fixtures import (  # noqa
     app_client_returned_rows_matches_page_size,
     app_client_two_attached_databases,
     app_client_two_attached_databases_one_immutable,
+    app_client_conflicting_database_names,
     app_client_with_cors,
     app_client_with_dot,
     generate_compound_rows,
@@ -195,6 +196,7 @@ def test_database_page(app_client):
                 "city_id",
                 "neighborhood",
                 "tags",
+                "complex_array",
             ],
             "primary_keys": ["pk"],
             "count": 15,
@@ -215,7 +217,7 @@ def test_database_page(app_client):
             "name": "foreign_key_references",
             "columns": ["pk", "foreign_key_with_label", "foreign_key_with_no_label"],
             "primary_keys": ["pk"],
-            "count": 1,
+            "count": 2,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {
@@ -609,7 +611,8 @@ def test_table_json(app_client):
     assert response.status == 200
     data = response.json
     assert (
-        data["query"]["sql"] == "select * from simple_primary_key order by id limit 51"
+        data["query"]["sql"]
+        == "select id, content from simple_primary_key order by id limit 51"
     )
     assert data["query"]["params"] == {}
     assert data["rows"] == [
@@ -1029,15 +1032,25 @@ def test_table_filter_queries_multiple_of_same_type(app_client):
 def test_table_filter_json_arraycontains(app_client):
     response = app_client.get("/fixtures/facetable.json?tags__arraycontains=tag1")
     assert [
-        [1, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Mission", '["tag1", "tag2"]'],
-        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]'],
+        [
+            1,
+            "2019-01-14 08:00:00",
+            1,
+            1,
+            "CA",
+            1,
+            "Mission",
+            '["tag1", "tag2"]',
+            '[{"foo": "bar"}]',
+        ],
+        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]', "[]"],
     ] == response.json["rows"]
 
 
 def test_table_filter_extra_where(app_client):
     response = app_client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
     assert [
-        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]']
+        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]', "[]"]
     ] == response.json["rows"]
 
 
@@ -1103,6 +1116,15 @@ def test_view(app_client):
 
 def test_row(app_client):
     response = app_client.get("/fixtures/simple_primary_key/1.json?_shape=objects")
+    assert response.status == 200
+    assert [{"id": "1", "content": "hello"}] == response.json["rows"]
+
+
+def test_row_format_in_querystring(app_client):
+    # regression test for https://github.com/simonw/datasette/issues/563
+    response = app_client.get(
+        "/fixtures/simple_primary_key/1?_format=json&_shape=objects"
+    )
     assert response.status == 200
     assert [{"id": "1", "content": "hello"}] == response.json["rows"]
 
@@ -1236,7 +1258,7 @@ def test_config_json(app_client):
 
 
 def test_page_size_matching_max_returned_rows(
-    app_client_returned_rows_matches_page_size
+    app_client_returned_rows_matches_page_size,
 ):
     fetched = []
     path = "/fixtures/no_primary_key.json"
@@ -1444,6 +1466,7 @@ def test_suggested_facets(app_client):
         {"name": "city_id", "querystring": "_facet=city_id"},
         {"name": "neighborhood", "querystring": "_facet=neighborhood"},
         {"name": "tags", "querystring": "_facet=tags"},
+        {"name": "complex_array", "querystring": "_facet=complex_array"},
         {"name": "created", "querystring": "_facet_date=created"},
     ]
     if detect_json1():
@@ -1479,6 +1502,7 @@ def test_expand_labels(app_client):
             "city_id": {"value": 1, "label": "San Francisco"},
             "neighborhood": "Dogpatch",
             "tags": '["tag1", "tag3"]',
+            "complex_array": "[]",
         },
         "13": {
             "pk": 13,
@@ -1489,6 +1513,7 @@ def test_expand_labels(app_client):
             "city_id": {"value": 3, "label": "Detroit"},
             "neighborhood": "Corktown",
             "tags": "[]",
+            "complex_array": "[]",
         },
     } == response.json
 
@@ -1496,7 +1521,7 @@ def test_expand_labels(app_client):
 def test_expand_label(app_client):
     response = app_client.get(
         "/fixtures/foreign_key_references.json?_shape=object"
-        "&_label=foreign_key_with_label"
+        "&_label=foreign_key_with_label&_size=1"
     )
     assert {
         "1": {
@@ -1669,3 +1694,34 @@ def test_cors(app_client_with_cors, path, status_code):
 def test_database_with_space_in_name(app_client_two_attached_databases, path):
     response = app_client_two_attached_databases.get("/extra database" + path)
     assert response.status == 200
+
+
+def test_common_prefix_database_names(app_client_conflicting_database_names):
+    # https://github.com/simonw/datasette/issues/597
+    assert ["fixtures", "foo", "foo-bar"] == [
+        d["name"]
+        for d in json.loads(
+            app_client_conflicting_database_names.get("/-/databases.json").body.decode(
+                "utf8"
+            )
+        )
+    ]
+    for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
+        data = json.loads(
+            app_client_conflicting_database_names.get(path).body.decode("utf8")
+        )
+        assert db_name == data["database"]
+
+
+def test_null_foreign_keys_are_not_expanded(app_client):
+    response = app_client.get(
+        "/fixtures/foreign_key_references.json?_shape=array&_labels=on"
+    )
+    assert [
+        {
+            "pk": "1",
+            "foreign_key_with_label": {"value": "1", "label": "hello"},
+            "foreign_key_with_no_label": {"value": "1", "label": "1"},
+        },
+        {"pk": "2", "foreign_key_with_label": None, "foreign_key_with_no_label": None,},
+    ] == response.json

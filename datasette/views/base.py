@@ -193,14 +193,14 @@ class DataView(BaseView):
     async def resolve_db_name(self, request, db_name, **kwargs):
         hash = None
         name = None
-        if "-" in db_name:
-            # Might be name-and-hash, or might just be
-            # a name with a hyphen in it
-            name, hash = db_name.rsplit("-", 1)
-            if name not in self.ds.databases:
-                # Try the whole name
-                name = db_name
-                hash = None
+        if db_name not in self.ds.databases and "-" in db_name:
+            # No matching DB found, maybe it's a name-hash?
+            name_bit, hash_bit = db_name.rsplit("-", 1)
+            if name_bit not in self.ds.databases:
+                raise NotFound("Database not found: {}".format(name))
+            else:
+                name = name_bit
+                hash = hash_bit
         else:
             name = db_name
         name = urllib.parse.unquote_plus(name)
@@ -258,9 +258,12 @@ class DataView(BaseView):
         assert NotImplemented
 
     async def get(self, request, db_name, **kwargs):
-        database, hash, correct_hash_provided, should_redirect = await self.resolve_db_name(
-            request, db_name, **kwargs
-        )
+        (
+            database,
+            hash,
+            correct_hash_provided,
+            should_redirect,
+        ) = await self.resolve_db_name(request, db_name, **kwargs)
         if should_redirect:
             return self.redirect(request, should_redirect, remove_args={"_hash"})
 
@@ -328,10 +331,14 @@ class DataView(BaseView):
                         else:
                             # Look for {"value": "label": } dicts and expand
                             new_row = []
-                            for cell in row:
-                                if isinstance(cell, dict):
-                                    new_row.append(cell["value"])
-                                    new_row.append(cell["label"])
+                            for heading, cell in zip(data["columns"], row):
+                                if heading in expanded_columns:
+                                    if cell is None:
+                                        new_row.extend(("", ""))
+                                    else:
+                                        assert isinstance(cell, dict)
+                                        new_row.append(cell["value"])
+                                        new_row.append(cell["label"])
                                 else:
                                     new_row.append(cell)
                             await writer.writerow(new_row)
@@ -363,6 +370,8 @@ class DataView(BaseView):
         _format = request.args.get("_format", None)
         if not _format:
             _format = (args.pop("as_format", None) or "").lstrip(".")
+        else:
+            args.pop("as_format", None)
         if "table_and_format" in args:
             db = self.ds.databases[database]
 

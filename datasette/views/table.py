@@ -499,18 +499,6 @@ class TableView(RowTableShared):
         if order_by:
             order_by = "order by {} ".format(order_by)
 
-        # _group_count=col1&_group_count=col2
-        group_count = special_args_lists.get("_group_count") or []
-        if group_count:
-            sql = 'select {group_cols}, count(*) as "count" from {table_name} {where} group by {group_cols} order by "count" desc limit 100'.format(
-                group_cols=", ".join(
-                    '"{}"'.format(group_count_col) for group_count_col in group_count
-                ),
-                table_name=escape_sqlite(table),
-                where=where_clause,
-            )
-            return await self.custom_sql(request, database, hash, sql, editable=True)
-
         extra_args = {}
         # Handle ?_size=500
         page_size = _size or request.raw_args.get("_size")

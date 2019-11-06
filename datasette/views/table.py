@@ -63,6 +63,26 @@ class Row:
 
 
 class RowTableShared(DataView):
+    async def columns_to_select(self, db, table, request):
+        table_columns = await db.table_columns(table)
+        if "_col" in request.args and "_nocol" in request.args:
+            raise DatasetteError("Cannot use _col and _nocol at the same time")
+        if "_col" in request.args:
+            new_columns = []
+            for column in request.args["_col"]:
+                if column not in table_columns:
+                    raise DatasetteError("_col={} is an invalid column".format(column))
+                new_columns.append(column)
+            return new_columns
+        elif "_nocol" in request.args:
+            # Return all columns EXCEPT these
+            bad_columns = [column for column in request.args["_nocol"] if column not in table_columns]
+            if bad_columns:
+                raise DatasetteError("_nocol={} - invalid columns".format(", ".join(bad_columns)))
+            return [column for column in table_columns if column not in request.args["_nocol"]]
+        else:
+            return table_columns
+
     async def sortable_columns_for_table(self, database, table, use_rowid):
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
@@ -235,17 +255,18 @@ class TableView(RowTableShared):
             raise NotFound("Table not found: {}".format(table))
 
         pks = await db.primary_keys(table)
-        table_columns = await db.table_columns(table)
 
-        select_columns = ", ".join(escape_sqlite(t) for t in table_columns)
+        # Take _col= and _nocol= into account
+        table_columns = await self.columns_to_select(db, table, request)
+        select_clause = ", ".join(escape_sqlite(t) for t in table_columns)
 
         use_rowid = not pks and not is_view
         if use_rowid:
-            select = "rowid, {}".format(select_columns)
+            select = "rowid, {}".format(select_clause)
             order_by = "rowid"
             order_by_pks = "rowid"
         else:
-            select = select_columns
+            select = select_clause
             order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
             order_by = order_by_pks
 
@@ -598,7 +619,7 @@ class TableView(RowTableShared):
             facets_timed_out.extend(instance_facets_timed_out)
 
         # Figure out columns and rows for the query
-        columns = [r[0] for r in results.description]
+        columns = table_columns
         rows = list(results.rows)
 
         filter_columns = columns[:]
@@ -625,6 +646,8 @@ class TableView(RowTableShared):
             for fk, _ in expandable_columns:
                 column = fk["column"]
                 if column not in columns_to_expand:
+                    continue
+                if column not in columns:
                     continue
                 expanded_columns.append(column)
                 # Gather the values

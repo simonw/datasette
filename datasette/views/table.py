@@ -261,12 +261,10 @@ class TableView(RowTableShared):
         # That's so if there is a column that starts with _
         # it can still be queried using ?_col__exact=blah
         special_args = {}
-        special_args_lists = {}
         other_args = []
         for key, value in args.items():
             if key.startswith("_") and "__" not in key:
                 special_args[key] = value[0]
-                special_args_lists[key] = value
             else:
                 for v in value:
                     other_args.append((key, v))

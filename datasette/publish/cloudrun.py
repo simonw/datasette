@@ -60,6 +60,23 @@ def publish_subcommand(publish):
             "gcloud config get-value project", shell=True, universal_newlines=True
         ).strip()
 
+        if not service:
+            # Show the user their current services, then prompt for one
+            click.echo("Please provide a service name for this deployment\n")
+            click.echo("Using an existing service name will over-write it")
+            click.echo("")
+            existing_services = get_existing_services()
+            if existing_services:
+                click.echo("Your existing services:\n")
+                for existing_service in existing_services:
+                    click.echo(
+                        "  {name} - created {created} - {url}".format(
+                            **existing_service
+                        )
+                    )
+                click.echo("")
+            service = click.prompt("Service name", type=str)
+
         extra_metadata = {
             "title": title,
             "license": license,
@@ -110,8 +127,26 @@ def publish_subcommand(publish):
             image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
             check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
         check_call(
-            "gcloud beta run deploy --allow-unauthenticated --platform=managed --image {}{}".format(
-                image_id, " {}".format(service) if service else ""
+            "gcloud beta run deploy --allow-unauthenticated --platform=managed --image {} {}".format(
+                image_id, service,
             ),
             shell=True,
         )
+
+
+def get_existing_services():
+    services = json.loads(
+        check_output(
+            "gcloud beta run services list --platform=managed --format json",
+            shell=True,
+            universal_newlines=True,
+        )
+    )
+    return [
+        {
+            "name": service["metadata"]["name"],
+            "created": service["metadata"]["creationTimestamp"],
+            "url": service["status"]["address"]["url"],
+        }
+        for service in services
+    ]

@@ -43,14 +43,16 @@ You will first need to install and configure the Google Cloud CLI tools by follo
 
 You can then publish a database to Google Cloud Run using the following command::
 
-    datasette publish cloudrun mydatabase.db
+    datasette publish cloudrun mydatabase.db --service=my-database
+
+A Cloud Run **service** is a single hosted application. The service name you specify will be used as part of the Cloud Run URL. If you deploy to a service name that you have used in the past your new deployment will replace the previous one.
+
+If you omit the ``--service`` option you will be asked to pick a service name interactively during the deploy.
 
 You may need to interact with prompts from the tool. Once it has finished it will output a URL like this one::
 
-    Service [datasette] revision [datasette-00001] has been deployed
-    and is serving traffic at https://datasette-j7hipcg4aq-uc.a.run.app
-
-During the deployment the tool will prompt you for the name of your service. You can reuse an existing name to replace your previous deployment with your new version, or pick a new name to deploy to a new URL.
+    Service [my-service] revision [my-service-00001] has been deployed
+    and is serving traffic at https://my-service-j7hipcg4aq-uc.a.run.app
 
 .. literalinclude:: datasette-publish-cloudrun-help.txt
 
@@ -90,18 +92,18 @@ Custom metadata and plugins
 
 You can define your own :ref:`metadata` and deploy that with your instance like so::
 
-    datasette publish nowv1 mydatabase.db -m metadata.json
+    datasette publish cloudrun --service=my-service mydatabase.db -m metadata.json
 
 If you just want to set the title, license or source information you can do that directly using extra options to ``datasette publish``::
 
-    datasette publish nowv1 mydatabase.db \
+    datasette publish cloudrun mydatabase.db --service=my-service \
         --title="Title of my database" \
         --source="Where the data originated" \
         --source_url="http://www.example.com/"
 
 You can also specify plugins you would like to install. For example, if you want to include the `datasette-vega <https://github.com/simonw/datasette-vega>`_ visualization plugin you can use the following::
 
-    datasette publish nowv1 mydatabase.db --install=datasette-vega
+    datasette publish cloudrun mydatabase.db --service=my-service --install=datasette-vega
 
 If a plugin has any :ref:`plugins_configuration_secret` you can use the ``--plugin-secret`` option to set those secrets at publish time. For example, using Heroku with `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ you might run the following command::
 

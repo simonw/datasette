@@ -119,6 +119,39 @@ def test_row_strange_table_name_with_url_hash(app_client_with_hash):
     assert response.status == 200
 
 
+@pytest.mark.parametrize(
+    "path,expected_definition_sql",
+    [
+        (
+            "/fixtures/facet_cities",
+            """
+CREATE TABLE facet_cities (
+    id integer primary key,
+    name text
+);
+        """.strip(),
+        ),
+        (
+            "/fixtures/compound_three_primary_keys",
+            """
+CREATE TABLE compound_three_primary_keys (
+  pk1 varchar(30),
+  pk2 varchar(30),
+  pk3 varchar(30),
+  content text,
+  PRIMARY KEY (pk1, pk2, pk3)
+);
+CREATE INDEX idx_compound_three_primary_keys_content ON compound_three_primary_keys(content);
+            """.strip(),
+        ),
+    ],
+)
+def test_definition_sql(path, expected_definition_sql, app_client):
+    response = app_client.get(path)
+    pre = Soup(response.body, "html.parser").select_one("pre.wrapped-sql")
+    assert expected_definition_sql == pre.string
+
+
 def test_table_cell_truncation():
     for client in make_app_client(config={"truncate_cells_html": 5}):
         response = client.get("/fixtures/facetable")

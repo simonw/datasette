@@ -232,7 +232,18 @@ class Database:
         )
         if not table_definition_rows:
             return None
-        return table_definition_rows[0][0]
+        bits = [table_definition_rows[0][0] + ";"]
+        # Add on any indexes
+        index_rows = list(
+            await self.ds.execute(
+                self.name,
+                "select sql from sqlite_master where tbl_name = :n and type='index' and sql is not null",
+                {"n": table},
+            )
+        )
+        for index_row in index_rows:
+            bits.append(index_row[0] + ";")
+        return "\n".join(bits)
 
     async def get_view_definition(self, view):
         return await self.get_table_definition(view, "view")

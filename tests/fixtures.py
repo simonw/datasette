@@ -514,6 +514,7 @@ CREATE TABLE compound_three_primary_keys (
   content text,
   PRIMARY KEY (pk1, pk2, pk3)
 );
+CREATE INDEX idx_compound_three_primary_keys_content ON compound_three_primary_keys(content);
 
 CREATE TABLE foreign_key_references (
   pk varchar(30) primary key,

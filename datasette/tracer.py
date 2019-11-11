@@ -9,12 +9,19 @@ tracers = {}
 TRACE_RESERVED_KEYS = {"type", "start", "end", "duration_ms", "traceback"}
 
 
+# asyncio.current_task was introduced in Python 3.7:
+for obj in (asyncio, asyncio.Task):
+    current_task = getattr(obj, "current_task", None)
+    if current_task is not None:
+        break
+
+
 def get_task_id():
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         return None
-    return id(asyncio.Task.current_task(loop=loop))
+    return id(current_task(loop=loop))
 
 
 @contextmanager

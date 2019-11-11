@@ -45,7 +45,7 @@ setup(
         "click-default-group~=1.2.1",
         "Jinja2~=2.10.1",
         "hupper~=1.0",
-        "pint~=0.8.1",
+        "pint~=0.9",
         "pluggy~=0.12.0",
         "uvicorn~=0.8.4",
         "aiofiles~=0.4.0",

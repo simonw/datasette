@@ -5,6 +5,7 @@ dist: xenial
 python:
   - "3.6"
   - "3.7"
+  - "3.8"
   - "3.5"
 
 # Executed for 3.5 AND 3.5 as the first "test" stage:

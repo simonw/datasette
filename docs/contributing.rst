@@ -150,4 +150,7 @@ Wait long enough for Travis to build and deploy the demo version of that commit 
     git tag 0.25.2
     git push --tags
 
-Once the release is out, you can manually update https://github.com/simonw/datasette/releases
+Final steps once the release has deployed to https://pypi.org/project/datasette/
+
+* Manually post the new release to GitHub releases: https://github.com/simonw/datasette/releases
+* Manually kick off a build of the `stable` branch on Read The Docs: https://readthedocs.org/projects/datasette/builds/

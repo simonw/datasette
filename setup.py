@@ -22,11 +22,6 @@ def get_version():
     return g["__version__"]
 
 
-# Only install black on Python 3.6 or higher
-maybe_black = []
-if sys.version_info > (3, 6):
-    maybe_black = ["black~=19.10b0"]
-
 setup(
     name="datasette",
     version=versioneer.get_version(),
@@ -63,8 +58,8 @@ setup(
             "aiohttp~=3.6.2",
             "beautifulsoup4~=4.8.1",
             "asgiref~=3.2.3",
-        ]
-        + maybe_black,
+            "black~=19.10b0",
+        ],
     },
     tests_require=["datasette[test]"],
     classifiers=[

@@ -47,7 +47,7 @@ setup(
         "hupper~=1.0",
         "pint~=0.9",
         "pluggy~=0.12.0",
-        "uvicorn~=0.8.4",
+        "uvicorn~=0.10.4",
         "aiofiles~=0.4.0",
     ],
     entry_points="""

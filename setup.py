@@ -42,11 +42,11 @@ setup(
     include_package_data=True,
     install_requires=[
         "click~=7.0",
-        "click-default-group~=1.2.1",
-        "Jinja2~=2.10.1",
-        "hupper~=1.0",
+        "click-default-group~=1.2.2",
+        "Jinja2~=2.10.3",
+        "hupper~=1.9",
         "pint~=0.9",
-        "pluggy~=0.12.0",
+        "pluggy~=0.13.0",
         "uvicorn~=0.10.4",
         "aiofiles~=0.4.0",
     ],
@@ -58,11 +58,11 @@ setup(
     extras_require={
         "docs": ["sphinx_rtd_theme", "sphinx-autobuild"],
         "test": [
-            "pytest~=5.0.0",
+            "pytest~=5.2.2",
             "pytest-asyncio~=0.10.0",
-            "aiohttp~=3.5.3",
-            "beautifulsoup4~=4.6.1",
-            "asgiref~=3.1.2",
+            "aiohttp~=3.6.2",
+            "beautifulsoup4~=4.8.1",
+            "asgiref~=3.2.3",
         ]
         + maybe_black,
     },

@@ -4,6 +4,28 @@
 Changelog
 =========
 
+.. _v0_31:
+
+0.31 (2019-11-11)
+-----------------
+
+This version adds compatibility with Python 3.8 and breaks compatibility with Python 3.5.
+
+If you are still running Python 3.5 you should stick with ``0.30.2``, which you can install like this::
+
+    pip install datasette==0.30.2
+
+- Format SQL button now works with read-only SQL queries - thanks, Tobias Kunze (`#602 <https://github.com/simonw/datasette/pull/602>`__)
+- New ``?column__notin=x,y,z`` filter for table views (`#614 <https://github.com/simonw/datasette/issues/614>`__)
+- Table view now uses ``select col1, col2, col3`` instead of ``select *``
+- Database filenames can now contain spaces - thanks, Tobias Kunze (`#590 <https://github.com/simonw/datasette/pull/590>`__)
+- Removed obsolete ``?_group_count=col`` feature (`#504 <https://github.com/simonw/datasette/issues/504>`__)
+- Improved user interface and documentation for ``datasette publish cloudrun`` (`#608 <https://github.com/simonw/datasette/issues/608>`__)
+- Tables with indexes now show the `` CREATE INDEX`` statements on the table page (`#618 <https://github.com/simonw/datasette/issues/618>`__)
+- Current version of `uvicorn <https://www.uvicorn.org/>`__ is now shown on ``/-/versions``
+- Python 3.8 is now supported! (`#622 <https://github.com/simonw/datasette/issues/622>`__)
+- Python 3.5 is no longer supported.
+
 .. _v0_30_2:
 
 0.30.2 (2019-11-02)

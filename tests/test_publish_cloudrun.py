@@ -128,7 +128,7 @@ def test_publish_cloudrun_plugin_secrets(mock_call, mock_output, mock_which):
             .split("\n====================\n")[0]
             .strip()
         )
-        expected = """FROM python:3.6
+        expected = """FROM python:3.8
 COPY . /app
 WORKDIR /app
 

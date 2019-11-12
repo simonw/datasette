@@ -12,6 +12,7 @@ from pathlib import Path
 import click
 from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+import uvicorn
 
 from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
@@ -433,6 +434,7 @@ class Datasette:
             },
             "datasette": datasette_version,
             "asgi": "3.0",
+            "uvicorn": uvicorn.__version__,
             "sqlite": {
                 "version": sqlite_version,
                 "fts_versions": fts_versions,

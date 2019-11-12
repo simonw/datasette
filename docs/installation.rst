@@ -69,15 +69,18 @@ You can now run the new custom image like so::
 You can confirm that the plugins are installed by visiting
 http://127.0.0.1:8001/-/plugins
 
-
 Install using pip
 -----------------
 
-To run Datasette without Docker you will need Python 3.5 or higher.
+To run Datasette without Docker you will need Python 3.6 or higher.
 
 You can install Datasette and its dependencies using ``pip``::
 
     pip install datasette
+
+The last version to support Python 3.5 was 0.30.2 - you can install that version like so::
+
+    pip install datasette==0.30.2
 
 If you want to install Datasette in its own virtual environment, use this::
 

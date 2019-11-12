@@ -69,7 +69,7 @@ sqlite-utils: a Python library and CLI tool for building SQLite databases](https
 
     pip3 install datasette
 
-Datasette requires Python 3.5 or higher. We also have [detailed installation instructions](https://datasette.readthedocs.io/en/stable/installation.html) covering other options such as Docker.
+Datasette requires Python 3.6 or higher. We also have [detailed installation instructions](https://datasette.readthedocs.io/en/stable/installation.html) covering other options such as Docker.
 
 ## Basic usage
 

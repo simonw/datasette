@@ -138,7 +138,7 @@ def test_publish_now_plugin_secrets(mock_run, mock_which):
             .split("\n====================\n")[0]
             .strip()
         )
-        expected = """FROM python:3.6
+        expected = """FROM python:3.8
 COPY . /app
 WORKDIR /app
 

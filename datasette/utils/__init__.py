@@ -306,7 +306,7 @@ def make_dockerfile(
         install = ["datasette"] + list(install)
 
     return """
-FROM python:3.6
+FROM python:3.8
 COPY . /app
 WORKDIR /app
 {spatialite_extras}

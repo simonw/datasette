@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_31_1:
+
+0.31.1 (2019-11-12)
+-------------------
+
+- Deploymens created using ``datasette publish``  now use ``python:3.8`` base Docker image (`#629 <https://github.com/simonw/datasette/pull/629>`__)
+
 .. _v0_31:
 
 0.31 (2019-11-11)

@@ -72,7 +72,10 @@ def publish_subcommand(publish):
             "about_url": about_url,
         }
 
-        environment_variables = {}
+        environment_variables = {
+            # Avoid uvicorn error: https://github.com/simonw/datasette/issues/633
+            "WEB_CONCURRENCY": "1"
+        }
         if plugin_secret:
             extra_metadata["plugins"] = {}
             for plugin_name, plugin_setting, setting_value in plugin_secret:
@@ -164,7 +167,7 @@ def temporary_heroku_directory(
         if metadata_content:
             open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
 
-        open("runtime.txt", "w").write("python-3.6.8")
+        open("runtime.txt", "w").write("python-3.8.0")
 
         if branch:
             install = [

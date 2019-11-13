@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_31_2:
+
+0.31.2 (2019-11-13)
+-------------------
+
+- Fixed a bug where ``datasette publish heroku`` applications failed to start (`#633 <https://github.com/simonw/datasette/issues/633>`__)
+- Fix for ``datasette publish`` with just ``--source_url`` - thanks, Stanley Zheng (`#572 <https://github.com/simonw/datasette/issues/572>`__)
+- Deployments to Heroku now use Python 3.8.0 (`#632 <https://github.com/simonw/datasette/issues/632>`__)
+
 .. _v0_31_1:
 
 0.31.1 (2019-11-12)

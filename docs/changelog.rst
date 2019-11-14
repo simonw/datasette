@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_32:
+
+0.32 (2019-11-14)
+-----------------
+
+Datasette now renders templates using `Jinja async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__. This makes it easy for plugins to provide custom template functions that perform asynchronous actions, for example the new `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`__ plugin which allows custom templates to directly execute SQL queries and render their results. (`#628 <https://github.com/simonw/datasette/issues/628>`__)
+
 .. _v0_31_2:
 
 0.31.2 (2019-11-13)

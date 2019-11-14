@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import app_client, make_app_client, TEMP_PLUGIN_SECRET_FILE  # noqa
+from datasette.utils import sqlite3
 import base64
 import json
 import os
@@ -214,3 +215,20 @@ def test_plugins_extra_template_vars(restore_working_directory):
             "awaitable": True,
             "scope_path": "/-/metadata",
         } == extra_template_vars_from_awaitable
+
+
+def test_plugins_async_template_function(restore_working_directory):
+    for client in make_app_client(
+        template_dir=str(pathlib.Path(__file__).parent / "test_templates")
+    ):
+        response = client.get("/-/metadata")
+        assert response.status == 200
+        extra_from_awaitable_function = (
+            Soup(response.body, "html.parser")
+            .select("pre.extra_from_awaitable_function")[0]
+            .text
+        )
+        expected = (
+            sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
+        )
+        assert expected == extra_from_awaitable_function

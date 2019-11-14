@@ -139,7 +139,7 @@ class BaseView(AsgiView):
             extra_template_vars.update(extra_vars)
 
         return Response.html(
-            template.render(
+            await template.render_async(
                 {
                     **context,
                     **{

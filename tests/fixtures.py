@@ -446,13 +446,19 @@ def render_cell(value, database):
 
 @hookimpl
 def extra_template_vars(template, database, table, view_name, request, datasette):
+    async def query_database(sql):
+        first_db = list(datasette.databases.keys())[0]
+        return (
+            await datasette.execute(first_db, sql)
+        ).rows[0][0]
     async def inner():
         return {
             "extra_template_vars_from_awaitable": json.dumps({
                 "template": template,
                 "scope_path": request.scope["path"],
                 "awaitable": True,
-            }, default=lambda b: b.decode("utf8"))
+            }, default=lambda b: b.decode("utf8")),
+            "query_database": query_database,
         }
     return inner
 

@@ -629,7 +629,9 @@ Function that returns a dictionary
     If you return a function it will be executed. If it returns a dictionary those values will will be merged into the template context.
 
 Function that returns an awaitable function that returns a dictionary
-    You can also return a function which returns an awaitable function which returns a dictionary. This means you can execute additional SQL queries using ``datasette.execute()``.
+    You can also return a function which returns an awaitable function which returns a dictionary.
+
+Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
 
 Here's an example plugin that returns an authentication object from the ASGI scope:
 
@@ -641,20 +643,19 @@ Here's an example plugin that returns an authentication object from the ASGI sco
             "auth": request.scope.get("auth")
         }
 
-And here's an example which returns the current version of SQLite:
+And here's an example which adds a ``sql_first(sql_query)`` function which executes a SQL statement and returns the first column of the first row of results:
 
 .. code-block:: python
 
     @hookimpl
-    def extra_template_vars(datasette):
-        async def inner():
-            first_db = list(datasette.databases.keys())[0]
-            return {
-                "sqlite_version": (
-                    await datasette.execute(first_db, "select sqlite_version()")
-                ).rows[0][0]
-            }
-        return inner
+    def extra_template_vars(datasette, database):
+        async def sql_first(sql, dbname=None):
+            dbname = dbname or database or next(iter(datasette.databases.keys()))
+            return (await datasette.execute(dbname, sql)).rows[0][0]
+
+You can then use the new function in a template like so::
+
+    SQLite version: {{ sql_first("select sqlite_version()") }}
 
 .. _plugin_register_output_renderer:
 

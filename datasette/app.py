@@ -583,7 +583,9 @@ class Datasette:
                 ),
             ]
         )
-        self.jinja_env = Environment(loader=template_loader, autoescape=True)
+        self.jinja_env = Environment(
+            loader=template_loader, autoescape=True, enable_async=True
+        )
         self.jinja_env.filters["escape_css_string"] = escape_css_string
         self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
@@ -730,5 +732,5 @@ class DatasetteRouter(AsgiRouter):
         else:
             template = self.ds.jinja_env.select_template(templates)
             await asgi_send_html(
-                send, template.render(info), status=status, headers=headers
+                send, await template.render_async(info), status=status, headers=headers
             )

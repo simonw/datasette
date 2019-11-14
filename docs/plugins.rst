@@ -643,26 +643,19 @@ Here's an example plugin that returns an authentication object from the ASGI sco
             "auth": request.scope.get("auth")
         }
 
-And here's an example which adds a ``query_database(sql)`` function which executes a SQL statement and returns the first column of the row:
+And here's an example which adds a ``sql_first(sql_query)`` function which executes a SQL statement and returns the first column of the first row of results:
 
 .. code-block:: python
 
     @hookimpl
-    def extra_template_vars(datasette):
-
-        async def query_database(sql):
-            first_db = list(datasette.databases.keys())[0]
-            return (
-                await datasette.execute(first_db, sql)
-            ).rows[0][0]
-
-        return {
-            "query_database": query_database,
-        }
+    def extra_template_vars(datasette, database):
+        async def sql_first(sql, dbname=None):
+            dbname = dbname or database or next(iter(datasette.databases.keys()))
+            return (await datasette.execute(dbname, sql)).rows[0][0]
 
 You can then use the new function in a template like so::
 
-    {{ query_database("select sqlite_version()") }}
+    SQLite version: {{ sql_first("select sqlite_version()") }}
 
 .. _plugin_register_output_renderer:
 

@@ -22,6 +22,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 14th November 2019: [Datasette 0.32](https://datasette.readthedocs.io/en/stable/changelog.html#v0-32) now uses asynchronous rendering in Jinja templates, which means template functions can perform asynchronous operations such as executing SQL queries. [datasette-template-sql](https://github.com/simonw/datasette-template-sql) is a new plugin uses this capability to add a new custom `sql(sql_query)` template function.
  * 11th November 2019: [Datasette 0.31](https://datasette.readthedocs.io/en/stable/changelog.html#v0-31) - the first version of Datasette to support Python 3.8, which means dropping support for Python 3.5.
  * 18th October 2019: [Datasette 0.30](https://datasette.readthedocs.io/en/stable/changelog.html#v0-30)
  * 13th July 2019: [Single sign-on against GitHub using ASGI middleware](https://simonwillison.net/2019/Jul/14/sso-asgi/) talks about the implementation of [datasette-auth-github](https://github.com/simonw/datasette-auth-github) in more detail.

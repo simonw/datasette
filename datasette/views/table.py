@@ -74,17 +74,36 @@ class RowTableShared(DataView):
             sortable_columns.add("rowid")
         return sortable_columns
 
-    async def expandable_columns(self, database, table):
+    async def foreign_keys_for_table(self, request, database, table):
+        db = self.ds.databases[database]
+        fks = await db.foreign_keys_for_table(table)
+        # Handle ?_fk.article_id=articles.id querystring arguments
+        for key, value in request.args.items():
+            if key.startswith("_fk."):
+                value = value[0]
+                column = key.split("_fk.", 1)[1]
+                other_table, other_column = value.split(".", 1)
+                # {'other_table': '...', 'column': '...', 'other_column': 'id'}
+                expandable_fk = {
+                    "other_table": other_table,
+                    "column": column,
+                    "other_column": other_column,
+                }
+                fks.append(expandable_fk)
+        return fks
+
+
+    async def expandable_columns(self, request, database, table):
         # Returns list of (fk_dict, label_column-or-None) pairs for that table
         expandables = []
         db = self.ds.databases[database]
-        for fk in await db.foreign_keys_for_table(table):
+        for fk in await self.foreign_keys_for_table(request, database, table):
             label_column = await db.label_column_for_table(fk["other_table"])
             expandables.append((fk, label_column))
         return expandables
 
     async def display_columns_and_rows(
-        self, database, table, description, rows, link_column=False, truncate_cells=0
+        self, request, database, table, description, rows, link_column=False, truncate_cells=0
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         db = self.ds.databases[database]
@@ -96,7 +115,7 @@ class RowTableShared(DataView):
         pks = await db.primary_keys(table)
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
-            for fk in await db.foreign_keys_for_table(table)
+            for fk in await self.foreign_keys_for_table(request, database, table)
         }
 
         cell_rows = []
@@ -593,7 +612,7 @@ class TableView(RowTableShared):
 
         # Expand labeled columns if requested
         expanded_columns = []
-        expandable_columns = await self.expandable_columns(database, table)
+        expandable_columns = await self.expandable_columns(request, database, table)
         columns_to_expand = None
         try:
             all_labels = value_as_boolean(special_args.get("_labels", ""))
@@ -618,7 +637,7 @@ class TableView(RowTableShared):
                 values = [row[column_index] for row in rows]
                 # Expand them
                 expanded_labels.update(
-                    await self.ds.expand_foreign_keys(database, table, column, values)
+                    await self.ds.expand_foreign_keys(database, table, column, values, fks=[p[0] for p in expandable_columns])
                 )
             if expanded_labels:
                 # Rewrite the rows
@@ -693,6 +712,7 @@ class TableView(RowTableShared):
 
         async def extra_template():
             display_columns, display_rows = await self.display_columns_and_rows(
+                request,
                 database,
                 table,
                 results.description,
@@ -807,6 +827,7 @@ class RowView(RowTableShared):
 
         async def template_data():
             display_columns, display_rows = await self.display_columns_and_rows(
+                request,
                 database,
                 table,
                 results.description,

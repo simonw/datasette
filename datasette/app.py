@@ -352,11 +352,11 @@ class Datasette:
             log_sql_errors=log_sql_errors,
         )
 
-    async def expand_foreign_keys(self, database, table, column, values):
+    async def expand_foreign_keys(self, database, table, column, values, fks=None):
         "Returns dict mapping (column, value) -> label"
         labeled_fks = {}
         db = self.databases[database]
-        foreign_keys = await db.foreign_keys_for_table(table)
+        foreign_keys = fks or await db.foreign_keys_for_table(table)
         # Find the foreign_key for this column
         try:
             fk = [

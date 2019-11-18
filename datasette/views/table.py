@@ -92,7 +92,6 @@ class RowTableShared(DataView):
                 fks.append(expandable_fk)
         return fks
 
-
     async def expandable_columns(self, request, database, table):
         # Returns list of (fk_dict, label_column-or-None) pairs for that table
         expandables = []
@@ -103,7 +102,14 @@ class RowTableShared(DataView):
         return expandables
 
     async def display_columns_and_rows(
-        self, request, database, table, description, rows, link_column=False, truncate_cells=0
+        self,
+        request,
+        database,
+        table,
+        description,
+        rows,
+        link_column=False,
+        truncate_cells=0,
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         db = self.ds.databases[database]
@@ -637,7 +643,13 @@ class TableView(RowTableShared):
                 values = [row[column_index] for row in rows]
                 # Expand them
                 expanded_labels.update(
-                    await self.ds.expand_foreign_keys(database, table, column, values, fks=[p[0] for p in expandable_columns])
+                    await self.ds.expand_foreign_keys(
+                        database,
+                        table,
+                        column,
+                        values,
+                        fks=[p[0] for p in expandable_columns],
+                    )
                 )
             if expanded_labels:
                 # Rewrite the rows

@@ -4,6 +4,204 @@
 Changelog
 =========
 
+.. _v0_32:
+
+0.32 (2019-11-14)
+-----------------
+
+Datasette now renders templates using `Jinja async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__. This makes it easy for plugins to provide custom template functions that perform asynchronous actions, for example the new `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`__ plugin which allows custom templates to directly execute SQL queries and render their results. (`#628 <https://github.com/simonw/datasette/issues/628>`__)
+
+.. _v0_31_2:
+
+0.31.2 (2019-11-13)
+-------------------
+
+- Fixed a bug where ``datasette publish heroku`` applications failed to start (`#633 <https://github.com/simonw/datasette/issues/633>`__)
+- Fix for ``datasette publish`` with just ``--source_url`` - thanks, Stanley Zheng (`#572 <https://github.com/simonw/datasette/issues/572>`__)
+- Deployments to Heroku now use Python 3.8.0 (`#632 <https://github.com/simonw/datasette/issues/632>`__)
+
+.. _v0_31_1:
+
+0.31.1 (2019-11-12)
+-------------------
+
+- Deployments created using ``datasette publish``  now use ``python:3.8`` base Docker image (`#629 <https://github.com/simonw/datasette/pull/629>`__)
+
+.. _v0_31:
+
+0.31 (2019-11-11)
+-----------------
+
+This version adds compatibility with Python 3.8 and breaks compatibility with Python 3.5.
+
+If you are still running Python 3.5 you should stick with ``0.30.2``, which you can install like this::
+
+    pip install datasette==0.30.2
+
+- Format SQL button now works with read-only SQL queries - thanks, Tobias Kunze (`#602 <https://github.com/simonw/datasette/pull/602>`__)
+- New ``?column__notin=x,y,z`` filter for table views (`#614 <https://github.com/simonw/datasette/issues/614>`__)
+- Table view now uses ``select col1, col2, col3`` instead of ``select *``
+- Database filenames can now contain spaces - thanks, Tobias Kunze (`#590 <https://github.com/simonw/datasette/pull/590>`__)
+- Removed obsolete ``?_group_count=col`` feature (`#504 <https://github.com/simonw/datasette/issues/504>`__)
+- Improved user interface and documentation for ``datasette publish cloudrun`` (`#608 <https://github.com/simonw/datasette/issues/608>`__)
+- Tables with indexes now show the ``CREATE INDEX`` statements on the table page (`#618 <https://github.com/simonw/datasette/issues/618>`__)
+- Current version of `uvicorn <https://www.uvicorn.org/>`__ is now shown on ``/-/versions``
+- Python 3.8 is now supported! (`#622 <https://github.com/simonw/datasette/issues/622>`__)
+- Python 3.5 is no longer supported.
+
+.. _v0_30_2:
+
+0.30.2 (2019-11-02)
+-------------------
+
+- ``/-/plugins`` page now uses distribution name e.g. ``datasette-cluster-map`` instead of the name of the underlying Python package (``datasette_cluster_map``) (`#606 <https://github.com/simonw/datasette/issues/606>`__)
+- Array faceting is now only suggested for columns that contain arrays of strings (`#562 <https://github.com/simonw/datasette/issues/562>`__)
+- Better documentation for the ``--host`` argument (`#574 <https://github.com/simonw/datasette/issues/574>`__)
+- Don't show ``None`` with a broken link for the label on a nullable foreign key (`#406 <https://github.com/simonw/datasette/issues/406>`__)
+
+.. _v0_30_1:
+
+0.30.1 (2019-10-30)
+-------------------
+
+- Fixed bug where ``?_where=`` parameter was not persisted in hidden form fields (`#604 <https://github.com/simonw/datasette/issues/604>`__)
+- Fixed bug with .JSON representation of row pages - thanks, Chris Shaw (`#603 <https://github.com/simonw/datasette/issues/603>`__)
+
+.. _v0_30:
+
+
+0.30 (2019-10-18)
+-----------------
+
+- Added ``/-/threads`` debugging page
+- Allow ``EXPLAIN WITH...`` (`#583 <https://github.com/simonw/datasette/issues/583>`__)
+- Button to format SQL - thanks, Tobias Kunze (`#136 <https://github.com/simonw/datasette/issues/136>`__)
+- Sort databases on homepage by argument order - thanks, Tobias Kunze (`#585 <https://github.com/simonw/datasette/issues/585>`__)
+- Display metadata footer on custom SQL queries - thanks, Tobias Kunze (`#589 <https://github.com/simonw/datasette/pull/589>`__)
+- Use ``--platform=managed`` for ``publish cloudrun`` (`#587 <https://github.com/simonw/datasette/issues/587>`__)
+- Fixed bug returning non-ASCII characters in CSV (`#584 <https://github.com/simonw/datasette/issues/584>`__)
+- Fix for ``/foo`` v.s. ``/foo-bar`` bug (`#601 <https://github.com/simonw/datasette/issues/601>`__)
+
+.. _v0_29_3:
+
+0.29.3 (2019-09-02)
+-------------------
+
+- Fixed implementation of CodeMirror on database page (`#560 <https://github.com/simonw/datasette/issues/560>`__)
+- Documentation typo fixes - thanks, Min ho Kim (`#561 <https://github.com/simonw/datasette/pull/561>`__)
+- Mechanism for detecting if a table has FTS enabled now works if the table name used alternative escaping mechanisms (`#570 <https://github.com/simonw/datasette/issues/570>`__) - for compatibility with `a recent change to sqlite-utils <https://github.com/simonw/sqlite-utils/pull/57>`__.
+
+.. _v0_29_2:
+
+0.29.2 (2019-07-13)
+-------------------
+
+- Bumped `Uvicorn <https://www.uvicorn.org/>`__ to 0.8.4, fixing a bug where the querystring was not included in the server logs. (`#559 <https://github.com/simonw/datasette/issues/559>`__)
+- Fixed bug where the navigation breadcrumbs were not displayed correctly on the page for a custom query. (`#558 <https://github.com/simonw/datasette/issues/558>`__)
+- Fixed bug where custom query names containing unicode characters caused errors.
+
+.. _v0_29_1:
+
+0.29.1 (2019-07-11)
+-------------------
+
+- Fixed bug with static mounts using relative paths which could lead to traversal exploits (`#555 <https://github.com/simonw/datasette/issues/555>`__) - thanks Abdussamet Kocak!
+- Datasette can now be run as a module: ``python -m datasette`` (`#556 <https://github.com/simonw/datasette/issues/556>`__) - thanks, Abdussamet Kocak!
+
+.. _v0_29:
+
+0.29 (2019-07-07)
+-----------------
+
+ASGI, new plugin hooks, facet by date and much, much more...
+
+ASGI
+~~~~
+
+`ASGI <https://asgi.readthedocs.io/>`__ is the Asynchronous Server Gateway Interface standard. I've been wanting to convert Datasette into an ASGI application for over a year - `Port Datasette to ASGI #272 <https://github.com/simonw/datasette/issues/272>`__ tracks thirteen months of intermittent development - but with Datasette 0.29 the change is finally released. This also means Datasette now runs on top of `Uvicorn <https://www.uvicorn.org/>`__ and no longer depends on `Sanic <https://github.com/huge-success/sanic>`__.
+
+I wrote about the significance of this change in `Porting Datasette to ASGI, and Turtles all the way down <https://simonwillison.net/2019/Jun/23/datasette-asgi/>`__.
+
+The most exciting consequence of this change is that Datasette plugins can now take advantage of the ASGI standard.
+
+New plugin hook: asgi_wrapper
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`plugin_asgi_wrapper` plugin hook allows plugins to entirely wrap the Datasette ASGI application in their own ASGI middleware. (`#520 <https://github.com/simonw/datasette/issues/520>`__)
+
+Two new plugins take advantage of this hook:
+
+* `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ adds a authentication layer: users will have to sign in using their GitHub account before they can view data or interact with Datasette. You can also use it to restrict access to specific GitHub users, or to members of specified GitHub `organizations <https://help.github.com/en/articles/about-organizations>`__ or `teams <https://help.github.com/en/articles/organizing-members-into-teams>`__.
+
+* `datasette-cors <https://github.com/simonw/datasette-cors>`__ allows you to configure `CORS headers <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`__ for your Datasette instance. You can use this to enable JavaScript running on a whitelisted set of domains to make ``fetch()`` calls to the JSON API provided by your Datasette instance.
+
+New plugin hook: extra_template_vars
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`plugin_hook_extra_template_vars` plugin hook allows plugins to inject their own additional variables into the Datasette template context. This can be used in conjunction with custom templates to customize the Datasette interface. `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ uses this hook to add custom HTML to the new top navigation bar (which is designed to be modified by plugins, see `#540 <https://github.com/simonw/datasette/issues/540>`__).
+
+Secret plugin configuration options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Plugins like `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ need a safe way to set secret configuration options. Since the default mechanism for configuring plugins exposes those settings in ``/-/metadata`` a new mechanism was needed. :ref:`plugins_configuration_secret` describes how plugins can now specify that their settings should be read from a file or an environment variable::
+
+    {
+        "plugins": {
+            "datasette-auth-github": {
+                "client_secret": {
+                    "$env": "GITHUB_CLIENT_SECRET"
+                }
+            }
+        }
+    }
+
+These plugin secrets can be set directly using ``datasette publish``. See :ref:`publish_custom_metadata_and_plugins` for details. (`#538 <https://github.com/simonw/datasette/issues/538>`__ and `#543 <https://github.com/simonw/datasette/issues/543>`__)
+
+Facet by date
+~~~~~~~~~~~~~
+
+If a column contains datetime values, Datasette can now facet that column by date. (`#481 <https://github.com/simonw/datasette/issues/481>`__)
+
+.. _v0_29_medium_changes:
+
+Easier custom templates for table rows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you want to customize the display of individual table rows, you can do so using a ``_table.html`` template include that looks something like this::
+
+    {% for row in display_rows %}
+        <div>
+            <h2>{{ row["title"] }}</h2>
+            <p>{{ row["description"] }}<lp>
+            <p>Category: {{ row.display("category_id") }}</p>
+        </div>
+    {% endfor %}
+
+This is a **backwards incompatible change**. If you previously had a custom template called ``_rows_and_columns.html`` you need to rename it to ``_table.html``.
+
+See :ref:`customization_custom_templates` for full details.
+
+?_through= for joins through many-to-many tables
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The new ``?_through={json}`` argument to the Table view allows records to be filtered based on a many-to-many relationship. See :ref:`json_api_table_arguments` for full documentation - here's `an example <https://latest.datasette.io/fixtures/roadside_attractions?_through={%22table%22:%22roadside_attraction_characteristics%22,%22column%22:%22characteristic_id%22,%22value%22:%221%22}>`__. (`#355 <https://github.com/simonw/datasette/issues/355>`__)
+
+This feature was added to help support `facet by many-to-many <https://github.com/simonw/datasette/issues/551>`__, which isn't quite ready yet but will be coming in the next Datasette release.
+
+Small changes
+~~~~~~~~~~~~~
+
+* Databases published using ``datasette publish`` now open in :ref:`performance_immutable_mode`. (`#469 <https://github.com/simonw/datasette/issues/469>`__)
+* ``?col__date=`` now works for columns containing spaces
+* Automatic label detection (for deciding which column to show when linking to a foreign key) has been improved. (`#485 <https://github.com/simonw/datasette/issues/485>`__)
+* Fixed bug where pagination broke when combined with an expanded foreign key. (`#489 <https://github.com/simonw/datasette/issues/489>`__)
+* Contributors can now run ``pip install -e .[docs]`` to get all of the dependencies needed to build the documentation, including ``cd docs && make livehtml`` support.
+* Datasette's dependencies are now all specified using the ``~=`` match operator. (`#532 <https://github.com/simonw/datasette/issues/532>`__)
+* ``white-space: pre-wrap`` now used for table creation SQL. (`#505 <https://github.com/simonw/datasette/issues/505>`__)
+
+
+`Full list of commits <https://github.com/simonw/datasette/compare/0.28...0.29>`__ between 0.28 and 0.29.
+
 .. _v0_28:
 
 0.28 (2019-05-19)
@@ -31,7 +229,7 @@ Datasette can still run against immutable files and gains numerous performance b
 Faceting improvements, and faceting plugins
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Datasette :ref:`facets` provide an intuitive way to quickly summarize and interact with data. Previously the only supported faceting technique was column faceting, but 0.28 introduces two powerful new capibilities: facet-by-JSON-array and the ability to define further facet types using plugins.
+Datasette :ref:`facets` provide an intuitive way to quickly summarize and interact with data. Previously the only supported faceting technique was column faceting, but 0.28 introduces two powerful new capabilities: facet-by-JSON-array and the ability to define further facet types using plugins.
 
 Facet by array (`#359 <https://github.com/simonw/datasette/issues/359>`__) is only available if your SQLite installation provides the ``json1`` extension. Datasette will automatically detect columns that contain JSON arrays of values and offer a faceting interface against those columns - useful for modelling things like tags without needing to break them out into a new table. See :ref:`facet_by_json_array` for more.
 
@@ -42,7 +240,7 @@ The new :ref:`plugin_register_facet_classes` plugin hook (`#445 <https://github.
 datasette publish cloudrun
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`Google Cloud Run <https://cloud.google.com/run/>`__ is a brand new serverless hosting platform from Google, which allows you to build a Docker container which will run only when HTTP traffic is recieved and will shut down (and hence cost you nothing) the rest of the time. It's similar to Zeit's Now v1 Docker hosting platform which sadly is `no longer accepting signups <https://hyperion.alpha.spectrum.chat/zeit/now/cannot-create-now-v1-deployments~d206a0d4-5835-4af5-bb5c-a17f0171fb25?m=MTU0Njk2NzgwODM3OA==>`__ from new users.
+`Google Cloud Run <https://cloud.google.com/run/>`__ is a brand new serverless hosting platform from Google, which allows you to build a Docker container which will run only when HTTP traffic is received and will shut down (and hence cost you nothing) the rest of the time. It's similar to Zeit's Now v1 Docker hosting platform which sadly is `no longer accepting signups <https://hyperion.alpha.spectrum.chat/zeit/now/cannot-create-now-v1-deployments~d206a0d4-5835-4af5-bb5c-a17f0171fb25?m=MTU0Njk2NzgwODM3OA==>`__ from new users.
 
 The new ``datasette publish cloudrun`` command was contributed by Romain Primet (`#434 <https://github.com/simonw/datasette/pull/434>`__) and publishes selected databases to a new Datasette instance running on Google Cloud Run.
 
@@ -481,7 +679,7 @@ Mostly new work on the :ref:`plugins` mechanism: plugins can now bundle static a
 - Longer time limit for test_paginate_compound_keys
 
   It was failing intermittently in Travis - see `#209 <https://github.com/simonw/datasette/issues/209>`_
-- Use application/octet-stream for downloadable databses
+- Use application/octet-stream for downloadable databases
 - Updated PyPI classifiers
 - Updated PyPI link to pypi.org
 

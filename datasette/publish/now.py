@@ -1,6 +1,7 @@
 from datasette import hookimpl
 import click
 import json
+import os
 from subprocess import run, PIPE
 
 from .common import (
@@ -24,6 +25,11 @@ def publish_subcommand(publish):
     @click.option("--token", help="Auth token to use for deploy")
     @click.option("--alias", multiple=True, help="Desired alias e.g. yoursite.now.sh")
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
+    @click.option(
+        "--show-files",
+        is_flag=True,
+        help="Output the generated Dockerfile and metadata.json",
+    )
     def nowv1(
         files,
         metadata,
@@ -33,6 +39,7 @@ def publish_subcommand(publish):
         plugins_dir,
         static,
         install,
+        plugin_secret,
         version_note,
         title,
         license,
@@ -46,6 +53,7 @@ def publish_subcommand(publish):
         token,
         alias,
         spatialite,
+        show_files,
     ):
         fail_if_publish_binary_not_installed("now", "Zeit Now", "https://zeit.co/now")
         if extra_options:
@@ -53,6 +61,30 @@ def publish_subcommand(publish):
         else:
             extra_options = ""
         extra_options += "--config force_https_urls:on"
+
+        extra_metadata = {
+            "title": title,
+            "license": license,
+            "license_url": license_url,
+            "source": source,
+            "source_url": source_url,
+            "about": about,
+            "about_url": about_url,
+        }
+
+        environment_variables = {}
+        if plugin_secret:
+            extra_metadata["plugins"] = {}
+            for plugin_name, plugin_setting, setting_value in plugin_secret:
+                environment_variable = (
+                    "{}_{}".format(plugin_name, plugin_setting)
+                    .upper()
+                    .replace("-", "_")
+                )
+                environment_variables[environment_variable] = setting_value
+                extra_metadata["plugins"].setdefault(plugin_name, {})[
+                    plugin_setting
+                ] = {"$env": environment_variable}
 
         with temporary_docker_directory(
             files,
@@ -66,15 +98,8 @@ def publish_subcommand(publish):
             install,
             spatialite,
             version_note,
-            {
-                "title": title,
-                "license": license,
-                "license_url": license_url,
-                "source": source,
-                "source_url": source_url,
-                "about": about,
-                "about_url": about_url,
-            },
+            extra_metadata,
+            environment_variables,
         ):
             now_json = {"version": 1}
             open("now.json", "w").write(json.dumps(now_json, indent=4))
@@ -88,6 +113,13 @@ def publish_subcommand(publish):
             else:
                 done = run("now", stdout=PIPE)
             deployment_url = done.stdout
+            if show_files:
+                if os.path.exists("metadata.json"):
+                    print("=== metadata.json ===\n")
+                    print(open("metadata.json").read())
+                print("\n==== Dockerfile ====\n")
+                print(open("Dockerfile").read())
+                print("\n====================\n")
             if alias:
                 # I couldn't get --target=production working, so I call
                 # 'now alias' with arguments directly instead - but that

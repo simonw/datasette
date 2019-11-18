@@ -33,6 +33,7 @@ def publish_subcommand(publish):
         plugins_dir,
         static,
         install,
+        plugin_secret,
         version_note,
         title,
         license,
@@ -61,6 +62,33 @@ def publish_subcommand(publish):
             )
             call(["heroku", "plugins:install", "heroku-builds"])
 
+        extra_metadata = {
+            "title": title,
+            "license": license,
+            "license_url": license_url,
+            "source": source,
+            "source_url": source_url,
+            "about": about,
+            "about_url": about_url,
+        }
+
+        environment_variables = {
+            # Avoid uvicorn error: https://github.com/simonw/datasette/issues/633
+            "WEB_CONCURRENCY": "1"
+        }
+        if plugin_secret:
+            extra_metadata["plugins"] = {}
+            for plugin_name, plugin_setting, setting_value in plugin_secret:
+                environment_variable = (
+                    "{}_{}".format(plugin_name, plugin_setting)
+                    .upper()
+                    .replace("-", "_")
+                )
+                environment_variables[environment_variable] = setting_value
+                extra_metadata["plugins"].setdefault(plugin_name, {})[
+                    plugin_setting
+                ] = {"$env": environment_variable}
+
         with temporary_heroku_directory(
             files,
             name,
@@ -72,15 +100,7 @@ def publish_subcommand(publish):
             static,
             install,
             version_note,
-            {
-                "title": title,
-                "license": license,
-                "license_url": license_url,
-                "source": source,
-                "source_url": source_url,
-                "about": about,
-                "about_url": about_url,
-            },
+            extra_metadata,
         ):
             app_name = None
             if name:
@@ -103,6 +123,11 @@ def publish_subcommand(publish):
                 cmd.append("--json")
                 create_output = check_output(cmd).decode("utf8")
                 app_name = json.loads(create_output)["name"]
+
+            for key, value in environment_variables.items():
+                call(
+                    ["heroku", "config:set", "-a", app_name, "{}={}".format(key, value)]
+                )
 
             call(["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"])
 
@@ -142,7 +167,7 @@ def temporary_heroku_directory(
         if metadata_content:
             open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
 
-        open("runtime.txt", "w").write("python-3.6.8")
+        open("runtime.txt", "w").write("python-3.8.0")
 
         if branch:
             install = [

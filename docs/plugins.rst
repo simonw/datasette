@@ -219,6 +219,8 @@ Here is an example of some plugin configuration for a specific table::
 
 This tells the ``datasette-cluster-map`` column which latitude and longitude columns should be used for a table called ``Street_Tree_List`` inside a database file called ``sf-trees.db``.
 
+.. _plugins_configuration_secret:
+
 Secret configuration values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -236,7 +238,6 @@ Any values embedded in ``metadata.json`` will be visible to anyone who views the
         }
     }
 
-
 **As values in separate files**. Your secrets can also live in files on disk. To specify a secret should be read from a file, provide the full file path like this::
 
     {
@@ -248,6 +249,14 @@ Any values embedded in ``metadata.json`` will be visible to anyone who views the
             }
         }
     }
+
+If you are publishing your data using the :ref:`datasette publish <cli_publish>` family of commands, you can use the ``--plugin-secret`` option to set these secrets at publish time. For example, using Heroku you might run the following command::
+
+    $ datasette publish heroku my_database.db \
+        --name my-heroku-app-demo \
+        --install=datasette-auth-github \
+        --plugin-secret datasette-auth-github client_id your_client_id \
+        --plugin-secret datasette-auth-github client_secret your_client_secret
 
 Writing plugins that accept configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -433,7 +442,7 @@ you have one:
     @hookimpl
     def extra_js_urls():
         return [
-            '/-/static-plugins/your_plugin/app.js'
+            '/-/static-plugins/your-plugin/app.js'
         ]
 
 .. _plugin_hook_publish_subcommand:
@@ -620,7 +629,9 @@ Function that returns a dictionary
     If you return a function it will be executed. If it returns a dictionary those values will will be merged into the template context.
 
 Function that returns an awaitable function that returns a dictionary
-    You can also return a function which returns an awaitable function which returns a dictionary. This means you can execute additional SQL queries using ``datasette.execute()``.
+    You can also return a function which returns an awaitable function which returns a dictionary.
+
+Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
 
 Here's an example plugin that returns an authentication object from the ASGI scope:
 
@@ -632,20 +643,19 @@ Here's an example plugin that returns an authentication object from the ASGI sco
             "auth": request.scope.get("auth")
         }
 
-And here's an example which returns the current version of SQLite:
+And here's an example which adds a ``sql_first(sql_query)`` function which executes a SQL statement and returns the first column of the first row of results:
 
 .. code-block:: python
 
     @hookimpl
-    def extra_template_vars(datasette):
-        async def inner():
-            first_db = list(datasette.databases.keys())[0]
-            return {
-                "sqlite_version": (
-                    await datasette.execute(first_db, "select sqlite_version()")
-                ).rows[0][0]
-            }
-        return inner
+    def extra_template_vars(datasette, database):
+        async def sql_first(sql, dbname=None):
+            dbname = dbname or database or next(iter(datasette.databases.keys()))
+            return (await datasette.execute(dbname, sql)).rows[0][0]
+
+You can then use the new function in a template like so::
+
+    SQLite version: {{ sql_first("select sqlite_version()") }}
 
 .. _plugin_register_output_renderer:
 
@@ -712,9 +722,9 @@ Each Facet subclass implements a new type of facet operation. The class should l
         # This key must be unique across all facet classes:
         type = "special"
 
-        async def suggest(self, sql, params, filtered_table_rows_count):
+        async def suggest(self):
+            # Use self.sql and self.params to suggest some facets
             suggested_facets = []
-            # Perform calculations to suggest facets
             suggested_facets.append({
                 "name": column, # Or other unique name
                 # Construct the URL that will enable this facet:
@@ -726,8 +736,9 @@ Each Facet subclass implements a new type of facet operation. The class should l
             })
             return suggested_facets
 
-        async def facet_results(self, sql, params):
-            # This should execute the facet operation and return results
+        async def facet_results(self):
+            # This should execute the facet operation and return results, again
+            # using self.sql and self.params as the starting point
             facet_results = {}
             facets_timed_out = []
             # Do some calculations here...
@@ -752,7 +763,7 @@ Each Facet subclass implements a new type of facet operation. The class should l
 
             return facet_results, facets_timed_out
 
-See ``datasette/facets.py`` for examples of how these classes can work.
+See `datasette/facets.py <https://github.com/simonw/datasette/blob/master/datasette/facets.py>`__ for examples of how these classes can work.
 
 The plugin hook can then be used to register the new facet class like this:
 

@@ -129,17 +129,6 @@ The performance of facets can be greatly improved by adding indexes on the colum
     Enter ".help" for usage hints.
     sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");
 
-.. _facet_by_m2m:
-
-Facet by many-to-many
----------------------
-
-Datasette can detect many-to-many SQL tables - defined as SQL tables which have foreign key relationships to two other tables.
-
-If a many-to-many table exists pointing at the table you are currently viewing, Datasette will suggest you facet the table based on that relationship.
-
-Example here: `latest.datasette.io/fixtures/roadside_attractions?_facet_m2m=attraction_characteristic <https://latest.datasette.io/fixtures/roadside_attractions?_facet_m2m=attraction_characteristic>`__
-
 .. _facet_by_json_array:
 
 Facet by JSON array

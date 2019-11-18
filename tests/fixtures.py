@@ -12,7 +12,7 @@ import sys
 import string
 import tempfile
 import time
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 
 
 # This temp file is used by one of the plugin config tests
@@ -49,18 +49,20 @@ class TestClient:
         if "?" in path:
             path, _, query_string = path.partition("?")
             query_string = query_string.encode("utf8")
-        instance = ApplicationCommunicator(
-            self.asgi_app,
-            {
-                "type": "http",
-                "http_version": "1.0",
-                "method": method,
-                "path": unquote(path),
-                "raw_path": path.encode("ascii"),
-                "query_string": query_string,
-                "headers": [[b"host", b"localhost"]],
-            },
-        )
+        if "%" in path:
+            raw_path = path.encode("latin-1")
+        else:
+            raw_path = quote(path, safe="/:,").encode("latin-1")
+        scope = {
+            "type": "http",
+            "http_version": "1.0",
+            "method": method,
+            "path": unquote(path),
+            "raw_path": raw_path,
+            "query_string": query_string,
+            "headers": [[b"host", b"localhost"]],
+        }
+        instance = ApplicationCommunicator(self.asgi_app, scope)
         await instance.send_input({"type": "http.request"})
         # First message back should be response.start with headers and status
         messages = []
@@ -172,14 +174,21 @@ def app_client_no_files():
 @pytest.fixture(scope="session")
 def app_client_two_attached_databases():
     yield from make_app_client(
-        extra_databases={"extra_database.db": EXTRA_DATABASE_SQL}
+        extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
+    )
+
+
+@pytest.fixture(scope="session")
+def app_client_conflicting_database_names():
+    yield from make_app_client(
+        extra_databases={"foo.db": EXTRA_DATABASE_SQL, "foo-bar.db": EXTRA_DATABASE_SQL}
     )
 
 
 @pytest.fixture(scope="session")
 def app_client_two_attached_databases_one_immutable():
     yield from make_app_client(
-        is_immutable=True, extra_databases={"extra_database.db": EXTRA_DATABASE_SQL}
+        is_immutable=True, extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
     )
 
 
@@ -291,6 +300,7 @@ METADATA = {
                 },
             },
             "queries": {
+                "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
                 "pragma_cache_size": "PRAGMA cache_size;",
                 "neighborhood_search": {
                     "sql": """
@@ -436,13 +446,19 @@ def render_cell(value, database):
 
 @hookimpl
 def extra_template_vars(template, database, table, view_name, request, datasette):
+    async def query_database(sql):
+        first_db = list(datasette.databases.keys())[0]
+        return (
+            await datasette.execute(first_db, sql)
+        ).rows[0][0]
     async def inner():
         return {
             "extra_template_vars_from_awaitable": json.dumps({
                 "template": template,
                 "scope_path": request.scope["path"],
                 "awaitable": True,
-            }, default=lambda b: b.decode("utf8"))
+            }, default=lambda b: b.decode("utf8")),
+            "query_database": query_database,
         }
     return inner
 
@@ -504,6 +520,7 @@ CREATE TABLE compound_three_primary_keys (
   content text,
   PRIMARY KEY (pk1, pk2, pk3)
 );
+CREATE INDEX idx_compound_three_primary_keys_content ON compound_three_primary_keys(content);
 
 CREATE TABLE foreign_key_references (
   pk varchar(30) primary key,
@@ -651,26 +668,27 @@ CREATE TABLE facetable (
     city_id integer,
     neighborhood text,
     tags text,
+    complex_array text,
     FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (created, planet_int, on_earth, state, city_id, neighborhood, tags)
+    (created, planet_int, on_earth, state, city_id, neighborhood, tags, complex_array)
 VALUES
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]'),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]'),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]'),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]'),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]'),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]'),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]'),
-    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]'),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]'),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]'),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]'),
-    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]')
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]', '[]'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]', '[]'),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]', '[]'),
+    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]', '[]'),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]', '[]'),
+    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]', '[]')
 ;
 
 CREATE TABLE binary_data (
@@ -743,6 +761,7 @@ INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
 INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');
 
 INSERT INTO foreign_key_references VALUES (1, 1, 1);
+INSERT INTO foreign_key_references VALUES (2, null, null);
 
 INSERT INTO complex_foreign_keys VALUES (1, 1, 2, 1);
 INSERT INTO custom_foreign_key_label VALUES (1, 1);

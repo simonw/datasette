@@ -228,6 +228,9 @@ You can filter the data returned by the table based on column values using a que
 
     ``?column__in=["value","value,with,commas"]``
 
+``?column__notin=value1,value2,value3``
+    Rows where column does not match any of the provided values. The inverse of ``__in=``. Also supports JSON arrays.
+
 ``?column__arraycontains=value``
     Works against columns that contain JSON arrays - matches if any of the values in that array match.
 
@@ -317,15 +320,6 @@ Special table arguments
     ``?_through={%22table%22:%22roadside_attraction_characteristics%22,%22column%22:%22characteristic_id%22,%22value%22:%221%22}``
 
     Here's `an example <https://latest.datasette.io/fixtures/roadside_attractions?_through={%22table%22:%22roadside_attraction_characteristics%22,%22column%22:%22characteristic_id%22,%22value%22:%221%22}>`__.
-
-
-``?_group_count=COLUMN``
-    Executes a SQL query that returns a count of the number of rows matching
-    each unique value in that column, with the most common ordered first.
-
-``?_group_count=COLUMN1&_group_count=column2``
-    You can pass multiple ``_group_count`` columns to return counts against
-    unique combinations of those columns.
 
 ``?_next=TOKEN``
     Pagination by continuation token - pass the token that was returned in the

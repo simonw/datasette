@@ -77,6 +77,20 @@ class InFilter(Filter):
         return "{} in {}".format(column, json.dumps(self.split_value(value)))
 
 
+class NotInFilter(InFilter):
+    key = "notin"
+    display = "not in"
+
+    def where_clause(self, table, column, value, param_counter):
+        values = self.split_value(value)
+        params = [":p{}".format(param_counter + i) for i in range(len(values))]
+        sql = "{} not in ({})".format(escape_sqlite(column), ", ".join(params))
+        return sql, values
+
+    def human_clause(self, column, value):
+        return "{} not in {}".format(column, json.dumps(self.split_value(value)))
+
+
 class Filters:
     _filters = (
         [
@@ -125,6 +139,7 @@ class Filters:
             TemplatedFilter("like", "like", '"{c}" like :{p}', '{c} like "{v}"'),
             TemplatedFilter("glob", "glob", '"{c}" glob :{p}', '{c} glob "{v}"'),
             InFilter(),
+            NotInFilter(),
         ]
         + (
             [

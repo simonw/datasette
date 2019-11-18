@@ -25,7 +25,7 @@ Glitch allows you to "remix" any project to create your own copy and start editi
 .. image:: https://cdn.glitch.com/2703baf2-b643-4da7-ab91-7ee2a2d00b5b%2Fremix-button.svg
    :target: https://glitch.com/edit/#!/remix/datasette-csvs
 
-Find a CSV file and drag it onto the Glitch file explorer panel - ``datasette-csvs`` will automatically convert it to a SQLite database (using `csvs-to-sqlite <https://github.com/simonw/csvs-to-sqlite>`__) and allow you to start exploring it using Datasette.
+Find a CSV file and drag it onto the Glitch file explorer panel - ``datasette-csvs`` will automatically convert it to a SQLite database (using `sqlite-utils <https://github.com/simonw/sqlite-utils>`__) and allow you to start exploring it using Datasette.
 
 If your CSV file has a ``latitude`` and ``longitude`` column you can visualize it on a map by uncommenting the ``datasette-cluster-map`` line in the ``requirements.txt`` file using the Glitch file editor.
 

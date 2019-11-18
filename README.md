@@ -1,10 +1,12 @@
 # Datasette
 
 [![PyPI](https://img.shields.io/pypi/v/datasette.svg)](https://pypi.org/project/datasette/)
+[![Python 3.x](https://img.shields.io/pypi/pyversions/datasette.svg?logo=python&logoColor=white)](https://pypi.org/project/datasette/)
 [![Travis CI](https://travis-ci.org/simonw/datasette.svg?branch=master)](https://travis-ci.org/simonw/datasette)
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](http://datasette.readthedocs.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/master/LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://black.readthedocs.io/en/stable/)
+[![docker: datasette](https://img.shields.io/badge/docker-datasette-blue)](https://hub.docker.com/r/datasetteproject/datasette)
 
 *A tool for exploring and publishing data*
 
@@ -20,6 +22,13 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 14th November 2019: [Datasette 0.32](https://datasette.readthedocs.io/en/stable/changelog.html#v0-32) now uses asynchronous rendering in Jinja templates, which means template functions can perform asynchronous operations such as executing SQL queries. [datasette-template-sql](https://github.com/simonw/datasette-template-sql) is a new plugin uses this capability to add a new custom `sql(sql_query)` template function.
+ * 11th November 2019: [Datasette 0.31](https://datasette.readthedocs.io/en/stable/changelog.html#v0-31) - the first version of Datasette to support Python 3.8, which means dropping support for Python 3.5.
+ * 18th October 2019: [Datasette 0.30](https://datasette.readthedocs.io/en/stable/changelog.html#v0-30)
+ * 13th July 2019: [Single sign-on against GitHub using ASGI middleware](https://simonwillison.net/2019/Jul/14/sso-asgi/) talks about the implementation of [datasette-auth-github](https://github.com/simonw/datasette-auth-github) in more detail.
+ * 7th July 2019: [Datasette 0.29](https://datasette.readthedocs.io/en/stable/changelog.html#v0-29) - ASGI, new plugin hooks, facet by date and much, much more...
+   * [datasette-auth-github](https://github.com/simonw/datasette-auth-github) - a new plugin for Datasette 0.29 that lets you require users to authenticate against GitHub before accessing your Datasette instance. You can whitelist specific users, or you can restrict access to members of specific GitHub organizations or teams.
+   * [datasette-cors](https://github.com/simonw/datasette-cors) - a plugin that lets you configure CORS access from a list of domains (or a set of domain wildcards) so you can make JavaScript calls to a Datasette instance from a specific set of other hosts.
  * 23rd June 2019: [Porting Datasette to ASGI, and Turtles all the way down](https://simonwillison.net/2019/Jun/23/datasette-asgi/)
  * 21st May 2019: The anonymized raw data from [the Stack Overflow Developer Survey 2019](https://stackoverflow.blog/2019/05/21/public-data-release-of-stack-overflows-2019-developer-survey/) has been [published in partnership with Glitch](https://glitch.com/culture/discover-insights-explore-developer-survey-results-2019/), powered by Datasette.
  * 19th May 2019: [Datasette 0.28](https://datasette.readthedocs.io/en/stable/changelog.html#v0-28) - a salmagundi of new features!
@@ -63,7 +72,7 @@ sqlite-utils: a Python library and CLI tool for building SQLite databases](https
 
     pip3 install datasette
 
-Datasette requires Python 3.5 or higher. We also have [detailed installation instructions](https://datasette.readthedocs.io/en/stable/installation.html) covering other options such as Docker.
+Datasette requires Python 3.6 or higher. We also have [detailed installation instructions](https://datasette.readthedocs.io/en/stable/installation.html) covering other options such as Docker.
 
 ## Basic usage
 
@@ -83,26 +92,31 @@ Now visiting http://localhost:8001/History/downloads will show you a web interfa
 
 ## datasette serve options
 
-    $ datasette serve --help
-
     Usage: datasette serve [OPTIONS] [FILES]...
 
       Serve up specified SQLite database files with a web UI
 
     Options:
       -i, --immutable PATH      Database files to open in immutable mode
-      -h, --host TEXT           host for server, defaults to 127.0.0.1
-      -p, --port INTEGER        port for server, defaults to 8001
+      -h, --host TEXT           Host for server. Defaults to 127.0.0.1 which means
+                                only connections from the local machine will be
+                                allowed. Use 0.0.0.0 to listen to all IPs and
+                                allow access from other machines.
+      -p, --port INTEGER        Port for server, defaults to 8001
       --debug                   Enable debug mode - useful for development
-      --reload                  Automatically reload if database or code change detected -
-                                useful for development
-      --cors                    Enable CORS by serving Access-Control-Allow-Origin: *
+      --reload                  Automatically reload if database or code change
+                                detected - useful for development
+      --cors                    Enable CORS by serving Access-Control-Allow-
+                                Origin: *
       --load-extension PATH     Path to a SQLite extension to load
-      --inspect-file TEXT       Path to JSON file created using "datasette inspect"
-      -m, --metadata FILENAME   Path to JSON file containing license/source metadata
+      --inspect-file TEXT       Path to JSON file created using "datasette
+                                inspect"
+      -m, --metadata FILENAME   Path to JSON file containing license/source
+                                metadata
       --template-dir DIRECTORY  Path to directory containing custom templates
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
-      --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
+      --static STATIC MOUNT     mountpoint:path-to-directory for serving static
+                                files
       --memory                  Make :memory: database available
       --config CONFIG           Set config option using configname:value
                                 datasette.readthedocs.io/en/latest/config.html

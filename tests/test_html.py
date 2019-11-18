@@ -26,12 +26,12 @@ def test_homepage(app_client_two_attached_databases):
     )
     # Should be two attached databases
     assert [
-        {"href": "/extra_database", "text": "extra_database"},
         {"href": "/fixtures", "text": "fixtures"},
+        {"href": "/extra database", "text": "extra database"},
     ] == [{"href": a["href"], "text": a.text.strip()} for a in soup.select("h2 a")]
     # The first attached database should show count text and attached tables
-    h2 = soup.select("h2")[0]
-    assert "extra_database" == h2.text.strip()
+    h2 = soup.select("h2")[1]
+    assert "extra database" == h2.text.strip()
     counts_p, links_p = h2.find_all_next("p")[:2]
     assert (
         "2 rows in 1 table, 5 rows in 4 hidden tables, 1 view" == counts_p.text.strip()
@@ -41,8 +41,8 @@ def test_homepage(app_client_two_attached_databases):
         {"href": a["href"], "text": a.text.strip()} for a in links_p.findAll("a")
     ]
     assert [
-        {"href": "/extra_database/searchable", "text": "searchable"},
-        {"href": "/extra_database/searchable_view", "text": "searchable_view"},
+        {"href": "/extra database/searchable", "text": "searchable"},
+        {"href": "/extra database/searchable_view", "text": "searchable_view"},
     ] == table_links
 
 
@@ -66,6 +66,8 @@ def test_static_mounts():
         response = client.get("/custom-static/test_html.py")
         assert response.status == 200
         response = client.get("/custom-static/not_exists.py")
+        assert response.status == 404
+        response = client.get("/custom-static/../LICENSE")
         assert response.status == 404
 
 
@@ -115,6 +117,39 @@ def test_row_strange_table_name_with_url_hash(app_client_with_hash):
     assert response.headers["Location"].endswith("/table%2Fwith%2Fslashes.csv/3")
     response = app_client_with_hash.get("/fixtures/table%2Fwith%2Fslashes.csv/3")
     assert response.status == 200
+
+
+@pytest.mark.parametrize(
+    "path,expected_definition_sql",
+    [
+        (
+            "/fixtures/facet_cities",
+            """
+CREATE TABLE facet_cities (
+    id integer primary key,
+    name text
+);
+        """.strip(),
+        ),
+        (
+            "/fixtures/compound_three_primary_keys",
+            """
+CREATE TABLE compound_three_primary_keys (
+  pk1 varchar(30),
+  pk2 varchar(30),
+  pk3 varchar(30),
+  content text,
+  PRIMARY KEY (pk1, pk2, pk3)
+);
+CREATE INDEX idx_compound_three_primary_keys_content ON compound_three_primary_keys(content);
+            """.strip(),
+        ),
+    ],
+)
+def test_definition_sql(path, expected_definition_sql, app_client):
+    response = app_client.get(path)
+    pre = Soup(response.body, "html.parser").select_one("pre.wrapped-sql")
+    assert expected_definition_sql == pre.string
 
 
 def test_table_cell_truncation():
@@ -601,7 +636,12 @@ def test_table_html_foreign_key_links(app_client):
             '<td class="col-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label"><a href="/fixtures/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
             '<td class="col-foreign_key_with_no_label"><a href="/fixtures/primary_key_multiple_columns/1">1</a></td>',
-        ]
+        ],
+        [
+            '<td class="col-pk"><a href="/fixtures/foreign_key_references/2">2</a></td>',
+            '<td class="col-foreign_key_with_label">\xa0</td>',
+            '<td class="col-foreign_key_with_no_label">\xa0</td>',
+        ],
     ]
     assert expected == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
@@ -609,7 +649,7 @@ def test_table_html_foreign_key_links(app_client):
 
 
 def test_table_html_disable_foreign_key_links_with_labels(app_client):
-    response = app_client.get("/fixtures/foreign_key_references?_labels=off")
+    response = app_client.get("/fixtures/foreign_key_references?_labels=off&_size=1")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     expected = [
@@ -731,6 +771,18 @@ def test_database_metadata(app_client):
     assert "Test tables description" == inner_html(
         soup.find("div", {"class": "metadata-description"})
     )
+    # The source/license should be inherited
+    assert_footer_links(soup)
+
+
+def test_database_metadata_with_custom_sql(app_client):
+    response = app_client.get("/fixtures?sql=select+*+from+simple_primary_key")
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    # Page title should be the default
+    assert "fixtures" == soup.find("h1").text
+    # Description should be custom
+    assert "Custom SQL query returning" in soup.find("h3").text
     # The source/license should be inherited
     assert_footer_links(soup)
 
@@ -941,6 +993,12 @@ def test_extra_where_clauses(app_client):
         "/fixtures/facetable?_where=city_id%3D1",
         "/fixtures/facetable?_where=neighborhood%3D%27Dogpatch%27",
     ] == hrefs
+    # These should also be persisted as hidden fields
+    inputs = soup.find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [("_where", "neighborhood='Dogpatch'"), ("_where", "city_id=1")] == [
+        (hidden["name"], hidden["value"]) for hidden in hiddens
+    ]
 
 
 def test_binary_data_display(app_client):

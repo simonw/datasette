@@ -12,6 +12,7 @@ from pathlib import Path
 import click
 from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+import uvicorn
 
 from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
@@ -23,13 +24,11 @@ from .database import Database
 
 from .utils import (
     QueryInterrupted,
-    Results,
     escape_css_string,
     escape_sqlite,
     get_plugins,
     module_from_path,
     sqlite3,
-    sqlite_timelimit,
     to_css_class,
 )
 from .utils.asgi import (
@@ -41,13 +40,12 @@ from .utils.asgi import (
     asgi_send_json,
     asgi_send_redirect,
 )
-from .tracer import trace, AsgiTracer
+from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
 
-connections = threading.local()
 MEMORY = object()
 
 ConfigOption = collections.namedtuple("ConfigOption", ("name", "default", "help"))
@@ -159,7 +157,7 @@ class Datasette:
             self.files = [MEMORY]
         elif memory:
             self.files = (MEMORY,) + self.files
-        self.databases = {}
+        self.databases = collections.OrderedDict()
         self.inspect_data = inspect_data
         for file in self.files:
             path = file
@@ -335,6 +333,25 @@ class Datasette:
         # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn)
 
+    async def execute(
+        self,
+        db_name,
+        sql,
+        params=None,
+        truncate=False,
+        custom_time_limit=None,
+        page_size=None,
+        log_sql_errors=True,
+    ):
+        return await self.databases[db_name].execute(
+            sql,
+            params=params,
+            truncate=truncate,
+            custom_time_limit=custom_time_limit,
+            page_size=page_size,
+            log_sql_errors=log_sql_errors,
+        )
+
     async def expand_foreign_keys(self, database, table, column, values):
         "Returns dict mapping (column, value) -> label"
         labeled_fks = {}
@@ -433,6 +450,7 @@ class Datasette:
             },
             "datasette": datasette_version,
             "asgi": "3.0",
+            "uvicorn": uvicorn.__version__,
             "sqlite": {
                 "version": sqlite_version,
                 "fts_versions": fts_versions,
@@ -457,6 +475,15 @@ class Datasette:
             for p in ps
         ]
 
+    def threads(self):
+        threads = list(threading.enumerate())
+        return {
+            "num_threads": len(threads),
+            "threads": [
+                {"name": t.name, "ident": t.ident, "daemon": t.daemon} for t in threads
+            ],
+        }
+
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."
         return (
@@ -465,85 +492,6 @@ class Datasette:
             .get("tables", {})
             .get(table, {})
         )
-
-    async def execute_against_connection_in_thread(self, db_name, fn):
-        def in_thread():
-            conn = getattr(connections, db_name, None)
-            if not conn:
-                db = self.databases[db_name]
-                if db.is_memory:
-                    conn = sqlite3.connect(":memory:")
-                else:
-                    # mode=ro or immutable=1?
-                    if db.is_mutable:
-                        qs = "mode=ro"
-                    else:
-                        qs = "immutable=1"
-                    conn = sqlite3.connect(
-                        "file:{}?{}".format(db.path, qs),
-                        uri=True,
-                        check_same_thread=False,
-                    )
-                self.prepare_connection(conn)
-                setattr(connections, db_name, conn)
-            return fn(conn)
-
-        return await asyncio.get_event_loop().run_in_executor(self.executor, in_thread)
-
-    async def execute(
-        self,
-        db_name,
-        sql,
-        params=None,
-        truncate=False,
-        custom_time_limit=None,
-        page_size=None,
-        log_sql_errors=True,
-    ):
-        """Executes sql against db_name in a thread"""
-        page_size = page_size or self.page_size
-
-        def sql_operation_in_thread(conn):
-            time_limit_ms = self.sql_time_limit_ms
-            if custom_time_limit and custom_time_limit < time_limit_ms:
-                time_limit_ms = custom_time_limit
-
-            with sqlite_timelimit(conn, time_limit_ms):
-                try:
-                    cursor = conn.cursor()
-                    cursor.execute(sql, params or {})
-                    max_returned_rows = self.max_returned_rows
-                    if max_returned_rows == page_size:
-                        max_returned_rows += 1
-                    if max_returned_rows and truncate:
-                        rows = cursor.fetchmany(max_returned_rows + 1)
-                        truncated = len(rows) > max_returned_rows
-                        rows = rows[:max_returned_rows]
-                    else:
-                        rows = cursor.fetchall()
-                        truncated = False
-                except sqlite3.OperationalError as e:
-                    if e.args == ("interrupted",):
-                        raise QueryInterrupted(e, sql, params)
-                    if log_sql_errors:
-                        print(
-                            "ERROR: conn={}, sql = {}, params = {}: {}".format(
-                                conn, repr(sql), params, e
-                            )
-                        )
-                    raise
-
-            if truncate:
-                return Results(rows, truncated, cursor.description)
-
-            else:
-                return Results(rows, False, cursor.description)
-
-        with trace("sql", database=db_name, sql=sql.strip(), params=params):
-            results = await self.execute_against_connection_in_thread(
-                db_name, sql_operation_in_thread
-            )
-        return results
 
     def register_renderers(self):
         """ Register output renderers which output data in custom formats. """
@@ -585,7 +533,9 @@ class Datasette:
                 ),
             ]
         )
-        self.jinja_env = Environment(loader=template_loader, autoescape=True)
+        self.jinja_env = Environment(
+            loader=template_loader, autoescape=True, enable_async=True
+        )
         self.jinja_env.filters["escape_css_string"] = escape_css_string
         self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
@@ -616,8 +566,17 @@ class Datasette:
         # Mount any plugin static/ directories
         for plugin in get_plugins(pm):
             if plugin["static_path"]:
-                modpath = "/-/static-plugins/{}/(?P<path>.*)$".format(plugin["name"])
-                add_route(asgi_static(plugin["static_path"]), modpath)
+                add_route(
+                    asgi_static(plugin["static_path"]),
+                    "/-/static-plugins/{}/(?P<path>.*)$".format(plugin["name"]),
+                )
+                # Support underscores in name in addition to hyphens, see https://github.com/simonw/datasette/issues/611
+                add_route(
+                    asgi_static(plugin["static_path"]),
+                    "/-/static-plugins/{}/(?P<path>.*)$".format(
+                        plugin["name"].replace("-", "_")
+                    ),
+                )
         add_route(
             JsonDataView.as_asgi(self, "metadata.json", lambda: self._metadata),
             r"/-/metadata(?P<as_format>(\.json)?)$",
@@ -633,6 +592,10 @@ class Datasette:
         add_route(
             JsonDataView.as_asgi(self, "config.json", lambda: self._config),
             r"/-/config(?P<as_format>(\.json)?)$",
+        )
+        add_route(
+            JsonDataView.as_asgi(self, "threads.json", self.threads),
+            r"/-/threads(?P<as_format>(\.json)?)$",
         )
         add_route(
             JsonDataView.as_asgi(self, "databases.json", self.connected_databases),
@@ -719,5 +682,5 @@ class DatasetteRouter(AsgiRouter):
         else:
             template = self.ds.jinja_env.select_template(templates)
             await asgi_send_html(
-                send, template.render(info), status=status, headers=headers
+                send, await template.render_async(info), status=status, headers=headers
             )

@@ -60,7 +60,7 @@ def load_facet_configs(request, table_metadata):
 
 @hookimpl
 def register_facet_classes():
-    classes = [ColumnFacet, DateFacet, ManyToManyFacet]
+    classes = [ColumnFacet, DateFacet]
     if detect_json1():
         classes.append(ArrayFacet)
     return classes
@@ -271,6 +271,16 @@ class ColumnFacet(Facet):
 class ArrayFacet(Facet):
     type = "array"
 
+    def _is_json_array_of_strings(self, json_string):
+        try:
+            array = json.loads(json_string)
+        except ValueError:
+            return False
+        for item in array:
+            if not isinstance(item, str):
+                return False
+        return True
+
     async def suggest(self):
         columns = await self.get_columns(self.sql, self.params)
         suggested_facets = []
@@ -300,18 +310,37 @@ class ArrayFacet(Facet):
                 )
                 types = tuple(r[0] for r in results.rows)
                 if types in (("array",), ("array", None)):
-                    suggested_facets.append(
-                        {
-                            "name": column,
-                            "type": "array",
-                            "toggle_url": self.ds.absolute_url(
-                                self.request,
-                                path_with_added_args(
-                                    self.request, {"_facet_array": column}
-                                ),
+                    # Now sanity check that first 100 arrays contain only strings
+                    first_100 = [
+                        v[0]
+                        for v in await self.ds.execute(
+                            self.database,
+                            "select {column} from ({sql}) where {column} is not null and json_array_length({column}) > 0 limit 100".format(
+                                column=escape_sqlite(column), sql=self.sql
                             ),
-                        }
-                    )
+                            self.params,
+                            truncate=False,
+                            custom_time_limit=self.ds.config(
+                                "facet_suggest_time_limit_ms"
+                            ),
+                            log_sql_errors=False,
+                        )
+                    ]
+                    if first_100 and all(
+                        self._is_json_array_of_strings(r) for r in first_100
+                    ):
+                        suggested_facets.append(
+                            {
+                                "name": column,
+                                "type": "array",
+                                "toggle_url": self.ds.absolute_url(
+                                    self.request,
+                                    path_with_added_args(
+                                        self.request, {"_facet_array": column}
+                                    ),
+                                ),
+                            }
+                        )
             except (QueryInterrupted, sqlite3.OperationalError):
                 continue
         return suggested_facets
@@ -498,192 +527,5 @@ class DateFacet(Facet):
                     )
             except QueryInterrupted:
                 facets_timed_out.append(column)
-
-        return facet_results, facets_timed_out
-
-
-class ManyToManyFacet(Facet):
-    type = "m2m"
-
-    async def suggest(self):
-        # This is calculated based on foreign key relationships to this table
-        # Are there any many-to-many tables pointing here?
-        suggested_facets = []
-        db = self.ds.databases[self.database]
-        all_foreign_keys = await db.get_all_foreign_keys()
-        if not all_foreign_keys.get(self.table):
-            # It's probably a view
-            return []
-        args = set(self.get_querystring_pairs())
-        incoming = all_foreign_keys[self.table]["incoming"]
-        # Do any of these incoming tables have exactly two outgoing keys?
-        for fk in incoming:
-            other_table = fk["other_table"]
-            other_table_outgoing_foreign_keys = all_foreign_keys[other_table][
-                "outgoing"
-            ]
-            if len(other_table_outgoing_foreign_keys) == 2:
-                destination_table = [
-                    t
-                    for t in other_table_outgoing_foreign_keys
-                    if t["other_table"] != self.table
-                ][0]["other_table"]
-                # Only suggest if it's not selected already
-                if ("_facet_m2m", destination_table) in args:
-                    continue
-                suggested_facets.append(
-                    {
-                        "name": destination_table,
-                        "type": "m2m",
-                        "toggle_url": self.ds.absolute_url(
-                            self.request,
-                            path_with_added_args(
-                                self.request, {"_facet_m2m": destination_table}
-                            ),
-                        ),
-                    }
-                )
-        return suggested_facets
-
-    async def facet_results(self):
-        facet_results = {}
-        facets_timed_out = []
-        args = set(self.get_querystring_pairs())
-        facet_size = self.ds.config("default_facet_size")
-        db = self.ds.databases[self.database]
-        all_foreign_keys = await db.get_all_foreign_keys()
-        if not all_foreign_keys.get(self.table):
-            return [], []
-        # We care about three tables: self.table, middle_table and destination_table
-        incoming = all_foreign_keys[self.table]["incoming"]
-        for source_and_config in self.get_configs():
-            config = source_and_config["config"]
-            source = source_and_config["source"]
-            # The destination_table is specified in the _facet_m2m=xxx parameter
-            destination_table = config.get("column") or config["simple"]
-            # Find middle table - it has fks to self.table AND destination_table
-            fks = None
-            middle_table = None
-            for fk in incoming:
-                other_table = fk["other_table"]
-                other_table_outgoing_foreign_keys = all_foreign_keys[other_table][
-                    "outgoing"
-                ]
-                if (
-                    any(
-                        o
-                        for o in other_table_outgoing_foreign_keys
-                        if o["other_table"] == destination_table
-                    )
-                    and len(other_table_outgoing_foreign_keys) == 2
-                ):
-                    fks = other_table_outgoing_foreign_keys
-                    middle_table = other_table
-                    break
-            if middle_table is None or fks is None:
-                return [], []
-            # Now that we have determined the middle_table, we need to figure out the three
-            # columns on that table which are relevant to us. These are:
-            #    column_to_table - the middle_table column with a foreign key to self.table
-            #    table_pk - the primary key column on self.table that is referenced
-            #    column_to_destination - the column with a foreign key to destination_table
-            #
-            # It turns out we don't actually need the fourth obvious column:
-            #    destination_pk = the primary key column on destination_table which is referenced
-            #
-            # These are both in the fks array - which now contains 2 foreign key relationships, e.g:
-            # [
-            #   {'other_table': 'characteristic', 'column': 'characteristic_id', 'other_column': 'pk'},
-            #   {'other_table': 'attractions', 'column': 'attraction_id', 'other_column': 'pk'}
-            # ]
-            column_to_table = None
-            table_pk = None
-            column_to_destination = None
-            for fk in fks:
-                if fk["other_table"] == self.table:
-                    table_pk = fk["other_column"]
-                    column_to_table = fk["column"]
-                elif fk["other_table"] == destination_table:
-                    column_to_destination = fk["column"]
-            assert all((column_to_table, table_pk, column_to_destination))
-            facet_sql = """
-                select
-                    {middle_table}.{column_to_destination} as value,
-                    count(distinct {middle_table}.{column_to_table}) as count
-                from {middle_table}
-                where {middle_table}.{column_to_table} in (
-                    select {table_pk} from ({sql})
-                )
-                group by {middle_table}.{column_to_destination}
-                order by count desc limit {limit}
-            """.format(
-                sql=self.sql,
-                limit=facet_size + 1,
-                middle_table=escape_sqlite(middle_table),
-                column_to_destination=escape_sqlite(column_to_destination),
-                column_to_table=escape_sqlite(column_to_table),
-                table_pk=escape_sqlite(table_pk),
-            )
-            try:
-                facet_rows_results = await self.ds.execute(
-                    self.database,
-                    facet_sql,
-                    self.params,
-                    truncate=False,
-                    custom_time_limit=self.ds.config("facet_time_limit_ms"),
-                )
-                facet_results_values = []
-                facet_results[destination_table] = {
-                    "name": destination_table,
-                    "type": self.type,
-                    "results": facet_results_values,
-                    "hideable": source != "metadata",
-                    "toggle_url": path_with_removed_args(
-                        self.request, {"_facet_m2m": destination_table}
-                    ),
-                    "truncated": len(facet_rows_results) > facet_size,
-                }
-                facet_rows = facet_rows_results.rows[:facet_size]
-
-                # Attempt to expand foreign keys into labels
-                values = [row["value"] for row in facet_rows]
-                expanded = await self.ds.expand_foreign_keys(
-                    self.database, middle_table, column_to_destination, values
-                )
-
-                for row in facet_rows:
-                    through = json.dumps(
-                        {
-                            "table": middle_table,
-                            "column": column_to_destination,
-                            "value": str(row["value"]),
-                        },
-                        separators=(",", ":"),
-                        sort_keys=True,
-                    )
-                    selected = ("_through", through) in args
-                    if selected:
-                        toggle_path = path_with_removed_args(
-                            self.request, {"_through": through}
-                        )
-                    else:
-                        toggle_path = path_with_added_args(
-                            self.request, {"_through": through}
-                        )
-                    facet_results_values.append(
-                        {
-                            "value": row["value"],
-                            "label": expanded.get(
-                                (column_to_destination, row["value"]), row["value"]
-                            ),
-                            "count": row["count"],
-                            "toggle_url": self.ds.absolute_url(
-                                self.request, toggle_path
-                            ),
-                            "selected": selected,
-                        }
-                    )
-            except QueryInterrupted:
-                facets_timed_out.append(destination_table)
 
         return facet_results, facets_timed_out

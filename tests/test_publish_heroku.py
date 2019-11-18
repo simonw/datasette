@@ -46,7 +46,7 @@ def test_publish_heroku_invalid_database(mock_which):
 @mock.patch("datasette.publish.heroku.check_output")
 @mock.patch("datasette.publish.heroku.call")
 def test_publish_heroku(mock_call, mock_check_output, mock_which):
-    mock_which.return_varue = True
+    mock_which.return_value = True
     mock_check_output.side_effect = lambda s: {
         "['heroku', 'plugins']": b"heroku-builds",
         "['heroku', 'apps:list', '--json']": b"[]",
@@ -57,6 +57,55 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
         open("test.db", "w").write("data")
         result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
         assert 0 == result.exit_code, result.output
-        mock_call.assert_called_once_with(
-            ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
+        mock_call.assert_has_calls(
+            [
+                mock.call(["heroku", "config:set", "-a", "f", "WEB_CONCURRENCY=1",]),
+                mock.call(
+                    ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
+                ),
+            ]
+        )
+
+
+@mock.patch("shutil.which")
+@mock.patch("datasette.publish.heroku.check_output")
+@mock.patch("datasette.publish.heroku.call")
+def test_publish_heroku_plugin_secrets(mock_call, mock_check_output, mock_which):
+    mock_which.return_value = True
+    mock_check_output.side_effect = lambda s: {
+        "['heroku', 'plugins']": b"heroku-builds",
+        "['heroku', 'apps:list', '--json']": b"[]",
+        "['heroku', 'apps:create', 'datasette', '--json']": b'{"name": "f"}',
+    }[repr(s)]
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        open("test.db", "w").write("data")
+        result = runner.invoke(
+            cli.cli,
+            [
+                "publish",
+                "heroku",
+                "test.db",
+                "--plugin-secret",
+                "datasette-auth-github",
+                "client_id",
+                "x-client-id",
+            ],
+        )
+        assert 0 == result.exit_code, result.output
+        mock_call.assert_has_calls(
+            [
+                mock.call(
+                    [
+                        "heroku",
+                        "config:set",
+                        "-a",
+                        "f",
+                        "DATASETTE_AUTH_GITHUB_CLIENT_ID=x-client-id",
+                    ]
+                ),
+                mock.call(
+                    ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
+                ),
+            ]
         )

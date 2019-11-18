@@ -18,7 +18,7 @@ General guidelines
 Setting up a development environment
 ------------------------------------
 
-If you have Python 3.5 or higher installed on your computer (on OS X the easiest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
+If you have Python 3.6 or higher installed on your computer (on OS X the easiest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
 
 If you want to use GitHub to publish your changes, first `create a fork of datasette <https://github.com/simonw/datasette/fork>`__ under your own GitHub account.
 
@@ -150,4 +150,7 @@ Wait long enough for Travis to build and deploy the demo version of that commit 
     git tag 0.25.2
     git push --tags
 
-Once the release is out, you can manually update https://github.com/simonw/datasette/releases
+Final steps once the release has deployed to https://pypi.org/project/datasette/
+
+* Manually post the new release to GitHub releases: https://github.com/simonw/datasette/releases
+* Manually kick off a build of the `stable` branch on Read The Docs: https://readthedocs.org/projects/datasette/builds/

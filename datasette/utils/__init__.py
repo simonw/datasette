@@ -167,6 +167,8 @@ allowed_sql_res = [
     re.compile(r"^explain select\b"),
     re.compile(r"^explain query plan select\b"),
     re.compile(r"^with\b"),
+    re.compile(r"^explain with\b"),
+    re.compile(r"^explain query plan with\b"),
 ]
 disallawed_sql_res = [(re.compile("pragma"), "Statement may not contain PRAGMA")]
 
@@ -272,6 +274,7 @@ def make_dockerfile(
     install,
     spatialite,
     version_note,
+    environment_variables=None,
 ):
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
     for filename in files:
@@ -303,15 +306,22 @@ def make_dockerfile(
         install = ["datasette"] + list(install)
 
     return """
-FROM python:3.6
+FROM python:3.8
 COPY . /app
 WORKDIR /app
 {spatialite_extras}
+{environment_variables}
 RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
 ENV PORT 8001
 EXPOSE 8001
 CMD {cmd}""".format(
+        environment_variables="\n".join(
+            [
+                "ENV {} '{}'".format(key, value)
+                for key, value in (environment_variables or {}).items()
+            ]
+        ),
         files=" ".join(files),
         cmd=cmd,
         install_from=" ".join(install),
@@ -333,6 +343,7 @@ def temporary_docker_directory(
     spatialite,
     version_note,
     extra_metadata=None,
+    environment_variables=None,
 ):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
@@ -361,6 +372,7 @@ def temporary_docker_directory(
             install,
             spatialite,
             version_note,
+            environment_variables,
         )
         os.chdir(datasette_dir)
         if metadata_content:
@@ -459,6 +471,7 @@ def detect_fts_sql(table):
             where rootpage = 0
             and (
                 sql like '%VIRTUAL TABLE%USING FTS%content="{table}"%'
+                or sql like '%VIRTUAL TABLE%USING FTS%content=[{table}]%'
                 or (
                     tbl_name = "{table}"
                     and sql like '%VIRTUAL TABLE%USING FTS%'
@@ -620,6 +633,7 @@ def get_plugins(pm):
         distinfo = plugin_to_distinfo.get(plugin)
         if distinfo:
             plugin_info["version"] = distinfo.version
+            plugin_info["name"] = distinfo.project_name
         plugins.append(plugin_info)
     return plugins
 
@@ -725,7 +739,8 @@ class StaticMount(click.ParamType):
                 param,
                 ctx,
             )
-        path, dirpath = value.split(":")
+        path, dirpath = value.split(":", 1)
+        dirpath = os.path.abspath(dirpath)
         if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
             self.fail("%s is not a valid directory path" % value, param, ctx)
         return path, dirpath

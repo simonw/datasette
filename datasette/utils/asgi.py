@@ -45,9 +45,10 @@ class Request:
 
     @property
     def path(self):
-        return (
-            self.scope.get("raw_path", self.scope["path"].encode("latin-1"))
-        ).decode("latin-1")
+        if "raw_path" in self.scope:
+            return self.scope["raw_path"].decode("latin-1")
+        else:
+            return self.scope["path"].decode("utf-8")
 
     @property
     def query_string(self):
@@ -216,7 +217,7 @@ class AsgiWriter:
         await self.send(
             {
                 "type": "http.response.body",
-                "body": chunk.encode("latin-1"),
+                "body": chunk.encode("utf-8"),
                 "more_body": True,
             }
         )
@@ -300,14 +301,17 @@ async def asgi_send_file(
 def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
     async def inner_static(scope, receive, send):
         path = scope["url_route"]["kwargs"]["path"]
-        full_path = (Path(root_path) / path).absolute()
+        try:
+            full_path = (Path(root_path) / path).resolve().absolute()
+        except FileNotFoundError:
+            await asgi_send_html(send, "404", 404)
+            return
         # Ensure full_path is within root_path to avoid weird "../" tricks
         try:
             full_path.relative_to(root_path)
         except ValueError:
             await asgi_send_html(send, "404", 404)
             return
-        first = True
         try:
             await asgi_send_file(send, full_path, chunk_size=chunk_size)
         except FileNotFoundError:

@@ -70,6 +70,11 @@ datasette-vega
 
 `datasette-vega <https://github.com/simonw/datasette-vega>`__ exposes the powerful  `Vega <https://vega.github.io/vega/>`__ charting library, allowing you to construct line, bar and scatter charts against your data and share links to your visualizations.
 
+datasette-auth-github
+---------------------
+
+`datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ adds an authentication layer to Datasette. Users will have to sign in using their GitHub account before they can view data or interact with Datasette. You can also use it to restrict access to specific GitHub users, or to members of specified GitHub `organizations <https://help.github.com/en/articles/about-organizations>`__ or `teams <https://help.github.com/en/articles/organizing-members-into-teams>`__.
+
 datasette-json-html
 -------------------
 
@@ -114,3 +119,8 @@ datasette-bplist
 ----------------
 
 `datasette-bplist <https://github.com/simonw/datasette-bplist>`__ provides tools for working with Apple's binary plist format embedded in SQLite database tables. If you use OS X you already have dozens of SQLite databases hidden away in your ``~/Library`` folder that include data in this format - this plugin allows you to view the decoded data and run SQL queries against embedded values using a ``bplist_to_json(value)`` custom SQL function.
+
+datasette-cors
+--------------
+
+`datasette-cors <https://github.com/simonw/datasette-cors>`__ allows you to configure `CORS headers <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`__ for your Datasette instance. You can use this to enable JavaScript running on a whitelisted set of domains to make ``fetch()`` calls to the JSON API provided by your Datasette instance.

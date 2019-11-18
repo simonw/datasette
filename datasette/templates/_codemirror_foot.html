@@ -1,13 +1,37 @@
 <script>
-    var editor = CodeMirror.fromTextArea(document.getElementById("sql-editor"), {
-      lineNumbers: true,
-      mode: "text/x-sql",
-      lineWrapping: true,
-    });
-    editor.setOption("extraKeys", {
-      "Shift-Enter": function() {
-        document.getElementsByClassName("sql")[0].submit();
-      },
-      Tab: false
-    });
+window.onload = () => {
+    const sqlFormat = document.querySelector("button#sql-format");
+    const readOnly = document.querySelector("pre#sql-query");
+    const sqlInput = document.querySelector("textarea#sql-editor");
+    if (sqlFormat && !readOnly) {
+        sqlFormat.hidden = false;
+    }
+    if (sqlInput) {
+        var editor = CodeMirror.fromTextArea(sqlInput, {
+          lineNumbers: true,
+          mode: "text/x-sql",
+          lineWrapping: true,
+        });
+        editor.setOption("extraKeys", {
+          "Shift-Enter": function() {
+            document.getElementsByClassName("sql")[0].submit();
+          },
+          Tab: false
+        });
+        if (sqlFormat) {
+            sqlFormat.addEventListener("click", ev => {
+                editor.setValue(sqlFormatter.format(editor.getValue()));
+            })
+        }
+    }
+    if (sqlFormat && readOnly) {
+        const formatted = sqlFormatter.format(readOnly.innerHTML);
+        if (formatted != readOnly.innerHTML) {
+            sqlFormat.hidden = false;
+            sqlFormat.addEventListener("click", ev => {
+                readOnly.innerHTML = formatted;
+            })
+        }
+    }
+}
 </script>

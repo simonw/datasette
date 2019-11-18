@@ -10,6 +10,7 @@ from .utils import (
     detect_fts,
     detect_primary_keys,
     detect_spatialite,
+    escape_sqlite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
     sqlite_timelimit,
@@ -216,6 +217,42 @@ class Database:
         return await self.execute_against_connection_in_thread(
             lambda conn: get_outbound_foreign_keys(conn, table)
         )
+
+    async def expand_foreign_keys(self, table, column, values, fks=None):
+        "Returns dict mapping (column, value) -> label"
+        labeled_fks = {}
+        foreign_keys = fks or await self.foreign_keys_for_table(table)
+        # Find the foreign_key for this column
+        try:
+            fk = [
+                foreign_key
+                for foreign_key in foreign_keys
+                if foreign_key["column"] == column
+            ][0]
+        except IndexError:
+            return {}
+        label_column = await self.label_column_for_table(fk["other_table"])
+        if not label_column:
+            return {(fk["column"], value): str(value) for value in values}
+        labeled_fks = {}
+        sql = """
+            select {other_column}, {label_column}
+            from {other_table}
+            where {other_column} in ({placeholders})
+        """.format(
+            other_column=escape_sqlite(fk["other_column"]),
+            label_column=escape_sqlite(label_column),
+            other_table=escape_sqlite(fk["other_table"]),
+            placeholders=", ".join(["?"] * len(set(values))),
+        )
+        try:
+            results = await self.execute(sql, list(set(values)))
+        except QueryInterrupted:
+            pass
+        else:
+            for id, value in results:
+                labeled_fks[(fk["column"], id)] = value
+        return labeled_fks
 
     async def hidden_table_names(self):
         # Mark tables 'hidden' if they relate to FTS virtual tables

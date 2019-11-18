@@ -352,43 +352,6 @@ class Datasette:
             log_sql_errors=log_sql_errors,
         )
 
-    async def expand_foreign_keys(self, database, table, column, values, fks=None):
-        "Returns dict mapping (column, value) -> label"
-        labeled_fks = {}
-        db = self.databases[database]
-        foreign_keys = fks or await db.foreign_keys_for_table(table)
-        # Find the foreign_key for this column
-        try:
-            fk = [
-                foreign_key
-                for foreign_key in foreign_keys
-                if foreign_key["column"] == column
-            ][0]
-        except IndexError:
-            return {}
-        label_column = await db.label_column_for_table(fk["other_table"])
-        if not label_column:
-            return {(fk["column"], value): str(value) for value in values}
-        labeled_fks = {}
-        sql = """
-            select {other_column}, {label_column}
-            from {other_table}
-            where {other_column} in ({placeholders})
-        """.format(
-            other_column=escape_sqlite(fk["other_column"]),
-            label_column=escape_sqlite(label_column),
-            other_table=escape_sqlite(fk["other_table"]),
-            placeholders=", ".join(["?"] * len(set(values))),
-        )
-        try:
-            results = await self.execute(database, sql, list(set(values)))
-        except QueryInterrupted:
-            pass
-        else:
-            for id, value in results:
-                labeled_fks[(fk["column"], id)] = value
-        return labeled_fks
-
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
         if url.startswith("http://") and self.config("force_https_urls"):

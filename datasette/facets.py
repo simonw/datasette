@@ -139,6 +139,7 @@ class ColumnFacet(Facet):
         facet_size = self.ds.config("default_facet_size")
         suggested_facets = []
         already_enabled = [c["config"]["simple"] for c in self.get_configs()]
+        database = self.ds.databases[self.database]
         for column in columns:
             if column in already_enabled:
                 continue
@@ -152,8 +153,7 @@ class ColumnFacet(Facet):
             )
             distinct_values = None
             try:
-                distinct_values = await self.ds.execute(
-                    self.database,
+                distinct_values = await database.execute(
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
@@ -182,6 +182,7 @@ class ColumnFacet(Facet):
     async def facet_results(self):
         facet_results = {}
         facets_timed_out = []
+        database = self.ds.databases[self.database]
 
         qs_pairs = self.get_querystring_pairs()
 
@@ -200,8 +201,7 @@ class ColumnFacet(Facet):
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
             try:
-                facet_rows_results = await self.ds.execute(
-                    self.database,
+                facet_rows_results = await database.execute(
                     facet_sql,
                     self.params,
                     truncate=False,
@@ -222,8 +222,8 @@ class ColumnFacet(Facet):
                 if self.table:
                     # Attempt to expand foreign keys into labels
                     values = [row["value"] for row in facet_rows]
-                    expanded = await self.ds.expand_foreign_keys(
-                        self.database, self.table, column, values
+                    expanded = await database.expand_foreign_keys(
+                        self.table, column, values
                     )
                 else:
                     expanded = {}

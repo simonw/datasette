@@ -587,10 +587,6 @@ class TableView(RowTableShared):
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
 
-        filter_columns = columns[:]
-        if use_rowid and filter_columns[0] == "rowid":
-            filter_columns = filter_columns[1:]
-
         # Expand labeled columns if requested
         expanded_columns = []
         expandable_columns = await self.expandable_columns(database, table)
@@ -720,7 +716,7 @@ class TableView(RowTableShared):
                 "use_rowid": use_rowid,
                 "filters": filters,
                 "display_columns": display_columns,
-                "filter_columns": filter_columns,
+                "filter_columns": columns,
                 "display_rows": display_rows,
                 "facets_timed_out": facets_timed_out,
                 "sorted_facet_results": sorted(

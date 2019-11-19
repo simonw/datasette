@@ -679,6 +679,30 @@ def test_table_html_foreign_key_custom_label_column(app_client):
     ]
 
 
+@pytest.mark.parametrize(
+    "path,expected_column_options",
+    [
+        ("/fixtures/infinity", ["- column -", "rowid", "value"]),
+        (
+            "/fixtures/primary_key_multiple_columns",
+            ["- column -", "id", "content", "content2"],
+        ),
+        ("/fixtures/compound_primary_key", ["- column -", "pk1", "pk2", "content"]),
+    ],
+)
+def test_table_html_filter_form_column_options(
+    path, expected_column_options, app_client
+):
+    response = app_client.get(path)
+    assert response.status == 200
+    form = Soup(response.body, "html.parser").find("form")
+    column_options = [
+        o.attrs.get("value") or o.string
+        for o in form.select("select[name=_filter_column] option")
+    ]
+    assert expected_column_options == column_options
+
+
 def test_row_html_compound_primary_key(app_client):
     response = app_client.get("/fixtures/compound_primary_key/a,b")
     assert response.status == 200

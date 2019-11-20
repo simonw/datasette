@@ -33,6 +33,10 @@ Now visit http://127.0.0.1:8001/ to access Datasette.
 (You can download a copy of ``fixtures.db`` from
 https://latest.datasette.io/fixtures.db )
 
+To upgrade to the most recent release of Datasette, run the following::
+
+    docker pull datasetteproject/datasette
+
 Loading Spatialite
 ~~~~~~~~~~~~~~~~~~
 

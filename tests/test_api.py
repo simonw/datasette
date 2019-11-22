@@ -197,6 +197,7 @@ def test_database_page(app_client):
                 "neighborhood",
                 "tags",
                 "complex_array",
+                "distinct_some_null",
             ],
             "primary_keys": ["pk"],
             "count": 15,
@@ -1042,15 +1043,38 @@ def test_table_filter_json_arraycontains(app_client):
             "Mission",
             '["tag1", "tag2"]',
             '[{"foo": "bar"}]',
+            "one",
         ],
-        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]', "[]"],
+        [
+            2,
+            "2019-01-14 08:00:00",
+            1,
+            1,
+            "CA",
+            1,
+            "Dogpatch",
+            '["tag1", "tag3"]',
+            "[]",
+            "two",
+        ],
     ] == response.json["rows"]
 
 
 def test_table_filter_extra_where(app_client):
     response = app_client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
     assert [
-        [2, "2019-01-14 08:00:00", 1, 1, "CA", 1, "Dogpatch", '["tag1", "tag3"]', "[]"]
+        [
+            2,
+            "2019-01-14 08:00:00",
+            1,
+            1,
+            "CA",
+            1,
+            "Dogpatch",
+            '["tag1", "tag3"]',
+            "[]",
+            "two",
+        ]
     ] == response.json["rows"]
 
 
@@ -1503,6 +1527,7 @@ def test_expand_labels(app_client):
             "neighborhood": "Dogpatch",
             "tags": '["tag1", "tag3"]',
             "complex_array": "[]",
+            "distinct_some_null": "two",
         },
         "13": {
             "pk": 13,
@@ -1514,6 +1539,7 @@ def test_expand_labels(app_client):
             "neighborhood": "Corktown",
             "tags": "[]",
             "complex_array": "[]",
+            "distinct_some_null": None,
         },
     } == response.json
 

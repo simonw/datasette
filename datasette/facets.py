@@ -143,9 +143,10 @@ class ColumnFacet(Facet):
             if column in already_enabled:
                 continue
             suggested_facet_sql = """
-                select distinct {column} from (
+                select {column}, count(*) as n from (
                     {sql}
                 ) where {column} is not null
+                group by {column}
                 limit {limit}
             """.format(
                 column=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
@@ -165,6 +166,8 @@ class ColumnFacet(Facet):
                     and num_distinct_values > 1
                     and num_distinct_values <= facet_size
                     and num_distinct_values < row_count
+                    # And at least one has n > 1
+                    and any(r["n"] > 1 for r in distinct_values)
                 ):
                     suggested_facets.append(
                         {

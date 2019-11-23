@@ -327,3 +327,10 @@ a.not-underlined {
 pre.wrapped-sql {
     white-space: pre-wrap;
 }
+
+p.zero-results {
+    border: 2px solid #ccc;
+    background-color: #eee;
+    padding: 0.5em;
+    font-style: italic;
+}

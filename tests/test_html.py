@@ -1059,3 +1059,17 @@ def test_custom_table_include():
             '1 - 2 - <a href="/fixtures/simple_primary_key/1">hello</a> <em>1</em>'
             "</div>"
         ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/fixtures?sql=select+*+from+[123_starts_with_digits]",
+        "/fixtures/123_starts_with_digits",
+    ],
+)
+def test_zero_results(app_client, path):
+    response = app_client.get(path)
+    soup = Soup(response.text, "html.parser")
+    assert 0 == len(soup.select("table"))
+    assert 1 == len(soup.select("p.zero-results"))

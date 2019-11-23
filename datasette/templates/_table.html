@@ -1,28 +1,32 @@
-<table class="rows-and-columns">
-    <thead>
-        <tr>
-            {% for column in display_columns %}
-                <th class="col-{{ column.name|to_css_class }}" scope="col">
-                    {% if not column.sortable %}
-                        {{ column.name }}
-                    {% else %}
-                        {% if column.name == sort %}
-                            <a href="{{ path_with_replaced_args(request, {'_sort_desc': column.name, '_sort': None, '_next': None}) }}" rel="nofollow">{{ column.name }}&nbsp;▼</a>
+{% if display_rows %}
+    <table class="rows-and-columns">
+        <thead>
+            <tr>
+                {% for column in display_columns %}
+                    <th class="col-{{ column.name|to_css_class }}" scope="col">
+                        {% if not column.sortable %}
+                            {{ column.name }}
                         {% else %}
-                            <a href="{{ path_with_replaced_args(request, {'_sort': column.name, '_sort_desc': None, '_next': None}) }}" rel="nofollow">{{ column.name }}{% if column.name == sort_desc %}&nbsp;▲{% endif %}</a>
+                            {% if column.name == sort %}
+                                <a href="{{ path_with_replaced_args(request, {'_sort_desc': column.name, '_sort': None, '_next': None}) }}" rel="nofollow">{{ column.name }}&nbsp;▼</a>
+                            {% else %}
+                                <a href="{{ path_with_replaced_args(request, {'_sort': column.name, '_sort_desc': None, '_next': None}) }}" rel="nofollow">{{ column.name }}{% if column.name == sort_desc %}&nbsp;▲{% endif %}</a>
+                            {% endif %}
                         {% endif %}
-                    {% endif %}
-                </th>
-            {% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-    {% for row in display_rows %}
-        <tr>
-            {% for cell in row %}
-                <td class="col-{{ cell.column|to_css_class }}">{{ cell.value }}</td>
-            {% endfor %}
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+                    </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in display_rows %}
+            <tr>
+                {% for cell in row %}
+                    <td class="col-{{ cell.column|to_css_class }}">{{ cell.value }}</td>
+                {% endfor %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p class="zero-results">0 records</p>
+{% endif %}

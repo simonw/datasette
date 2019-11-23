@@ -73,6 +73,8 @@
     {% endfor %}
     </tbody>
 </table>
+{% else %}
+    <p class="zero-results">0 results</p>
 {% endif %}
 
 {% include "_codemirror_foot.html" %}

@@ -583,7 +583,7 @@ Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`
     The name of the table, or ``None`` if the page does not correct to a table
 
 ``view_name`` - string
-    The name of the view being displayed. (`database`, `table`, and `row` are the most important ones.)
+    The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
 
 ``datasette`` - Datasette instance
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
@@ -612,7 +612,7 @@ Extra template variables that should be made available in the rendered template 
     The name of the table, or ``None`` if the page does not correct to a table
 
 ``view_name`` - string
-    The name of the view being displayed. (`database`, `table`, and `row` are the most important ones.)
+    The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
 
 ``request`` - object
     The current HTTP request object. ``request.scope`` provides access to the ASGI scope.
@@ -685,7 +685,7 @@ This will register `render_test` to be called when paths with the extension `.te
     The data to be rendered
 
 ``view_name`` - string
-    The name of the view where the renderer is being called. (`database`, `table`, and `row` are the most important ones.)
+    The name of the view where the renderer is being called. (`index`, `database`, `table`, and `row` are the most important ones.)
 
 The callback function can return `None`, if it is unable to render the data, or a dictionary with the following keys:
 

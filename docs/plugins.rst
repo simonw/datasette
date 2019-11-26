@@ -813,3 +813,12 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
                 await app(scope, recieve, wrapped_send)
             return add_x_databases_header
         return wrap_with_databases_header
+
+.. _plugin_load_metadata:
+
+load_metadata(metadata_value)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Return a Python dictionary of metadata configuration values. The ``metadata_value`` argument will be the value passed to the ``-m`` or ``--metadata`` argument to ``datasette serve``.
+
+Only one plugin can implement this at a time. The first registered plugin will get to provide the metadata dictionary, while all other plugins will be ignored.

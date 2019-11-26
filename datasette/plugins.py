@@ -8,6 +8,7 @@ DEFAULT_PLUGINS = (
     "datasette.publish.now",
     "datasette.publish.cloudrun",
     "datasette.facets",
+    "datasette.default_metadata",
 )
 
 pm = pluggy.PluginManager("datasette")

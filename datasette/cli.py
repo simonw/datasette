@@ -265,8 +265,8 @@ def package(
 @click.option(
     "-m",
     "--metadata",
-    type=click.File(mode="r"),
-    help="Path to JSON file containing license/source metadata",
+    type=str,
+    help="Path to JSON file containing license/source metadata, or input to a metadata plugin",
 )
 @click.option(
     "--template-dir",
@@ -329,16 +329,12 @@ def serve(
 
         reloader = hupper.start_reloader("datasette.cli.serve")
         reloader.watch_files(files)
-        if metadata:
-            reloader.watch_files([metadata.name])
 
     inspect_data = None
     if inspect_file:
         inspect_data = json.load(open(inspect_file))
 
-    metadata_data = None
-    if metadata:
-        metadata_data = json.loads(metadata.read())
+    metadata_data = pm.hook.load_metadata(metadata_value=metadata)
 
     click.echo(
         "Serve! files={} (immutables={}) on port {}".format(files, immutable, port)

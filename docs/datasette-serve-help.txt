@@ -17,7 +17,8 @@ Options:
   --cors                    Enable CORS by serving Access-Control-Allow-Origin: *
   --load-extension PATH     Path to a SQLite extension to load
   --inspect-file TEXT       Path to JSON file created using "datasette inspect"
-  -m, --metadata FILENAME   Path to JSON file containing license/source metadata
+  -m, --metadata TEXT       Path to JSON file containing license/source metadata, or
+                            input to a metadata plugin
   --template-dir DIRECTORY  Path to directory containing custom templates
   --plugins-dir DIRECTORY   Path to directory containing custom plugins
   --static MOUNT:DIRECTORY  Serve static files from this directory at /MOUNT/...

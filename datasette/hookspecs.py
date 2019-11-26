@@ -58,3 +58,8 @@ def register_output_renderer(datasette):
 @hookspec
 def register_facet_classes():
     "Register Facet subclasses"
+
+
+@hookspec(firstresult=True)
+def load_metadata(metadata_value):  # , datasette):
+    "Return metadata dictionary loaded from metadata_value"

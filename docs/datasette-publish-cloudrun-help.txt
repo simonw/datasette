@@ -8,7 +8,7 @@ Options:
   --branch TEXT                   Install datasette from a GitHub branch e.g. master
   --template-dir DIRECTORY        Path to directory containing custom templates
   --plugins-dir DIRECTORY         Path to directory containing custom plugins
-  --static STATIC MOUNT           mountpoint:path-to-directory for serving static files
+  --static MOUNT:DIRECTORY        Serve static files from this directory at /MOUNT/...
   --install TEXT                  Additional packages (e.g. plugins) to install
   --plugin-secret <TEXT TEXT TEXT>...
                                   Secrets to pass to plugins, e.g. --plugin-secret

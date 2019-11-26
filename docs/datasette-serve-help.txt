@@ -20,7 +20,7 @@ Options:
   -m, --metadata FILENAME   Path to JSON file containing license/source metadata
   --template-dir DIRECTORY  Path to directory containing custom templates
   --plugins-dir DIRECTORY   Path to directory containing custom plugins
-  --static STATIC MOUNT     mountpoint:path-to-directory for serving static files
+  --static MOUNT:DIRECTORY  Serve static files from this directory at /MOUNT/...
   --memory                  Make :memory: database available
   --config CONFIG           Set config option using configname:value
                             datasette.readthedocs.io/en/latest/config.html

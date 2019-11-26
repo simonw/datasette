@@ -159,7 +159,7 @@ def plugins(all, plugins_dir):
 @click.option(
     "--static",
     type=StaticMount(),
-    help="mountpoint:path-to-directory for serving static files",
+    help="Serve static files from this directory at /MOUNT/...",
     multiple=True,
 )
 @click.option(
@@ -281,7 +281,7 @@ def package(
 @click.option(
     "--static",
     type=StaticMount(),
-    help="mountpoint:path-to-directory for serving static files",
+    help="Serve static files from this directory at /MOUNT/...",
     multiple=True,
 )
 @click.option("--memory", is_flag=True, help="Make :memory: database available")

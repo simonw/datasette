@@ -45,6 +45,9 @@ You can also specify a SRI (subresource integrity hash) for these assets::
 Modern browsers will only execute the stylesheet or JavaScript if the SRI hash
 matches the content served. You can generate hashes using `www.srihash.org <https://www.srihash.org/>`_
 
+CSS classes on the <body>
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Every default template includes CSS classes in the body designed to support
 custom styling.
 
@@ -101,6 +104,48 @@ database column they are representing, for example::
             </tr>
         </tbody>
     </table>
+
+Serving static files
+~~~~~~~~~~~~~~~~~~~~
+
+Datasette can serve static files for you, using the ``--static`` option.
+Consider the following directory structure::
+
+    metadata.json
+    static/styles.css
+    static/app.js
+
+You can start Datasette using ``--static static:static/`` to serve those
+files from the ``/static/`` mount point::
+
+    $ datasette -m metadata.json --static static:static/ --memory
+
+The following URLs will now serve the content from those CSS and JS files::
+
+    http://localhost:8001/static/styles.css
+    http://localhost:8001/static/app.js
+
+You can reference those files from ``metadata.json`` like so::
+
+    {
+        "extra_css_urls": [
+            "/static/styles.css"
+        ],
+        "extra_js_urls": [
+            "/static/app.js"
+        ]
+    }
+
+Publishing static assets
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`cli_publish` command can be used to publish your static assets,
+using the same syntax as above::
+
+    $ datasette publish cloudrun mydb.db --static static:static/
+
+This will upload the contents of the ``static/`` directory as part of the
+deployment, and configure Datasette to correctly serve the assets.
 
 .. _customization_custom_templates:
 

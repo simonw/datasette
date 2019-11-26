@@ -33,7 +33,7 @@ def add_common_publish_arguments_and_options(subcommand):
             click.option(
                 "--static",
                 type=StaticMount(),
-                help="mountpoint:path-to-directory for serving static files",
+                help="Serve static files from this directory at /MOUNT/...",
                 multiple=True,
             ),
             click.option(

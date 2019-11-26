@@ -730,7 +730,7 @@ def remove_infinites(row):
 
 
 class StaticMount(click.ParamType):
-    name = "static mount"
+    name = "mount:directory"
 
     def convert(self, value, param, ctx):
         if ":" not in value:

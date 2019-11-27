@@ -110,6 +110,15 @@ datasette-pretty-json
 
 `datasette-pretty-json <https://github.com/simonw/datasette-pretty-json>`__ seeks out JSON values in Datasette's table browsing interface and pretty-prints them, making them easier to read.
 
+datasette-haversine
+-------------------
+
+`datasette-haversine <https://github.com/simonw/datasette-haversine>`__ provides a SQL ``haversine()`` function which can calculate the haversine distance between two geographical points. You can then sort by this distance to find records closest to a specified location.
+
+::
+
+    select haversine(lat1, lon1, lat2, lon2, 'mi');
+
 datasette-sqlite-fts4
 ---------------------
 

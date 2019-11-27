@@ -53,6 +53,8 @@ For example, to create a SQLite database of the `City of Dallas Payment Register
 
     $ socrata2sql insert www.dallasopendata.com 64pp-jeba
 
+.. _ecosystem_plugins:
+
 Datasette Plugins
 =================
 

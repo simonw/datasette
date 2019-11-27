@@ -7,6 +7,26 @@ Datasette's plugin system allows additional features to be implemented as Python
 code (or front-end JavaScript) which can be wrapped up in a separate Python
 package. The underlying mechanism uses `pluggy <https://pluggy.readthedocs.io/>`_.
 
+See :ref:`ecosystem_plugins` for a list of existing plugins, or take a look at the
+`datasette-plugin <https://github.com/topics/datasette-plugin>`__ topic on GitHub.
+
+Things you can do with plugins include:
+
+* Add visualizations to Datasette, for example
+  `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ and
+  `datasette-vega <https://github.com/simonw/datasette-vega>`__.
+* Make new custom SQL functions available for use within Datasette, for example
+  `datasette-haversine <https://github.com/simonw/datasette-haversine>`__ and
+  `datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`__.
+* Add template functions that can be called within your Jinja custom templates,
+  for example `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown#markdown-in-templates>`__.
+* Customize how database values are rendered in the Datasette interface, for example
+  `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`__ and
+  `datasette-pretty-json <https://github.com/simonw/datasette-pretty-json>`__.
+* Wrap the entire Datasette application in custom ASGI middleware to add new pages
+  or implement authentication, for example
+  `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__.
+
 Using plugins
 -------------
 

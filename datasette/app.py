@@ -21,6 +21,7 @@ from .views.special import JsonDataView
 from .views.table import RowView, TableView
 from .renderer import json_renderer
 from .database import Database
+from .metadata import get_metadata_schema
 
 from .utils import (
     QueryInterrupted,
@@ -200,7 +201,6 @@ class Datasette:
                     pass
 
     async def run_sanity_checks(self):
-        # Only one check right now, for Spatialite
         for database_name, database in self.databases.items():
             # Run pragma_info on every table
             for table in await database.table_names():
@@ -218,6 +218,13 @@ class Datasette:
                         )
                     else:
                         raise
+
+        # validate metadata
+        Schema = await get_metadata_schema(self)
+        schema = Schema()
+        # this will raise a marshmallow.ValidationError
+        # if self._metadata is invalid
+        schema.load(self._metadata)
 
     def config(self, key):
         return self._config.get(key, None)

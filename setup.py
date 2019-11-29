@@ -44,6 +44,8 @@ setup(
         "pluggy~=0.13.0",
         "uvicorn~=0.10.4",
         "aiofiles~=0.4.0",
+        "marshmallow~=3.2.0",
+        "marshmallow-union~=0.1.12",
     ],
     entry_points="""
         [console_scripts]

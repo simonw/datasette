@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (  # noqa
     app_client,
+    app_client_function_scope,
     app_client_shorter_time_limit,
     app_client_two_attached_databases,
     app_client_with_hash,
@@ -1041,8 +1042,8 @@ def test_binary_data_display(app_client):
     ]
 
 
-def test_metadata_json_html(app_client):
-    response = app_client.get("/-/metadata")
+def test_metadata_json_html(app_client_function_scope):
+    response = app_client_function_scope.get("/-/metadata")
     assert response.status == 200
     pre = Soup(response.body, "html.parser").find("pre")
     assert METADATA == json.loads(pre.text)

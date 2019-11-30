@@ -163,6 +163,11 @@ def app_client():
     yield from make_app_client()
 
 
+@pytest.fixture(scope="function")
+def app_client_function_scope():
+    yield from make_app_client()
+
+
 @pytest.fixture(scope="session")
 def app_client_no_files():
     ds = Datasette([])

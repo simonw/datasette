@@ -1,6 +1,7 @@
 from datasette.utils import detect_json1
 from .fixtures import (  # noqa
     app_client,
+    app_client_function_scope,
     app_client_no_files,
     app_client_with_hash,
     app_client_shorter_time_limit,
@@ -1200,8 +1201,8 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
     assert False == fixtures_database["is_memory"]
 
 
-def test_metadata_json(app_client):
-    response = app_client.get("/-/metadata.json")
+def test_metadata_json(app_client_function_scope):
+    response = app_client_function_scope.get("/-/metadata.json")
     assert METADATA == response.json
 
 

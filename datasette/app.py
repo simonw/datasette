@@ -6,6 +6,7 @@ import sys
 import threading
 import traceback
 import urllib.parse
+from copy import deepcopy
 from concurrent import futures
 from pathlib import Path
 
@@ -173,7 +174,7 @@ class Datasette:
             self.databases[db.name] = db
         self.cache_headers = cache_headers
         self.cors = cors
-        self._metadata = metadata or {}
+        self._metadata = deepcopy(metadata) or {}
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []
         self.template_dir = template_dir

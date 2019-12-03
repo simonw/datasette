@@ -22,6 +22,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 2nd December 2019: [Niche Museums](https://www.niche-museums.com/) is a new site entirely powered by Datasette, using custom templates and plugins. [niche-museums.com, powered by Datasette](https://simonwillison.net/2019/Nov/25/niche-museums/) describes how the site works, and [datasette-atom: Define an Atom feed using a custom SQL query](https://simonwillison.net/2019/Dec/3/datasette-atom/) describes how the new [datasette-atom plugin](https://github.com/simonw/datasette-atom) was used to add an Atom syndication feed to the site.
  * 14th November 2019: [Datasette 0.32](https://datasette.readthedocs.io/en/stable/changelog.html#v0-32) now uses asynchronous rendering in Jinja templates, which means template functions can perform asynchronous operations such as executing SQL queries. [datasette-template-sql](https://github.com/simonw/datasette-template-sql) is a new plugin uses this capability to add a new custom `sql(sql_query)` template function.
  * 11th November 2019: [Datasette 0.31](https://datasette.readthedocs.io/en/stable/changelog.html#v0-31) - the first version of Datasette to support Python 3.8, which means dropping support for Python 3.5.
  * 18th October 2019: [Datasette 0.30](https://datasette.readthedocs.io/en/stable/changelog.html#v0-30)

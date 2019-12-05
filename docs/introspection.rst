@@ -113,7 +113,7 @@ Shows currently attached databases. `Databases example <https://latest.datasette
 /-/threads
 ----------
 
-Shows details of threads. `Threads example <https://latest.datasette.io/-/threads>`_::
+Shows details of threads and ``asyncio`` tasks. `Threads example <https://latest.datasette.io/-/threads>`_::
 
     {
         "num_threads": 2,
@@ -128,5 +128,11 @@ Shows details of threads. `Threads example <https://latest.datasette.io/-/thread
                 "ident": 123145319682048,
                 "name": "Thread-1"
             },
+        ],
+        "num_tasks": 3,
+        "tasks": [
+            "<Task pending coro=<RequestResponseCycle.run_asgi() running at uvicorn/protocols/http/httptools_impl.py:385> cb=[set.discard()]>",
+            "<Task pending coro=<Server.serve() running at uvicorn/main.py:361> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x10365c3d0>()]> cb=[run_until_complete.<locals>.<lambda>()]>",
+            "<Task pending coro=<LifespanOn.main() running at uvicorn/lifespan/on.py:48> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x10364f050>()]>>"
         ]
     }

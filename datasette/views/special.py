@@ -27,5 +27,8 @@ class JsonDataView(BaseView):
             return await self.render(
                 ["show_json.html"],
                 request=request,
-                context={"filename": self.filename, "data": data},
+                context={
+                    "filename": self.filename,
+                    "data_json": json.dumps(data, indent=4),
+                },
             )

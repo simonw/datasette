@@ -2,6 +2,7 @@ import asyncio
 import collections
 import hashlib
 import os
+import re
 import sys
 import threading
 import traceback
@@ -477,12 +478,19 @@ class Datasette:
 
     def threads(self):
         threads = list(threading.enumerate())
-        return {
+        d = {
             "num_threads": len(threads),
             "threads": [
                 {"name": t.name, "ident": t.ident, "daemon": t.daemon} for t in threads
             ],
         }
+        # Only available in Python 3.7+
+        if hasattr(asyncio, "all_tasks"):
+            tasks = asyncio.all_tasks()
+            d.update(
+                {"num_tasks": len(tasks), "tasks": [_cleaner_task_str(t) for t in tasks]}
+            )
+        return d
 
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."
@@ -684,3 +692,14 @@ class DatasetteRouter(AsgiRouter):
             await asgi_send_html(
                 send, await template.render_async(info), status=status, headers=headers
             )
+
+
+_cleaner_task_str_re = re.compile(r"\S*site-packages/")
+
+
+def _cleaner_task_str(task):
+    s = str(task)
+    # This has something like the following in it:
+    # running at /Users/simonw/Dropbox/Development/datasette/venv-3.7.5/lib/python3.7/site-packages/uvicorn/main.py:361>
+    # Clean up everything up to and including site-packages
+    return _cleaner_task_str_re.sub("", s)

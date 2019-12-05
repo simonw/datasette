@@ -18,6 +18,7 @@ from .fixtures import (  # noqa
 )
 import json
 import pytest
+import sys
 import urllib
 
 
@@ -1227,6 +1228,14 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
 def test_metadata_json(app_client):
     response = app_client.get("/-/metadata.json")
     assert METADATA == response.json
+
+
+def test_threads_json(app_client):
+    response = app_client.get("/-/threads.json")
+    expected_keys = {"threads", "num_threads"}
+    if sys.version_info >= (3, 7, 0):
+        expected_keys.update({"tasks", "num_tasks"})
+    assert expected_keys == set(response.json.keys())
 
 
 def test_plugins_json(app_client):

@@ -13,6 +13,7 @@ from pathlib import Path
 import click
 from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+from jinja2.exceptions import TemplateNotFound
 import uvicorn
 
 from .views.base import DatasetteError, ureg, AsgiRouter
@@ -658,7 +659,18 @@ class DatasetteRouter(AsgiRouter):
                 path += b"?" + scope["query_string"]
             await asgi_send_redirect(send, path.decode("latin1"))
         else:
-            await super().handle_404(scope, receive, send)
+            # Is there a pages/* template matching this path?
+            template_path = os.path.join("pages", *scope["path"].split("/")) + ".html"
+            try:
+                template = self.ds.jinja_env.select_template([template_path])
+            except TemplateNotFound:
+                template = None
+            if template:
+                await asgi_send_html(
+                    send, await template.render_async(), status=200
+                )
+            else:
+                await super().handle_404(scope, receive, send)
 
     async def handle_500(self, scope, receive, send, exception):
         title = None

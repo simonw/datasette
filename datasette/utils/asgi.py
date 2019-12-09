@@ -99,6 +99,8 @@ class AsgiRouter:
                 new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
                 try:
                     return await view(new_scope, receive, send)
+                except NotFound:
+                    return await self.handle_404(scope, receive, send)
                 except Exception as exception:
                     return await self.handle_500(scope, receive, send, exception)
         return await self.handle_404(scope, receive, send)

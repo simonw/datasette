@@ -489,7 +489,10 @@ class Datasette:
         if hasattr(asyncio, "all_tasks"):
             tasks = asyncio.all_tasks()
             d.update(
-                {"num_tasks": len(tasks), "tasks": [_cleaner_task_str(t) for t in tasks]}
+                {
+                    "num_tasks": len(tasks),
+                    "tasks": [_cleaner_task_str(t) for t in tasks],
+                }
             )
         return d
 
@@ -666,9 +669,7 @@ class DatasetteRouter(AsgiRouter):
             except TemplateNotFound:
                 template = None
             if template:
-                await asgi_send_html(
-                    send, await template.render_async(), status=200
-                )
+                await asgi_send_html(send, await template.render_async(), status=200)
             else:
                 await super().handle_404(scope, receive, send)
 

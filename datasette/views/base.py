@@ -95,9 +95,9 @@ class BaseView(AsgiView):
     def database_url(self, database):
         db = self.ds.databases[database]
         if self.ds.config("hash_urls") and db.hash:
-            return "/{}-{}".format(database, db.hash[:HASH_LENGTH])
+            return "{}-{}".format(database, db.hash[:HASH_LENGTH])
         else:
-            return "/{}".format(database)
+            return "{}".format(database)
 
     def database_color(self, database):
         return "ff0000"
@@ -156,6 +156,7 @@ class BaseView(AsgiView):
                         "format_bytes": format_bytes,
                         "database_url": self.database_url,
                         "database_color": self.database_color,
+                        "base_url": self.ds.config("base_url"),
                     },
                     **extra_template_vars,
                 }
@@ -234,7 +235,7 @@ class DataView(BaseView):
             elif kwargs.get("table"):
                 kwargs["table"] = urllib.parse.unquote_plus(kwargs["table"])
 
-            should_redirect = "/{}-{}".format(name, expected)
+            should_redirect = "{}-{}".format(name, expected)
             if kwargs.get("table"):
                 should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
             if kwargs.get("pk_path"):

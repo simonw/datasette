@@ -126,6 +126,11 @@ CONFIG_OPTIONS = (
         False,
         "Force URLs in API output to always use https:// protocol",
     ),
+    ConfigOption(
+        "base_url",
+        "",
+        "Datasette relative URLs should use this base.",
+    ),
 )
 DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
 

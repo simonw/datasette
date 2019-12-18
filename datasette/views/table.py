@@ -28,9 +28,9 @@ from datasette.filters import Filters
 from .base import DataView, DatasetteError, ureg
 
 LINK_WITH_LABEL = (
-    '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
+    '<a href="{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
 )
-LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
+LINK_WITH_VALUE = '<a href="{database}/{table}/{link_id}">{id}</a>'
 
 
 class Row:
@@ -113,7 +113,7 @@ class RowTableShared(DataView):
                         "is_special_link_column": is_special_link_column,
                         "raw": pk_path,
                         "value": jinja2.Markup(
-                            '<a href="/{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
+                            '<a href="{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                                 database=database,
                                 table=urllib.parse.quote_plus(table),
                                 flat_pks=str(jinja2.escape(pk_path)),

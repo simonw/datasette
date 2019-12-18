@@ -10,6 +10,9 @@
 {% for url in extra_js_urls %}
     <script src="{{ url.url }}"{% if url.sri %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}></script>
 {% endfor %}
+{% if base_url %}
+    <base href="{{ base_url }}" target="_self">
+{% endif %}
 {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">

@@ -137,6 +137,7 @@ def test_custom_json_encoder(obj, expected):
     "bad_sql",
     [
         "update blah;",
+        "-- sql comment to skip\nupdate blah;",
         "PRAGMA case_sensitive_like = true" "SELECT * FROM pragma_index_info('idx52')",
     ],
 )
@@ -150,6 +151,7 @@ def test_validate_sql_select_bad(bad_sql):
     [
         "select count(*) from airports",
         "select foo from bar",
+        "--sql comment to skip\nselect foo from bar",
         "select 1 + 1",
         "explain select 1 + 1",
         "explain query plan select 1 + 1",

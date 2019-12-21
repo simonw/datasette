@@ -174,6 +174,7 @@ disallawed_sql_res = [(re.compile("pragma"), "Statement may not contain PRAGMA")
 
 
 def validate_sql_select(sql):
+    sql = "\n".join(line for line in sql.split('\n') if not line.strip().startswith('--'))
     sql = sql.strip().lower()
     if not any(r.match(sql) for r in allowed_sql_res):
         raise InvalidSql("Statement must be a SELECT")

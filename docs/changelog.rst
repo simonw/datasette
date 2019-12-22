@@ -4,6 +4,20 @@
 Changelog
 =========
 
+.. _v0_33:
+
+0.33 (2019-12-22)
+-----------------
+
+* ``rowid`` is now included in dropdown menus for filtering tables (`#636 <https://github.com/simonw/datasette/issues/636>`__)
+* Columns are now only suggested for faceting if they have at least one value with more than one record (`#638 <https://github.com/simonw/datasette/issues/638>`__)
+* Queries with no results now display "0 results" (`#637 <https://github.com/simonw/datasette/issues/637>`__)
+* Improved documentation for the ``--static`` option (`#641 <https://github.com/simonw/datasette/issues/641>`__)
+* asyncio task information is now included on the ``/-/threads`` debug page
+* Bumped Uvicorn dependency 0.11
+* You can now use ``--port 0`` to listen on an available port
+* New :ref:`config_template_debug` setting for debugging templates, e.g. https://latest.datasette.io/fixtures/roadside_attractions?_context=1 (`#654 <https://github.com/simonw/datasette/issues/654>`__)
+
 .. _v0_32:
 
 0.32 (2019-11-14)

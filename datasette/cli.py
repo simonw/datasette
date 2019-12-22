@@ -239,7 +239,12 @@ def package(
         "all IPs and allow access from other machines."
     ),
 )
-@click.option("-p", "--port", default=8001, help="Port for server, defaults to 8001")
+@click.option(
+    "-p",
+    "--port",
+    default=8001,
+    help="Port for server, defaults to 8001. Use -p 0 to automatically assign an available port.",
+)
 @click.option(
     "--debug", is_flag=True, help="Enable debug mode - useful for development"
 )

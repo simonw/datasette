@@ -10,7 +10,8 @@ Options:
                             connections from the local machine will be allowed. Use
                             0.0.0.0 to listen to all IPs and allow access from other
                             machines.
-  -p, --port INTEGER        Port for server, defaults to 8001
+  -p, --port INTEGER        Port for server, defaults to 8001. Use -p 0 to automatically
+                            assign an available port.
   --debug                   Enable debug mode - useful for development
   --reload                  Automatically reload if database or code change detected -
                             useful for development

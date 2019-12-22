@@ -488,7 +488,10 @@ class Datasette:
         if hasattr(asyncio, "all_tasks"):
             tasks = asyncio.all_tasks()
             d.update(
-                {"num_tasks": len(tasks), "tasks": [_cleaner_task_str(t) for t in tasks]}
+                {
+                    "num_tasks": len(tasks),
+                    "tasks": [_cleaner_task_str(t) for t in tasks],
+                }
             )
         return d
 

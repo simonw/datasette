@@ -1287,6 +1287,7 @@ def test_config_json(app_client):
         "truncate_cells_html": 2048,
         "force_https_urls": False,
         "hash_urls": False,
+        "template_debug": False,
     } == response.json
 
 

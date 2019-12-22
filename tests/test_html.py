@@ -1073,3 +1073,16 @@ def test_zero_results(app_client, path):
     soup = Soup(response.text, "html.parser")
     assert 0 == len(soup.select("table"))
     assert 1 == len(soup.select("p.zero-results"))
+
+
+def test_config_template_debug_on():
+    for client in make_app_client(config={"template_debug": True}):
+        response = client.get("/fixtures/facetable?_context=1")
+        assert response.status == 200
+        assert response.text.startswith("<pre>{")
+
+
+def test_config_template_debug_off(app_client):
+    response = app_client.get("/fixtures/facetable?_context=1")
+    assert response.status == 200
+    assert not response.text.startswith("<pre>{")

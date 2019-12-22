@@ -126,6 +126,11 @@ CONFIG_OPTIONS = (
         False,
         "Force URLs in API output to always use https:// protocol",
     ),
+    ConfigOption(
+        "template_debug",
+        False,
+        "Allow display of template debug information with ?_context=1",
+    ),
 )
 DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
 

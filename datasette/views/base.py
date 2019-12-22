@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import itertools
+import json
 import re
 import time
 import urllib
@@ -138,29 +139,28 @@ class BaseView(AsgiView):
             )
             extra_template_vars.update(extra_vars)
 
-        return Response.html(
-            await template.render_async(
-                {
-                    **context,
-                    **{
-                        "app_css_hash": self.ds.app_css_hash(),
-                        "select_templates": select_templates,
-                        "zip": zip,
-                        "body_scripts": body_scripts,
-                        "extra_css_urls": self._asset_urls(
-                            "extra_css_urls", template, context
-                        ),
-                        "extra_js_urls": self._asset_urls(
-                            "extra_js_urls", template, context
-                        ),
-                        "format_bytes": format_bytes,
-                        "database_url": self.database_url,
-                        "database_color": self.database_color,
-                    },
-                    **extra_template_vars,
-                }
+        template_context = {
+            **context,
+            **{
+                "app_css_hash": self.ds.app_css_hash(),
+                "select_templates": select_templates,
+                "zip": zip,
+                "body_scripts": body_scripts,
+                "extra_css_urls": self._asset_urls("extra_css_urls", template, context),
+                "extra_js_urls": self._asset_urls("extra_js_urls", template, context),
+                "format_bytes": format_bytes,
+                "database_url": self.database_url,
+                "database_color": self.database_color,
+            },
+            **extra_template_vars,
+        }
+        if request.args.get("_context") and self.ds.config("template_debug"):
+            return Response.html(
+                "<pre>{}</pre>".format(
+                    escape(json.dumps(template_context, default=repr, indent=4))
+                )
             )
-        )
+        return Response.html(await template.render_async(template_context))
 
 
 class DataView(BaseView):

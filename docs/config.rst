@@ -209,3 +209,22 @@ itself will result in new, uncachcacheed URL paths.
 ::
 
     datasette mydatabase.db --config hash_urls:1
+
+.. _config_template_debug:
+
+template_debug
+--------------
+
+This setting enables template context debug mode, which is useful to help understand what variables are available to custom templates when you are writing them.
+
+Enable it like this::
+
+    datasette mydatabase.db --config template_debug:1
+
+Now you can add ``?_context=1`` or ``&_context=1`` to any Datasette page to see the context that was passed to that template.
+
+Some examples:
+
+* https://latest.datasette.io/?_context=1
+* https://latest.datasette.io/fixtures?_context=1
+* https://latest.datasette.io/fixtures/roadside_attractions?_context=1

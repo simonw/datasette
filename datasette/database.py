@@ -97,7 +97,7 @@ class Database:
                     else:
                         rows = cursor.fetchall()
                         truncated = False
-                except sqlite3.OperationalError as e:
+                except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
                     if e.args == ("interrupted",):
                         raise QueryInterrupted(e, sql, params)
                     if log_sql_errors:
@@ -145,7 +145,7 @@ class Database:
                 counts[table] = table_count
             # In some cases I saw "SQL Logic Error" here in addition to
             # QueryInterrupted - so we catch that too:
-            except (QueryInterrupted, sqlite3.OperationalError):
+            except (QueryInterrupted, sqlite3.OperationalError, sqlite3.DatabaseError):
                 counts[table] = None
         if not self.is_mutable:
             self.cached_table_counts = counts

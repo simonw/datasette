@@ -948,6 +948,11 @@ def test_sortable_columns_metadata(app_client):
             ],
         ),
         (
+            # Special keyword shouldn't break FTS query
+            "/fixtures/searchable.json?_search=AND",
+            [],
+        ),
+        (
             "/fixtures/searchable.json?_search=weasel",
             [[2, "terry dog", "sara weasel", "puma"]],
         ),

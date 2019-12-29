@@ -388,3 +388,21 @@ def test_path_with_format(path, format, extra_qs, expected):
 )
 def test_format_bytes(bytes, expected):
     assert expected == utils.format_bytes(bytes)
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("dog", '"dog"'),
+        ("cat,", '"cat,"'),
+        ("cat dog", '"cat" "dog"'),
+        # If a phrase is already double quoted, leave it so
+        ('"cat dog"', '"cat dog"'),
+        ('"cat dog" fish', '"cat dog" "fish"'),
+        # Sensibly handle unbalanced double quotes
+        ('cat"', '"cat"'),
+        ('"cat dog" "fish', '"cat dog" "fish"'),
+    ],
+)
+def test_escape_fts(query, expected):
+    assert expected == utils.escape_fts(query)

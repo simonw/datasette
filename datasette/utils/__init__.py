@@ -758,6 +758,20 @@ def format_bytes(bytes):
         return "{:.1f} {}".format(current, unit)
 
 
+_escape_fts_re = re.compile(r'\s+|(".*?")')
+
+
+def escape_fts(query):
+    # If query has unbalanced ", add one at end
+    if query.count('"') % 2:
+        query += '"'
+    bits = _escape_fts_re.split(query)
+    bits = [b for b in bits if b and b != '""']
+    return " ".join(
+        '"{}"'.format(bit) if not bit.startswith('"') else bit for bit in bits
+    )
+
+
 class RequestParameters(dict):
     def get(self, name, default=None):
         "Return first value in the list, if available"

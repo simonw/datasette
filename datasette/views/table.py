@@ -361,7 +361,7 @@ class TableView(RowTableShared):
                 # Simple ?_search=xxx
                 search = search_args["_search"]
                 where_clauses.append(
-                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match :search)".format(
+                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match escape_fts(:search))".format(
                         fts_table=escape_sqlite(fts_table), fts_pk=escape_sqlite(fts_pk)
                     )
                 )
@@ -375,7 +375,7 @@ class TableView(RowTableShared):
                         raise DatasetteError("Cannot search by that column", status=400)
 
                     where_clauses.append(
-                        "rowid in (select rowid from {fts_table} where {search_col} match :search_{i})".format(
+                        "rowid in (select rowid from {fts_table} where {search_col} match escape_fts(:search_{i}))".format(
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
                             i=i,

@@ -127,7 +127,7 @@ def publish_subcommand(publish):
             image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
             check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
         check_call(
-            "gcloud beta run deploy --allow-unauthenticated --platform=managed --image {} {}".format(
+            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}".format(
                 image_id, service,
             ),
             shell=True,
@@ -137,7 +137,7 @@ def publish_subcommand(publish):
 def get_existing_services():
     services = json.loads(
         check_output(
-            "gcloud beta run services list --platform=managed --format json",
+            "gcloud run services list --platform=managed --format json",
             shell=True,
             universal_newlines=True,
         )

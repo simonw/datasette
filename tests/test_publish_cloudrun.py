@@ -62,7 +62,7 @@ Service name: input-service
             [
                 mock.call("gcloud builds submit --tag {}".format(tag), shell=True),
                 mock.call(
-                    "gcloud beta run deploy --allow-unauthenticated --platform=managed --image {} input-service".format(
+                    "gcloud run deploy --allow-unauthenticated --platform=managed --image {} input-service".format(
                         tag
                     ),
                     shell=True,
@@ -89,7 +89,7 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which):
             [
                 mock.call("gcloud builds submit --tag {}".format(tag), shell=True),
                 mock.call(
-                    "gcloud beta run deploy --allow-unauthenticated --platform=managed --image {} test".format(
+                    "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test".format(
                         tag
                     ),
                     shell=True,

@@ -37,7 +37,7 @@ You can specify a custom app name by passing ``-n my-app-name`` to the publish c
 Publishing to Google Cloud Run
 ------------------------------
 
-`Google Cloud Run <https://cloud.google.com/run/>`__ launched as a beta in in April 2019. It allows you to publish data in a scale-to-zero environment, so your application will start running when the first request is received and will shut down again when traffic ceases. This means you only pay for time spent serving traffic.
+`Google Cloud Run <https://cloud.google.com/run/>`__ launched as a GA in in November 2019. It allows you to publish data in a scale-to-zero environment, so your application will start running when the first request is received and will shut down again when traffic ceases. This means you only pay for time spent serving traffic.
 
 You will first need to install and configure the Google Cloud CLI tools by following `these instructions <https://cloud.google.com/sdk/>`__.
 

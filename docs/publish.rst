@@ -152,6 +152,10 @@ You can now run the resulting container like so::
 
 This exposes port 8001 inside the container as port 8081 on your host machine, so you can access the application at ``http://localhost:8081/``
 
+You can customize the port that is exposed by the countainer using the ``--port`` option:
+
+    datasette package mydatabase.db --port 8080
+
 A full list of options can be seen by running ``datasette package --help``:
 
 .. literalinclude:: datasette-package-help.txt

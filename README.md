@@ -22,6 +22,8 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 29th January 2020: [Datasette 0.34](http://datasette.readthedocs.io/en/latest/changelog.html#v0-34) - improvements to search, `datasette publish cloudrun` and `datasette package`.
+ * 21st January 2020: [Deploying a data API using GitHub Actions and Cloud Run](https://simonwillison.net/2020/Jan/21/github-actions-cloud-run/) - how to use GitHub Actions and Google Cloud Run to automatically scrape data and deploy the result as an API with Datasette.
  * 22nd December 2019: [Datasette 0.33](http://datasette.readthedocs.io/en/latest/changelog.html#v0-33) - various small improvements.
  * 19th December 2019: [Building tools to bring data-driven reporting to more newsrooms](https://medium.com/jsk-class-of-2020/building-tools-to-bring-data-driven-reporting-to-more-newsrooms-4520a0c9b3f2) - some notes on my JSK fellowship so far.
  * 2nd December 2019: [Niche Museums](https://www.niche-museums.com/) is a new site entirely powered by Datasette, using custom templates and plugins. [niche-museums.com, powered by Datasette](https://simonwillison.net/2019/Nov/25/niche-museums/) describes how the site works, and [datasette-atom: Define an Atom feed using a custom SQL query](https://simonwillison.net/2019/Dec/3/datasette-atom/) describes how the new [datasette-atom plugin](https://github.com/simonw/datasette-atom) was used to add an Atom syndication feed to the site.

@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_34:
+
+0.34 (2020-01-29)
+-----------------
+
+* ``_search=`` queries are now correctly escaped using a new ``escape_fts()`` custom SQL function. This means you can now run searches for strings like ``park.`` without seeing errors. (`#651 <https://github.com/simonw/datasette/issues/651>`__)
+* `Google Cloud Run <https://cloud.google.com/run/>`__ is no longer in beta, so ``datasette publish cloudrun`` has been updated to work even if the user has not installed the ``gcloud`` beta components package. Thanks, Katie McLaughlin (`#660 <https://github.com/simonw/datasette/pull/660>`__)
+* ``datasette package`` now accepts a ``--port`` option for specifying which port the resulting Docker container should listen on. (`#661 <https://github.com/simonw/datasette/issues/661>`__)
+
 .. _v0_33:
 
 0.33 (2019-12-22)

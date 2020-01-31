@@ -44,6 +44,11 @@ markdown-to-sqlite
 
 `markdown-to-sqlite <https://github.com/simonw/markdown-to-sqlite>`__ reads Markdown files with embedded YAML metadata (e.g. for `Jekyll Front Matter <https://jekyllrb.com/docs/front-matter/>`__) and creates a SQLite table with a schema matching the metadata. This is useful if you want to keep structured data in text form in a GitHub repository and use that to build a SQLite database.
 
+geojson-to-sqlite
+-----------------
+
+`geojson-to-sqlite <https://github.com/simonw/geojson-to-sqlite>`__ converts GeoJSON files to SQLite, optionally using SpatiaLite to create geospatial indexes for fast geometric queries.
+
 socrata2sql
 -----------
 

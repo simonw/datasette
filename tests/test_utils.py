@@ -138,6 +138,7 @@ def test_custom_json_encoder(obj, expected):
     [
         "update blah;",
         "-- sql comment to skip\nupdate blah;",
+        "update blah set some_column='# Hello there\n\n* This is a list\n* of items\n--\n[And a link](https://github.com/simonw/datasette-render-markdown).'\nas demo_markdown",
         "PRAGMA case_sensitive_like = true" "SELECT * FROM pragma_index_info('idx52')",
     ],
 )
@@ -152,6 +153,7 @@ def test_validate_sql_select_bad(bad_sql):
         "select count(*) from airports",
         "select foo from bar",
         "--sql comment to skip\nselect foo from bar",
+        "select '# Hello there\n\n* This is a list\n* of items\n--\n[And a link](https://github.com/simonw/datasette-render-markdown).'\nas demo_markdown",
         "select 1 + 1",
         "explain select 1 + 1",
         "explain query plan select 1 + 1",

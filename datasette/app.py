@@ -533,6 +533,7 @@ class Datasette:
     async def render_template(
         self, templates, context=None, request=None, view_name=None
     ):
+        context = context or {}
         if isinstance(templates, Template):
             template = templates
             select_templates = []

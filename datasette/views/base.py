@@ -81,7 +81,7 @@ class BaseView(AsgiView):
                     "database_color": self.database_color,
                 },
             }
-        if request and request.args.get("_context") and self.config("template_debug"):
+        if request and request.args.get("_context") and self.ds.config("template_debug"):
             return Response.html(
                 "<pre>{}</pre>".format(
                     escape(json.dumps(template_context, default=repr, indent=4))

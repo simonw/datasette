@@ -591,13 +591,7 @@ class Datasette:
             },
             **extra_template_vars,
         }
-        if request.args.get("_context") and self.config("template_debug"):
-            return Response.html(
-                "<pre>{}</pre>".format(
-                    escape(json.dumps(template_context, default=repr, indent=4))
-                )
-            )
-        return Response.html(await template.render_async(template_context))
+        return await template.render_async(template_context)
 
     def _asset_urls(self, key, template, context):
         # Flatten list-of-lists from plugins:

@@ -72,14 +72,49 @@ class BaseView(AsgiView):
     def database_color(self, database):
         return "ff0000"
 
+    def _asset_urls(self, key, template, context):
+        # Flatten list-of-lists from plugins:
+        seen_urls = set()
+        for url_or_dict in itertools.chain(
+            itertools.chain.from_iterable(
+                getattr(pm.hook, key)(
+                    template=template.name,
+                    database=context.get("database"),
+                    table=context.get("table"),
+                    datasette=self.ds,
+                )
+            ),
+            (self.ds.metadata(key) or []),
+        ):
+            if isinstance(url_or_dict, dict):
+                url = url_or_dict["url"]
+                sri = url_or_dict.get("sri")
+            else:
+                url = url_or_dict
+                sri = None
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            if sri:
+                yield {"url": url, "sri": sri}
+            else:
+                yield {"url": url}
+
     async def render(self, templates, request, context):
+        template = self.ds.jinja_env.select_template(templates)
         return await self.ds.render_template(
-            templates,
+            template,
             {
                 **context,
                 **{
                     "database_url": self.database_url,
                     "database_color": self.database_color,
+                    "extra_css_urls": self._asset_urls(
+                        "extra_css_urls", template, context
+                    ),
+                    "extra_js_urls": self._asset_urls(
+                        "extra_js_urls", template, context
+                    ),
                 },
             },
             request=request,

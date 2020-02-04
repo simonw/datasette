@@ -14,6 +14,7 @@ from pathlib import Path
 import click
 from markupsafe import Markup
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
+from jinja2.environment import Template
 import uvicorn
 
 from .views.base import DatasetteError, ureg, AsgiRouter
@@ -529,44 +530,22 @@ class Datasette:
         for renderer in hook_renderers:
             self.renderers[renderer["extension"]] = renderer["callback"]
 
-    def _asset_urls(self, key, template, context):
-        # Flatten list-of-lists from plugins:
-        seen_urls = set()
-        for url_or_dict in itertools.chain(
-            itertools.chain.from_iterable(
-                getattr(pm.hook, key)(
-                    template=template.name,
-                    database=context.get("database"),
-                    table=context.get("table"),
-                    datasette=self.ds,
-                )
-            ),
-            (self.ds.metadata(key) or []),
-        ):
-            if isinstance(url_or_dict, dict):
-                url = url_or_dict["url"]
-                sri = url_or_dict.get("sri")
-            else:
-                url = url_or_dict
-                sri = None
-            if url in seen_urls:
-                continue
-            seen_urls.add(url)
-            if sri:
-                yield {"url": url, "sri": sri}
-            else:
-                yield {"url": url}
-
     async def render_template(
         self, templates, context=None, request=None, view_name=None
     ):
-        if isinstance(templates, str):
-            templates = [templates]
-        template = self.jinja_env.select_template(templates)
-        select_templates = [
-            "{}{}".format("*" if template_name == template.name else "", template_name)
-            for template_name in templates
-        ]
+        if isinstance(templates, Template):
+            template = templates
+            select_templates = []
+        else:
+            if isinstance(templates, str):
+                templates = [templates]
+            template = self.jinja_env.select_template(templates)
+            select_templates = [
+                "{}{}".format(
+                    "*" if template_name == template.name else "", template_name
+                )
+                for template_name in templates
+            ]
         body_scripts = []
         # pylint: disable=no-member
         for script in pm.hook.extra_body_script(
@@ -604,8 +583,6 @@ class Datasette:
                 "select_templates": select_templates,
                 "zip": zip,
                 "body_scripts": body_scripts,
-                "extra_css_urls": self._asset_urls("extra_css_urls", template, context),
-                "extra_js_urls": self._asset_urls("extra_js_urls", template, context),
                 "format_bytes": format_bytes,
             },
             **extra_template_vars,

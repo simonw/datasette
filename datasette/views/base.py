@@ -84,7 +84,7 @@ class BaseView(AsgiView):
         if request and request.args.get("_context") and self.ds.config("template_debug"):
             return Response.html(
                 "<pre>{}</pre>".format(
-                    escape(json.dumps(template_context, default=repr, indent=4))
+                    jinja2.escape(json.dumps(template_context, default=repr, indent=4))
                 )
             )
         return Response.html(await self.ds.render_template(

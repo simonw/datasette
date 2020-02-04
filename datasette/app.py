@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import hashlib
+import json
 import os
 import re
 import sys
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import click
 from markupsafe import Markup
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
 import uvicorn
 
 from .views.base import DatasetteError, ureg, AsgiRouter
@@ -36,6 +37,7 @@ from .utils import (
 from .utils.asgi import (
     AsgiLifespan,
     NotFound,
+    Response,
     asgi_static,
     asgi_send,
     asgi_send_html,

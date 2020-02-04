@@ -9,8 +9,6 @@ import urllib
 import jinja2
 import pint
 
-from html import escape
-
 from datasette import __version__
 from datasette.plugins import pm
 from datasette.utils import (

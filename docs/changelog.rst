@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_35:
+
+0.35 (2020-02-04)
+-----------------
+
+* Added five new plugins and one new conversion tool to the :ref:`ecosystem`.
+* The ``Datasette`` class has a new ``render_template()`` method which can be used by plugins to render templates using Datasette's pre-configured `Jinja <https://jinja.palletsprojects.com/>`__ templating library.
+
 .. _v0_34:
 
 0.34 (2020-01-29)

@@ -11,6 +11,7 @@ Changelog
 
 * Added five new plugins and one new conversion tool to the :ref:`ecosystem`.
 * The ``Datasette`` class has a new ``render_template()`` method which can be used by plugins to render templates using Datasette's pre-configured `Jinja <https://jinja.palletsprojects.com/>`__ templating library.
+* You can now execute SQL queries that start with a ``-- comment`` - thanks, Jay Graves (`#653 <https://github.com/simonw/datasette/pull/653>`__)
 
 .. _v0_34:
 

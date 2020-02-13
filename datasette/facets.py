@@ -198,7 +198,7 @@ class ColumnFacet(Facet):
                     {sql}
                 )
                 where {col} is not null
-                group by {col} order by count desc limit {limit}
+                group by {col} order by count desc, value limit {limit}
             """.format(
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
@@ -344,7 +344,7 @@ class ArrayFacet(Facet):
                 select j.value as value, count(*) as count from (
                     {sql}
                 ) join json_each({col}) j
-                group by j.value order by count desc limit {limit}
+                group by j.value order by count desc, value limit {limit}
             """.format(
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
@@ -457,7 +457,7 @@ class DateFacet(Facet):
                     {sql}
                 )
                 where date({col}) is not null
-                group by date({col}) order by count desc limit {limit}
+                group by date({col}) order by count desc, value limit {limit}
             """.format(
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )

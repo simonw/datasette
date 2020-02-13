@@ -116,17 +116,17 @@ async def test_column_facet_results(app_client):
                     "selected": False,
                 },
                 {
-                    "value": 2,
-                    "label": "Los Angeles",
-                    "count": 4,
-                    "toggle_url": "http://localhost/?_facet=city_id&city_id=2",
-                    "selected": False,
-                },
-                {
                     "value": 3,
                     "label": "Detroit",
                     "count": 4,
                     "toggle_url": "http://localhost/?_facet=city_id&city_id=3",
+                    "selected": False,
+                },
+                {
+                    "value": 2,
+                    "label": "Los Angeles",
+                    "count": 4,
+                    "toggle_url": "http://localhost/?_facet=city_id&city_id=2",
                     "selected": False,
                 },
                 {
@@ -169,17 +169,17 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
                     "selected": False,
                 },
                 {
-                    "value": 2,
-                    "label": "Los Angeles",
-                    "count": 4,
-                    "toggle_url": "http://localhost/?city_id=2",
-                    "selected": False,
-                },
-                {
                     "value": 3,
                     "label": "Detroit",
                     "count": 4,
                     "toggle_url": "http://localhost/?city_id=3",
+                    "selected": False,
+                },
+                {
+                    "value": 2,
+                    "label": "Los Angeles",
+                    "count": 4,
+                    "toggle_url": "http://localhost/?city_id=2",
                     "selected": False,
                 },
                 {
@@ -254,17 +254,17 @@ async def test_array_facet_results(app_client):
                     "selected": False,
                 },
                 {
-                    "value": "tag2",
-                    "label": "tag2",
-                    "count": 1,
-                    "toggle_url": "http://localhost/?_facet_array=tags&tags__arraycontains=tag2",
-                    "selected": False,
-                },
-                {
                     "value": "tag3",
                     "label": "tag3",
                     "count": 1,
                     "toggle_url": "http://localhost/?_facet_array=tags&tags__arraycontains=tag3",
+                    "selected": False,
+                },
+                {
+                    "value": "tag2",
+                    "label": "tag2",
+                    "count": 1,
+                    "toggle_url": "http://localhost/?_facet_array=tags&tags__arraycontains=tag2",
                     "selected": False,
                 },
             ],
@@ -292,10 +292,10 @@ async def test_date_facet_results(app_client):
             "type": "date",
             "results": [
                 {
-                    "value": "2019-01-14",
-                    "label": "2019-01-14",
+                    "value": "2019-01-17",
+                    "label": "2019-01-17",
                     "count": 4,
-                    "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-14",
+                    "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-17",
                     "selected": False,
                 },
                 {
@@ -306,10 +306,10 @@ async def test_date_facet_results(app_client):
                     "selected": False,
                 },
                 {
-                    "value": "2019-01-17",
-                    "label": "2019-01-17",
+                    "value": "2019-01-14",
+                    "label": "2019-01-14",
                     "count": 4,
-                    "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-17",
+                    "toggle_url": "http://localhost/?_facet_date=created&created__date=2019-01-14",
                     "selected": False,
                 },
                 {

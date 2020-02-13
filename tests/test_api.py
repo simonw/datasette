@@ -1319,8 +1319,8 @@ def test_page_size_matching_max_returned_rows(
             {
                 "state": {
                     "name": "state",
-                    "hideable": True,
                     "type": "column",
+                    "hideable": True,
                     "toggle_url": "/fixtures/facetable.json?_facet=city_id",
                     "results": [
                         {
@@ -1349,8 +1349,8 @@ def test_page_size_matching_max_returned_rows(
                 },
                 "city_id": {
                     "name": "city_id",
-                    "hideable": True,
                     "type": "column",
+                    "hideable": True,
                     "toggle_url": "/fixtures/facetable.json?_facet=state",
                     "results": [
                         {
@@ -1361,17 +1361,17 @@ def test_page_size_matching_max_returned_rows(
                             "selected": False,
                         },
                         {
-                            "value": 2,
-                            "label": "Los Angeles",
-                            "count": 4,
-                            "toggle_url": "_facet=state&_facet=city_id&city_id=2",
-                            "selected": False,
-                        },
-                        {
                             "value": 3,
                             "label": "Detroit",
                             "count": 4,
                             "toggle_url": "_facet=state&_facet=city_id&city_id=3",
+                            "selected": False,
+                        },
+                        {
+                            "value": 2,
+                            "label": "Los Angeles",
+                            "count": 4,
+                            "toggle_url": "_facet=state&_facet=city_id&city_id=2",
                             "selected": False,
                         },
                         {

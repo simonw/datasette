@@ -371,13 +371,13 @@ def test_facet_display(app_client):
                     "count": 6,
                 },
                 {
-                    "name": "Los Angeles",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=2",
+                    "name": "Detroit",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=3",
                     "count": 4,
                 },
                 {
-                    "name": "Detroit",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=3",
+                    "name": "Los Angeles",
+                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=2",
                     "count": 4,
                 },
                 {

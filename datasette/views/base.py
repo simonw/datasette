@@ -75,21 +75,25 @@ class BaseView(AsgiView):
     async def render(self, templates, request, context):
         template = self.ds.jinja_env.select_template(templates)
         template_context = {
-                **context,
-                **{
-                    "database_url": self.database_url,
-                    "database_color": self.database_color,
-                },
-            }
-        if request and request.args.get("_context") and self.ds.config("template_debug"):
+            **context,
+            **{
+                "database_url": self.database_url,
+                "database_color": self.database_color,
+            },
+        }
+        if (
+            request
+            and request.args.get("_context")
+            and self.ds.config("template_debug")
+        ):
             return Response.html(
                 "<pre>{}</pre>".format(
                     jinja2.escape(json.dumps(template_context, default=repr, indent=4))
                 )
             )
-        return Response.html(await self.ds.render_template(
-            template, template_context, request=request
-        ))
+        return Response.html(
+            await self.ds.render_template(template, template_context, request=request)
+        )
 
 
 class DataView(BaseView):

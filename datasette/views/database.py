@@ -2,6 +2,7 @@ import os
 
 from datasette.utils import to_css_class, validate_sql_select
 from datasette.utils.asgi import AsgiFileDownload
+from datasette.postgresql_database import PostgresqlDatabase
 
 from .base import DatasetteError, DataView
 
@@ -22,7 +23,12 @@ class DatabaseView(DataView):
                 request, database, hash, sql, _size=_size, metadata=metadata
             )
 
-        db = self.ds.databases[database]
+        # db = self.ds.databases[database]
+        db = PostgresqlDatabase(
+            self.ds,
+            "simonwillisonblog",
+            "postgresql://postgres@localhost/simonwillisonblog",
+        )
 
         table_counts = await db.table_counts(5)
         views = await db.view_names()

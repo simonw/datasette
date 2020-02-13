@@ -73,7 +73,7 @@ class Facet:
         self,
         ds,
         request,
-        database,
+        db,
         sql=None,
         table=None,
         params=None,
@@ -83,7 +83,7 @@ class Facet:
         assert table or sql, "Must provide either table= or sql="
         self.ds = ds
         self.request = request
-        self.database = database
+        self.db = db
         # For foreign key expansion. Can be None for e.g. canned SQL queries:
         self.table = table
         self.sql = sql or "select * from [{}]".format(table)
@@ -113,17 +113,16 @@ class Facet:
     async def get_columns(self, sql, params=None):
         # Detect column names using the "limit 0" trick
         return (
-            await self.ds.execute(
-                self.database, "select * from ({}) limit 0".format(sql), params or []
+            await self.db.execute(
+                "select * from ({}) as derived limit 0".format(sql), params or []
             )
         ).columns
 
     async def get_row_count(self):
         if self.row_count is None:
             self.row_count = (
-                await self.ds.execute(
-                    self.database,
-                    "select count(*) from ({})".format(self.sql),
+                await self.db.execute(
+                    "select count(*) from ({}) as derived".format(self.sql),
                     self.params,
                 )
             ).rows[0][0]
@@ -153,8 +152,7 @@ class ColumnFacet(Facet):
             )
             distinct_values = None
             try:
-                distinct_values = await self.ds.execute(
-                    self.database,
+                distinct_values = await self.db.execute(
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
@@ -203,8 +201,7 @@ class ColumnFacet(Facet):
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
             try:
-                facet_rows_results = await self.ds.execute(
-                    self.database,
+                facet_rows_results = await self.db.execute(
                     facet_sql,
                     self.params,
                     truncate=False,
@@ -225,8 +222,8 @@ class ColumnFacet(Facet):
                 if self.table:
                     # Attempt to expand foreign keys into labels
                     values = [row["value"] for row in facet_rows]
-                    expanded = await self.ds.expand_foreign_keys(
-                        self.database, self.table, column, values
+                    expanded = await self.db.expand_foreign_keys(
+                        self.table, column, values
                     )
                 else:
                     expanded = {}
@@ -285,8 +282,7 @@ class ArrayFacet(Facet):
                 column=escape_sqlite(column), sql=self.sql
             )
             try:
-                results = await self.ds.execute(
-                    self.database,
+                results = await self.db.execute(
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
@@ -298,8 +294,7 @@ class ArrayFacet(Facet):
                     # Now sanity check that first 100 arrays contain only strings
                     first_100 = [
                         v[0]
-                        for v in await self.ds.execute(
-                            self.database,
+                        for v in await self.db.execute(
                             "select {column} from ({sql}) where {column} is not null and json_array_length({column}) > 0 limit 100".format(
                                 column=escape_sqlite(column), sql=self.sql
                             ),
@@ -349,8 +344,7 @@ class ArrayFacet(Facet):
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
             try:
-                facet_rows_results = await self.ds.execute(
-                    self.database,
+                facet_rows_results = await self.db.execute(
                     facet_sql,
                     self.params,
                     truncate=False,
@@ -416,8 +410,7 @@ class DateFacet(Facet):
                 column=escape_sqlite(column), sql=self.sql
             )
             try:
-                results = await self.ds.execute(
-                    self.database,
+                results = await self.db.execute(
                     suggested_facet_sql,
                     self.params,
                     truncate=False,
@@ -462,8 +455,7 @@ class DateFacet(Facet):
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )
             try:
-                facet_rows_results = await self.ds.execute(
-                    self.database,
+                facet_rows_results = await self.db.execute(
                     facet_sql,
                     self.params,
                     truncate=False,

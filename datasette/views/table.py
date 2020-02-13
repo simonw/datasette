@@ -5,6 +5,7 @@ import json
 import jinja2
 
 from datasette.plugins import pm
+from datasette.postgresql_database import PostgresqlDatabase
 from datasette.utils import (
     CustomRow,
     QueryInterrupted,
@@ -64,7 +65,12 @@ class Row:
 
 class RowTableShared(DataView):
     async def sortable_columns_for_table(self, database, table, use_rowid):
-        db = self.ds.databases[database]
+        # db = self.ds.databases[database]
+        db = PostgresqlDatabase(
+            self.ds,
+            "simonwillisonblog",
+            "postgresql://postgres@localhost/simonwillisonblog",
+        )
         table_metadata = self.ds.table_metadata(database, table)
         if "sortable_columns" in table_metadata:
             sortable_columns = set(table_metadata["sortable_columns"])
@@ -77,7 +83,12 @@ class RowTableShared(DataView):
     async def expandable_columns(self, database, table):
         # Returns list of (fk_dict, label_column-or-None) pairs for that table
         expandables = []
-        db = self.ds.databases[database]
+        # db = self.ds.databases[database]
+        db = PostgresqlDatabase(
+            self.ds,
+            "simonwillisonblog",
+            "postgresql://postgres@localhost/simonwillisonblog",
+        )
         for fk in await db.foreign_keys_for_table(table):
             label_column = await db.label_column_for_table(fk["other_table"])
             expandables.append((fk, label_column))
@@ -87,7 +98,12 @@ class RowTableShared(DataView):
         self, database, table, description, rows, link_column=False, truncate_cells=0
     ):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
-        db = self.ds.databases[database]
+        # db = self.ds.databases[database]
+        db = PostgresqlDatabase(
+            self.ds,
+            "simonwillisonblog",
+            "postgresql://postgres@localhost/simonwillisonblog",
+        )
         table_metadata = self.ds.table_metadata(database, table)
         sortable_columns = await self.sortable_columns_for_table(database, table, True)
         columns = [
@@ -228,7 +244,15 @@ class TableView(RowTableShared):
                 editable=False,
                 canned_query=table,
             )
-        db = self.ds.databases[database]
+        # db = self.ds.databases[database]
+        db = PostgresqlDatabase(
+            self.ds,
+            "simonwillisonblog",
+            "postgresql://postgres@localhost/simonwillisonblog",
+        )
+
+        print("Here we go, db = ", db)
+
         is_view = bool(await db.get_view_definition(table))
         table_exists = bool(await db.table_exists(table))
         if not is_view and not table_exists:
@@ -533,17 +557,13 @@ class TableView(RowTableShared):
         if request.raw_args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.raw_args["_timelimit"])
 
-        results = await self.ds.execute(
-            database, sql, params, truncate=True, **extra_args
-        )
+        results = await db.execute(sql, params, truncate=True, **extra_args)
 
         # Number of filtered rows in whole set:
         filtered_table_rows_count = None
         if count_sql:
             try:
-                count_rows = list(
-                    await self.ds.execute(database, count_sql, from_sql_params)
-                )
+                count_rows = list(await db.execute(count_sql, from_sql_params))
                 filtered_table_rows_count = count_rows[0][0]
             except QueryInterrupted:
                 pass
@@ -566,7 +586,7 @@ class TableView(RowTableShared):
                 klass(
                     self.ds,
                     request,
-                    database,
+                    db,
                     sql=sql_no_limit,
                     params=params,
                     table=table,
@@ -584,7 +604,7 @@ class TableView(RowTableShared):
             facets_timed_out.extend(instance_facets_timed_out)
 
         # Figure out columns and rows for the query
-        columns = [r[0] for r in results.description]
+        columns = list(results.rows[0].keys())
         rows = list(results.rows)
 
         # Expand labeled columns if requested
@@ -781,7 +801,12 @@ class RowView(RowTableShared):
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
-        db = self.ds.databases[database]
+        # db = self.ds.databases[database]
+        db = PostgresqlDatabase(
+            self.ds,
+            "simonwillisonblog",
+            "postgresql://postgres@localhost/simonwillisonblog",
+        )
         pks = await db.primary_keys(table)
         use_rowid = not pks
         select = "*"
@@ -795,7 +820,7 @@ class RowView(RowTableShared):
         params = {}
         for i, pk_value in enumerate(pk_values):
             params["p{}".format(i)] = pk_value
-        results = await self.ds.execute(database, sql, params, truncate=True)
+        results = await db.execute(sql, params, truncate=True)
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
@@ -860,7 +885,12 @@ class RowView(RowTableShared):
     async def foreign_key_tables(self, database, table, pk_values):
         if len(pk_values) != 1:
             return []
-        db = self.ds.databases[database]
+        # db = self.ds.databases[database]
+        db = PostgresqlDatabase(
+            self.ds,
+            "simonwillisonblog",
+            "postgresql://postgres@localhost/simonwillisonblog",
+        )
         all_foreign_keys = await db.get_all_foreign_keys()
         foreign_keys = all_foreign_keys[table]["incoming"]
         if len(foreign_keys) == 0:
@@ -876,7 +906,7 @@ class RowView(RowTableShared):
             ]
         )
         try:
-            rows = list(await self.ds.execute(database, sql, {"id": pk_values[0]}))
+            rows = list(await db.execute(sql, {"id": pk_values[0]}))
         except sqlite3.OperationalError:
             # Almost certainly hit the timeout
             return []

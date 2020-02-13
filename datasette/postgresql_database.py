@@ -8,6 +8,10 @@ class PostgresqlResults:
         self.truncated = truncated
 
     @property
+    def description(self):
+        return [[c] for c in self.columns]
+
+    @property
     def columns(self):
         try:
             return list(self.rows[0].keys())
@@ -24,6 +28,8 @@ class PostgresqlResults:
 class PostgresqlDatabase:
     size = 0
     is_mutable = False
+    is_memory = False
+    hash = None
 
     def __init__(self, ds, name, dsn):
         self.ds = ds
@@ -65,7 +71,7 @@ class PostgresqlDatabase:
         return counts
 
     async def table_exists(self, table):
-        raise NotImplementedError
+        return table in await self.table_names()
 
     async def table_names(self):
         results = await self.execute(
@@ -159,29 +165,41 @@ class PostgresqlDatabase:
         return []
 
     async def get_table_definition(self, table, type_="table"):
-        table_definition_rows = list(
-            await self.execute(
-                "select sql from sqlite_master where name = :n and type=:t",
-                {"n": table, "t": type_},
+        sql = """
+        SELECT                                          
+        'CREATE TABLE ' || relname || E'\n(\n' ||
+        array_to_string(
+            array_agg(
+            '    ' || column_name || ' ' ||  type || ' '|| not_null
             )
-        )
-        if not table_definition_rows:
-            return None
-        bits = [table_definition_rows[0][0] + ";"]
-        # Add on any indexes
-        index_rows = list(
-            await self.ds.execute(
-                self.name,
-                "select sql from sqlite_master where tbl_name = :n and type='index' and sql is not null",
-                {"n": table},
-            )
-        )
-        for index_row in index_rows:
-            bits.append(index_row[0] + ";")
-        return "\n".join(bits)
+            , E',\n'
+        ) || E'\n);\n'
+        from
+        (
+        SELECT
+            c.relname, a.attname AS column_name,
+            pg_catalog.format_type(a.atttypid, a.atttypmod) as type,
+            case
+            when a.attnotnull
+            then 'NOT NULL'
+            else 'NULL'
+            END as not_null
+        FROM pg_class c,
+        pg_attribute a,
+        pg_type t
+        WHERE c.relname = $1
+        AND a.attnum > 0
+        AND a.attrelid = c.oid
+        AND a.atttypid = t.oid
+        ORDER BY a.attnum
+        ) as tabledefinition
+        group by relname;
+        """
+        return await (await self.connection()).fetchval(sql, table)
 
     async def get_view_definition(self, view):
-        return await self.get_table_definition(view, "view")
+        # return await self.get_table_definition(view, "view")
+        return []
 
     def __repr__(self):
         tags = []

@@ -78,6 +78,12 @@ class Database:
         """Executes sql against db_name in a thread"""
         page_size = page_size or self.ds.page_size
 
+        # Where are we?
+        import io, traceback
+
+        stored_stack = io.StringIO()
+        traceback.print_stack(file=stored_stack)
+
         def sql_operation_in_thread(conn):
             time_limit_ms = self.ds.sql_time_limit_ms
             if custom_time_limit and custom_time_limit < time_limit_ms:
@@ -114,10 +120,15 @@ class Database:
             else:
                 return Results(rows, False, cursor.description)
 
-        with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_against_connection_in_thread(
-                sql_operation_in_thread
-            )
+        try:
+            with trace("sql", database=self.name, sql=sql.strip(), params=params):
+                results = await self.execute_against_connection_in_thread(
+                    sql_operation_in_thread
+                )
+        except Exception as e:
+            print(e)
+            print(stored_stack.getvalue())
+            raise
         return results
 
     @property

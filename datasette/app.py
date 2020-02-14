@@ -180,7 +180,7 @@ class Datasette:
             db = Database(self, path, is_mutable=is_mutable, is_memory=is_memory)
             if db.name in self.databases:
                 raise Exception("Multiple files with same stem: {}".format(db.name))
-            self.databases[db.name] = db
+            self.add_database(db.name, db)
         self.cache_headers = cache_headers
         self.cors = cors
         self._metadata = metadata or {}
@@ -209,6 +209,12 @@ class Datasette:
                 except ValueError:
                     # Plugin already registered
                     pass
+
+    def add_database(self, name, db):
+        self.databases[name] = db
+
+    def remove_database(self, name):
+        self.databases.pop(name)
 
     async def run_sanity_checks(self):
         # Only one check right now, for Spatialite

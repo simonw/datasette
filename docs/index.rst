@@ -34,6 +34,7 @@ Contents
    introspection
    custom_templates
    plugins
+   datasette
    contributing
    changelog
 

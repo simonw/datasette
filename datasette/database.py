@@ -300,8 +300,7 @@ class Database:
         bits = [table_definition_rows[0][0] + ";"]
         # Add on any indexes
         index_rows = list(
-            await self.ds.execute(
-                self.name,
+            await self.execute(
                 "select sql from sqlite_master where tbl_name = :n and type='index' and sql is not null",
                 {"n": table},
             )

@@ -533,17 +533,13 @@ class TableView(RowTableShared):
         if request.raw_args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.raw_args["_timelimit"])
 
-        results = await self.ds.execute(
-            database, sql, params, truncate=True, **extra_args
-        )
+        results = await db.execute(sql, params, truncate=True, **extra_args)
 
         # Number of filtered rows in whole set:
         filtered_table_rows_count = None
         if count_sql:
             try:
-                count_rows = list(
-                    await self.ds.execute(database, count_sql, from_sql_params)
-                )
+                count_rows = list(await db.execute(count_sql, from_sql_params))
                 filtered_table_rows_count = count_rows[0][0]
             except QueryInterrupted:
                 pass
@@ -795,7 +791,7 @@ class RowView(RowTableShared):
         params = {}
         for i, pk_value in enumerate(pk_values):
             params["p{}".format(i)] = pk_value
-        results = await self.ds.execute(database, sql, params, truncate=True)
+        results = await db.execute(sql, params, truncate=True)
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
@@ -876,7 +872,7 @@ class RowView(RowTableShared):
             ]
         )
         try:
-            rows = list(await self.ds.execute(database, sql, {"id": pk_values[0]}))
+            rows = list(await db.execute(sql, {"id": pk_values[0]}))
         except sqlite3.OperationalError:
             # Almost certainly hit the timeout
             return []

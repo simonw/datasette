@@ -186,7 +186,8 @@ class Datasette:
             if db.name in self.databases:
                 raise Exception("Multiple files with same stem: {}".format(db.name))
             self.add_database(db.name, db)
-        self.scan_dirs()
+        self.scan_dirs_executor = futures.ThreadPoolExecutor(max_workers=1)
+        self.scan_dirs_executor.submit(self.scan_dirs)
         self.cache_headers = cache_headers
         self.cors = cors
         self._metadata = metadata or {}
@@ -224,7 +225,6 @@ class Datasette:
 
     def scan_dirs(self):
         # Recurse through self.dirs looking for new SQLite DBs
-        i = 0
         for dir in self.dirs:
             print(dir)
             for filepath in Path(dir).glob("**/*.db"):
@@ -237,9 +237,6 @@ class Datasette:
                         .replace(".db", ""),
                         Database(self, filepath, is_mutable=True),
                     )
-                    i += 1
-                    if i >= 20:
-                        break
 
     def config(self, key):
         return self._config.get(key, None)

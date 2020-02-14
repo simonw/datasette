@@ -31,6 +31,8 @@ from .utils import (
     escape_css_string,
     escape_sqlite,
     format_bytes,
+    is_valid_sqlite,
+    get_plugins,
     module_from_path,
     sqlite3,
     to_css_class,
@@ -149,6 +151,7 @@ class Datasette:
     def __init__(
         self,
         files,
+        dirs=None,
         immutables=None,
         cache_headers=True,
         cors=False,
@@ -163,6 +166,7 @@ class Datasette:
         version_note=None,
     ):
         immutables = immutables or []
+        self.dirs = dirs or []
         self.files = tuple(files) + tuple(immutables)
         self.immutables = set(immutables)
         if not self.files:
@@ -182,6 +186,7 @@ class Datasette:
             if db.name in self.databases:
                 raise Exception("Multiple files with same stem: {}".format(db.name))
             self.add_database(db.name, db)
+        self.scan_dirs()
         self.cache_headers = cache_headers
         self.cors = cors
         self._metadata = metadata or {}
@@ -216,6 +221,25 @@ class Datasette:
 
     def remove_database(self, name):
         self.databases.pop(name)
+
+    def scan_dirs(self):
+        # Recurse through self.dirs looking for new SQLite DBs
+        i = 0
+        for dir in self.dirs:
+            print(dir)
+            for filepath in Path(dir).glob("**/*.db"):
+                print(filepath)
+                if is_valid_sqlite(filepath):
+                    self.add_database(
+                        str(filepath)
+                        .replace("../", "")
+                        .replace("/", "_")
+                        .replace(".db", ""),
+                        Database(self, filepath, is_mutable=True),
+                    )
+                    i += 1
+                    if i >= 20:
+                        break
 
     def config(self, key):
         return self._config.get(key, None)

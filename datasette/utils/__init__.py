@@ -790,3 +790,28 @@ class RequestParameters(dict):
     def getlist(self, name, default=None):
         "Return full list"
         return super().get(name, default)
+
+
+class ConnectionProblem(Exception):
+    pass
+
+
+class SpatialiteConnectionProblem(ConnectionProblem):
+    pass
+
+
+def check_connection(conn):
+    tables = [
+        r[0]
+        for r in conn.execute(
+            "select name from sqlite_master where type='table'"
+        ).fetchall()
+    ]
+    for table in tables:
+        try:
+            conn.execute("PRAGMA table_info({});".format(escape_sqlite(table)),)
+        except sqlite3.OperationalError as e:
+            if e.args[0] == "no such module: VirtualSpatialIndex":
+                raise SpatialiteConnectionProblem(e)
+            else:
+                raise ConnectionProblem(e)

@@ -7,6 +7,7 @@ from datasette.utils.asgi import Request
 from datasette.filters import Filters
 import json
 import os
+import pathlib
 import pytest
 import sqlite3
 import tempfile
@@ -410,3 +411,15 @@ def test_format_bytes(bytes, expected):
 )
 def test_escape_fts(query, expected):
     assert expected == utils.escape_fts(query)
+
+
+def test_check_connection_spatialite_raises():
+    path = str(pathlib.Path(__file__).parent / "spatialite.db")
+    conn = sqlite3.connect(path)
+    with pytest.raises(utils.SpatialiteConnectionProblem):
+        utils.check_connection(conn)
+
+
+def test_check_connection_passes():
+    conn = sqlite3.connect(":memory:")
+    utils.check_connection(conn)

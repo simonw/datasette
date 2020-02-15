@@ -10,6 +10,9 @@ from subprocess import call
 import sys
 from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
 from .utils import (
+    check_connection,
+    ConnectionProblem,
+    SpatialiteConnectionProblem,
     temporary_docker_directory,
     value_as_boolean,
     StaticMount,
@@ -369,7 +372,25 @@ def serve(
         version_note=version_note,
     )
     # Run async sanity checks - but only if we're not under pytest
-    asyncio.get_event_loop().run_until_complete(ds.run_sanity_checks())
+    asyncio.get_event_loop().run_until_complete(check_databases(ds))
 
     # Start the server
     uvicorn.run(ds.app(), host=host, port=port, log_level="info")
+
+
+async def check_databases(ds):
+    # Run check_connection against every connected database
+    # to confirm they are all usable
+    for database in list(ds.databases.values()):
+        try:
+            await database.execute_against_connection_in_thread(check_connection)
+        except SpatialiteConnectionProblem:
+            raise click.UsageError(
+                "It looks like you're trying to load a SpatiaLite"
+                " database without first loading the SpatiaLite module."
+                "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+            )
+        except ConnectionProblem as e:
+            raise click.UsageError(
+                "Connection to {} failed check: {}".format(database.path, str(e.args[0]))
+            )

@@ -329,11 +329,16 @@ ureg = pint.UnitRegistry()
 
 
 @hookimpl
-def prepare_connection(conn):
+def prepare_connection(conn, database, datasette):
     def convert_units(amount, from_, to_):
         "select convert_units(100, 'm', 'ft');"
         return (amount * ureg(from_)).to(to_).to_tuple()[0]
     conn.create_function('convert_units', 3, convert_units)
+    def prepare_connection_args():
+        return 'database={}, datasette.plugin_config("name-of-plugin")={}'.format(
+            database, datasette.plugin_config("name-of-plugin")
+        )
+    conn.create_function('prepare_connection_args', 0, prepare_connection_args)
 
 
 @hookimpl

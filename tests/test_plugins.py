@@ -10,11 +10,20 @@ import pytest
 import urllib
 
 
-def test_plugins_dir_plugin(app_client):
+def test_plugins_dir_plugin_prepare_connection(app_client):
     response = app_client.get(
         "/fixtures.json?sql=select+convert_units(100%2C+'m'%2C+'ft')"
     )
     assert pytest.approx(328.0839) == response.json["rows"][0][0]
+
+
+def test_plugin_prepare_connection_arguments(app_client):
+    response = app_client.get(
+        "/fixtures.json?sql=select+prepare_connection_args()&_shape=arrayfirst"
+    )
+    assert [
+        "database=fixtures, datasette.plugin_config(\"name-of-plugin\")={'depth': 'root'}"
+    ] == response.json
 
 
 @pytest.mark.parametrize(

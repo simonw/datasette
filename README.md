@@ -22,6 +22,8 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 21st February 2020: [Datasette 0.36](http://datasette.readthedocs.io/en/latest/changelog.html#v0-36) - new internals documentation for plugins, `prepare_connection()` now accepts optional `database` and `datasette` arguments.
+ * 4th February 2020: [Datasette 0.35](http://datasette.readthedocs.io/en/latest/changelog.html#v0-35) - new `.render_template()` method for plugins.
  * 29th January 2020: [Datasette 0.34](http://datasette.readthedocs.io/en/latest/changelog.html#v0-34) - improvements to search, `datasette publish cloudrun` and `datasette package`.
  * 21st January 2020: [Deploying a data API using GitHub Actions and Cloud Run](https://simonwillison.net/2020/Jan/21/github-actions-cloud-run/) - how to use GitHub Actions and Google Cloud Run to automatically scrape data and deploy the result as an API with Datasette.
  * 22nd December 2019: [Datasette 0.33](http://datasette.readthedocs.io/en/latest/changelog.html#v0-33) - various small improvements.

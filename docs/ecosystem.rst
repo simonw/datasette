@@ -49,6 +49,11 @@ geojson-to-sqlite
 
 `geojson-to-sqlite <https://github.com/simonw/geojson-to-sqlite>`__ converts GeoJSON files to SQLite, optionally using SpatiaLite to create geospatial indexes for fast geometric queries.
 
+shapefile-to-sqlite
+-------------------
+
+`shapefile-to-sqlite <https://github.com/simonw/shapefile-to-sqlite>`__ converts ESRI shapefiles to SQLite, optionally using SpatiaLite .
+
 socrata2sql
 -----------
 
@@ -166,3 +171,18 @@ datasette-template-sql
 ----------------------
 
 `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`__ adds a custom template function that can be used to execute and loop through the results of SQL queries in your templates. See `this blog post <https://simonwillison.net/2019/Nov/18/datasette-template-sql/>`__ for background on the plugin.
+
+datasette-mask-columns
+----------------------
+
+`datasette-mask-columns <https://github.com/simonw/datasette-mask-columns>`__ allows you to use ``metadata.json`` to configure specific table columns that should be masked - that should return null no matter what value is contained within the column. This is useful for things like hiding ``password`` columns from public display.
+
+datasette-auth-existing-cookies
+-------------------------------
+
+`datasette-auth-existing-cookies <https://github.com/simonw/datasette-auth-existing-cookies>`__ allows you to configure Datasette to authenticate users based on existing cookies they may have for the current domain - useful for running Datasette on a subdomain of your main site, for example. See `this blog post <https://simonwillison.net/2020/Jan/29/weeknotes-datasette-cookies-sentry/>`__ for background on the plugin.
+
+datasette-sentry
+----------------
+
+`datasette-sentry <https://github.com/simonw/datasette-sentry>`__ lets you configure Datasette to send any error reports to `Sentry <https://sentry.io/>`__.

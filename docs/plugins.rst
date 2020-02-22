@@ -340,11 +340,17 @@ The full list of available plugin hooks is as follows.
 
 .. _plugin_hook_prepare_connection:
 
-prepare_connection(conn)
-~~~~~~~~~~~~~~~~~~~~~~~~
+prepare_connection(conn, database, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``conn`` - sqlite3 connection object
     The connection that is being opened
+
+``database`` - string
+    The name of the database
+
+``datasette`` - :ref:`datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 This hook is called when a new SQLite database connection is created. You can
 use it to `register custom SQL functions <https://docs.python.org/2/library/sqlite3.html#sqlite3.Connection.create_function>`_,

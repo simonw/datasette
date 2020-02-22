@@ -392,5 +392,7 @@ async def check_databases(ds):
             )
         except ConnectionProblem as e:
             raise click.UsageError(
-                "Connection to {} failed check: {}".format(database.path, str(e.args[0]))
+                "Connection to {} failed check: {}".format(
+                    database.path, str(e.args[0])
+                )
             )

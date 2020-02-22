@@ -11,7 +11,7 @@ def asgi_wrapper(datasette):
 
 
 @hookspec
-def prepare_connection(conn):
+def prepare_connection(conn, database, datasette):
     "Modify SQLite connection in some way e.g. register custom SQL functions"
 
 

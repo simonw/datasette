@@ -316,7 +316,7 @@ class Datasette:
             }
         )
 
-    def prepare_connection(self, conn):
+    def prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         for name, num_args, func in self.sqlite_functions:
@@ -328,7 +328,7 @@ class Datasette:
         if self.config("cache_size_kb"):
             conn.execute("PRAGMA cache_size=-{}".format(self.config("cache_size_kb")))
         # pylint: disable=no-member
-        pm.hook.prepare_connection(conn=conn)
+        pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
 
     async def execute(
         self,
@@ -412,7 +412,7 @@ class Datasette:
 
     def versions(self):
         conn = sqlite3.connect(":memory:")
-        self.prepare_connection(conn)
+        self.prepare_connection(conn, ":memory:")
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {}
         for extension, testsql, hasversion in (

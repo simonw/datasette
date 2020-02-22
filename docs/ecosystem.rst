@@ -32,7 +32,7 @@ db-to-sqlite
 
 You can mirror an entire database (including copying foreign key relationships) with the ``--all`` option::
 
-    $ db-to-sqlite --connection="postgresql://simonw@localhost/myblog" --all blog.db
+    $ db-to-sqlite --all "postgresql://simonw@localhost/myblog" blog.db
 
 dbf-to-sqlite
 -------------

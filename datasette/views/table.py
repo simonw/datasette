@@ -539,7 +539,19 @@ class TableView(RowTableShared):
 
         # Number of filtered rows in whole set:
         filtered_table_rows_count = None
-        if count_sql:
+        if (
+            not db.is_mutable
+            and self.ds.inspect_data
+            and count_sql == "select count(*) from {} ".format(table)
+        ):
+            try:
+                filtered_table_rows_count = self.ds.inspect_data[database]["tables"][
+                    table
+                ]["count"]
+            except KeyError:
+                pass
+
+        if count_sql and filtered_table_rows_count is None:
             try:
                 count_rows = list(
                     await self.ds.execute(database, count_sql, from_sql_params)

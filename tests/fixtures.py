@@ -227,6 +227,12 @@ def app_client_with_cors():
     yield from make_app_client(cors=True)
 
 
+@pytest.fixture(scope="session")
+def app_client_immutable_and_inspect_file():
+    inspect_data = {'fixtures': {'tables': {'sortable': {'count': 100}}}}
+    yield from make_app_client(is_immutable=True, inspect_data=inspect_data)
+
+
 def generate_compound_rows(num):
     for a, b, c in itertools.islice(
         itertools.product(string.ascii_lowercase, repeat=3), num

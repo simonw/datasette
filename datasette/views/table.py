@@ -356,13 +356,18 @@ class TableView(RowTableShared):
             pair for pair in special_args.items() if pair[0].startswith("_search")
         )
         search = ""
+        search_mode_raw = special_args.get("_searchmode") == "raw"
         if fts_table and search_args:
             if "_search" in search_args:
                 # Simple ?_search=xxx
                 search = search_args["_search"]
                 where_clauses.append(
-                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match escape_fts(:search))".format(
-                        fts_table=escape_sqlite(fts_table), fts_pk=escape_sqlite(fts_pk)
+                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match {match_clause})".format(
+                        fts_table=escape_sqlite(fts_table),
+                        fts_pk=escape_sqlite(fts_pk),
+                        match_clause=":search"
+                        if search_mode_raw
+                        else "escape_fts(:search)",
                     )
                 )
                 extra_human_descriptions.append('search matches "{}"'.format(search))
@@ -375,10 +380,12 @@ class TableView(RowTableShared):
                         raise DatasetteError("Cannot search by that column", status=400)
 
                     where_clauses.append(
-                        "rowid in (select rowid from {fts_table} where {search_col} match escape_fts(:search_{i}))".format(
+                        "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
-                            i=i,
+                            match_clause=":search_{}".format(i)
+                            if search_mode_raw
+                            else "escape_fts(:search_{})".format(i),
                         )
                     )
                     extra_human_descriptions.append(

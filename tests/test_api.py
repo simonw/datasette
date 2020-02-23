@@ -953,6 +953,19 @@ def test_sortable_columns_metadata(app_client):
             [],
         ),
         (
+            # Without _searchmode=raw this should return no results
+            "/fixtures/searchable.json?_search=te*+AND+do*",
+            [],
+        ),
+        (
+            # _searchmode=raw
+            "/fixtures/searchable.json?_search=te*+AND+do*&_searchmode=raw",
+            [
+                [1, "barry cat", "terry dog", "panther"],
+                [2, "terry dog", "sara weasel", "puma"],
+            ],
+        ),
+        (
             "/fixtures/searchable.json?_search=weasel",
             [[2, "terry dog", "sara weasel", "puma"]],
         ),

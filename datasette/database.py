@@ -78,13 +78,13 @@ class Database:
         reply_queue = janus.Queue()
         self._write_queue.put(WriteTask(fn, task_id, reply_queue))
         if block:
-            return WriteResponse(uuid, await reply_queue.async_q.get())
+            return await reply_queue.async_q.get()
         else:
-            return WriteResponse(uuid, in_progress=True)
+            return task_id
 
     def _execute_writes(self):
-        # Looks after the write connection to this database.
-        # Runs in a thread.
+        # Infinite looping thread that protects the single write connection
+        # to this database
         conn = self.connect(write=True)
         while True:
             task = self._write_queue.get()
@@ -372,12 +372,3 @@ class WriteTask:
         self.fn = fn
         self.task_id = task_id
         self.reply_queue = reply_queue
-
-
-class WriteResponse:
-    __slots__ = ("uuid", "reply", "in_progress")
-
-    def __init__(self, uuid, reply=None, in_progress=False):
-        self.uuid = uuid
-        self.reply = reply
-        self.in_progress = in_progress

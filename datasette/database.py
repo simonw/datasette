@@ -78,7 +78,7 @@ class Database:
         reply_queue = janus.Queue()
         self._write_queue.put(WriteTask(fn, task_id, reply_queue))
         if block:
-            return WriteResponse(uuid, reply_queue.async_q.get())
+            return WriteResponse(uuid, await reply_queue.async_q.get())
         else:
             return WriteResponse(uuid, in_progress=True)
 

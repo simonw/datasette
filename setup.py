@@ -44,6 +44,7 @@ setup(
         "pluggy~=0.13.0",
         "uvicorn~=0.11",
         "aiofiles~=0.4.0",
+        "janus~=0.4.0",
     ],
     entry_points="""
         [console_scripts]

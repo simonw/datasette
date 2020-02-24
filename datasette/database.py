@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 from pathlib import Path
+import janus
 import queue
 import threading
 import uuid
@@ -60,12 +61,12 @@ class Database:
             "file:{}{}".format(self.path, qs), uri=True, check_same_thread=False
         )
 
-    def execute_write(self, sql, params=None, timeout=0.5):
-        return self.execute_write_fn(
-            lambda conn: conn.execute(sql, params or []), timeout=timeout
+    async def execute_write(self, sql, params=None, block=False):
+        return await self.execute_write_fn(
+            lambda conn: conn.execute(sql, params or []), block=block
         )
 
-    def execute_write_fn(self, fn, timeout=0.5):
+    async def execute_write_fn(self, fn, block=False):
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
         if self._write_queue is None:
             self._write_queue = queue.Queue()
@@ -74,12 +75,11 @@ class Database:
                 target=self._execute_writes, daemon=True
             )
             self._write_thread.start()
-        reply_queue = queue.Queue()
+        reply_queue = janus.Queue()
         self._write_queue.put(WriteTask(fn, task_id, reply_queue))
-        try:
-            reply = reply_queue.get(timeout=timeout)
-            return WriteResponse(uuid, reply)
-        except queue.Empty:
+        if block:
+            return WriteResponse(uuid, reply_queue.async_q.get())
+        else:
             return WriteResponse(uuid, in_progress=True)
 
     def _execute_writes(self):
@@ -88,7 +88,7 @@ class Database:
         conn = self.connect(write=True)
         while True:
             task = self._write_queue.get()
-            task.reply_queue.put(task.fn(conn))
+            task.reply_queue.sync_q.put(task.fn(conn))
 
     async def execute_against_connection_in_thread(self, fn):
         def in_thread():

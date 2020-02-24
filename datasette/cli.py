@@ -341,7 +341,8 @@ def serve(
         import hupper
 
         reloader = hupper.start_reloader("datasette.cli.serve")
-        reloader.watch_files(files)
+        if immutable:
+            reloader.watch_files(immutable)
         if metadata:
             reloader.watch_files([metadata.name])
 

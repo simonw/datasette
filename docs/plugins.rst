@@ -349,7 +349,7 @@ prepare_connection(conn, database, datasette)
 ``database`` - string
     The name of the database
 
-``datasette`` - :ref:`datasette`
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 This hook is called when a new SQLite database connection is created. You can
@@ -409,7 +409,7 @@ extra_css_urls(template, database, table, datasette)
 ``table`` - string or None
     The name of the table
 
-``datasette`` - :ref:`datasette`
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 Return a list of extra CSS URLs that should be included on the page. These can
@@ -545,7 +545,7 @@ Lets you customize the display of values within table cells in the HTML table vi
 ``database`` - string
     The name of the database
 
-``datasette`` - :ref:`datasette`
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
@@ -615,7 +615,7 @@ Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`
 ``view_name`` - string
     The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
 
-``datasette`` - :ref:`datasette`
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 The ``template``, ``database`` and ``table`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
@@ -647,7 +647,7 @@ Extra template variables that should be made available in the rendered template 
 ``request`` - object
     The current HTTP request object. ``request.scope`` provides access to the ASGI scope.
 
-``datasette`` - :ref:`datasette`
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 This hook can return one of three different types:
@@ -692,7 +692,7 @@ You can then use the new function in a template like so::
 register_output_renderer(datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``datasette`` - :ref:`datasette`
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 Allows the plugin to register a new output renderer, to output data in a custom format. The hook function should return a dictionary, or a list of dictionaries, which contain the file extension you want to handle and a callback function:

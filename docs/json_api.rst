@@ -281,6 +281,12 @@ Special table arguments
     Like ``_search=`` but allows you to specify the column to be searched, as
     opposed to searching all columns that have been indexed by FTS.
 
+``?_searchmode=raw``
+    With this option, queries passed to ``?_search=`` or ``?_search_COLUMN=`` will
+    not have special characters escaped. This means you can make use of the full
+    set of `advanced SQLite FTS syntax <https://www.sqlite.org/fts5.html#full_text_query_syntax>`__,
+    though this could potentially result in errors if the wrong syntax is used.
+
 ``?_where=SQL-fragment``
     If the :ref:`config_allow_sql` config option is enabled, this parameter
     can be used to pass one or more additional SQL fragments to be used in the

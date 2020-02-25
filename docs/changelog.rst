@@ -9,7 +9,7 @@ Changelog
 0.36 (2020-02-21)
 -----------------
 
-* The ``datasette`` object passed to plugins now has API documentation: :ref:`datasette`. (`#576 <https://github.com/simonw/datasette/issues/576>`__)
+* The ``datasette`` object passed to plugins now has API documentation: :ref:`internals_datasette`. (`#576 <https://github.com/simonw/datasette/issues/576>`__)
 * New methods on ``datasette``: ``.add_database()`` and ``.remove_database()`` - :ref:`documentation <datasette_add_database>`. (`#671 <https://github.com/simonw/datasette/issues/671>`__)
 * ``prepare_connection()`` plugin hook now takes optional ``datasette`` and ``database`` arguments - :ref:`plugin_hook_prepare_connection`. (`#678 <https://github.com/simonw/datasette/issues/678>`__)
 * Added three new plugins and one new conversion tool to the :ref:`ecosystem`.

@@ -80,7 +80,11 @@ class Database:
         reply_queue = janus.Queue()
         self._write_queue.put(WriteTask(fn, task_id, reply_queue))
         if block:
-            return await reply_queue.async_q.get()
+            result = await reply_queue.async_q.get()
+            if isinstance(result, Exception):
+                raise result
+            else:
+                return result
         else:
             return task_id
 
@@ -90,7 +94,11 @@ class Database:
         conn = self.connect(write=True)
         while True:
             task = self._write_queue.get()
-            task.reply_queue.sync_q.put(task.fn(conn))
+            try:
+                result = task.fn(conn)
+            except Exception as e:
+                result = e
+            task.reply_queue.sync_q.put(result)
 
     async def execute_against_connection_in_thread(self, fn):
         def in_thread():

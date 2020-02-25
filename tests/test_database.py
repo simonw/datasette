@@ -131,10 +131,20 @@ async def test_execute_write_fn_block_true(app_client):
 
     def write_fn(conn):
         with conn:
-            conn.execute("delete from roadside_attractions where id = 1;")
+            conn.execute("delete from roadside_attractions where pk = 1;")
             row = conn.execute("select count(*) from roadside_attractions").fetchone()
-            print("row = ", row)
         return row[0]
 
     new_count = await db.execute_write_fn(write_fn, block=True)
     assert 3 == new_count
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_exception(app_client):
+    db = app_client.ds.databases["fixtures"]
+
+    def write_fn(conn):
+        assert False
+
+    with pytest.raises(AssertionError):
+        await db.execute_write_fn(write_fn, block=True)

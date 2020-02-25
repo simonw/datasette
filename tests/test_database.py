@@ -123,3 +123,18 @@ async def test_execute_write_fn_block_false(app_client):
 
     task_id = await db.execute_write_fn(write_fn)
     assert isinstance(task_id, uuid.UUID)
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_block_true(app_client):
+    db = app_client.ds.databases["fixtures"]
+
+    def write_fn(conn):
+        with conn:
+            conn.execute("delete from roadside_attractions where id = 1;")
+            row = conn.execute("select count(*) from roadside_attractions").fetchone()
+            print("row = ", row)
+        return row[0]
+
+    new_count = await db.execute_write_fn(write_fn, block=True)
+    assert 3 == new_count

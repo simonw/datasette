@@ -11,6 +11,7 @@ from .fixtures import (  # noqa
     app_client_conflicting_database_names,
     app_client_with_cors,
     app_client_with_dot,
+    app_client_immutable_and_inspect_file,
     generate_compound_rows,
     generate_sortable_rows,
     make_app_client,
@@ -1779,3 +1780,8 @@ def test_null_foreign_keys_are_not_expanded(app_client):
         },
         {"pk": "2", "foreign_key_with_label": None, "foreign_key_with_no_label": None,},
     ] == response.json
+
+
+def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
+    response = app_client_immutable_and_inspect_file.get("/fixtures/sortable.json")
+    assert response.json["filtered_table_rows_count"] == 100

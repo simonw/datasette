@@ -62,9 +62,11 @@ class Database:
         )
 
     async def execute_write(self, sql, params=None, block=False):
-        return await self.execute_write_fn(
-            lambda conn: conn.execute(sql, params or []), block=block
-        )
+        def _inner(conn):
+            with conn:
+                return conn.execute(sql, params or [])
+
+        return await self.execute_write_fn(_inner, block=block)
 
     async def execute_write_fn(self, fn, block=False):
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")

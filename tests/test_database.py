@@ -1,5 +1,7 @@
 from .fixtures import app_client
 import pytest
+import time
+import uuid
 
 
 @pytest.mark.parametrize(
@@ -83,3 +85,41 @@ async def test_table_names(app_client):
         "attraction_characteristic",
         "roadside_attraction_characteristics",
     ] == table_names
+
+
+@pytest.mark.asyncio
+async def test_execute_write_block_true(app_client):
+    db = app_client.ds.databases["fixtures"]
+    await db.execute_write(
+        "update roadside_attractions set name = ? where pk = ?",
+        ["Mystery!", 1],
+        block=True,
+    )
+    rows = await db.execute("select name from roadside_attractions where pk = 1")
+    assert "Mystery!" == rows.rows[0][0]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_block_false(app_client):
+    db = app_client.ds.databases["fixtures"]
+    await db.execute_write(
+        "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1],
+    )
+    time.sleep(0.1)
+    rows = await db.execute("select name from roadside_attractions where pk = 1")
+    assert "Mystery!" == rows.rows[0][0]
+
+
+@pytest.mark.asyncio
+async def test_execute_write_fn_block_false(app_client):
+    db = app_client.ds.databases["fixtures"]
+
+    def write_fn(conn):
+        with conn:
+            conn.execute("delete from roadside_attractions where id = 1;")
+            row = conn.execute("select count(*) from roadside_attractions").fetchone()
+            print("row = ", row)
+        return row[0]
+
+    task_id = await db.execute_write_fn(write_fn)
+    assert isinstance(task_id, uuid.UUID)

@@ -109,7 +109,7 @@ By default queries are considered to be "fire and forget" - they will be added t
 
 If you pass ``block=True`` this behaviour changes: the method will block until the write operation has completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
 
-.. _database_execute_write:
+.. _database_execute_write_fn:
 
 await db.execute_write_fn(fn, block=False)
 ------------------------------------------

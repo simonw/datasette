@@ -103,7 +103,7 @@ await db.execute_write(sql, params=None, block=False)
 
 This method can be used to queue up a non-SELECT SQL query to be executed against a single write connection to the database.
 
-You can pass additional SQL parametercs as a tuple or list.
+You can pass additional SQL parameters as a tuple or dictionary.
 
 By default queries are considered to be "fire and forget" - they will be added to the queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 

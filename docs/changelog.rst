@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v0_37:
+
+0.37 (2020-02-25)
+-----------------
+
+* Plugins now have a supported mechanism for writing to a database, using the new ``.execute_write()`` and ``.execute_write_fn()`` methods. :ref:`Documentation <database_execute_write>`. (`#682 <https://github.com/simonw/datasette/issues/682>`__)
+* Immutable databases that have had their rows counted using the ``inspect`` command now use the calculated count more effectively - thanks, Kevin Keogh. (`#666 <https://github.com/simonw/datasette/pull/666>`__)
+* ``--reload`` no longer restarts the server if a database file is modified, unless that database was opened immutable mode with ``-i``. (`#494 <https://github.com/simonw/datasette/issues/494>`__)
+* New ``?_searchmode=raw`` option turns off escaping for FTS queries in ``?_search=`` allowing full use of SQLite's `FTS5 query syntax <https://www.sqlite.org/fts5.html#full_text_query_syntax>`__. (`#676 <https://github.com/simonw/datasette/issues/676>`__)
+
 .. _v0_36:
 
 0.36 (2020-02-21)

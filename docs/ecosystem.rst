@@ -87,6 +87,11 @@ datasette-auth-github
 
 `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ adds an authentication layer to Datasette. Users will have to sign in using their GitHub account before they can view data or interact with Datasette. You can also use it to restrict access to specific GitHub users, or to members of specified GitHub `organizations <https://help.github.com/en/articles/about-organizations>`__ or `teams <https://help.github.com/en/articles/organizing-members-into-teams>`__.
 
+datasette-upload-csvs
+---------------------
+
+`datasette-upload-csvs <https://github.com/simonw/datasette-upload-csvs>`__ allows users to upload CSV files directly into a Datasette instance through their web browser.
+
 datasette-json-html
 -------------------
 

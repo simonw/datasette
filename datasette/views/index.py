@@ -11,8 +11,8 @@ from .base import BaseView
 # Truncate table list on homepage at:
 TRUNCATE_AT = 5
 
-# Only attempt counts if less than this many tables:
-COUNT_TABLE_LIMIT = 30
+# Only attempt counts if database less than this size in bytes:
+COUNT_DB_SIZE_LIMIT = 100 * 1024 * 1024
 
 
 class IndexView(BaseView):
@@ -29,7 +29,7 @@ class IndexView(BaseView):
             views = await db.view_names()
             # Perform counts only for immutable or DBS with <= COUNT_TABLE_LIMIT tables
             table_counts = {}
-            if not db.is_mutable or len(table_names) <= COUNT_TABLE_LIMIT:
+            if not db.is_mutable or db.size < COUNT_DB_SIZE_LIMIT:
                 table_counts = await db.table_counts(10)
                 # If any of these are None it means at least one timed out - ignore them all
                 if any(v is None for v in table_counts.values()):

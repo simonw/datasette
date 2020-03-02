@@ -673,7 +673,7 @@ Here's an example plugin that returns an authentication object from the ASGI sco
             "auth": request.scope.get("auth")
         }
 
-This example returns an awaitable function which adds a list of `hidden_table_names` to the context:
+This example returns an awaitable function which adds a list of ``hidden_table_names`` to the context:
 
 .. code-block:: python
 

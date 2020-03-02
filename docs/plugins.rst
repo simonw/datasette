@@ -673,6 +673,20 @@ Here's an example plugin that returns an authentication object from the ASGI sco
             "auth": request.scope.get("auth")
         }
 
+This example returns an awaitable function which adds a list of `hidden_table_names` to the context:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_template_vars(datasette, database):
+        async def hidden_table_names():
+            if database:
+                db = datasette.databases[database]
+                return {"hidden_table_names": await db.hidden_table_names()}
+            else:
+                return {}
+        return hidden_table_names
+
 And here's an example which adds a ``sql_first(sql_query)`` function which executes a SQL statement and returns the first column of the first row of results:
 
 .. code-block:: python
@@ -682,6 +696,7 @@ And here's an example which adds a ``sql_first(sql_query)`` function which execu
         async def sql_first(sql, dbname=None):
             dbname = dbname or database or next(iter(datasette.databases.keys()))
             return (await datasette.execute(dbname, sql)).rows[0][0]
+        return {"sql_first": sql_first}
 
 You can then use the new function in a template like so::
 

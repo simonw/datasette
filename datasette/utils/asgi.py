@@ -48,7 +48,11 @@ class Request:
         if "raw_path" in self.scope:
             return self.scope["raw_path"].decode("latin-1")
         else:
-            return self.scope["path"].decode("utf-8")
+            path = self.scope["path"]
+            if isinstance(path, str):
+                return path
+            else:
+                return path.decode("utf-8")
 
     @property
     def query_string(self):

@@ -97,6 +97,7 @@ class Database:
             try:
                 result = task.fn(conn)
             except Exception as e:
+                print(e)
                 result = e
             task.reply_queue.sync_q.put(result)
 

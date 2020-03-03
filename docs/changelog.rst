@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v0_37_1:
+
+0.37.1 (2020-03-02)
+-------------------
+
+* Don't attempt to count table rows to display on the index page for databases > 100MB. (`#688 <https://github.com/simonw/datasette/issues/688>`__)
+* Print exceptions if they occur in the write thread rather than silently swallowing them.
+* Handle the possibility of ``scope["path"]`` being a string rather than bytes
+* Better documentation for the :ref:`plugin_hook_extra_template_vars` plugin hook.
+
 .. _v0_37:
 
 0.37 (2020-02-25)

@@ -160,6 +160,6 @@ def get_existing_services():
 
 
 def _validate_memory(ctx, param, value):
-    if re.match(r"^\d+(Gi|G|Mi|M)$", value) is None:
+    if value and re.match(r"^\d+(Gi|G|Mi|M)$", value) is None:
         raise click.BadParameter("--memory should be a number then Gi/G/Mi/M e.g 1Gi")
     return value

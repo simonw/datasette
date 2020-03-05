@@ -2,6 +2,7 @@ from datasette import hookimpl
 import click
 import json
 import os
+import re
 from subprocess import check_call, check_output
 
 from .common import (
@@ -30,6 +31,11 @@ def publish_subcommand(publish):
         is_flag=True,
         help="Output the generated Dockerfile and metadata.json",
     )
+    @click.option(
+        "--memory",
+        callback=_validate_memory,
+        help="Memory to allocate in Cloud Run, e.g. 1Gi",
+    )
     def cloudrun(
         files,
         metadata,
@@ -52,6 +58,7 @@ def publish_subcommand(publish):
         service,
         spatialite,
         show_files,
+        memory,
     ):
         fail_if_publish_binary_not_installed(
             "gcloud", "Google Cloud", "https://cloud.google.com/sdk/"
@@ -127,8 +134,8 @@ def publish_subcommand(publish):
             image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
             check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
         check_call(
-            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}".format(
-                image_id, service,
+            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}".format(
+                image_id, service, " --memory {}".format(memory) if memory else ""
             ),
             shell=True,
         )
@@ -150,3 +157,9 @@ def get_existing_services():
         }
         for service in services
     ]
+
+
+def _validate_memory(ctx, param, value):
+    if re.match(r"^\d+(Gi|G|Mi|M)$", value) is None:
+        raise click.BadParameter("--memory should be a number then Gi/G/Mi/M e.g 1Gi")
+    return value

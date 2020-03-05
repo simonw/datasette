@@ -1,6 +1,7 @@
 from click.testing import CliRunner
 from datasette import cli
 from unittest import mock
+import pytest
 import json
 
 
@@ -91,6 +92,43 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which):
                 mock.call(
                     "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test".format(
                         tag
+                    ),
+                    shell=True,
+                ),
+            ]
+        )
+
+
+@mock.patch("shutil.which")
+@mock.patch("datasette.publish.cloudrun.check_output")
+@mock.patch("datasette.publish.cloudrun.check_call")
+@pytest.mark.parametrize(
+    "memory,should_fail",
+    [["1Gi", False], ["2G", False], ["256Mi", False], ["4", True], ["GB", True],],
+)
+def test_publish_cloudrun_memory(
+    mock_call, mock_output, mock_which, memory, should_fail
+):
+    mock_output.return_value = "myproject"
+    mock_which.return_value = True
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        open("test.db", "w").write("data")
+        result = runner.invoke(
+            cli.cli,
+            ["publish", "cloudrun", "test.db", "--service", "test", "--memory", memory],
+        )
+        if should_fail:
+            assert 2 == result.exit_code
+            return
+        assert 0 == result.exit_code
+        tag = "gcr.io/{}/datasette".format(mock_output.return_value)
+        mock_call.assert_has_calls(
+            [
+                mock.call("gcloud builds submit --tag {}".format(tag), shell=True),
+                mock.call(
+                    "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test --memory {}".format(
+                        tag, memory
                     ),
                     shell=True,
                 ),

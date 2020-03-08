@@ -31,7 +31,6 @@ from .utils import (
     escape_css_string,
     escape_sqlite,
     format_bytes,
-    get_plugins,
     module_from_path,
     sqlite3,
     to_css_class,
@@ -47,7 +46,7 @@ from .utils.asgi import (
     asgi_send_redirect,
 )
 from .tracer import AsgiTracer
-from .plugins import pm, DEFAULT_PLUGINS
+from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
@@ -459,7 +458,7 @@ class Datasette:
         }
 
     def plugins(self, show_all=False):
-        ps = list(get_plugins(pm))
+        ps = list(get_plugins())
         if not show_all:
             ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
         return [
@@ -613,13 +612,12 @@ class Datasette:
         template_paths = []
         if self.template_dir:
             template_paths.append(self.template_dir)
-        template_paths.extend(
-            [
-                plugin["templates_path"]
-                for plugin in get_plugins(pm)
-                if plugin["templates_path"]
-            ]
-        )
+        plugin_template_paths = [
+            plugin["templates_path"]
+            for plugin in get_plugins()
+            if plugin["templates_path"]
+        ]
+        template_paths.extend(plugin_template_paths)
         template_paths.append(default_templates)
         template_loader = ChoiceLoader(
             [
@@ -661,7 +659,7 @@ class Datasette:
             add_route(asgi_static(dirname), r"/" + path + "/(?P<path>.*)$")
 
         # Mount any plugin static/ directories
-        for plugin in get_plugins(pm):
+        for plugin in get_plugins():
             if plugin["static_path"]:
                 add_route(
                     asgi_static(plugin["static_path"]),

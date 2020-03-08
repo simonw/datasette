@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import app_client, make_app_client, TEMP_PLUGIN_SECRET_FILE  # noqa
+from datasette.plugins import get_plugins, DEFAULT_PLUGINS
 from datasette.utils import sqlite3
 import base64
 import json
@@ -241,3 +242,13 @@ def test_plugins_async_template_function(restore_working_directory):
             sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
         )
         assert expected == extra_from_awaitable_function
+
+
+def test_default_plugins_have_no_templates_path_or_static_path():
+    # The default plugins that ship with Datasette should have their static_path and
+    # templates_path all set to None
+    plugins = get_plugins()
+    for plugin in plugins:
+        if plugin["name"] in DEFAULT_PLUGINS:
+            assert None is plugin["static_path"]
+            assert None is plugin["templates_path"]

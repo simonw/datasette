@@ -5,7 +5,6 @@ import click
 import hashlib
 import json
 import os
-import pkg_resources
 import re
 import shlex
 import tempfile
@@ -614,35 +613,6 @@ def module_from_path(path, name):
         code = compile(file.read(), path, "exec", dont_inherit=True)
     exec(code, mod.__dict__)
     return mod
-
-
-def get_plugins(pm):
-    plugins = []
-    plugin_to_distinfo = dict(pm.list_plugin_distinfo())
-    for plugin in pm.get_plugins():
-        static_path = None
-        templates_path = None
-        try:
-            if pkg_resources.resource_isdir(plugin.__name__, "static"):
-                static_path = pkg_resources.resource_filename(plugin.__name__, "static")
-            if pkg_resources.resource_isdir(plugin.__name__, "templates"):
-                templates_path = pkg_resources.resource_filename(
-                    plugin.__name__, "templates"
-                )
-        except (KeyError, ImportError):
-            # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
-            pass
-        plugin_info = {
-            "name": plugin.__name__,
-            "static_path": static_path,
-            "templates_path": templates_path,
-        }
-        distinfo = plugin_to_distinfo.get(plugin)
-        if distinfo:
-            plugin_info["version"] = distinfo.version
-            plugin_info["name"] = distinfo.project_name
-        plugins.append(plugin_info)
-    return plugins
 
 
 async def resolve_table_and_format(table_and_format, table_exists, allowed_formats=[]):

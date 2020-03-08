@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_38:
+
+0.38 (2020-03-08)
+-----------------
+
+* The `Docker build <https://hub.docker.com/r/datasetteproject/datasette>`__ of Datasette now uses SQLite 3.31.1, upgraded from 3.26. (`#695 <https://github.com/simonw/datasette/issues/695>`__)
+* ``datasette publish cloudrun`` now accepts an optional ``--memory=2Gi`` flag for setting the Cloud Run allocated memory to a value other than the default (256Mi).  (`#694 <https://github.com/simonw/datasette/issues/694>`__)
+* Fixed bug where templates that shipped with plugins were sometimes not being correctly loaded. (`#697 <https://github.com/simonw/datasette/issues/697>`__)
+
 .. _v0_37_1:
 
 0.37.1 (2020-03-02)

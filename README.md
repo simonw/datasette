@@ -22,7 +22,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
- * 25th February 2020: [Datasette 0.37](http://datasette.readthedocs.io/en/latest/changelog.html#v0-37) - new internal APIs enabling plugins to safely write to databases.
+ * 25th February 2020: [Datasette 0.37](http://datasette.readthedocs.io/en/latest/changelog.html#v0-37) - new internal APIs enabling plugins to safely write to databases. Read more here: [Datasette Writes](https://simonwillison.net/2020/Feb/26/weeknotes-datasette-writes/).
  * 21st February 2020: [Datasette 0.36](http://datasette.readthedocs.io/en/latest/changelog.html#v0-36) - new internals documentation for plugins, `prepare_connection()` now accepts optional `database` and `datasette` arguments.
  * 4th February 2020: [Datasette 0.35](http://datasette.readthedocs.io/en/latest/changelog.html#v0-35) - new `.render_template()` method for plugins.
  * 29th January 2020: [Datasette 0.34](http://datasette.readthedocs.io/en/latest/changelog.html#v0-34) - improvements to search, `datasette publish cloudrun` and `datasette package`.

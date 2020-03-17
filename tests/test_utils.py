@@ -423,3 +423,23 @@ def test_check_connection_spatialite_raises():
 def test_check_connection_passes():
     conn = sqlite3.connect(":memory:")
     utils.check_connection(conn)
+
+
+@pytest.mark.asyncio
+async def test_request_post_vars():
+    scope = {
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "scheme": "http",
+        "type": "http",
+        "headers": [[b"content-type", b"application/x-www-form-urlencoded"]],
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"foo=bar&baz=1", "more_body": False}
+
+    request = Request(scope, receive)
+    assert {"foo": "bar", "baz": "1"} == await request.post_vars()

@@ -516,12 +516,15 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
             plugins_dir,
             static,
             install,
+            plugin_secret,
             version_note,
             title,
             license,
             license_url,
             source,
             source_url,
+            about,
+            about_url,
             api_key,
         ):
             # Your implementation goes here

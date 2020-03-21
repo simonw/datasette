@@ -403,18 +403,20 @@ class TableView(RowTableShared):
 
         # Allow for custom sort order
         sort = special_args.get("_sort")
+        sort_desc = special_args.get("_sort_desc")
+
+        if sort and sort_desc:
+            raise DatasetteError("Cannot use _sort and _sort_desc at the same time")
+
         if sort:
             if sort not in sortable_columns:
                 raise DatasetteError("Cannot sort table by {}".format(sort))
 
             order_by = escape_sqlite(sort)
-        sort_desc = special_args.get("_sort_desc")
+
         if sort_desc:
             if sort_desc not in sortable_columns:
                 raise DatasetteError("Cannot sort table by {}".format(sort_desc))
-
-            if sort:
-                raise DatasetteError("Cannot use _sort and _sort_desc at the same time")
 
             order_by = "{} desc".format(escape_sqlite(sort_desc))
 
@@ -703,6 +705,8 @@ class TableView(RowTableShared):
             )
 
         async def extra_template():
+            nonlocal sort
+
             display_columns, display_rows = await self.display_columns_and_rows(
                 database,
                 table,
@@ -725,6 +729,15 @@ class TableView(RowTableShared):
             if request.args.get("_where"):
                 for where_text in request.args["_where"]:
                     form_hidden_args.append(("_where", where_text))
+
+            # if no sort specified AND table has a single primary key,
+            # set sort to that so arrow is displayed
+            if not sort and not sort_desc:
+                if 1 == len(pks):
+                    sort = pks[0]
+                elif use_rowid:
+                    sort = "rowid"
+
             return {
                 "supports_search": bool(fts_table),
                 "search": search or "",

@@ -462,7 +462,7 @@ def test_table_html_simple_primary_key(app_client):
     table = Soup(response.body, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.findAll("th")
-    assert "id" == ths[0].find("a").string.strip()
+    assert "id\xa0▼" == ths[0].find("a").string.strip()
     for expected_col, th in zip(("content",), ths[1:]):
         a = th.find("a")
         assert expected_col == a.string
@@ -580,6 +580,15 @@ def test_table_html_no_primary_key(app_client):
     assert expected == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ]
+
+
+def test_rowid_sortable_no_primary_key(app_client):
+    response = app_client.get("/fixtures/no_primary_key")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    assert table["class"] == ["rows-and-columns"]
+    ths = table.findAll("th")
+    assert "rowid\xa0▼" == ths[1].find("a").string.strip()
 
 
 def test_row_html_no_primary_key(app_client):

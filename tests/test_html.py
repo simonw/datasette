@@ -1105,7 +1105,7 @@ def test_metadata_sort(app_client):
     ths = table.findAll("th")
     assert ["id", "name\xa0▼"] == [th.find("a").string.strip() for th in ths]
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
-    assert [
+    expected = [
         [
             '<td class="col-id"><a href="/fixtures/facet_cities/3">3</a></td>',
             '<td class="col-name">Detroit</td>',
@@ -1122,7 +1122,14 @@ def test_metadata_sort(app_client):
             '<td class="col-id"><a href="/fixtures/facet_cities/1">1</a></td>',
             '<td class="col-name">San Francisco</td>',
         ],
-    ] == rows
+    ]
+    assert expected == rows
+    # Make sure you can reverse that sort order
+    response = app_client.get("/fixtures/facet_cities?_sort_desc=name")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert list(reversed(expected)) == rows
 
 
 def test_metadata_sort_desc(app_client):
@@ -1133,7 +1140,7 @@ def test_metadata_sort_desc(app_client):
     ths = table.findAll("th")
     assert ["pk\xa0▲", "name"] == [th.find("a").string.strip() for th in ths]
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
-    assert [
+    expected = [
         [
             '<td class="col-pk"><a href="/fixtures/attraction_characteristic/2">2</a></td>',
             '<td class="col-name">Paranormal</td>',
@@ -1142,4 +1149,11 @@ def test_metadata_sort_desc(app_client):
             '<td class="col-pk"><a href="/fixtures/attraction_characteristic/1">1</a></td>',
             '<td class="col-name">Museum</td>',
         ],
-    ] == rows
+    ]
+    assert expected == rows
+    # Make sure you can reverse that sort order
+    response = app_client.get("/fixtures/attraction_characteristic?_sort=pk")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert list(reversed(expected)) == rows

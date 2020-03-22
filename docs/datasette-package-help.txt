@@ -7,6 +7,7 @@ Usage: datasette package [OPTIONS] FILES...
 Options:
   -t, --tag TEXT            Name for the resulting Docker container, can optionally use
                             name:tag format
+
   -m, --metadata FILENAME   Path to JSON file containing metadata to publish
   --extra-options TEXT      Extra options to pass to datasette serve
   --branch TEXT             Install datasette from a GitHub branch e.g. master

@@ -22,7 +22,7 @@ def test_publish_cloudrun_invalid_database(mock_which):
     runner = CliRunner()
     result = runner.invoke(cli.cli, ["publish", "cloudrun", "woop.db"])
     assert result.exit_code == 2
-    assert 'Path "woop.db" does not exist' in result.output
+    assert "Path 'woop.db' does not exist" in result.output
 
 
 @mock.patch("shutil.which")

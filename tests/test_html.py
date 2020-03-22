@@ -1095,3 +1095,51 @@ def test_config_template_debug_off(app_client):
     response = app_client.get("/fixtures/facetable?_context=1")
     assert response.status == 200
     assert not response.text.startswith("<pre>{")
+
+
+def test_metadata_sort(app_client):
+    response = app_client.get("/fixtures/facet_cities")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    assert table["class"] == ["rows-and-columns"]
+    ths = table.findAll("th")
+    assert ["id", "name\xa0▼"] == [th.find("a").string.strip() for th in ths]
+    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert [
+        [
+            '<td class="col-id"><a href="/fixtures/facet_cities/3">3</a></td>',
+            '<td class="col-name">Detroit</td>',
+        ],
+        [
+            '<td class="col-id"><a href="/fixtures/facet_cities/2">2</a></td>',
+            '<td class="col-name">Los Angeles</td>',
+        ],
+        [
+            '<td class="col-id"><a href="/fixtures/facet_cities/4">4</a></td>',
+            '<td class="col-name">Memnonia</td>',
+        ],
+        [
+            '<td class="col-id"><a href="/fixtures/facet_cities/1">1</a></td>',
+            '<td class="col-name">San Francisco</td>',
+        ],
+    ] == rows
+
+
+def test_metadata_sort_desc(app_client):
+    response = app_client.get("/fixtures/attraction_characteristic")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    assert table["class"] == ["rows-and-columns"]
+    ths = table.findAll("th")
+    assert ["pk\xa0▲", "name"] == [th.find("a").string.strip() for th in ths]
+    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert [
+        [
+            '<td class="col-pk"><a href="/fixtures/attraction_characteristic/2">2</a></td>',
+            '<td class="col-name">Paranormal</td>',
+        ],
+        [
+            '<td class="col-pk"><a href="/fixtures/attraction_characteristic/1">1</a></td>',
+            '<td class="col-name">Museum</td>',
+        ],
+    ] == rows

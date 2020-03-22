@@ -304,6 +304,8 @@ METADATA = {
                     "fts_table": "searchable_fts",
                     "fts_pk": "pk",
                 },
+                "attraction_characteristic": {"sort_desc": "pk"},
+                "facet_cities": {"sort": "name"},
             },
             "queries": {
                 "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",

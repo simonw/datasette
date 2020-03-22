@@ -402,8 +402,8 @@ class TableView(RowTableShared):
         )
 
         # Allow for custom sort order
-        sort = special_args.get("_sort")
-        sort_desc = special_args.get("_sort_desc")
+        sort = special_args.get("_sort") or table_metadata.get("sort")
+        sort_desc = special_args.get("_sort_desc") or table_metadata.get("sort_desc")
 
         if sort and sort_desc:
             raise DatasetteError("Cannot use _sort and _sort_desc at the same time")

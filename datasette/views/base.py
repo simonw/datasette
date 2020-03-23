@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import itertools
+import json
 import re
 import time
 import urllib
@@ -8,15 +9,12 @@ import urllib
 import jinja2
 import pint
 
-from html import escape
-
 from datasette import __version__
 from datasette.plugins import pm
 from datasette.utils import (
     QueryInterrupted,
     InvalidSql,
     LimitedWriter,
-    format_bytes,
     is_url,
     path_with_added_args,
     path_with_removed_args,
@@ -64,34 +62,6 @@ class BaseView(AsgiView):
         response.body = b""
         return response
 
-    def _asset_urls(self, key, template, context):
-        # Flatten list-of-lists from plugins:
-        seen_urls = set()
-        for url_or_dict in itertools.chain(
-            itertools.chain.from_iterable(
-                getattr(pm.hook, key)(
-                    template=template.name,
-                    database=context.get("database"),
-                    table=context.get("table"),
-                    datasette=self.ds,
-                )
-            ),
-            (self.ds.metadata(key) or []),
-        ):
-            if isinstance(url_or_dict, dict):
-                url = url_or_dict["url"]
-                sri = url_or_dict.get("sri")
-            else:
-                url = url_or_dict
-                sri = None
-            if url in seen_urls:
-                continue
-            seen_urls.add(url)
-            if sri:
-                yield {"url": url, "sri": sri}
-            else:
-                yield {"url": url}
-
     def database_url(self, database):
         db = self.ds.databases[database]
         if self.ds.config("hash_urls") and db.hash:
@@ -104,63 +74,26 @@ class BaseView(AsgiView):
 
     async def render(self, templates, request, context):
         template = self.ds.jinja_env.select_template(templates)
-        select_templates = [
-            "{}{}".format("*" if template_name == template.name else "", template_name)
-            for template_name in templates
-        ]
-        body_scripts = []
-        # pylint: disable=no-member
-        for script in pm.hook.extra_body_script(
-            template=template.name,
-            database=context.get("database"),
-            table=context.get("table"),
-            view_name=self.name,
-            datasette=self.ds,
+        template_context = {
+            **context,
+            **{
+                "base_url": self.ds.config("base_url"),
+                "database_url": self.database_url,
+                "database_color": self.database_color,
+            },
+        }
+        if (
+            request
+            and request.args.get("_context")
+            and self.ds.config("template_debug")
         ):
-            body_scripts.append(jinja2.Markup(script))
-
-        extra_template_vars = {}
-        # pylint: disable=no-member
-        for extra_vars in pm.hook.extra_template_vars(
-            template=template.name,
-            database=context.get("database"),
-            table=context.get("table"),
-            view_name=self.name,
-            request=request,
-            datasette=self.ds,
-        ):
-            if callable(extra_vars):
-                extra_vars = extra_vars()
-            if asyncio.iscoroutine(extra_vars):
-                extra_vars = await extra_vars
-            assert isinstance(extra_vars, dict), "extra_vars is of type {}".format(
-                type(extra_vars)
+            return Response.html(
+                "<pre>{}</pre>".format(
+                    jinja2.escape(json.dumps(template_context, default=repr, indent=4))
+                )
             )
-            extra_template_vars.update(extra_vars)
-
         return Response.html(
-            await template.render_async(
-                {
-                    **context,
-                    **{
-                        "app_css_hash": self.ds.app_css_hash(),
-                        "select_templates": select_templates,
-                        "zip": zip,
-                        "body_scripts": body_scripts,
-                        "extra_css_urls": self._asset_urls(
-                            "extra_css_urls", template, context
-                        ),
-                        "extra_js_urls": self._asset_urls(
-                            "extra_js_urls", template, context
-                        ),
-                        "format_bytes": format_bytes,
-                        "database_url": self.database_url,
-                        "database_color": self.database_color,
-                        "base_url": self.ds.config("base_url"),
-                    },
-                    **extra_template_vars,
-                }
-            )
+            await self.ds.render_template(template, template_context, request=request)
         )
 
 

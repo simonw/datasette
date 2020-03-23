@@ -109,6 +109,39 @@ registered with Pint::
 .. _unit registry: https://github.com/hgrecco/pint/blob/master/pint/default_en.txt
 .. _custom units: http://pint.readthedocs.io/en/latest/defining.html
 
+.. _metadata_default_sort:
+
+Setting a default sort order
+----------------------------
+
+By default Datasette tables are sorted by primary key. You can over-ride this default for a specific table using the ``"sort"`` or ``"sort_desc"`` metadata properties::
+
+    {
+        "databases": {
+            "mydatabase": {
+                "tables": {
+                    "example_table": {
+                        "sort": "created"
+                    }
+                }
+            }
+        }
+    }
+
+Or use ``"sort_desc"`` to sort in descending order::
+
+    {
+        "databases": {
+            "mydatabase": {
+                "tables": {
+                    "example_table": {
+                        "sort_desc": "created"
+                    }
+                }
+            }
+        }
+    }
+
 .. _metadata_sortable_columns:
 
 Setting which columns can be used for sorting

@@ -1,7 +1,7 @@
 import json
 from datasette.utils import RequestParameters
 from mimetypes import guess_type
-from urllib.parse import parse_qs, urlunparse
+from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
 from html import escape
 import re
@@ -13,8 +13,9 @@ class NotFound(Exception):
 
 
 class Request:
-    def __init__(self, scope):
+    def __init__(self, scope, receive):
         self.scope = scope
+        self.receive = receive
 
     @property
     def method(self):
@@ -48,7 +49,11 @@ class Request:
         if "raw_path" in self.scope:
             return self.scope["raw_path"].decode("latin-1")
         else:
-            return self.scope["path"].decode("utf-8")
+            path = self.scope["path"]
+            if isinstance(path, str):
+                return path
+            else:
+                return path.decode("utf-8")
 
     @property
     def query_string(self):
@@ -61,6 +66,18 @@ class Request:
     @property
     def raw_args(self):
         return {key: value[0] for key, value in self.args.items()}
+
+    async def post_vars(self):
+        body = []
+        body = b""
+        more_body = True
+        while more_body:
+            message = await self.receive()
+            assert message["type"] == "http.request", message
+            body += message.get("body", b"")
+            more_body = message.get("more_body", False)
+
+        return dict(parse_qsl(body.decode("utf-8")))
 
     @classmethod
     def fake(cls, path_with_query_string, method="GET", scheme="http"):
@@ -75,7 +92,7 @@ class Request:
             "scheme": scheme,
             "type": "http",
         }
-        return cls(scope)
+        return cls(scope, None)
 
 
 class AsgiRouter:
@@ -167,7 +184,7 @@ class AsgiView:
             # that were already tucked into scope["url_route"]["kwargs"] by
             # the router, similar to how Django Channels works:
             # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
-            request = Request(scope)
+            request = Request(scope, receive)
             self = view.view_class(*class_args, **class_kwargs)
             response = await self.dispatch_request(
                 request, **scope["url_route"]["kwargs"]

@@ -278,6 +278,8 @@ If you are publishing your data using the :ref:`datasette publish <cli_publish>`
         --plugin-secret datasette-auth-github client_id your_client_id \
         --plugin-secret datasette-auth-github client_secret your_client_secret
 
+.. _plugins_plugin_config:
+
 Writing plugins that accept configuration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -320,6 +322,8 @@ The plugin configuration could also be set at the top level of ``metadata.json``
 
 Now that ``datasette-cluster-map`` plugin configuration will apply to every table in every database.
 
+.. _plugin_hooks:
+
 Plugin hooks
 ------------
 
@@ -336,11 +340,17 @@ The full list of available plugin hooks is as follows.
 
 .. _plugin_hook_prepare_connection:
 
-prepare_connection(conn)
-~~~~~~~~~~~~~~~~~~~~~~~~
+prepare_connection(conn, database, datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``conn`` - sqlite3 connection object
     The connection that is being opened
+
+``database`` - string
+    The name of the database
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 This hook is called when a new SQLite database connection is created. You can
 use it to `register custom SQL functions <https://docs.python.org/2/library/sqlite3.html#sqlite3.Connection.create_function>`_,
@@ -399,7 +409,7 @@ extra_css_urls(template, database, table, datasette)
 ``table`` - string or None
     The name of the table
 
-``datasette`` - Datasette instance
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 Return a list of extra CSS URLs that should be included on the page. These can
@@ -506,12 +516,15 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
             plugins_dir,
             static,
             install,
+            plugin_secret,
             version_note,
             title,
             license,
             license_url,
             source,
             source_url,
+            about,
+            about_url,
             api_key,
         ):
             # Your implementation goes here
@@ -535,7 +548,7 @@ Lets you customize the display of values within table cells in the HTML table vi
 ``database`` - string
     The name of the database
 
-``datasette`` - Datasette instance
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
@@ -605,7 +618,7 @@ Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`
 ``view_name`` - string
     The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
 
-``datasette`` - Datasette instance
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 The ``template``, ``database`` and ``table`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
@@ -637,7 +650,7 @@ Extra template variables that should be made available in the rendered template 
 ``request`` - object
     The current HTTP request object. ``request.scope`` provides access to the ASGI scope.
 
-``datasette`` - Datasette instance
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 This hook can return one of three different types:
@@ -663,6 +676,20 @@ Here's an example plugin that returns an authentication object from the ASGI sco
             "auth": request.scope.get("auth")
         }
 
+This example returns an awaitable function which adds a list of ``hidden_table_names`` to the context:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_template_vars(datasette, database):
+        async def hidden_table_names():
+            if database:
+                db = datasette.databases[database]
+                return {"hidden_table_names": await db.hidden_table_names()}
+            else:
+                return {}
+        return hidden_table_names
+
 And here's an example which adds a ``sql_first(sql_query)`` function which executes a SQL statement and returns the first column of the first row of results:
 
 .. code-block:: python
@@ -672,6 +699,7 @@ And here's an example which adds a ``sql_first(sql_query)`` function which execu
         async def sql_first(sql, dbname=None):
             dbname = dbname or database or next(iter(datasette.databases.keys()))
             return (await datasette.execute(dbname, sql)).rows[0][0]
+        return {"sql_first": sql_first}
 
 You can then use the new function in a template like so::
 
@@ -682,7 +710,7 @@ You can then use the new function in a template like so::
 register_output_renderer(datasette)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``datasette`` - Datasette instance
+``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 Allows the plugin to register a new output renderer, to output data in a custom format. The hook function should return a dictionary, or a list of dictionaries, which contain the file extension you want to handle and a callback function:

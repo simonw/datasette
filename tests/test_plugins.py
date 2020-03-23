@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import app_client, make_app_client, TEMP_PLUGIN_SECRET_FILE  # noqa
+from datasette.plugins import get_plugins, DEFAULT_PLUGINS
 from datasette.utils import sqlite3
 import base64
 import json
@@ -10,11 +11,20 @@ import pytest
 import urllib
 
 
-def test_plugins_dir_plugin(app_client):
+def test_plugins_dir_plugin_prepare_connection(app_client):
     response = app_client.get(
         "/fixtures.json?sql=select+convert_units(100%2C+'m'%2C+'ft')"
     )
     assert pytest.approx(328.0839) == response.json["rows"][0][0]
+
+
+def test_plugin_prepare_connection_arguments(app_client):
+    response = app_client.get(
+        "/fixtures.json?sql=select+prepare_connection_args()&_shape=arrayfirst"
+    )
+    assert [
+        "database=fixtures, datasette.plugin_config(\"name-of-plugin\")={'depth': 'root'}"
+    ] == response.json
 
 
 @pytest.mark.parametrize(
@@ -232,3 +242,13 @@ def test_plugins_async_template_function(restore_working_directory):
             sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
         )
         assert expected == extra_from_awaitable_function
+
+
+def test_default_plugins_have_no_templates_path_or_static_path():
+    # The default plugins that ship with Datasette should have their static_path and
+    # templates_path all set to None
+    plugins = get_plugins()
+    for plugin in plugins:
+        if plugin["name"] in DEFAULT_PLUGINS:
+            assert None is plugin["static_path"]
+            assert None is plugin["templates_path"]

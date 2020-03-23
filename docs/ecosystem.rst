@@ -32,7 +32,7 @@ db-to-sqlite
 
 You can mirror an entire database (including copying foreign key relationships) with the ``--all`` option::
 
-    $ db-to-sqlite --connection="postgresql://simonw@localhost/myblog" --all blog.db
+    $ db-to-sqlite --all "postgresql://simonw@localhost/myblog" blog.db
 
 dbf-to-sqlite
 -------------
@@ -43,6 +43,16 @@ markdown-to-sqlite
 ------------------
 
 `markdown-to-sqlite <https://github.com/simonw/markdown-to-sqlite>`__ reads Markdown files with embedded YAML metadata (e.g. for `Jekyll Front Matter <https://jekyllrb.com/docs/front-matter/>`__) and creates a SQLite table with a schema matching the metadata. This is useful if you want to keep structured data in text form in a GitHub repository and use that to build a SQLite database.
+
+geojson-to-sqlite
+-----------------
+
+`geojson-to-sqlite <https://github.com/simonw/geojson-to-sqlite>`__ converts GeoJSON files to SQLite, optionally using SpatiaLite to create geospatial indexes for fast geometric queries.
+
+shapefile-to-sqlite
+-------------------
+
+`shapefile-to-sqlite <https://github.com/simonw/shapefile-to-sqlite>`__ converts ESRI shapefiles to SQLite, optionally using SpatiaLite .
 
 socrata2sql
 -----------
@@ -77,6 +87,11 @@ datasette-auth-github
 
 `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ adds an authentication layer to Datasette. Users will have to sign in using their GitHub account before they can view data or interact with Datasette. You can also use it to restrict access to specific GitHub users, or to members of specified GitHub `organizations <https://help.github.com/en/articles/about-organizations>`__ or `teams <https://help.github.com/en/articles/organizing-members-into-teams>`__.
 
+datasette-upload-csvs
+---------------------
+
+`datasette-upload-csvs <https://github.com/simonw/datasette-upload-csvs>`__ allows users to upload CSV files directly into a Datasette instance through their web browser.
+
 datasette-json-html
 -------------------
 
@@ -97,6 +112,11 @@ datasette-jq
 
 `datasette-jq <https://github.com/simonw/datasette-jq>`__ adds a custom SQL function for filtering and transforming values from JSON columns using the `jq <https://stedolan.github.io/jq/>`__ expression language.
 
+datasette-rure
+--------------
+
+`datasette-rure <https://github.com/simonw/datasette-rure>`__ adds SQL support for matching values against regular expressions, built on top of `a Python binding <https://github.com/davidblewett/rure-python>`__ for the safe Rust regular expression library.
+
 datasette-render-images
 -----------------------
 
@@ -106,6 +126,22 @@ datasette-render-binary
 -----------------------
 
 `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`__ renders binary data in a slightly more readable fashion: it shows ASCII characters as they are, and shows all other data as monospace octets. Useful as a tool for exploring new unfamiliar databases as it makes it easier to spot if a binary column may contain a decipherable binary format.
+
+datasette-render-markdown
+-------------------------
+
+`datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`__ adds tools for rendering Datasette rows that are formatted using Markdown.
+
+datasette-render-html
+---------------------
+
+`datasette-render-html <https://github.com/simonw/datasette-render-html>`__ lets you configure columns that contain HTML from trusted sources such that the HTML is rendered correctly within the Datasette interface.
+
+datasette-leaflet-geojson
+-------------------------
+
+`datasette-leaflet-geojson <https://github.com/simonw/datasette-leaflet-geojson>`__ looks out for columns containing GeoJSON formatted geographical information and displays them on a `Leaflet-powered <https://leafletjs.com/>`__ map.
+
 
 datasette-pretty-json
 ---------------------
@@ -135,3 +171,23 @@ datasette-cors
 --------------
 
 `datasette-cors <https://github.com/simonw/datasette-cors>`__ allows you to configure `CORS headers <https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS>`__ for your Datasette instance. You can use this to enable JavaScript running on a whitelisted set of domains to make ``fetch()`` calls to the JSON API provided by your Datasette instance.
+
+datasette-template-sql
+----------------------
+
+`datasette-template-sql <https://github.com/simonw/datasette-template-sql>`__ adds a custom template function that can be used to execute and loop through the results of SQL queries in your templates. See `this blog post <https://simonwillison.net/2019/Nov/18/datasette-template-sql/>`__ for background on the plugin.
+
+datasette-mask-columns
+----------------------
+
+`datasette-mask-columns <https://github.com/simonw/datasette-mask-columns>`__ allows you to use ``metadata.json`` to configure specific table columns that should be masked - that should return null no matter what value is contained within the column. This is useful for things like hiding ``password`` columns from public display.
+
+datasette-auth-existing-cookies
+-------------------------------
+
+`datasette-auth-existing-cookies <https://github.com/simonw/datasette-auth-existing-cookies>`__ allows you to configure Datasette to authenticate users based on existing cookies they may have for the current domain - useful for running Datasette on a subdomain of your main site, for example. See `this blog post <https://simonwillison.net/2020/Jan/29/weeknotes-datasette-cookies-sentry/>`__ for background on the plugin.
+
+datasette-sentry
+----------------
+
+`datasette-sentry <https://github.com/simonw/datasette-sentry>`__ lets you configure Datasette to send any error reports to `Sentry <https://sentry.io/>`__.

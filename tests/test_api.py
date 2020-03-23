@@ -11,6 +11,7 @@ from .fixtures import (  # noqa
     app_client_conflicting_database_names,
     app_client_with_cors,
     app_client_with_dot,
+    app_client_immutable_and_inspect_file,
     generate_compound_rows,
     generate_sortable_rows,
     make_app_client,
@@ -948,6 +949,24 @@ def test_sortable_columns_metadata(app_client):
             ],
         ),
         (
+            # Special keyword shouldn't break FTS query
+            "/fixtures/searchable.json?_search=AND",
+            [],
+        ),
+        (
+            # Without _searchmode=raw this should return no results
+            "/fixtures/searchable.json?_search=te*+AND+do*",
+            [],
+        ),
+        (
+            # _searchmode=raw
+            "/fixtures/searchable.json?_search=te*+AND+do*&_searchmode=raw",
+            [
+                [1, "barry cat", "terry dog", "panther"],
+                [2, "terry dog", "sara weasel", "puma"],
+            ],
+        ),
+        (
             "/fixtures/searchable.json?_search=weasel",
             [[2, "terry dog", "sara weasel", "puma"]],
         ),
@@ -1287,6 +1306,7 @@ def test_config_json(app_client):
         "truncate_cells_html": 2048,
         "force_https_urls": False,
         "hash_urls": False,
+        "template_debug": False,
     } == response.json
 
 
@@ -1760,3 +1780,8 @@ def test_null_foreign_keys_are_not_expanded(app_client):
         },
         {"pk": "2", "foreign_key_with_label": None, "foreign_key_with_no_label": None,},
     ] == response.json
+
+
+def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
+    response = app_client_immutable_and_inspect_file.get("/fixtures/sortable.json")
+    assert response.json["filtered_table_rows_count"] == 100

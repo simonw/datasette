@@ -5,7 +5,6 @@ import click
 import hashlib
 import json
 import os
-import pkg_resources
 import re
 import shlex
 import tempfile
@@ -174,6 +173,9 @@ disallawed_sql_res = [(re.compile("pragma"), "Statement may not contain PRAGMA")
 
 
 def validate_sql_select(sql):
+    sql = "\n".join(
+        line for line in sql.split("\n") if not line.strip().startswith("--")
+    )
     sql = sql.strip().lower()
     if not any(r.match(sql) for r in allowed_sql_res):
         raise InvalidSql("Statement must be a SELECT")
@@ -275,6 +277,7 @@ def make_dockerfile(
     spatialite,
     version_note,
     environment_variables=None,
+    port=8001,
 ):
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
     for filename in files:
@@ -313,8 +316,8 @@ WORKDIR /app
 {environment_variables}
 RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
-ENV PORT 8001
-EXPOSE 8001
+ENV PORT {port}
+EXPOSE {port}
 CMD {cmd}""".format(
         environment_variables="\n".join(
             [
@@ -326,6 +329,7 @@ CMD {cmd}""".format(
         cmd=cmd,
         install_from=" ".join(install),
         spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else "",
+        port=port,
     ).strip()
 
 
@@ -344,6 +348,7 @@ def temporary_docker_directory(
     version_note,
     extra_metadata=None,
     environment_variables=None,
+    port=8001,
 ):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
@@ -373,6 +378,7 @@ def temporary_docker_directory(
             spatialite,
             version_note,
             environment_variables,
+            port=port,
         )
         os.chdir(datasette_dir)
         if metadata_content:
@@ -609,35 +615,6 @@ def module_from_path(path, name):
     return mod
 
 
-def get_plugins(pm):
-    plugins = []
-    plugin_to_distinfo = dict(pm.list_plugin_distinfo())
-    for plugin in pm.get_plugins():
-        static_path = None
-        templates_path = None
-        try:
-            if pkg_resources.resource_isdir(plugin.__name__, "static"):
-                static_path = pkg_resources.resource_filename(plugin.__name__, "static")
-            if pkg_resources.resource_isdir(plugin.__name__, "templates"):
-                templates_path = pkg_resources.resource_filename(
-                    plugin.__name__, "templates"
-                )
-        except (KeyError, ImportError):
-            # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
-            pass
-        plugin_info = {
-            "name": plugin.__name__,
-            "static_path": static_path,
-            "templates_path": templates_path,
-        }
-        distinfo = plugin_to_distinfo.get(plugin)
-        if distinfo:
-            plugin_info["version"] = distinfo.version
-            plugin_info["name"] = distinfo.project_name
-        plugins.append(plugin_info)
-    return plugins
-
-
 async def resolve_table_and_format(table_and_format, table_exists, allowed_formats=[]):
     if "." in table_and_format:
         # Check if a table exists with this exact name
@@ -758,6 +735,20 @@ def format_bytes(bytes):
         return "{:.1f} {}".format(current, unit)
 
 
+_escape_fts_re = re.compile(r'\s+|(".*?")')
+
+
+def escape_fts(query):
+    # If query has unbalanced ", add one at end
+    if query.count('"') % 2:
+        query += '"'
+    bits = _escape_fts_re.split(query)
+    bits = [b for b in bits if b and b != '""']
+    return " ".join(
+        '"{}"'.format(bit) if not bit.startswith('"') else bit for bit in bits
+    )
+
+
 class RequestParameters(dict):
     def get(self, name, default=None):
         "Return first value in the list, if available"
@@ -769,3 +760,28 @@ class RequestParameters(dict):
     def getlist(self, name, default=None):
         "Return full list"
         return super().get(name, default)
+
+
+class ConnectionProblem(Exception):
+    pass
+
+
+class SpatialiteConnectionProblem(ConnectionProblem):
+    pass
+
+
+def check_connection(conn):
+    tables = [
+        r[0]
+        for r in conn.execute(
+            "select name from sqlite_master where type='table'"
+        ).fetchall()
+    ]
+    for table in tables:
+        try:
+            conn.execute("PRAGMA table_info({});".format(escape_sqlite(table)),)
+        except sqlite3.OperationalError as e:
+            if e.args[0] == "no such module: VirtualSpatialIndex":
+                raise SpatialiteConnectionProblem(e)
+            else:
+                raise ConnectionProblem(e)

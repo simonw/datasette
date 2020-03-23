@@ -1,5 +1,6 @@
 import importlib
 import pluggy
+import pkg_resources
 import sys
 from . import hookspecs
 
@@ -8,6 +9,7 @@ DEFAULT_PLUGINS = (
     "datasette.publish.now",
     "datasette.publish.cloudrun",
     "datasette.facets",
+    "datasette.sql_functions",
 )
 
 pm = pluggy.PluginManager("datasette")
@@ -21,3 +23,35 @@ if not hasattr(sys, "_called_from_test"):
 for plugin in DEFAULT_PLUGINS:
     mod = importlib.import_module(plugin)
     pm.register(mod, plugin)
+
+
+def get_plugins():
+    plugins = []
+    plugin_to_distinfo = dict(pm.list_plugin_distinfo())
+    for plugin in pm.get_plugins():
+        static_path = None
+        templates_path = None
+        if plugin.__name__ not in DEFAULT_PLUGINS:
+            try:
+                if pkg_resources.resource_isdir(plugin.__name__, "static"):
+                    static_path = pkg_resources.resource_filename(
+                        plugin.__name__, "static"
+                    )
+                if pkg_resources.resource_isdir(plugin.__name__, "templates"):
+                    templates_path = pkg_resources.resource_filename(
+                        plugin.__name__, "templates"
+                    )
+            except (KeyError, ImportError):
+                # Caused by --plugins_dir= plugins - KeyError/ImportError thrown in Py3.5
+                pass
+        plugin_info = {
+            "name": plugin.__name__,
+            "static_path": static_path,
+            "templates_path": templates_path,
+        }
+        distinfo = plugin_to_distinfo.get(plugin)
+        if distinfo:
+            plugin_info["version"] = distinfo.version
+            plugin_info["name"] = distinfo.project_name
+        plugins.append(plugin_info)
+    return plugins

@@ -1,6 +1,8 @@
 import asyncio
 import collections
 import hashlib
+import itertools
+import json
 import os
 import re
 import sys
@@ -12,7 +14,8 @@ from pathlib import Path
 
 import click
 from markupsafe import Markup
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
+from jinja2.environment import Template
 import uvicorn
 
 from .views.base import DatasetteError, ureg, AsgiRouter
@@ -27,7 +30,7 @@ from .utils import (
     QueryInterrupted,
     escape_css_string,
     escape_sqlite,
-    get_plugins,
+    format_bytes,
     module_from_path,
     sqlite3,
     to_css_class,
@@ -35,6 +38,7 @@ from .utils import (
 from .utils.asgi import (
     AsgiLifespan,
     NotFound,
+    Response,
     asgi_static,
     asgi_send,
     asgi_send_html,
@@ -42,7 +46,7 @@ from .utils.asgi import (
     asgi_send_redirect,
 )
 from .tracer import AsgiTracer
-from .plugins import pm, DEFAULT_PLUGINS
+from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
@@ -127,6 +131,11 @@ CONFIG_OPTIONS = (
         "Force URLs in API output to always use https:// protocol",
     ),
     ConfigOption(
+        "template_debug",
+        False,
+        "Allow display of template debug information with ?_context=1",
+    ),
+    ConfigOption(
         "base_url",
         "",
         "Datasette relative URLs should use this base.",
@@ -175,7 +184,7 @@ class Datasette:
             db = Database(self, path, is_mutable=is_mutable, is_memory=is_memory)
             if db.name in self.databases:
                 raise Exception("Multiple files with same stem: {}".format(db.name))
-            self.databases[db.name] = db
+            self.add_database(db.name, db)
         self.cache_headers = cache_headers
         self.cors = cors
         self._metadata = metadata or {}
@@ -205,25 +214,11 @@ class Datasette:
                     # Plugin already registered
                     pass
 
-    async def run_sanity_checks(self):
-        # Only one check right now, for Spatialite
-        for database_name, database in self.databases.items():
-            # Run pragma_info on every table
-            for table in await database.table_names():
-                try:
-                    await self.execute(
-                        database_name,
-                        "PRAGMA table_info({});".format(escape_sqlite(table)),
-                    )
-                except sqlite3.OperationalError as e:
-                    if e.args[0] == "no such module: VirtualSpatialIndex":
-                        raise click.UsageError(
-                            "It looks like you're trying to load a SpatiaLite"
-                            " database without first loading the SpatiaLite module."
-                            "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
-                        )
-                    else:
-                        raise
+    def add_database(self, name, db):
+        self.databases[name] = db
+
+    def remove_database(self, name):
+        self.databases.pop(name)
 
     def config(self, key):
         return self._config.get(key, None)
@@ -325,7 +320,7 @@ class Datasette:
             }
         )
 
-    def prepare_connection(self, conn):
+    def prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         for name, num_args, func in self.sqlite_functions:
@@ -337,7 +332,7 @@ class Datasette:
         if self.config("cache_size_kb"):
             conn.execute("PRAGMA cache_size=-{}".format(self.config("cache_size_kb")))
         # pylint: disable=no-member
-        pm.hook.prepare_connection(conn=conn)
+        pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
 
     async def execute(
         self,
@@ -421,7 +416,7 @@ class Datasette:
 
     def versions(self):
         conn = sqlite3.connect(":memory:")
-        self.prepare_connection(conn)
+        self.prepare_connection(conn, ":memory:")
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {}
         for extension, testsql, hasversion in (
@@ -468,7 +463,7 @@ class Datasette:
         }
 
     def plugins(self, show_all=False):
-        ps = list(get_plugins(pm))
+        ps = list(get_plugins())
         if not show_all:
             ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
         return [
@@ -493,7 +488,10 @@ class Datasette:
         if hasattr(asyncio, "all_tasks"):
             tasks = asyncio.all_tasks()
             d.update(
-                {"num_tasks": len(tasks), "tasks": [_cleaner_task_str(t) for t in tasks]}
+                {
+                    "num_tasks": len(tasks),
+                    "tasks": [_cleaner_task_str(t) for t in tasks],
+                }
             )
         return d
 
@@ -523,19 +521,108 @@ class Datasette:
         for renderer in hook_renderers:
             self.renderers[renderer["extension"]] = renderer["callback"]
 
+    async def render_template(
+        self, templates, context=None, request=None, view_name=None
+    ):
+        context = context or {}
+        if isinstance(templates, Template):
+            template = templates
+            select_templates = []
+        else:
+            if isinstance(templates, str):
+                templates = [templates]
+            template = self.jinja_env.select_template(templates)
+            select_templates = [
+                "{}{}".format(
+                    "*" if template_name == template.name else "", template_name
+                )
+                for template_name in templates
+            ]
+        body_scripts = []
+        # pylint: disable=no-member
+        for script in pm.hook.extra_body_script(
+            template=template.name,
+            database=context.get("database"),
+            table=context.get("table"),
+            view_name=view_name,
+            datasette=self,
+        ):
+            body_scripts.append(Markup(script))
+
+        extra_template_vars = {}
+        # pylint: disable=no-member
+        for extra_vars in pm.hook.extra_template_vars(
+            template=template.name,
+            database=context.get("database"),
+            table=context.get("table"),
+            view_name=view_name,
+            request=request,
+            datasette=self,
+        ):
+            if callable(extra_vars):
+                extra_vars = extra_vars()
+            if asyncio.iscoroutine(extra_vars):
+                extra_vars = await extra_vars
+            assert isinstance(extra_vars, dict), "extra_vars is of type {}".format(
+                type(extra_vars)
+            )
+            extra_template_vars.update(extra_vars)
+
+        template_context = {
+            **context,
+            **{
+                "app_css_hash": self.app_css_hash(),
+                "select_templates": select_templates,
+                "zip": zip,
+                "body_scripts": body_scripts,
+                "format_bytes": format_bytes,
+                "extra_css_urls": self._asset_urls("extra_css_urls", template, context),
+                "extra_js_urls": self._asset_urls("extra_js_urls", template, context),
+            },
+            **extra_template_vars,
+        }
+        return await template.render_async(template_context)
+
+    def _asset_urls(self, key, template, context):
+        # Flatten list-of-lists from plugins:
+        seen_urls = set()
+        for url_or_dict in itertools.chain(
+            itertools.chain.from_iterable(
+                getattr(pm.hook, key)(
+                    template=template.name,
+                    database=context.get("database"),
+                    table=context.get("table"),
+                    datasette=self,
+                )
+            ),
+            (self.metadata(key) or []),
+        ):
+            if isinstance(url_or_dict, dict):
+                url = url_or_dict["url"]
+                sri = url_or_dict.get("sri")
+            else:
+                url = url_or_dict
+                sri = None
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            if sri:
+                yield {"url": url, "sri": sri}
+            else:
+                yield {"url": url}
+
     def app(self):
         "Returns an ASGI app function that serves the whole of Datasette"
         default_templates = str(app_root / "datasette" / "templates")
         template_paths = []
         if self.template_dir:
             template_paths.append(self.template_dir)
-        template_paths.extend(
-            [
-                plugin["templates_path"]
-                for plugin in get_plugins(pm)
-                if plugin["templates_path"]
-            ]
-        )
+        plugin_template_paths = [
+            plugin["templates_path"]
+            for plugin in get_plugins()
+            if plugin["templates_path"]
+        ]
+        template_paths.extend(plugin_template_paths)
         template_paths.append(default_templates)
         template_loader = ChoiceLoader(
             [
@@ -577,7 +664,7 @@ class Datasette:
             add_route(asgi_static(dirname), r"/" + path + "/(?P<path>.*)$")
 
         # Mount any plugin static/ directories
-        for plugin in get_plugins(pm):
+        for plugin in get_plugins():
             if plugin["static_path"]:
                 add_route(
                     asgi_static(plugin["static_path"]),

@@ -10,6 +10,9 @@ from subprocess import call
 import sys
 from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
 from .utils import (
+    check_connection,
+    ConnectionProblem,
+    SpatialiteConnectionProblem,
     temporary_docker_directory,
     value_as_boolean,
     StaticMount,
@@ -171,6 +174,9 @@ def plugins(all, plugins_dir):
 )
 @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
 @click.option("--version-note", help="Additional note to show on /-/versions")
+@click.option(
+    "-p", "--port", default=8001, help="Port to run the server on, defaults to 8001",
+)
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
 @click.option("--license_url", help="License URL for metadata")
@@ -190,6 +196,7 @@ def package(
     install,
     spatialite,
     version_note,
+    port,
     **extra_metadata
 ):
     "Package specified SQLite files into a new datasette Docker container"
@@ -215,6 +222,7 @@ def package(
         spatialite,
         version_note,
         extra_metadata,
+        port=port,
     ):
         args = ["docker", "build"]
         if tag:
@@ -243,7 +251,12 @@ def package(
         "all IPs and allow access from other machines."
     ),
 )
-@click.option("-p", "--port", default=8001, help="Port for server, defaults to 8001")
+@click.option(
+    "-p",
+    "--port",
+    default=8001,
+    help="Port for server, defaults to 8001. Use -p 0 to automatically assign an available port.",
+)
 @click.option(
     "--debug", is_flag=True, help="Enable debug mode - useful for development"
 )
@@ -332,7 +345,8 @@ def serve(
         import hupper
 
         reloader = hupper.start_reloader("datasette.cli.serve")
-        reloader.watch_files(files)
+        if immutable:
+            reloader.watch_files(immutable)
         if metadata:
             reloader.watch_files([metadata.name])
 
@@ -363,7 +377,27 @@ def serve(
         version_note=version_note,
     )
     # Run async sanity checks - but only if we're not under pytest
-    asyncio.get_event_loop().run_until_complete(ds.run_sanity_checks())
+    asyncio.get_event_loop().run_until_complete(check_databases(ds))
 
     # Start the server
     uvicorn.run(ds.app(), host=host, port=port, log_level="info")
+
+
+async def check_databases(ds):
+    # Run check_connection against every connected database
+    # to confirm they are all usable
+    for database in list(ds.databases.values()):
+        try:
+            await database.execute_against_connection_in_thread(check_connection)
+        except SpatialiteConnectionProblem:
+            raise click.UsageError(
+                "It looks like you're trying to load a SpatiaLite"
+                " database without first loading the SpatiaLite module."
+                "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+            )
+        except ConnectionProblem as e:
+            raise click.UsageError(
+                "Connection to {} failed check: {}".format(
+                    database.path, str(e.args[0])
+                )
+            )

@@ -4,6 +4,77 @@
 Changelog
 =========
 
+.. _v0_38:
+
+0.38 (2020-03-08)
+-----------------
+
+* The `Docker build <https://hub.docker.com/r/datasetteproject/datasette>`__ of Datasette now uses SQLite 3.31.1, upgraded from 3.26. (`#695 <https://github.com/simonw/datasette/issues/695>`__)
+* ``datasette publish cloudrun`` now accepts an optional ``--memory=2Gi`` flag for setting the Cloud Run allocated memory to a value other than the default (256Mi).  (`#694 <https://github.com/simonw/datasette/issues/694>`__)
+* Fixed bug where templates that shipped with plugins were sometimes not being correctly loaded. (`#697 <https://github.com/simonw/datasette/issues/697>`__)
+
+.. _v0_37_1:
+
+0.37.1 (2020-03-02)
+-------------------
+
+* Don't attempt to count table rows to display on the index page for databases > 100MB. (`#688 <https://github.com/simonw/datasette/issues/688>`__)
+* Print exceptions if they occur in the write thread rather than silently swallowing them.
+* Handle the possibility of ``scope["path"]`` being a string rather than bytes
+* Better documentation for the :ref:`plugin_hook_extra_template_vars` plugin hook.
+
+.. _v0_37:
+
+0.37 (2020-02-25)
+-----------------
+
+* Plugins now have a supported mechanism for writing to a database, using the new ``.execute_write()`` and ``.execute_write_fn()`` methods. :ref:`Documentation <database_execute_write>`. (`#682 <https://github.com/simonw/datasette/issues/682>`__)
+* Immutable databases that have had their rows counted using the ``inspect`` command now use the calculated count more effectively - thanks, Kevin Keogh. (`#666 <https://github.com/simonw/datasette/pull/666>`__)
+* ``--reload`` no longer restarts the server if a database file is modified, unless that database was opened immutable mode with ``-i``. (`#494 <https://github.com/simonw/datasette/issues/494>`__)
+* New ``?_searchmode=raw`` option turns off escaping for FTS queries in ``?_search=`` allowing full use of SQLite's `FTS5 query syntax <https://www.sqlite.org/fts5.html#full_text_query_syntax>`__. (`#676 <https://github.com/simonw/datasette/issues/676>`__)
+
+.. _v0_36:
+
+0.36 (2020-02-21)
+-----------------
+
+* The ``datasette`` object passed to plugins now has API documentation: :ref:`internals_datasette`. (`#576 <https://github.com/simonw/datasette/issues/576>`__)
+* New methods on ``datasette``: ``.add_database()`` and ``.remove_database()`` - :ref:`documentation <datasette_add_database>`. (`#671 <https://github.com/simonw/datasette/issues/671>`__)
+* ``prepare_connection()`` plugin hook now takes optional ``datasette`` and ``database`` arguments - :ref:`plugin_hook_prepare_connection`. (`#678 <https://github.com/simonw/datasette/issues/678>`__)
+* Added three new plugins and one new conversion tool to the :ref:`ecosystem`.
+
+.. _v0_35:
+
+0.35 (2020-02-04)
+-----------------
+
+* Added five new plugins and one new conversion tool to the :ref:`ecosystem`.
+* The ``Datasette`` class has a new ``render_template()`` method which can be used by plugins to render templates using Datasette's pre-configured `Jinja <https://jinja.palletsprojects.com/>`__ templating library.
+* You can now execute SQL queries that start with a ``-- comment`` - thanks, Jay Graves (`#653 <https://github.com/simonw/datasette/pull/653>`__)
+
+.. _v0_34:
+
+0.34 (2020-01-29)
+-----------------
+
+* ``_search=`` queries are now correctly escaped using a new ``escape_fts()`` custom SQL function. This means you can now run searches for strings like ``park.`` without seeing errors. (`#651 <https://github.com/simonw/datasette/issues/651>`__)
+* `Google Cloud Run <https://cloud.google.com/run/>`__ is no longer in beta, so ``datasette publish cloudrun`` has been updated to work even if the user has not installed the ``gcloud`` beta components package. Thanks, Katie McLaughlin (`#660 <https://github.com/simonw/datasette/pull/660>`__)
+* ``datasette package`` now accepts a ``--port`` option for specifying which port the resulting Docker container should listen on. (`#661 <https://github.com/simonw/datasette/issues/661>`__)
+
+.. _v0_33:
+
+0.33 (2019-12-22)
+-----------------
+
+* ``rowid`` is now included in dropdown menus for filtering tables (`#636 <https://github.com/simonw/datasette/issues/636>`__)
+* Columns are now only suggested for faceting if they have at least one value with more than one record (`#638 <https://github.com/simonw/datasette/issues/638>`__)
+* Queries with no results now display "0 results" (`#637 <https://github.com/simonw/datasette/issues/637>`__)
+* Improved documentation for the ``--static`` option (`#641 <https://github.com/simonw/datasette/issues/641>`__)
+* asyncio task information is now included on the ``/-/threads`` debug page
+* Bumped Uvicorn dependency 0.11
+* You can now use ``--port 0`` to listen on an available port
+* New :ref:`config_template_debug` setting for debugging templates, e.g. https://latest.datasette.io/fixtures/roadside_attractions?_context=1 (`#654 <https://github.com/simonw/datasette/issues/654>`__)
+
 .. _v0_32:
 
 0.32 (2019-11-14)

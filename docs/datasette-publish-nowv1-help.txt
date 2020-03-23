@@ -13,6 +13,7 @@ Options:
   --plugin-secret <TEXT TEXT TEXT>...
                                   Secrets to pass to plugins, e.g. --plugin-secret
                                   datasette-auth-github client_id xxx
+
   --version-note TEXT             Additional note to show on /-/versions
   --title TEXT                    Title for metadata
   --license TEXT                  License label for metadata

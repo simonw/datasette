@@ -227,6 +227,12 @@ def app_client_with_cors():
     yield from make_app_client(cors=True)
 
 
+@pytest.fixture(scope="session")
+def app_client_immutable_and_inspect_file():
+    inspect_data = {"fixtures": {"tables": {"sortable": {"count": 100}}}}
+    yield from make_app_client(is_immutable=True, inspect_data=inspect_data)
+
+
 def generate_compound_rows(num):
     for a, b, c in itertools.islice(
         itertools.product(string.ascii_lowercase, repeat=3), num
@@ -298,6 +304,8 @@ METADATA = {
                     "fts_table": "searchable_fts",
                     "fts_pk": "pk",
                 },
+                "attraction_characteristic": {"sort_desc": "pk"},
+                "facet_cities": {"sort": "name"},
             },
             "queries": {
                 "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
@@ -329,11 +337,16 @@ ureg = pint.UnitRegistry()
 
 
 @hookimpl
-def prepare_connection(conn):
+def prepare_connection(conn, database, datasette):
     def convert_units(amount, from_, to_):
         "select convert_units(100, 'm', 'ft');"
         return (amount * ureg(from_)).to(to_).to_tuple()[0]
     conn.create_function('convert_units', 3, convert_units)
+    def prepare_connection_args():
+        return 'database={}, datasette.plugin_config("name-of-plugin")={}'.format(
+            database, datasette.plugin_config("name-of-plugin")
+        )
+    conn.create_function('prepare_connection_args', 0, prepare_connection_args)
 
 
 @hookimpl

@@ -13,6 +13,7 @@ Options:
   --plugin-secret <TEXT TEXT TEXT>...
                                   Secrets to pass to plugins, e.g. --plugin-secret
                                   datasette-auth-github client_id xxx
+
   --version-note TEXT             Additional note to show on /-/versions
   --title TEXT                    Title for metadata
   --license TEXT                  License label for metadata
@@ -25,4 +26,5 @@ Options:
   --service TEXT                  Cloud Run service to deploy (or over-write)
   --spatialite                    Enable SpatialLite extension
   --show-files                    Output the generated Dockerfile and metadata.json
+  --memory TEXT                   Memory to allocate in Cloud Run, e.g. 1Gi
   --help                          Show this message and exit.

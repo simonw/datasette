@@ -356,13 +356,18 @@ class TableView(RowTableShared):
             pair for pair in special_args.items() if pair[0].startswith("_search")
         )
         search = ""
+        search_mode_raw = special_args.get("_searchmode") == "raw"
         if fts_table and search_args:
             if "_search" in search_args:
                 # Simple ?_search=xxx
                 search = search_args["_search"]
                 where_clauses.append(
-                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match :search)".format(
-                        fts_table=escape_sqlite(fts_table), fts_pk=escape_sqlite(fts_pk)
+                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match {match_clause})".format(
+                        fts_table=escape_sqlite(fts_table),
+                        fts_pk=escape_sqlite(fts_pk),
+                        match_clause=":search"
+                        if search_mode_raw
+                        else "escape_fts(:search)",
                     )
                 )
                 extra_human_descriptions.append('search matches "{}"'.format(search))
@@ -375,10 +380,12 @@ class TableView(RowTableShared):
                         raise DatasetteError("Cannot search by that column", status=400)
 
                     where_clauses.append(
-                        "rowid in (select rowid from {fts_table} where {search_col} match :search_{i})".format(
+                        "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
-                            i=i,
+                            match_clause=":search_{}".format(i)
+                            if search_mode_raw
+                            else "escape_fts(:search_{})".format(i),
                         )
                     )
                     extra_human_descriptions.append(
@@ -396,18 +403,24 @@ class TableView(RowTableShared):
 
         # Allow for custom sort order
         sort = special_args.get("_sort")
+        sort_desc = special_args.get("_sort_desc")
+
+        if not sort and not sort_desc:
+            sort = table_metadata.get("sort")
+            sort_desc = table_metadata.get("sort_desc")
+
+        if sort and sort_desc:
+            raise DatasetteError("Cannot use _sort and _sort_desc at the same time")
+
         if sort:
             if sort not in sortable_columns:
                 raise DatasetteError("Cannot sort table by {}".format(sort))
 
             order_by = escape_sqlite(sort)
-        sort_desc = special_args.get("_sort_desc")
+
         if sort_desc:
             if sort_desc not in sortable_columns:
                 raise DatasetteError("Cannot sort table by {}".format(sort_desc))
-
-            if sort:
-                raise DatasetteError("Cannot use _sort and _sort_desc at the same time")
 
             order_by = "{} desc".format(escape_sqlite(sort_desc))
 
@@ -533,17 +546,25 @@ class TableView(RowTableShared):
         if request.raw_args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.raw_args["_timelimit"])
 
-        results = await self.ds.execute(
-            database, sql, params, truncate=True, **extra_args
-        )
+        results = await db.execute(sql, params, truncate=True, **extra_args)
 
         # Number of filtered rows in whole set:
         filtered_table_rows_count = None
-        if count_sql:
+        if (
+            not db.is_mutable
+            and self.ds.inspect_data
+            and count_sql == "select count(*) from {} ".format(table)
+        ):
             try:
-                count_rows = list(
-                    await self.ds.execute(database, count_sql, from_sql_params)
-                )
+                filtered_table_rows_count = self.ds.inspect_data[database]["tables"][
+                    table
+                ]["count"]
+            except KeyError:
+                pass
+
+        if count_sql and filtered_table_rows_count is None:
+            try:
+                count_rows = list(await db.execute(count_sql, from_sql_params))
                 filtered_table_rows_count = count_rows[0][0]
             except QueryInterrupted:
                 pass
@@ -688,6 +709,8 @@ class TableView(RowTableShared):
             )
 
         async def extra_template():
+            nonlocal sort
+
             display_columns, display_rows = await self.display_columns_and_rows(
                 database,
                 table,
@@ -710,6 +733,15 @@ class TableView(RowTableShared):
             if request.args.get("_where"):
                 for where_text in request.args["_where"]:
                     form_hidden_args.append(("_where", where_text))
+
+            # if no sort specified AND table has a single primary key,
+            # set sort to that so arrow is displayed
+            if not sort and not sort_desc:
+                if 1 == len(pks):
+                    sort = pks[0]
+                elif use_rowid:
+                    sort = "rowid"
+
             return {
                 "supports_search": bool(fts_table),
                 "search": search or "",
@@ -795,7 +827,7 @@ class RowView(RowTableShared):
         params = {}
         for i, pk_value in enumerate(pk_values):
             params["p{}".format(i)] = pk_value
-        results = await self.ds.execute(database, sql, params, truncate=True)
+        results = await db.execute(sql, params, truncate=True)
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
@@ -876,7 +908,7 @@ class RowView(RowTableShared):
             ]
         )
         try:
-            rows = list(await self.ds.execute(database, sql, {"id": pk_values[0]}))
+            rows = list(await db.execute(sql, {"id": pk_values[0]}))
         except sqlite3.OperationalError:
             # Almost certainly hit the timeout
             return []

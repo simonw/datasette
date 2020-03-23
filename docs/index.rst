@@ -34,6 +34,7 @@ Contents
    introspection
    custom_templates
    plugins
+   internals
    contributing
    changelog
 

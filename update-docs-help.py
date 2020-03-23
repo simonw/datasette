@@ -16,13 +16,9 @@ includes = (
 def update_help_includes():
     for name, filename in includes:
         runner = CliRunner()
-        result = runner.invoke(
-            cli, name.split() + ["--help"], terminal_width=88
-        )
-        actual = "$ datasette {} --help\n\n{}".format(
-            name, result.output
-        )
-        actual = actual.replace('Usage: cli ', 'Usage: datasette ')
+        result = runner.invoke(cli, name.split() + ["--help"], terminal_width=88)
+        actual = "$ datasette {} --help\n\n{}".format(name, result.output)
+        actual = actual.replace("Usage: cli ", "Usage: datasette ")
         open(docs_path / filename, "w").write(actual)
 
 

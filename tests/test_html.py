@@ -462,7 +462,7 @@ def test_table_html_simple_primary_key(app_client):
     table = Soup(response.body, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.findAll("th")
-    assert "id" == ths[0].find("a").string.strip()
+    assert "id\xa0▼" == ths[0].find("a").string.strip()
     for expected_col, th in zip(("content",), ths[1:]):
         a = th.find("a")
         assert expected_col == a.string
@@ -580,6 +580,15 @@ def test_table_html_no_primary_key(app_client):
     assert expected == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ]
+
+
+def test_rowid_sortable_no_primary_key(app_client):
+    response = app_client.get("/fixtures/no_primary_key")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    assert table["class"] == ["rows-and-columns"]
+    ths = table.findAll("th")
+    assert "rowid\xa0▼" == ths[1].find("a").string.strip()
 
 
 def test_row_html_no_primary_key(app_client):
@@ -1073,3 +1082,78 @@ def test_zero_results(app_client, path):
     soup = Soup(response.text, "html.parser")
     assert 0 == len(soup.select("table"))
     assert 1 == len(soup.select("p.zero-results"))
+
+
+def test_config_template_debug_on():
+    for client in make_app_client(config={"template_debug": True}):
+        response = client.get("/fixtures/facetable?_context=1")
+        assert response.status == 200
+        assert response.text.startswith("<pre>{")
+
+
+def test_config_template_debug_off(app_client):
+    response = app_client.get("/fixtures/facetable?_context=1")
+    assert response.status == 200
+    assert not response.text.startswith("<pre>{")
+
+
+def test_metadata_sort(app_client):
+    response = app_client.get("/fixtures/facet_cities")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    assert table["class"] == ["rows-and-columns"]
+    ths = table.findAll("th")
+    assert ["id", "name\xa0▼"] == [th.find("a").string.strip() for th in ths]
+    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    expected = [
+        [
+            '<td class="col-id"><a href="/fixtures/facet_cities/3">3</a></td>',
+            '<td class="col-name">Detroit</td>',
+        ],
+        [
+            '<td class="col-id"><a href="/fixtures/facet_cities/2">2</a></td>',
+            '<td class="col-name">Los Angeles</td>',
+        ],
+        [
+            '<td class="col-id"><a href="/fixtures/facet_cities/4">4</a></td>',
+            '<td class="col-name">Memnonia</td>',
+        ],
+        [
+            '<td class="col-id"><a href="/fixtures/facet_cities/1">1</a></td>',
+            '<td class="col-name">San Francisco</td>',
+        ],
+    ]
+    assert expected == rows
+    # Make sure you can reverse that sort order
+    response = app_client.get("/fixtures/facet_cities?_sort_desc=name")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert list(reversed(expected)) == rows
+
+
+def test_metadata_sort_desc(app_client):
+    response = app_client.get("/fixtures/attraction_characteristic")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    assert table["class"] == ["rows-and-columns"]
+    ths = table.findAll("th")
+    assert ["pk\xa0▲", "name"] == [th.find("a").string.strip() for th in ths]
+    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    expected = [
+        [
+            '<td class="col-pk"><a href="/fixtures/attraction_characteristic/2">2</a></td>',
+            '<td class="col-name">Paranormal</td>',
+        ],
+        [
+            '<td class="col-pk"><a href="/fixtures/attraction_characteristic/1">1</a></td>',
+            '<td class="col-name">Museum</td>',
+        ],
+    ]
+    assert expected == rows
+    # Make sure you can reverse that sort order
+    response = app_client.get("/fixtures/attraction_characteristic?_sort=pk")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert list(reversed(expected)) == rows

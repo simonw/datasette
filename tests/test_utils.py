@@ -7,6 +7,7 @@ from datasette.utils.asgi import Request
 from datasette.filters import Filters
 import json
 import os
+import pathlib
 import pytest
 import sqlite3
 import tempfile
@@ -137,6 +138,8 @@ def test_custom_json_encoder(obj, expected):
     "bad_sql",
     [
         "update blah;",
+        "-- sql comment to skip\nupdate blah;",
+        "update blah set some_column='# Hello there\n\n* This is a list\n* of items\n--\n[And a link](https://github.com/simonw/datasette-render-markdown).'\nas demo_markdown",
         "PRAGMA case_sensitive_like = true" "SELECT * FROM pragma_index_info('idx52')",
     ],
 )
@@ -150,6 +153,8 @@ def test_validate_sql_select_bad(bad_sql):
     [
         "select count(*) from airports",
         "select foo from bar",
+        "--sql comment to skip\nselect foo from bar",
+        "select '# Hello there\n\n* This is a list\n* of items\n--\n[And a link](https://github.com/simonw/datasette-render-markdown).'\nas demo_markdown",
         "select 1 + 1",
         "explain select 1 + 1",
         "explain query plan select 1 + 1",
@@ -388,3 +393,53 @@ def test_path_with_format(path, format, extra_qs, expected):
 )
 def test_format_bytes(bytes, expected):
     assert expected == utils.format_bytes(bytes)
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("dog", '"dog"'),
+        ("cat,", '"cat,"'),
+        ("cat dog", '"cat" "dog"'),
+        # If a phrase is already double quoted, leave it so
+        ('"cat dog"', '"cat dog"'),
+        ('"cat dog" fish', '"cat dog" "fish"'),
+        # Sensibly handle unbalanced double quotes
+        ('cat"', '"cat"'),
+        ('"cat dog" "fish', '"cat dog" "fish"'),
+    ],
+)
+def test_escape_fts(query, expected):
+    assert expected == utils.escape_fts(query)
+
+
+def test_check_connection_spatialite_raises():
+    path = str(pathlib.Path(__file__).parent / "spatialite.db")
+    conn = sqlite3.connect(path)
+    with pytest.raises(utils.SpatialiteConnectionProblem):
+        utils.check_connection(conn)
+
+
+def test_check_connection_passes():
+    conn = sqlite3.connect(":memory:")
+    utils.check_connection(conn)
+
+
+@pytest.mark.asyncio
+async def test_request_post_vars():
+    scope = {
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "scheme": "http",
+        "type": "http",
+        "headers": [[b"content-type", b"application/x-www-form-urlencoded"]],
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"foo=bar&baz=1", "more_body": False}
+
+    request = Request(scope, receive)
+    assert {"foo": "bar", "baz": "1"} == await request.post_vars()

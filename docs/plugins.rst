@@ -370,6 +370,8 @@ arguments and can be called like this::
 
     select random_integer(1, 10);
 
+Examples: `datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`_, `datasette-jq <https://github.com/simonw/datasette-jq>`_
+
 .. _plugin_hook_prepare_jinja2_environment:
 
 prepare_jinja2_environment(env)
@@ -441,6 +443,8 @@ Or a list of dictionaries defining both a URL and an
             'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
         }]
 
+Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
+
 .. _plugin_hook_extra_js_urls:
 
 extra_js_urls(template, database, table, datasette)
@@ -474,6 +478,8 @@ you have one:
         return [
             '/-/static-plugins/your-plugin/app.js'
         ]
+
+Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
 
 .. _plugin_hook_publish_subcommand:
 
@@ -528,6 +534,8 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
             api_key,
         ):
             # Your implementation goes here
+
+Example: `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`_
 
 .. _plugin_hook_render_cell:
 
@@ -599,6 +607,8 @@ If the value matches that pattern, the plugin returns an HTML link element:
             label=jinja2.escape(data["label"] or "") or "&nbsp;"
         ))
 
+Examples: `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`_, `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`_
+
 .. _plugin_hook_extra_body_script:
 
 extra_body_script(template, database, table, view_name, datasette)
@@ -627,6 +637,7 @@ The ``datasette`` instance is provided primarily so that you can consult any plu
 
 The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
 
+Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
 
 .. _plugin_hook_extra_template_vars:
 
@@ -705,6 +716,8 @@ You can then use the new function in a template like so::
 
     SQLite version: {{ sql_first("select sqlite_version()") }}
 
+Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`_
+
 .. _plugin_register_output_renderer:
 
 register_output_renderer(datasette)
@@ -754,6 +767,8 @@ A simple example of an output renderer callback function:
         return {
             'body': 'Hello World'
         }
+
+Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `datasette-ics <https://github.com/simonw/datasette-ics>`_
 
 .. _plugin_register_facet_classes:
 
@@ -861,3 +876,5 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
                 await app(scope, recieve, wrapped_send)
             return add_x_databases_header
         return wrap_with_databases_header
+
+Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`_, `datasette-search-all <https://github.com/simonw/datasette-search-all>`_

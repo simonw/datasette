@@ -4,7 +4,7 @@
  Publishing data
 =================
 
-Datasette includes tools for publishing and deploying your data to the internet. The ``datasette publish`` command will deploy a new Datasette instance containing your databases directly to a Heroku, Google Cloud or Zeit Now hosting account. You can also use ``datasette package`` to create a Docker image that bundles your databases together with the datasette application that is used to serve them.
+Datasette includes tools for publishing and deploying your data to the internet. The ``datasette publish`` command will deploy a new Datasette instance containing your databases directly to a Heroku or Google Cloud hosting account. You can also use ``datasette package`` to create a Docker image that bundles your databases together with the datasette application that is used to serve them.
 
 .. _cli_publish:
 
@@ -69,33 +69,6 @@ Publishing to Fly
     datasette publish fly mydatabase.db
 
 Consult the `datasette-publish-fly README <https://github.com/simonw/datasette-publish-fly/blob/master/README.md>`__ for more details.
-
-Publishing to Zeit Now v1
--------------------------
-
-Datasette can be deployed to Zeit Now's older v1 hosting platform. They no longer accept new signups for this service, so this option is currently only available if you created an account before January 2019.
-
-To publish your database(s) to a new instance hosted by Zeit Now v1, install the `now cli tool <https://zeit.co/download>`__ and then run the following command::
-
-    datasette publish nowv1 mydatabase.db
-
-This will upload your database to Zeit Now, assign you a new URL and install and start a new instance of Datasette to serve your database.
-
-The command will output a URL that looks something like this::
-
-    https://datasette-elkksjmyfj.now.sh
-
-You can navigate to this URL to see live logs of the deployment process. Your new Datasette instance will be available at that URL.
-
-Once the deployment has completed, you can assign a custom URL to your instance using the ``now alias`` command::
-
-    now alias https://datasette-elkksjmyfj.now.sh datasette-publish-demo.now.sh
-
-You can use ``anything-you-like.now.sh``, provided no one else has already registered that alias.
-
-You can also use custom domains, if you `first register them with Zeit Now <https://zeit.co/docs/features/aliases>`_.
-
-.. literalinclude:: datasette-publish-nowv1-help.txt
 
 .. _publish_custom_metadata_and_plugins:
 

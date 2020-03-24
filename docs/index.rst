@@ -37,6 +37,3 @@ Contents
    internals
    contributing
    changelog
-
-.. _Zeit Now: https://zeit.co/now
-.. _Heroku: https://www.heroku.com/

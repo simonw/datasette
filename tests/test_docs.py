@@ -34,7 +34,6 @@ def test_config_options_are_documented(config):
     (
         ("serve", "datasette-serve-help.txt"),
         ("package", "datasette-package-help.txt"),
-        ("publish nowv1", "datasette-publish-nowv1-help.txt"),
         ("publish heroku", "datasette-publish-heroku-help.txt"),
         ("publish cloudrun", "datasette-publish-cloudrun-help.txt"),
     ),

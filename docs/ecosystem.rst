@@ -191,3 +191,8 @@ datasette-sentry
 ----------------
 
 `datasette-sentry <https://github.com/simonw/datasette-sentry>`__ lets you configure Datasette to send any error reports to `Sentry <https://sentry.io/>`__.
+
+datasette-publish-fly
+---------------------
+
+`datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`__ lets you publish Datasette instances using the `Fly <https://fly.io/>`__ hosting platform. See also :ref:`publish_fly`.

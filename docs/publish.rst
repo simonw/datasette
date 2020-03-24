@@ -56,6 +56,20 @@ You may need to interact with prompts from the tool. Once it has finished it wil
 
 .. literalinclude:: datasette-publish-cloudrun-help.txt
 
+.. _publish_fly:
+
+Publishing to Fly
+-----------------
+
+`Fly <https://fly.io/>`__ is a `competitively priced <https://fly.io/docs/pricing/>`__ Docker-compatible hosting platform that makes it easy to run applications in globally distributed data centers close to your end users. You can deploy Datasette instances to Fly using the `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`__ plugin, installed separately.
+
+::
+
+    pip install datasette-publish-fly
+    datasette publish fly mydatabase.db
+
+Consult the `datasette-publish-fly README <https://github.com/simonw/datasette-publish-fly/blob/master/README.md>`__ for more details.
+
 Publishing to Zeit Now v1
 -------------------------
 

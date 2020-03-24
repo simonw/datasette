@@ -1174,19 +1174,29 @@ def test_base_url_config(base_url, path):
     for client in make_app_client(config={"base_url": base_url}):
         response = client.get(base_url + path.lstrip("/"))
         soup = Soup(response.body, "html.parser")
-        for a in soup.findAll("a"):
-            href = a["href"]
-            if not href.startswith("#") and href not in {
-                "https://github.com/simonw/datasette",
-                "https://github.com/simonw/datasette/blob/master/LICENSE",
-                "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
-            }:
+        for el in soup.findAll(["a", "link", "script"]):
+            if "href" in el.attrs:
+                href = el["href"]
+            elif "src" in el.attrs:
+                href = el["src"]
+            else:
+                continue  # Could be a <script>...</script>
+            if (
+                not href.startswith("#")
+                and href
+                not in {
+                    "https://github.com/simonw/datasette",
+                    "https://github.com/simonw/datasette/blob/master/LICENSE",
+                    "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
+                }
+                and not href.startswith("https://plugin-example.com/")
+            ):
                 # If this has been made absolute it may start http://localhost/
                 if href.startswith("http://localhost/"):
                     href = href[len("http://localost/") :]
                 assert href.startswith(base_url), {
                     "base_url": base_url,
                     "path": path,
-                    "href_in_document": href,
-                    "link_parent": str(a.parent),
+                    "href_or_src": href,
+                    "element_parent": str(el.parent),
                 }

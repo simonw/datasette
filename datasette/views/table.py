@@ -28,9 +28,9 @@ from datasette.filters import Filters
 from .base import DataView, DatasetteError, ureg
 
 LINK_WITH_LABEL = (
-    '<a href="/{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
+    '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
 )
-LINK_WITH_VALUE = '<a href="/{database}/{table}/{link_id}">{id}</a>'
+LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
 
 
 class Row:
@@ -100,6 +100,7 @@ class RowTableShared(DataView):
         }
 
         cell_rows = []
+        base_url = self.ds.config("base_url")
         for row in rows:
             cells = []
             # Unless we are a view, the first column is a link - either to the rowid
@@ -113,7 +114,8 @@ class RowTableShared(DataView):
                         "is_special_link_column": is_special_link_column,
                         "raw": pk_path,
                         "value": jinja2.Markup(
-                            '<a href="/{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
+                            '<a href="{base_url}{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
+                                base_url=base_url,
                                 database=database,
                                 table=urllib.parse.quote_plus(table),
                                 flat_pks=str(jinja2.escape(pk_path)),
@@ -159,6 +161,7 @@ class RowTableShared(DataView):
                     display_value = jinja2.Markup(
                         link_template.format(
                             database=database,
+                            base_url=base_url,
                             table=urllib.parse.quote_plus(other_table),
                             link_id=urllib.parse.quote_plus(str(value)),
                             id=str(jinja2.escape(value)),

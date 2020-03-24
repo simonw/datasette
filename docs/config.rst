@@ -228,3 +228,16 @@ Some examples:
 * https://latest.datasette.io/?_context=1
 * https://latest.datasette.io/fixtures?_context=1
 * https://latest.datasette.io/fixtures/roadside_attractions?_context=1
+
+.. _config_base_url:
+
+base_url
+--------
+
+If you are running Datasette behind a proxy, it may be useful to change the root URL used for the Datasette instance.
+
+For example, if you are sending traffic from `https://www.example.com/tools/datasette/` through to a proxied Datasette instance you may wish Datasette to use `/tools/datasette/` as its root URL.
+
+You can do that like so::
+
+    datasette mydatabase.db --config base_url:/tools/datasette/

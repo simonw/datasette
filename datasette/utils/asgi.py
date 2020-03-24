@@ -110,6 +110,9 @@ class AsgiRouter:
         raw_path = scope.get("raw_path")
         if raw_path:
             path = raw_path.decode("ascii")
+        return await self.route_path(scope, receive, send, path)
+
+    async def route_path(self, scope, receive, send, path):
         for regex, view in self.routes:
             match = regex.match(path)
             if match is not None:

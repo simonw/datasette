@@ -1307,6 +1307,7 @@ def test_config_json(app_client):
         "force_https_urls": False,
         "hash_urls": False,
         "template_debug": False,
+        "base_url": "/",
     } == response.json
 
 

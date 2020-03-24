@@ -27,7 +27,7 @@ class Config(click.ParamType):
         if ":" not in config:
             self.fail('"{}" should be name:value'.format(config), param, ctx)
             return
-        name, value = config.split(":")
+        name, value = config.split(":", 1)
         if name not in DEFAULT_CONFIG:
             self.fail(
                 "{} is not a valid option (--help-config to see all)".format(name),
@@ -50,6 +50,8 @@ class Config(click.ParamType):
                 self.fail('"{}" should be an integer'.format(name), param, ctx)
                 return
             return name, int(value)
+        elif isinstance(default, str):
+            return name, value
         else:
             # Should never happen:
             self.fail("Invalid option")

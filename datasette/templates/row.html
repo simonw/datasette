@@ -17,7 +17,7 @@
 
 {% block nav %}
     <p class="crumbs">
-        <a href="/">home</a> /
+        <a href="{{ base_url }}">home</a> /
         <a href="{{ database_url(database) }}">{{ database }}</a> /
         <a href="{{ database_url(database) }}/{{ table|quote_plus }}">{{ table }}</a>
     </p>

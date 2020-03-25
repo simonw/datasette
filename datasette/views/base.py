@@ -64,10 +64,11 @@ class BaseView(AsgiView):
 
     def database_url(self, database):
         db = self.ds.databases[database]
+        base_url = self.ds.config("base_url")
         if self.ds.config("hash_urls") and db.hash:
-            return "/{}-{}".format(database, db.hash[:HASH_LENGTH])
+            return "{}{}-{}".format(base_url, database, db.hash[:HASH_LENGTH])
         else:
-            return "/{}".format(database)
+            return "{}{}".format(base_url, database)
 
     def database_color(self, database):
         return "ff0000"

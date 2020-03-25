@@ -135,7 +135,9 @@ CONFIG_OPTIONS = (
         False,
         "Allow display of template debug information with ?_context=1",
     ),
+    ConfigOption("base_url", "/", "Datasette URLs should use this base"),
 )
+
 DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
 
 
@@ -573,6 +575,7 @@ class Datasette:
                 "format_bytes": format_bytes,
                 "extra_css_urls": self._asset_urls("extra_css_urls", template, context),
                 "extra_js_urls": self._asset_urls("extra_js_urls", template, context),
+                "base_url": self.config("base_url"),
             },
             **extra_template_vars,
         }
@@ -735,6 +738,13 @@ class DatasetteRouter(AsgiRouter):
     def __init__(self, datasette, routes):
         self.ds = datasette
         super().__init__(routes)
+
+    async def route_path(self, scope, receive, send, path):
+        # Strip off base_url if present before routing
+        base_url = self.ds.config("base_url")
+        if base_url != "/" and path.startswith(base_url):
+            path = "/" + path[len(base_url) :]
+        return await super().route_path(scope, receive, send, path)
 
     async def handle_404(self, scope, receive, send):
         # If URL has a trailing slash, redirect to URL without it

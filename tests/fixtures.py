@@ -351,7 +351,7 @@ def prepare_connection(conn, database, datasette):
 
 @hookimpl
 def extra_css_urls(template, database, table, datasette):
-    return ['https://example.com/{}/extra-css-urls-demo.css'.format(
+    return ['https://plugin-example.com/{}/extra-css-urls-demo.css'.format(
         base64.b64encode(json.dumps({
             "template": template,
             "database": database,
@@ -363,9 +363,9 @@ def extra_css_urls(template, database, table, datasette):
 @hookimpl
 def extra_js_urls():
     return [{
-        'url': 'https://example.com/jquery.js',
+        'url': 'https://plugin-example.com/jquery.js',
         'sri': 'SRIHASH',
-    }, 'https://example.com/plugin1.js']
+    }, 'https://plugin-example.com/plugin1.js']
 
 
 @hookimpl
@@ -421,9 +421,9 @@ import json
 @hookimpl
 def extra_js_urls():
     return [{
-        'url': 'https://example.com/jquery.js',
+        'url': 'https://plugin-example.com/jquery.js',
         'sri': 'SRIHASH',
-    }, 'https://example.com/plugin2.js']
+    }, 'https://plugin-example.com/plugin2.js']
 
 
 @hookimpl

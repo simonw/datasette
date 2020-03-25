@@ -236,7 +236,7 @@ base_url
 
 If you are running Datasette behind a proxy, it may be useful to change the root URL used for the Datasette instance.
 
-For example, if you are sending traffic from `https://www.example.com/tools/datasette/` through to a proxied Datasette instance you may wish Datasette to use `/tools/datasette/` as its root URL.
+For example, if you are sending traffic from ``https://www.example.com/tools/datasette/`` through to a proxied Datasette instance you may wish Datasette to use ``/tools/datasette/`` as its root URL.
 
 You can do that like so::
 

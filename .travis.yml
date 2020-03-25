@@ -20,14 +20,6 @@ cache:
 # This defines further stages that execute after the tests
 jobs:
   include:
-    - stage: deploy latest.datasette.io
-      if: branch = master AND type = push
-      script:
-        - pip install .[test]
-        - npm install -g now
-        - python tests/fixtures.py fixtures.db fixtures.json
-        - export ALIAS=`echo $TRAVIS_COMMIT | cut -c 1-7`
-        - datasette publish nowv1 fixtures.db -m fixtures.json --token=$NOW_TOKEN --branch=$TRAVIS_COMMIT --version-note=$TRAVIS_COMMIT --name=datasette-latest-$ALIAS --alias=latest.datasette.io --alias=$ALIAS.datasette.io --extra-options='--config template_debug:1'
     - stage: release tagged version
       if: tag IS present
       python: 3.6
@@ -43,10 +35,6 @@ jobs:
       if: tag IS present
       python: 3.6
       script:
-        - npm install -g now
-        - export ALIAS=`echo $TRAVIS_COMMIT | cut -c 1-7`
-        - export TAG=`echo $TRAVIS_TAG | sed 's/\./-/g' | sed 's/.*/v&/'`
-        - now alias $ALIAS.datasette.io $TAG.datasette.io --token=$NOW_TOKEN
         # Build and release to Docker Hub
         - docker login -u $DOCKER_USER -p $DOCKER_PASS
         - export REPO=datasetteproject/datasette

@@ -1,0 +1,47 @@
+name: Deploy latest.datasette.io
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deloy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out datasette
+      uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.8
+    - uses: actions/cache@v1
+      name: Configure pip caching
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    - name: Install Python dependencies
+      run: |
+        python -m pip install -e .[test]
+    - name: Run tests
+      run: pytest
+    - name: Build fixtures.db
+      run: python tests/fixtures.py fixtures.db fixtures.json
+    - name: Set up Cloud Run
+      uses: GoogleCloudPlatform/github-actions/setup-gcloud@master
+      with:
+        version: '275.0.0'
+        service_account_email: ${{ secrets.GCP_SA_EMAIL }}
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+    - name: Deploy to Cloud Run
+      run: |-
+        gcloud config set run/region us-central1
+        gcloud config set project datasette-222320
+        datasette publish cloudrun fixtures.db \
+            -m fixtures.json \
+            --branch=$GITHUB_SHA \
+            --version-note=$GITHUB_SHA \
+            --extra-options="--config template_debug:1" \
+            --service=datasette-latest

@@ -4,13 +4,24 @@
 Changelog
 =========
 
+.. _v0_39:
+
+0.39 (2020-03-24)
+-----------------
+
+* New :ref:`config_base_url` configuration setting for serving up the correct links while running Datasette under a different URL prefix. (`#394 <https://github.com/simonw/datasette/issues/394>`__)
+* New metadata settings ``"sort"`` and ``"sort_desc"`` for setting the default sort order for a table. See :ref:`metadata_default_sort`. (`#702 <https://github.com/simonw/datasette/issues/702>`__)
+* Sort direction arrow now displays by default on the primary key. This means you only have to click once (not twice) to sort in reverse order. (`#677 <https://github.com/simonw/datasette/issues/677>`__)
+* New ``await Request(scope, receive).post_vars()`` method for accessing POST form variables. (`#700 <https://github.com/simonw/datasette/issues/700>`__)
+* :ref:`plugin_hooks` documentation now links to example uses of each plugin. (`#709 <https://github.com/simonw/datasette/issues/709>`__)
+
 .. _v0_38:
 
 0.38 (2020-03-08)
 -----------------
 
 * The `Docker build <https://hub.docker.com/r/datasetteproject/datasette>`__ of Datasette now uses SQLite 3.31.1, upgraded from 3.26. (`#695 <https://github.com/simonw/datasette/issues/695>`__)
-* ``datasette publish cloudrun`` now accepts an optional ``--memory=2Gi`` flag for setting the Cloud Run allocated memory to a value other than the default (256Mi).  (`#694 <https://github.com/simonw/datasette/issues/694>`__)
+* ``datasette publish cloudrun`` now accepts an optional ``--memory=2Gi`` flag for setting the Cloud Run allocated memory to a value other than the default (256Mi). (`#694 <https://github.com/simonw/datasette/issues/694>`__)
 * Fixed bug where templates that shipped with plugins were sometimes not being correctly loaded. (`#697 <https://github.com/simonw/datasette/issues/697>`__)
 
 .. _v0_37_1:

@@ -743,7 +743,7 @@ class DatasetteRouter(AsgiRouter):
     async def __call__(self, scope, receive, send):
         path_from_header = self.ds.config("path_from_header")
         if path_from_header:
-            raw_path = dict(scope["headers"])[path_from_header.encode("utf8")]
+            raw_path = dict(scope["headers"])[path_from_header.encode("utf8")].split(b"?")[0]
             scope = dict(scope, raw_path=raw_path)
         return await super().__call__(scope, receive, send)
 

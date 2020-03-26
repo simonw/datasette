@@ -742,13 +742,10 @@ class DatasetteRouter(AsgiRouter):
 
     async def __call__(self, scope, receive, send):
         path_from_header = self.ds.config("path_from_header")
-        path = scope["path"]
-        raw_path = scope.get("raw_path")
         if path_from_header:
             raw_path = dict(scope["headers"])[path_from_header.encode("utf8")]
-        if raw_path:
-            path = raw_path.decode("ascii")
-        return await self.route_path(scope, receive, send, path)
+            scope = dict(scope, raw_path=raw_path)
+        return await super().__call__(scope, receive, send)
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing

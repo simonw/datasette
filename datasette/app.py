@@ -33,7 +33,6 @@ from .utils import (
     escape_sqlite,
     format_bytes,
     is_valid_sqlite,
-    get_plugins,
     module_from_path,
     sqlite3,
     to_css_class,

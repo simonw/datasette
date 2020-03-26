@@ -1168,6 +1168,7 @@ def test_metadata_sort_desc(app_client):
         "/fixtures/compound_three_primary_keys",
         "/fixtures/compound_three_primary_keys/a,a,a",
         "/fixtures/paginated_view",
+        "/fixtures/facetable",
     ],
 )
 def test_base_url_config(base_url, path):

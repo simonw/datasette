@@ -241,3 +241,10 @@ For example, if you are sending traffic from ``https://www.example.com/tools/dat
 You can do that like so::
 
     datasette mydatabase.db --config base_url:/tools/datasette/
+
+.. _path_from_header:
+
+path_from_header
+----------------
+
+See `issue #712 <https://github.com/simonw/datasette/issues/712>`__.

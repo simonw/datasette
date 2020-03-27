@@ -406,7 +406,7 @@ def extra_template_vars(template, database, table, view_name, request, datasette
     return {
         "extra_template_vars": json.dumps({
             "template": template,
-            "scope_path": request.scope["path"]
+            "scope_path": request.scope["path"] if request else None
         }, default=lambda b: b.decode("utf8"))
     }
 """
@@ -468,7 +468,7 @@ def extra_template_vars(template, database, table, view_name, request, datasette
         return {
             "extra_template_vars_from_awaitable": json.dumps({
                 "template": template,
-                "scope_path": request.scope["path"],
+                "scope_path": request.scope["path"] if request else None,
                 "awaitable": True,
             }, default=lambda b: b.decode("utf8")),
             "query_database": query_database,

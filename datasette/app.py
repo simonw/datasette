@@ -211,6 +211,39 @@ class Datasette:
                     # Plugin already registered
                     pass
 
+        # Configure Jinja
+        default_templates = str(app_root / "datasette" / "templates")
+        template_paths = []
+        if self.template_dir:
+            template_paths.append(self.template_dir)
+        plugin_template_paths = [
+            plugin["templates_path"]
+            for plugin in get_plugins()
+            if plugin["templates_path"]
+        ]
+        template_paths.extend(plugin_template_paths)
+        template_paths.append(default_templates)
+        template_loader = ChoiceLoader(
+            [
+                FileSystemLoader(template_paths),
+                # Support {% extends "default:table.html" %}:
+                PrefixLoader(
+                    {"default": FileSystemLoader(default_templates)}, delimiter=":"
+                ),
+            ]
+        )
+        self.jinja_env = Environment(
+            loader=template_loader, autoescape=True, enable_async=True
+        )
+        self.jinja_env.filters["escape_css_string"] = escape_css_string
+        self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
+        self.jinja_env.filters["escape_sqlite"] = escape_sqlite
+        self.jinja_env.filters["to_css_class"] = to_css_class
+        # pylint: disable=no-member
+        pm.hook.prepare_jinja2_environment(env=self.jinja_env)
+
+        self.register_renderers()
+
     def add_database(self, name, db):
         self.databases[name] = db
 
@@ -611,38 +644,6 @@ class Datasette:
 
     def app(self):
         "Returns an ASGI app function that serves the whole of Datasette"
-        default_templates = str(app_root / "datasette" / "templates")
-        template_paths = []
-        if self.template_dir:
-            template_paths.append(self.template_dir)
-        plugin_template_paths = [
-            plugin["templates_path"]
-            for plugin in get_plugins()
-            if plugin["templates_path"]
-        ]
-        template_paths.extend(plugin_template_paths)
-        template_paths.append(default_templates)
-        template_loader = ChoiceLoader(
-            [
-                FileSystemLoader(template_paths),
-                # Support {% extends "default:table.html" %}:
-                PrefixLoader(
-                    {"default": FileSystemLoader(default_templates)}, delimiter=":"
-                ),
-            ]
-        )
-        self.jinja_env = Environment(
-            loader=template_loader, autoescape=True, enable_async=True
-        )
-        self.jinja_env.filters["escape_css_string"] = escape_css_string
-        self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
-        self.jinja_env.filters["escape_sqlite"] = escape_sqlite
-        self.jinja_env.filters["to_css_class"] = to_css_class
-        # pylint: disable=no-member
-        pm.hook.prepare_jinja2_environment(env=self.jinja_env)
-
-        self.register_renderers()
-
         routes = []
 
         def add_route(view, regex):

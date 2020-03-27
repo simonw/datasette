@@ -227,7 +227,7 @@ class Datasette:
         self.databases.pop(name)
 
     def scan_dirs(self):
-        # Recurse through self.dirs looking for new SQLite DBs
+        # Recurse through self.dirs looking for new SQLite DBs. Runs in a thread.
         while True:
             current_filepaths = {
                 d.path for d in list(self.databases.values()) if d.path is not None

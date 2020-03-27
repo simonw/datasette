@@ -603,7 +603,8 @@ def is_valid_sqlite(path):
         return False
     # Check we can run `select * from sqlite_master`
     try:
-        sqlite3.connect(str(path)).execute("select * from sqlite_master")
+        conn = sqlite3.connect(str(path))
+        check_connection(conn)
     except Exception:
         return False
     return True

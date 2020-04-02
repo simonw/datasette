@@ -11,7 +11,9 @@ Run Datasette like this::
 
     datasette database1.db database2.db --metadata metadata.json
 
-Your ``metadata.json`` file can look something like this::
+Your ``metadata.json`` file can look something like this:
+
+.. code-block:: json
 
     {
         "title": "Custom title for your index page",
@@ -21,6 +23,8 @@ Your ``metadata.json`` file can look something like this::
         "source": "Original Data Source",
         "source_url": "http://example.com/"
     }
+
+You can optionally use YAML instead of JSON, see :ref:`metadata_yaml`.
 
 The above metadata will be displayed on the index page of your Datasette-powered
 site. The source and license information will also be included in the footer of
@@ -37,7 +41,9 @@ Metadata at the top level of the JSON will be shown on the index page and in the
 footer on every page of the site. The license and source is expected to apply to
 all of your data.
 
-You can also provide metadata at the per-database or per-table level, like this::
+You can also provide metadata at the per-database or per-table level, like this:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -78,7 +84,9 @@ Specifying units for a column
 Datasette supports attaching units to a column, which will be used when displaying
 values from that column. SI prefixes will be used where appropriate.
 
-Column units are configured in the metadata like so::
+Column units are configured in the metadata like so:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -97,7 +105,9 @@ Column units are configured in the metadata like so::
 
 Units are interpreted using Pint_, and you can see the full list of available units in
 Pint's `unit registry`_. You can also add `custom units`_ to the metadata, which will be
-registered with Pint::
+registered with Pint:
+
+.. code-block:: json
 
     {
         "custom_units": [
@@ -114,7 +124,9 @@ registered with Pint::
 Setting a default sort order
 ----------------------------
 
-By default Datasette tables are sorted by primary key. You can over-ride this default for a specific table using the ``"sort"`` or ``"sort_desc"`` metadata properties::
+By default Datasette tables are sorted by primary key. You can over-ride this default for a specific table using the ``"sort"`` or ``"sort_desc"`` metadata properties:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -128,7 +140,9 @@ By default Datasette tables are sorted by primary key. You can over-ride this de
         }
     }
 
-Or use ``"sort_desc"`` to sort in descending order::
+Or use ``"sort_desc"`` to sort in descending order:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -149,7 +163,9 @@ Setting which columns can be used for sorting
 
 Datasette allows any column to be used for sorting by default. If you need to
 control which columns are available for sorting you can do so using the optional
-``sortable_columns`` key::
+``sortable_columns`` key:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -171,7 +187,9 @@ This will restrict sorting of ``example_table`` to just the ``height`` and
 
 You can also disable sorting entirely by setting ``"sortable_columns": []``
 
-By default, database views in Datasette do not support sorting. You can use ``sortable_columns`` to enable specific sort orders for a view called ``name_of_view`` in the database ``my_database`` like so::
+By default, database views in Datasette do not support sorting. You can use ``sortable_columns`` to enable specific sort orders for a view called ``name_of_view`` in the database ``my_database`` like so:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -199,7 +217,9 @@ two columns: a primary key column and one other. It assumes that the second
 column should be used as the link label.
 
 If your table has more than two columns you can specify which column should be
-used for the link label with the ``label_column`` property::
+used for the link label with the ``label_column`` property:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -217,7 +237,9 @@ Hiding tables
 -------------
 
 You can hide tables from the database listing view (in the same way that FTS and
-Spatialite tables are automatically hidden) using ``"hidden": true``::
+Spatialite tables are automatically hidden) using ``"hidden": true``:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -230,3 +252,41 @@ Spatialite tables are automatically hidden) using ``"hidden": true``::
             }
         }
     }
+
+.. _metadata_yaml:
+
+Using YAML for metadata
+-----------------------
+
+Datasette accepts YAML as an alternative to JSON for your metadata configuration file. YAML is particularly useful for including muli-line HTML and SQL strings.
+
+Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`canned_queries`.
+
+.. code-block:: yaml
+
+    title: Demonstrating Metadata from YAML
+    description_html: |-
+      <p>This description includes a long HTML string</p>
+      <ul>
+        <li>YAML is better for embedding HTML strings than JSON!</li>
+      </ul>
+    license: ODbL
+    license_url: https://opendatacommons.org/licenses/odbl/
+    databases:
+      fixtures:
+        tables:
+          no_primary_key:
+            hidden: true
+        queries:
+          neighborhood_search:
+            sql: |-
+              select neighborhood, facet_cities.name, state
+              from facetable join facet_cities on facetable.city_id = facet_cities.id
+              where neighborhood like '%' || :text || '%' order by neighborhood;
+            title: Search neighborhoods
+            description_html: |-
+              <p>This demonstrates <em>simple</em> LIKE search
+
+The ``metadata.yml`` file is passed to Datasette using the same ``--metadata`` option::
+
+    datasette fixtures.db --metadata metadata.yml

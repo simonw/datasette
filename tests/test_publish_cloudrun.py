@@ -146,12 +146,15 @@ def test_publish_cloudrun_plugin_secrets(mock_call, mock_output, mock_which):
     runner = CliRunner()
     with runner.isolated_filesystem():
         open("test.db", "w").write("data")
+        open("metadata.yml", "w").write("title: Hello from metadata YAML")
         result = runner.invoke(
             cli.cli,
             [
                 "publish",
                 "cloudrun",
                 "test.db",
+                "--metadata",
+                "metadata.yml",
                 "--service",
                 "datasette",
                 "--plugin-secret",
@@ -183,9 +186,10 @@ CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data
             .strip()
         )
         assert {
+            "title": "Hello from metadata YAML",
             "plugins": {
                 "datasette-auth-github": {
                     "client_id": {"$env": "DATASETTE_AUTH_GITHUB_CLIENT_ID"}
                 }
-            }
+            },
         } == json.loads(metadata)

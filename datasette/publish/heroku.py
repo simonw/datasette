@@ -11,7 +11,7 @@ from .common import (
     add_common_publish_arguments_and_options,
     fail_if_publish_binary_not_installed,
 )
-from datasette.utils import link_or_copy, link_or_copy_directory
+from datasette.utils import link_or_copy, link_or_copy_directory, parse_metadata
 
 
 @hookimpl
@@ -154,7 +154,7 @@ def temporary_heroku_directory(
     file_names = [os.path.split(f)[-1] for f in files]
 
     if metadata:
-        metadata_content = json.load(metadata)
+        metadata_content = parse_metadata(metadata.read())
     else:
         metadata_content = {}
     for key, value in extra_metadata.items():

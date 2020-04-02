@@ -45,6 +45,7 @@ setup(
         "uvicorn~=0.11",
         "aiofiles~=0.4.0",
         "janus~=0.4.0",
+        "PyYAML~=5.3",
     ],
     entry_points="""
         [console_scripts]

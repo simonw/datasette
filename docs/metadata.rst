@@ -287,6 +287,6 @@ Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`can
             description_html: |-
               <p>This demonstrates <em>simple</em> LIKE search
 
-The ``metadata.yml`` file is passed to Datasette using the same ``--metadata`` option::
+The ``metadata.yml`` file is passed to Datasette using the same ``--metadata`` or ``-m`` option::
 
     datasette fixtures.db --metadata metadata.yml

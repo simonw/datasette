@@ -327,6 +327,7 @@ def serve(
     config,
     version_note,
     help_config,
+    return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
     if help_config:
@@ -375,6 +376,10 @@ def serve(
         memory=memory,
         version_note=version_note,
     )
+    if return_instance:
+        # Private utility mechanism for writing unit tests
+        return ds
+
     # Run async sanity checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
 

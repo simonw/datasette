@@ -11,6 +11,7 @@ import sys
 from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
 from .utils import (
     check_connection,
+    parse_metadata,
     ConnectionProblem,
     SpatialiteConnectionProblem,
     temporary_docker_directory,
@@ -147,7 +148,7 @@ def plugins(all, plugins_dir):
     "-m",
     "--metadata",
     type=click.File(mode="r"),
-    help="Path to JSON file containing metadata to publish",
+    help="Path to JSON/YAML file containing metadata to publish",
 )
 @click.option("--extra-options", help="Extra options to pass to datasette serve")
 @click.option("--branch", help="Install datasette from a GitHub branch e.g. master")
@@ -281,7 +282,7 @@ def package(
     "-m",
     "--metadata",
     type=click.File(mode="r"),
-    help="Path to JSON file containing license/source metadata",
+    help="Path to JSON/YAML file containing license/source metadata",
 )
 @click.option(
     "--template-dir",
@@ -354,7 +355,7 @@ def serve(
 
     metadata_data = None
     if metadata:
-        metadata_data = json.loads(metadata.read())
+        metadata_data = parse_metadata(metadata.read())
 
     click.echo(
         "Serve! files={} (immutables={}) on port {}".format(files, immutable, port)

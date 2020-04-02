@@ -12,7 +12,7 @@ def add_common_publish_arguments_and_options(subcommand):
                 "-m",
                 "--metadata",
                 type=click.File(mode="r"),
-                help="Path to JSON file containing metadata to publish",
+                help="Path to JSON/YAML file containing metadata to publish",
             ),
             click.option(
                 "--extra-options", help="Extra options to pass to datasette serve"

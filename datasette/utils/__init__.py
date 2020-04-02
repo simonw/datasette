@@ -13,6 +13,7 @@ import types
 import shutil
 import urllib
 import numbers
+import yaml
 
 try:
     import pysqlite3 as sqlite3
@@ -359,7 +360,7 @@ def temporary_docker_directory(
     file_paths = [os.path.join(saved_cwd, file_path) for file_path in files]
     file_names = [os.path.split(f)[-1] for f in files]
     if metadata:
-        metadata_content = json.load(metadata)
+        metadata_content = parse_metadata(metadata.read())
     else:
         metadata_content = {}
     for key, value in extra_metadata.items():
@@ -785,3 +786,18 @@ def check_connection(conn):
                 raise SpatialiteConnectionProblem(e)
             else:
                 raise ConnectionProblem(e)
+
+
+class BadMetadataError(Exception):
+    pass
+
+
+def parse_metadata(content):
+    # content can be JSON or YAML
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        try:
+            return yaml.safe_load(content)
+        except yaml.YAMLError:
+            raise BadMetadataError("Metadata is not valid JSON or YAML")

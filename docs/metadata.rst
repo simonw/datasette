@@ -258,7 +258,7 @@ Spatialite tables are automatically hidden) using ``"hidden": true``:
 Using YAML for metadata
 -----------------------
 
-Datasette accepts YAML as an alternative to JSON for your metadata configuration file. YAML is particularly useful for including muli-line HTML and SQL strings.
+Datasette accepts YAML as an alternative to JSON for your metadata configuration file. YAML is particularly useful for including multiline HTML and SQL strings.
 
 Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`canned_queries`.
 

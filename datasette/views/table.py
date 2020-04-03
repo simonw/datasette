@@ -26,6 +26,7 @@ from datasette.utils import (
 from datasette.utils.asgi import NotFound
 from datasette.filters import Filters
 from .base import DataView, DatasetteError, ureg
+from .database import QueryView
 
 LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
@@ -221,8 +222,8 @@ class TableView(RowTableShared):
         _size=None,
     ):
         canned_query = self.ds.get_canned_query(database, table)
-        if canned_query is not None:
-            return await self.custom_sql(
+        if canned_query:
+            return await QueryView(self.ds).data(
                 request,
                 database,
                 hash,
@@ -231,6 +232,7 @@ class TableView(RowTableShared):
                 editable=False,
                 canned_query=table,
             )
+
         db = self.ds.databases[database]
         is_view = bool(await db.get_view_definition(table))
         table_exists = bool(await db.table_exists(table))

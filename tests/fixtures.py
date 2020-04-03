@@ -11,6 +11,7 @@ import random
 import sys
 import string
 import tempfile
+import textwrap
 import time
 from urllib.parse import unquote, quote
 
@@ -311,14 +312,16 @@ METADATA = {
                 "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
                 "pragma_cache_size": "PRAGMA cache_size;",
                 "neighborhood_search": {
-                    "sql": """
+                    "sql": textwrap.dedent(
+                        """
                         select neighborhood, facet_cities.name, state
                         from facetable
                             join facet_cities
                                 on facetable.city_id = facet_cities.id
                         where neighborhood like '%' || :text || '%'
                         order by neighborhood;
-                    """,
+                    """
+                    ),
                     "title": "Search neighborhoods",
                     "description_html": "<b>Demonstrating</b> simple like search",
                 },

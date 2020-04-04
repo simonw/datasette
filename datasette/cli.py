@@ -105,16 +105,7 @@ async def inspect_(files, sqlite_extensions):
     return data
 
 
-class PublishAliases(click.Group):
-    aliases = {"now": "nowv1"}
-
-    def get_command(self, ctx, cmd_name):
-        if cmd_name in self.aliases:
-            return click.Group.get_command(self, ctx, self.aliases[cmd_name])
-        return click.Group.get_command(self, ctx, cmd_name)
-
-
-@cli.group(cls=PublishAliases)
+@cli.group()
 def publish():
     "Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"
     pass

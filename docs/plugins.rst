@@ -99,19 +99,25 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
     $ datasette plugins --all
     [
         {
-            "name": "datasette_json_html",
-            "static": false,
-            "templates": false,
-            "version": "0.4.0"
-        },
-        {
-            "name": "datasette.publish.heroku",
+            "name": "datasette.sql_functions",
             "static": false,
             "templates": false,
             "version": null
         },
         {
-            "name": "datasette.publish.now",
+            "name": "datasette.publish.cloudrun",
+            "static": false,
+            "templates": false,
+            "version": null
+        },
+        {
+            "name": "datasette.facets",
+            "static": false,
+            "templates": false,
+            "version": null
+        },
+        {
+            "name": "datasette.publish.heroku",
             "static": false,
             "templates": false,
             "version": null

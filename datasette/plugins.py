@@ -6,7 +6,6 @@ from . import hookspecs
 
 DEFAULT_PLUGINS = (
     "datasette.publish.heroku",
-    "datasette.publish.now",
     "datasette.publish.cloudrun",
     "datasette.facets",
     "datasette.sql_functions",

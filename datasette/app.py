@@ -14,6 +14,7 @@ from pathlib import Path
 
 import click
 from markupsafe import Markup
+import jinja2
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
 from jinja2.environment import Template
 import uvicorn
@@ -612,6 +613,11 @@ class Datasette:
             },
             **extra_template_vars,
         }
+        if request and request.args.get("_context") and self.config("template_debug"):
+            return "<pre>{}</pre>".format(
+                jinja2.escape(json.dumps(template_context, default=repr, indent=4))
+            )
+
         return await template.render_async(template_context)
 
     def _asset_urls(self, key, template, context):

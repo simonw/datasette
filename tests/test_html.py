@@ -1097,6 +1097,14 @@ def test_config_template_debug_off(app_client):
     assert not response.text.startswith("<pre>{")
 
 
+def test_debug_context_includes_extra_template_vars():
+    # https://github.com/simonw/datasette/issues/693
+    for client in make_app_client(config={"template_debug": True}):
+        response = client.get("/fixtures/facetable?_context=1")
+        # scope_path is added by PLUGIN1
+        assert "scope_path" in response.text
+
+
 def test_metadata_sort(app_client):
     response = app_client.get("/fixtures/facet_cities")
     assert response.status == 200

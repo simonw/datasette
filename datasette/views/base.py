@@ -6,7 +6,6 @@ import re
 import time
 import urllib
 
-import jinja2
 import pint
 
 from datasette import __version__
@@ -82,16 +81,6 @@ class BaseView(AsgiView):
                 "database_color": self.database_color,
             },
         }
-        if (
-            request
-            and request.args.get("_context")
-            and self.ds.config("template_debug")
-        ):
-            return Response.html(
-                "<pre>{}</pre>".format(
-                    jinja2.escape(json.dumps(template_context, default=repr, indent=4))
-                )
-            )
         return Response.html(
             await self.ds.render_template(
                 template, template_context, request=request, view_name=self.name

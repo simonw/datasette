@@ -96,8 +96,6 @@ class DatabaseDownload(DataView):
 
 
 class QueryView(DataView):
-    name = "query"
-
     async def data(
         self,
         request,

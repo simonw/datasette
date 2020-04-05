@@ -1,5 +1,12 @@
 from bs4 import BeautifulSoup as Soup
-from .fixtures import app_client, make_app_client, TEMP_PLUGIN_SECRET_FILE  # noqa
+from .fixtures import (
+    app_client,
+    make_app_client,
+    TABLES,
+    TEMP_PLUGIN_SECRET_FILE,
+    TestClient,
+)  # noqa
+from datasette.app import Datasette
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS
 from datasette.utils import sqlite3
 import base64
@@ -7,6 +14,8 @@ import json
 import os
 import pathlib
 import re
+import sqlite3
+import textwrap
 import pytest
 import urllib
 
@@ -252,3 +261,57 @@ def test_default_plugins_have_no_templates_path_or_static_path():
         if plugin["name"] in DEFAULT_PLUGINS:
             assert None is plugin["static_path"]
             assert None is plugin["templates_path"]
+
+
+@pytest.fixture(scope="session")
+def view_names_client(tmp_path_factory):
+    tmpdir = tmp_path_factory.mktemp("test-view-names")
+    templates = tmpdir / "templates"
+    templates.mkdir()
+    plugins = tmpdir / "plugins"
+    plugins.mkdir()
+    for template in (
+        "index.html",
+        "database.html",
+        "table.html",
+        "row.html",
+        "show_json.html",
+        "query.html",
+    ):
+        (templates / template).write_text("view_name:{{ view_name }}", "utf-8")
+    (plugins / "extra_vars.py").write_text(
+        textwrap.dedent(
+            """
+        from datasette import hookimpl
+        @hookimpl
+        def extra_template_vars(view_name):
+            return {"view_name": view_name}
+    """
+        ),
+        "utf-8",
+    )
+    db_path = str(tmpdir / "fixtures.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript(TABLES)
+    return TestClient(
+        Datasette(
+            [db_path], template_dir=str(templates), plugins_dir=str(plugins)
+        ).app()
+    )
+
+
+@pytest.mark.parametrize(
+    "path,view_name",
+    (
+        ("/", "index"),
+        ("/fixtures", "database"),
+        ("/fixtures/units", "table"),
+        ("/fixtures/units/1", "row"),
+        ("/-/metadata", "json_data"),
+        ("/fixtures?sql=select+1", "database"),
+    ),
+)
+def test_view_names(view_names_client, path, view_name):
+    response = view_names_client.get(path)
+    assert response.status == 200
+    assert "view_name:{}".format(view_name) == response.body.decode("utf8")

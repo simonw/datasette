@@ -93,7 +93,9 @@ class BaseView(AsgiView):
                 )
             )
         return Response.html(
-            await self.ds.render_template(template, template_context, request=request)
+            await self.ds.render_template(
+                template, template_context, request=request, view_name=self.name
+            )
         )
 
 

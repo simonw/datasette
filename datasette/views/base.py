@@ -79,6 +79,12 @@ class BaseView(AsgiView):
             **{
                 "database_url": self.database_url,
                 "database_color": self.database_color,
+                "select_templates": [
+                    "{}{}".format(
+                        "*" if template_name == template.name else "", template_name
+                    )
+                    for template_name in templates
+                ],
             },
         }
         return Response.html(

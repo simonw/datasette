@@ -456,6 +456,33 @@ def test_css_classes_on_body(app_client, path, expected_classes):
     assert classes == expected_classes
 
 
+@pytest.mark.parametrize(
+    "path,expected_considered",
+    [
+        ("/", "*index.html"),
+        ("/fixtures", "database-fixtures.html, *database.html"),
+        (
+            "/fixtures/simple_primary_key",
+            "table-fixtures-simple_primary_key.html, *table.html",
+        ),
+        (
+            "/fixtures/table%2Fwith%2Fslashes.csv",
+            "table-fixtures-tablewithslashescsv-fa7563.html, *table.html",
+        ),
+        (
+            "/fixtures/simple_primary_key/1",
+            "row-fixtures-simple_primary_key.html, *row.html",
+        ),
+    ],
+)
+def test_templates_considered(app_client, path, expected_considered):
+    response = app_client.get(path)
+    assert response.status == 200
+    assert (
+        "<!-- Templates considered: {} -->".format(expected_considered) in response.text
+    )
+
+
 def test_table_html_simple_primary_key(app_client):
     response = app_client.get("/fixtures/simple_primary_key?_size=3")
     assert response.status == 200

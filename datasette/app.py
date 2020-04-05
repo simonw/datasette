@@ -558,17 +558,10 @@ class Datasette:
         context = context or {}
         if isinstance(templates, Template):
             template = templates
-            select_templates = []
         else:
             if isinstance(templates, str):
                 templates = [templates]
             template = self.jinja_env.select_template(templates)
-            select_templates = [
-                "{}{}".format(
-                    "*" if template_name == template.name else "", template_name
-                )
-                for template_name in templates
-            ]
         body_scripts = []
         # pylint: disable=no-member
         for script in pm.hook.extra_body_script(
@@ -603,7 +596,6 @@ class Datasette:
             **context,
             **{
                 "app_css_hash": self.app_css_hash(),
-                "select_templates": select_templates,
                 "zip": zip,
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,

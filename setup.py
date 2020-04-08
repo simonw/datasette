@@ -38,7 +38,7 @@ setup(
     install_requires=[
         "click~=7.1.1",
         "click-default-group~=1.2.2",
-        "Jinja2~=2.10.3",
+        "Jinja2>=2.10.3,<2.12.0",
         "hupper~=1.9",
         "pint~=0.9",
         "pluggy~=0.13.0",

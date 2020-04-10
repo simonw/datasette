@@ -4,6 +4,7 @@ import base64
 import click
 import hashlib
 import json
+import mergedeep
 import os
 import re
 import shlex
@@ -363,9 +364,11 @@ def temporary_docker_directory(
         metadata_content = parse_metadata(metadata.read())
     else:
         metadata_content = {}
-    for key, value in extra_metadata.items():
-        if value:
-            metadata_content[key] = value
+    # Merge in the non-null values in extra_metadata
+    mergedeep.merge(
+        metadata_content,
+        {key: value for key, value in extra_metadata.items() if value is not None},
+    )
     try:
         dockerfile = make_dockerfile(
             file_names,

@@ -435,9 +435,14 @@ def test_facets_persist_through_filter_form(app_client):
     [
         ("/", ["index"]),
         ("/fixtures", ["db", "db-fixtures"]),
+        ("/fixtures?sql=select+1", ["query", "db-fixtures"]),
         (
             "/fixtures/simple_primary_key",
             ["table", "db-fixtures", "table-simple_primary_key"],
+        ),
+        (
+            "/fixtures/neighborhood_search",
+            ["query", "db-fixtures", "query-neighborhood_search"],
         ),
         (
             "/fixtures/table%2Fwith%2Fslashes.csv",

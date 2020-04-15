@@ -16,7 +16,7 @@
 {% include "_codemirror.html" %}
 {% endblock %}
 
-{% block body_class %}query db-{{ database|to_css_class }}{% endblock %}
+{% block body_class %}query db-{{ database|to_css_class }}{% if canned_query %} query-{{ canned_query|to_css_class }}{% endif %}{% endblock %}
 
 {% block nav %}
     <p class="crumbs">

@@ -63,6 +63,10 @@ The custom SQL template (``/dbname?sql=...``) gets this::
 
     <body class="query db-dbname">
 
+A canned query template (``/dbname/queryname``) gets this::
+
+    <body class="query db-dbname query-queryname">
+
 The table template (``/dbname/tablename``) gets::
 
     <body class="table db-dbname table-tablename">

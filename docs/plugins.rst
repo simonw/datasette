@@ -376,7 +376,7 @@ arguments and can be called like this::
 
     select random_integer(1, 10);
 
-Examples: `datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`_, `datasette-jq <https://github.com/simonw/datasette-jq>`_
+Examples: `datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`_, `datasette-jq <https://github.com/simonw/datasette-jq>`_, `datasette-haversine <https://github.com/simonw/datasette-haversine>`__, `datasette-rure <https://github.com/simonw/datasette-rure>`__
 
 .. _plugin_hook_prepare_jinja2_environment:
 
@@ -541,7 +541,7 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
         ):
             # Your implementation goes here
 
-Example: `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`_
+Examples: `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`_, `datasette-publish-now <https://github.com/simonw/datasette-publish-now>`_
 
 .. _plugin_hook_render_cell:
 

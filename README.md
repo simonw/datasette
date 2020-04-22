@@ -22,6 +22,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 21st April 2020: [Datasette 0.40](http://datasette.readthedocs.io/en/latest/changelog.html#v0-40) - Metadata can now be provided as YAML instead of JSON. Publishing to Zeit Now v1 is no longer supported, but Now v2 support is provided by the new [datasette-publish-now](https://github.com/simonw/datasette-publish-now) plugin. Various bug fixes.
  * 24th March 2020: [Datasette 0.39](http://datasette.readthedocs.io/en/latest/changelog.html#v0-39) - New `base_url` configuration option for running Datasette under a different URL prefix, `"sort"` and `"sort_desc"` metadata options for setting a default sort order for a table.
  * 8th March 2020: [Datasette 0.38](http://datasette.readthedocs.io/en/latest/changelog.html#v0-38) - New `--memory` option for `datasete publish cloudrun`, [Docker image](https://hub.docker.com/r/datasetteproject/datasette) upgraded to SQLite 3.31.1.
  * 25th February 2020: [Datasette 0.37](http://datasette.readthedocs.io/en/latest/changelog.html#v0-37) - new internal APIs enabling plugins to safely write to databases. Read more here: [Datasette Writes](https://simonwillison.net/2020/Feb/26/weeknotes-datasette-writes/).

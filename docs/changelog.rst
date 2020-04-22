@@ -11,10 +11,10 @@ Changelog
 
 * Datasette :ref:`metadata` can now be provided as a YAML file as an optional alternative to JSON. See :ref:`metadata_yaml`. (`#713 <https://github.com/simonw/datasette/issues/713>`__)
 * Removed support for ``datasette publish now``, which used the the now-retired Zeit Now v1 hosting platform. A new plugin, `datasette-publish-now <https://github.com/simonw/datasette-publish-now>`__, can be installed to publish data to Zeit (`now Vercel <https://vercel.com/blog/zeit-is-now-vercel>`__) Now v2. (`#710 <https://github.com/simonw/datasette/issues/710>`__)
-* Fixed a bug where the ``extra_template_vars(request, view_name)`` plugin hook was not recieving the correct ``view_name``. (`#716 <https://github.com/simonw/datasette/issues/716>`__)
-* Variables added to the template context by the ``extra_template_vars()`` plugin hook are now shown in the ``?_contex=1`` debugging mode (see :ref:`config_template_debug`). (`#693 <https://github.com/simonw/datasette/issues/693>`__)
+* Fixed a bug where the ``extra_template_vars(request, view_name)`` plugin hook was not receiving the correct ``view_name``. (`#716 <https://github.com/simonw/datasette/issues/716>`__)
+* Variables added to the template context by the ``extra_template_vars()`` plugin hook are now shown in the ``?_context=1`` debugging mode (see :ref:`config_template_debug`). (`#693 <https://github.com/simonw/datasette/issues/693>`__)
 * Fixed a bug where the "templates considered" HTML comment was no longer being displayed. (`#689 <https://github.com/simonw/datasette/issues/689>`__)
-* Fixed a ``datasette publish`` bug where ``--plugin-secret`` would over-ride plugin configuration in the provided ``metadat.json`` file. (`#724 <https://github.com/simonw/datasette/issues/724>`__)
+* Fixed a ``datasette publish`` bug where ``--plugin-secret`` would over-ride plugin configuration in the provided ``metadata.json`` file. (`#724 <https://github.com/simonw/datasette/issues/724>`__)
 * Added a new CSS class for customizing the canned query page. (`#727 <https://github.com/simonw/datasette/issues/727>`__)
 
 .. _v0_39:

@@ -592,6 +592,28 @@ def to_css_class(s):
     return "-".join(bits)
 
 
+SQLITE_MAGIC = b"SQLite format 3\x00"
+
+
+def is_valid_sqlite(path):
+    if not path.is_file():
+        return False
+    try:
+        with open(path, "rb") as fp:
+            has_magic = fp.read(len(SQLITE_MAGIC)) == SQLITE_MAGIC
+    except PermissionError:
+        return False
+    if not has_magic:
+        return False
+    # Check we can run `select * from sqlite_master`
+    try:
+        conn = sqlite3.connect(str(path))
+        check_connection(conn)
+    except Exception:
+        return False
+    return True
+
+
 def link_or_copy(src, dst):
     # Intended for use in populating a temp directory. We link if possible,
     # but fall back to copying if the temp directory is on a different device

@@ -7,6 +7,7 @@ import os
 import re
 import sys
 import threading
+import time
 import traceback
 import urllib.parse
 from concurrent import futures
@@ -32,6 +33,7 @@ from .utils import (
     escape_css_string,
     escape_sqlite,
     format_bytes,
+    is_valid_sqlite,
     module_from_path,
     sqlite3,
     to_css_class,
@@ -150,6 +152,7 @@ class Datasette:
     def __init__(
         self,
         files,
+        dirs=None,
         immutables=None,
         cache_headers=True,
         cors=False,
@@ -164,6 +167,7 @@ class Datasette:
         version_note=None,
     ):
         immutables = immutables or []
+        self.dirs = dirs or []
         self.files = tuple(files) + tuple(immutables)
         self.immutables = set(immutables)
         if not self.files:
@@ -183,6 +187,11 @@ class Datasette:
             if db.name in self.databases:
                 raise Exception("Multiple files with same stem: {}".format(db.name))
             self.add_database(db.name, db)
+        if dirs:
+            self.scan_dirs_thread = threading.Thread(
+                target=self.scan_dirs, name="scan-dirs", daemon=True
+            )
+            self.scan_dirs_thread.start()
         self.cache_headers = cache_headers
         self.cors = cors
         self._metadata = metadata or {}
@@ -250,6 +259,27 @@ class Datasette:
 
     def remove_database(self, name):
         self.databases.pop(name)
+
+    def scan_dirs(self):
+        # Recurse through self.dirs looking for new SQLite DBs. Runs in a thread.
+        while True:
+            current_filepaths = {
+                d.path for d in list(self.databases.values()) if d.path is not None
+            }
+            for dir in self.dirs:
+                for filepath in Path(dir).glob("**/*.db"):
+                    if str(filepath) in current_filepaths:
+                        continue
+                    print(filepath)
+                    if is_valid_sqlite(filepath):
+                        self.add_database(
+                            str(filepath)
+                            .replace("../", "")
+                            .replace("/", "_")
+                            .replace(".db", ""),
+                            Database(self, str(filepath), is_mutable=True),
+                        )
+            time.sleep(10)
 
     def config(self, key):
         return self._config.get(key, None)

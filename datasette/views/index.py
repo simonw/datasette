@@ -23,7 +23,10 @@ class IndexView(BaseView):
 
     async def get(self, request, as_format):
         databases = []
-        for name, db in self.ds.databases.items():
+        # Using list() here because scan_dirs() running in a thread might
+        # modify self.ds.databases while we are iterating it, which could
+        # cause 'RuntimeError: OrderedDict mutated during iteration'
+        for name, db in list(self.ds.databases.items()):
             table_names = await db.table_names()
             hidden_table_names = set(await db.hidden_table_names())
             views = await db.view_names()

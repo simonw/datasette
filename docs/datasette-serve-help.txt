@@ -5,6 +5,7 @@ Usage: datasette serve [OPTIONS] [FILES]...
   Serve up specified SQLite database files with a web UI
 
 Options:
+  -d, --dir PATH            Directories to scan for SQLite files to serve
   -i, --immutable PATH      Database files to open in immutable mode
   -h, --host TEXT           Host for server. Defaults to 127.0.0.1 which means only
                             connections from the local machine will be allowed. Use

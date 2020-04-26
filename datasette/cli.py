@@ -352,21 +352,26 @@ def serve(
     click.echo(
         "Serve! files={} (immutables={}) on port {}".format(files, immutable, port)
     )
-    ds = Datasette(
-        files,
-        immutables=immutable,
-        cache_headers=not debug and not reload,
-        cors=cors,
-        inspect_data=inspect_data,
-        metadata=metadata_data,
-        sqlite_extensions=sqlite_extensions,
-        template_dir=template_dir,
-        plugins_dir=plugins_dir,
-        static_mounts=static,
-        config=dict(config),
-        memory=memory,
-        version_note=version_note,
-    )
+
+    # if files is a single directory, do something special with it
+    if 1 == len(files) and os.path.isdir(files[0]):
+        ds = Datasette.from_path(files[0])
+    else:
+        ds = Datasette(
+            files,
+            immutables=immutable,
+            cache_headers=not debug and not reload,
+            cors=cors,
+            inspect_data=inspect_data,
+            metadata=metadata_data,
+            sqlite_extensions=sqlite_extensions,
+            template_dir=template_dir,
+            plugins_dir=plugins_dir,
+            static_mounts=static,
+            config=dict(config),
+            memory=memory,
+            version_note=version_note,
+        )
     if return_instance:
         # Private utility mechanism for writing unit tests
         return ds

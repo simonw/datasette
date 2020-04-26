@@ -247,6 +247,34 @@ class Datasette:
 
         self.register_renderers()
 
+    @classmethod
+    def from_path(cls, path):
+        path = Path(path)
+        files = [str(p.resolve()) for p in path.glob("*.db")]
+        inspect_data = None
+        if (path / "inspect.json").exists():
+            inspect_data = json.load((path / "inspect.json").open())
+        metadata = None
+        if (path / "metadata.json").exists():
+            metadata = json.load((path / "metadata.json").open())
+        template_dir = None
+        if (path / "templates").exists():
+            template_dir = str((path / "templates"))
+        plugins_dir = None
+        if (path / "plugins").exists():
+            plugins = str((path / "plugins"))
+        static_mounts = None
+        if (path / "static").exists():
+            static_mounts = [("static", str(path / "plugins"))]
+        return cls(
+            files,
+            inspect_data=inspect_data,
+            metadata=metadata,
+            template_dir=template_dir,
+            plugins_dir=plugins_dir,
+            static_mounts=static_mounts,
+        )
+
     def add_database(self, name, db):
         self.databases[name] = db
 

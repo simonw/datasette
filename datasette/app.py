@@ -762,10 +762,42 @@ class DatasetteRouter(AsgiRouter):
             except TemplateNotFound:
                 template = None
             if template:
-                await asgi_send_html(
+                headers = {}
+                status = [200]
+
+                def custom_header(name, value):
+                    headers[name] = value
+                    return ""
+
+                def custom_status(code):
+                    status[0] = code
+                    return ""
+
+                def custom_redirect(location, code=302):
+                    status[0] = code
+                    headers["Location"] = location
+                    return ""
+
+                body = await self.ds.render_template(
+                    template,
+                    {
+                        "custom_header": custom_header,
+                        "custom_status": custom_status,
+                        "custom_redirect": custom_redirect,
+                    },
+                    view_name="page",
+                )
+                # Pull content-type out into separate parameter
+                content_type = "text/html"
+                matches = [k for k in headers if k.lower() == "content-type"]
+                if matches:
+                    content_type = headers[matches[0]]
+                await asgi_send(
                     send,
-                    await self.ds.render_template(template, view_name="page"),
-                    status=200,
+                    body,
+                    status=status[0],
+                    headers=headers,
+                    content_type=content_type,
                 )
             else:
                 await self.handle_500(

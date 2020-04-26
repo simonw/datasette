@@ -1241,3 +1241,20 @@ def test_base_url_config(base_url, path):
                     "href_or_src": href,
                     "element_parent": str(el.parent),
                 }
+
+
+def test_custom_template_page(tmpdir):
+    template_dir = tmpdir.mkdir("page-templates")
+    pages_dir = template_dir.mkdir("pages")
+    (pages_dir / "about.html").write_text("ABOUT!", "utf-8")
+    nested_dir = pages_dir.mkdir("nested")
+    (nested_dir / "nest.html").write_text("Nest!", "utf-8")
+    for client in make_app_client(template_dir=str(template_dir)):
+        response = client.get("/about")
+        assert 200 == response.status
+        assert "ABOUT!" == response.text
+        response = client.get("/nested/nest")
+        assert 200 == response.status
+        assert "Nest!" == response.text
+        response = client.get("/nested/nest2")
+        assert 404 == response.status

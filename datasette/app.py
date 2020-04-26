@@ -17,6 +17,7 @@ from markupsafe import Markup
 import jinja2
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
 from jinja2.environment import Template
+from jinja2.exceptions import TemplateNotFound
 import uvicorn
 
 from .views.base import DatasetteError, ureg, AsgiRouter
@@ -745,7 +746,7 @@ class DatasetteRouter(AsgiRouter):
             path = "/" + path[len(base_url) :]
         return await super().route_path(scope, receive, send, path)
 
-    async def handle_404(self, scope, receive, send):
+    async def handle_404(self, scope, receive, send, exception=None):
         # If URL has a trailing slash, redirect to URL without it
         path = scope.get("raw_path", scope["path"].encode("utf8"))
         if path.endswith(b"/"):
@@ -754,7 +755,20 @@ class DatasetteRouter(AsgiRouter):
                 path += b"?" + scope["query_string"]
             await asgi_send_redirect(send, path.decode("latin1"))
         else:
-            await super().handle_404(scope, receive, send)
+            # Is there a pages/* template matching this path?
+            template_path = os.path.join("pages", *scope["path"].split("/")) + ".html"
+            try:
+                template = self.ds.jinja_env.select_template([template_path])
+            except TemplateNotFound:
+                template = None
+            if template:
+                await asgi_send_html(
+                    send, await self.ds.render_template(template), status=200
+                )
+            else:
+                await self.handle_500(
+                    scope, receive, send, exception or NotFound("404")
+                )
 
     async def handle_500(self, scope, receive, send, exception):
         title = None

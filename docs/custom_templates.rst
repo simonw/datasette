@@ -265,3 +265,64 @@ Here is an example of a custom ``_table.html`` template::
             <p>Category: {{ row.display("category_id") }}</p>
         </div>
     {% endfor %}
+
+.. _custom_pages:
+
+Custom pages
+------------
+
+You can add templated pages to your Datasette instance by creating HTML files in a ``pages`` directory within your ``templates`` directory.
+
+For example, to add a custom page that is served at ``http://localhost/about`` you would create a file in ``templates/pages/about.html``, then start Datasette like this::
+
+    $ datasette mydb.db --template-dir=templates/
+
+You can nest directories within pages to create a nested structure. To create a ``http://localhost:8001/about/map`` page you would create ``templates/pages/about/map.html``.
+
+Custom headers and status codes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Custom pages default to being served with a content-type of ``text/html`` and a ``200`` status code. You can change these by calling a custom function from within your template.
+
+For example, to serve a custom page with a ``418 I'm a teapot`` HTTP status code, create a file in ``pages/teapot.html`` containing the following::
+
+    {{ custom_status(418) }}
+    <html>
+    <head><title>Teapot</title></head>
+    <body>
+    I'm a teapot
+    </body>
+    </html>
+
+To serve a custom HTTP header, add a ``custom_header(name, value)`` function call. For example::
+
+    {{ custom_status(418) }}
+    {{ custom_header("x-teapot", "I am") }}
+    <html>
+    <head><title>Teapot</title></head>
+    <body>
+    I'm a teapot
+    </body>
+    </html>
+
+You can verify this is working using ``curl`` like this::
+
+    $ curl -I 'http://127.0.0.1:8001/teapot'
+    HTTP/1.1 418
+    date: Sun, 26 Apr 2020 18:38:30 GMT
+    server: uvicorn
+    x-teapot: I am
+    content-type: text/html
+
+Custom redirects
+~~~~~~~~~~~~~~~~
+
+You can use the ``custom_redirect(location)`` function to redirect users to another page, for example in a file called ``pages/datasette.html``::
+
+    {{ custom_redirect("https://github.com/simonw/datasette") }}
+
+Now requests to ``http://localhost:8001/datasette`` will result in a redirect.
+
+These redirects are served with a ``301 Found`` status code by default. You can send a ``301 Moved Permanently`` code by passing ``301`` as the second argument to the function::
+
+    {{ custom_redirect("https://github.com/simonw/datasette", 301) }}

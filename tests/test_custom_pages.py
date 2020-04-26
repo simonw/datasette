@@ -25,6 +25,9 @@ def custom_pages_client(tmp_path_factory):
         '{{ custom_header("x-this-is-bar", "bar") }}BAR',
         "utf-8",
     )
+    (pages_dir / "atom.html").write_text(
+        '{{ custom_header("content-type", "application/xml") }}<?xml ...>', "utf-8",
+    )
     (pages_dir / "redirect.html").write_text(
         '{{ custom_redirect("/example") }}', "utf-8"
     )
@@ -66,6 +69,13 @@ def test_custom_headers(custom_pages_client):
     assert "foo" == response.headers["x-this-is-foo"]
     assert "bar" == response.headers["x-this-is-bar"]
     assert "FOOBAR" == response.text
+
+
+def test_custom_content_type(custom_pages_client):
+    response = custom_pages_client.get("/atom")
+    assert 200 == response.status
+    assert response.headers["content-type"] == "application/xml"
+    assert "<?xml ...>" == response.text
 
 
 def test_redirect(custom_pages_client):

@@ -5,9 +5,10 @@ VIEW_NAME_PLUGIN = """
 from datasette import hookimpl
 
 @hookimpl
-def extra_template_vars(view_name):
+def extra_template_vars(view_name, request):
     return {
         "view_name": view_name,
+        "request": request,
     }
 """
 
@@ -19,6 +20,7 @@ def custom_pages_client(tmp_path_factory):
     pages_dir = template_dir / "pages"
     pages_dir.mkdir()
     (pages_dir / "about.html").write_text("ABOUT! view_name:{{ view_name }}", "utf-8")
+    (pages_dir / "request.html").write_text("path:{{ request.path }}", "utf-8")
     (pages_dir / "202.html").write_text("{{ custom_status(202) }}202!", "utf-8")
     (pages_dir / "headers.html").write_text(
         '{{ custom_header("x-this-is-foo", "foo") }}FOO'
@@ -47,6 +49,12 @@ def test_custom_pages_view_name(custom_pages_client):
     response = custom_pages_client.get("/about")
     assert 200 == response.status
     assert "ABOUT! view_name:page" == response.text
+
+
+def test_request_is_available(custom_pages_client):
+    response = custom_pages_client.get("/request")
+    assert 200 == response.status
+    assert "path:/request" == response.text
 
 
 def test_custom_pages_nested(custom_pages_client):

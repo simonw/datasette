@@ -40,6 +40,7 @@ from .utils import (
 from .utils.asgi import (
     AsgiLifespan,
     NotFound,
+    Request,
     Response,
     asgi_static,
     asgi_send,
@@ -785,6 +786,7 @@ class DatasetteRouter(AsgiRouter):
                         "custom_status": custom_status,
                         "custom_redirect": custom_redirect,
                     },
+                    request=Request(scope, receive),
                     view_name="page",
                 )
                 # Pull content-type out into separate parameter

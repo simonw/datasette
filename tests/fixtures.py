@@ -109,6 +109,7 @@ def make_app_client(
     inspect_data=None,
     static_mounts=None,
     template_dir=None,
+    extra_plugins=None,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -133,6 +134,8 @@ def make_app_client(
         os.mkdir(plugins_dir)
         open(os.path.join(plugins_dir, "my_plugin.py"), "w").write(PLUGIN1)
         open(os.path.join(plugins_dir, "my_plugin_2.py"), "w").write(PLUGIN2)
+        for filename, content in (extra_plugins or {}).items():
+            open(os.path.join(plugins_dir, filename), "w").write(content)
         config = config or {}
         config.update(
             {

@@ -763,7 +763,9 @@ class DatasetteRouter(AsgiRouter):
                 template = None
             if template:
                 await asgi_send_html(
-                    send, await self.ds.render_template(template), status=200
+                    send,
+                    await self.ds.render_template(template, view_name="page"),
+                    status=200,
                 )
             else:
                 await self.handle_500(

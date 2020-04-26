@@ -28,7 +28,6 @@ from datasette.utils.asgi import (
     AsgiRouter,
     AsgiView,
     NotFound,
-    NotFound,
     Response,
 )
 

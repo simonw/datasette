@@ -350,10 +350,6 @@ def serve(
     if metadata:
         metadata_data = parse_metadata(metadata.read())
 
-    click.echo(
-        "Serve! files={} (immutables={}) on port {}".format(files, immutable, port)
-    )
-
     kwargs = dict(
         immutables=immutable,
         cache_headers=not debug and not reload,

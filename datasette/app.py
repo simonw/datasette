@@ -169,18 +169,27 @@ class Datasette:
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
-        # TODO: Use 'inspect-data.json' to decide on immutables
-        immutables = immutables or []
-        self.files = tuple(files) + tuple(immutables)
+        self.files = tuple(files) + tuple(immutables or [])
         if config_dir:
             self.files += tuple([str(p) for p in config_dir.glob("*.db")])
-        self.immutables = set(immutables)
+        if (
+            config_dir
+            and (config_dir / "inspect-data.json").exists()
+            and not inspect_data
+        ):
+            inspect_data = json.load((config_dir / "inspect-data.json").open())
+            if immutables is None:
+                immutable_filenames = [i["file"] for i in inspect_data.values()]
+                immutables = [
+                    f for f in self.files if Path(f).name in immutable_filenames
+                ]
+        self.inspect_data = inspect_data
+        self.immutables = set(immutables or [])
         if not self.files:
             self.files = [MEMORY]
         elif memory:
             self.files = (MEMORY,) + self.files
         self.databases = collections.OrderedDict()
-        self.inspect_data = inspect_data
         for file in self.files:
             path = file
             is_memory = False

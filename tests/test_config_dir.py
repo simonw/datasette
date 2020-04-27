@@ -98,9 +98,7 @@ def test_config(config_dir_client):
 def test_plugins(config_dir_client):
     response = config_dir_client.get("/-/plugins.json")
     assert 200 == response.status
-    assert [
-        {"name": "hooray.py", "static": False, "templates": False, "version": None}
-    ] == json.loads(response.text)
+    assert "hooray.py" in {p["name"] for p in json.loads(response.text)}
 
 
 def test_templates_and_plugin(config_dir_client):
@@ -125,4 +123,4 @@ def test_databases(config_dir_client):
     assert "demo" == databases[0]["name"]
     assert databases[0]["is_mutable"]
     assert "immutable" == databases[1]["name"]
-    # assert not databases[1]["is_mutable"]
+    assert not databases[1]["is_mutable"]

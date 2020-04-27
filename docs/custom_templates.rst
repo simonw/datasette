@@ -109,6 +109,8 @@ database column they are representing, for example::
         </tbody>
     </table>
 
+.. _customization_static_files:
+
 Serving static files
 ~~~~~~~~~~~~~~~~~~~~
 

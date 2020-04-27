@@ -164,16 +164,32 @@ class Datasette:
         memory=False,
         config=None,
         version_note=None,
+        config_dir=None,
     ):
-        immutables = immutables or []
-        self.files = tuple(files) + tuple(immutables)
-        self.immutables = set(immutables)
+        assert config_dir is None or isinstance(
+            config_dir, Path
+        ), "config_dir= should be a pathlib.Path"
+        self.files = tuple(files) + tuple(immutables or [])
+        if config_dir:
+            self.files += tuple([str(p) for p in config_dir.glob("*.db")])
+        if (
+            config_dir
+            and (config_dir / "inspect-data.json").exists()
+            and not inspect_data
+        ):
+            inspect_data = json.load((config_dir / "inspect-data.json").open())
+            if immutables is None:
+                immutable_filenames = [i["file"] for i in inspect_data.values()]
+                immutables = [
+                    f for f in self.files if Path(f).name in immutable_filenames
+                ]
+        self.inspect_data = inspect_data
+        self.immutables = set(immutables or [])
         if not self.files:
             self.files = [MEMORY]
         elif memory:
             self.files = (MEMORY,) + self.files
         self.databases = collections.OrderedDict()
-        self.inspect_data = inspect_data
         for file in self.files:
             path = file
             is_memory = False
@@ -187,12 +203,22 @@ class Datasette:
             self.add_database(db.name, db)
         self.cache_headers = cache_headers
         self.cors = cors
+        if config_dir and (config_dir / "metadata.json").exists() and not metadata:
+            metadata = json.load((config_dir / "metadata.json").open())
         self._metadata = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []
+        if config_dir and (config_dir / "templates").is_dir() and not template_dir:
+            template_dir = str((config_dir / "templates").resolve())
         self.template_dir = template_dir
+        if config_dir and (config_dir / "plugins").is_dir() and not plugins_dir:
+            plugins_dir = str((config_dir / "plugins").resolve())
         self.plugins_dir = plugins_dir
+        if config_dir and (config_dir / "static").is_dir() and not static_mounts:
+            static_mounts = [("static", str((config_dir / "static").resolve()))]
         self.static_mounts = static_mounts or []
+        if config_dir and (config_dir / "config.json").exists() and not config:
+            config = json.load((config_dir / "config.json").open())
         self._config = dict(DEFAULT_CONFIG, **(config or {}))
         self.renderers = {}  # File extension -> renderer function
         self.version_note = version_note

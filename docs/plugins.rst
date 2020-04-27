@@ -27,8 +27,10 @@ Things you can do with plugins include:
   or implement authentication, for example
   `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__.
 
-Using plugins
--------------
+.. _plugins_installing:
+
+Installing plugins
+------------------
 
 If a plugin has been packaged for distribution using setuptools you can use
 the plugin by installing it alongside Datasette in the same virtual
@@ -48,8 +50,10 @@ install`` such as a URL to a ``.zip`` file::
         --install=datasette-plugin-demos \
         --install=https://url-to-my-package.zip
 
-Writing plugins
----------------
+.. _plugins_writing_one_off:
+
+Writing one-off plugins
+-----------------------
 
 The easiest way to write a plugin is to create a ``my_plugin.py`` file and
 drop it into your ``plugins/`` directory. Here is an example plugin, which

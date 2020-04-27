@@ -114,6 +114,12 @@ def test_static(config_dir_client):
     assert "text/css" == response.headers["content-type"]
 
 
+def test_static_directory_browsing_not_allowed(config_dir_client):
+    response = config_dir_client.get("/static/")
+    assert 403 == response.status
+    assert "403: Directory listing is not allowed" == response.text
+
+
 def test_databases(config_dir_client):
     response = config_dir_client.get("/-/databases.json")
     assert 200 == response.status

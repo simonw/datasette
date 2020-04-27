@@ -328,6 +328,9 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
         except FileNotFoundError:
             await asgi_send_html(send, "404", 404)
             return
+        if full_path.is_dir():
+            await asgi_send_html(send, "403: Directory listing is not allowed", 403)
+            return
         # Ensure full_path is within root_path to avoid weird "../" tricks
         try:
             full_path.relative_to(root_path)

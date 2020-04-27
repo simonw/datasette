@@ -203,7 +203,7 @@ class Datasette:
             template_dir = str((config_dir / "templates").resolve())
         self.template_dir = template_dir
         if config_dir and (config_dir / "plugins").is_dir() and not plugins_dir:
-            template_dir = str((config_dir / "plugins").resolve())
+            plugins_dir = str((config_dir / "plugins").resolve())
         self.plugins_dir = plugins_dir
         if config_dir and (config_dir / "static").is_dir() and not static_mounts:
             static_mounts = [("static", str((config_dir / "static").resolve()))]

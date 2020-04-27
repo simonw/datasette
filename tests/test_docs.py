@@ -26,7 +26,7 @@ def get_labels(filename):
 
 @pytest.mark.parametrize("config", app.CONFIG_OPTIONS)
 def test_config_options_are_documented(config):
-    assert config.name in get_headings("config.rst")
+    assert config.name in get_headings("config.rst", "~")
 
 
 @pytest.mark.parametrize(

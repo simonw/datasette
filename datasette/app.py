@@ -164,9 +164,16 @@ class Datasette:
         memory=False,
         config=None,
         version_note=None,
+        config_dir=None,
     ):
+        assert config_dir is None or isinstance(
+            config_dir, Path
+        ), "config_dir= should be a pathlib.Path"
+        # TODO: Use 'inspect-data.json' to decide on immutables
         immutables = immutables or []
         self.files = tuple(files) + tuple(immutables)
+        if config_dir:
+            self.files += tuple([str(p) for p in config_dir.glob("*.db")])
         self.immutables = set(immutables)
         if not self.files:
             self.files = [MEMORY]
@@ -187,12 +194,22 @@ class Datasette:
             self.add_database(db.name, db)
         self.cache_headers = cache_headers
         self.cors = cors
+        if (config_dir / "metadata.json").exists() and not metadata:
+            metadata = json.load((config_dir / "metadata.json").open())
         self._metadata = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []
+        if (config_dir / "templates").is_dir() and not template_dir:
+            template_dir = str((config_dir / "templates").resolve())
         self.template_dir = template_dir
+        if (config_dir / "plugins").is_dir() and not plugins_dir:
+            template_dir = str((config_dir / "plugins").resolve())
         self.plugins_dir = plugins_dir
+        if (config_dir / "static").is_dir() and not static_mounts:
+            static_mounts = [("static", str((config_dir / "static").resolve()))]
         self.static_mounts = static_mounts or []
+        if (config_dir / "config.json").exists() and not config:
+            config = json.load((config_dir / "config.json").open())
         self._config = dict(DEFAULT_CONFIG, **(config or {}))
         self.renderers = {}  # File extension -> renderer function
         self.version_note = version_note
@@ -246,34 +263,6 @@ class Datasette:
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 
         self.register_renderers()
-
-    @classmethod
-    def from_path(cls, path):
-        path = Path(path)
-        files = [str(p.resolve()) for p in path.glob("*.db")]
-        inspect_data = None
-        if (path / "inspect.json").exists():
-            inspect_data = json.load((path / "inspect.json").open())
-        metadata = None
-        if (path / "metadata.json").exists():
-            metadata = json.load((path / "metadata.json").open())
-        template_dir = None
-        if (path / "templates").exists():
-            template_dir = str((path / "templates"))
-        plugins_dir = None
-        if (path / "plugins").exists():
-            plugins = str((path / "plugins"))
-        static_mounts = None
-        if (path / "static").exists():
-            static_mounts = [("static", str(path / "plugins"))]
-        return cls(
-            files,
-            inspect_data=inspect_data,
-            metadata=metadata,
-            template_dir=template_dir,
-            plugins_dir=plugins_dir,
-            static_mounts=static_mounts,
-        )
 
     def add_database(self, name, db):
         self.databases[name] = db

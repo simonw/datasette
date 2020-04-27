@@ -5,6 +5,7 @@ from click import formatting
 from click_default_group import DefaultGroup
 import json
 import os
+import pathlib
 import shutil
 from subprocess import call
 import sys
@@ -353,25 +354,28 @@ def serve(
         "Serve! files={} (immutables={}) on port {}".format(files, immutable, port)
     )
 
-    # if files is a single directory, do something special with it
+    kwargs = dict(
+        immutables=immutable,
+        cache_headers=not debug and not reload,
+        cors=cors,
+        inspect_data=inspect_data,
+        metadata=metadata_data,
+        sqlite_extensions=sqlite_extensions,
+        template_dir=template_dir,
+        plugins_dir=plugins_dir,
+        static_mounts=static,
+        config=dict(config),
+        memory=memory,
+        version_note=version_note,
+    )
+
+    # if files is a single directory, use that as config_dir=
     if 1 == len(files) and os.path.isdir(files[0]):
-        ds = Datasette.from_path(files[0])
-    else:
-        ds = Datasette(
-            files,
-            immutables=immutable,
-            cache_headers=not debug and not reload,
-            cors=cors,
-            inspect_data=inspect_data,
-            metadata=metadata_data,
-            sqlite_extensions=sqlite_extensions,
-            template_dir=template_dir,
-            plugins_dir=plugins_dir,
-            static_mounts=static,
-            config=dict(config),
-            memory=memory,
-            version_note=version_note,
-        )
+        kwargs["config_dir"] = pathlib.Path(files[0])
+        files = []
+
+    ds = Datasette(files, **kwargs)
+
     if return_instance:
         # Private utility mechanism for writing unit tests
         return ds

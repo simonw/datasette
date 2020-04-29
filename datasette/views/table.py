@@ -211,6 +211,22 @@ class RowTableShared(DataView):
 class TableView(RowTableShared):
     name = "table"
 
+    async def post(self, request, db_name, table_and_format):
+        # Handle POST to a canned query
+        canned_query = self.ds.get_canned_query(db_name, table_and_format)
+        assert canned_query, "You may only POST to a canned query"
+        return await QueryView(self.ds).data(
+            request,
+            db_name,
+            None,
+            canned_query["sql"],
+            metadata=canned_query,
+            editable=False,
+            canned_query=table_and_format,
+            named_parameters=canned_query.get("params"),
+            write=bool(canned_query.get("write")),
+        )
+
     async def data(
         self,
         request,
@@ -231,6 +247,8 @@ class TableView(RowTableShared):
                 metadata=canned_query,
                 editable=False,
                 canned_query=table,
+                named_parameters=canned_query.get("params"),
+                write=bool(canned_query.get("write")),
             )
 
         db = self.ds.databases[database]

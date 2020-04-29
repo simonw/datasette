@@ -345,3 +345,8 @@ p.zero-results {
     padding: 0.5em;
     font-style: italic;
 }
+.success {
+    padding: 1em;
+    border: 1px solid green;
+    background-color: #c7fbc7;
+}

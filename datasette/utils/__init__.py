@@ -598,14 +598,14 @@ def link_or_copy(src, dst):
     # https://github.com/simonw/datasette/issues/141
     try:
         os.link(src, dst)
-    except OSError:
+    except shutil.Error:
         shutil.copyfile(src, dst)
 
 
 def link_or_copy_directory(src, dst):
     try:
         shutil.copytree(src, dst, copy_function=os.link)
-    except OSError:
+    except shutil.Error:
         shutil.copytree(src, dst)
 
 

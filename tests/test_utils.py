@@ -9,6 +9,7 @@ import json
 import os
 import pathlib
 import pytest
+import shutil
 import sqlite3
 import tempfile
 from unittest.mock import patch
@@ -253,8 +254,8 @@ def test_temporary_docker_directory_uses_hard_link():
 
 @patch("os.link")
 def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
-    # Copy instead if os.link raises OSError (normally due to different device)
-    mock_link.side_effect = OSError
+    # Copy instead if shutil.Error (normally due to different device)
+    mock_link.side_effect = shutil.Error
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
         open("hello", "w").write("world")

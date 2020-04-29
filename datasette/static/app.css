@@ -351,3 +351,9 @@ p.zero-results {
 .type-float, .type-int {
     color: #666;
 }
+
+.success {
+    padding: 1em;
+    border: 1px solid green;
+    background-color: #c7fbc7;
+}

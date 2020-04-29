@@ -141,8 +141,11 @@ class QueryView(DataView):
                 write_ok = await self.ds.databases[database].execute_write(
                     sql, params, block=True
                 )
-                return self.redirect(request, request.path + '?_success=Query+executed_successfully')
+                return self.redirect(
+                    request, request.path + "?_success=Query+executed_successfully"
+                )
             else:
+
                 async def extra_template():
                     return {
                         "request": request,

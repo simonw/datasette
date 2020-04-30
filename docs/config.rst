@@ -48,7 +48,7 @@ Datasette will detect the files in that directory and automatically configure it
 The files that can be included in this directory are as follows. All are optional.
 
 * ``*.db`` - SQLite database files that will be served by Datasette
-* ``metadata.json`` - :ref:`metadata` for those databases
+* ``metadata.json`` - :ref:`metadata` for those databases - ``metadata.yaml`` or ``metadata.yml`` can be used as well
 * ``inspect-data.json`` - the result of running ``datasette inspect`` - any database files listed here will be treated as immutable, so they should not be changed while Datasette is running
 * ``config.json`` - settings that would normally be passed using ``--config`` - here they should be stored as a JSON object of key/value pairs
 * ``templates/`` - a directory containing :ref:`customization_custom_templates`

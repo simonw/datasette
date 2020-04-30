@@ -34,6 +34,7 @@ from .utils import (
     escape_sqlite,
     format_bytes,
     module_from_path,
+    parse_metadata,
     sqlite3,
     to_css_class,
 )
@@ -203,8 +204,16 @@ class Datasette:
             self.add_database(db.name, db)
         self.cache_headers = cache_headers
         self.cors = cors
-        if config_dir and (config_dir / "metadata.json").exists() and not metadata:
-            metadata = json.load((config_dir / "metadata.json").open())
+        metadata_files = []
+        if config_dir:
+            metadata_files = [
+                config_dir / filename
+                for filename in ("metadata.json", "metadata.yaml", "metadata.yml")
+                if (config_dir / filename).exists()
+            ]
+        if config_dir and metadata_files and not metadata:
+            with metadata_files[0].open() as fp:
+                metadata = parse_metadata(fp.read())
         self._metadata = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = sqlite_extensions or []

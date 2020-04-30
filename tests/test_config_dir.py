@@ -130,3 +130,15 @@ def test_databases(config_dir_client):
     assert databases[0]["is_mutable"]
     assert "immutable" == databases[1]["name"]
     assert not databases[1]["is_mutable"]
+
+
+@pytest.mark.parametrize("filename", ("metadata.yml", "metadata.yaml"))
+def test_metadata_yaml(tmp_path_factory, filename):
+    config_dir = tmp_path_factory.mktemp("yaml-config-dir")
+    (config_dir / filename).write_text("title: Title from metadata", "utf-8")
+    ds = Datasette([], config_dir=config_dir)
+    client = TestClient(ds.app())
+    client.ds = ds
+    response = client.get("/-/metadata.json")
+    assert 200 == response.status
+    assert {"title": "Title from metadata"} == json.loads(response.text)

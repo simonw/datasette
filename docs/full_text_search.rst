@@ -9,17 +9,114 @@ SQLite includes `a powerful mechanism for enabling full-text search <https://www
 
 Datasette automatically detects which tables have been configured for full-text search.
 
-FTS versions
-------------
+.. _full_text_search_table_view_api:
 
-There are three different versions of the SQLite FTS module: FTS3, FTS4 and FTS5. You can tell which versions are supported by your instance of Datasette by checking the ``/-/versions`` page.
+The table page and table view API
+---------------------------------
 
-FTS5 is the most advanced module but may not be available in the SQLite version that is bundled with your Python installation. Most importantly, FTS5 is the only version that has the ability to order by search relevance without needing extra code.
+Table views that support full-text search can be queried using the ``?_search=TERMS`` querystring parameter. This will run the search against content from all of the columns that have been included in the index.
 
-If you can't be sure that FTS5 will be available, you should use FTS4.
+Try this example: `fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort <https://fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort>`__
 
-Adding full-text search to a SQLite table
------------------------------------------
+SQLite full-text search supports wildcards. This means you can easily implement prefix auto-complete by including an asterisk at the end of the search term - for example::
+
+    /dbname/tablename/?_search=rob*
+
+This will return all records containing at least one word that starts with the letters ``rob``.
+
+You can also run searches against just the content of a specific named column by using ``_search_COLNAME=TERMS`` - for example, this would search for just rows where the ``name`` column in the FTS index mentions ``Sarah``::
+
+    /dbname/tablename/?_search_name=Sarah
+
+
+.. _full_text_search_advanced_queries:
+
+Advanced SQLite search queries
+------------------------------
+
+SQLite full-text search includes support for `a variety of advanced queries <https://www.sqlite.org/fts5.html#full_text_query_syntax>`__, including ``AND``, ``OR``, ``NOT`` and ``NEAR``.
+
+By default Datasette disables these features to ensure they do not cause any confusion for users who are not aware of them. You can disable this escaping and use the advanced queries by adding ``?_searchmode=raw`` to the table page query string.
+
+.. _full_text_search_table_or_view:
+
+Configuring full-text search for a table or view
+------------------------------------------------
+
+If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown above, Datasette will detect it automatically and add a search interface to the table page for that table.
+
+You can also manually configure which table should be used for full-text search using querystring parameters or :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
+
+Use ``?_fts_table=x`` to over-ride the FTS table for a specific page. If the primary key was something other than ``rowid`` you can use ``?_fts_pk=col`` to set that as well. This is particularly useful for views, for example:
+
+https://latest.datasette.io/fixtures/searchable_view?_fts_table=searchable_fts&_fts_pk=pk
+
+The ``fts_table`` metadata property can be used to specify an associated FTS table. If the primary key column in your table which was used to populate the FTS table is something other than ``rowid``, you can specify the column to use with the ``fts_pk`` property.
+
+Here is an example which enables full-text search for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key::
+
+    {
+      "databases": {
+        "russian-ads": {
+          "tables": {
+            "display_ads": {
+              "fts_table": "ads_fts",
+              "fts_pk": "id"
+            }
+          }
+        }
+      }
+    }
+
+.. _full_text_search_custom_sql:
+
+Searches using custom SQL
+-------------------------
+
+You can include full-text search results in custom SQL queries. The general pattern with SQLite search is to run the search as a sub-select that returns rowid values, then include those rowids in another part of the query.
+
+You can see the syntax for a basic search by running that search on a table page and then clicking "View and edit SQL" to see the underlying SQL. For example, consider this search for `manafort is the US FARA database <https://fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort>`_::
+
+    /fara/FARA_All_ShortForms?_search=manafort
+
+If you click `View and edit SQL <https://fara.datasettes.com/fara?sql=select%0D%0A++rowid%2C%0D%0A++Short_Form_Termination_Date%2C%0D%0A++Short_Form_Date%2C%0D%0A++Short_Form_Last_Name%2C%0D%0A++Short_Form_First_Name%2C%0D%0A++Registration_Number%2C%0D%0A++Registration_Date%2C%0D%0A++Registrant_Name%2C%0D%0A++Address_1%2C%0D%0A++Address_2%2C%0D%0A++City%2C%0D%0A++State%2C%0D%0A++Zip%0D%0Afrom%0D%0A++FARA_All_ShortForms%0D%0Awhere%0D%0A++rowid+in+%28%0D%0A++++select%0D%0A++++++rowid%0D%0A++++from%0D%0A++++++FARA_All_ShortForms_fts%0D%0A++++where%0D%0A++++++FARA_All_ShortForms_fts+match+escape_fts%28%3Asearch%29%0D%0A++%29%0D%0Aorder+by%0D%0A++rowid%0D%0Alimit%0D%0A++101&search=manafort>`_ you'll see that the underlying SQL looks like this:
+
+.. code-block:: sql
+
+    select
+      rowid,
+      Short_Form_Termination_Date,
+      Short_Form_Date,
+      Short_Form_Last_Name,
+      Short_Form_First_Name,
+      Registration_Number,
+      Registration_Date,
+      Registrant_Name,
+      Address_1,
+      Address_2,
+      City,
+      State,
+      Zip
+    from
+      FARA_All_ShortForms
+    where
+      rowid in (
+        select
+          rowid
+        from
+          FARA_All_ShortForms_fts
+        where
+          FARA_All_ShortForms_fts match escape_fts(:search)
+      )
+    order by
+      rowid
+    limit
+      101
+
+.. _full_text_search_enabling:
+
+Enabling full-text search for a SQLite table
+--------------------------------------------
 
 Datasette takes advantage of the `external content <https://www.sqlite.org/fts3.html#_external_content_fts4_tables_>`_ mechanism in SQLite, which allows a full-text search virtual table to be associated with the contents of another SQLite table.
 
@@ -92,68 +189,13 @@ And then populate it like this:
 
 You can use this technique to populate the full-text search index from any combination of tables and joins that makes sense for your project.
 
-.. _full_text_search_table_or_view:
+.. _full_text_search_fts_versions:
 
-Configuring full-text search for a table or view
-------------------------------------------------
+FTS versions
+------------
 
-If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown above, Datasette will detect it automatically and add a search interface to the table page for that table.
+There are three different versions of the SQLite FTS module: FTS3, FTS4 and FTS5. You can tell which versions are supported by your instance of Datasette by checking the ``/-/versions`` page.
 
-You can also manually configure which table should be used for full-text search using querystring parameters or :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
+FTS5 is the most advanced module but may not be available in the SQLite version that is bundled with your Python installation. Most importantly, FTS5 is the only version that has the ability to order by search relevance without needing extra code.
 
-Use ``?_fts_table=x`` to over-ride the FTS table for a specific page. If the primary key was something other than ``rowid`` you can use ``?_fts_pk=col`` to set that as well. This is particularly useful for views, for example:
-
-https://latest.datasette.io/fixtures/searchable_view?_fts_table=searchable_fts&_fts_pk=pk
-
-The ``fts_table`` metadata property can be used to specify an associated FTS table. If the primary key column in your table which was used to populate the FTS table is something other than ``rowid``, you can specify the column to use with the ``fts_pk`` property.
-
-Here is an example which enables full-text search for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key::
-
-    {
-      "databases": {
-        "russian-ads": {
-          "tables": {
-            "display_ads": {
-              "fts_table": "ads_fts",
-              "fts_pk": "id"
-            }
-          }
-        }
-      }
-    }
-
-The table view API
-------------------
-
-Table views that support full-text search can be queried using the ``?_search=TERMS`` querystring parameter. This will run the search against content from all of the columns that have been included in the index.
-
-SQLite full-text search supports wildcards. This means you can easily implement prefix auto-complete by including an asterisk at the end of the search term - for example::
-
-    /dbname/tablename/?_search=rob*
-
-This will return all records containing at least one word that starts with the letters ``rob``.
-
-You can also run searches against just the content of a specific named column by using ``_search_COLNAME=TERMS`` - for example, this would search for just rows where the ``name`` column in the FTS index mentions ``Sarah``::
-
-    /dbname/tablename/?_search_name=Sarah
-
-.. _full_text_search_custom_sql:
-
-Searches using custom SQL
--------------------------
-
-You can include full-text search results in custom SQL queries. The general pattern with SQLite search is to run the search as a sub-select that returns rowid values, then include those rowids in another part of the query.
-
-You can see the syntax for a basic search by running that search on a table page and then clicking "View and edit SQL" to see the underlying SQL. For example, consider this search for `cherry trees in San Francisco <https://san-francisco.datasettes.com/sf-trees/Street_Tree_List?_search=cherry>`_::
-
-    /sf-trees/Street_Tree_List?_search=cherry
-
-If you click `View and edit SQL <https://san-francisco.datasettes.com/sf-trees?sql=select+rowid%2C+*+from+Street_Tree_List+where+rowid+in+(select+rowid+from+[Street_Tree_List_fts]+where+[Street_Tree_List_fts]+match+%3Asearch)+order+by+rowid+limit+101&search=cherry>`_ you'll see that the underlying SQL looks like this:
-
-.. code-block:: sql
-
-    select rowid, * from Street_Tree_List
-    where rowid in (
-        select rowid from [Street_Tree_List_fts]
-        where [Street_Tree_List_fts] match "cherry"
-    ) order by rowid limit 101
+If you can't be sure that FTS5 will be available, you should use FTS4.

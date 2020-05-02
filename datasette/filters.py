@@ -137,6 +137,9 @@ class Filters:
                 "lte", "\u2264", '"{c}" <= :{p}', "{c} \u2264 {v}", numeric=True
             ),
             TemplatedFilter("like", "like", '"{c}" like :{p}', '{c} like "{v}"'),
+            TemplatedFilter(
+                "notlike", "not like", '"{c}" not like :{p}', '{c} not like "{v}"'
+            ),
             TemplatedFilter("glob", "glob", '"{c}" glob :{p}', '{c} glob "{v}"'),
             InFilter(),
             NotInFilter(),

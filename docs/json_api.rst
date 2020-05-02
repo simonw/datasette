@@ -216,6 +216,9 @@ You can filter the data returned by the table based on column values using a que
 ``?column__like=value``
     Match rows with a LIKE clause, case insensitive and with ``%`` as the wildcard character.
 
+``?column__notlike=value``
+    Match rows that do not match the provided LIKE clause.
+
 ``?column__glob=value``
     Similar to LIKE but uses Unix wildcard syntax and is case sensitive.
 

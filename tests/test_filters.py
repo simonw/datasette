@@ -32,6 +32,8 @@ import pytest
             ['"foo" like :p0', '"foo" like :p1'],
             ["2%2", "3%3"],
         ),
+        # notlike:
+        ((("foo__notlike", "2%2"),), ['"foo" not like :p0'], ["2%2"],),
         (
             (("foo__isnull", "1"), ("baz__isnull", "1"), ("bar__gt", "10")),
             ['"bar" > :p0', '"baz" is null', '"foo" is null'],

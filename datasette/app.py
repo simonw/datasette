@@ -23,7 +23,7 @@ import uvicorn
 from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
-from .views.special import JsonDataView
+from .views.special import JsonDataView, PatternPortfolioView
 from .views.table import RowView, TableView
 from .renderer import json_renderer
 from .database import Database
@@ -734,6 +734,9 @@ class Datasette:
         add_route(
             JsonDataView.as_asgi(self, "databases.json", self.connected_databases),
             r"/-/databases(?P<as_format>(\.json)?)$",
+        )
+        add_route(
+            PatternPortfolioView.as_asgi(self), r"/-/patterns$",
         )
         add_route(
             DatabaseDownload.as_asgi(self), r"/(?P<db_name>[^/]+?)(?P<as_db>\.db)$"

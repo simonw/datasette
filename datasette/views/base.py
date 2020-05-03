@@ -72,7 +72,8 @@ class BaseView(AsgiView):
     def database_color(self, database):
         return "ff0000"
 
-    async def render(self, templates, request, context):
+    async def render(self, templates, request, context=None):
+        context = context or {}
         template = self.ds.jinja_env.select_template(templates)
         template_context = {
             **context,

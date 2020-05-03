@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Datasette: Pattern Portfolio</title>
+    <link rel="stylesheet" href="{{ base_url }}-/static/app.css?{{ app_css_hash }}">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="robots" content="noindex">
+    <style>.pattern-heading { padding: 0.4em; border-top: 1px solid red; border-bottom: 1px solid red; background-color: pink }</style>
+</head>
+<body>
+<nav class="hd"></nav>
+<div class="bd">
+    <h1>Pattern Portfolio</h1>
+</div>
+<h2 class="pattern-heading">.hd for /database/table/row</h2>
+<nav class="hd">
+    <p class="crumbs">
+        <a href="/">home</a> /
+        <a href="/fixtures">fixtures</a> /
+        <a href="/fixtures/attraction_characteristic">attraction_characteristic</a>
+    </p>
+</nav>
+<h2 class="pattern-heading">.bd for /</h2>
+<div class="bd">
+    <h1>Datasette Fixtures</h1>
+    <div class="metadata-description">
+            An example SQLite database demonstrating Datasette
+    </div>
+    <p>
+    Data license:
+            <a href="https://github.com/simonw/datasette/blob/master/LICENSE">Apache License 2.0</a>
+    &middot;
+        Data source:
+            <a href="https://github.com/simonw/datasette/blob/master/tests/fixtures.py">
+        tests/fixtures.py</a>
+    &middot;
+        About:
+            <a href="https://github.com/simonw/datasette">
+        About Datasette</a>
+    </p>
+    <h2 style="padding-left: 10px; border-left: 10px solid #9403e5"><a href="/fixtures">fixtures</a></h2>
+    <p>
+        1,258 rows in 24 tables, 206 rows in 5 hidden tables, 4 views
+    </p>
+    <p><a href="/fixtures/compound_three_primary_keys" title="1001 rows">compound_three_primary_keys</a>, <a href="/fixtures/sortable" title="201 rows">sortable</a>, <a href="/fixtures/facetable" title="15 rows">facetable</a>, <a href="/fixtures/roadside_attraction_characteristics" title="5 rows">roadside_attraction_characteristics</a>, <a href="/fixtures/simple_primary_key" title="4 rows">simple_primary_key</a>, <a href="/fixtures">...</a></p>
+    <h2 style="padding-left: 10px; border-left: 10px solid #8d777f"><a href="/data">data</a></h2>
+    <p>
+        6 rows in 2 tables
+    </p>
+    <p><a href="/data/names" title="6 rows">names</a>, <a href="/data/foo">foo</a></p>
+</div>
+<h2 class="pattern-heading">.bd for /database</h2>
+<div class="bd">
+    <h1 style="padding-left: 10px; border-left: 10px solid #ff0000">fixtures</h1>
+    <div class="metadata-description">
+            Test tables description
+    </div>
+    <p>
+    Data license:
+            <a href="https://github.com/simonw/datasette/blob/master/LICENSE">Apache License 2.0</a>
+    &middot;
+        Data source:
+            <a href="https://github.com/simonw/datasette/blob/master/tests/fixtures.py">
+        tests/fixtures.py</a>
+    &middot;
+        About:
+            <a href="https://github.com/simonw/datasette">
+        About Datasette</a>
+    </p>
+    <form class="sql" action="/fixtures" method="get">
+        <h3>Custom SQL query</h3>
+        <p><textarea id="sql-editor" name="sql">select * from [123_starts_with_digits]</textarea></p>
+        <p>
+            <button id="sql-format" type="button" hidden>Format SQL</button>
+            <input type="submit" value="Run SQL">
+        </p>
+    </form>
+    <div class="db-table">
+        <h2><a href="/fixtures/123_starts_with_digits">123_starts_with_digits</a></h2>
+        <p><em>content</em></p>
+        <p>0 rows</p>
+    </div>
+    <div class="db-table">
+        <h2><a href="/fixtures/Table+With+Space+In+Name">Table With Space In Name</a></h2>
+        <p><em>pk, content</em></p>
+        <p>0 rows</p>
+    </div>
+    <div class="db-table">
+        <h2><a href="/fixtures/attraction_characteristic">attraction_characteristic</a></h2>
+        <p><em>pk, name</em></p>
+        <p>2 rows</p>
+    </div>
+</div>
+<h2 class="pattern-heading">.bd for /database/table</h2>
+<div class="bd">
+    <h1 style="padding-left: 10px; border-left: 10px solid #ff0000">roadside_attraction_characteristics</h1>
+    <p>
+    Data license:
+            <a href="https://github.com/simonw/datasette/blob/master/LICENSE">Apache License 2.0</a>
+    &middot;
+        Data source:
+            <a href="https://github.com/simonw/datasette/blob/master/tests/fixtures.py">
+        tests/fixtures.py</a>
+    &middot;
+        About:
+            <a href="https://github.com/simonw/datasette">
+        About Datasette</a>
+    </p>
+    <h3>3 rows
+        where characteristic_id = 2
+    </h3>
+    <form class="filters" action="/fixtures/roadside_attraction_characteristics" method="get">
+    <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value=""></div>
+        <div class="filter-row">
+            <div class="select-wrapper">
+                <select name="_filter_column_1">
+                    <option value="">- remove filter -</option>
+                    <option>rowid</option>
+                    <option>attraction_id</option>
+                    <option selected>characteristic_id</option>
+                </select>
+            </div>
+            <div class="select-wrapper filter-op">
+                <select name="_filter_op_1">
+                    <option value="exact" selected>=</option>
+                    <option value="not">!=</option>
+                    <option value="contains">contains</option>
+                    <option value="endswith">ends with</option>
+                    <option value="startswith">starts with</option>
+                    <option value="gt">&gt;</option>
+                    <option value="gte">≥</option>
+                    <option value="lt">&lt;</option>
+                    <option value="lte">≤</option>
+                    <option value="like">like</option>
+                    <option value="notlike">not like</option>
+                    <option value="glob">glob</option>
+                    <option value="in">in</option>
+                    <option value="notin">not in</option>
+                    <option value="arraycontains">array contains</option>
+                    <option value="date">date</option>
+                    <option value="isnull__1">is null</option>
+                    <option value="notnull__1">is not null</option>
+                    <option value="isblank__1">is blank</option>
+                    <option value="notblank__1">is not blank</option>
+                </select>
+            </div><input type="text" name="_filter_value_1" class="filter-value" value="2">
+        </div>
+    <div class="filter-row">
+        <div class="select-wrapper">
+            <select name="_filter_column">
+                <option value="">- column -</option>
+                <option>rowid</option>
+                <option>attraction_id</option>
+                <option>characteristic_id</option>
+            </select>
+        </div>
+        <div class="select-wrapper filter-op">
+            <select name="_filter_op">
+                <option value="exact">=</option>
+                <option value="not">!=</option>
+                <option value="contains">contains</option>
+                <option value="endswith">ends with</option>
+                <option value="startswith">starts with</option>
+                <option value="gt">&gt;</option>
+                <option value="gte">≥</option>
+                <option value="lt">&lt;</option>
+                <option value="lte">≤</option>
+                <option value="like">like</option>
+                <option value="notlike">not like</option>
+                <option value="glob">glob</option>
+                <option value="in">in</option>
+                <option value="notin">not in</option>
+                <option value="arraycontains">array contains</option>
+                <option value="date">date</option>
+                <option value="isnull__1">is null</option>
+                <option value="notnull__1">is not null</option>
+                <option value="isblank__1">is blank</option>
+                <option value="notblank__1">is not blank</option>
+            </select>
+        </div><input type="text" name="_filter_value" class="filter-value">
+    </div>
+    <div class="filter-row">
+            <div class="select-wrapper small-screen-only">
+                <select name="_sort" id="sort_by">
+                    <option value="">Sort...</option>
+                    <option value="rowid" selected>Sort by rowid</option>
+                    <option value="attraction_id">Sort by attraction_id</option>
+                    <option value="characteristic_id">Sort by characteristic_id</option>
+                </select>
+            </div>
+            <label class="sort_by_desc small-screen-only"><input type="checkbox" name="_sort_by_desc"> descending</label>
+        <input type="submit" value="Apply">
+    </div>
+</form>
+    <p><a class="not-underlined" title="select rowid, attraction_id, characteristic_id from roadside_attraction_characteristics where &#34;characteristic_id&#34; = :p0 order by rowid limit 101" href="/fixtures?sql=select+rowid%2C+attraction_id%2C+characteristic_id+from+roadside_attraction_characteristics+where+%22characteristic_id%22+%3D+%3Ap0+order+by+rowid+limit+101&amp;p0=2">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
+<p class="export-links">This data as <a href="/fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on">json</a>, <a href="/fixtures/roadside_attraction_characteristics.csv?characteristic_id=2&amp;_labels=on&amp;_size=max">CSV</a> (<a href="#export">advanced</a>)</p>
+    <table class="rows-and-columns">
+        <thead>
+            <tr>
+                    <th class="col-Link" scope="col">
+                                Link
+                        </th>
+                    <th class="col-rowid" scope="col">
+                                            <a href="/fixtures/roadside_attraction_characteristics?characteristic_id=2&amp;_sort_desc=rowid" rel="nofollow">rowid&nbsp;▼</a>
+                                </th>
+                    <th class="col-attraction_id" scope="col">
+                                            <a href="/fixtures/roadside_attraction_characteristics?characteristic_id=2&amp;_sort=attraction_id" rel="nofollow">attraction_id</a>
+                                </th>
+                    <th class="col-characteristic_id" scope="col">
+                                            <a href="/fixtures/roadside_attraction_characteristics?characteristic_id=2&amp;_sort=characteristic_id" rel="nofollow">characteristic_id</a>
+                                </th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                    <td class="col-Link"><a href="/fixtures/roadside_attraction_characteristics/1">1</a></td>
+                    <td class="col-rowid">1</td>
+                    <td class="col-attraction_id"><a href="/fixtures/roadside_attractions/1">The Mystery Spot</a>&nbsp;<em>1</em></td>
+                    <td class="col-characteristic_id"><a href="/fixtures/attraction_characteristic/2">Paranormal</a>&nbsp;<em>2</em></td>
+            </tr>
+            <tr>
+                    <td class="col-Link"><a href="/fixtures/roadside_attraction_characteristics/2">2</a></td>
+                    <td class="col-rowid">2</td>
+                    <td class="col-attraction_id"><a href="/fixtures/roadside_attractions/2">Winchester Mystery House</a>&nbsp;<em>2</em></td>
+                    <td class="col-characteristic_id"><a href="/fixtures/attraction_characteristic/2">Paranormal</a>&nbsp;<em>2</em></td>
+            </tr>
+            <tr>
+                    <td class="col-Link"><a href="/fixtures/roadside_attraction_characteristics/3">3</a></td>
+                    <td class="col-rowid">3</td>
+                    <td class="col-attraction_id"><a href="/fixtures/roadside_attractions/4">Bigfoot Discovery Museum</a>&nbsp;<em>4</em></td>
+                    <td class="col-characteristic_id"><a href="/fixtures/attraction_characteristic/2">Paranormal</a>&nbsp;<em>2</em></td>
+            </tr>
+        </tbody>
+    </table>
+    <div id="export" class="advanced-export">
+        <h3>Advanced export</h3>
+        <p>JSON shape:
+            <a href="/fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on">default</a>,
+            <a href="/fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array">array</a>,
+            <a href="/fixtures/roadside_attraction_characteristics.json?characteristic_id=2&amp;_labels=on&amp;_shape=array&amp;_nl=on">newline-delimited</a>
+        </p>
+        <form action="/fixtures/roadside_attraction_characteristics.csv" method="get">
+            <p>
+                CSV options:
+                <label><input type="checkbox" name="_dl"> download file</label>
+                <label><input type="checkbox" name="_labels" checked> expand labels</label>
+                <input type="submit" value="Export CSV">
+                <input type="hidden" name="characteristic_id" value="2">
+                <input type="hidden" name="_size" value="max">
+            </p>
+        </form>
+    </div>
+    <pre class="wrapped-sql">CREATE TABLE roadside_attraction_characteristics (
+    attraction_id INTEGER REFERENCES roadside_attractions(pk),
+    characteristic_id INTEGER REFERENCES attraction_characteristic(pk)
+);</pre>
+</div>
+<h2 class="pattern-heading">.bd for /database/table/row</h2>
+<div class="bd">
+    <h1 style="padding-left: 10px; border-left: 10px solid #ff0000">roadside_attractions: 2</a></h1>
+    <p>This data as <a href="/fixtures/roadside_attractions/2.json">json</a></p>
+    <table class="rows-and-columns">
+        <thead>
+            <tr>
+                    <th class="col-pk" scope="col">
+                                pk
+                        </th>
+                    <th class="col-name" scope="col">
+                                name
+                        </th>
+                    <th class="col-address" scope="col">
+                                address
+                        </th>
+                    <th class="col-latitude" scope="col">
+                                latitude
+                        </th>
+                    <th class="col-longitude" scope="col">
+                                longitude
+                        </th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                    <td class="col-pk">2</td>
+                    <td class="col-name">Winchester Mystery House</td>
+                    <td class="col-address">525 South Winchester Boulevard, San Jose, CA 95128</td>
+                    <td class="col-latitude">37.3184</td>
+                    <td class="col-longitude">-121.9511</td>
+            </tr>
+        </tbody>
+    </table>
+    <h2>Links from other tables</h2>
+    <ul>
+            <li>
+                <a href="/fixtures/roadside_attraction_characteristics?attraction_id=2">
+                    1 row</a>
+                from attraction_id in roadside_attraction_characteristics
+            </li>
+    </ul>
+</div>
+<h2 class="pattern-heading">.ft</h2>
+<div class="ft">Powered by <a href="https://github.com/simonw/datasette" title="Datasette v0+unknown">Datasette</a>
+    &middot; Data license:
+            <a href="https://github.com/simonw/datasette/blob/master/LICENSE">Apache License 2.0</a>
+    &middot;
+        Data source:
+            <a href="https://github.com/simonw/datasette/blob/master/tests/fixtures.py">
+        tests/fixtures.py</a>
+    &middot;
+        About:
+            <a href="https://github.com/simonw/datasette">
+        About Datasette</a>
+</div>
+</body>
+</html>

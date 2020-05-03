@@ -32,3 +32,13 @@ class JsonDataView(BaseView):
                     "data_json": json.dumps(data, indent=4),
                 },
             )
+
+
+class PatternPortfolioView(BaseView):
+    name = "patterns"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        return await self.render(["patterns.html"], request=request,)

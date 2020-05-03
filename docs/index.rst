@@ -1,6 +1,22 @@
 Datasette
 =========
 
+|PyPI| |Changelog| |Python 3.x| |Travis CI| |License| |docker:
+datasette|
+
+.. |PyPI| image:: https://img.shields.io/pypi/v/datasette.svg
+   :target: https://pypi.org/project/datasette/
+.. |Changelog| image:: https://img.shields.io/github/v/release/simonw/datasette?include_prereleases&label=changelog
+   :target: https://datasette.readthedocs.io/en/stable/changelog.html
+.. |Python 3.x| image:: https://img.shields.io/pypi/pyversions/datasette.svg?logo=python&logoColor=white
+   :target: https://pypi.org/project/datasette/
+.. |Travis CI| image:: https://travis-ci.org/simonw/datasette.svg?branch=master
+   :target: https://travis-ci.org/simonw/datasette
+.. |License| image:: https://img.shields.io/badge/license-Apache%202.0-blue.svg
+   :target: https://github.com/simonw/datasette/blob/master/LICENSE
+.. |docker: datasette| image:: https://img.shields.io/badge/docker-datasette-blue
+   :target: https://hub.docker.com/r/datasetteproject/datasette
+
 *A tool for exploring and publishing data*
 
 Datasette is a tool for exploring and publishing data. It helps people take data of any shape or size and publish that as an interactive, explorable website and accompanying API.

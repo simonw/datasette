@@ -22,19 +22,13 @@ You can install Datasette and its dependencies using ``pip``::
 
     pip install datasette
 
-The last version to support Python 3.5 was 0.30.2 - you can install that version like so::
+The last version to support Python 3.5 was 0.30.2. If you are running Python 3.5 (check using ``python3 --version``) you can install that version of Datasette like so::
 
     pip install datasette==0.30.2
 
-If you want to install Datasette in its own virtual environment, use this::
-
-    python -mvenv datasette-venv
-    source datasette-venv/bin/activate
-    pip install datasette
-
 You can now run Datasette like so::
 
-    datasette fixtures.db
+    datasette
 
 If you want to start making contributions to the Datasette project by installing a copy that lets you directly modify the code, take a look at our guide to :ref:`devenvironment`.
 

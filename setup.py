@@ -46,7 +46,7 @@ setup(
         "aiofiles>=0.4,<0.6",
         "janus~=0.4.0",
         "PyYAML~=5.3",
-        "mergedeep~=1.1.1",
+        "mergedeep>=1.1.1,<1.4.0",
     ],
     entry_points="""
         [console_scripts]

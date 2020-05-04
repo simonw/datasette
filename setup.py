@@ -43,7 +43,7 @@ setup(
         "pint~=0.9",
         "pluggy~=0.13.0",
         "uvicorn~=0.11",
-        "aiofiles~=0.4.0",
+        "aiofiles>=0.4,<0.6",
         "janus~=0.4.0",
         "PyYAML~=5.3",
         "mergedeep~=1.1.1",

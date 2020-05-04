@@ -46,7 +46,7 @@ class Request:
 
     @property
     def path(self):
-        if "raw_path" in self.scope:
+        if self.scope.get("raw_path") is not None:
             return self.scope["raw_path"].decode("latin-1")
         else:
             path = self.scope["path"]

@@ -97,3 +97,90 @@ You can now run Datasette like so::
     datasette fixtures.db
 
 If you want to start making contributions to the Datasette project by installing a copy that lets you directly modify the code, take a look at our guide to :ref:`devenvironment`.
+
+Install using pipx
+------------------
+
+`pipx <https://pipxproject.github.io/pipx/>`__ is a tool for installing Python software with all of its dependencies in an isolated environment, to ensure that they will not conflict with any other installed Python software.
+
+If you use `Homebrew <https://brew.sh/>`__ on macOS you can install pipx like this::
+
+    brew install pipx
+    pipx ensurepath
+
+Without Homebrew you can install it like so::
+
+    python3 -m pip install --user pipx
+    python3 -m pipx ensurepath
+
+The ``pipx ensurepath`` command configures your shell to ensure it can find commands that have been installed by pipx - generally by making sure ``~/.local/bin`` has been added to your ``PATH``.
+
+Once pipx is installed you can use it to install Datasette like this::
+
+    pipx install datasette
+
+Then run ``datasette --version`` to confirm that it has been successfully installed.
+
+Installing plugins using pipx
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette plugins need to be installed into the same environment as Datasette itself. You can do this using ``pipx inject datasette name-of-plugin`` - and then confirm that the plugin has been installed using the ``datasette plugins`` command::
+
+    $ datasette plugins
+    []
+
+    $ pipx inject datasette datasette-json-html            
+      injected package datasette-json-html into venv datasette
+    done! ✨ 🌟 ✨
+
+    $ datasette plugins
+    [
+        {
+            "name": "datasette-json-html",
+            "static": false,
+            "templates": false,
+            "version": "0.6"
+        }
+    ]
+
+Upgrading packages using pipx
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can upgrade your pipx installation to the latest release of Datasette using ``pipx upgrade datasette``::
+
+    $ pipx upgrade datasette    
+    upgraded package datasette from 0.39 to 0.40 (location: /Users/simon/.local/pipx/venvs/datasette)
+
+To upgrade a plugin within the pipx environment use ``pipx runpip datasette install -U name-of-plugin`` - like this::
+
+    % datasette plugins
+    [
+        {
+            "name": "datasette-vega",
+            "static": true,
+            "templates": false,
+            "version": "0.6"
+        }
+    ]
+
+    $ pipx runpip datasette install -U datasette-vega     
+    Collecting datasette-vega
+    Downloading datasette_vega-0.6.2-py3-none-any.whl (1.8 MB)
+        |████████████████████████████████| 1.8 MB 2.0 MB/s 
+    ...
+    Installing collected packages: datasette-vega
+    Attempting uninstall: datasette-vega
+        Found existing installation: datasette-vega 0.6
+        Uninstalling datasette-vega-0.6:
+        Successfully uninstalled datasette-vega-0.6
+    Successfully installed datasette-vega-0.6.2
+
+    $ datasette plugins                              
+    [
+        {
+            "name": "datasette-vega",
+            "static": true,
+            "templates": false,
+            "version": "0.6.2"
+        }
+    ]

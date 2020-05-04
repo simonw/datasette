@@ -44,7 +44,7 @@ setup(
         "pluggy~=0.13.0",
         "uvicorn~=0.11",
         "aiofiles>=0.4,<0.6",
-        "janus~=0.4.0",
+        "janus>=0.4,<0.6",
         "PyYAML~=5.3",
         "mergedeep>=1.1.1,<1.4.0",
     ],

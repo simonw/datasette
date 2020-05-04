@@ -828,7 +828,7 @@ class DatasetteRouter(AsgiRouter):
                     view_name="page",
                 )
                 # Pull content-type out into separate parameter
-                content_type = "text/html"
+                content_type = "text/html; charset=utf-8"
                 matches = [k for k in headers if k.lower() == "content-type"]
                 if matches:
                     content_type = headers[matches[0]]

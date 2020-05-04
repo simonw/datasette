@@ -284,7 +284,7 @@ You can nest directories within pages to create a nested structure. To create a 
 Custom headers and status codes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Custom pages default to being served with a content-type of ``text/html`` and a ``200`` status code. You can change these by calling a custom function from within your template.
+Custom pages default to being served with a content-type of ``text/html; charset=utf-8`` and a ``200`` status code. You can change these by calling a custom function from within your template.
 
 For example, to serve a custom page with a ``418 I'm a teapot`` HTTP status code, create a file in ``pages/teapot.html`` containing the following::
 
@@ -314,7 +314,7 @@ You can verify this is working using ``curl`` like this::
     date: Sun, 26 Apr 2020 18:38:30 GMT
     server: uvicorn
     x-teapot: I am
-    content-type: text/html
+    content-type: text/html; charset=utf-8
 
 Custom redirects
 ~~~~~~~~~~~~~~~~

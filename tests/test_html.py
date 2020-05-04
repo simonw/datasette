@@ -963,6 +963,12 @@ def test_404_trailing_slash_redirect(app_client, path, expected_redirect):
     assert expected_redirect == response.headers["Location"]
 
 
+def test_404_content_type(app_client):
+    response = app_client.get("/404")
+    assert 404 == response.status
+    assert "text/html; charset=utf-8" == response.headers["content-type"]
+
+
 def test_canned_query_with_custom_metadata(app_client):
     response = app_client.get("/fixtures/neighborhood_search?text=town")
     assert response.status == 200

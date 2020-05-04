@@ -130,7 +130,7 @@ class AsgiRouter:
             {
                 "type": "http.response.start",
                 "status": 404,
-                "headers": [[b"content-type", b"text/html"]],
+                "headers": [[b"content-type", b"text/html; charset=utf-8"]],
             }
         )
         await send({"type": "http.response.body", "body": b"<h1>404</h1>"})
@@ -140,11 +140,11 @@ class AsgiRouter:
             {
                 "type": "http.response.start",
                 "status": 404,
-                "headers": [[b"content-type", b"text/html"]],
+                "headers": [[b"content-type", b"text/html; charset=utf-8"]],
             }
         )
         html = "<h1>500</h1><pre{}></pre>".format(escape(repr(exception)))
-        await send({"type": "http.response.body", "body": html.encode("latin-1")})
+        await send({"type": "http.response.body", "body": html.encode("utf-8")})
 
 
 class AsgiLifespan:
@@ -259,7 +259,11 @@ async def asgi_send_json(send, info, status=200, headers=None):
 async def asgi_send_html(send, html, status=200, headers=None):
     headers = headers or {}
     await asgi_send(
-        send, html, status=status, headers=headers, content_type="text/html"
+        send,
+        html,
+        status=status,
+        headers=headers,
+        content_type="text/html; charset=utf-8",
     )
 
 
@@ -269,13 +273,13 @@ async def asgi_send_redirect(send, location, status=302):
         "",
         status=status,
         headers={"Location": location},
-        content_type="text/html",
+        content_type="text/html; charset=utf-8",
     )
 
 
 async def asgi_send(send, content, status, headers=None, content_type="text/plain"):
     await asgi_start(send, status, headers, content_type)
-    await send({"type": "http.response.body", "body": content.encode("latin-1")})
+    await send({"type": "http.response.body", "body": content.encode("utf-8")})
 
 
 async def asgi_start(send, status, headers=None, content_type="text/plain"):

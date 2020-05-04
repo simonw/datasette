@@ -4,7 +4,7 @@ from .fixtures import (
     make_app_client,
     TABLES,
     TEMP_PLUGIN_SECRET_FILE,
-    TestClient,
+    TestClient as _TestClient,
 )  # noqa
 from datasette.app import Datasette
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS
@@ -293,7 +293,7 @@ def view_names_client(tmp_path_factory):
     db_path = str(tmpdir / "fixtures.db")
     conn = sqlite3.connect(db_path)
     conn.executescript(TABLES)
-    return TestClient(
+    return _TestClient(
         Datasette(
             [db_path], template_dir=str(templates), plugins_dir=str(plugins)
         ).app()

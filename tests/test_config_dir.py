@@ -3,7 +3,7 @@ import pytest
 import sqlite3
 
 from datasette.app import Datasette
-from .fixtures import TestClient
+from .fixtures import TestClient as _TestClient
 
 PLUGIN = """
 from datasette import hookimpl
@@ -76,7 +76,7 @@ def config_dir_client(tmp_path_factory):
     )
 
     ds = Datasette([], config_dir=config_dir)
-    client = TestClient(ds.app())
+    client = _TestClient(ds.app())
     client.ds = ds
     yield client
 
@@ -137,7 +137,7 @@ def test_metadata_yaml(tmp_path_factory, filename):
     config_dir = tmp_path_factory.mktemp("yaml-config-dir")
     (config_dir / filename).write_text("title: Title from metadata", "utf-8")
     ds = Datasette([], config_dir=config_dir)
-    client = TestClient(ds.app())
+    client = _TestClient(ds.app())
     client.ds = ds
     response = client.get("/-/metadata.json")
     assert 200 == response.status

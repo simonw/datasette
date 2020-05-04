@@ -116,7 +116,7 @@ async def test_execute_write_fn_block_false(app_client):
 
     def write_fn(conn):
         with conn:
-            conn.execute("delete from roadside_attractions where id = 1;")
+            conn.execute("delete from roadside_attractions where pk = 1;")
             row = conn.execute("select count(*) from roadside_attractions").fetchone()
             print("row = ", row)
         return row[0]

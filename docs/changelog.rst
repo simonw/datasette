@@ -4,6 +4,35 @@
 Changelog
 =========
 
+.. _v0_41:
+
+0.41 (2020-05-06)
+-----------------
+
+You can now create :ref:`custom pages <custom_pages>` within your Datasette instance using a custom template file. For example, adding a template file called ``templates/pages/about.html`` will result in a new page being served at ``/about`` on your instance. See the :ref:`custom pages documentation <custom_pages>` for full details, including how to return custom HTTP headers, redirects and status codes. (`#648 <https://github.com/simonw/datasette/issues/648>`__)
+
+:ref:`config_dir` (`#731 <https://github.com/simonw/datasette/issues/731>`__) allows you to define a custom Datasette instance as a directory. So instead of running the following::
+
+    $ datasette one.db two.db \
+      --metadata.json \
+      --template-dir=templates/ \
+      --plugins-dir=plugins \
+      --static css:css
+
+You can instead arrange your files in a single directory called ``my-project`` and run this::
+
+    $ datasette my-project/
+
+Also in this release:
+
+* New ``NOT LIKE`` table filter: ``?colname__notlike=expression``. (`#750 <https://github.com/simonw/datasette/issues/750>`__)
+* Datasette now has a *pattern portfolio* at ``/-/patterns`` - e.g. https://latest.datasette.io/-/patterns. This is a page that shows every Datasette user interface component in one place, to aid core development and people building custom CSS themes. (`#151 <https://github.com/simonw/datasette/issues/151>`__)
+* SQLite `PRAGMA functions <https://www.sqlite.org/pragma.html#pragfunc>`__ such as ``pragma_table_info(tablename)`` are now allowed in Datasette SQL queries. (`#761 <https://github.com/simonw/datasette/issues/761>`__)
+* Datasette pages now consistently return a ``content-type`` of ``text/html; charset=utf-8"``. (`#752 <https://github.com/simonw/datasette/issues/752>`__)
+* Datasette now handles an ASGI ``raw_path`` value of ``None``, which should allow compatibilty with the `Mangum <https://github.com/erm/mangum>`__ adapter for running ASGI apps on AWS Lambda. Thanks, Colin Dellow. (`#719 <https://github.com/simonw/datasette/pull/719>`__)
+* Installation documentation now covers how to :ref:`installation_pipx`. (`#756 <https://github.com/simonw/datasette/issues/756>`__)
+* Improved the documentation for :ref:`full_text_search`. (`#748 <https://github.com/simonw/datasette/issues/748>`__)
+
 .. _v0_40:
 
 0.40 (2020-04-21)

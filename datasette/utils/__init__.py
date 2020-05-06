@@ -171,7 +171,26 @@ allowed_sql_res = [
     re.compile(r"^explain with\b"),
     re.compile(r"^explain query plan with\b"),
 ]
-disallawed_sql_res = [(re.compile("pragma"), "Statement may not contain PRAGMA")]
+allowed_pragmas = (
+    "database_list",
+    "foreign_key_list",
+    "function_list",
+    "index_info",
+    "index_list",
+    "index_xinfo",
+    "page_count",
+    "max_page_count",
+    "page_size",
+    "schema_version",
+    "table_info",
+    "table_xinfo",
+)
+disallawed_sql_res = [
+    (
+        re.compile("pragma(?!_({}))".format("|".join(allowed_pragmas))),
+        "Statement may not contain PRAGMA",
+    )
+]
 
 
 def validate_sql_select(sql):

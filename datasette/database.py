@@ -387,6 +387,10 @@ class QueryInterrupted(Exception):
     pass
 
 
+class MultipleValues(Exception):
+    pass
+
+
 class Results:
     def __init__(self, rows, truncated, description):
         self.rows = rows
@@ -396,6 +400,18 @@ class Results:
     @property
     def columns(self):
         return [d[0] for d in self.description]
+
+    def first(self):
+        if self.rows:
+            return self.rows[0]
+        else:
+            return None
+
+    def single_value(self):
+        if self.rows and 1 == len(self.rows) and 1 == len(self.rows[0]):
+            return self.rows[0][0]
+        else:
+            raise MultipleValues
 
     def __iter__(self):
         return iter(self.rows)

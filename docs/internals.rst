@@ -152,6 +152,9 @@ The ``Results`` object also has the following properties and methods:
 ``.single_value()``
     Returns the value of the first column of the first row of results - but only if the query returned a single row with a single column. Raises a ``datasette.database.MultipleValues`` exception otherwise.
 
+``.__len__()``
+    Calling ``len(results)`` returns the (truncated) number of returned results.
+
 .. _database_execute_write:
 
 await db.execute_write(sql, params=None, block=False)

@@ -1,7 +1,45 @@
+from datasette.database import Results, MultipleValues
+from datasette.utils import sqlite3
 from .fixtures import app_client
 import pytest
 import time
 import uuid
+
+
+@pytest.mark.asyncio
+async def test_execute1(app_client):
+    db = app_client.ds.databases["fixtures"]
+    results = await db.execute("select * from facetable")
+    assert isinstance(results, Results)
+    assert 15 == len(results)
+
+
+@pytest.mark.asyncio
+async def test_results_first(app_client):
+    db = app_client.ds.databases["fixtures"]
+    assert None is (await db.execute("select * from facetable where pk > 100")).first()
+    results = await db.execute("select * from facetable")
+    row = results.first()
+    assert isinstance(row, sqlite3.Row)
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("select 1", 1),
+        ("select 1, 2", None),
+        ("select 1 as num union select 2 as num", None),
+    ],
+)
+@pytest.mark.asyncio
+async def test_results_single_value(app_client, query, expected):
+    db = app_client.ds.databases["fixtures"]
+    results = await db.execute(query)
+    if expected:
+        assert expected == results.single_value()
+    else:
+        with pytest.raises(MultipleValues):
+            results.single_value()
 
 
 @pytest.mark.parametrize(

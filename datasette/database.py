@@ -8,8 +8,6 @@ import uuid
 
 from .tracer import trace
 from .utils import (
-    QueryInterrupted,
-    Results,
     detect_fts,
     detect_primary_keys,
     detect_spatialite,
@@ -371,3 +369,40 @@ class WriteTask:
         self.fn = fn
         self.task_id = task_id
         self.reply_queue = reply_queue
+
+
+class QueryInterrupted(Exception):
+    pass
+
+
+class MultipleValues(Exception):
+    pass
+
+
+class Results:
+    def __init__(self, rows, truncated, description):
+        self.rows = rows
+        self.truncated = truncated
+        self.description = description
+
+    @property
+    def columns(self):
+        return [d[0] for d in self.description]
+
+    def first(self):
+        if self.rows:
+            return self.rows[0]
+        else:
+            return None
+
+    def single_value(self):
+        if self.rows and 1 == len(self.rows) and 1 == len(self.rows[0]):
+            return self.rows[0][0]
+        else:
+            raise MultipleValues
+
+    def __iter__(self):
+        return iter(self.rows)
+
+    def __len__(self):
+        return len(self.rows)

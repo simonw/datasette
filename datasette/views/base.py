@@ -10,8 +10,8 @@ import pint
 
 from datasette import __version__
 from datasette.plugins import pm
+from datasette.database import QueryInterrupted
 from datasette.utils import (
-    QueryInterrupted,
     InvalidSql,
     LimitedWriter,
     is_url,

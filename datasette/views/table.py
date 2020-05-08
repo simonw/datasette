@@ -5,9 +5,9 @@ import json
 import jinja2
 
 from datasette.plugins import pm
+from datasette.database import QueryInterrupted
 from datasette.utils import (
     CustomRow,
-    QueryInterrupted,
     RequestParameters,
     append_querystring,
     compound_keys_after_sql,

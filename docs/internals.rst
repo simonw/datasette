@@ -94,12 +94,73 @@ Database class
 
 Instances of the ``Database`` class can be used to execute queries against attached SQLite databases, and to run introspection against their schemas.
 
-SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
+.. _database_execute:
+
+await db.execute(sql, ...)
+--------------------------
+
+Executes a SQL query against the database and returns the resulting rows (see :ref:`database_results`).
+
+``sql`` - string (required)
+    The SQL query to execute. This can include ``?`` or ``:named`` parameters.
+
+``params`` - list or dict
+    A list or dictionary of values to use for the parameters. List for ``?``, dictionary for ``:named``.
+
+``truncate`` - boolean
+    Should the rows returned by the query be truncated at the maximum page size? Defaults to ``True``, set this to ``False`` to disable truncation.
+
+``custom_time_limit`` - integer ms
+    A custom time limit for this query. This can be set to a lower value than the Datasette configured default. If a query takes longer than this it will be terminated early and raise a ``dataette.database.QueryInterrupted`` exception.
+
+``page_size`` - integer
+    Set a custom page size for truncation, over-riding the configured Datasette default.
+
+``log_sql_errors`` - boolean
+    Should any SQL errors be logged to the console in addition to being raised as an error? Defaults to ``True``.
+
+.. _database_results:
+
+Results
+-------
+
+The ``db.execute()`` method returns a single ``Results`` object. This can be used to access the rows returned by the query.
+
+Iterating over a ``Results`` object will yield SQLite `Row objects <https://docs.python.org/3/library/sqlite3.html#row-objects>`__. Each of these can be treated as a tuple or can be accessed using ``row["column"]`` syntax:
+
+.. code-block:: python
+
+    info = []
+    results = await db.execute("select name from sqlite_master")
+    for row in results:
+        info.append(row["name"])
+
+The ``Results`` object also has the following properties and methods:
+
+``.truncated`` - boolean
+    Indicates if this query was truncated - if it returned more results than the specified ``page_size``. If this is true then the results object will only provide access to the first ``page_size`` rows in the query result. You can disable truncation by passing ``truncate=False`` to the ``db.query()`` method.
+
+``.columns`` - list of strings
+    A list of column names returned by the query.
+
+``.rows`` - list of sqlite3.Row
+    This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
+
+``.first()`` - row or None
+    Returns the first row in the results, or ``None`` if no rows were returned.
+
+``.single_value()``
+    Returns the value of the first column of the first row of results - but only if the query returned a single row with a single column. Raises a ``datasette.database.MultipleValues`` exception otherwise.
+
+``.__len__()``
+    Calling ``len(results)`` returns the (truncated) number of returned results.
 
 .. _database_execute_write:
 
 await db.execute_write(sql, params=None, block=False)
 -----------------------------------------------------
+
+SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
 This method can be used to queue up a non-SELECT SQL query to be executed against a single write connection to the database.
 

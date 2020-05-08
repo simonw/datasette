@@ -163,6 +163,7 @@ await db.execute_fn(fn)
 Executes a given callback function against a read-only database connection running in a thread. The function will be passed a SQLite connection, and the return value from the function will be returned by the ``await``.
 
 Example usage:
+
 .. code-block:: python
 
     def get_version(conn);

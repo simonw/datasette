@@ -7,7 +7,7 @@ import uuid
 
 
 @pytest.mark.asyncio
-async def test_execute1(app_client):
+async def test_execute(app_client):
     db = app_client.ds.databases["fixtures"]
     results = await db.execute("select * from facetable")
     assert isinstance(results, Results)
@@ -40,6 +40,16 @@ async def test_results_single_value(app_client, query, expected):
     else:
         with pytest.raises(MultipleValues):
             results.single_value()
+
+
+@pytest.mark.asyncio
+async def test_execute_fn(app_client):
+    db = app_client.ds.databases["fixtures"]
+
+    def get_1_plus_1(conn):
+        return conn.execute("select 1 + 1").fetchall()[0][0]
+
+    assert 2 == await db.execute_fn(get_1_plus_1)
 
 
 @pytest.mark.parametrize(

@@ -166,7 +166,7 @@ Example usage:
 
 .. code-block:: python
 
-    def get_version(conn);
+    def get_version(conn):
         return conn.execute(
             "select sqlite_version()"
         ).fetchall()[0][0]

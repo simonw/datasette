@@ -101,7 +101,7 @@ class Database:
                 result = e
             task.reply_queue.sync_q.put(result)
 
-    async def execute_against_connection_in_thread(self, fn):
+    async def execute_fn(self, fn):
         def in_thread():
             conn = getattr(connections, self.name, None)
             if not conn:
@@ -163,9 +163,7 @@ class Database:
                 return Results(rows, False, cursor.description)
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
-            results = await self.execute_against_connection_in_thread(
-                sql_operation_in_thread
-            )
+            results = await self.execute_fn(sql_operation_in_thread)
         return results
 
     @property
@@ -223,19 +221,13 @@ class Database:
         return [r[0] for r in results.rows]
 
     async def table_columns(self, table):
-        return await self.execute_against_connection_in_thread(
-            lambda conn: table_columns(conn, table)
-        )
+        return await self.execute_fn(lambda conn: table_columns(conn, table))
 
     async def primary_keys(self, table):
-        return await self.execute_against_connection_in_thread(
-            lambda conn: detect_primary_keys(conn, table)
-        )
+        return await self.execute_fn(lambda conn: detect_primary_keys(conn, table))
 
     async def fts_table(self, table):
-        return await self.execute_against_connection_in_thread(
-            lambda conn: detect_fts(conn, table)
-        )
+        return await self.execute_fn(lambda conn: detect_fts(conn, table))
 
     async def label_column_for_table(self, table):
         explicit_label_column = self.ds.table_metadata(self.name, table).get(
@@ -244,9 +236,7 @@ class Database:
         if explicit_label_column:
             return explicit_label_column
         # If a table has two columns, one of which is ID, then label_column is the other one
-        column_names = await self.execute_against_connection_in_thread(
-            lambda conn: table_columns(conn, table)
-        )
+        column_names = await self.execute_fn(lambda conn: table_columns(conn, table))
         # Is there a name or title column?
         name_or_title = [c for c in column_names if c in ("name", "title")]
         if name_or_title:
@@ -261,7 +251,7 @@ class Database:
         return None
 
     async def foreign_keys_for_table(self, table):
-        return await self.execute_against_connection_in_thread(
+        return await self.execute_fn(
             lambda conn: get_outbound_foreign_keys(conn, table)
         )
 
@@ -279,9 +269,7 @@ class Database:
                 )
             ).rows
         ]
-        has_spatialite = await self.execute_against_connection_in_thread(
-            detect_spatialite
-        )
+        has_spatialite = await self.execute_fn(detect_spatialite)
         if has_spatialite:
             # Also hide Spatialite internal tables
             hidden_tables += [
@@ -329,10 +317,10 @@ class Database:
         return [r[0] for r in results.rows]
 
     async def get_all_foreign_keys(self):
-        return await self.execute_against_connection_in_thread(get_all_foreign_keys)
+        return await self.execute_fn(get_all_foreign_keys)
 
     async def get_outbound_foreign_keys(self, table):
-        return await self.execute_against_connection_in_thread(
+        return await self.execute_fn(
             lambda conn: get_outbound_foreign_keys(conn, table)
         )
 

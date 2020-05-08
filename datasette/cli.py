@@ -388,7 +388,7 @@ async def check_databases(ds):
     # to confirm they are all usable
     for database in list(ds.databases.values()):
         try:
-            await database.execute_against_connection_in_thread(check_connection)
+            await database.execute_fn(check_connection)
         except SpatialiteConnectionProblem:
             raise click.UsageError(
                 "It looks like you're trying to load a SpatiaLite"

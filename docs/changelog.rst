@@ -4,6 +4,17 @@
 Changelog
 =========
 
+.. _v0_42:
+
+0.42 (2020-05-08)
+-----------------
+
+A small release which provides improved internal methods for use in plugins, along with documentation. See `#685 <https://github.com/simonw/datasette/issues/685>`__.
+
+* Added documentation for ``db.execute()``, see :ref:`database_execute`.
+* Renamed ``db.execute_against_connection_in_thread()`` to ``db.execute_fn()`` and made it a documented method, see :ref:`database_execute_fn`.
+* New ``results.first()`` and ``results.single_value()`` methods, plus documentation for the ``Results`` class - see :ref:`database_results`.
+
 .. _v0_41:
 
 0.41 (2020-05-06)

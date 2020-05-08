@@ -155,6 +155,26 @@ The ``Results`` object also has the following properties and methods:
 ``.__len__()``
     Calling ``len(results)`` returns the (truncated) number of returned results.
 
+.. _database_execute_fn:
+
+await db.execute_fn(fn)
+-----------------------
+
+Executes a given callback function against a read-only database connection running in a thread. The function will be passed a SQLite connection, and the return value from the function will be returned by the ``await``.
+
+Example usage:
+
+syntax:
+
+.. code-block:: python
+
+    def get_version(conn);
+        return conn.execute(
+            "select sqlite_version()"
+        ).fetchall()[0][0]
+
+    version = await db.execute_fn(get_version)
+
 .. _database_execute_write:
 
 await db.execute_write(sql, params=None, block=False)

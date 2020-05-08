@@ -126,7 +126,7 @@ Results
 
 The ``db.execute()`` method returns a single ``Results`` object. This can be used to access the rows returned by the query.
 
-Iterating over a ``Results`` object will yield SQLite `Row objects <https://docs.python.org/3/library/sqlite3.html#row-objects>`__. These can be treated as a tuple or can be accessed using ``row["column"]`` syntax:
+Iterating over a ``Results`` object will yield SQLite `Row objects <https://docs.python.org/3/library/sqlite3.html#row-objects>`__. Each of these can be treated as a tuple or can be accessed using ``row["column"]`` syntax:
 
 .. code-block:: python
 

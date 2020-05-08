@@ -47,27 +47,6 @@ ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
 """
 
 
-class QueryInterrupted(Exception):
-    pass
-
-
-class Results:
-    def __init__(self, rows, truncated, description):
-        self.rows = rows
-        self.truncated = truncated
-        self.description = description
-
-    @property
-    def columns(self):
-        return [d[0] for d in self.description]
-
-    def __iter__(self):
-        return iter(self.rows)
-
-    def __len__(self):
-        return len(self.rows)
-
-
 def urlsafe_components(token):
     "Splits token on commas and URL decodes each component"
     return [urllib.parse.unquote_plus(b) for b in token.split(",")]

@@ -26,10 +26,9 @@ from .views.index import IndexView
 from .views.special import JsonDataView, PatternPortfolioView
 from .views.table import RowView, TableView
 from .renderer import json_renderer
-from .database import Database
+from .database import Database, QueryInterrupted
 
 from .utils import (
-    QueryInterrupted,
     escape_css_string,
     escape_sqlite,
     format_bytes,

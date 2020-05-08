@@ -94,8 +94,6 @@ Database class
 
 Instances of the ``Database`` class can be used to execute queries against attached SQLite databases, and to run introspection against their schemas.
 
-SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
-
 .. _database_execute:
 
 await db.execute(sql, ...)
@@ -113,7 +111,7 @@ Executes a SQL query against the database and returns the resulting rows (see :r
     Should the rows returned by the query be truncated at the maximum page size? Defaults to ``True``, set this to ``False`` to disable truncation.
 
 ``custom_time_limit`` - integer ms
-    A custom time limit for this query. This can be set to a lower value than the Datasette configured default. If a query takes longer than this it will be terminated early and raise a ``dataette.utils.QueryInterrupted`` exception.
+    A custom time limit for this query. This can be set to a lower value than the Datasette configured default. If a query takes longer than this it will be terminated early and raise a ``dataette.database.QueryInterrupted`` exception.
 
 ``page_size`` - integer
     Set a custom page size for truncation, over-riding the configured Datasette default.
@@ -145,18 +143,21 @@ The ``Results`` object also has the following properties and methods:
 ``.columns`` - list of strings
     A list of column names returned by the query.
 
+``.rows`` - list of sqlite3.Row
+    This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
+
 ``.first()`` - row or None
     Returns the first row in the results, or ``None`` if no rows were returned.
 
 ``.single_value()``
-    Returns the value of the first column of the first row of results - but only if the query returned a single row with a single column. Raises a ``MultipleValues`` exception otherwise.
-
-You can directly access rows by index using ``results[0]``
+    Returns the value of the first column of the first row of results - but only if the query returned a single row with a single column. Raises a ``datasette.database.MultipleValues`` exception otherwise.
 
 .. _database_execute_write:
 
 await db.execute_write(sql, params=None, block=False)
 -----------------------------------------------------
+
+SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
 This method can be used to queue up a non-SELECT SQL query to be executed against a single write connection to the database.
 

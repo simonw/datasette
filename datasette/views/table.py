@@ -112,7 +112,7 @@ class RowTableShared(DataView):
                 cells.append(
                     {
                         "column": pks[0] if len(pks) == 1 else "Link",
-                        "value_type": "link",
+                        "value_type": "pk",
                         "is_special_link_column": is_special_link_column,
                         "raw": pk_path,
                         "value": jinja2.Markup(

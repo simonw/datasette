@@ -505,15 +505,15 @@ def test_table_html_simple_primary_key(app_client):
         assert ["nofollow"] == a["rel"]
     assert [
         [
-            '<td class="col-id type-link"><a href="/fixtures/simple_primary_key/1">1</a></td>',
+            '<td class="col-id type-pk"><a href="/fixtures/simple_primary_key/1">1</a></td>',
             '<td class="col-content type-str">hello</td>',
         ],
         [
-            '<td class="col-id type-link"><a href="/fixtures/simple_primary_key/2">2</a></td>',
+            '<td class="col-id type-pk"><a href="/fixtures/simple_primary_key/2">2</a></td>',
             '<td class="col-content type-str">world</td>',
         ],
         [
-            '<td class="col-id type-link"><a href="/fixtures/simple_primary_key/3">3</a></td>',
+            '<td class="col-id type-pk"><a href="/fixtures/simple_primary_key/3">3</a></td>',
             '<td class="col-content type-str">\xa0</td>',
         ],
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
@@ -602,7 +602,7 @@ def test_table_html_no_primary_key(app_client):
     ]
     expected = [
         [
-            '<td class="col-Link type-link"><a href="/fixtures/no_primary_key/{}">{}</a></td>'.format(
+            '<td class="col-Link type-pk"><a href="/fixtures/no_primary_key/{}">{}</a></td>'.format(
                 i, i
             ),
             '<td class="col-rowid type-int">{}</td>'.format(i),
@@ -661,7 +661,7 @@ def test_table_html_compound_primary_key(app_client):
         assert a["href"].endswith("/compound_primary_key?_sort={}".format(expected_col))
     expected = [
         [
-            '<td class="col-Link type-link"><a href="/fixtures/compound_primary_key/a,b">a,b</a></td>',
+            '<td class="col-Link type-pk"><a href="/fixtures/compound_primary_key/a,b">a,b</a></td>',
             '<td class="col-pk1 type-str">a</td>',
             '<td class="col-pk2 type-str">b</td>',
             '<td class="col-content type-str">c</td>',
@@ -678,12 +678,12 @@ def test_table_html_foreign_key_links(app_client):
     table = Soup(response.body, "html.parser").find("table")
     expected = [
         [
-            '<td class="col-pk type-link"><a href="/fixtures/foreign_key_references/1">1</a></td>',
+            '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label type-str"><a href="/fixtures/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
             '<td class="col-foreign_key_with_no_label type-str"><a href="/fixtures/primary_key_multiple_columns/1">1</a></td>',
         ],
         [
-            '<td class="col-pk type-link"><a href="/fixtures/foreign_key_references/2">2</a></td>',
+            '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/2">2</a></td>',
             '<td class="col-foreign_key_with_label type-none">\xa0</td>',
             '<td class="col-foreign_key_with_no_label type-none">\xa0</td>',
         ],
@@ -699,7 +699,7 @@ def test_table_html_disable_foreign_key_links_with_labels(app_client):
     table = Soup(response.body, "html.parser").find("table")
     expected = [
         [
-            '<td class="col-pk type-link"><a href="/fixtures/foreign_key_references/1">1</a></td>',
+            '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label type-str">1</td>',
             '<td class="col-foreign_key_with_no_label type-str">1</td>',
         ]
@@ -715,7 +715,7 @@ def test_table_html_foreign_key_custom_label_column(app_client):
     table = Soup(response.body, "html.parser").find("table")
     expected = [
         [
-            '<td class="col-pk type-link"><a href="/fixtures/custom_foreign_key_label/1">1</a></td>',
+            '<td class="col-pk type-pk"><a href="/fixtures/custom_foreign_key_label/1">1</a></td>',
             '<td class="col-foreign_key_with_custom_label type-str"><a href="/fixtures/primary_key_multiple_columns_explicit_label/1">world2</a>\xa0<em>1</em></td>',
         ]
     ]
@@ -774,12 +774,12 @@ def test_compound_primary_key_with_foreign_key_references(app_client):
     table = Soup(response.body, "html.parser").find("table")
     expected = [
         [
-            '<td class="col-Link type-link"><a href="/fixtures/searchable_tags/1,feline">1,feline</a></td>',
+            '<td class="col-Link type-pk"><a href="/fixtures/searchable_tags/1,feline">1,feline</a></td>',
             '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/1">1</a>\xa0<em>1</em></td>',
             '<td class="col-tag type-str"><a href="/fixtures/tags/feline">feline</a></td>',
         ],
         [
-            '<td class="col-Link type-link"><a href="/fixtures/searchable_tags/2,canine">2,canine</a></td>',
+            '<td class="col-Link type-pk"><a href="/fixtures/searchable_tags/2,canine">2,canine</a></td>',
             '<td class="col-searchable_id type-int"><a href="/fixtures/searchable/2">2</a>\xa0<em>2</em></td>',
             '<td class="col-tag type-str"><a href="/fixtures/tags/canine">canine</a></td>',
         ],
@@ -1082,7 +1082,7 @@ def test_binary_data_display(app_client):
     table = Soup(response.body, "html.parser").find("table")
     expected_tds = [
         [
-            '<td class="col-Link type-link"><a href="/fixtures/binary_data/1">1</a></td>',
+            '<td class="col-Link type-pk"><a href="/fixtures/binary_data/1">1</a></td>',
             '<td class="col-rowid type-int">1</td>',
             '<td class="col-data type-bytes">&lt;Binary\xa0data:\xa019\xa0bytes&gt;</td>',
         ]
@@ -1157,19 +1157,19 @@ def test_metadata_sort(app_client):
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     expected = [
         [
-            '<td class="col-id type-link"><a href="/fixtures/facet_cities/3">3</a></td>',
+            '<td class="col-id type-pk"><a href="/fixtures/facet_cities/3">3</a></td>',
             '<td class="col-name type-str">Detroit</td>',
         ],
         [
-            '<td class="col-id type-link"><a href="/fixtures/facet_cities/2">2</a></td>',
+            '<td class="col-id type-pk"><a href="/fixtures/facet_cities/2">2</a></td>',
             '<td class="col-name type-str">Los Angeles</td>',
         ],
         [
-            '<td class="col-id type-link"><a href="/fixtures/facet_cities/4">4</a></td>',
+            '<td class="col-id type-pk"><a href="/fixtures/facet_cities/4">4</a></td>',
             '<td class="col-name type-str">Memnonia</td>',
         ],
         [
-            '<td class="col-id type-link"><a href="/fixtures/facet_cities/1">1</a></td>',
+            '<td class="col-id type-pk"><a href="/fixtures/facet_cities/1">1</a></td>',
             '<td class="col-name type-str">San Francisco</td>',
         ],
     ]
@@ -1192,11 +1192,11 @@ def test_metadata_sort_desc(app_client):
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     expected = [
         [
-            '<td class="col-pk type-link"><a href="/fixtures/attraction_characteristic/2">2</a></td>',
+            '<td class="col-pk type-pk"><a href="/fixtures/attraction_characteristic/2">2</a></td>',
             '<td class="col-name type-str">Paranormal</td>',
         ],
         [
-            '<td class="col-pk type-link"><a href="/fixtures/attraction_characteristic/1">1</a></td>',
+            '<td class="col-pk type-pk"><a href="/fixtures/attraction_characteristic/1">1</a></td>',
             '<td class="col-name type-str">Museum</td>',
         ],
     ]

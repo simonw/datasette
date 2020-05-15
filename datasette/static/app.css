@@ -345,3 +345,8 @@ p.zero-results {
     padding: 0.5em;
     font-style: italic;
 }
+
+/* Value types */
+.type-float, .type-int {
+    color: #666;
+}

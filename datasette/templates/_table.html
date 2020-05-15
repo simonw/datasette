@@ -21,7 +21,7 @@
         {% for row in display_rows %}
             <tr>
                 {% for cell in row %}
-                    <td class="col-{{ cell.column|to_css_class }}">{{ cell.value }}</td>
+                    <td class="col-{{ cell.column|to_css_class }} type-{{ cell.value_type }}">{{ cell.value }}</td>
                 {% endfor %}
             </tr>
         {% endfor %}

@@ -112,6 +112,7 @@ class RowTableShared(DataView):
                 cells.append(
                     {
                         "column": pks[0] if len(pks) == 1 else "Link",
+                        "value_type": "link",
                         "is_special_link_column": is_special_link_column,
                         "raw": pk_path,
                         "value": jinja2.Markup(
@@ -192,7 +193,16 @@ class RowTableShared(DataView):
                     if truncate_cells and len(display_value) > truncate_cells:
                         display_value = display_value[:truncate_cells] + u"\u2026"
 
-                cells.append({"column": column, "value": display_value, "raw": value})
+                cells.append(
+                    {
+                        "column": column,
+                        "value": display_value,
+                        "raw": value,
+                        "value_type": "none"
+                        if value is None
+                        else str(type(value).__name__),
+                    }
+                )
             cell_rows.append(Row(cells))
 
         if link_column:

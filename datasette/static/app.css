@@ -79,6 +79,7 @@ table a:visited {
 
     .rows-and-columns td:before {
         display: block;
+        color: black;
         margin-left: -10%;
         font-size: 0.8em;
     }

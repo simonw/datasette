@@ -602,9 +602,9 @@ def link_or_copy(src, dst):
 
 def link_or_copy_directory(src, dst):
     try:
-        shutil.copytree(src, dst, copy_function=os.link)
+        shutil.copytree(src, dst, copy_function=os.link, dirs_exist_ok=True)
     except OSError:
-        shutil.copytree(src, dst)
+        shutil.copytree(src, dst, dirs_exist_ok=True)
 
 
 def module_from_path(path, name):

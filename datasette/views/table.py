@@ -527,7 +527,7 @@ class TableView(RowTableShared):
 
         extra_args = {}
         # Handle ?_size=500
-        page_size = _size or request.raw_args.get("_size")
+        page_size = _size or request.args.get("_size")
         if page_size:
             if page_size == "max":
                 page_size = self.ds.max_returned_rows
@@ -558,8 +558,8 @@ class TableView(RowTableShared):
             sql_no_limit=sql_no_limit.rstrip(), limit=page_size + 1, offset=offset
         )
 
-        if request.raw_args.get("_timelimit"):
-            extra_args["custom_time_limit"] = int(request.raw_args["_timelimit"])
+        if request.args.get("_timelimit"):
+            extra_args["custom_time_limit"] = int(request.args["_timelimit"])
 
         results = await db.execute(sql, params, truncate=True, **extra_args)
 
@@ -890,7 +890,7 @@ class RowView(RowTableShared):
             "units": self.ds.table_metadata(database, table).get("units", {}),
         }
 
-        if "foreign_key_tables" in (request.raw_args.get("_extras") or "").split(","):
+        if "foreign_key_tables" in (request.args.get("_extras") or "").split(","):
             data["foreign_key_tables"] = await self.foreign_key_tables(
                 database, table, pk_values
             )

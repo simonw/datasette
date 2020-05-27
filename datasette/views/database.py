@@ -24,7 +24,7 @@ class DatabaseView(DataView):
         if request.args.get("sql"):
             if not self.ds.config("allow_sql"):
                 raise DatasetteError("sql= is not allowed", status=400)
-            sql = request.raw_args.pop("sql")
+            sql = request.args.get("sql")
             validate_sql_select(sql)
             return await QueryView(self.ds).data(
                 request, database, hash, sql, _size=_size, metadata=metadata
@@ -107,7 +107,7 @@ class QueryView(DataView):
         metadata=None,
         _size=None,
     ):
-        params = request.raw_args
+        params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
             params.pop("sql")
         if "_shape" in params:

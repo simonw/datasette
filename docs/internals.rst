@@ -260,9 +260,6 @@ The request object is passed to various plugin hooks. It represents an incoming 
 ``.args`` - RequestParameters
     An object representing the parsed querystring parameters, see below.
 
-``.raw_args`` - dictionary
-    A dictionary mapping querystring keys to values. If multiple keys of the same kind are provided, e.g. ``?foo=1&foo=2``, only the first value will be present in this dictionary.
-
 The object also has one awaitable method:
 
 ``await request.post_vars()`` - dictionary

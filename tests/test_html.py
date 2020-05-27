@@ -85,6 +85,21 @@ def test_database_page_redirects_with_url_hash(app_client_with_hash):
     assert "fixtures" in response.text
 
 
+def test_database_page(app_client):
+    response = app_client.get("/fixtures")
+    soup = Soup(response.body, "html.parser")
+    queries_ul = soup.find("h2", text="Queries").find_next_sibling("ul")
+    assert queries_ul is not None
+    assert [
+        (
+            "/fixtures/%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC",
+            "𝐜𝐢𝐭𝐢𝐞𝐬",
+        ),
+        ("/fixtures/pragma_cache_size", "pragma_cache_size"),
+        ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
+    ] == [(a["href"], a.text) for a in queries_ul.find_all("a")]
+
+
 def test_invalid_custom_sql(app_client):
     response = app_client.get("/fixtures?sql=.schema")
     assert response.status == 400

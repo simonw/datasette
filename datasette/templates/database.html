@@ -48,7 +48,7 @@
 {% endif %}
 
 {% if views %}
-    <h2>Views</h2>
+    <h2 id="views">Views</h2>
     <ul>
         {% for view in views %}
             <li><a href="{{ database_url(database) }}/{{ view|urlencode }}">{{ view }}</a></li>
@@ -57,10 +57,10 @@
 {% endif %}
 
 {% if queries %}
-    <h2>Queries</h2>
+    <h2 id="queries">Queries</h2>
     <ul>
         {% for query in queries %}
-            <li><a href="{{ database_url(database) }}/{{ query.name|urlencode }}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a></li>
+            <li><a href="{{ database_url(database) }}/{{ query.name|urlencode }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a></li>
         {% endfor %}
     </ul>
 {% endif %}

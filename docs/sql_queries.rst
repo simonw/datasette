@@ -72,7 +72,9 @@ Canned queries
 --------------
 
 As an alternative to adding views to your database, you can define canned
-queries inside your ``metadata.json`` file. Here's an example::
+queries inside your ``metadata.json`` file. Here's an example:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -86,7 +88,7 @@ queries inside your ``metadata.json`` file. Here's an example::
         }
     }
 
-Then run datasette like this::
+Then run Datasette like this::
 
     datasette sf-trees.db -m metadata.json
 
@@ -104,6 +106,11 @@ title and description on the canned query page. As with regular table metadata
 you can alternatively specify ``"description_html"`` to have your description
 rendered as HTML (rather than having HTML special characters escaped).
 
+.. _canned_queries_named_parameters:
+
+Named parameters
+~~~~~~~~~~~~~~~~
+
 Canned queries support named parameters, so if you include those in the SQL you
 will then be able to enter them using the form fields on the canned query page
 or by adding them to the URL. This means canned queries can be used to create
@@ -117,7 +124,9 @@ Here's an example of a canned query with a named parameter:
     from facetable join facet_cities on facetable.city_id = facet_cities.id
     where neighborhood like '%' || :text || '%' order by neighborhood;
 
-In the canned query JSON it looks like this::
+In the canned query JSON it looks like this:
+
+.. code-block:: json
 
     {
         "databases": {
@@ -138,6 +147,31 @@ https://latest.datasette.io/fixtures/neighborhood_search?text=town
 
 Note that we are using SQLite string concatenation here - the ``||`` operator -
 to add wildcard ``%`` characters to the string provided by the user.
+
+.. _canned_queries_default_fragment:
+
+Setting a default fragment
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some plugins, such as `datasette-vega <https://github.com/simonw/datasette-vega>`__, can be configured by including additional data in the fragment hash of the URL - the bit that comes after a ``#`` symbol.
+
+You can set a default fragment hash that will be included in the link to the canned query from the database index page using the ``"fragment"`` key:
+
+.. code-block:: json
+
+    {
+        "databases": {
+        "fixtures": {
+            "queries": {
+                "neighborhood_search": {
+                    "sql": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;",
+                    "fragment": "fragment-goes-here"
+                }
+            }
+        }
+    }
+
+`See here <https://latest.datasette.io/fixtures#queries>`__ for a demo of this in action.
 
 .. _pagination:
 

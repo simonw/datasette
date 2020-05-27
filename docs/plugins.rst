@@ -669,7 +669,7 @@ Extra template variables that should be made available in the rendered template 
     The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
 
 ``request`` - object
-    The current HTTP request object. ``request.scope`` provides access to the ASGI scope.
+    The current HTTP :ref:`internals_request`.
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``

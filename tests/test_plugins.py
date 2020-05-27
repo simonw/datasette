@@ -7,7 +7,7 @@ from .fixtures import (
     TestClient as _TestClient,
 )  # noqa
 from datasette.app import Datasette
-from datasette.plugins import get_plugins, DEFAULT_PLUGINS
+from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils import sqlite3
 import base64
 import json
@@ -18,6 +18,20 @@ import sqlite3
 import textwrap
 import pytest
 import urllib
+
+
+@pytest.mark.xfail
+@pytest.mark.parametrize(
+    "plugin_hook", [name for name in dir(pm.hook) if not name.startswith("_")]
+)
+def test_plugin_hooks_have_tests(plugin_hook):
+    "Every plugin hook should be referenced in this test module"
+    tests_in_this_module = [t for t in globals().keys() if t.startswith("test_")]
+    ok = False
+    for test in tests_in_this_module:
+        if plugin_hook in test:
+            ok = True
+    assert ok, "Plugin hook is missing tests: {}".format(plugin_hook)
 
 
 def test_plugins_dir_plugin_prepare_connection(app_client):

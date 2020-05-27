@@ -20,19 +20,18 @@ import pytest
 import urllib
 
 
-def test_plugin_hooks_have_tests():
+@pytest.mark.xfail
+@pytest.mark.parametrize(
+    "plugin_hook", [name for name in dir(pm.hook) if not name.startswith("_")]
+)
+def test_plugin_hooks_have_tests(plugin_hook):
     "Every plugin hook should be referenced in this test module"
-    hooks = [name for name in dir(pm.hook) if not name.startswith("_")]
     tests_in_this_module = [t for t in globals().keys() if t.startswith("test_")]
-    untested = []
-    for hook in hooks:
-        ok = False
-        for test in tests_in_this_module:
-            if hook in test:
-                ok = True
-        if not ok:
-            untested.append(hook)
-    assert not untested, "These plugin hooks are missing tests: {}".format(untested)
+    ok = False
+    for test in tests_in_this_module:
+        if plugin_hook in test:
+            ok = True
+    assert ok, "Plugin hook is missing tests: {}".format(plugin_hook)
 
 
 def test_plugins_dir_plugin_prepare_connection(app_client):

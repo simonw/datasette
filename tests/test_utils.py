@@ -446,3 +446,14 @@ async def test_request_post_vars():
 
     request = Request(scope, receive)
     assert {"foo": "bar", "baz": "1"} == await request.post_vars()
+
+
+def test_call_with_supported_arguments():
+    def foo(a, b):
+        return "{}+{}".format(a, b)
+
+    assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2)
+    assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2, c=3)
+
+    with pytest.raises(TypeError):
+        utils.call_with_supported_arguments(foo, a=1)

@@ -3,6 +3,7 @@ from collections import OrderedDict
 import base64
 import click
 import hashlib
+import inspect
 import json
 import mergedeep
 import os
@@ -803,3 +804,13 @@ def parse_metadata(content):
             return yaml.safe_load(content)
         except yaml.YAMLError:
             raise BadMetadataError("Metadata is not valid JSON or YAML")
+
+
+def call_with_supported_arguments(fn, **kwargs):
+    parameters = inspect.signature(fn).parameters.keys()
+    call_with = []
+    for parameter in parameters:
+        if parameter not in kwargs:
+            raise TypeError("{} requires parameters {}".format(fn, tuple(parameters)))
+        call_with.append(kwargs[parameter])
+    return fn(*call_with)

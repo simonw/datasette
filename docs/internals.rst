@@ -225,3 +225,58 @@ Here's an example of ``block=True`` in action:
         num_rows_left = await database.execute_write_fn(my_action, block=True)
     except Exception as e:
         print("An error occurred:", e)
+
+.. _internals_request:
+
+Request object
+~~~~~~~~~~~~~~
+
+The request object is passed to various plugin hooks. It represents an incoming HTTP request. It has the following properties:
+
+``.scope`` - dictionary
+    The ASGI scope that was used to construct this request, described in the `ASGI HTTP connection scope <https://asgi.readthedocs.io/en/latest/specs/www.html#connection-scope>`__ specification.
+
+``.method`` - string
+    The HTTP method for this request, usually ``GET`` or ``POST``.
+
+``.url`` - string
+    The full URL for this request, e.g. ``https://latest.datasette.io/fixtures``.
+
+``.scheme`` - string
+    The request scheme - usually ``https`` or ``http``.
+
+``.headers`` - dictionary (str -> str)
+    A dictionary of incoming HTTP request headers.
+
+``.host`` - string
+    The host header from the incoming request, e.g. ``latest.datasette.io`` or ``localhost``.
+
+``.path`` - string
+    The path of the request, e.g. ``/fixtures``.
+
+``.query_string`` - string
+    The querystring component of the request, without the ``?`` - e.g. ``name__contains=sam&age__gt=10``.
+
+``.args`` - RequestParameters
+    An object representing the parsed querystring parameters, see below.
+
+``.raw_args`` - dictionary
+    A dictionary mapping querystring keys to values. If multiple keys of the same kind are provided, e.g. ``?foo=1&foo=2``, only the first value will be present in this dictionary.
+
+The object also has one awaitable method:
+
+``await request.post_vars()`` - dictionary
+    Returns a dictionary of form variables that were submitted in the request body via ``POST``.
+
+The RequestParameters class
+---------------------------
+
+This class, returned by ``request.args``, is a subclass of a Python dictionary that provides methods for working with keys that map to lists of values.
+
+Conider the querystring ``?foo=1&foo=2``. This will produce a ``request.args`` that looks like this::
+
+    RequestParameters({"foo": ["1", "2"]})
+
+Calling ``request.args.get("foo")`` will return the first value, ``"1"``. If that key is not present it will return ``None`` - or the second argument if you passed one, which will be used as the default.
+
+Calling ``request.args.getlist("foo")`` will return the full list, ``["1", "2"]``.

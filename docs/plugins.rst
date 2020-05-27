@@ -887,4 +887,4 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
             return add_x_databases_header
         return wrap_with_databases_header
 
-Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`_, `datasette-search-all <https://github.com/simonw/datasette-search-all>`_
+Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`_, `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-media <https://github.com/simonw/datasette-media>`_

@@ -97,6 +97,11 @@ datasette-json-html
 
 `datasette-json-html <https://github.com/simonw/datasette-json-html>`__ renders HTML in Datasette's table view driven by JSON returned from your SQL queries. This provides a way to embed images, links and lists of links directly in Datasette's main interface, defined using custom SQL statements.
 
+datasette-media
+---------------
+
+`datasette-media <https://github.com/simonw/datasette-media>`__ adds the ability to serve media files such as images directly, configured through a SQL query that maps a URL parameter to a path to a file on disk. It can also serve resized image thumbnails.
+
 datasette-jellyfish
 -------------------
 

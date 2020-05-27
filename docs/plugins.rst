@@ -743,11 +743,11 @@ Allows the plugin to register a new output renderer, to output data in a custom 
     @hookimpl
     def register_output_renderer(datasette):
         return {
-            'extension': 'test',
-            'callback': render_test
+            "extension": "test",
+            "callback": render_test
         }
 
-This will register `render_test` to be called when paths with the extension `.test` (for example `/database.test`, `/database/table.test`, or `/database/table/row.test`) are requested. When a request is received, the callback function is called with three positional arguments:
+This will register ``render_test`` to be called when paths with the extension ``.test`` (for example ``/database.test``, ``/database/table.test``, or ``/database/table/row.test``) are requested. When a request is received, the callback function is called with three positional arguments:
 
 ``args`` - dictionary
     The GET parameters of the request
@@ -756,15 +756,15 @@ This will register `render_test` to be called when paths with the extension `.te
     The data to be rendered
 
 ``view_name`` - string
-    The name of the view where the renderer is being called. (`index`, `database`, `table`, and `row` are the most important ones.)
+    The name of the view where the renderer is being called. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
 
-The callback function can return `None`, if it is unable to render the data, or a dictionary with the following keys:
+The callback function can return ``None``, if it is unable to render the data, or a dictionary with the following keys:
 
 ``body`` - string or bytes, optional
     The response body, default empty
 
 ``content_type`` - string, optional
-    The Content-Type header, default `text/plain`
+    The Content-Type header, default ``text/plain``
 
 ``status_code`` - integer, optional
     The HTTP status code, default 200
@@ -775,7 +775,7 @@ A simple example of an output renderer callback function:
 
     def render_test(args, data, view_name):
         return {
-            'body': 'Hello World'
+            "body": "Hello World"
         }
 
 Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `datasette-ics <https://github.com/simonw/datasette-ics>`_

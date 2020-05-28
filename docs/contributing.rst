@@ -145,12 +145,12 @@ To release a new version, first create a commit that updates :ref:`the changelog
 
 For non-bugfix releases you may want to update the news section of ``README.md`` as part of the same commit.
 
-Wait long enough for Travis to build and deploy the demo version of that commit (otherwise the tag deployment may fail to alias to it properly). Then run the following::
+To tag and push the releaes, run the following::
 
     git tag 0.25.2
     git push --tags
 
 Final steps once the release has deployed to https://pypi.org/project/datasette/
 
-* Manually post the new release to GitHub releases: https://github.com/simonw/datasette/releases
+* Manually post the new release to GitHub releases: https://github.com/simonw/datasette/releases - you can convert the release notes to Markdown by copying and pasting the rendered HTML into this tool: https://euangoddard.github.io/clipboard2markdown/
 * Manually kick off a build of the `stable` branch on Read The Docs: https://readthedocs.org/projects/datasette/builds/

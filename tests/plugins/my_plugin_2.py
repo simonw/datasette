@@ -46,6 +46,9 @@ def render_cell(value, database):
 
 @hookimpl
 def extra_template_vars(template, database, table, view_name, request, datasette):
+    # This helps unit tests that want to run assertions against the request object:
+    datasette._last_request = request
+
     async def query_database(sql):
         first_db = list(datasette.databases.keys())[0]
         return (await datasette.execute(first_db, sql)).rows[0][0]

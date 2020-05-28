@@ -1676,6 +1676,10 @@ def test_config_force_https_urls():
             "toggle_url"
         ].startswith("https://")
         assert response.json["suggested_facets"][0]["toggle_url"].startswith("https://")
+        # Also confirm that request.url and request.scheme are set correctly
+        response = client.get("/")
+        assert client.ds._last_request.url.startswith("https://")
+        assert client.ds._last_request.scheme == "https"
 
 
 def test_infinity_returned_as_null(app_client):

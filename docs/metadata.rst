@@ -210,7 +210,7 @@ This will restrict sorting of ``example_table`` to just the ``height`` and
 
 You can also disable sorting entirely by setting ``"sortable_columns": []``
 
-By default, database views in Datasette do not support sorting. You can use ``sortable_columns`` to enable specific sort orders for a view called ``name_of_view`` in the database ``my_database`` like so:
+You can use ``sortable_columns`` to enable specific sort orders for a view called ``name_of_view`` in the database ``my_database`` like so:
 
 .. code-block:: json
 

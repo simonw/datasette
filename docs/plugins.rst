@@ -736,7 +736,7 @@ register_output_renderer(datasette)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
-Allows the plugin to register a new output renderer, to output data in a custom format. The hook function should return a dictionary, or a list of dictionaries, which contain the file extension you want to handle and a callback function:
+Registers a new output renderer, to output data in a custom format. The hook function should return a dictionary, or a list of dictionaries, of the following shape:
 
 .. code-block:: python
 
@@ -747,7 +747,11 @@ Allows the plugin to register a new output renderer, to output data in a custom 
             "render": render_test
         }
 
-This will register ``render_test`` to be called when paths with the extension ``.test`` (for example ``/database.test``, ``/database/table.test``, or ``/database/table/row.test``) are requested. When a request is received, the callback function is called with zero or more of the following arguments. Datasette will inspect your callback function and pass arguments that match its function signature.
+This will register ``render_test`` to be called when paths with the extension ``.test`` (for example ``/database.test``, ``/database/table.test``, or ``/database/table/row.test``) are requested.
+
+``render_test`` is a Python function. It can be a regular function or an ``async def render_test()`` awaitable function, depending on if it needs to make any asynchronous calls.
+
+When a request is received, the callback function is called with zero or more of the following arguments. Datasette will inspect your callback function and pass arguments that match its function signature.
 
 ``datasette`` - :ref:`internals_datasette`
     For accessing plugin configuration and executing queries.
@@ -803,16 +807,18 @@ Here is a more complex example:
 
 .. code-block:: python
 
-    def render_test(columns, rows):
+    async def render_test(datasette, columns, rows):
+        db = next(iter(datasette.databases.values()))
+        result = await db.execute("select sqlite_version()")
         first_row = " | ".join(columns)
         lines = [first_row]
         lines.append("=" * len(first_row))
         for row in rows:
             lines.append(" | ".join(row))
         return {
-            "body": "Hello World",
+            "body": "\n".join(lines),
             "content_type": "text/plain; charset=utf-8",
-            "headers": {"x-pipes": "yay-pipes"}
+            "headers": {"x-sqlite-version": result.first()[0]},
         }
 
 Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `datasette-ics <https://github.com/simonw/datasette-ics>`_

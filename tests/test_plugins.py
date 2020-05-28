@@ -347,6 +347,7 @@ def test_register_output_renderer_all_parameters(app_client):
     body = response.body.decode("utf-8")
     body = at_memory_re.sub(" at 0xXXX", body)
     assert {
+        "1+1": 2,
         "datasette": "<datasette.app.Datasette object at 0xXXX>",
         "columns": [
             "pk",

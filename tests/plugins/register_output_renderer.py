@@ -2,13 +2,14 @@ from datasette import hookimpl
 import json
 
 
-def render_test_all_parameters(
+async def render_test_all_parameters(
     datasette, columns, rows, sql, query_name, database, table, request, view_name, data
 ):
     headers = {}
     for custom_header in request.args.getlist("header") or []:
         key, value = custom_header.split(":")
         headers[key] = value
+    result = await datasette.databases["fixtures"].execute("select 1 + 1")
     return {
         "body": json.dumps(
             {
@@ -21,6 +22,7 @@ def render_test_all_parameters(
                 "table": table,
                 "request": request,
                 "view_name": view_name,
+                "1+1": result.first()[0],
             },
             default=repr,
         ),

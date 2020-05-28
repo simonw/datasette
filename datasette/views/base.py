@@ -403,6 +403,8 @@ class DataView(BaseView):
                 args=request.args,
                 data=data,
             )
+            if asyncio.iscoroutine(result):
+                result = await result
             if result is None:
                 raise NotFound("No data")
 

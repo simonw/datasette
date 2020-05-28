@@ -1267,6 +1267,7 @@ def test_plugins_json(app_client):
             "templates": False,
             "version": None,
         },
+        {"name": "view_name.py", "static": False, "templates": False, "version": None},
     ] == sorted(response.json, key=lambda p: p["name"])
 
 

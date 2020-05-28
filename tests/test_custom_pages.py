@@ -1,22 +1,10 @@
 import pytest
 from .fixtures import make_app_client
 
-VIEW_NAME_PLUGIN = """
-from datasette import hookimpl
-
-@hookimpl
-def extra_template_vars(view_name, request):
-    return {
-        "view_name": view_name,
-        "request": request,
-    }
-"""
-
 
 @pytest.fixture(scope="session")
 def custom_pages_client(tmp_path_factory):
     template_dir = tmp_path_factory.mktemp("page-templates")
-    extra_plugins = {"view_name.py": VIEW_NAME_PLUGIN}
     pages_dir = template_dir / "pages"
     pages_dir.mkdir()
     (pages_dir / "about.html").write_text("ABOUT! view_name:{{ view_name }}", "utf-8")
@@ -39,9 +27,7 @@ def custom_pages_client(tmp_path_factory):
     nested_dir = pages_dir / "nested"
     nested_dir.mkdir()
     (nested_dir / "nest.html").write_text("Nest!", "utf-8")
-    for client in make_app_client(
-        template_dir=str(template_dir), extra_plugins=extra_plugins
-    ):
+    for client in make_app_client(template_dir=str(template_dir)):
         yield client
 
 

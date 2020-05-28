@@ -19,6 +19,8 @@ from urllib.parse import unquote, quote
 # This temp file is used by one of the plugin config tests
 TEMP_PLUGIN_SECRET_FILE = os.path.join(tempfile.gettempdir(), "plugin-secret")
 
+PLUGINS_DIR = str(pathlib.Path(__file__).parent / "plugins")
+
 
 class TestResponse:
     def __init__(self, status, headers, body):
@@ -109,7 +111,6 @@ def make_app_client(
     inspect_data=None,
     static_mounts=None,
     template_dir=None,
-    extra_plugins=None,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -130,12 +131,6 @@ def make_app_client(
                 sqlite3.connect(extra_filepath).executescript(extra_sql)
                 files.append(extra_filepath)
         os.chdir(os.path.dirname(filepath))
-        plugins_dir = os.path.join(tmpdir, "plugins")
-        os.mkdir(plugins_dir)
-        open(os.path.join(plugins_dir, "my_plugin.py"), "w").write(PLUGIN1)
-        open(os.path.join(plugins_dir, "my_plugin_2.py"), "w").write(PLUGIN2)
-        for filename, content in (extra_plugins or {}).items():
-            open(os.path.join(plugins_dir, filename), "w").write(content)
         config = config or {}
         config.update(
             {
@@ -150,7 +145,7 @@ def make_app_client(
             memory=memory,
             cors=cors,
             metadata=METADATA,
-            plugins_dir=plugins_dir,
+            plugins_dir=PLUGINS_DIR,
             config=config,
             inspect_data=inspect_data,
             static_mounts=static_mounts,
@@ -333,177 +328,6 @@ METADATA = {
         }
     },
 }
-
-PLUGIN1 = """
-from datasette import hookimpl
-import base64
-import pint
-import json
-
-ureg = pint.UnitRegistry()
-
-
-@hookimpl
-def prepare_connection(conn, database, datasette):
-    def convert_units(amount, from_, to_):
-        "select convert_units(100, 'm', 'ft');"
-        return (amount * ureg(from_)).to(to_).to_tuple()[0]
-    conn.create_function('convert_units', 3, convert_units)
-    def prepare_connection_args():
-        return 'database={}, datasette.plugin_config("name-of-plugin")={}'.format(
-            database, datasette.plugin_config("name-of-plugin")
-        )
-    conn.create_function('prepare_connection_args', 0, prepare_connection_args)
-
-
-@hookimpl
-def extra_css_urls(template, database, table, datasette):
-    return ['https://plugin-example.com/{}/extra-css-urls-demo.css'.format(
-        base64.b64encode(json.dumps({
-            "template": template,
-            "database": database,
-            "table": table,
-        }).encode("utf8")).decode("utf8")
-    )]
-
-
-@hookimpl
-def extra_js_urls():
-    return [{
-        'url': 'https://plugin-example.com/jquery.js',
-        'sri': 'SRIHASH',
-    }, 'https://plugin-example.com/plugin1.js']
-
-
-@hookimpl
-def extra_body_script(template, database, table, datasette):
-    return 'var extra_body_script = {};'.format(
-        json.dumps({
-            "template": template,
-            "database": database,
-            "table": table,
-            "config": datasette.plugin_config(
-                "name-of-plugin",
-                database=database,
-                table=table,
-            )
-        })
-    )
-
-
-@hookimpl
-def render_cell(value, column, table, database, datasette):
-    # Render some debug output in cell with value RENDER_CELL_DEMO
-    if value != "RENDER_CELL_DEMO":
-        return None
-    return json.dumps({
-        "column": column,
-        "table": table,
-        "database": database,
-        "config": datasette.plugin_config(
-            "name-of-plugin",
-            database=database,
-            table=table,
-        )
-    })
-
-
-@hookimpl
-def extra_template_vars(template, database, table, view_name, request, datasette):
-    return {
-        "extra_template_vars": json.dumps({
-            "template": template,
-            "scope_path": request.scope["path"] if request else None
-        }, default=lambda b: b.decode("utf8"))
-    }
-"""
-
-PLUGIN2 = """
-from datasette import hookimpl
-from functools import wraps
-import jinja2
-import json
-
-
-@hookimpl
-def extra_js_urls():
-    return [{
-        'url': 'https://plugin-example.com/jquery.js',
-        'sri': 'SRIHASH',
-    }, 'https://plugin-example.com/plugin2.js']
-
-
-@hookimpl
-def render_cell(value, database):
-    # Render {"href": "...", "label": "..."} as link
-    if not isinstance(value, str):
-        return None
-    stripped = value.strip()
-    if not stripped.startswith("{") and stripped.endswith("}"):
-        return None
-    try:
-        data = json.loads(value)
-    except ValueError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    if set(data.keys()) != {"href", "label"}:
-        return None
-    href = data["href"]
-    if not (
-        href.startswith("/") or href.startswith("http://")
-        or href.startswith("https://")
-    ):
-        return None
-    return jinja2.Markup(
-        '<a data-database="{database}" href="{href}">{label}</a>'.format(
-            database=database,
-            href=jinja2.escape(data["href"]),
-            label=jinja2.escape(data["label"] or "") or "&nbsp;"
-        )
-    )
-
-
-@hookimpl
-def extra_template_vars(template, database, table, view_name, request, datasette):
-    async def query_database(sql):
-        first_db = list(datasette.databases.keys())[0]
-        return (
-            await datasette.execute(first_db, sql)
-        ).rows[0][0]
-    async def inner():
-        return {
-            "extra_template_vars_from_awaitable": json.dumps({
-                "template": template,
-                "scope_path": request.scope["path"] if request else None,
-                "awaitable": True,
-            }, default=lambda b: b.decode("utf8")),
-            "query_database": query_database,
-        }
-    return inner
-
-
-@hookimpl
-def asgi_wrapper(datasette):
-    def wrap_with_databases_header(app):
-        @wraps(app)
-        async def add_x_databases_header(scope, recieve, send):
-            async def wrapped_send(event):
-                if event["type"] == "http.response.start":
-                    original_headers = event.get("headers") or []
-                    event = {
-                        "type": event["type"],
-                        "status": event["status"],
-                        "headers": original_headers + [
-                            [b"x-databases",
-                            ", ".join(datasette.databases.keys()).encode("utf-8")]
-                        ],
-                    }
-                await send(event)
-            await app(scope, recieve, wrapped_send)
-        return add_x_databases_header
-    return wrap_with_databases_header
-"""
 
 TABLES = (
     """

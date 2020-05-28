@@ -2,6 +2,26 @@ from datasette import hookimpl
 import json
 
 
+async def can_render(
+    datasette, columns, rows, sql, query_name, database, table, request, view_name
+):
+    # We stash this on datasette so the calling unit test can see it
+    datasette._can_render_saw = {
+        "datasette": datasette,
+        "columns": columns,
+        "rows": rows,
+        "sql": sql,
+        "query_name": query_name,
+        "database": database,
+        "table": table,
+        "request": request,
+        "view_name": view_name,
+    }
+    if request.args.get("_no_can_render"):
+        return False
+    return True
+
+
 async def render_test_all_parameters(
     datasette, columns, rows, sql, query_name, database, table, request, view_name, data
 ):
@@ -39,6 +59,10 @@ def render_test_no_parameters():
 @hookimpl
 def register_output_renderer(datasette):
     return [
-        {"extension": "testall", "render": render_test_all_parameters},
+        {
+            "extension": "testall",
+            "render": render_test_all_parameters,
+            "can_render": can_render,
+        },
         {"extension": "testnone", "callback": render_test_no_parameters},
     ]

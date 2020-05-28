@@ -228,7 +228,7 @@ class Datasette:
         if config_dir and (config_dir / "config.json").exists() and not config:
             config = json.load((config_dir / "config.json").open())
         self._config = dict(DEFAULT_CONFIG, **(config or {}))
-        self.renderers = {}  # File extension -> renderer function
+        self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
             max_workers=self.config("num_sql_threads")
@@ -574,7 +574,7 @@ class Datasette:
     def register_renderers(self):
         """ Register output renderers which output data in custom formats. """
         # Built-in renderers
-        self.renderers["json"] = json_renderer
+        self.renderers["json"] = (json_renderer, lambda: True)
 
         # Hooks
         hook_renderers = []
@@ -588,8 +588,8 @@ class Datasette:
         for renderer in hook_renderers:
             self.renderers[renderer["extension"]] = (
                 # It used to be called "callback" - remove this in Datasette 1.0
-                renderer.get("render")
-                or renderer["callback"]
+                renderer.get("render") or renderer["callback"],
+                renderer.get("can_render") or (lambda: True),
             )
 
     async def render_template(

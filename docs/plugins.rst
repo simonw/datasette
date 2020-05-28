@@ -744,14 +744,17 @@ Registers a new output renderer, to output data in a custom format. The hook fun
     def register_output_renderer(datasette):
         return {
             "extension": "test",
-            "render": render_test
+            "render": render_demo,
+            "can_render": can_render_demo,  # Optional
         }
 
-This will register ``render_test`` to be called when paths with the extension ``.test`` (for example ``/database.test``, ``/database/table.test``, or ``/database/table/row.test``) are requested.
+This will register ``render_demo`` to be called when paths with the extension ``.test`` (for example ``/database.test``, ``/database/table.test``, or ``/database/table/row.test``) are requested.
 
-``render_test`` is a Python function. It can be a regular function or an ``async def render_test()`` awaitable function, depending on if it needs to make any asynchronous calls.
+``render_demo`` is a Python function. It can be a regular function or an ``async def render_demo()`` awaitable function, depending on if it needs to make any asynchronous calls.
 
-When a request is received, the callback function is called with zero or more of the following arguments. Datasette will inspect your callback function and pass arguments that match its function signature.
+``can_render_demo`` is a Python function (or ``async def`` function) which acepts the same arguments as ``render_demo`` but just returns ``True`` or ``False``. It lets Datasette know if the current SQL query can be represented by the plugin - and hence influnce if a link to this output format is displayed in the user interface. If you omit the ``"can_render"`` key from the dictionary every query will be treated as being supported by the plugin.
+
+When a request is received, the ``"render"`` callback function is called with zero or more of the following arguments. Datasette will inspect your callback function and pass arguments that match its function signature.
 
 ``datasette`` - :ref:`internals_datasette`
     For accessing plugin configuration and executing queries.
@@ -798,7 +801,7 @@ A simple example of an output renderer callback function:
 
 .. code-block:: python
 
-    def render_test():
+    def render_demo():
         return {
             "body": "Hello World"
         }
@@ -807,7 +810,7 @@ Here is a more complex example:
 
 .. code-block:: python
 
-    async def render_test(datasette, columns, rows):
+    async def render_demo(datasette, columns, rows):
         db = next(iter(datasette.databases.values()))
         result = await db.execute("select sqlite_version()")
         first_row = " | ".join(columns)
@@ -820,6 +823,13 @@ Here is a more complex example:
             "content_type": "text/plain; charset=utf-8",
             "headers": {"x-sqlite-version": result.first()[0]},
         }
+
+And here is an example ``can_render`` function which returns ``True`` only if the query results contain the columns ``atom_id``, ``atom_title`` and ``atom_updated``:
+
+.. code-block:: python
+
+    def can_render_demo(columns):
+        return {"atom_id", "atom_title", "atom_updated"}.issubset(columns)
 
 Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `datasette-ics <https://github.com/simonw/datasette-ics>`_
 

@@ -811,6 +811,10 @@ def call_with_supported_arguments(fn, **kwargs):
     call_with = []
     for parameter in parameters:
         if parameter not in kwargs:
-            raise TypeError("{} requires parameters {}".format(fn, tuple(parameters)))
+            raise TypeError(
+                "{} requires parameters {}, missing: {}".format(
+                    fn, tuple(parameters), set(parameters) - set(kwargs.keys())
+                )
+            )
         call_with.append(kwargs[parameter])
     return fn(*call_with)

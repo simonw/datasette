@@ -389,7 +389,7 @@ class DataView(BaseView):
             # Dispatch request to the correct output format renderer
             # (CSV is not handled here due to streaming)
             result = call_with_supported_arguments(
-                self.ds.renderers[_format],
+                self.ds.renderers[_format][0],
                 datasette=self.ds,
                 columns=data.get("columns") or [],
                 rows=data.get("rows") or [],
@@ -426,10 +426,27 @@ class DataView(BaseView):
             if data.get("expandable_columns"):
                 url_labels_extra = {"_labels": "on"}
 
-            renderers = {
-                key: path_with_format(request, key, {**url_labels_extra})
-                for key in self.ds.renderers.keys()
-            }
+            renderers = {}
+            for key, (_, can_render) in self.ds.renderers.items():
+                it_can_render = call_with_supported_arguments(
+                    can_render,
+                    datasette=self.ds,
+                    columns=data.get("columns") or [],
+                    rows=data.get("rows") or [],
+                    sql=data.get("query", {}).get("sql", None),
+                    query_name=data.get("query_name"),
+                    database=database,
+                    table=data.get("table"),
+                    request=request,
+                    view_name=self.name,
+                )
+                if asyncio.iscoroutine(it_can_render):
+                    it_can_render = await it_can_render
+                if it_can_render:
+                    renderers[key] = path_with_format(
+                        request, key, {**url_labels_extra}
+                    )
+
             url_csv_args = {"_size": "max", **url_labels_extra}
             url_csv = path_with_format(request, "csv", url_csv_args)
             url_csv_path = url_csv.split("?")[0]

@@ -9,7 +9,7 @@ from .fixtures import (
 from datasette.app import Datasette
 from datasette import cli
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
-from datasette.utils import sqlite3
+from datasette.utils import sqlite3, CustomRow
 from jinja2.environment import Template
 import base64
 import json
@@ -409,6 +409,41 @@ def test_register_output_renderer_custom_headers(app_client):
     )
     assert "1" == response.headers["x-wow"]
     assert "2" == response.headers["x-gosh"]
+
+
+def test_register_output_renderer_can_render(app_client):
+    response = app_client.get("/fixtures/facetable?_no_can_render=1")
+    assert response.status == 200
+    links = (
+        Soup(response.body, "html.parser")
+        .find("p", {"class": "export-links"})
+        .findAll("a")
+    )
+    actual = [l["href"].split("/")[-1] for l in links]
+    # Should not be present because we sent ?_no_can_render=1
+    assert "facetable.testall?_labels=on" not in actual
+    # Check that it was passed the values we expected
+    assert hasattr(app_client.ds, "_can_render_saw")
+    assert {
+        "datasette": app_client.ds,
+        "columns": [
+            "pk",
+            "created",
+            "planet_int",
+            "on_earth",
+            "state",
+            "city_id",
+            "neighborhood",
+            "tags",
+            "complex_array",
+            "distinct_some_null",
+        ],
+        "sql": "select pk, created, planet_int, on_earth, state, city_id, neighborhood, tags, complex_array, distinct_some_null from facetable order by pk limit 51",
+        "query_name": None,
+        "database": "fixtures",
+        "table": "facetable",
+        "view_name": "table",
+    }.items() <= app_client.ds._can_render_saw.items()
 
 
 @pytest.mark.asyncio

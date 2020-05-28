@@ -9,6 +9,7 @@ from .fixtures import (
 from datasette.app import Datasette
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils import sqlite3
+from jinja2.environment import Template
 import base64
 import json
 import os
@@ -408,3 +409,12 @@ def test_register_output_renderer_custom_headers(app_client):
     )
     assert "1" == response.headers["x-wow"]
     assert "2" == response.headers["x-gosh"]
+
+
+@pytest.mark.asyncio
+async def test_prepare_jinja2_environment(app_client):
+    template = app_client.ds.jinja_env.from_string(
+        "Hello there, {{ a|format_numeric }}", {"a": 3412341}
+    )
+    rendered = await app_client.ds.render_template(template)
+    assert "Hello there, 3,412,341" == rendered

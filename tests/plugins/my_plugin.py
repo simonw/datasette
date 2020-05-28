@@ -87,3 +87,8 @@ def extra_template_vars(template, database, table, view_name, request, datasette
             default=lambda b: b.decode("utf8"),
         )
     }
+
+
+@hookimpl
+def prepare_jinja2_environment(env):
+    env.filters["format_numeric"] = lambda s: "{:,.0f}".format(float(s))

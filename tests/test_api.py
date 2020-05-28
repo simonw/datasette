@@ -754,9 +754,9 @@ def test_table_with_reserved_word_name(app_client):
     "path,expected_rows,expected_pages",
     [
         ("/fixtures/no_primary_key.json", 201, 5),
-        ("/fixtures/paginated_view.json", 201, 5),
+        ("/fixtures/paginated_view.json", 201, 9),
         ("/fixtures/no_primary_key.json?_size=25", 201, 9),
-        ("/fixtures/paginated_view.json?_size=25", 201, 9),
+        ("/fixtures/paginated_view.json?_size=50", 201, 5),
         ("/fixtures/paginated_view.json?_size=max", 201, 3),
         ("/fixtures/123_starts_with_digits.json", 0, 1),
         # Ensure faceting doesn't break pagination:

@@ -156,6 +156,29 @@ Or use ``"sort_desc"`` to sort in descending order:
         }
     }
 
+.. _metadata_page_size:
+
+Setting a custom page size
+--------------------------
+
+Datasette defaults to displaing 100 rows per page, for both tables and views. You can change this default page size on a per-table or per-view basis using the ``"size"`` key in ``metadata.json``:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "mydatabase": {
+                "tables": {
+                    "example_table": {
+                        "size": 10
+                    }
+                }
+            }
+        }
+    }
+
+This size can still be over-ridden by passing e.g. ``?_size=50`` in the querystring.
+
 .. _metadata_sortable_columns:
 
 Setting which columns can be used for sorting

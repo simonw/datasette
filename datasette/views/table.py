@@ -527,7 +527,7 @@ class TableView(RowTableShared):
 
         extra_args = {}
         # Handle ?_size=500
-        page_size = _size or request.args.get("_size")
+        page_size = _size or request.args.get("_size") or table_metadata.get("size")
         if page_size:
             if page_size == "max":
                 page_size = self.ds.max_returned_rows

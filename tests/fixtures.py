@@ -305,6 +305,7 @@ METADATA = {
                 },
                 "attraction_characteristic": {"sort_desc": "pk"},
                 "facet_cities": {"sort": "name"},
+                "paginated_view": {"size": 25},
             },
             "queries": {
                 "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",

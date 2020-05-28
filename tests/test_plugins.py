@@ -24,7 +24,6 @@ import urllib
 at_memory_re = re.compile(r" at 0x\w+")
 
 
-@pytest.mark.xfail
 @pytest.mark.parametrize(
     "plugin_hook", [name for name in dir(pm.hook) if not name.startswith("_")]
 )

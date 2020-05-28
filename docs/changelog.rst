@@ -947,7 +947,7 @@ request all rows where that column is less than 50 meters or more than 20 feet f
   404s for missing tables/databases closes `#184 <https://github.com/simonw/datasette/issues/184>`_
 
 - long_description in markdown for the new PyPI
-- Hide Spatialite system tables. [Russ Garrett]
+- Hide SpatiaLite system tables. [Russ Garrett]
 - Allow ``explain select`` / ``explain query plan select`` `#201 <https://github.com/simonw/datasette/issues/201>`_
 - Datasette inspect now finds primary_keys `#195 <https://github.com/simonw/datasette/issues/195>`_
 - Ability to sort using form fields (for mobile portrait mode) `#199 <https://github.com/simonw/datasette/issues/199>`_

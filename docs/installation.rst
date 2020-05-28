@@ -149,7 +149,7 @@ To upgrade to the most recent release of Datasette, run the following::
 
     docker pull datasetteproject/datasette
 
-Loading Spatialite
+Loading SpatiaLite
 ~~~~~~~~~~~~~~~~~~
 
 The ``datasetteproject/datasette`` image includes a recent version of the

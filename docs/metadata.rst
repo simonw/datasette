@@ -260,7 +260,7 @@ Hiding tables
 -------------
 
 You can hide tables from the database listing view (in the same way that FTS and
-Spatialite tables are automatically hidden) using ``"hidden": true``:
+SpatiaLite tables are automatically hidden) using ``"hidden": true``:
 
 .. code-block:: json
 

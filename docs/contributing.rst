@@ -137,11 +137,15 @@ We increment ``minor`` for new features.
 
 We increment ``patch`` for bugfix releass.
 
-To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/28872a1fa789f314b0342f4e6182f1c78d6e2bca>`__::
+To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/d56f402822df102f9cf1a9a056449d01a15e3aae>`__::
 
     # Update changelog
-    git commit -m "Release 0.25.2" -a
+    git commit -m "Release notes for 0.43
+    
+    Refs #581, #770, #729, #706, #751, #706, #744, #771, #773" -a
     git push
+
+Referencing the issues that are part of the release in the commit message ensures the name of the release shows up on those issue pages, e.g. `here <https://github.com/simonw/datasette/issues/581#ref-commit-d56f402>`__.
 
 For non-bugfix releases you may want to update the news section of ``README.md`` as part of the same commit.
 

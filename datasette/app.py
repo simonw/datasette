@@ -586,7 +586,11 @@ class Datasette:
                 hook_renderers.append(hook)
 
         for renderer in hook_renderers:
-            self.renderers[renderer["extension"]] = renderer["callback"]
+            self.renderers[renderer["extension"]] = (
+                # It used to be called "callback" - remove this in Datasette 1.0
+                renderer.get("render")
+                or renderer["callback"]
+            )
 
     async def render_template(
         self, templates, context=None, request=None, view_name=None

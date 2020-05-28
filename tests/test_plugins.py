@@ -19,6 +19,8 @@ import textwrap
 import pytest
 import urllib
 
+at_memory_re = re.compile(r" at 0x\w+")
+
 
 @pytest.mark.xfail
 @pytest.mark.parametrize(
@@ -329,3 +331,79 @@ def test_view_names(view_names_client, path, view_name):
     response = view_names_client.get(path)
     assert response.status == 200
     assert "view_name:{}".format(view_name) == response.body.decode("utf8")
+
+
+def test_register_output_renderer_no_parameters(app_client):
+    response = app_client.get("/fixtures/facetable.testnone")
+    assert 200 == response.status
+    assert b"Hello" == response.body
+
+
+def test_register_output_renderer_all_parameters(app_client):
+    response = app_client.get("/fixtures/facetable.testall")
+    assert 200 == response.status
+    # Lots of 'at 0x103a4a690' in here - replace those so we can do
+    # an easy comparison
+    body = response.body.decode("utf-8")
+    body = at_memory_re.sub(" at 0xXXX", body)
+    assert {
+        "datasette": "<datasette.app.Datasette object at 0xXXX>",
+        "columns": [
+            "pk",
+            "created",
+            "planet_int",
+            "on_earth",
+            "state",
+            "city_id",
+            "neighborhood",
+            "tags",
+            "complex_array",
+            "distinct_some_null",
+        ],
+        "rows": [
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+            "<sqlite3.Row object at 0xXXX>",
+        ],
+        "sql": "select pk, created, planet_int, on_earth, state, city_id, neighborhood, tags, complex_array, distinct_some_null from facetable order by pk limit 51",
+        "query_name": None,
+        "database": "fixtures",
+        "table": "facetable",
+        "request": "<datasette.utils.asgi.Request object at 0xXXX>",
+        "view_name": "table",
+    } == json.loads(body)
+    # Test that query_name is set correctly
+    query_response = app_client.get("/fixtures/pragma_cache_size.testall")
+    assert "pragma_cache_size" == json.loads(query_response.body)["query_name"]
+
+
+def test_register_output_renderer_custom_status_code(app_client):
+    response = app_client.get("/fixtures/pragma_cache_size.testall?status_code=202")
+    assert 202 == response.status
+
+
+def test_register_output_renderer_custom_content_type(app_client):
+    response = app_client.get(
+        "/fixtures/pragma_cache_size.testall?content_type=text/blah"
+    )
+    assert "text/blah" == response.headers["content-type"]
+
+
+def test_register_output_renderer_custom_headers(app_client):
+    response = app_client.get(
+        "/fixtures/pragma_cache_size.testall?header=x-wow:1&header=x-gosh:2"
+    )
+    assert "1" == response.headers["x-wow"]
+    assert "2" == response.headers["x-gosh"]

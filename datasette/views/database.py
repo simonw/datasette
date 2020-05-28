@@ -188,6 +188,7 @@ class QueryView(DataView):
         return (
             {
                 "database": database,
+                "query_name": canned_query,
                 "rows": results.rows,
                 "truncated": results.truncated,
                 "columns": columns,

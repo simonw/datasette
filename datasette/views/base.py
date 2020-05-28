@@ -14,6 +14,7 @@ from datasette.database import QueryInterrupted
 from datasette.utils import (
     InvalidSql,
     LimitedWriter,
+    call_with_supported_arguments,
     is_url,
     path_with_added_args,
     path_with_removed_args,
@@ -387,7 +388,21 @@ class DataView(BaseView):
         if _format in self.ds.renderers.keys():
             # Dispatch request to the correct output format renderer
             # (CSV is not handled here due to streaming)
-            result = self.ds.renderers[_format](request.args, data, self.name)
+            result = call_with_supported_arguments(
+                self.ds.renderers[_format],
+                datasette=self.ds,
+                columns=data.get("columns") or [],
+                rows=data.get("rows") or [],
+                sql=data.get("query", {}).get("sql", None),
+                query_name=data.get("query_name"),
+                database=database,
+                table=data.get("table"),
+                request=request,
+                view_name=self.name,
+                # These will be deprecated in Datasette 1.0:
+                args=request.args,
+                data=data,
+            )
             if result is None:
                 raise NotFound("No data")
 
@@ -395,6 +410,7 @@ class DataView(BaseView):
                 body=result.get("body"),
                 status=result.get("status_code", 200),
                 content_type=result.get("content_type", "text/plain"),
+                headers=result.get("headers"),
             )
         else:
             extras = {}

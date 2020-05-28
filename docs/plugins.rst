@@ -744,19 +744,37 @@ Allows the plugin to register a new output renderer, to output data in a custom 
     def register_output_renderer(datasette):
         return {
             "extension": "test",
-            "callback": render_test
+            "render": render_test
         }
 
-This will register ``render_test`` to be called when paths with the extension ``.test`` (for example ``/database.test``, ``/database/table.test``, or ``/database/table/row.test``) are requested. When a request is received, the callback function is called with three positional arguments:
+This will register ``render_test`` to be called when paths with the extension ``.test`` (for example ``/database.test``, ``/database/table.test``, or ``/database/table/row.test``) are requested. When a request is received, the callback function is called with zero or more of the following arguments. Datasette will inspect your callback function and pass arguments that match its function signature.
 
-``args`` - dictionary
-    The GET parameters of the request
+``datasette`` - :ref:`internals_datasette`
+    For accessing plugin configuration and executing queries.
 
-``data`` - dictionary
-    The data to be rendered
+``columns`` - list of strings
+    The names of the columns returned by this query.
+
+``rows`` - list of ``sqlite3.Row`` objects
+    The rows returned by the query.
+
+``sql`` - string
+    The SQL query that was executed.
+
+``query_name`` - string or None
+    If this was the execution of a :ref:`canned query <canned_queries>`, the name of that query.
+
+``database`` - string
+    The name of the database.
+
+``table`` - string or None
+    The table or view, if one is being rendered.
+
+``request`` - :ref:`internals_request`
+    The incoming HTTP request.
 
 ``view_name`` - string
-    The name of the view where the renderer is being called. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
+    The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
 
 The callback function can return ``None``, if it is unable to render the data, or a dictionary with the following keys:
 
@@ -769,13 +787,32 @@ The callback function can return ``None``, if it is unable to render the data, o
 ``status_code`` - integer, optional
     The HTTP status code, default 200
 
+``headers`` - dictionary, optional
+    Extra HTTP headers to be returned in the response.
+
 A simple example of an output renderer callback function:
 
 .. code-block:: python
 
-    def render_test(args, data, view_name):
+    def render_test():
         return {
             "body": "Hello World"
+        }
+
+Here is a more complex example:
+
+.. code-block:: python
+
+    def render_test(columns, rows):
+        first_row = " | ".join(columns)
+        lines = [first_row]
+        lines.append("=" * len(first_row))
+        for row in rows:
+            lines.append(" | ".join(row))
+        return {
+            "body": "Hello World",
+            "content_type": "text/plain; charset=utf-8",
+            "headers": {"x-pipes": "yay-pipes"}
         }
 
 Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `datasette-ics <https://github.com/simonw/datasette-ics>`_

@@ -1259,16 +1259,16 @@ def test_threads_json(app_client):
 
 def test_plugins_json(app_client):
     response = app_client.get("/-/plugins.json")
-    assert [
-        {"name": "my_plugin.py", "static": False, "templates": False, "version": None},
-        {
-            "name": "my_plugin_2.py",
-            "static": False,
-            "templates": False,
-            "version": None,
-        },
-        {"name": "view_name.py", "static": False, "templates": False, "version": None},
-    ] == sorted(response.json, key=lambda p: p["name"])
+    expected = [
+        {"name": name, "static": False, "templates": False, "version": None}
+        for name in (
+            "my_plugin.py",
+            "my_plugin_2.py",
+            "register_output_renderer.py",
+            "view_name.py",
+        )
+    ]
+    assert expected == sorted(response.json, key=lambda p: p["name"])
 
 
 def test_versions_json(app_client):

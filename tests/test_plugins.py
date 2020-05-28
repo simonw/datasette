@@ -428,3 +428,44 @@ def test_publish_subcommand():
     # advantage of the fact that cloudrun/heroku use the plugin hook
     # to register themselves as default plugins.
     assert ["cloudrun", "heroku"] == cli.publish.list_commands({})
+
+
+def test_register_facet_classes(app_client):
+    response = app_client.get(
+        "/fixtures/compound_three_primary_keys.json?_dummy_facet=1"
+    )
+    data = json.loads(response.body)
+    assert [
+        {
+            "name": "pk1",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet_dummy=pk1",
+            "type": "dummy",
+        },
+        {
+            "name": "pk2",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet_dummy=pk2",
+            "type": "dummy",
+        },
+        {
+            "name": "pk3",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet_dummy=pk3",
+            "type": "dummy",
+        },
+        {
+            "name": "content",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet_dummy=content",
+            "type": "dummy",
+        },
+        {
+            "name": "pk1",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet=pk1",
+        },
+        {
+            "name": "pk2",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet=pk2",
+        },
+        {
+            "name": "pk3",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet=pk3",
+        },
+    ] == data["suggested_facets"]

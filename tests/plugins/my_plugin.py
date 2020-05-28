@@ -1,4 +1,6 @@
 from datasette import hookimpl
+from datasette.facets import Facet
+from datasette.utils import path_with_added_args
 import base64
 import pint
 import json
@@ -92,3 +94,35 @@ def extra_template_vars(template, database, table, view_name, request, datasette
 @hookimpl
 def prepare_jinja2_environment(env):
     env.filters["format_numeric"] = lambda s: "{:,.0f}".format(float(s))
+
+
+@hookimpl
+def register_facet_classes():
+    return [DummyFacet]
+
+
+class DummyFacet(Facet):
+    type = "dummy"
+
+    async def suggest(self):
+        columns = await self.get_columns(self.sql, self.params)
+        return (
+            [
+                {
+                    "name": column,
+                    "toggle_url": self.ds.absolute_url(
+                        self.request,
+                        path_with_added_args(self.request, {"_facet_dummy": column}),
+                    ),
+                    "type": "dummy",
+                }
+                for column in columns
+            ]
+            if self.request.args.get("_dummy_facet")
+            else []
+        )
+
+    async def facet_results(self):
+        facet_results = {}
+        facets_timed_out = []
+        return facet_results, facets_timed_out

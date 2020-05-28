@@ -7,6 +7,7 @@ from .fixtures import (
     TestClient as _TestClient,
 )  # noqa
 from datasette.app import Datasette
+from datasette import cli
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils import sqlite3
 from jinja2.environment import Template
@@ -418,3 +419,12 @@ async def test_prepare_jinja2_environment(app_client):
     )
     rendered = await app_client.ds.render_template(template)
     assert "Hello there, 3,412,341" == rendered
+
+
+def test_publish_subcommand():
+    # This is hard to test properly, because publish subcommand plugins
+    # cannot be loaded using the --plugins-dir mechanism - they need
+    # to be installed using "pip install". So I'm cheating and taking
+    # advantage of the fact that cloudrun/heroku use the plugin hook
+    # to register themselves as default plugins.
+    assert ["cloudrun", "heroku"] == cli.publish.list_commands({})

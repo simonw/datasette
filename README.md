@@ -22,6 +22,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 28th May 2020: [Datasette 0.43](http://datasette.readthedocs.io/en/latest/changelog.html#v0-43) - Redesigned [register_output_renderer](https://datasette.readthedocs.io/en/latest/plugins.html#plugin-register-output-renderer) plugin hook and various small improvements and fixes.
  * 8th May 2020: [Datasette 0.42](http://datasette.readthedocs.io/en/latest/changelog.html#v0-42) - Documented internal methods for plugins to execute read queries against a database.
  * 6th May 2020: [Datasette 0.41](http://datasette.readthedocs.io/en/latest/changelog.html#v0-41) - New mechanism for [creating custom pages](https://datasette.readthedocs.io/en/0.41/custom_templates.html#custom-pages), new [configuration directory mode](https://datasette.readthedocs.io/en/0.41/config.html#configuration-directory-mode), new `?column__notlike=` table filter and various other smaller improvements.
  * 21st April 2020: [Datasette 0.40](http://datasette.readthedocs.io/en/latest/changelog.html#v0-40) - Metadata can now be provided as YAML instead of JSON. Publishing to Zeit Now v1 is no longer supported, but Now v2 support is provided by the new [datasette-publish-now](https://github.com/simonw/datasette-publish-now) plugin. Various bug fixes.

@@ -4,6 +4,21 @@
 Changelog
 =========
 
+.. _v0_43:
+
+0.43 (2020-05-28)
+-----------------
+
+The main focus of this release is a major upgrade to the :ref:`plugin_register_output_renderer` plugin hook, which allows plugins to provide new output formats for Datasette such as `datasette-atom <https://github.com/simonw/datasette-atom>`__ and `datasette-ics <https://github.com/simonw/datasette-ics>`__.
+
+* Redesign of :ref:`plugin_register_output_renderer` to provide more context to the render callback and support an optional ``"can_render"`` callback that controls if a suggested link to the output format is provided. (`#581 <https://github.com/simonw/datasette/issues/581>`__, `#770 <https://github.com/simonw/datasette/issues/770>`__)
+* Visually distinguish float and integer columns - useful for figuring out why order-by-column might be returning unexpected results. (`#729 <https://github.com/simonw/datasette/issues/729>`__)
+* The :ref:`internals_request`, which is passed to several plugin hooks, is now documented. (`#706 <https://github.com/simonw/datasette/issues/706>`__)
+* New ``metadata.json`` option for setting a custom default page size for specific tables and views, see :ref:`metadata_page_size`. (`#751 <https://github.com/simonw/datasette/issues/751>`__)
+* Canned queries can now be configured with a default URL fragment hash, useful when working with plugins such as `datasette-vega <https://github.com/simonw/datasette-vega>`__, see :ref:`canned_queries_default_fragment`. (`#706 <https://github.com/simonw/datasette/issues/706>`__)
+* Fixed a bug in ``datasette publish`` when running on operating systems where the ``/tmp`` directory lives in a different volume, using a backport of the Python 3.8 ``shutil.copytree()`` function. (`#744 <https://github.com/simonw/datasette/issues/744>`__)
+* Every plugin hook is now covered by the unit tests, and a new unit test checks that each plugin hook has at least one corresponding test. (`#771 <https://github.com/simonw/datasette/issues/771>`__, `#773 <https://github.com/simonw/datasette/issues/773>`__)
+
 .. _v0_42:
 
 0.42 (2020-05-08)

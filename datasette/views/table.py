@@ -319,19 +319,19 @@ class TableView(RowTableShared):
             if not self.ds.config("allow_sql"):
                 raise DatasetteError("_where= is not allowed", status=400)
             else:
-                where_clauses.extend(request.args["_where"])
+                where_clauses.extend(request.args.getlist("_where"))
                 extra_wheres_for_ui = [
                     {
                         "text": text,
                         "remove_url": path_with_removed_args(request, {"_where": text}),
                     }
-                    for text in request.args["_where"]
+                    for text in request.args.getlist("_where")
                 ]
 
         # Support for ?_through={table, column, value}
         extra_human_descriptions = []
         if "_through" in request.args:
-            for through in request.args["_through"]:
+            for through in request.args.getlist("_through"):
                 through_data = json.loads(through)
                 through_table = through_data["table"]
                 other_column = through_data["column"]
@@ -559,7 +559,7 @@ class TableView(RowTableShared):
         )
 
         if request.args.get("_timelimit"):
-            extra_args["custom_time_limit"] = int(request.args["_timelimit"])
+            extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
 
         results = await db.execute(sql, params, truncate=True, **extra_args)
 
@@ -633,7 +633,7 @@ class TableView(RowTableShared):
             all_labels = default_labels
         # Check for explicit _label=
         if "_label" in request.args:
-            columns_to_expand = request.args["_label"]
+            columns_to_expand = request.args.getlist("_label")
         if columns_to_expand is None and all_labels:
             # expand all columns with foreign keys
             columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
@@ -746,7 +746,7 @@ class TableView(RowTableShared):
                 if arg in special_args:
                     form_hidden_args.append((arg, special_args[arg]))
             if request.args.get("_where"):
-                for where_text in request.args["_where"]:
+                for where_text in request.args.getlist("_where"):
                     form_hidden_args.append(("_where", where_text))
 
             # if no sort specified AND table has a single primary key,

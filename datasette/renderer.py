@@ -32,7 +32,7 @@ def json_renderer(args, data, view_name):
     # Handle the _json= parameter which may modify data["rows"]
     json_cols = []
     if "_json" in args:
-        json_cols = args["_json"]
+        json_cols = args.getlist("_json")
     if json_cols and "rows" in data and "columns" in data:
         data["rows"] = convert_specific_columns_to_json(
             data["rows"], data["columns"], json_cols

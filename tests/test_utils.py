@@ -452,8 +452,18 @@ def test_request_args():
     request = Request.fake("/foo?multi=1&multi=2&single=3")
     assert "1" == request.args.get("multi")
     assert "3" == request.args.get("single")
+    assert "1" == request.args["multi"]
+    assert "3" == request.args["single"]
     assert ["1", "2"] == request.args.getlist("multi")
     assert [] == request.args.getlist("missing")
+    assert "multi" in request.args
+    assert "single" in request.args
+    assert "missing" not in request.args
+    expected = ["multi", "single"]
+    assert expected == list(request.args.keys())
+    for i, key in enumerate(request.args):
+        assert expected[i] == key
+    assert 2 == len(request.args)
     with pytest.raises(KeyError):
         request.args["missing"]
 

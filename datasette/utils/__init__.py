@@ -753,17 +753,41 @@ def escape_fts(query):
     )
 
 
-class RequestParameters(dict):
+class RequestParameters:
+    def __init__(self, data):
+        # data is a dictionary of key => [list, of, values]
+        assert isinstance(data, dict), "data should be a dictionary of key => [list]"
+        for key in data:
+            assert isinstance(
+                data[key], list
+            ), "data should be a dictionary of key => [list]"
+        self._data = data
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def __getitem__(self, key):
+        return self._data[key][0]
+
+    def keys(self):
+        return self._data.keys()
+
+    def __iter__(self):
+        yield from self._data.keys()
+
+    def __len__(self):
+        return len(self._data)
+
     def get(self, name, default=None):
         "Return first value in the list, if available"
         try:
-            return super().get(name)[0]
+            return self._data.get(name)[0]
         except (KeyError, TypeError):
             return default
 
     def getlist(self, name):
         "Return full list"
-        return super().get(name) or []
+        return self._data.get(name) or []
 
 
 class ConnectionProblem(Exception):

@@ -277,11 +277,11 @@ class TableView(RowTableShared):
         # it can still be queried using ?_col__exact=blah
         special_args = {}
         other_args = []
-        for key, value in args.items():
+        for key in args:
             if key.startswith("_") and "__" not in key:
-                special_args[key] = value[0]
+                special_args[key] = args[key]
             else:
-                for v in value:
+                for v in args.getlist(key):
                     other_args.append((key, v))
 
         # Handle ?_filter_column and redirect, if present

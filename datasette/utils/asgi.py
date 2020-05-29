@@ -63,11 +63,6 @@ class Request:
     def args(self):
         return RequestParameters(parse_qs(qs=self.query_string))
 
-    @property
-    def raw_args(self):
-        # Deprecated, undocumented - may be removed in Datasette 1.0
-        return {key: value[0] for key, value in self.args.items()}
-
     async def post_vars(self):
         body = []
         body = b""

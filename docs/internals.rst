@@ -268,12 +268,16 @@ The object also has one awaitable method:
 The RequestParameters class
 ---------------------------
 
-This class, returned by ``request.args``, is a subclass of a Python dictionary that provides methods for working with keys that map to lists of values.
+This class, returned by ``request.args``, is a dictionary-like object.
 
-Conider the querystring ``?foo=1&foo=2``. This will produce a ``request.args`` that looks like this::
+Consider the querystring ``?foo=1&foo=2``. This will produce a ``request.args`` that looks like this::
 
     RequestParameters({"foo": ["1", "2"]})
 
-Calling ``request.args.get("foo")`` will return the first value, ``"1"``. If that key is not present it will return ``None`` - or the second argument if you passed one, which will be used as the default.
+``request.args["foo"]`` returns the first value, ``"1"`` - or raises ``KeyError`` if that key is missing.
 
-Calling ``request.args.getlist("foo")`` will return the full list, ``["1", "2"]``. If you call it on a missing key it will return ``[]``.
+``request.args.get("foo")`` returns ``"1"`` - or ``None`` if the key is missing. A second argument can be used to specify a different default value.
+
+``request.args.getlist("foo")`` returns the full list, ``["1", "2"]``. If you call it on a missing key it will return ``[]``.
+
+You can use ``if key in request.args`` to check if a key is present. ``for key in request.args`` will iterate through the keys, or you can use ``request.args.keys()`` to get all of the keys.

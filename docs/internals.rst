@@ -276,4 +276,4 @@ Conider the querystring ``?foo=1&foo=2``. This will produce a ``request.args`` t
 
 Calling ``request.args.get("foo")`` will return the first value, ``"1"``. If that key is not present it will return ``None`` - or the second argument if you passed one, which will be used as the default.
 
-Calling ``request.args.getlist("foo")`` will return the full list, ``["1", "2"]``.
+Calling ``request.args.getlist("foo")`` will return the full list, ``["1", "2"]``. If you call it on a missing key it will return ``[]``.

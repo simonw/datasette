@@ -761,9 +761,9 @@ class RequestParameters(dict):
         except (KeyError, TypeError):
             return default
 
-    def getlist(self, name, default=None):
+    def getlist(self, name):
         "Return full list"
-        return super().get(name, default)
+        return super().get(name) or []
 
 
 class ConnectionProblem(Exception):

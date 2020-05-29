@@ -26,7 +26,7 @@ async def render_test_all_parameters(
     datasette, columns, rows, sql, query_name, database, table, request, view_name, data
 ):
     headers = {}
-    for custom_header in request.args.getlist("header") or []:
+    for custom_header in request.args.getlist("header"):
         key, value = custom_header.split(":")
         headers[key] = value
     result = await datasette.databases["fixtures"].execute("select 1 + 1")

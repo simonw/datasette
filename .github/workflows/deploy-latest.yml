@@ -15,7 +15,7 @@ jobs:
       uses: actions/setup-python@v1
       with:
         python-version: 3.8
-    - uses: actions/cache@v1
+    - uses: actions/cache@v2
       name: Configure pip caching
       with:
         path: ~/.cache/pip

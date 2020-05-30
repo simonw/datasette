@@ -9,17 +9,20 @@ import time
 import uuid
 
 
+@pytest.fixture
+def db(app_client):
+    return app_client.ds.get_database("fixtures")
+
+
 @pytest.mark.asyncio
-async def test_execute(app_client):
-    db = app_client.ds.databases["fixtures"]
+async def test_execute(db):
     results = await db.execute("select * from facetable")
     assert isinstance(results, Results)
     assert 15 == len(results)
 
 
 @pytest.mark.asyncio
-async def test_results_first(app_client):
-    db = app_client.ds.databases["fixtures"]
+async def test_results_first(db):
     assert None is (await db.execute("select * from facetable where pk > 100")).first()
     results = await db.execute("select * from facetable")
     row = results.first()
@@ -35,8 +38,7 @@ async def test_results_first(app_client):
     ],
 )
 @pytest.mark.asyncio
-async def test_results_single_value(app_client, query, expected):
-    db = app_client.ds.databases["fixtures"]
+async def test_results_single_value(db, query, expected):
     results = await db.execute(query)
     if expected:
         assert expected == results.single_value()
@@ -46,9 +48,7 @@ async def test_results_single_value(app_client, query, expected):
 
 
 @pytest.mark.asyncio
-async def test_execute_fn(app_client):
-    db = app_client.ds.databases["fixtures"]
-
+async def test_execute_fn(db):
     def get_1_plus_1(conn):
         return conn.execute("select 1 + 1").fetchall()[0][0]
 
@@ -63,16 +63,14 @@ async def test_execute_fn(app_client):
     ),
 )
 @pytest.mark.asyncio
-async def test_table_exists(app_client, tables, exists):
-    db = app_client.ds.databases["fixtures"]
+async def test_table_exists(db, tables, exists):
     for table in tables:
         actual = await db.table_exists(table)
         assert exists == actual
 
 
 @pytest.mark.asyncio
-async def test_get_all_foreign_keys(app_client):
-    db = app_client.ds.databases["fixtures"]
+async def test_get_all_foreign_keys(db):
     all_foreign_keys = await db.get_all_foreign_keys()
     assert {
         "incoming": [],
@@ -102,8 +100,7 @@ async def test_get_all_foreign_keys(app_client):
 
 
 @pytest.mark.asyncio
-async def test_table_names(app_client):
-    db = app_client.ds.databases["fixtures"]
+async def test_table_names(db):
     table_names = await db.table_names()
     assert [
         "simple_primary_key",
@@ -139,8 +136,7 @@ async def test_table_names(app_client):
 
 
 @pytest.mark.asyncio
-async def test_execute_write_block_true(app_client):
-    db = app_client.ds.databases["fixtures"]
+async def test_execute_write_block_true(db):
     await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?",
         ["Mystery!", 1],
@@ -151,8 +147,7 @@ async def test_execute_write_block_true(app_client):
 
 
 @pytest.mark.asyncio
-async def test_execute_write_block_false(app_client):
-    db = app_client.ds.databases["fixtures"]
+async def test_execute_write_block_false(db):
     await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1],
     )
@@ -162,9 +157,7 @@ async def test_execute_write_block_false(app_client):
 
 
 @pytest.mark.asyncio
-async def test_execute_write_fn_block_false(app_client):
-    db = app_client.ds.databases["fixtures"]
-
+async def test_execute_write_fn_block_false(db):
     def write_fn(conn):
         with conn:
             conn.execute("delete from roadside_attractions where pk = 1;")
@@ -177,9 +170,7 @@ async def test_execute_write_fn_block_false(app_client):
 
 
 @pytest.mark.asyncio
-async def test_execute_write_fn_block_true(app_client):
-    db = app_client.ds.databases["fixtures"]
-
+async def test_execute_write_fn_block_true(db):
     def write_fn(conn):
         with conn:
             conn.execute("delete from roadside_attractions where pk = 1;")
@@ -191,9 +182,7 @@ async def test_execute_write_fn_block_true(app_client):
 
 
 @pytest.mark.asyncio
-async def test_execute_write_fn_exception(app_client):
-    db = app_client.ds.databases["fixtures"]
-
+async def test_execute_write_fn_exception(db):
     def write_fn(conn):
         assert False
 

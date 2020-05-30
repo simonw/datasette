@@ -95,3 +95,15 @@ def asgi_wrapper(datasette):
         return add_x_databases_header
 
     return wrap_with_databases_header
+
+
+@hookimpl
+def actor_from_request(datasette, request):
+    async def inner():
+        if request.args.get("_bot2"):
+            result = await datasette.get_database().execute("select 1 + 1")
+            return {"id": "bot2", "1+1": result.first()[0]}
+        else:
+            return None
+
+    return inner

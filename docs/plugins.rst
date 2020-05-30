@@ -957,6 +957,29 @@ This is part of Datasette's authentication and permissions system. The function 
 
 If it cannot authenticate an actor, it should return ``None``. Otherwise it should return a dictionary representing that actor.
 
+Instead of returning a dictionary, this function can return an awaitable function which itself returns either ``None`` or a dictionary. This is useful for authentication functions that need to make a database query - for example:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def actor_from_request(datasette, request):
+        async def inner():
+            token = request.args.get("_token")
+            if not token:
+                return None
+            # Look up ?_token=xxx in sessions table
+            result = await datasette.get_database().execute(
+                "select count(*) from sessions where token = ?", [token]
+            )
+            if result.first()[0]:
+                return {"token": token}
+            else:
+                return None
+
+        return inner
+
 .. _plugin_permission_allowed:
 
 permission_allowed(datasette, actor, action, resource_type, resource_identifier)

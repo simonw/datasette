@@ -798,7 +798,18 @@ class DatasetteRouter(AsgiRouter):
             and scope.get("scheme") != "https"
         ):
             scope = dict(scope, scheme="https")
-        return await super().route_path(scope, receive, send, path)
+        # Handle authentication
+        actor = None
+        for actor in pm.hook.actor_from_request(
+            datasette=self.ds, request=Request(scope, receive)
+        ):
+            if callable(actor):
+                actor = actor()
+            if asyncio.iscoroutine(actor):
+                actor = await actor
+            if actor:
+                break
+        return await super().route_path(dict(scope, actor=actor), receive, send, path)
 
     async def handle_404(self, scope, receive, send, exception=None):
         # If URL has a trailing slash, redirect to URL without it

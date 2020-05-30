@@ -319,11 +319,6 @@ class Database:
     async def get_all_foreign_keys(self):
         return await self.execute_fn(get_all_foreign_keys)
 
-    async def get_outbound_foreign_keys(self, table):
-        return await self.execute_fn(
-            lambda conn: get_outbound_foreign_keys(conn, table)
-        )
-
     async def get_table_definition(self, table, type_="table"):
         table_definition_rows = list(
             await self.execute(

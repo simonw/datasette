@@ -336,9 +336,7 @@ class TableView(RowTableShared):
                 through_table = through_data["table"]
                 other_column = through_data["column"]
                 value = through_data["value"]
-                outgoing_foreign_keys = await db.get_outbound_foreign_keys(
-                    through_table
-                )
+                outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
                 try:
                     fk_to_us = [
                         fk for fk in outgoing_foreign_keys if fk["other_table"] == table

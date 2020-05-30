@@ -278,16 +278,27 @@ The object also has one awaitable method:
 The RequestParameters class
 ---------------------------
 
-This class, returned by ``request.args``, is a dictionary-like object.
+``request.args`` is a ``RequestParameters`` object - a dictionary-like object which provides access to querystring parameters that may have multiple values.
 
-Consider the querystring ``?foo=1&foo=2``. This will produce a ``request.args`` that looks like this::
+Consider the querystring ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
 
-    RequestParameters({"foo": ["1", "2"]})
+``request.args[key]`` - string
+    Returns the first value for that key, or raises a ``KeyError`` if the key is missing. For the above example ``request.args["foo"]`` would return ``"1"``.
 
-``request.args["foo"]`` returns the first value, ``"1"`` - or raises ``KeyError`` if that key is missing.
+``request.args.get(key)`` - string or None
+    Returns the first value for that key, or ``None`` if the key is missing. Pass a second argument to specify a different default, e.g. ``q = request.args.get("q", "")``.
 
-``request.args.get("foo")`` returns ``"1"`` - or ``None`` if the key is missing. A second argument can be used to specify a different default value.
+``request.args.getlist(key)`` - list of strings
+    Returns the list of strings for that key. ``request.args.getlist("foo")`` would return ``["1", "2"]`` in the above example. ``request.args.getlist("bar")`` would return ``["3"]``. If the key is missing an empty list will be returned.
 
-``request.args.getlist("foo")`` returns the full list, ``["1", "2"]``. If you call it on a missing key it will return ``[]``.
+``request.args.keys()`` - list of strings
+    Returns the list of available keys - for the example this would be ``["foo", "bar"]``.
 
-You can use ``if key in request.args`` to check if a key is present. ``for key in request.args`` will iterate through the keys, or you can use ``request.args.keys()`` to get all of the keys.
+``key in request.args`` - True or False
+    You can use ``if key in request.args`` to check if a key is present.
+
+``for key in request.args`` - iterator
+    This lets you loop through every available key.
+
+``len(request.args)`` - integer
+    Returns the number of keys.

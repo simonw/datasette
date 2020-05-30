@@ -1,7 +1,7 @@
 """
 Tests for the datasette.database.Database class
 """
-from datasette.database import Results, MultipleValues
+from datasette.database import Database, Results, MultipleValues
 from datasette.utils import sqlite3
 from .fixtures import app_client
 import pytest
@@ -188,3 +188,13 @@ async def test_execute_write_fn_exception(db):
 
     with pytest.raises(AssertionError):
         await db.execute_write_fn(write_fn, block=True)
+
+
+@pytest.mark.asyncio
+async def test_mtime_ns(db):
+    assert isinstance(db.mtime_ns, int)
+
+
+def test_mtime_ns_is_none_for_memory(app_client):
+    memory_db = Database(app_client.ds, is_memory=True)
+    assert None is memory_db.mtime_ns

@@ -33,7 +33,7 @@ class Database:
         self.cached_table_counts = None
         self._write_thread = None
         self._write_queue = None
-        if not self.is_mutable:
+        if not self.is_mutable and not self.is_memory:
             p = Path(path)
             self.hash = inspect_hash(p)
             self.cached_size = p.stat().st_size
@@ -197,6 +197,8 @@ class Database:
 
     @property
     def mtime_ns(self):
+        if self.is_memory:
+            return None
         return Path(self.path).stat().st_mtime_ns
 
     @property

@@ -811,7 +811,7 @@ Here is a more complex example:
 .. code-block:: python
 
     async def render_demo(datasette, columns, rows):
-        db = next(iter(datasette.databases.values()))
+        db = datasette.get_database()
         result = await db.execute("select sqlite_version()")
         first_row = " | ".join(columns)
         lines = [first_row]

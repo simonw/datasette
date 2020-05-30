@@ -44,6 +44,16 @@ This method lets you read plugin configuration values that were set in ``metadat
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 
+.. _datasette_get_database:
+
+.get_database(name)
+-------------------
+
+``name`` - string, optional
+    The name of the database - optional.
+
+Returns the specified database object. Raises a ``KeyError`` if the database does not exist. Call this method without an argument to return the first connected database.
+
 .. _datasette_add_database:
 
 .add_database(name, db)

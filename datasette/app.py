@@ -281,6 +281,11 @@ class Datasette:
 
         self.register_renderers()
 
+    def get_database(self, name=None):
+        if name is None:
+            return next(iter(self.databases.values()))
+        return self.databases[name]
+
     def add_database(self, name, db):
         self.databases[name] = db
 

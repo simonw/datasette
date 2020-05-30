@@ -1,3 +1,6 @@
+"""
+Tests for the datasette.database.Database class
+"""
 from datasette.database import Results, MultipleValues
 from datasette.utils import sqlite3
 from .fixtures import app_client

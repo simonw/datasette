@@ -3,7 +3,74 @@
 Internals for plugins
 =====================
 
-Many :ref:`plugin_hooks` are passed objects that provide access to internal Datasette functionality. The interface to these objects should not be considered stable (at least until Datasette 1.0) with the exception of methods that are documented on this page.
+Many :ref:`plugin_hooks` are passed objects that provide access to internal Datasette functionality. The interface to these objects should not be considered stable with the exception of methods that are documented here.
+
+.. _internals_request:
+
+Request object
+~~~~~~~~~~~~~~
+
+The request object is passed to various plugin hooks. It represents an incoming HTTP request. It has the following properties:
+
+``.scope`` - dictionary
+    The ASGI scope that was used to construct this request, described in the `ASGI HTTP connection scope <https://asgi.readthedocs.io/en/latest/specs/www.html#connection-scope>`__ specification.
+
+``.method`` - string
+    The HTTP method for this request, usually ``GET`` or ``POST``.
+
+``.url`` - string
+    The full URL for this request, e.g. ``https://latest.datasette.io/fixtures``.
+
+``.scheme`` - string
+    The request scheme - usually ``https`` or ``http``.
+
+``.headers`` - dictionary (str -> str)
+    A dictionary of incoming HTTP request headers.
+
+``.host`` - string
+    The host header from the incoming request, e.g. ``latest.datasette.io`` or ``localhost``.
+
+``.path`` - string
+    The path of the request, e.g. ``/fixtures``.
+
+``.query_string`` - string
+    The querystring component of the request, without the ``?`` - e.g. ``name__contains=sam&age__gt=10``.
+
+``.args`` - RequestParameters
+    An object representing the parsed querystring parameters, see below.
+
+The object also has one awaitable method:
+
+``await request.post_vars()`` - dictionary
+    Returns a dictionary of form variables that were submitted in the request body via ``POST``.
+
+The RequestParameters class
+---------------------------
+
+``request.args`` is a ``RequestParameters`` object - a dictionary-like object which provides access to querystring parameters that may have multiple values.
+
+Consider the querystring ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
+
+``request.args[key]`` - string
+    Returns the first value for that key, or raises a ``KeyError`` if the key is missing. For the above example ``request.args["foo"]`` would return ``"1"``.
+
+``request.args.get(key)`` - string or None
+    Returns the first value for that key, or ``None`` if the key is missing. Pass a second argument to specify a different default, e.g. ``q = request.args.get("q", "")``.
+
+``request.args.getlist(key)`` - list of strings
+    Returns the list of strings for that key. ``request.args.getlist("foo")`` would return ``["1", "2"]`` in the above example. ``request.args.getlist("bar")`` would return ``["3"]``. If the key is missing an empty list will be returned.
+
+``request.args.keys()`` - list of strings
+    Returns the list of available keys - for the example this would be ``["foo", "bar"]``.
+
+``key in request.args`` - True or False
+    You can use ``if key in request.args`` to check if a key is present.
+
+``for key in request.args`` - iterator
+    This lets you loop through every available key.
+
+``len(request.args)`` - integer
+    Returns the number of keys.
 
 .. _internals_datasette:
 
@@ -235,70 +302,3 @@ Here's an example of ``block=True`` in action:
         num_rows_left = await database.execute_write_fn(my_action, block=True)
     except Exception as e:
         print("An error occurred:", e)
-
-.. _internals_request:
-
-Request object
-~~~~~~~~~~~~~~
-
-The request object is passed to various plugin hooks. It represents an incoming HTTP request. It has the following properties:
-
-``.scope`` - dictionary
-    The ASGI scope that was used to construct this request, described in the `ASGI HTTP connection scope <https://asgi.readthedocs.io/en/latest/specs/www.html#connection-scope>`__ specification.
-
-``.method`` - string
-    The HTTP method for this request, usually ``GET`` or ``POST``.
-
-``.url`` - string
-    The full URL for this request, e.g. ``https://latest.datasette.io/fixtures``.
-
-``.scheme`` - string
-    The request scheme - usually ``https`` or ``http``.
-
-``.headers`` - dictionary (str -> str)
-    A dictionary of incoming HTTP request headers.
-
-``.host`` - string
-    The host header from the incoming request, e.g. ``latest.datasette.io`` or ``localhost``.
-
-``.path`` - string
-    The path of the request, e.g. ``/fixtures``.
-
-``.query_string`` - string
-    The querystring component of the request, without the ``?`` - e.g. ``name__contains=sam&age__gt=10``.
-
-``.args`` - RequestParameters
-    An object representing the parsed querystring parameters, see below.
-
-The object also has one awaitable method:
-
-``await request.post_vars()`` - dictionary
-    Returns a dictionary of form variables that were submitted in the request body via ``POST``.
-
-The RequestParameters class
----------------------------
-
-``request.args`` is a ``RequestParameters`` object - a dictionary-like object which provides access to querystring parameters that may have multiple values.
-
-Consider the querystring ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
-
-``request.args[key]`` - string
-    Returns the first value for that key, or raises a ``KeyError`` if the key is missing. For the above example ``request.args["foo"]`` would return ``"1"``.
-
-``request.args.get(key)`` - string or None
-    Returns the first value for that key, or ``None`` if the key is missing. Pass a second argument to specify a different default, e.g. ``q = request.args.get("q", "")``.
-
-``request.args.getlist(key)`` - list of strings
-    Returns the list of strings for that key. ``request.args.getlist("foo")`` would return ``["1", "2"]`` in the above example. ``request.args.getlist("bar")`` would return ``["3"]``. If the key is missing an empty list will be returned.
-
-``request.args.keys()`` - list of strings
-    Returns the list of available keys - for the example this would be ``["foo", "bar"]``.
-
-``key in request.args`` - True or False
-    You can use ``if key in request.args`` to check if a key is present.
-
-``for key in request.args`` - iterator
-    This lets you loop through every available key.
-
-``len(request.args)`` - integer
-    Returns the number of keys.

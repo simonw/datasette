@@ -523,7 +523,19 @@ def test_actor_from_request_async(app_client):
     assert {"id": "bot2", "1+1": 2} == app_client.ds._last_request.scope["actor"]
 
 
-@pytest.mark.xfail
-def test_permission_allowed(app_client):
-    # TODO
-    assert False
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "action,expected",
+    [
+        ("this_is_allowed", True),
+        ("this_is_denied", False),
+        ("this_is_allowed_async", True),
+        ("this_is_denied_async", False),
+        ("no_match", None),
+    ],
+)
+async def test_permission_allowed(app_client, action, expected):
+    actual = await app_client.ds.permission_allowed(
+        {"id": "actor"}, action, default=None
+    )
+    assert expected == actual

@@ -134,3 +134,11 @@ def actor_from_request(datasette, request):
         return {"id": "bot"}
     else:
         return None
+
+
+@hookimpl
+def permission_allowed(actor, action):
+    if action == "this_is_allowed":
+        return True
+    elif action == "this_is_denied":
+        return False

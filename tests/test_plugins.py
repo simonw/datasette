@@ -503,3 +503,27 @@ def test_register_facet_classes(app_client):
             "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet=pk3",
         },
     ] == data["suggested_facets"]
+
+
+def test_actor_from_request(app_client):
+    app_client.get("/")
+    # Should have no actor
+    assert None == app_client.ds._last_request.scope["actor"]
+    app_client.get("/?_bot=1")
+    # Should have bot actor
+    assert {"id": "bot"} == app_client.ds._last_request.scope["actor"]
+
+
+def test_actor_from_request_async(app_client):
+    app_client.get("/")
+    # Should have no actor
+    assert None == app_client.ds._last_request.scope["actor"]
+    app_client.get("/?_bot2=1")
+    # Should have bot2 actor
+    assert {"id": "bot2", "1+1": 2} == app_client.ds._last_request.scope["actor"]
+
+
+@pytest.mark.xfail
+def test_permission_allowed(app_client):
+    # TODO
+    assert False

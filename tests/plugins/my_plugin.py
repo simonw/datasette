@@ -126,3 +126,11 @@ class DummyFacet(Facet):
         facet_results = {}
         facets_timed_out = []
         return facet_results, facets_timed_out
+
+
+@hookimpl
+def actor_from_request(datasette, request):
+    if request.args.get("_bot"):
+        return {"id": "bot"}
+    else:
+        return None

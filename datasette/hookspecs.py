@@ -66,5 +66,5 @@ def actor_from_request(datasette, request):
 
 
 @hookspec
-def permission_allowed(actor, action, resource_type, resource_identifier):
+def permission_allowed(datasette, actor, action, resource_type, resource_identifier):
     "Check if actor is allowed to perfom this action - return True, False or None"

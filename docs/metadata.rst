@@ -256,6 +256,8 @@ used for the link label with the ``label_column`` property:
         }
     }
 
+.. _metadata_hiding_tables:
+
 Hiding tables
 -------------
 

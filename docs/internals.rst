@@ -302,3 +302,71 @@ Here's an example of ``block=True`` in action:
         num_rows_left = await database.execute_write_fn(my_action, block=True)
     except Exception as e:
         print("An error occurred:", e)
+
+Database introspection
+----------------------
+
+The ``Database`` class also provides properties and methods for introspecting the database.
+
+``db.name`` - string
+    The name of the database - usually the filename without the ``.db`` prefix.
+
+``db.size`` - integer
+    The size of the database file in bytes. 0 for ``:memory:`` databases.
+
+``db.mtime_ns`` - integer or None
+    The last modification time of the database file in nanoseconds since the epoch. ``None`` for ``:memory:`` databases.
+
+``await db.table_exists(table)`` - boolean
+    Check if a table called ``table`` exists.
+
+``await db.table_names()`` - list of strings
+    List of names of tables in the database.
+
+``await db.view_names()`` - list of strings
+    List of names of views in tha database.
+
+``await db.table_columns(table)`` - list of strings
+    Names of columns in a specific table.
+
+``await db.primary_keys(table)`` - list of strings
+    Names of the columns that are part of the primary key for this table.
+
+``await db.fts_table(table)`` - string or None
+    The name of the FTS table associated with this table, if one exists.
+
+``await db.label_column_for_table(table)`` - string or None
+    The label column that is associated with this table - either automatically detected or using the ``"label_column"`` key from :ref:`metadata`, see :ref:`label_columns`.
+
+``await db.foreign_keys_for_table(table)`` - list of dictionaries
+    Details of columns in this table which are foreign keys to other tables. A list of dictionaries where each dictionary is shaped like this: ``{"column": string, "other_table": string, "other_column": string}``.
+
+``await db.hidden_table_names()`` - list of strings
+    List of tables which Datasette "hides" by default - usually these are tables associated with SQLite's full-text search feature, the SpatiaLite extension or tables hidden using the :ref:`metadata_hiding_tables` feature.
+
+``await db.get_table_definition(table)`` - string
+    Returns the SQL definition for the table - the ``CREATE TABLE`` statement and any associated ``CREATE INDEX`` statements.
+
+``await db.get_view_definition(view)`` - string
+    Returns the SQL definition of the named view.
+
+``await db.get_all_foreign_keys()`` - dictionary
+    Dictionary representing both incoming and outgoing foreign keys for this table. It has two keys, ``"incoming"`` and ``"outgoing"``, each of which is a list of dictionaries with keys ``"column"``, ``"other_table"`` and ``"other_column"``. For example:
+
+    .. code-block:: json
+
+        {
+            "incoming": [],
+            "outgoing": [
+                {
+                    "other_table": "attraction_characteristic",
+                    "column": "characteristic_id",
+                    "other_column": "pk",
+                },
+                {
+                    "other_table": "roadside_attractions",
+                    "column": "attraction_id",
+                    "other_column": "pk",
+                }
+            ]
+        }

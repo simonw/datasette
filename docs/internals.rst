@@ -111,6 +111,25 @@ This method lets you read plugin configuration values that were set in ``metadat
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 
+await .permission_allowed(actor, action, resource_type=None, resource_identifier=None, default=False)
+-----------------------------------------------------------------------------------------------------
+
+``actor`` - dictionary
+    The authenticated actor. This is usually ``request.scope.get("actor")``.
+
+``action`` - string
+    The name of the action that is being permission checked.
+
+``resource_type`` - string, optional
+    The type of resource being checked, e.g. ``"table"``.
+
+``resource_identifier`` - string, optional
+    The resource identifier, e.g. the name of the table.
+
+Check if the given actor has permission to perform the given action on the given resource. This uses plugins that implement the :ref:`plugin_permission_allowed` plugin hook to decide if the action is allowed or not.
+
+If none of the plugins express an opinion, the return value will be the ``default`` argument. This is deny, but you can pass ``default=True`` to default allow instead.
+
 .. _datasette_get_database:
 
 .get_database(name)

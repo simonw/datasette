@@ -406,6 +406,25 @@ class Datasette:
         # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
 
+    async def permission_allowed(
+        self, actor, action, resource_type=None, resource_identifier=None, default=False
+    ):
+        "Check permissions using the permissions_allowed plugin hook"
+        for check in pm.hook.permission_allowed(
+            datasette=self,
+            actor=actor,
+            action=action,
+            resource_type=resource_type,
+            resource_identifier=resource_identifier,
+        ):
+            if callable(check):
+                check = check()
+            if asyncio.iscoroutine(check):
+                check = await check
+            if check is not None:
+                return check
+        return default
+
     async def execute(
         self,
         db_name,

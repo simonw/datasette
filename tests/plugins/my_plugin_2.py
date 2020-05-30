@@ -107,3 +107,16 @@ def actor_from_request(datasette, request):
             return None
 
     return inner
+
+
+@hookimpl
+def permission_allowed(datasette, actor, action):
+    # Testing asyncio version of permission_allowed
+    async def inner():
+        assert 2 == (await datasette.get_database().execute("select 1 + 1")).first()[0]
+        if action == "this_is_allowed_async":
+            return True
+        elif action == "this_is_denied_async":
+            return False
+
+    return inner

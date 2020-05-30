@@ -279,7 +279,7 @@ class Datasette:
         # pylint: disable=no-member
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 
-        self.register_renderers()
+        self._register_renderers()
 
     def get_database(self, name=None):
         if name is None:
@@ -392,7 +392,7 @@ class Datasette:
             }
         )
 
-    def prepare_connection(self, conn, database):
+    def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
         for name, num_args, func in self.sqlite_functions:
@@ -468,12 +468,12 @@ class Datasette:
             url = "https://" + url[len("http://") :]
         return url
 
-    def register_custom_units(self):
+    def _register_custom_units(self):
         "Register any custom units defined in the metadata.json with Pint"
         for unit in self.metadata("custom_units") or []:
             ureg.define(unit)
 
-    def connected_databases(self):
+    def _connected_databases(self):
         return [
             {
                 "name": d.name,
@@ -486,9 +486,9 @@ class Datasette:
             for d in sorted(self.databases.values(), key=lambda d: d.name)
         ]
 
-    def versions(self):
+    def _versions(self):
         conn = sqlite3.connect(":memory:")
-        self.prepare_connection(conn, ":memory:")
+        self._prepare_connection(conn, ":memory:")
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {}
         for extension, testsql, hasversion in (
@@ -534,7 +534,7 @@ class Datasette:
             },
         }
 
-    def plugins(self, show_all=False):
+    def _plugins(self, show_all=False):
         ps = list(get_plugins())
         if not show_all:
             ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
@@ -548,7 +548,7 @@ class Datasette:
             for p in ps
         ]
 
-    def threads(self):
+    def _threads(self):
         threads = list(threading.enumerate())
         d = {
             "num_threads": len(threads),
@@ -576,7 +576,7 @@ class Datasette:
             .get(table, {})
         )
 
-    def register_renderers(self):
+    def _register_renderers(self):
         """ Register output renderers which output data in custom formats. """
         # Built-in renderers
         self.renderers["json"] = (json_renderer, lambda: True)
@@ -724,11 +724,11 @@ class Datasette:
             r"/-/metadata(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "versions.json", self.versions),
+            JsonDataView.as_asgi(self, "versions.json", self._versions),
             r"/-/versions(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "plugins.json", self.plugins),
+            JsonDataView.as_asgi(self, "plugins.json", self._plugins),
             r"/-/plugins(?P<as_format>(\.json)?)$",
         )
         add_route(
@@ -736,11 +736,11 @@ class Datasette:
             r"/-/config(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "threads.json", self.threads),
+            JsonDataView.as_asgi(self, "threads.json", self._threads),
             r"/-/threads(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "databases.json", self.connected_databases),
+            JsonDataView.as_asgi(self, "databases.json", self._connected_databases),
             r"/-/databases(?P<as_format>(\.json)?)$",
         )
         add_route(
@@ -765,7 +765,7 @@ class Datasette:
             + renderer_regex
             + r")?$",
         )
-        self.register_custom_units()
+        self._register_custom_units()
 
         async def setup_db():
             # First time server starts up, calculate table counts for immutable databases

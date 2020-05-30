@@ -104,7 +104,7 @@ class Database:
             conn = getattr(connections, self.name, None)
             if not conn:
                 conn = self.connect()
-                self.ds.prepare_connection(conn, self.name)
+                self.ds._prepare_connection(conn, self.name)
                 setattr(connections, self.name, conn)
             return fn(conn)
 

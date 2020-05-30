@@ -941,3 +941,40 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
         return wrap_with_databases_header
 
 Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`_, `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-media <https://github.com/simonw/datasette-media>`_
+
+.. _plugin_actor_from_request:
+
+actor_from_request(datasette, request)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``request`` - object
+    The current HTTP :ref:`internals_request`.
+
+This is part of Datasette's authentication and permissions system. The function should attempt to authenticate an actor (either a user or an API actor of some sort) based on information in the request.
+
+If it cannot authenticate an actor, it should return ``None``. Otherwise it should return a dictionary representing that actor.
+
+.. _plugin_permission_allowed:
+
+permission_allowed(datasette, actor, action, resource_type, resource_identifier)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary
+    The current actor, as decided by :ref:`plugin_actor_from_request`.
+
+``action`` - string
+    The action to be performed, e.g. ``"edit-table"``.
+
+``resource_type`` - string
+    The type of resource being acted on, e.g. ``"table"``.
+
+``resource`` - string
+    An identifier for the individual resource, e.g. the name of the table.
+
+Called to check that an actor has permission to perform an action on a resource. Can return ``True`` if the action is allowed, ``False`` if the action is not allowed or ``None`` if the plugin does not have an opinion one way or the other.

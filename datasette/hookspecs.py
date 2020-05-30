@@ -58,3 +58,13 @@ def register_output_renderer(datasette):
 @hookspec
 def register_facet_classes():
     "Register Facet subclasses"
+
+
+@hookspec
+def actor_from_request(datasette, request):
+    "Return an actor dictionary based on the incoming request"
+
+
+@hookspec
+def permission_allowed(actor, action, resource_type, resource_identifier):
+    "Check if actor is allowed to perfom this action - return True, False or None"

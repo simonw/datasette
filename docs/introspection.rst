@@ -10,7 +10,9 @@ Each of these pages can be viewed in your browser. Add ``.json`` to the URL to g
 /-/metadata
 -----------
 
-Shows the contents of the ``metadata.json`` file that was passed to ``datasette serve``, if any. `Metadata example <https://fivethirtyeight.datasettes.com/-/metadata>`_::
+Shows the contents of the ``metadata.json`` file that was passed to ``datasette serve``, if any. `Metadata example <https://fivethirtyeight.datasettes.com/-/metadata>`_:
+
+.. code-block:: json
 
     {
         "license": "CC Attribution 4.0 License",
@@ -18,7 +20,9 @@ Shows the contents of the ``metadata.json`` file that was passed to ``datasette 
         "source": "fivethirtyeight/data on GitHub",
         "source_url": "https://github.com/fivethirtyeight/data",
         "title": "Five Thirty Eight",
-        "databases": {...}
+        "databases": {
+
+        }
     }
 
 .. _JsonDataView_versions:
@@ -26,7 +30,9 @@ Shows the contents of the ``metadata.json`` file that was passed to ``datasette 
 /-/versions
 -----------
 
-Shows the version of Datasette, Python and SQLite. `Versions example <https://latest.datasette.io/-/versions>`_::
+Shows the version of Datasette, Python and SQLite. `Versions example <https://latest.datasette.io/-/versions>`_:
+
+.. code-block:: json
 
     {
         "datasette": {
@@ -63,7 +69,9 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://la
 /-/plugins
 ----------
 
-Shows a list of currently installed plugins and their versions. `Plugins example <https://san-francisco.datasettes.com/-/plugins>`_::
+Shows a list of currently installed plugins and their versions. `Plugins example <https://san-francisco.datasettes.com/-/plugins>`_:
+
+.. code-block:: json
 
     [
         {
@@ -79,7 +87,9 @@ Shows a list of currently installed plugins and their versions. `Plugins example
 /-/config
 ---------
 
-Shows the :ref:`config` options for this instance of Datasette. `Config example <https://fivethirtyeight.datasettes.com/-/config>`_::
+Shows the :ref:`config` options for this instance of Datasette. `Config example <https://fivethirtyeight.datasettes.com/-/config>`_:
+
+.. code-block:: json
 
     {
         "default_facet_size": 30,
@@ -95,7 +105,9 @@ Shows the :ref:`config` options for this instance of Datasette. `Config example 
 /-/databases
 ------------
 
-Shows currently attached databases. `Databases example <https://latest.datasette.io/-/config>`_::
+Shows currently attached databases. `Databases example <https://latest.datasette.io/-/config>`_:
+
+.. code-block:: json
 
     [
         {
@@ -113,7 +125,9 @@ Shows currently attached databases. `Databases example <https://latest.datasette
 /-/threads
 ----------
 
-Shows details of threads and ``asyncio`` tasks. `Threads example <https://latest.datasette.io/-/threads>`_::
+Shows details of threads and ``asyncio`` tasks. `Threads example <https://latest.datasette.io/-/threads>`_:
+
+.. code-block:: json
 
     {
         "num_threads": 2,
@@ -135,4 +149,20 @@ Shows details of threads and ``asyncio`` tasks. `Threads example <https://latest
             "<Task pending coro=<Server.serve() running at uvicorn/main.py:361> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x10365c3d0>()]> cb=[run_until_complete.<locals>.<lambda>()]>",
             "<Task pending coro=<LifespanOn.main() running at uvicorn/lifespan/on.py:48> wait_for=<Future pending cb=[<TaskWakeupMethWrapper object at 0x10364f050>()]>>"
         ]
+    }
+
+.. _JsonDataView_actor:
+
+/-/actor
+--------
+
+Shows the currently authenticated actor. Useful for debugging Datasette authentication plugins.
+
+.. code-block:: json
+
+    {
+        "actor": {
+            "id": 1,
+            "username": "some-user"
+        }
     }

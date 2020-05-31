@@ -6,13 +6,17 @@ from .base import BaseView
 class JsonDataView(BaseView):
     name = "json_data"
 
-    def __init__(self, datasette, filename, data_callback):
+    def __init__(self, datasette, filename, data_callback, needs_request=False):
         self.ds = datasette
         self.filename = filename
         self.data_callback = data_callback
+        self.needs_request = needs_request
 
     async def get(self, request, as_format):
-        data = self.data_callback()
+        if self.needs_request:
+            data = self.data_callback(request)
+        else:
+            data = self.data_callback()
         if as_format:
             headers = {}
             if self.ds.cors:

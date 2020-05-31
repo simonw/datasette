@@ -586,6 +586,9 @@ class Datasette:
             )
         return d
 
+    def _actor(self, request):
+        return {"actor": request.scope.get("actor", None)}
+
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."
         return (
@@ -761,6 +764,10 @@ class Datasette:
         add_route(
             JsonDataView.as_asgi(self, "databases.json", self._connected_databases),
             r"/-/databases(?P<as_format>(\.json)?)$",
+        )
+        add_route(
+            JsonDataView.as_asgi(self, "actor.json", self._actor, needs_request=True),
+            r"/-/actor(?P<as_format>(\.json)?)$",
         )
         add_route(
             PatternPortfolioView.as_asgi(self), r"/-/patterns$",

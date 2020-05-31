@@ -539,3 +539,10 @@ async def test_permission_allowed(app_client, action, expected):
         {"id": "actor"}, action, default=None
     )
     assert expected == actual
+
+
+def test_actor_json(app_client):
+    assert {"actor": None} == app_client.get("/-/actor.json").json
+    assert {"actor": {"id": "bot2", "1+1": 2}} == app_client.get(
+        "/-/actor.json/?_bot2=1"
+    ).json

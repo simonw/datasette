@@ -14,6 +14,7 @@ from pathlib import Path
 
 import click
 from markupsafe import Markup
+from itsdangerous import URLSafeSerializer
 import jinja2
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
 from jinja2.environment import Template
@@ -163,12 +164,14 @@ class Datasette:
         static_mounts=None,
         memory=False,
         config=None,
+        secret=None,
         version_note=None,
         config_dir=None,
     ):
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
+        self._secret = secret or os.urandom(32).hex()
         self.files = tuple(files) + tuple(immutables or [])
         if config_dir:
             self.files += tuple([str(p) for p in config_dir.glob("*.db")])
@@ -280,6 +283,12 @@ class Datasette:
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 
         self._register_renderers()
+
+    def sign(self, value, namespace="default"):
+        return URLSafeSerializer(self._secret, namespace).dumps(value)
+
+    def unsign(self, signed, namespace="default"):
+        return URLSafeSerializer(self._secret, namespace).loads(signed)
 
     def get_database(self, name=None):
         if name is None:

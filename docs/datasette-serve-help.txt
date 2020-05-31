@@ -29,6 +29,9 @@ Options:
   --config CONFIG           Set config option using configname:value
                             datasette.readthedocs.io/en/latest/config.html
 
+  --secret TEXT             Secret used for signing secure values, such as signed
+                            cookies
+
   --version-note TEXT       Additional note to show on /-/versions
   --help-config             Show available config options
   --help                    Show this message and exit.

@@ -183,6 +183,34 @@ Use ``is_memory`` if the connection is to an in-memory SQLite database.
 
 This removes a database that has been previously added. ``name=`` is the unique name of that database, also used in the URL for it.
 
+.. _datasette_sign:
+
+.sign(value, namespace="default")
+---------------------------------
+
+``value`` - any serializable type
+    The value to be signed.
+
+``namespace`` - string, optional
+    An alternative namespace, see the `itsdangerous salt documentation <https://itsdangerous.palletsprojects.com/en/1.1.x/serializer/#the-salt>`__.
+
+Utility method for signing values, such that you can safely pass data to and from an untrusted environment. This is a wrapper around the `itsdangerous <https://itsdangerous.palletsprojects.com/>`__ library.
+
+This method returns a signed string, which can be decoded and verified using :ref:`datasette_unsign`.
+
+.. _datasette_unsign:
+
+.unsign(value, namespace="default")
+-----------------------------------
+
+``signed`` - any serializable type
+    The signed string that was created using :ref:`datasette_sign`.
+
+``namespace`` - string, optional
+    The alternative namespace, if one was used.
+
+Returns the original, decoded object that was passed to :ref:`datasette_sign`. If the signature is not valid this raises a ``itsdangerous.BadSignature`` exception.
+
 .. _internals_database:
 
 Database class

@@ -55,6 +55,7 @@ setup(
         "janus>=0.4,<0.6",
         "PyYAML~=5.3",
         "mergedeep>=1.1.1,<1.4.0",
+        "itsdangerous~=1.1",
     ],
     entry_points="""
         [console_scripts]

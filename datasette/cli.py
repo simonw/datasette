@@ -299,6 +299,11 @@ def package(
     help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
     multiple=True,
 )
+@click.option(
+    "--secret",
+    help="Secret used for signing secure values, such as signed cookies",
+    envvar="DATASETTE_SECRET",
+)
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")
 def serve(
@@ -317,6 +322,7 @@ def serve(
     static,
     memory,
     config,
+    secret,
     version_note,
     help_config,
     return_instance=False,
@@ -362,6 +368,7 @@ def serve(
         static_mounts=static,
         config=dict(config),
         memory=memory,
+        secret=secret,
         version_note=version_note,
     )
 

@@ -76,3 +76,21 @@ class AuthTokenView(BaseView):
             return response
         else:
             return Response("Invalid token", status=403)
+
+
+class PermissionsDebugView(BaseView):
+    name = "permissions_debug"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        if not await self.ds.permission_allowed(
+            request.scope.get("actor"), "permissions-debug"
+        ):
+            return Response("Permission denied", status=403)
+        return await self.render(
+            ["permissions_debug.html"],
+            request,
+            {"permission_checks": reversed(self.ds.permission_checks)},
+        )

@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import datetime
 import hashlib
 import itertools
 import json
@@ -24,7 +25,12 @@ import uvicorn
 from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
-from .views.special import JsonDataView, PatternPortfolioView, AuthTokenView
+from .views.special import (
+    JsonDataView,
+    PatternPortfolioView,
+    AuthTokenView,
+    PermissionsDebugView,
+)
 from .views.table import RowView, TableView
 from .renderer import json_renderer
 from .database import Database, QueryInterrupted
@@ -283,6 +289,7 @@ class Datasette:
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 
         self._register_renderers()
+        self.permission_checks = collections.deque(maxlen=30)
         self._root_token = os.urandom(32).hex()
 
     def sign(self, value, namespace="default"):
@@ -420,6 +427,7 @@ class Datasette:
         self, actor, action, resource_type=None, resource_identifier=None, default=False
     ):
         "Check permissions using the permissions_allowed plugin hook"
+        result = None
         for check in pm.hook.permission_allowed(
             datasette=self,
             actor=actor,
@@ -432,8 +440,23 @@ class Datasette:
             if asyncio.iscoroutine(check):
                 check = await check
             if check is not None:
-                return check
-        return default
+                result = check
+        used_default = False
+        if result is None:
+            result = default
+            used_default = True
+        self.permission_checks.append(
+            {
+                "when": datetime.datetime.utcnow().isoformat(),
+                "actor": actor,
+                "action": action,
+                "resource_type": resource_type,
+                "resource_identifier": resource_identifier,
+                "used_default": used_default,
+                "result": result,
+            }
+        )
+        return result
 
     async def execute(
         self,
@@ -781,6 +804,9 @@ class Datasette:
         )
         add_route(
             AuthTokenView.as_asgi(self), r"/-/auth-token$",
+        )
+        add_route(
+            PermissionsDebugView.as_asgi(self), r"/-/permissions$",
         )
         add_route(
             PatternPortfolioView.as_asgi(self), r"/-/patterns$",

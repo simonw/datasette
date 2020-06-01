@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Debug permissions{% endblock %}
+
+{% block extra_head %}
+<style type="text/css">
+.check-result-true {
+    color: green;
+}
+.check-result-false {
+    color: red;
+}
+.check h2 {
+    font-size: 1em
+}
+.check-action, .check-when, .check-result {
+    font-size: 1.3em;
+}
+</style>
+{% endblock %}
+
+{% block nav %}
+    <p class="crumbs">
+        <a href="{{ base_url }}">home</a>
+    </p>
+    {{ super() }}
+{% endblock %}
+
+{% block content %}
+
+<h1>Recent permissions checks</h1>
+
+{% for check in permission_checks %}
+    <div class="check">
+        <h2>
+            <span class="check-action">{{ check.action }}</span>
+            checked at
+            <span class="check-when">{{ check.when }}</span>
+            {% if check.result %}
+                <span class="check-result check-result-true">✓</span>
+            {% else %}
+                <span class="check-result check-result-false">✗</span>
+            {% endif %}
+            {% if check.used_default %}
+                <span class="check-used-default">(used default)</span>
+            {% endif %}
+        </h2>
+        <p><strong>Actor:</strong> {{ check.actor|tojson }}</p>
+        {% if check.resource_type %}
+            <p><strong>Resource:</strong> {{ check.resource_type }}: {{ check.resource_identifier }}</p>
+        {% endif %}
+    </div>
+{% endfor %}
+
+{% endblock %}

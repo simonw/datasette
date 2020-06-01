@@ -40,6 +40,7 @@ Contents
    publish
    json_api
    sql_queries
+   authentication
    performance
    csv_export
    facets

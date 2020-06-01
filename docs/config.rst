@@ -288,3 +288,30 @@ For example, if you are sending traffic from ``https://www.example.com/tools/dat
 You can do that like so::
 
     datasette mydatabase.db --config base_url:/tools/datasette/
+
+.. _config_secret:
+
+Configuring the secret
+----------------------
+
+Datasette uses a secret string to sign secure values such as cookies.
+
+If you do not provide a secret, Datasette will create one when it starts up. This secret will reset every time the Datasette server restarts though, so things like authentication cookies will not stay valid between restarts.
+
+You can pass a secret to Datasette in two ways: with the ``--secret`` command-line option or by setting a ``DATASETTE_SECRET`` environment variable.
+
+::
+
+    $ datasette mydb.db --secret=SECRET_VALUE_HERE
+
+Or::
+
+    $ export DATASETTE_SECRET=SECRET_VALUE_HERE
+    $ datasette mydb.db
+
+One way to generate a secure random secret is to use Python like this::
+
+    $ python3 -c 'import os; print(os.urandom(32).hex())'
+    cdb19e94283a20f9d42cca50c5a4871c0aa07392db308755d60a1a5b9bb0fa52
+
+Plugin authors make use of this signing mechanism in their plugins using :ref:`datasette_sign` and :ref:`datasette_unsign`.

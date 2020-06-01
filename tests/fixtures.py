@@ -2,6 +2,7 @@ from datasette.app import Datasette
 from datasette.utils import sqlite3
 from asgiref.testing import ApplicationCommunicator
 from asgiref.sync import async_to_sync
+from http.cookies import SimpleCookie
 import itertools
 import json
 import os
@@ -44,10 +45,14 @@ class TestClient:
         self.asgi_app = asgi_app
 
     @async_to_sync
-    async def get(self, path, allow_redirects=True, redirect_count=0, method="GET"):
-        return await self._get(path, allow_redirects, redirect_count, method)
+    async def get(
+        self, path, allow_redirects=True, redirect_count=0, method="GET", cookies=None
+    ):
+        return await self._get(path, allow_redirects, redirect_count, method, cookies)
 
-    async def _get(self, path, allow_redirects=True, redirect_count=0, method="GET"):
+    async def _get(
+        self, path, allow_redirects=True, redirect_count=0, method="GET", cookies=None
+    ):
         query_string = b""
         if "?" in path:
             path, _, query_string = path.partition("?")
@@ -56,6 +61,12 @@ class TestClient:
             raw_path = path.encode("latin-1")
         else:
             raw_path = quote(path, safe="/:,").encode("latin-1")
+        headers = [[b"host", b"localhost"]]
+        if cookies:
+            sc = SimpleCookie()
+            for key, value in cookies.items():
+                sc[key] = value
+            headers.append([b"cookie", sc.output(header="").encode("utf-8")])
         scope = {
             "type": "http",
             "http_version": "1.0",
@@ -63,7 +74,7 @@ class TestClient:
             "path": unquote(path),
             "raw_path": raw_path,
             "query_string": query_string,
-            "headers": [[b"host", b"localhost"]],
+            "headers": headers,
         }
         instance = ApplicationCommunicator(self.asgi_app, scope)
         await instance.send_input({"type": "http.request"})

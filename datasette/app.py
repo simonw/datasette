@@ -24,7 +24,7 @@ import uvicorn
 from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
-from .views.special import JsonDataView, PatternPortfolioView
+from .views.special import JsonDataView, PatternPortfolioView, AuthTokenView
 from .views.table import RowView, TableView
 from .renderer import json_renderer
 from .database import Database, QueryInterrupted
@@ -283,6 +283,7 @@ class Datasette:
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 
         self._register_renderers()
+        self._root_token = os.urandom(32).hex()
 
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)
@@ -777,6 +778,9 @@ class Datasette:
         add_route(
             JsonDataView.as_asgi(self, "actor.json", self._actor, needs_request=True),
             r"/-/actor(?P<as_format>(\.json)?)$",
+        )
+        add_route(
+            AuthTokenView.as_asgi(self), r"/-/auth-token$",
         )
         add_route(
             PatternPortfolioView.as_asgi(self), r"/-/patterns$",

@@ -76,6 +76,7 @@ def test_metadata_yaml():
         memory=False,
         config=[],
         secret=None,
+        root=False,
         version_note=None,
         help_config=False,
         return_instance=True,

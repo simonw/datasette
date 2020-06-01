@@ -1,6 +1,8 @@
 import json
 from datasette.utils.asgi import Response
 from .base import BaseView
+from http.cookies import SimpleCookie
+import secrets
 
 
 class JsonDataView(BaseView):
@@ -45,4 +47,32 @@ class PatternPortfolioView(BaseView):
         self.ds = datasette
 
     async def get(self, request):
-        return await self.render(["patterns.html"], request=request,)
+        return await self.render(["patterns.html"], request=request)
+
+
+class AuthTokenView(BaseView):
+    name = "auth_token"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        token = request.args.get("token") or ""
+        if not self.ds._root_token:
+            return Response("Root token has already been used", status=403)
+        if secrets.compare_digest(token, self.ds._root_token):
+            self.ds._root_token = None
+            cookie = SimpleCookie()
+            cookie["ds_actor"] = self.ds.sign({"id": "root"}, "actor")
+            cookie["ds_actor"]["path"] = "/"
+            response = Response(
+                body="",
+                status=302,
+                headers={
+                    "Location": "/",
+                    "set-cookie": cookie.output(header="").lstrip(),
+                },
+            )
+            return response
+        else:
+            return Response("Invalid token", status=403)

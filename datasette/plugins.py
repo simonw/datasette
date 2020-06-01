@@ -9,6 +9,7 @@ DEFAULT_PLUGINS = (
     "datasette.publish.cloudrun",
     "datasette.facets",
     "datasette.sql_functions",
+    "datasette.actor_auth_cookie",
 )
 
 pm = pluggy.PluginManager("datasette")

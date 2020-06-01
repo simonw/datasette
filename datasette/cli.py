@@ -304,6 +304,11 @@ def package(
     help="Secret used for signing secure values, such as signed cookies",
     envvar="DATASETTE_SECRET",
 )
+@click.option(
+    "--root",
+    help="Output URL that sets a cookie authenticating the root user",
+    is_flag=True,
+)
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")
 def serve(
@@ -323,6 +328,7 @@ def serve(
     memory,
     config,
     secret,
+    root,
     version_note,
     help_config,
     return_instance=False,
@@ -387,6 +393,8 @@ def serve(
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
 
     # Start the server
+    if root:
+        print("http://{}:{}/-/auth-token?token={}".format(host, port, ds._root_token))
     uvicorn.run(ds.app(), host=host, port=port, log_level="info")
 
 

@@ -9,11 +9,7 @@ def test_auth_token(app_client):
     response = app_client.get(path, allow_redirects=False,)
     assert 302 == response.status
     assert "/" == response.headers["Location"]
-    set_cookie = response.headers["set-cookie"]
-    assert set_cookie.endswith("; Path=/")
-    assert set_cookie.startswith("ds_actor=")
-    cookie_value = set_cookie.split("ds_actor=")[1].split("; Path=/")[0]
-    assert {"id": "root"} == app_client.ds.unsign(cookie_value, "actor")
+    assert {"id": "root"} == app_client.ds.unsign(response.cookies["ds_actor"], "actor")
     # Check that a second with same token fails
     assert app_client.ds._root_token is None
     assert 403 == app_client.get(path, allow_redirects=False,).status

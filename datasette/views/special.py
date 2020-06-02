@@ -94,3 +94,27 @@ class PermissionsDebugView(BaseView):
             request,
             {"permission_checks": reversed(self.ds._permission_checks)},
         )
+
+
+class MessagesDebugView(BaseView):
+    name = "messages_debug"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        return await self.render(["messages_debug.html"], request)
+
+    async def post(self, request):
+        post = await request.post_vars()
+        message = post.get("message", "")
+        message_type = post.get("message_type") or "INFO"
+        assert message_type in ("INFO", "WARNING", "ERROR", "all")
+        datasette = self.ds
+        if message_type == "all":
+            datasette.add_message(request, message, datasette.INFO)
+            datasette.add_message(request, message, datasette.WARNING)
+            datasette.add_message(request, message, datasette.ERROR)
+        else:
+            datasette.add_message(request, message, getattr(datasette, message_type))
+        return Response.redirect("/")

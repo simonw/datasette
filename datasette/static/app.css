@@ -352,8 +352,18 @@ p.zero-results {
     color: #666;
 }
 
-.success {
+.message-info {
     padding: 1em;
     border: 1px solid green;
     background-color: #c7fbc7;
+}
+.message-warning {
+    padding: 1em;
+    border: 1px solid #ae7100;
+    background-color: #fbdda5;
+}
+.message-error {
+    padding: 1em;
+    border: 1px solid red;
+    background-color: pink;
 }

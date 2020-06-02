@@ -166,3 +166,11 @@ Shows the currently authenticated actor. Useful for debugging Datasette authenti
             "username": "some-user"
         }
     }
+
+
+.. _MessagesDebugView:
+
+/-/messages
+-----------
+
+The debug tool at ``/-/messages`` can be used to set flash messages to try out that feature. See :ref:`datasette_add_message` for details of this feature.

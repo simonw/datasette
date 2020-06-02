@@ -1262,6 +1262,7 @@ def test_plugins_json(app_client):
     expected = [
         {"name": name, "static": False, "templates": False, "version": None}
         for name in (
+            "messages_output_renderer.py",
             "my_plugin.py",
             "my_plugin_2.py",
             "register_output_renderer.py",

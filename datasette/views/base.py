@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import itertools
+from itsdangerous import BadSignature
 import json
 import re
 import time
@@ -73,6 +74,20 @@ class BaseView(AsgiView):
     def database_color(self, database):
         return "ff0000"
 
+    async def dispatch_request(self, request, *args, **kwargs):
+        # Populate request_messages if ds_messages cookie is present
+        if self.ds:
+            try:
+                request._messages = self.ds.unsign(
+                    request.cookies.get("ds_messages", ""), "messages"
+                )
+            except BadSignature:
+                pass
+        response = await super().dispatch_request(request, *args, **kwargs)
+        if self.ds:
+            self.ds._write_messages_to_response(request, response)
+        return response
+
     async def render(self, templates, request, context=None):
         context = context or {}
         template = self.ds.jinja_env.select_template(templates)
@@ -81,6 +96,7 @@ class BaseView(AsgiView):
             **{
                 "database_url": self.database_url,
                 "database_color": self.database_color,
+                "show_messages": lambda: self.ds._show_messages(request),
                 "select_templates": [
                     "{}{}".format(
                         "*" if template_name == template.name else "", template_name

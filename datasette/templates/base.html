@@ -17,6 +17,14 @@
 <nav class="hd">{% block nav %}{% endblock %}</nav>
 
 <div class="bd">
+{% block messages %}
+{% if show_messages %}
+    {% for message, message_type in show_messages() %}
+        <p class="message-{% if message_type == 1 %}info{% elif message_type == 2 %}warning{% elif message_type == 3 %}error{% endif %}">{{ message }}</p>
+    {% endfor %}
+{% endif %}
+{% endblock %}
+
 {% block content %}
 {% endblock %}
 </div>

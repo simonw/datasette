@@ -2,6 +2,7 @@ import asyncio
 import collections
 import datetime
 import hashlib
+from http.cookies import SimpleCookie
 import itertools
 import json
 import os
@@ -31,6 +32,7 @@ from .views.special import (
     PatternPortfolioView,
     AuthTokenView,
     PermissionsDebugView,
+    MessagesDebugView,
 )
 from .views.table import RowView, TableView
 from .renderer import json_renderer
@@ -157,6 +159,11 @@ async def favicon(scope, receive, send):
 
 
 class Datasette:
+    # Message constants:
+    INFO = 1
+    WARNING = 2
+    ERROR = 3
+
     def __init__(
         self,
         files,
@@ -423,6 +430,38 @@ class Datasette:
             conn.execute("PRAGMA cache_size=-{}".format(self.config("cache_size_kb")))
         # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
+
+    def add_message(self, request, message, type=INFO):
+        if not hasattr(request, "_messages"):
+            request._messages = []
+            request._messages_should_clear = False
+        request._messages.append((message, type))
+
+    def _write_messages_to_response(self, request, response):
+        if getattr(request, "_messages", None):
+            # Set those messages
+            cookie = SimpleCookie()
+            cookie["ds_messages"] = self.sign(request._messages, "messages")
+            cookie["ds_messages"]["path"] = "/"
+            # TODO: Co-exist with existing set-cookie headers
+            assert "set-cookie" not in response.headers
+            response.headers["set-cookie"] = cookie.output(header="").lstrip()
+        elif getattr(request, "_messages_should_clear", False):
+            cookie = SimpleCookie()
+            cookie["ds_messages"] = ""
+            cookie["ds_messages"]["path"] = "/"
+            # TODO: Co-exist with existing set-cookie headers
+            assert "set-cookie" not in response.headers
+            response.headers["set-cookie"] = cookie.output(header="").lstrip()
+
+    def _show_messages(self, request):
+        if getattr(request, "_messages", None):
+            request._messages_should_clear = True
+            messages = request._messages
+            request._messages = []
+            return messages
+        else:
+            return []
 
     async def permission_allowed(
         self, actor, action, resource_type=None, resource_identifier=None, default=False
@@ -808,6 +847,9 @@ class Datasette:
         )
         add_route(
             PermissionsDebugView.as_asgi(self), r"/-/permissions$",
+        )
+        add_route(
+            MessagesDebugView.as_asgi(self), r"/-/messages$",
         )
         add_route(
             PatternPortfolioView.as_asgi(self), r"/-/patterns$",

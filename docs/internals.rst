@@ -214,6 +214,24 @@ This method returns a signed string, which can be decoded and verified using :re
 
 Returns the original, decoded object that was passed to :ref:`datasette_sign`. If the signature is not valid this raises a ``itsdangerous.BadSignature`` exception.
 
+.. _datasette_add_message:
+
+.add_message(request, message, message_type=datasette.INFO)
+-----------------------------------------------------------
+
+``request`` - Request
+    The current Request object
+
+``message`` - string
+    The message string
+
+``message_type`` - constant, optional
+    The message type - ``datasette.INFO``, ``datasette.WARNING`` or ``datasette.ERROR``
+
+Datasette's flash messaging mechanism allows you to add a message that will be displayed to the user on the next page that they visit. Messages are persisted in a ``ds_messages`` cookie. This method adds a message to that cookie.
+
+You can try out these messages (including the different visual styling of the three message types) using the ``/-/messages`` debugging tool.
+
 .. _internals_database:
 
 Database class

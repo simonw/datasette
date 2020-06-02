@@ -30,6 +30,12 @@ class TestResponse:
         self.body = body
 
     @property
+    def cookies(self):
+        cookie = SimpleCookie()
+        cookie.load(self.headers.get("set-cookie") or "")
+        return {key: value.value for key, value in cookie.items()}
+
+    @property
     def json(self):
         return json.loads(self.text)
 

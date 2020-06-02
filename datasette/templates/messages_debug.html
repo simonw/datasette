@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Debug messages{% endblock %}
+
+{% block content %}
+
+<h1>Debug messages</h1>
+
+<p>Set a message:</p>
+
+<form action="/-/messages" method="POST">
+    <div>
+        <input type="text" name="message" style="width: 40%">
+        <div class="select-wrapper">
+            <select name="message_type">
+                <option>INFO</option>
+                <option>WARNING</option>
+                <option>ERROR</option>
+                <option>all</option>
+            </select>
+        </div>
+        <input type="submit" value="Add message">
+    </div>
+</form>
+
+{% endblock %}

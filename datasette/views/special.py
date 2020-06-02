@@ -92,5 +92,5 @@ class PermissionsDebugView(BaseView):
         return await self.render(
             ["permissions_debug.html"],
             request,
-            {"permission_checks": reversed(self.ds.permission_checks)},
+            {"permission_checks": reversed(self.ds._permission_checks)},
         )

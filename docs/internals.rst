@@ -27,6 +27,9 @@ The request object is passed to various plugin hooks. It represents an incoming 
 ``.headers`` - dictionary (str -> str)
     A dictionary of incoming HTTP request headers.
 
+``.cookies`` - dictionary (str -> str)
+    A dictionary of incoming cookies
+
 ``.host`` - string
     The host header from the incoming request, e.g. ``latest.datasette.io`` or ``localhost``.
 

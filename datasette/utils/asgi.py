@@ -4,6 +4,7 @@ from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
 from html import escape
+from http.cookies import SimpleCookie
 import re
 import aiofiles
 
@@ -43,6 +44,12 @@ class Request:
     @property
     def host(self):
         return self.headers.get("host") or "localhost"
+
+    @property
+    def cookies(self):
+        cookies = SimpleCookie()
+        cookies.load(self.headers.get("cookie", ""))
+        return {key: value.value for key, value in cookies.items()}
 
     @property
     def path(self):

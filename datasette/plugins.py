@@ -49,6 +49,7 @@ def get_plugins():
             "name": plugin.__name__,
             "static_path": static_path,
             "templates_path": templates_path,
+            "hooks": [h.name for h in pm.get_hookcallers(plugin)],
         }
         distinfo = plugin_to_distinfo.get(plugin)
         if distinfo:

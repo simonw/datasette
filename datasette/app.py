@@ -625,9 +625,9 @@ class Datasette:
             },
         }
 
-    def _plugins(self, show_all=False):
+    def _plugins(self, request):
         ps = list(get_plugins())
-        if not show_all:
+        if not request.args.get("all"):
             ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
         return [
             {
@@ -635,6 +635,7 @@ class Datasette:
                 "static": p["static_path"] is not None,
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
+                "hooks": p["hooks"],
             }
             for p in ps
         ]
@@ -822,7 +823,9 @@ class Datasette:
             r"/-/versions(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "plugins.json", self._plugins),
+            JsonDataView.as_asgi(
+                self, "plugins.json", self._plugins, needs_request=True
+            ),
             r"/-/plugins(?P<as_format>(\.json)?)$",
         )
         add_route(

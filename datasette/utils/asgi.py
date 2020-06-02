@@ -180,9 +180,9 @@ class AsgiLifespan:
 
 
 class AsgiView:
-    def dispatch_request(self, request, *args, **kwargs):
+    async def dispatch_request(self, request, *args, **kwargs):
         handler = getattr(self, request.method.lower(), None)
-        return handler(request, *args, **kwargs)
+        return await handler(request, *args, **kwargs)
 
     @classmethod
     def as_asgi(cls, *class_args, **class_kwargs):

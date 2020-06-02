@@ -101,7 +101,7 @@ def test_csv_with_non_ascii_characters(app_client):
     )
     assert response.status == 200
     assert "text/plain; charset=utf-8" == response.headers["content-type"]
-    assert "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n" == response.body.decode("utf8")
+    assert "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n" == response.text
 
 
 def test_max_csv_mb(app_client_csv_max_mb_one):

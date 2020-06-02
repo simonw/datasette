@@ -1762,16 +1762,10 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
     # https://github.com/simonw/datasette/issues/597
     assert ["fixtures", "foo", "foo-bar"] == [
         d["name"]
-        for d in json.loads(
-            app_client_conflicting_database_names.get("/-/databases.json").body.decode(
-                "utf8"
-            )
-        )
+        for d in app_client_conflicting_database_names.get("/-/databases.json").json
     ]
     for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
-        data = json.loads(
-            app_client_conflicting_database_names.get(path).body.decode("utf8")
-        )
+        data = app_client_conflicting_database_names.get(path).json
         assert db_name == data["database"]
 
 

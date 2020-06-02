@@ -606,9 +606,7 @@ def test_row_html_simple_primary_key(app_client):
 
 
 def test_table_not_exists(app_client):
-    assert "Table not found: blah" in app_client.get("/fixtures/blah").body.decode(
-        "utf8"
-    )
+    assert "Table not found: blah" in app_client.get("/fixtures/blah").text
 
 
 def test_table_html_no_primary_key(app_client):

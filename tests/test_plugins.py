@@ -218,7 +218,7 @@ def test_plugin_config_file(app_client):
 )
 def test_plugins_extra_body_script(app_client, path, expected_extra_body_script):
     r = re.compile(r"<script>var extra_body_script = (.*?);</script>")
-    json_data = r.search(app_client.get(path).body.decode("utf8")).group(1)
+    json_data = r.search(app_client.get(path).text).group(1)
     actual_data = json.loads(json_data)
     assert expected_extra_body_script == actual_data
 
@@ -331,7 +331,7 @@ def view_names_client(tmp_path_factory):
 def test_view_names(view_names_client, path, view_name):
     response = view_names_client.get(path)
     assert response.status == 200
-    assert "view_name:{}".format(view_name) == response.body.decode("utf8")
+    assert "view_name:{}".format(view_name) == response.text
 
 
 def test_register_output_renderer_no_parameters(app_client):
@@ -345,8 +345,7 @@ def test_register_output_renderer_all_parameters(app_client):
     assert 200 == response.status
     # Lots of 'at 0x103a4a690' in here - replace those so we can do
     # an easy comparison
-    body = response.body.decode("utf-8")
-    body = at_memory_re.sub(" at 0xXXX", body)
+    body = at_memory_re.sub(" at 0xXXX", response.text)
     assert {
         "1+1": 2,
         "datasette": "<datasette.app.Datasette object at 0xXXX>",
@@ -468,7 +467,6 @@ def test_register_facet_classes(app_client):
     response = app_client.get(
         "/fixtures/compound_three_primary_keys.json?_dummy_facet=1"
     )
-    data = json.loads(response.body)
     assert [
         {
             "name": "pk1",
@@ -502,7 +500,7 @@ def test_register_facet_classes(app_client):
             "name": "pk3",
             "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet=pk3",
         },
-    ] == data["suggested_facets"]
+    ] == response.json["suggested_facets"]
 
 
 def test_actor_from_request(app_client):

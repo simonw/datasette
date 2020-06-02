@@ -84,21 +84,20 @@ def config_dir_client(tmp_path_factory):
 def test_metadata(config_dir_client):
     response = config_dir_client.get("/-/metadata.json")
     assert 200 == response.status
-    assert METADATA == json.loads(response.text)
+    assert METADATA == response.json
 
 
 def test_config(config_dir_client):
     response = config_dir_client.get("/-/config.json")
     assert 200 == response.status
-    config = json.loads(response.text)
-    assert 60 == config["default_cache_ttl"]
-    assert not config["allow_sql"]
+    assert 60 == response.json["default_cache_ttl"]
+    assert not response.json["allow_sql"]
 
 
 def test_plugins(config_dir_client):
     response = config_dir_client.get("/-/plugins.json")
     assert 200 == response.status
-    assert "hooray.py" in {p["name"] for p in json.loads(response.text)}
+    assert "hooray.py" in {p["name"] for p in response.json}
 
 
 def test_templates_and_plugin(config_dir_client):
@@ -123,7 +122,7 @@ def test_static_directory_browsing_not_allowed(config_dir_client):
 def test_databases(config_dir_client):
     response = config_dir_client.get("/-/databases.json")
     assert 200 == response.status
-    databases = json.loads(response.text)
+    databases = response.json
     assert 2 == len(databases)
     databases.sort(key=lambda d: d["name"])
     assert "demo" == databases[0]["name"]
@@ -141,4 +140,4 @@ def test_metadata_yaml(tmp_path_factory, filename):
     client.ds = ds
     response = client.get("/-/metadata.json")
     assert 200 == response.status
-    assert {"title": "Title from metadata"} == json.loads(response.text)
+    assert {"title": "Title from metadata"} == response.json

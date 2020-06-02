@@ -78,9 +78,12 @@ Shows a list of currently installed plugins and their versions. `Plugins example
             "name": "datasette_cluster_map",
             "static": true,
             "templates": false,
-            "version": "0.4"
+            "version": "0.10",
+            "hooks": ["extra_css_urls", "extra_js_urls", "extra_body_script"]
         }
     ]
+
+Add ``?all=1`` to include details of the default plugins baked into Datasette.
 
 .. _JsonDataView_config:
 

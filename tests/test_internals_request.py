@@ -16,10 +16,14 @@ async def test_request_post_vars():
     }
 
     async def receive():
-        return {"type": "http.request", "body": b"foo=bar&baz=1", "more_body": False}
+        return {
+            "type": "http.request",
+            "body": b"foo=bar&baz=1&empty=",
+            "more_body": False,
+        }
 
     request = Request(scope, receive)
-    assert {"foo": "bar", "baz": "1"} == await request.post_vars()
+    assert {"foo": "bar", "baz": "1", "empty": ""} == await request.post_vars()
 
 
 def test_request_args():

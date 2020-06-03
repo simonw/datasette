@@ -80,7 +80,7 @@ class Request:
             body += message.get("body", b"")
             more_body = message.get("more_body", False)
 
-        return dict(parse_qsl(body.decode("utf-8")))
+        return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
 
     @classmethod
     def fake(cls, path_with_query_string, method="GET", scheme="http"):

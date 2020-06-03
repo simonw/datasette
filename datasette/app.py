@@ -901,13 +901,14 @@ class DatasetteRouter(AsgiRouter):
         base_url = self.ds.config("base_url")
         if base_url != "/" and path.startswith(base_url):
             path = "/" + path[len(base_url) :]
+        scope_modifications = {}
         # Apply force_https_urls, if set
         if (
             self.ds.config("force_https_urls")
             and scope["type"] == "http"
             and scope.get("scheme") != "https"
         ):
-            scope = dict(scope, scheme="https")
+            scope_modifications["scheme"] = "https"
         # Handle authentication
         actor = None
         for actor in pm.hook.actor_from_request(
@@ -919,7 +920,10 @@ class DatasetteRouter(AsgiRouter):
                 actor = await actor
             if actor:
                 break
-        return await super().route_path(dict(scope, actor=actor), receive, send, path)
+        scope_modifications["actor"] = actor
+        return await super().route_path(
+            dict(scope, **scope_modifications), receive, send, path
+        )
 
     async def handle_404(self, scope, receive, send, exception=None):
         # If URL has a trailing slash, redirect to URL without it

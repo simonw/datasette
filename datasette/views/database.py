@@ -138,16 +138,23 @@ class QueryView(DataView):
         if write:
             if request.method == "POST":
                 params = await request.post_vars()
-                cursor = await self.ds.databases[database].execute_write(
-                    sql, params, block=True
-                )
-                self.ds.add_message(
-                    request,
-                    "Query executed, {} row{} affected".format(
+                try:
+                    cursor = await self.ds.databases[database].execute_write(
+                        sql, params, block=True
+                    )
+                    message = metadata.get(
+                        "on_success_message"
+                    ) or "Query executed, {} row{} affected".format(
                         cursor.rowcount, "" if cursor.rowcount == 1 else "s"
-                    ),
-                )
-                return self.redirect(request, request.path)
+                    )
+                    message_type = self.ds.INFO
+                    redirect_url = metadata.get("on_success_redirect")
+                except Exception as e:
+                    message = metadata.get("on_error_message") or str(e)
+                    message_type = self.ds.ERROR
+                    redirect_url = metadata.get("on_error_redirect")
+                self.ds.add_message(request, message, message_type)
+                return self.redirect(request, redirect_url or request.path)
             else:
 
                 async def extra_template():

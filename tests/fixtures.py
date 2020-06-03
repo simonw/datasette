@@ -14,7 +14,7 @@ import string
 import tempfile
 import textwrap
 import time
-from urllib.parse import unquote, quote
+from urllib.parse import unquote, quote, urlencode
 
 
 # This temp file is used by one of the plugin config tests
@@ -54,10 +54,26 @@ class TestClient:
     async def get(
         self, path, allow_redirects=True, redirect_count=0, method="GET", cookies=None
     ):
-        return await self._get(path, allow_redirects, redirect_count, method, cookies)
+        return await self._request(
+            path, allow_redirects, redirect_count, method, cookies
+        )
 
-    async def _get(
-        self, path, allow_redirects=True, redirect_count=0, method="GET", cookies=None
+    @async_to_sync
+    async def post(
+        self, path, post_data=None, allow_redirects=True, redirect_count=0, cookies=None
+    ):
+        return await self._request(
+            path, allow_redirects, redirect_count, "POST", cookies, post_data
+        )
+
+    async def _request(
+        self,
+        path,
+        allow_redirects=True,
+        redirect_count=0,
+        method="GET",
+        cookies=None,
+        post_data=None,
     ):
         query_string = b""
         if "?" in path:
@@ -83,7 +99,13 @@ class TestClient:
             "headers": headers,
         }
         instance = ApplicationCommunicator(self.asgi_app, scope)
-        await instance.send_input({"type": "http.request"})
+
+        if post_data:
+            body = urlencode(post_data, doseq=True).encode("utf-8")
+            await instance.send_input({"type": "http.request", "body": body})
+        else:
+            await instance.send_input({"type": "http.request"})
+
         # First message back should be response.start with headers and status
         messages = []
         start = await instance.receive_output(2)
@@ -110,7 +132,7 @@ class TestClient:
                 redirect_count, self.max_redirects
             )
             location = response.headers["Location"]
-            return await self._get(
+            return await self._request(
                 location, allow_redirects=True, redirect_count=redirect_count + 1
             )
         return response
@@ -128,6 +150,7 @@ def make_app_client(
     inspect_data=None,
     static_mounts=None,
     template_dir=None,
+    metadata=None,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -161,7 +184,7 @@ def make_app_client(
             immutables=immutables,
             memory=memory,
             cors=cors,
-            metadata=METADATA,
+            metadata=metadata or METADATA,
             plugins_dir=PLUGINS_DIR,
             config=config,
             inspect_data=inspect_data,

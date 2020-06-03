@@ -106,6 +106,8 @@ class QueryView(DataView):
         canned_query=None,
         metadata=None,
         _size=None,
+        named_parameters=None,
+        write=False,
     ):
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
@@ -113,7 +115,7 @@ class QueryView(DataView):
         if "_shape" in params:
             params.pop("_shape")
         # Extract any :named parameters
-        named_parameters = self.re_named_parameter.findall(sql)
+        named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {
             named_parameter: params.get(named_parameter) or ""
             for named_parameter in named_parameters
@@ -129,12 +131,60 @@ class QueryView(DataView):
             extra_args["custom_time_limit"] = int(params["_timelimit"])
         if _size:
             extra_args["page_size"] = _size
-        results = await self.ds.execute(
-            database, sql, params, truncate=True, **extra_args
-        )
-        columns = [r[0] for r in results.description]
 
         templates = ["query-{}.html".format(to_css_class(database)), "query.html"]
+
+        # Execute query - as write or as read
+        if write:
+            if request.method == "POST":
+                params = await request.post_vars()
+                try:
+                    cursor = await self.ds.databases[database].execute_write(
+                        sql, params, block=True
+                    )
+                    message = metadata.get(
+                        "on_success_message"
+                    ) or "Query executed, {} row{} affected".format(
+                        cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+                    )
+                    message_type = self.ds.INFO
+                    redirect_url = metadata.get("on_success_redirect")
+                except Exception as e:
+                    message = metadata.get("on_error_message") or str(e)
+                    message_type = self.ds.ERROR
+                    redirect_url = metadata.get("on_error_redirect")
+                self.ds.add_message(request, message, message_type)
+                return self.redirect(request, redirect_url or request.path)
+            else:
+
+                async def extra_template():
+                    return {
+                        "request": request,
+                        "path_with_added_args": path_with_added_args,
+                        "path_with_removed_args": path_with_removed_args,
+                        "named_parameter_values": named_parameter_values,
+                        "canned_query": canned_query,
+                        "success_message": request.args.get("_success") or "",
+                        "canned_write": True,
+                    }
+
+                return (
+                    {
+                        "database": database,
+                        "rows": [],
+                        "truncated": False,
+                        "columns": [],
+                        "query": {"sql": sql, "params": params},
+                    },
+                    extra_template,
+                    templates,
+                )
+        else:  # Not a write
+            results = await self.ds.execute(
+                database, sql, params, truncate=True, **extra_args
+            )
+            columns = [r[0] for r in results.description]
+
         if canned_query:
             templates.insert(
                 0,

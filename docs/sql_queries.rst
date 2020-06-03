@@ -161,17 +161,72 @@ You can set a default fragment hash that will be included in the link to the can
 
     {
         "databases": {
-        "fixtures": {
-            "queries": {
-                "neighborhood_search": {
-                    "sql": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;",
-                    "fragment": "fragment-goes-here"
+            "fixtures": {
+                "queries": {
+                    "neighborhood_search": {
+                        "sql": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;",
+                        "fragment": "fragment-goes-here"
+                    }
                 }
             }
         }
     }
 
 `See here <https://latest.datasette.io/fixtures#queries>`__ for a demo of this in action.
+
+.. _canned_queries_writable:
+
+Writable canned queries
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Canned queries by default are read-only. You can use the ``"write": true`` key to indicate that a canned query can write to the database.
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "mydatabase": {
+                "queries": {
+                    "add_name": {
+                        "sql": "INSERT INTO names (name) VALUES (:name)",
+                        "write": true
+                    }
+                }
+            }
+        }
+    }
+
+This configuration will create a page at ``/mydatabase/add_name`` displaying a form with a ``name`` field. Submitting that form will execute the configured ``INSERT`` query.
+
+You can customize how Datasette represents success and errors using the following optional properties:
+
+- ``on_success_message`` - the message shown when a query is successful
+- ``on_success_redirect`` - the path or URL the user is redirected to on success
+- ``on_error_message`` - the message shown when a query throws an error
+- ``on_error_redirect`` - the path or URL the user is redirected to on error
+
+For example:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "mydatabase": {
+                "queries": {
+                    "add_name": {
+                        "sql": "INSERT INTO names (name) VALUES (:name)",
+                        "write": true,
+                        "on_success_message": "Name inserted",
+                        "on_success_redirect": "/mydatabase/names",
+                        "on_error_message": "Name insert failed",
+                        "on_error_redirect": "/mydatabase"
+                    }
+                }
+            }
+        }
+    }
+
+You may wish to use this feature in conjunction with :ref:`authentication`.
 
 .. _pagination:
 

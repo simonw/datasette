@@ -27,11 +27,12 @@
 {% endblock %}
 
 {% block content %}
+
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<form class="sql" action="{{ database_url(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="get">
+<form class="sql" action="{{ database_url(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_write %}post{% else %}get{% endif %}">
     <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %} <span class="show-hide-sql">{% if hide_sql %}(<a href="{{ path_with_removed_args(request, {'_hide_sql': '1'}) }}">show</a>){% else %}(<a href="{{ path_with_added_args(request, {'_hide_sql': '1'}) }}">hide</a>){% endif %}</span></h3>
     {% if not hide_sql %}
         {% if editable and config.allow_sql %}
@@ -74,7 +75,9 @@
     </tbody>
 </table>
 {% else %}
-    <p class="zero-results">0 results</p>
+    {% if not canned_write %}
+        <p class="zero-results">0 results</p>
+    {% endif %}
 {% endif %}
 
 {% include "_codemirror_foot.html" %}

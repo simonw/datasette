@@ -121,32 +121,68 @@ Here's an example of a canned query with a named parameter:
 .. code-block:: sql
 
     select neighborhood, facet_cities.name, state
-    from facetable join facet_cities on facetable.city_id = facet_cities.id
-    where neighborhood like '%' || :text || '%' order by neighborhood;
+    from facetable
+      join facet_cities on facetable.city_id = facet_cities.id
+    where neighborhood like '%' || :text || '%'
+    order by neighborhood;
 
-In the canned query JSON it looks like this:
+In the canned query metadata (here :ref:`metadata_yaml` as ``metadata.yaml``) it looks like this:
+
+.. code-block:: yaml
+
+    databases:
+      fixtures:
+        queries:
+          neighborhood_search:
+            sql: |-
+              select neighborhood, facet_cities.name, state
+              from facetable
+                join facet_cities on facetable.city_id = facet_cities.id
+              where neighborhood like '%' || :text || '%'
+              order by neighborhood
+            title: Search neighborhoods
+
+Here's the equivalent using JSON (as ``metadata.json``):
 
 .. code-block:: json
 
     {
         "databases": {
-           "fixtures": {
-               "queries": {
-                   "neighborhood_search": {
-                       "sql": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;",
-                       "title": "Search neighborhoods",
-                       "description_html": "<b>Demonstrating</b> simple like search"
-                   }
-               }
-           }
+            "fixtures": {
+                "queries": {
+                    "neighborhood_search": {
+                        "sql": "select neighborhood, facet_cities.name, state\nfrom facetable\n  join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%'\norder by neighborhood",
+                        "title": "Search neighborhoods"
+                    }
+                }
+            }
         }
     }
+
+Note that we are using SQLite string concatenation here - the ``||`` operator - to add wildcard ``%`` characters to the string provided by the user.
 
 You can try this canned query out here:
 https://latest.datasette.io/fixtures/neighborhood_search?text=town
 
-Note that we are using SQLite string concatenation here - the ``||`` operator -
-to add wildcard ``%`` characters to the string provided by the user.
+In this example the ``:text`` named parameter is automatically extracted from the query using a regular expression.
+
+You can alternatively provide an explicit list of named parameters using the ``"params"`` key, like this:
+
+.. code-block:: yaml
+
+    databases:
+      fixtures:
+        queries:
+          neighborhood_search:
+            params:
+            - text
+            sql: |-
+              select neighborhood, facet_cities.name, state
+              from facetable
+                join facet_cities on facetable.city_id = facet_cities.id
+              where neighborhood like '%' || :text || '%'
+              order by neighborhood
+            title: Search neighborhoods
 
 .. _canned_queries_default_fragment:
 
@@ -180,6 +216,8 @@ Writable canned queries
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 Canned queries by default are read-only. You can use the ``"write": true`` key to indicate that a canned query can write to the database.
+
+You may wish to use this feature in conjunction with :ref:`authentication`.
 
 .. code-block:: json
 
@@ -226,7 +264,9 @@ For example:
         }
     }
 
-You may wish to use this feature in conjunction with :ref:`authentication`.
+You can use ``"params"`` to explicitly list the named parameters that should be displayed as form fields - otherwise they will be automatically detected.
+
+You can pre-populate form fields when the page first loads using a querystring, e.g. ``/mydatabase/add_name?name=Prepopulated``. The user will have to submit the form to execute the query.
 
 .. _pagination:
 

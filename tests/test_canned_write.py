@@ -27,7 +27,7 @@ def canned_write_client():
                         },
                         "update_name": {
                             "sql": "update names set name = :name where rowid = :rowid",
-                            "params": ["rowid", "name"],
+                            "params": ["rowid", "name", "extra"],
                             "write": True,
                         },
                     }
@@ -86,3 +86,8 @@ def test_insert_error(canned_write_client):
     assert [["ERROR", 3]] == canned_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
     )
+
+
+def test_custom_params(canned_write_client):
+    response = canned_write_client.get("/data/update_name?extra=foo")
+    assert '<input type="text" id="qp3" name="extra" value="foo">' in response.text

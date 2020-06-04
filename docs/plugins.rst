@@ -953,7 +953,7 @@ actor_from_request(datasette, request)
 ``request`` - object
     The current HTTP :ref:`internals_request`.
 
-This is part of Datasette's authentication and permissions system. The function should attempt to authenticate an actor (either a user or an API actor of some sort) based on information in the request.
+This is part of Datasette's :ref:`authentication and permissions system <authentication>`. The function should attempt to authenticate an actor (either a user or an API actor of some sort) based on information in the request.
 
 If it cannot authenticate an actor, it should return ``None``. Otherwise it should return a dictionary representing that actor.
 

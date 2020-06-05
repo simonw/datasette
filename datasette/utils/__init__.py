@@ -753,15 +753,24 @@ def escape_fts(query):
     )
 
 
-class RequestParameters:
+class MultiParams:
     def __init__(self, data):
-        # data is a dictionary of key => [list, of, values]
-        assert isinstance(data, dict), "data should be a dictionary of key => [list]"
-        for key in data:
-            assert isinstance(
-                data[key], list
-            ), "data should be a dictionary of key => [list]"
-        self._data = data
+        # data is a dictionary of key => [list, of, values] or a list of [["key", "value"]] pairs
+        if isinstance(data, dict):
+            for key in data:
+                assert isinstance(
+                    data[key], list
+                ), "dictionary data should be a dictionary of key => [list]"
+            self._data = data
+        elif isinstance(data, list):
+            new_data = {}
+            for item in data:
+                assert (
+                    isinstance(item, list) and len(item) == 2
+                ), "list data should be a list of [key, value] pairs"
+                key, value = item
+                new_data.setdefault(key, []).append(value)
+            self._data = new_data
 
     def __contains__(self, key):
         return key in self._data

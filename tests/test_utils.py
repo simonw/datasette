@@ -437,3 +437,12 @@ def test_call_with_supported_arguments():
 
     with pytest.raises(TypeError):
         utils.call_with_supported_arguments(foo, a=1)
+
+
+def test_multi_params_list():
+    p1 = utils.MultiParams([["foo", "bar"], ["foo", "baz"]])
+    assert "bar" == p1["foo"]
+    assert ["bar", "baz"] == p1.getlist("foo")
+    # Should raise an error if list isn't pairs
+    with pytest.raises(AssertionError):
+        utils.MultiParams([["foo", "bar"], ["foo", "baz", "bar"]])

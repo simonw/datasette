@@ -1,5 +1,5 @@
 import json
-from datasette.utils import RequestParameters
+from datasette.utils import MultiParams
 from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
@@ -68,7 +68,7 @@ class Request:
 
     @property
     def args(self):
-        return RequestParameters(parse_qs(qs=self.query_string))
+        return MultiParams(parse_qs(qs=self.query_string))
 
     async def post_vars(self):
         body = []

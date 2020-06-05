@@ -772,6 +772,9 @@ class MultiParams:
                 new_data.setdefault(key, []).append(value)
             self._data = new_data
 
+    def __repr__(self):
+        return "<MultiParams: {}>".format(self._data)
+
     def __contains__(self, key):
         return key in self._data
 

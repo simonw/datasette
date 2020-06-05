@@ -957,6 +957,27 @@ This is part of Datasette's :ref:`authentication and permissions system <authent
 
 If it cannot authenticate an actor, it should return ``None``. Otherwise it should return a dictionary representing that actor.
 
+Here's an example that authenticates the actor based on an incoming API key:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import secrets
+
+    SECRET_KEY = "this-is-a-secret"
+
+    @hookimpl
+    def actor_from_request(datasette, request):
+        authorization = request.headers.get("authorization") or ""
+        expected = "Bearer {}".format(SECRET_KEY)
+
+        if secrets.compare_digest(authorization, expected):
+            return {"id": "bot"}
+
+If you install this in your plugins directory you can test it like this::
+
+    $ curl -H 'Authorization: Bearer this-is-a-secret' http://localhost:8003/-/actor.json
+
 Instead of returning a dictionary, this function can return an awaitable function which itself returns either ``None`` or a dictionary. This is useful for authentication functions that need to make a database query - for example:
 
 .. code-block:: python

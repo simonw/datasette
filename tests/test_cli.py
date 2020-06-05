@@ -4,6 +4,7 @@ from .fixtures import (
     TestClient as _TestClient,
     EXPECTED_PLUGINS,
 )
+from datasette.plugins import DEFAULT_PLUGINS
 from datasette.cli import cli, serve
 from click.testing import CliRunner
 import io
@@ -67,16 +68,7 @@ def test_plugins_cli(app_client):
     # Should have all the EXPECTED_PLUGINS
     assert set(names).issuperset(set(p["name"] for p in EXPECTED_PLUGINS))
     # And the following too:
-    assert set(names).issuperset(
-        [
-            "datasette.sql_functions",
-            "datasette.actor_auth_cookie",
-            "datasette.facets",
-            "datasette.publish.cloudrun",
-            "datasette.default_permissions",
-            "datasette.publish.heroku",
-        ]
-    )
+    assert set(names).issuperset(DEFAULT_PLUGINS)
 
 
 def test_metadata_yaml():

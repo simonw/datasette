@@ -1,3 +1,4 @@
+from datasette.plugins import DEFAULT_PLUGINS
 from datasette.utils import detect_json1
 from .fixtures import (  # noqa
     app_client,
@@ -1261,6 +1262,11 @@ def test_threads_json(app_client):
 def test_plugins_json(app_client):
     response = app_client.get("/-/plugins.json")
     assert EXPECTED_PLUGINS == sorted(response.json, key=lambda p: p["name"])
+    # Try with ?all=1
+    response = app_client.get("/-/plugins.json?all=1")
+    names = {p["name"] for p in response.json}
+    assert names.issuperset(p["name"] for p in EXPECTED_PLUGINS)
+    assert names.issuperset(DEFAULT_PLUGINS)
 
 
 def test_versions_json(app_client):

@@ -8,7 +8,7 @@
 
 <p>Set a message:</p>
 
-<form action="/-/messages" method="POST">
+<form action="/-/messages" method="post">
     <div>
         <input type="text" name="message" style="width: 40%">
         <div class="select-wrapper">
@@ -19,6 +19,7 @@
                 <option>all</option>
             </select>
         </div>
+        <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
         <input type="submit" value="Add message">
     </div>
 </form>

@@ -1,4 +1,5 @@
 import asyncio
+import asgi_csrf
 import collections
 import datetime
 import hashlib
@@ -884,7 +885,14 @@ class Datasette:
                     await database.table_counts(limit=60 * 60 * 1000)
 
         asgi = AsgiLifespan(
-            AsgiTracer(DatasetteRouter(self, routes)), on_startup=setup_db
+            AsgiTracer(
+                asgi_csrf.asgi_csrf(
+                    DatasetteRouter(self, routes),
+                    signing_secret=self._secret,
+                    cookie_name="ds_csrftoken",
+                )
+            ),
+            on_startup=setup_db,
         )
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)

@@ -439,15 +439,18 @@ def test_call_with_supported_arguments():
         utils.call_with_supported_arguments(foo, a=1)
 
 
-@pytest.mark.parametrize("data,should_raise", [
-    ([["foo", "bar"], ["foo", "baz"]], False),
-    ([("foo", "bar"), ("foo", "baz")], False),
-    ((["foo", "bar"], ["foo", "baz"]), False),
-    ([["foo", "bar"], ["foo", "baz", "bax"]], True),
-    ({"foo": ["bar", "baz"]}, False),
-    ({"foo": ("bar", "baz")}, False),
-    ({"foo": "bar"}, True),
-])
+@pytest.mark.parametrize(
+    "data,should_raise",
+    [
+        ([["foo", "bar"], ["foo", "baz"]], False),
+        ([("foo", "bar"), ("foo", "baz")], False),
+        ((["foo", "bar"], ["foo", "baz"]), False),
+        ([["foo", "bar"], ["foo", "baz", "bax"]], True),
+        ({"foo": ["bar", "baz"]}, False),
+        ({"foo": ("bar", "baz")}, False),
+        ({"foo": "bar"}, True),
+    ]
+)
 def test_multi_params(data, should_raise):
     if should_raise:
         with pytest.raises(AssertionError):

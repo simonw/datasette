@@ -162,7 +162,6 @@ async def test_execute_write_fn_block_false(db):
         with conn:
             conn.execute("delete from roadside_attractions where pk = 1;")
             row = conn.execute("select count(*) from roadside_attractions").fetchone()
-            print("row = ", row)
         return row[0]
 
     task_id = await db.execute_write_fn(write_fn)

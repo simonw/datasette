@@ -8,7 +8,7 @@ from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette.utils import (
     CustomRow,
-    RequestParameters,
+    MultiParams,
     append_querystring,
     compound_keys_after_sql,
     escape_sqlite,
@@ -286,7 +286,7 @@ class TableView(RowTableShared):
             order_by = ""
 
         # Ensure we don't drop anything with an empty value e.g. ?name__exact=
-        args = RequestParameters(
+        args = MultiParams(
             urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
         )
 

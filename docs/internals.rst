@@ -39,7 +39,7 @@ The request object is passed to various plugin hooks. It represents an incoming 
 ``.query_string`` - string
     The querystring component of the request, without the ``?`` - e.g. ``name__contains=sam&age__gt=10``.
 
-``.args`` - RequestParameters
+``.args`` - MultiParams
     An object representing the parsed querystring parameters, see below.
 
 The object also has one awaitable method:
@@ -47,10 +47,12 @@ The object also has one awaitable method:
 ``await request.post_vars()`` - dictionary
     Returns a dictionary of form variables that were submitted in the request body via ``POST``.
 
-The RequestParameters class
----------------------------
+.. _internals_multiparams:
 
-``request.args`` is a ``RequestParameters`` object - a dictionary-like object which provides access to querystring parameters that may have multiple values.
+The MultiParams class
+---------------------
+
+``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to querystring parameters that may have multiple values.
 
 Consider the querystring ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
 

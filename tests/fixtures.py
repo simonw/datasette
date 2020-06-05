@@ -22,6 +22,62 @@ TEMP_PLUGIN_SECRET_FILE = os.path.join(tempfile.gettempdir(), "plugin-secret")
 
 PLUGINS_DIR = str(pathlib.Path(__file__).parent / "plugins")
 
+EXPECTED_PLUGINS = [
+    {
+        "name": "messages_output_renderer.py",
+        "static": False,
+        "templates": False,
+        "version": None,
+        "hooks": ["register_output_renderer"],
+    },
+    {
+        "name": "my_plugin.py",
+        "static": False,
+        "templates": False,
+        "version": None,
+        "hooks": [
+            "actor_from_request",
+            "extra_body_script",
+            "extra_css_urls",
+            "extra_js_urls",
+            "extra_template_vars",
+            "permission_allowed",
+            "prepare_connection",
+            "prepare_jinja2_environment",
+            "register_facet_classes",
+            "render_cell",
+        ],
+    },
+    {
+        "name": "my_plugin_2.py",
+        "static": False,
+        "templates": False,
+        "version": None,
+        "hooks": [
+            "actor_from_request",
+            "asgi_wrapper",
+            "extra_js_urls",
+            "extra_template_vars",
+            "permission_allowed",
+            "render_cell",
+        ],
+    },
+    {
+        "name": "register_output_renderer.py",
+        "static": False,
+        "templates": False,
+        "version": None,
+        "hooks": ["register_output_renderer"],
+    },
+    {
+        "name": "view_name.py",
+        "static": False,
+        "templates": False,
+        "version": None,
+        "hooks": ["extra_template_vars"],
+    },
+]
+
 
 class TestResponse:
     def __init__(self, status, headers, body):

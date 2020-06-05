@@ -1,4 +1,9 @@
-from .fixtures import app_client, make_app_client, TestClient as _TestClient
+from .fixtures import (
+    app_client,
+    make_app_client,
+    TestClient as _TestClient,
+    EXPECTED_PLUGINS,
+)
 from datasette.cli import cli, serve
 from click.testing import CliRunner
 import io
@@ -48,6 +53,30 @@ def test_spatialite_error_if_attempt_to_open_spatialite():
     )
     assert result.exit_code != 0
     assert "trying to load a SpatiaLite database" in result.output
+
+
+def test_plugins_cli(app_client):
+    runner = CliRunner()
+    result1 = runner.invoke(cli, ["plugins"])
+    assert sorted(EXPECTED_PLUGINS, key=lambda p: p["name"]) == sorted(
+        json.loads(result1.output), key=lambda p: p["name"]
+    )
+    # Try with --all
+    result2 = runner.invoke(cli, ["plugins", "--all"])
+    names = [p["name"] for p in json.loads(result2.output)]
+    # Should have all the EXPECTED_PLUGINS
+    assert set(names).issuperset(set(p["name"] for p in EXPECTED_PLUGINS))
+    # And the following too:
+    assert set(names).issuperset(
+        [
+            "datasette.sql_functions",
+            "datasette.actor_auth_cookie",
+            "datasette.facets",
+            "datasette.publish.cloudrun",
+            "datasette.default_permissions",
+            "datasette.publish.heroku",
+        ]
+    )
 
 
 def test_metadata_yaml():

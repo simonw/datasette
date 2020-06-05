@@ -626,9 +626,9 @@ class Datasette:
             },
         }
 
-    def _plugins(self, request):
+    def _plugins(self, request=None, all=False):
         ps = list(get_plugins())
-        if not request.args.get("all"):
+        if all is False or (request is not None and request.args.get("all")):
             ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
         return [
             {

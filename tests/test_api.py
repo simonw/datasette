@@ -15,6 +15,7 @@ from .fixtures import (  # noqa
     generate_compound_rows,
     generate_sortable_rows,
     make_app_client,
+    EXPECTED_PLUGINS,
     METADATA,
 )
 import json
@@ -1259,62 +1260,7 @@ def test_threads_json(app_client):
 
 def test_plugins_json(app_client):
     response = app_client.get("/-/plugins.json")
-    expected = [
-        {
-            "name": "messages_output_renderer.py",
-            "static": False,
-            "templates": False,
-            "version": None,
-            "hooks": ["register_output_renderer"],
-        },
-        {
-            "name": "my_plugin.py",
-            "static": False,
-            "templates": False,
-            "version": None,
-            "hooks": [
-                "actor_from_request",
-                "extra_body_script",
-                "extra_css_urls",
-                "extra_js_urls",
-                "extra_template_vars",
-                "permission_allowed",
-                "prepare_connection",
-                "prepare_jinja2_environment",
-                "register_facet_classes",
-                "render_cell",
-            ],
-        },
-        {
-            "name": "my_plugin_2.py",
-            "static": False,
-            "templates": False,
-            "version": None,
-            "hooks": [
-                "actor_from_request",
-                "asgi_wrapper",
-                "extra_js_urls",
-                "extra_template_vars",
-                "permission_allowed",
-                "render_cell",
-            ],
-        },
-        {
-            "name": "register_output_renderer.py",
-            "static": False,
-            "templates": False,
-            "version": None,
-            "hooks": ["register_output_renderer"],
-        },
-        {
-            "name": "view_name.py",
-            "static": False,
-            "templates": False,
-            "version": None,
-            "hooks": ["extra_template_vars"],
-        },
-    ]
-    assert expected == sorted(response.json, key=lambda p: p["name"])
+    assert EXPECTED_PLUGINS == sorted(response.json, key=lambda p: p["name"])
 
 
 def test_versions_json(app_client):

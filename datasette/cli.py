@@ -126,7 +126,7 @@ pm.hook.publish_subcommand(publish=publish)
 def plugins(all, plugins_dir):
     "List currently available plugins"
     app = Datasette([], plugins_dir=plugins_dir)
-    click.echo(json.dumps(app.plugins(all), indent=4))
+    click.echo(json.dumps(app._plugins(all=all), indent=4))
 
 
 @cli.command()

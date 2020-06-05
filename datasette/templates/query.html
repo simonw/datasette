@@ -52,6 +52,7 @@
     {% endif %}
     <p>
         <button id="sql-format" type="button" hidden>Format SQL</button>
+        {% if canned_query %}<input type="hidden" name="csrftoken" value="{{ csrftoken }}">{% endif %}
         <input type="submit" value="Run SQL">
     </p>
 </form>

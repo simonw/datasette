@@ -40,7 +40,7 @@ def canned_write_client():
 
 def test_insert(canned_write_client):
     response = canned_write_client.post(
-        "/data/add_name", {"name": "Hello"}, allow_redirects=False
+        "/data/add_name", {"name": "Hello"}, allow_redirects=False, csrftoken_from=True,
     )
     assert 302 == response.status
     assert "/data/add_name?success" == response.headers["Location"]
@@ -52,7 +52,7 @@ def test_insert(canned_write_client):
 
 def test_custom_success_message(canned_write_client):
     response = canned_write_client.post(
-        "/data/delete_name", {"rowid": 1}, allow_redirects=False
+        "/data/delete_name", {"rowid": 1}, allow_redirects=False, csrftoken_from=True
     )
     assert 302 == response.status
     messages = canned_write_client.ds.unsign(
@@ -62,11 +62,12 @@ def test_custom_success_message(canned_write_client):
 
 
 def test_insert_error(canned_write_client):
-    canned_write_client.post("/data/add_name", {"name": "Hello"})
+    canned_write_client.post("/data/add_name", {"name": "Hello"}, csrftoken_from=True)
     response = canned_write_client.post(
         "/data/add_name_specify_id",
         {"rowid": 1, "name": "Should fail"},
         allow_redirects=False,
+        csrftoken_from=True,
     )
     assert 302 == response.status
     assert "/data/add_name_specify_id?error" == response.headers["Location"]
@@ -82,6 +83,7 @@ def test_insert_error(canned_write_client):
         "/data/add_name_specify_id",
         {"rowid": 1, "name": "Should fail"},
         allow_redirects=False,
+        csrftoken_from=True,
     )
     assert [["ERROR", 3]] == canned_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"

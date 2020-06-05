@@ -18,6 +18,8 @@ Things you can do with plugins include:
 * Make new custom SQL functions available for use within Datasette, for example
   `datasette-haversine <https://github.com/simonw/datasette-haversine>`__ and
   `datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`__.
+* Define custom output formats with custom extensions, for example `datasette-atom <https://github.com/simonw/datasette-atom>`__ and
+  `datasette-ics <https://github.com/simonw/datasette-ics>`__.
 * Add template functions that can be called within your Jinja custom templates,
   for example `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown#markdown-in-templates>`__.
 * Customize how database values are rendered in the Datasette interface, for example

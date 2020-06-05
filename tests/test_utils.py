@@ -439,10 +439,20 @@ def test_call_with_supported_arguments():
         utils.call_with_supported_arguments(foo, a=1)
 
 
-def test_multi_params_list():
-    p1 = utils.MultiParams([["foo", "bar"], ["foo", "baz"]])
+@pytest.mark.parametrize("data,should_raise", [
+    ([["foo", "bar"], ["foo", "baz"]], False),
+    ([("foo", "bar"), ("foo", "baz")], False),
+    ((["foo", "bar"], ["foo", "baz"]), False),
+    ([["foo", "bar"], ["foo", "baz", "bax"]], True),
+    ({"foo": ["bar", "baz"]}, False),
+    ({"foo": ("bar", "baz")}, False),
+    ({"foo": "bar"}, True),
+])
+def test_multi_params(data, should_raise):
+    if should_raise:
+        with pytest.raises(AssertionError):
+            utils.MultiParams(data)
+        return
+    p1 = utils.MultiParams(data)
     assert "bar" == p1["foo"]
-    assert ["bar", "baz"] == p1.getlist("foo")
-    # Should raise an error if list isn't pairs
-    with pytest.raises(AssertionError):
-        utils.MultiParams([["foo", "bar"], ["foo", "baz", "bar"]])
+    assert ["bar", "baz"] == list(p1.getlist("foo"))

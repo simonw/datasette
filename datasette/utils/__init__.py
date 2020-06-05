@@ -759,14 +759,14 @@ class MultiParams:
         if isinstance(data, dict):
             for key in data:
                 assert isinstance(
-                    data[key], list
+                    data[key], (list, tuple)
                 ), "dictionary data should be a dictionary of key => [list]"
             self._data = data
-        elif isinstance(data, list):
+        elif isinstance(data, list) or isinstance(data, tuple):
             new_data = {}
             for item in data:
                 assert (
-                    isinstance(item, list) and len(item) == 2
+                    isinstance(item, (list, tuple)) and len(item) == 2
                 ), "list data should be a list of [key, value] pairs"
                 key, value = item
                 new_data.setdefault(key, []).append(value)

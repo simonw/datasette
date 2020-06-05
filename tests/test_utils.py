@@ -449,7 +449,7 @@ def test_call_with_supported_arguments():
         ({"foo": ["bar", "baz"]}, False),
         ({"foo": ("bar", "baz")}, False),
         ({"foo": "bar"}, True),
-    ],
+    ]
 )
 def test_multi_params(data, should_raise):
     if should_raise:

@@ -47,7 +47,6 @@ The URL on the first line includes a one-use token which can be used to sign in 
         "id": "root"
     }
 
-
 .. _authentication_permissions_canned_queries:
 
 Permissions for canned queries

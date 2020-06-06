@@ -217,7 +217,7 @@ Writable canned queries
 
 Canned queries by default are read-only. You can use the ``"write": true`` key to indicate that a canned query can write to the database.
 
-You may wish to use this feature in conjunction with :ref:`authentication`.
+See :ref:`authentication_permissions_canned_queries` for details on how to add permission checks to canned queries, using the ``"allow"`` key.
 
 .. code-block:: json
 

@@ -53,7 +53,7 @@ The URL on the first line includes a one-use token which can be used to sign in 
 Permissions for canned queries
 ==============================
 
-Datasette's :ref:`canned_queries` default to allowing any user to execute them.
+Datasette's :ref:`canned queries <canned_queries>` default to allowing any user to execute them.
 
 You can limit who is allowed to execute a specific query with the ``"allow"`` key in the :ref:`metadata` configuration for that query.
 

@@ -100,6 +100,12 @@ def test_custom_params(canned_write_client):
     assert '<input type="text" id="qp3" name="extra" value="foo">' in response.text
 
 
+def test_vary_header(canned_write_client):
+    # These forms embed a csrftoken so they should be served with Vary: Cookie
+    assert "vary" not in canned_write_client.get("/data").headers
+    assert "Cookie" == canned_write_client.get("/data/update_name").headers["vary"]
+
+
 def test_canned_query_permissions_on_database_page(canned_write_client):
     # Without auth only shows three queries
     query_names = [

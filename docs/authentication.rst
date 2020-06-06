@@ -4,14 +4,118 @@
  Authentication and permissions
 ================================
 
-Datasette's authentication system is currently under construction. Follow `issue 699 <https://github.com/simonw/datasette/issues/699>`__ to track the development of this feature.
+Datasette does not require authentication by default. Any visitor to a Datasette instance can explore the full data and execute SQL queries.
+
+Datasette's plugin system can be used to add many different styles of authentication, such as user accounts, single sign-on or API keys.
+
+.. _authentication_actor:
+
+Actors
+======
+
+Through plugins, Datasette can support both authenticated users (with cookies) and authenticated API agents (via authentication tokens). The word "actor" is used to cover both of these cases.
+
+Every request to Datasette has an associated actor value. This can be ``None`` for unauthenticated requests, or a JSON compatible Python dictionary for authenticated users or API agents.
+
+The only required field in an actor is ``"id"``, which must be a string. Plugins may decide to add any other fields to the actor dictionary.
+
+Plugins can use the :ref:`plugin_actor_from_request` hook to implement custom logic for authenticating an actor based on the incoming HTTP request.
+
+.. _authentication_root:
+
+Using the "root" actor
+======================
+
+Datasette currently leaves almost all forms of authentication to plugins - `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ for example.
+
+The one exception is the "root" account, which you can sign into while using Datasette on your local machine. This provides access to a small number of debugging features.
+
+To sign in as root, start Datasette using the ``--root`` command-line option, like this::
+
+    $ datasette --root
+    http://127.0.0.1:8001/-/auth-token?token=786fc524e0199d70dc9a581d851f466244e114ca92f33aa3b42a139e9388daa7
+    INFO:     Started server process [25801]
+    INFO:     Waiting for application startup.
+    INFO:     Application startup complete.
+    INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+
+The URL on the first line includes a one-use token which can be used to sign in as the "root" actor in your browser. Click on that link and then visit ``http://127.0.0.1:8001/-/actor`` to confirm that you are authenticated as an actor that looks like this:
+
+.. code-block:: json
+
+    {
+        "id": "root"
+    }
+
+
+.. _authentication_permissions_canned_queries:
+
+Setting permissions for canned queries
+======================================
+
+Datasette's :ref:`canned_queries` default to allowing any user to execute them.
+
+You can limit who is allowed to execute a specific query with the ``"allow"`` key in the :ref:`metadata` configuration for that query.
+
+Here's how to restrict access to a write query to just the "root" user:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "mydatabase": {
+                "queries": {
+                    "add_name": {
+                        "sql": "INSERT INTO names (name) VALUES (:name)",
+                        "write": true,
+                        "allow": {
+                            "id": ["root"]
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+To allow any of the actors with an ``id`` matching a specific list of values, use this:
+
+.. code-block:: json
+
+    {
+        "allow": {
+            "id": ["simon", "cleopaws"]
+        }
+    }
+
+This works for other keys as well. Imagine an actor that looks like this:
+
+.. code-block:: json
+
+    {
+        "id": "simon",
+        "roles": ["staff", "developer"]
+    }
+
+You can provide access to any user that has "developer" as one of their roles like so:
+
+.. code-block:: json
+
+    {
+        "allow": {
+            "roles": ["developer"]
+        }
+    }
+
+Note that "roles" is not a concept that is baked into Datasette - it's more of a convention that plugins can choose to implement and act on.
+
+These keys act as an "or" mechanism. A actor will be able to execute the query if any of their JSON properties match any of the values in the corresponding lists in the ``allow`` block.
 
 .. _PermissionsDebugView:
 
 Permissions Debug
 =================
 
-The debug tool at ``/-/permissions`` is only available to the root user.
+The debug tool at ``/-/permissions`` is only available to the :ref:`authenticated root user <authentication_root>` (or any actor granted the ``permissions-debug`` action according to a plugin).
 
 It shows the thirty most recent permission checks that have been carried out by the Datasette instance.
 

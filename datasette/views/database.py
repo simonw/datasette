@@ -2,13 +2,14 @@ import os
 import jinja2
 
 from datasette.utils import (
+    actor_matches_allow,
     to_css_class,
     validate_sql_select,
     is_url,
     path_with_added_args,
     path_with_removed_args,
 )
-from datasette.utils.asgi import AsgiFileDownload
+from datasette.utils.asgi import AsgiFileDownload, Response
 from datasette.plugins import pm
 
 from .base import DatasetteError, DataView
@@ -53,6 +54,16 @@ class DatabaseView(DataView):
             )
 
         tables.sort(key=lambda t: (t["hidden"], t["name"]))
+        canned_queries = [
+            dict(
+                query,
+                requires_auth=not actor_matches_allow(None, query.get("allow", None)),
+            )
+            for query in self.ds.get_canned_queries(database)
+            if actor_matches_allow(
+                request.scope.get("actor", None), query.get("allow", None)
+            )
+        ]
         return (
             {
                 "database": database,
@@ -60,7 +71,7 @@ class DatabaseView(DataView):
                 "tables": tables,
                 "hidden_count": len([t for t in tables if t["hidden"]]),
                 "views": views,
-                "queries": self.ds.get_canned_queries(database),
+                "queries": canned_queries,
             },
             {
                 "show_hidden": request.args.get("_show_hidden"),
@@ -114,6 +125,14 @@ class QueryView(DataView):
             params.pop("sql")
         if "_shape" in params:
             params.pop("_shape")
+
+        # Respect canned query permissions
+        if canned_query:
+            if not actor_matches_allow(
+                request.scope.get("actor", None), metadata.get("allow")
+            ):
+                return Response("Permission denied", status=403)
+
         # Extract any :named parameters
         named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {

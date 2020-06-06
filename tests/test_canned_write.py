@@ -24,6 +24,7 @@ def canned_write_client():
                             "sql": "delete from names where rowid = :rowid",
                             "write": True,
                             "on_success_message": "Name deleted",
+                            "allow": {"id": "root"},
                         },
                         "update_name": {
                             "sql": "update names set name = :name where rowid = :rowid",
@@ -52,7 +53,11 @@ def test_insert(canned_write_client):
 
 def test_custom_success_message(canned_write_client):
     response = canned_write_client.post(
-        "/data/delete_name", {"rowid": 1}, allow_redirects=False, csrftoken_from=True
+        "/data/delete_name",
+        {"rowid": 1},
+        cookies={"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")},
+        allow_redirects=False,
+        csrftoken_from=True,
     )
     assert 302 == response.status
     messages = canned_write_client.ds.unsign(
@@ -93,3 +98,41 @@ def test_insert_error(canned_write_client):
 def test_custom_params(canned_write_client):
     response = canned_write_client.get("/data/update_name?extra=foo")
     assert '<input type="text" id="qp3" name="extra" value="foo">' in response.text
+
+
+def test_vary_header(canned_write_client):
+    # These forms embed a csrftoken so they should be served with Vary: Cookie
+    assert "vary" not in canned_write_client.get("/data").headers
+    assert "Cookie" == canned_write_client.get("/data/update_name").headers["vary"]
+
+
+def test_canned_query_permissions_on_database_page(canned_write_client):
+    # Without auth only shows three queries
+    query_names = [
+        q["name"] for q in canned_write_client.get("/data.json").json["queries"]
+    ]
+    assert ["add_name", "add_name_specify_id", "update_name"] == query_names
+
+    # With auth shows four
+    response = canned_write_client.get(
+        "/data.json",
+        cookies={"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")},
+    )
+    assert 200 == response.status
+    assert [
+        {"name": "add_name", "requires_auth": False},
+        {"name": "add_name_specify_id", "requires_auth": False},
+        {"name": "delete_name", "requires_auth": True},
+        {"name": "update_name", "requires_auth": False},
+    ] == [
+        {"name": q["name"], "requires_auth": q["requires_auth"]}
+        for q in response.json["queries"]
+    ]
+
+
+def test_canned_query_permissions(canned_write_client):
+    assert 403 == canned_write_client.get("/data/delete_name").status
+    assert 200 == canned_write_client.get("/data/update_name").status
+    cookies = {"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")}
+    assert 200 == canned_write_client.get("/data/delete_name", cookies=cookies).status
+    assert 200 == canned_write_client.get("/data/update_name", cookies=cookies).status

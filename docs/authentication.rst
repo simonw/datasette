@@ -108,6 +108,16 @@ You can provide access to any user that has "developer" as one of their roles li
 
 Note that "roles" is not a concept that is baked into Datasette - it's more of a convention that plugins can choose to implement and act on.
 
+If you want to provide access to any actor with a value for a specific key, use ``"*"``. For example, to spceify that a query can be accessed by any logged-in user use this:
+
+.. code-block:: json
+
+    {
+        "allow": {
+            "id": "*"
+        }
+    }
+
 These keys act as an "or" mechanism. A actor will be able to execute the query if any of their JSON properties match any of the values in the corresponding lists in the ``allow`` block.
 
 .. _PermissionsDebugView:

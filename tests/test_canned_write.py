@@ -128,3 +128,11 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
         {"name": q["name"], "requires_auth": q["requires_auth"]}
         for q in response.json["queries"]
     ]
+
+
+def test_canned_query_permissions(canned_write_client):
+    assert 403 == canned_write_client.get("/data/delete_name").status
+    assert 200 == canned_write_client.get("/data/update_name").status
+    cookies = {"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")}
+    assert 200 == canned_write_client.get("/data/delete_name", cookies=cookies).status
+    assert 200 == canned_write_client.get("/data/update_name", cookies=cookies).status

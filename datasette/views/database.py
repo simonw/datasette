@@ -9,7 +9,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
 )
-from datasette.utils.asgi import AsgiFileDownload
+from datasette.utils.asgi import AsgiFileDownload, Response
 from datasette.plugins import pm
 
 from .base import DatasetteError, DataView
@@ -125,6 +125,14 @@ class QueryView(DataView):
             params.pop("sql")
         if "_shape" in params:
             params.pop("_shape")
+
+        # Respect canned query permissions
+        if canned_query:
+            if not actor_matches_allow(
+                request.scope.get("actor", None), metadata.get("allow")
+            ):
+                return Response("Permission denied", status=403)
+
         # Extract any :named parameters
         named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {

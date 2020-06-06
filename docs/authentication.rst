@@ -50,8 +50,8 @@ The URL on the first line includes a one-use token which can be used to sign in 
 
 .. _authentication_permissions_canned_queries:
 
-Setting permissions for canned queries
-======================================
+Permissions for canned queries
+==============================
 
 Datasette's :ref:`canned_queries` default to allowing any user to execute them.
 
@@ -119,6 +119,20 @@ If you want to provide access to any actor with a value for a specific key, use 
     }
 
 These keys act as an "or" mechanism. A actor will be able to execute the query if any of their JSON properties match any of the values in the corresponding lists in the ``allow`` block.
+
+.. _authentication_actor_matches_allow:
+
+actor_matches_allow()
+=====================
+
+Plugins that wish to implement the same permissions scheme as canned queries can take advantage of the ``datasette.utils.actor_matches_allow(actor, allow)`` function:
+
+.. code-block:: python
+
+    from datasette.utils import actor_matches_allow
+
+    actor_matches_allow({"id": "root"}, {"id": "*"})
+    # returns True
 
 .. _PermissionsDebugView:
 

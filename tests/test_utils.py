@@ -459,3 +459,30 @@ def test_multi_params(data, should_raise):
     p1 = utils.MultiParams(data)
     assert "bar" == p1["foo"]
     assert ["bar", "baz"] == list(p1.getlist("foo"))
+
+
+@pytest.mark.parametrize(
+    "actor,allow,expected",
+    [
+        ({"id": "root"}, None, True),
+        ({"id": "root"}, {}, False),
+        # Special "*" value for any key:
+        ({"id": "root"}, {"id": "*"}, True),
+        ({}, {"id": "*"}, False),
+        ({"name": "root"}, {"id": "*"}, False),
+        # Supports single strings or list of values:
+        ({"id": "root"}, {"id": "bob"}, False),
+        ({"id": "root"}, {"id": ["bob"]}, False),
+        ({"id": "root"}, {"id": "root"}, True),
+        ({"id": "root"}, {"id": ["root"]}, True),
+        # Any matching role will work:
+        ({"id": "garry", "roles": ["staff", "dev"]}, {"roles": ["staff"]}, True),
+        ({"id": "garry", "roles": ["staff", "dev"]}, {"roles": ["dev"]}, True),
+        ({"id": "garry", "roles": ["staff", "dev"]}, {"roles": ["otter"]}, False),
+        ({"id": "garry", "roles": ["staff", "dev"]}, {"roles": ["dev", "otter"]}, True),
+        ({"id": "garry", "roles": []}, {"roles": ["staff"]}, False),
+        ({"id": "garry"}, {"roles": ["staff"]}, False),
+    ],
+)
+def test_actor_matches_allow(actor, allow, expected):
+    assert expected == utils.actor_matches_allow(actor, allow)

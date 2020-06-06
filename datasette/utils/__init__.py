@@ -854,3 +854,22 @@ def call_with_supported_arguments(fn, **kwargs):
             )
         call_with.append(kwargs[parameter])
     return fn(*call_with)
+
+
+def actor_matches_allow(actor, allow):
+    if allow is None:
+        return True
+    for key, values in allow.items():
+        if values == "*" and key in actor:
+            return True
+        if isinstance(values, str):
+            values = [values]
+        actor_values = actor.get(key)
+        if actor_values is None:
+            return False
+        if isinstance(actor_values, str):
+            actor_values = [actor_values]
+        actor_values = set(actor_values)
+        if actor_values.intersection(values):
+            return True
+    return False

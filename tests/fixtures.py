@@ -131,7 +131,7 @@ class TestClient:
         if csrftoken_from is not None:
             if csrftoken_from is True:
                 csrftoken_from = path
-            token_response = await self._request(csrftoken_from)
+            token_response = await self._request(csrftoken_from, cookies=cookies)
             csrftoken = token_response.cookies["ds_csrftoken"]
             cookies["ds_csrftoken"] = csrftoken
             post_data["csrftoken"] = csrftoken

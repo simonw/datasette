@@ -2,6 +2,7 @@ import os
 import jinja2
 
 from datasette.utils import (
+    actor_matches_allow,
     to_css_class,
     validate_sql_select,
     is_url,
@@ -53,6 +54,16 @@ class DatabaseView(DataView):
             )
 
         tables.sort(key=lambda t: (t["hidden"], t["name"]))
+        canned_queries = [
+            dict(
+                query,
+                requires_auth=not actor_matches_allow(None, query.get("allow", None)),
+            )
+            for query in self.ds.get_canned_queries(database)
+            if actor_matches_allow(
+                request.scope.get("actor", None), query.get("allow", None)
+            )
+        ]
         return (
             {
                 "database": database,
@@ -60,7 +71,7 @@ class DatabaseView(DataView):
                 "tables": tables,
                 "hidden_count": len([t for t in tables if t["hidden"]]),
                 "views": views,
-                "queries": self.ds.get_canned_queries(database),
+                "queries": canned_queries,
             },
             {
                 "show_hidden": request.args.get("_show_hidden"),

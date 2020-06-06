@@ -466,6 +466,9 @@ def test_multi_params(data, should_raise):
     [
         ({"id": "root"}, None, True),
         ({"id": "root"}, {}, False),
+        (None, None, True),
+        (None, {}, False),
+        (None, {"id": "root"}, False),
         # Special "*" value for any key:
         ({"id": "root"}, {"id": "*"}, True),
         ({}, {"id": "*"}, False),

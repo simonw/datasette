@@ -857,6 +857,7 @@ def call_with_supported_arguments(fn, **kwargs):
 
 
 def actor_matches_allow(actor, allow):
+    actor = actor or {}
     if allow is None:
         return True
     for key, values in allow.items():

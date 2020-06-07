@@ -166,6 +166,12 @@ def plugins(all, plugins_dir):
 @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option(
+    "--secret",
+    help="Secret used for signing secure values, such as signed cookies",
+    envvar="DATASETTE_PUBLISH_SECRET",
+    default=lambda: os.urandom(32).hex(),
+)
+@click.option(
     "-p", "--port", default=8001, help="Port to run the server on, defaults to 8001",
 )
 @click.option("--title", help="Title for metadata")
@@ -187,6 +193,7 @@ def package(
     install,
     spatialite,
     version_note,
+    secret,
     port,
     **extra_metadata
 ):
@@ -203,16 +210,17 @@ def package(
     with temporary_docker_directory(
         files,
         "datasette",
-        metadata,
-        extra_options,
-        branch,
-        template_dir,
-        plugins_dir,
-        static,
-        install,
-        spatialite,
-        version_note,
-        extra_metadata,
+        metadata=metadata,
+        extra_options=extra_options,
+        branch=branch,
+        template_dir=template_dir,
+        plugins_dir=plugins_dir,
+        static=static,
+        install=install,
+        spatialite=spatialite,
+        version_note=version_note,
+        secret=secret,
+        extra_metadata=extra_metadata,
         port=port,
     ):
         args = ["docker", "build"]

@@ -536,6 +536,7 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
             install,
             plugin_secret,
             version_note,
+            secret,
             title,
             license,
             license_url,

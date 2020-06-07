@@ -35,6 +35,7 @@ def publish_subcommand(publish):
         install,
         plugin_secret,
         version_note,
+        secret,
         title,
         license,
         license_url,
@@ -100,6 +101,7 @@ def publish_subcommand(publish):
             static,
             install,
             version_note,
+            secret,
             extra_metadata,
         ):
             app_name = None
@@ -144,6 +146,7 @@ def temporary_heroku_directory(
     static,
     install,
     version_note,
+    secret,
     extra_metadata=None,
 ):
     extra_metadata = extra_metadata or {}

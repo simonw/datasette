@@ -232,7 +232,7 @@ Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https
 ``resource_identifier`` - string
     The name of the canned query
 
-.. _permissions_execute_query:
+.. _permissions_execute_sql:
 
 execute-sql
 -----------

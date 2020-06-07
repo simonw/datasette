@@ -116,6 +116,8 @@ This method lets you read plugin configuration values that were set in ``metadat
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 
+.. _datasette_permission_allowed:
+
 await .permission_allowed(actor, action, resource_type=None, resource_identifier=None, default=False)
 -----------------------------------------------------------------------------------------------------
 

@@ -47,6 +47,13 @@ The URL on the first line includes a one-use token which can be used to sign in 
         "id": "root"
     }
 
+.. _authentication_permissions:
+
+Permissions
+===========
+
+Datasette plugins can check if an actor has permission to perform an action using the :ref:`datasette.permission_allowed(...)<datasette_permission_allowed>` method. This method is also used by Datasette core code itself, which allows plugins to help make decisions on which actions are allowed by implementing the :ref:`permission_allowed(...) <plugin_permission_allowed>` plugin hook.
+
 .. _authentication_permissions_canned_queries:
 
 Permissions for canned queries

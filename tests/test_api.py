@@ -605,7 +605,7 @@ def test_invalid_custom_sql(app_client):
 
 
 def test_allow_sql_off():
-    for client in make_app_client(config={"allow_sql": False}):
+    with make_app_client(config={"allow_sql": False}) as client:
         response = client.get("/fixtures.json?sql=select+sleep(0.01)")
         assert 400 == response.status
         assert "sql= is not allowed" == response.json["error"]
@@ -1107,7 +1107,7 @@ def test_table_filter_extra_where_invalid(app_client):
 
 
 def test_table_filter_extra_where_disabled_if_no_sql_allowed():
-    for client in make_app_client(config={"allow_sql": False}):
+    with make_app_client(config={"allow_sql": False}) as client:
         response = client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
         assert 400 == response.status
         assert "_where= is not allowed" == response.json["error"]
@@ -1528,14 +1528,14 @@ def test_suggested_facets(app_client):
 
 
 def test_allow_facet_off():
-    for client in make_app_client(config={"allow_facet": False}):
+    with make_app_client(config={"allow_facet": False}) as client:
         assert 400 == client.get("/fixtures/facetable.json?_facet=planet_int").status
         # Should not suggest any facets either:
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
 
 def test_suggest_facets_off():
-    for client in make_app_client(config={"suggest_facets": False}):
+    with make_app_client(config={"suggest_facets": False}) as client:
         # Now suggested_facets should be []
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
@@ -1667,7 +1667,7 @@ def test_config_cache_size(app_client_larger_cache_size):
 
 
 def test_config_force_https_urls():
-    for client in make_app_client(config={"force_https_urls": True}):
+    with make_app_client(config={"force_https_urls": True}) as client:
         response = client.get("/fixtures/facetable.json?_size=3&_facet=state")
         assert response.json["next_url"].startswith("https://")
         assert response.json["facet_results"]["state"]["results"][0][

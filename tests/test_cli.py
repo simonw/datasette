@@ -41,7 +41,7 @@ def test_inspect_cli_writes_to_file(app_client):
 
 def test_serve_with_inspect_file_prepopulates_table_counts_cache():
     inspect_data = {"fixtures": {"tables": {"hithere": {"count": 44}}}}
-    for client in make_app_client(inspect_data=inspect_data, is_immutable=True):
+    with make_app_client(inspect_data=inspect_data, is_immutable=True) as client:
         assert inspect_data == client.ds.inspect_data
         db = client.ds.databases["fixtures"]
         assert {"hithere": 44} == db.cached_table_counts

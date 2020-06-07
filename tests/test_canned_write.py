@@ -4,7 +4,7 @@ from .fixtures import make_app_client
 
 @pytest.fixture
 def canned_write_client():
-    for client in make_app_client(
+    with make_app_client(
         extra_databases={"data.db": "create table names (name text)"},
         metadata={
             "databases": {
@@ -35,7 +35,7 @@ def canned_write_client():
                 }
             }
         },
-    ):
+    ) as client:
         yield client
 
 

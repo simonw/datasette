@@ -229,9 +229,9 @@ def test_plugins_asgi_wrapper(app_client):
 
 
 def test_plugins_extra_template_vars(restore_working_directory):
-    for client in make_app_client(
+    with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ):
+    ) as client:
         response = client.get("/-/metadata")
         assert response.status == 200
         extra_template_vars = json.loads(
@@ -254,9 +254,9 @@ def test_plugins_extra_template_vars(restore_working_directory):
 
 
 def test_plugins_async_template_function(restore_working_directory):
-    for client in make_app_client(
+    with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ):
+    ) as client:
         response = client.get("/-/metadata")
         assert response.status == 200
         extra_from_awaitable_function = (

@@ -27,7 +27,7 @@ def custom_pages_client(tmp_path_factory):
     nested_dir = pages_dir / "nested"
     nested_dir.mkdir()
     (nested_dir / "nest.html").write_text("Nest!", "utf-8")
-    for client in make_app_client(template_dir=str(template_dir)):
+    with make_app_client(template_dir=str(template_dir)) as client:
         yield client
 
 

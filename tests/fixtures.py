@@ -2,6 +2,7 @@ from datasette.app import Datasette
 from datasette.utils import sqlite3, MultiParams
 from asgiref.testing import ApplicationCommunicator
 from asgiref.sync import async_to_sync
+import contextlib
 from http.cookies import SimpleCookie
 import itertools
 import json
@@ -220,6 +221,7 @@ class TestClient:
         return response
 
 
+@contextlib.contextmanager
 def make_app_client(
     sql_time_limit_ms=None,
     max_returned_rows=None,
@@ -281,7 +283,8 @@ def make_app_client(
 
 @pytest.fixture(scope="session")
 def app_client():
-    yield from make_app_client()
+    with make_app_client() as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
@@ -294,64 +297,75 @@ def app_client_no_files():
 
 @pytest.fixture(scope="session")
 def app_client_two_attached_databases():
-    yield from make_app_client(
+    with make_app_client(
         extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
-    )
+    ) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_conflicting_database_names():
-    yield from make_app_client(
+    with make_app_client(
         extra_databases={"foo.db": EXTRA_DATABASE_SQL, "foo-bar.db": EXTRA_DATABASE_SQL}
-    )
+    ) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_two_attached_databases_one_immutable():
-    yield from make_app_client(
+    with make_app_client(
         is_immutable=True, extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
-    )
+    ) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_with_hash():
-    yield from make_app_client(config={"hash_urls": True}, is_immutable=True)
+    with make_app_client(config={"hash_urls": True}, is_immutable=True) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_shorter_time_limit():
-    yield from make_app_client(20)
+    with make_app_client(20) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_returned_rows_matches_page_size():
-    yield from make_app_client(max_returned_rows=50)
+    with make_app_client(max_returned_rows=50) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_larger_cache_size():
-    yield from make_app_client(config={"cache_size_kb": 2500})
+    with make_app_client(config={"cache_size_kb": 2500}) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_csv_max_mb_one():
-    yield from make_app_client(config={"max_csv_mb": 1})
+    with make_app_client(config={"max_csv_mb": 1}) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_with_dot():
-    yield from make_app_client(filename="fixtures.dot.db")
+    with make_app_client(filename="fixtures.dot.db") as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_with_cors():
-    yield from make_app_client(cors=True)
+    with make_app_client(cors=True) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_immutable_and_inspect_file():
     inspect_data = {"fixtures": {"tables": {"sortable": {"count": 100}}}}
-    yield from make_app_client(is_immutable=True, inspect_data=inspect_data)
+    with make_app_client(is_immutable=True, inspect_data=inspect_data) as client:
+        yield client
 
 
 def generate_compound_rows(num):

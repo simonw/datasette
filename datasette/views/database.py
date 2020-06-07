@@ -134,21 +134,14 @@ class QueryView(DataView):
             params.pop("_shape")
 
         # Respect canned query permissions
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", "database", database)
         if canned_query:
-            await self.check_permission(request, "view-instance")
-            await self.check_permission(request, "view-database", "database", database)
             await self.check_permission(
                 request, "view-query", "query", (database, canned_query)
             )
-            # TODO: fix this to use that permission check
-            if not actor_matches_allow(
-                request.scope.get("actor", None), metadata.get("allow")
-            ):
-                return Response("Permission denied", status=403)
         else:
-            await self.check_permission(request, "view-instance")
-            await self.check_permission(request, "view-database", "database", database)
-            await self.check_permission(request, "execute-query", "database", database)
+            await self.check_permission(request, "execute-sql", "database", database)
         # Extract any :named parameters
         named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {

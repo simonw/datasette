@@ -234,8 +234,8 @@ Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https
 
 .. _permissions_execute_query:
 
-execute-query
--------------
+execute-sql
+-----------
 
 Actor is allowed to run arbitrary SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures?sql=select+100
 

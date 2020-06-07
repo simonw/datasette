@@ -893,7 +893,7 @@ def test_database_query_permission_checks(app_client):
         [
             "view-instance",
             ("view-database", "database", "fixtures"),
-            ("execute-query", "database", "fixtures"),
+            ("execute-sql", "database", "fixtures"),
         ],
     )
 

@@ -159,12 +159,12 @@ Permissions
 
 This section lists all of the permission checks that are carried out by Datasette core, along with their ``resource_type`` and ``resource_identifier`` if those are passed.
 
-.. _permissions_view_index:
+.. _permissions_view_instance:
 
-view-index
-----------
+view-instance
+-------------
 
-Actor is allowed to view the index page, e.g. https://latest.datasette.io/
+Top level permission - Actor is allowed to view any pages within this instance, starting at https://latest.datasette.io/
 
 
 .. _permissions_view_database:
@@ -231,6 +231,19 @@ Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https
 
 ``resource_identifier`` - string
     The name of the canned query
+
+.. _permissions_execute_query:
+
+execute-query
+-------------
+
+Actor is allowed to run arbitrary SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures?sql=select+100
+
+``resource_type`` - string
+    "database"
+
+``resource_identifier`` - string
+    The name of the database
 
 .. _permissions_permissions_debug:
 

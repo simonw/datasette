@@ -4,7 +4,7 @@ from .fixtures import (  # noqa
     app_client_shorter_time_limit,
     app_client_two_attached_databases,
     app_client_with_hash,
-    assert_permission_checked,
+    assert_permissions_checked,
     make_app_client,
     METADATA,
 )
@@ -18,7 +18,7 @@ import urllib.parse
 
 def test_homepage(app_client_two_attached_databases):
     response = app_client_two_attached_databases.get("/")
-    assert_permission_checked(app_client_two_attached_databases.ds, "view-index")
+    assert_permissions_checked(app_client_two_attached_databases.ds, ["view-instance"])
     assert response.status == 200
     assert "text/html; charset=utf-8" == response.headers["content-type"]
     soup = Soup(response.body, "html.parser")
@@ -77,11 +77,8 @@ def test_static_mounts():
 def test_memory_database_page():
     for client in make_app_client(memory=True):
         response = client.get("/:memory:")
-        assert_permission_checked(
-            client.ds,
-            "view-database",
-            resource_type="database",
-            resource_identifier=":memory:",
+        assert_permissions_checked(
+            client.ds, ["view-instance", ("view-database", "database", ":memory:")]
         )
         assert response.status == 200
 
@@ -95,11 +92,8 @@ def test_database_page_redirects_with_url_hash(app_client_with_hash):
 
 def test_database_page(app_client):
     response = app_client.get("/fixtures")
-    assert_permission_checked(
-        app_client.ds,
-        "view-database",
-        resource_type="database",
-        resource_identifier="fixtures",
+    assert_permissions_checked(
+        app_client.ds, ["view-instance", ("view-database", "database", "fixtures")]
     )
     soup = Soup(response.body, "html.parser")
     queries_ul = soup.find("h2", text="Queries").find_next_sibling("ul")
@@ -211,11 +205,13 @@ def test_row_page_does_not_truncate():
     for client in make_app_client(config={"truncate_cells_html": 5}):
         response = client.get("/fixtures/facetable/1")
         assert response.status == 200
-        assert_permission_checked(
+        assert_permissions_checked(
             client.ds,
-            "view-row",
-            resource_type="row",
-            resource_identifier=("fixtures", "facetable", "1"),
+            [
+                "view-instance",
+                ("view-table", "table", ("fixtures", "facetable")),
+                ("view-row", "row", ("fixtures", "facetable", "1")),
+            ],
         )
         table = Soup(response.body, "html.parser").find("table")
         assert table["class"] == ["rows-and-columns"]
@@ -526,11 +522,13 @@ def test_templates_considered(app_client, path, expected_considered):
 
 def test_table_html_simple_primary_key(app_client):
     response = app_client.get("/fixtures/simple_primary_key?_size=3")
-    assert_permission_checked(
+    assert_permissions_checked(
         app_client.ds,
-        "view-table",
-        resource_type="table",
-        resource_identifier=("fixtures", "simple_primary_key"),
+        [
+            "view-instance",
+            ("view-database", "database", "fixtures"),
+            ("view-table", "table", ("fixtures", "simple_primary_key")),
+        ],
     )
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
@@ -887,6 +885,19 @@ def test_database_metadata(app_client):
     assert_footer_links(soup)
 
 
+def test_database_query_permission_checks(app_client):
+    response = app_client.get("/fixtures?sql=select+1")
+    assert response.status == 200
+    assert_permissions_checked(
+        app_client.ds,
+        [
+            "view-instance",
+            ("view-database", "database", "fixtures"),
+            ("execute-query", "database", "fixtures"),
+        ],
+    )
+
+
 def test_database_metadata_with_custom_sql(app_client):
     response = app_client.get("/fixtures?sql=select+*+from+simple_primary_key")
     assert response.status == 200
@@ -922,11 +933,13 @@ def test_database_download_allowed_for_immutable():
         assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
         # Check we can actually download it
         assert 200 == client.get("/fixtures.db").status
-        assert_permission_checked(
+        assert_permissions_checked(
             client.ds,
-            "view-database-download",
-            resource_type="database",
-            resource_identifier="fixtures",
+            [
+                "view-instance",
+                ("view-database", "database", "fixtures"),
+                ("view-database-download", "database", "fixtures"),
+            ],
         )
 
 
@@ -1023,11 +1036,13 @@ def test_404_content_type(app_client):
 
 def test_canned_query_with_custom_metadata(app_client):
     response = app_client.get("/fixtures/neighborhood_search?text=town")
-    assert_permission_checked(
+    assert_permissions_checked(
         app_client.ds,
-        "view-query",
-        resource_type="query",
-        resource_identifier=("fixtures", "neighborhood_search"),
+        [
+            "view-instance",
+            ("view-database", "database", "fixtures"),
+            ("view-query", "query", ("fixtures", "neighborhood_search")),
+        ],
     )
     assert response.status == 200
     soup = Soup(response.body, "html.parser")

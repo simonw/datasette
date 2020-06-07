@@ -842,17 +842,25 @@ if __name__ == "__main__":
         )
 
 
-def assert_permission_checked(
-    datasette, action, resource_type=None, resource_identifier=None
-):
-    assert [
-        pc
-        for pc in datasette._permission_checks
-        if pc["action"] == action
-        and pc["resource_type"] == resource_type
-        and pc["resource_identifier"] == resource_identifier
-    ], """Missing expected permission check: action={}, resource_type={}, resource_identifier={}
-    Permission checks seen: {}
-    """.format(
-        action, resource_type, resource_identifier, datasette._permission_checks
-    )
+def assert_permissions_checked(datasette, actions):
+    # actions is a list of "action" or (action, resource_type, resource_identifier) tuples
+    for action in actions:
+        if isinstance(action, str):
+            resource_type = None
+            resource_identifier = None
+        else:
+            action, resource_type, resource_identifier = action
+        assert [
+            pc
+            for pc in datasette._permission_checks
+            if pc["action"] == action
+            and pc["resource_type"] == resource_type
+            and pc["resource_identifier"] == resource_identifier
+        ], """Missing expected permission check: action={}, resource_type={}, resource_identifier={}
+        Permission checks seen: {}
+        """.format(
+            action,
+            resource_type,
+            resource_identifier,
+            json.dumps(list(datasette._permission_checks), indent=4),
+        )

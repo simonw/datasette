@@ -22,7 +22,7 @@ class IndexView(BaseView):
         self.ds = datasette
 
     async def get(self, request, as_format):
-        await self.check_permission(request, "view-index")
+        await self.check_permission(request, "view-instance")
         databases = []
         for name, db in self.ds.databases.items():
             table_names = await db.table_names()

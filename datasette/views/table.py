@@ -267,6 +267,8 @@ class TableView(RowTableShared):
         if not is_view and not table_exists:
             raise NotFound("Table not found: {}".format(table))
 
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", "database", database)
         await self.check_permission(request, "view-table", "table", (database, table))
 
         pks = await db.primary_keys(table)
@@ -846,6 +848,9 @@ class RowView(RowTableShared):
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", "database", database)
+        await self.check_permission(request, "view-table", "table", (database, table))
         await self.check_permission(
             request, "view-row", "row", tuple([database, table] + list(pk_values))
         )

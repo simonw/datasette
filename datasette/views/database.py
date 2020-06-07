@@ -19,6 +19,7 @@ class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
+        await self.check_permission(request, "view-instance")
         await self.check_permission(request, "view-database", "database", database)
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)
@@ -90,6 +91,8 @@ class DatabaseDownload(DataView):
     name = "database_download"
 
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", "database", database)
         await self.check_permission(
             request, "view-database-download", "database", database
         )
@@ -132,6 +135,8 @@ class QueryView(DataView):
 
         # Respect canned query permissions
         if canned_query:
+            await self.check_permission(request, "view-instance")
+            await self.check_permission(request, "view-database", "database", database)
             await self.check_permission(
                 request, "view-query", "query", (database, canned_query)
             )
@@ -140,7 +145,10 @@ class QueryView(DataView):
                 request.scope.get("actor", None), metadata.get("allow")
             ):
                 return Response("Permission denied", status=403)
-
+        else:
+            await self.check_permission(request, "view-instance")
+            await self.check_permission(request, "view-database", "database", database)
+            await self.check_permission(request, "execute-query", "database", database)
         # Extract any :named parameters
         named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {

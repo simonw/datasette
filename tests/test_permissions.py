@@ -6,7 +6,7 @@ import pytest
     "allow,expected_anon,expected_auth",
     [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
 )
-def test_execute_sql(allow, expected_anon, expected_auth):
+def test_view_query(allow, expected_anon, expected_auth):
     with make_app_client(
         metadata={
             "databases": {

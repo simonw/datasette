@@ -7,6 +7,10 @@ def permission_allowed(datasette, actor, action, resource_type, resource_identif
     if action == "permissions-debug":
         if actor and actor.get("id") == "root":
             return True
+    elif action == "view-instance":
+        allow = datasette.metadata("allow")
+        if allow is not None:
+            return actor_matches_allow(actor, allow)
     elif action == "view-query":
         # Check if this query has a "allow" block in metadata
         assert resource_type == "query"

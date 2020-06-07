@@ -47,7 +47,7 @@
         </h2>
         <p><strong>Actor:</strong> {{ check.actor|tojson }}</p>
         {% if check.resource_type %}
-            <p><strong>Resource:</strong> {{ check.resource_type }}: {{ check.resource_identifier }}</p>
+            <p><strong>Resource:</strong> {{ check.resource_type }} = {{ check.resource_identifier }}</p>
         {% endif %}
     </div>
 {% endfor %}

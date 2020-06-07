@@ -1721,7 +1721,7 @@ def test_trace(app_client):
         assert isinstance(trace["traceback"], list)
         assert isinstance(trace["database"], str)
         assert isinstance(trace["sql"], str)
-        assert isinstance(trace["params"], (list, dict))
+        assert isinstance(trace["params"], (list, dict, None.__class__))
 
 
 @pytest.mark.parametrize(

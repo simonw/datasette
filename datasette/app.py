@@ -49,6 +49,7 @@ from .utils import (
 )
 from .utils.asgi import (
     AsgiLifespan,
+    Forbidden,
     NotFound,
     Request,
     Response,
@@ -1001,6 +1002,10 @@ class DatasetteRouter(AsgiRouter):
         title = None
         if isinstance(exception, NotFound):
             status = 404
+            info = {}
+            message = exception.args[0]
+        elif isinstance(exception, Forbidden):
+            status = 403
             info = {}
             message = exception.args[0]
         elif isinstance(exception, DatasetteError):

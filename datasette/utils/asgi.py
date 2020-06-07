@@ -13,6 +13,10 @@ class NotFound(Exception):
     pass
 
 
+class Forbidden(Exception):
+    pass
+
+
 class Request:
     def __init__(self, scope, receive):
         self.scope = scope

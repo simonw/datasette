@@ -23,6 +23,7 @@ def test_actor_cookie(app_client):
 
 
 def test_permissions_debug(app_client):
+    app_client.ds._permission_checks.clear()
     assert 403 == app_client.get("/-/permissions").status
     # With the cookie it should work
     cookie = app_client.ds.sign({"id": "root"}, "actor")

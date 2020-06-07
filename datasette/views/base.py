@@ -29,6 +29,7 @@ from datasette.utils.asgi import (
     AsgiWriter,
     AsgiRouter,
     AsgiView,
+    Forbidden,
     NotFound,
     Response,
 )
@@ -62,6 +63,19 @@ class BaseView(AsgiView):
         response = await self.get(*args, **kwargs)
         response.body = b""
         return response
+
+    async def check_permission(
+        self, request, action, resource_type=None, resource_identifier=None
+    ):
+        ok = await self.ds.permission_allowed(
+            request.scope.get("actor"),
+            action,
+            resource_type=resource_type,
+            resource_identifier=resource_identifier,
+            default=True,
+        )
+        if not ok:
+            raise Forbidden(action)
 
     def database_url(self, database):
         db = self.ds.databases[database]

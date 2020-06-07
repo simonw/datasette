@@ -150,3 +150,91 @@ The debug tool at ``/-/permissions`` is only available to the :ref:`authenticate
 It shows the thirty most recent permission checks that have been carried out by the Datasette instance.
 
 This is designed to help administrators and plugin authors understand exactly how permission checks are being carried out, in order to effectively configure Datasette's permission system.
+
+
+.. _permissions:
+
+Permissions
+===========
+
+This section lists all of the permission checks that are carried out by Datasette core, along with their ``resource_type`` and ``resource_identifier`` if those are passed.
+
+.. _permissions_view_index:
+
+view-index
+----------
+
+Actor is allowed to view the index page, e.g. https://latest.datasette.io/
+
+
+.. _permissions_view_database:
+
+view-database
+-------------
+
+Actor is allowed to view a database page, e.g. https://latest.datasette.io/fixtures
+
+``resource_type`` - string
+    "database"
+
+``resource_identifier`` - string
+    The name of the database
+
+.. _permissions_view_database_download:
+
+view-database-download
+-----------------------
+
+Actor is allowed to download a database, e.g. https://latest.datasette.io/fixtures.db
+
+``resource_type`` - string
+    "database"
+
+``resource_identifier`` - string
+    The name of the database
+
+.. _permissions_view_table:
+
+view-table
+----------
+
+Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.io/fixtures/complex_foreign_keys
+
+``resource_type`` - string
+    "table" - even if this is actually a SQL view
+
+``resource_identifier`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+.. _permissions_view_row:
+
+view-row
+--------
+
+Actor is allowed to view a row page, e.g. https://latest.datasette.io/fixtures/compound_primary_key/a,b
+
+``resource_type`` - string
+    "row"
+
+``resource_identifier`` - tuple: (string, string, strings...)
+    The name of the database, then the name of the table, then the primary key of the row. The primary key may be a single value or multiple values, so the ``resource_identifier`` tuple may be three or more items long.
+
+.. _permissions_view_query:
+
+view-query
+----------
+
+Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size
+
+``resource_type`` - string
+    "query"
+
+``resource_identifier`` - string
+    The name of the canned query
+
+.. _permissions_permissions_debug:
+
+permissions-debug
+-----------------
+
+Actor is allowed to view the ``/-/permissions`` debug page.

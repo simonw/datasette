@@ -840,3 +840,19 @@ if __name__ == "__main__":
                 sys.argv[0]
             )
         )
+
+
+def assert_permission_checked(
+    datasette, action, resource_type=None, resource_identifier=None
+):
+    assert [
+        pc
+        for pc in datasette._permission_checks
+        if pc["action"] == action
+        and pc["resource_type"] == resource_type
+        and pc["resource_identifier"] == resource_identifier
+    ], """Missing expected permission check: action={}, resource_type={}, resource_identifier={}
+    Permission checks seen: {}
+    """.format(
+        action, resource_type, resource_identifier, datasette._permission_checks
+    )

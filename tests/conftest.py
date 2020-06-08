@@ -70,8 +70,8 @@ def check_permission_actions_are_documented():
             action = kwargs.get("action").replace("-", "_")
             assert (
                 action in documented_permission_actions
-            ), "Undocumented permission action: {}, resource_identifier: {}".format(
-                action, kwargs["resource_identifier"]
+            ), "Undocumented permission action: {}, resource: {}".format(
+                action, kwargs["resource"]
             )
 
     pm.add_hookcall_monitoring(

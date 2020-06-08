@@ -464,16 +464,11 @@ class Datasette:
         else:
             return []
 
-    async def permission_allowed(
-        self, actor, action, resource_identifier=None, default=False
-    ):
+    async def permission_allowed(self, actor, action, resource=None, default=False):
         "Check permissions using the permissions_allowed plugin hook"
         result = None
         for check in pm.hook.permission_allowed(
-            datasette=self,
-            actor=actor,
-            action=action,
-            resource_identifier=resource_identifier,
+            datasette=self, actor=actor, action=action, resource=resource,
         ):
             if callable(check):
                 check = check()
@@ -490,7 +485,7 @@ class Datasette:
                 "when": datetime.datetime.utcnow().isoformat(),
                 "actor": actor,
                 "action": action,
-                "resource_identifier": resource_identifier,
+                "resource": resource,
                 "used_default": used_default,
                 "result": result,
             }

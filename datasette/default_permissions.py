@@ -3,7 +3,7 @@ from datasette.utils import actor_matches_allow
 
 
 @hookimpl
-def permission_allowed(datasette, actor, action, resource_identifier):
+def permission_allowed(datasette, actor, action, resource):
     if action == "permissions-debug":
         if actor and actor.get("id") == "root":
             return True
@@ -12,12 +12,12 @@ def permission_allowed(datasette, actor, action, resource_identifier):
         if allow is not None:
             return actor_matches_allow(actor, allow)
     elif action == "view-database":
-        database_allow = datasette.metadata("allow", database=resource_identifier)
+        database_allow = datasette.metadata("allow", database=resource)
         if database_allow is None:
             return True
         return actor_matches_allow(actor, database_allow)
     elif action == "view-table":
-        database, table = resource_identifier
+        database, table = resource
         tables = datasette.metadata("tables", database=database) or {}
         table_allow = (tables.get(table) or {}).get("allow")
         if table_allow is None:
@@ -25,7 +25,7 @@ def permission_allowed(datasette, actor, action, resource_identifier):
         return actor_matches_allow(actor, table_allow)
     elif action == "view-query":
         # Check if this query has a "allow" block in metadata
-        database, query_name = resource_identifier
+        database, query_name = resource
         queries_metadata = datasette.metadata("queries", database=database)
         assert query_name in queries_metadata
         if isinstance(queries_metadata[query_name], str):

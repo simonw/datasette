@@ -88,7 +88,7 @@ class DatabaseView(DataView):
                 "views": views,
                 "queries": canned_queries,
                 "private": not await self.ds.permission_allowed(
-                    None, "view-database", "database", database
+                    None, "view-database", database
                 ),
             },
             {

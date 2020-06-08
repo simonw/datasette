@@ -1005,7 +1005,7 @@ Instead of returning a dictionary, this function can return an awaitable functio
 
 .. _plugin_permission_allowed:
 
-permission_allowed(datasette, actor, action, resource_identifier)
+permission_allowed(datasette, actor, action, resource)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``datasette`` - :ref:`internals_datasette`
@@ -1017,7 +1017,9 @@ permission_allowed(datasette, actor, action, resource_identifier)
 ``action`` - string
     The action to be performed, e.g. ``"edit-table"``.
 
-``resource_identifier`` - string
+``resource`` - string or None
     An identifier for the individual resource, e.g. the name of the table.
 
 Called to check that an actor has permission to perform an action on a resource. Can return ``True`` if the action is allowed, ``False`` if the action is not allowed or ``None`` if the plugin does not have an opinion one way or the other.
+
+See :ref:`permissions` for a full list of permissions included in Datasette core.

@@ -857,21 +857,18 @@ if __name__ == "__main__":
 
 
 def assert_permissions_checked(datasette, actions):
-    # actions is a list of "action" or (action, resource_identifier) tuples
+    # actions is a list of "action" or (action, resource) tuples
     for action in actions:
         if isinstance(action, str):
-            resource_identifier = None
+            resource = None
         else:
-            action, resource_identifier = action
+            action, resource = action
         assert [
             pc
             for pc in datasette._permission_checks
-            if pc["action"] == action
-            and pc["resource_identifier"] == resource_identifier
-        ], """Missing expected permission check: action={}, resource_identifier={}
+            if pc["action"] == action and pc["resource"] == resource
+        ], """Missing expected permission check: action={}, resource={}
         Permission checks seen: {}
         """.format(
-            action,
-            resource_identifier,
-            json.dumps(list(datasette._permission_checks), indent=4),
+            action, resource, json.dumps(list(datasette._permission_checks), indent=4),
         )

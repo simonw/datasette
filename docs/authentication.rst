@@ -159,7 +159,7 @@ This is designed to help administrators and plugin authors understand exactly ho
 Permissions
 ===========
 
-This section lists all of the permission checks that are carried out by Datasette core, along with the ``resource_identifier`` if it was passed.
+This section lists all of the permission checks that are carried out by Datasette core, along with the ``resource`` if it was passed.
 
 .. _permissions_view_instance:
 
@@ -176,7 +176,7 @@ view-database
 
 Actor is allowed to view a database page, e.g. https://latest.datasette.io/fixtures
 
-``resource_identifier`` - string
+``resource`` - string
     The name of the database
 
 .. _permissions_view_database_download:
@@ -186,7 +186,7 @@ view-database-download
 
 Actor is allowed to download a database, e.g. https://latest.datasette.io/fixtures.db
 
-``resource_identifier`` - string
+``resource`` - string
     The name of the database
 
 .. _permissions_view_table:
@@ -196,7 +196,7 @@ view-table
 
 Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.io/fixtures/complex_foreign_keys
 
-``resource_identifier`` - tuple: (string, string)
+``resource`` - tuple: (string, string)
     The name of the database, then the name of the table
 
 .. _permissions_view_query:
@@ -206,7 +206,7 @@ view-query
 
 Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size
 
-``resource_identifier`` - string
+``resource`` - string
     The name of the canned query
 
 .. _permissions_execute_sql:
@@ -216,7 +216,7 @@ execute-sql
 
 Actor is allowed to run arbitrary SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures?sql=select+100
 
-``resource_identifier`` - string
+``resource`` - string
     The name of the database
 
 .. _permissions_permissions_debug:

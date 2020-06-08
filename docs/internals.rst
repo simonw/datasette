@@ -121,8 +121,8 @@ Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ usin
 
 .. _datasette_permission_allowed:
 
-await .permission_allowed(actor, action, resource_identifier=None, default=False)
----------------------------------------------------------------------------------
+await .permission_allowed(actor, action, resource=None, default=False)
+----------------------------------------------------------------------
 
 ``actor`` - dictionary
     The authenticated actor. This is usually ``request.actor``.
@@ -130,12 +130,14 @@ await .permission_allowed(actor, action, resource_identifier=None, default=False
 ``action`` - string
     The name of the action that is being permission checked.
 
-``resource_identifier`` - string, optional
-    The resource identifier, e.g. the name of the table.
+``resource`` - string, optional
+    The resource, e.g. the name of the table. Only some permissions apply to a resource.
 
 Check if the given actor has permission to perform the given action on the given resource. This uses plugins that implement the :ref:`plugin_permission_allowed` plugin hook to decide if the action is allowed or not.
 
 If none of the plugins express an opinion, the return value will be the ``default`` argument. This is deny, but you can pass ``default=True`` to default allow instead.
+
+See :ref:`permissions` for a full list of permissions included in Datasette core.
 
 .. _datasette_get_database:
 

@@ -64,12 +64,9 @@ class BaseView(AsgiView):
         response.body = b""
         return response
 
-    async def check_permission(self, request, action, resource_identifier=None):
+    async def check_permission(self, request, action, resource=None):
         ok = await self.ds.permission_allowed(
-            request.actor,
-            action,
-            resource_identifier=resource_identifier,
-            default=True,
+            request.actor, action, resource=resource, default=True,
         )
         if not ok:
             raise Forbidden(action)

@@ -876,14 +876,14 @@ def actor_matches_allow(actor, allow):
     return False
 
 
-async def check_visibility(datasette, actor, action, resource_identifier, default=True):
+async def check_visibility(datasette, actor, action, resource, default=True):
     "Returns (visible, private) - visible = can you see it, private = can others see it too"
     visible = await datasette.permission_allowed(
-        actor, action, resource_identifier=resource_identifier, default=default,
+        actor, action, resource=resource, default=default,
     )
     if not visible:
         return (False, False)
     private = not await datasette.permission_allowed(
-        None, action, resource_identifier=resource_identifier, default=default,
+        None, action, resource=resource, default=default,
     )
     return visible, private

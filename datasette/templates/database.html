@@ -18,7 +18,7 @@
 
 {% block content %}
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 

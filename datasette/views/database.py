@@ -86,6 +86,9 @@ class DatabaseView(DataView):
                 "hidden_count": len([t for t in tables if t["hidden"]]),
                 "views": views,
                 "queries": canned_queries,
+                "private": not await self.ds.permission_allowed(
+                    None, "view-database", "database", database
+                ),
             },
             {
                 "show_hidden": request.args.get("_show_hidden"),

@@ -90,11 +90,16 @@ def test_view_table(allow, expected_anon, expected_auth):
     ) as client:
         anon_response = client.get("/fixtures/compound_three_primary_keys")
         assert expected_anon == anon_response.status
+        if allow and anon_response.status == 200:
+            # Should be no padlock
+            assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
         auth_response = client.get(
             "/fixtures/compound_three_primary_keys",
             cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")},
         )
         assert expected_auth == auth_response.status
+        if allow and expected_anon == 403 and expected_auth == 200:
+            assert ">compound_three_primary_keys 🔒</h1>" in auth_response.text
 
 
 def test_table_list_respects_view_table():

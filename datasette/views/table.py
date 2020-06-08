@@ -271,6 +271,10 @@ class TableView(RowTableShared):
         await self.check_permission(request, "view-database", "database", database)
         await self.check_permission(request, "view-table", "table", (database, table))
 
+        private = not await self.ds.permission_allowed(
+            None, "view-table", "table", (database, table), default=True
+        )
+
         pks = await db.primary_keys(table)
         table_columns = await db.table_columns(table)
 
@@ -834,6 +838,7 @@ class TableView(RowTableShared):
                 "suggested_facets": suggested_facets,
                 "next": next_value and str(next_value) or None,
                 "next_url": next_url,
+                "private": private,
             },
             extra_template,
             (

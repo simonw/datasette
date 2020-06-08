@@ -210,41 +210,41 @@ def test_query_list_respects_view_query():
     "path,permissions",
     [
         ("/", ["view-instance"]),
-        ("/fixtures", ["view-instance", ("view-database", "database", "fixtures")]),
+        ("/fixtures", ["view-instance", ("view-database", "fixtures")]),
         (
             "/fixtures/facetable/1",
-            ["view-instance", ("view-table", "table", ("fixtures", "facetable"))],
+            ["view-instance", ("view-table", ("fixtures", "facetable"))],
         ),
         (
             "/fixtures/simple_primary_key",
             [
                 "view-instance",
-                ("view-database", "database", "fixtures"),
-                ("view-table", "table", ("fixtures", "simple_primary_key")),
+                ("view-database", "fixtures"),
+                ("view-table", ("fixtures", "simple_primary_key")),
             ],
         ),
         (
             "/fixtures?sql=select+1",
             [
                 "view-instance",
-                ("view-database", "database", "fixtures"),
-                ("execute-sql", "database", "fixtures"),
+                ("view-database", "fixtures"),
+                ("execute-sql", "fixtures"),
             ],
         ),
         (
             "/fixtures.db",
             [
                 "view-instance",
-                ("view-database", "database", "fixtures"),
-                ("view-database-download", "database", "fixtures"),
+                ("view-database", "fixtures"),
+                ("view-database-download", "fixtures"),
             ],
         ),
         (
             "/fixtures/neighborhood_search",
             [
                 "view-instance",
-                ("view-database", "database", "fixtures"),
-                ("view-query", "query", ("fixtures", "neighborhood_search")),
+                ("view-database", "fixtures"),
+                ("view-query", ("fixtures", "neighborhood_search")),
             ],
         ),
     ],

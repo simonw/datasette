@@ -245,7 +245,6 @@ view-instance
 
 Top level permission - Actor is allowed to view any pages within this instance, starting at https://latest.datasette.io/
 
-
 .. _permissions_view_database:
 
 view-database
@@ -283,8 +282,8 @@ view-query
 
 Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size
 
-``resource`` - string
-    The name of the canned query
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the canned query
 
 .. _permissions_execute_sql:
 

@@ -51,7 +51,7 @@
     <h2 id="views">Views</h2>
     <ul>
         {% for view in views %}
-            <li><a href="{{ database_url(database) }}/{{ view|urlencode }}">{{ view }}</a></li>
+            <li><a href="{{ database_url(database) }}/{{ view.name|urlencode }}">{{ view.name }}</a>{% if view.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
 {% endif %}

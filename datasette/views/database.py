@@ -37,9 +37,18 @@ class DatabaseView(DataView):
         db = self.ds.databases[database]
 
         table_counts = await db.table_counts(5)
-        views = await db.view_names()
         hidden_table_names = set(await db.hidden_table_names())
         all_foreign_keys = await db.get_all_foreign_keys()
+
+        views = []
+        for view_name in await db.view_names():
+            visible, private = await check_visibility(
+                self.ds, request.actor, "view-table", "table", (database, view_name),
+            )
+            if visible:
+                views.append(
+                    {"name": view_name, "private": private,}
+                )
 
         tables = []
         for table in table_counts:

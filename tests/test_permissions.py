@@ -107,19 +107,27 @@ def test_table_list_respects_view_table():
         metadata={
             "databases": {
                 "fixtures": {
-                    "tables": {"compound_three_primary_keys": {"allow": {"id": "root"}}}
+                    "tables": {
+                        "compound_three_primary_keys": {"allow": {"id": "root"}},
+                        # And a SQL view too:
+                        "paginated_view": {"allow": {"id": "root"}},
+                    }
                 }
             }
         }
     ) as client:
-        html_fragment = '<a href="/fixtures/compound_three_primary_keys">compound_three_primary_keys</a> 🔒'
+        html_fragments = [
+            ">compound_three_primary_keys</a> 🔒",
+            ">paginated_view</a> 🔒",
+        ]
         anon_response = client.get("/fixtures")
-        assert html_fragment not in anon_response.text
-        assert '"/fixtures/compound_three_primary_keys"' not in anon_response.text
+        for html_fragment in html_fragments:
+            assert html_fragment not in anon_response.text
         auth_response = client.get(
             "/fixtures", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")}
         )
-        assert html_fragment in auth_response.text
+        for html_fragment in html_fragments:
+            assert html_fragment in auth_response.text
 
 
 @pytest.mark.parametrize(

@@ -15,7 +15,7 @@ Actors
 
 Through plugins, Datasette can support both authenticated users (with cookies) and authenticated API agents (via authentication tokens). The word "actor" is used to cover both of these cases.
 
-Every request to Datasette has an associated actor value. This can be ``None`` for unauthenticated requests, or a JSON compatible Python dictionary for authenticated users or API agents.
+Every request to Datasette has an associated actor value, available in the code as ``request.actor``. This can be ``None`` for unauthenticated requests, or a JSON compatible Python dictionary for authenticated users or API agents.
 
 The only required field in an actor is ``"id"``, which must be a string. Plugins may decide to add any other fields to the actor dictionary.
 
@@ -24,7 +24,7 @@ Plugins can use the :ref:`plugin_actor_from_request` hook to implement custom lo
 .. _authentication_root:
 
 Using the "root" actor
-======================
+----------------------
 
 Datasette currently leaves almost all forms of authentication to plugins - `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ for example.
 
@@ -49,37 +49,40 @@ The URL on the first line includes a one-use token which can be used to sign in 
 
 .. _authentication_permissions:
 
-Permissions
-===========
+Checking permission
+===================
 
 Datasette plugins can check if an actor has permission to perform an action using the :ref:`datasette.permission_allowed(...)<datasette_permission_allowed>` method. This method is also used by Datasette core code itself, which allows plugins to help make decisions on which actions are allowed by implementing the :ref:`plugin_permission_allowed` plugin hook.
 
-.. _authentication_permissions_canned_queries:
+.. _authentication_permissions_metadata:
 
-Permissions for canned queries
-==============================
+Configuring permissions in metadata.json
+========================================
 
-Datasette's :ref:`canned queries <canned_queries>` default to allowing any user to execute them.
+You can limit who is allowed to view different parts of your Datasette instance using ``"allow"`` keys in your :ref:`metadata` configuration.
 
-You can limit who is allowed to execute a specific query with the ``"allow"`` key in the :ref:`metadata` configuration for that query.
+You can control the following:
 
-Here's how to restrict access to a write query to just the "root" user:
+* Access to the entire Datasette instance
+* Access to specific databases
+* Access to specific tables and views
+* Access to specific :ref:`canned_queries`
+
+If a user cannot access a specific database, they will not be able to access tables, views or queries within that database. If a user cannot access the instance they will not be able to access any of the databases, tables, views or queries.
+
+.. _authentication_permissions_instance:
+
+Controlling access to an instance
+---------------------------------
+
+Here's how to restrict access to your entire Datasette instance to just the ``"id": "root"`` user:
 
 .. code-block:: json
 
     {
-        "databases": {
-            "mydatabase": {
-                "queries": {
-                    "add_name": {
-                        "sql": "INSERT INTO names (name) VALUES (:name)",
-                        "write": true,
-                        "allow": {
-                            "id": ["root"]
-                        }
-                    }
-                }
-            }
+        "title": "My private Datasette instance",
+        "allow": {
+            "id": "root"
         }
     }
 
@@ -125,6 +128,80 @@ If you want to provide access to any actor with a value for a specific key, use 
     }
 
 These keys act as an "or" mechanism. A actor will be able to execute the query if any of their JSON properties match any of the values in the corresponding lists in the ``allow`` block.
+
+.. _authentication_permissions_database:
+
+Controlling access to specific databases
+----------------------------------------
+
+To limit access to a specific ``private.db`` database to just authenticated users, use the ``"allow"`` block like this:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "private": {
+                "allow": {
+                    "id": "*"
+                }
+            }
+        }
+    }
+
+.. _authentication_permissions_table:
+
+Controlling access to specific tables and views
+-----------------------------------------------
+
+To limit access to the ``users`` table in your ``bakery.db`` database:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "bakery": {
+                "tables": {
+                    "users": {
+                        "allow": {
+                            "id": "*"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+This works for SQL views as well - you can treat them as if they are tables.
+
+.. warning::
+    Restricting access to tables and views in this way will NOT prevent users from querying them using arbitrary SQL queries.
+
+    If you are restricting access to specific tables you should also use the ``"allow_sql"`` block to prevent users from accessing 
+
+.. _authentication_permissions_table:
+
+Controlling access to specific canned queries
+---------------------------------------------
+
+To limit access to the ``add_name`` canned query in your ``dogs.db`` database to just the :ref:`root user<authentication_root>`:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "dogs": {
+                "queries": {
+                    "add_name": {
+                        "sql": "INSERT INTO names (name) VALUES (:name)",
+                        "write": true,
+                        "allow": {
+                            "id": ["root"]
+                        }
+                    }
+                }
+            }
+        }
+    }
 
 .. _authentication_actor_matches_allow:
 

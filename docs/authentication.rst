@@ -206,19 +206,6 @@ Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.i
 ``resource_identifier`` - tuple: (string, string)
     The name of the database, then the name of the table
 
-.. _permissions_view_row:
-
-view-row
---------
-
-Actor is allowed to view a row page, e.g. https://latest.datasette.io/fixtures/compound_primary_key/a,b
-
-``resource_type`` - string
-    "row"
-
-``resource_identifier`` - tuple: (string, string, strings...)
-    The name of the database, then the name of the table, then the primary key of the row. The primary key may be a single value or multiple values, so the ``resource_identifier`` tuple may be three or more items long.
-
 .. _permissions_view_query:
 
 view-query

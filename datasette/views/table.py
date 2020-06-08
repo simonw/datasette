@@ -851,9 +851,6 @@ class RowView(RowTableShared):
         await self.check_permission(request, "view-instance")
         await self.check_permission(request, "view-database", "database", database)
         await self.check_permission(request, "view-table", "table", (database, table))
-        await self.check_permission(
-            request, "view-row", "row", tuple([database, table] + list(pk_values))
-        )
         db = self.ds.databases[database]
         pks = await db.primary_keys(table)
         use_rowid = not pks

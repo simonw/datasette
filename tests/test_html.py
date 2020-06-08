@@ -210,7 +210,6 @@ def test_row_page_does_not_truncate():
             [
                 "view-instance",
                 ("view-table", "table", ("fixtures", "facetable")),
-                ("view-row", "row", ("fixtures", "facetable", "1")),
             ],
         )
         table = Soup(response.body, "html.parser").find("table")

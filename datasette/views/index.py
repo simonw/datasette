@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from datasette.utils import CustomJSONEncoder
+from datasette.utils import check_visibility, CustomJSONEncoder
 from datasette.utils.asgi import Response, Forbidden
 from datasette.version import __version__
 
@@ -25,22 +25,11 @@ class IndexView(BaseView):
         await self.check_permission(request, "view-instance")
         databases = []
         for name, db in self.ds.databases.items():
-            # Check permission
-            allowed = await self.ds.permission_allowed(
-                request.scope.get("actor"),
-                "view-database",
-                resource_type="database",
-                resource_identifier=name,
-                default=True,
+            visible, private = await check_visibility(
+                self.ds, request.scope.get("actor"), "view-database", "database", name,
             )
-            if not allowed:
+            if not visible:
                 continue
-            private = not await self.ds.permission_allowed(
-                None,
-                "view-database",
-                resource_type="database",
-                resource_identifier=name,
-            )
             table_names = await db.table_names()
             hidden_table_names = set(await db.hidden_table_names())
             views = await db.view_names()

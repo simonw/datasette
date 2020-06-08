@@ -3,6 +3,7 @@ import jinja2
 
 from datasette.utils import (
     actor_matches_allow,
+    check_visibility,
     to_css_class,
     validate_sql_select,
     is_url,
@@ -42,21 +43,15 @@ class DatabaseView(DataView):
 
         tables = []
         for table in table_counts:
-            allowed = await self.ds.permission_allowed(
+            visible, private = await check_visibility(
+                self.ds,
                 request.scope.get("actor"),
                 "view-table",
-                resource_type="table",
-                resource_identifier=(database, table),
-                default=True,
+                "table",
+                (database, table),
             )
-            if not allowed:
+            if not visible:
                 continue
-            private = not await self.ds.permission_allowed(
-                None,
-                "view-table",
-                resource_type="table",
-                resource_identifier=(database, table),
-            )
             table_columns = await db.table_columns(table)
             tables.append(
                 {
@@ -72,15 +67,17 @@ class DatabaseView(DataView):
             )
 
         tables.sort(key=lambda t: (t["hidden"], t["name"]))
-        canned_queries = [
-            dict(
-                query, private=not actor_matches_allow(None, query.get("allow", None)),
+        canned_queries = []
+        for query in self.ds.get_canned_queries(database):
+            visible, private = await check_visibility(
+                self.ds,
+                request.scope.get("actor"),
+                "view-query",
+                "query",
+                (database, query["name"]),
             )
-            for query in self.ds.get_canned_queries(database)
-            if actor_matches_allow(
-                request.scope.get("actor", None), query.get("allow", None)
-            )
-        ]
+            if visible:
+                canned_queries.append(dict(query, private=private))
         return (
             {
                 "database": database,

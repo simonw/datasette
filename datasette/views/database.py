@@ -42,6 +42,21 @@ class DatabaseView(DataView):
 
         tables = []
         for table in table_counts:
+            allowed = await self.ds.permission_allowed(
+                request.scope.get("actor"),
+                "view-table",
+                resource_type="table",
+                resource_identifier=(database, table),
+                default=True,
+            )
+            if not allowed:
+                continue
+            private = not await self.ds.permission_allowed(
+                None,
+                "view-table",
+                resource_type="table",
+                resource_identifier=(database, table),
+            )
             table_columns = await db.table_columns(table)
             tables.append(
                 {
@@ -52,6 +67,7 @@ class DatabaseView(DataView):
                     "hidden": table in hidden_table_names,
                     "fts_table": await db.fts_table(table),
                     "foreign_keys": all_foreign_keys[table],
+                    "private": private,
                 }
             )
 

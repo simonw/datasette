@@ -122,7 +122,7 @@ class IndexView(BaseView):
                     "metadata": self.ds.metadata(),
                     "datasette_version": __version__,
                     "private": not await self.ds.permission_allowed(
-                        None, "view-instance"
+                        None, "view-instance", default=True
                     ),
                 },
             )

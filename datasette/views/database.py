@@ -44,11 +44,7 @@ class DatabaseView(DataView):
         tables = []
         for table in table_counts:
             visible, private = await check_visibility(
-                self.ds,
-                request.actor,
-                "view-table",
-                "table",
-                (database, table),
+                self.ds, request.actor, "view-table", "table", (database, table),
             )
             if not visible:
                 continue

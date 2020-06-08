@@ -4,7 +4,6 @@ from .fixtures import (  # noqa
     app_client_shorter_time_limit,
     app_client_two_attached_databases,
     app_client_with_hash,
-    assert_permissions_checked,
     make_app_client,
     METADATA,
 )
@@ -18,7 +17,6 @@ import urllib.parse
 
 def test_homepage(app_client_two_attached_databases):
     response = app_client_two_attached_databases.get("/")
-    assert_permissions_checked(app_client_two_attached_databases.ds, ["view-instance"])
     assert response.status == 200
     assert "text/html; charset=utf-8" == response.headers["content-type"]
     soup = Soup(response.body, "html.parser")
@@ -77,9 +75,6 @@ def test_static_mounts():
 def test_memory_database_page():
     with make_app_client(memory=True) as client:
         response = client.get("/:memory:")
-        assert_permissions_checked(
-            client.ds, ["view-instance", ("view-database", "database", ":memory:")]
-        )
         assert response.status == 200
 
 
@@ -92,9 +87,6 @@ def test_database_page_redirects_with_url_hash(app_client_with_hash):
 
 def test_database_page(app_client):
     response = app_client.get("/fixtures")
-    assert_permissions_checked(
-        app_client.ds, ["view-instance", ("view-database", "database", "fixtures")]
-    )
     soup = Soup(response.body, "html.parser")
     queries_ul = soup.find("h2", text="Queries").find_next_sibling("ul")
     assert queries_ul is not None
@@ -205,10 +197,6 @@ def test_row_page_does_not_truncate():
     with make_app_client(config={"truncate_cells_html": 5}) as client:
         response = client.get("/fixtures/facetable/1")
         assert response.status == 200
-        assert_permissions_checked(
-            client.ds,
-            ["view-instance", ("view-table", "table", ("fixtures", "facetable")),],
-        )
         table = Soup(response.body, "html.parser").find("table")
         assert table["class"] == ["rows-and-columns"]
         assert ["Mission"] == [
@@ -518,14 +506,6 @@ def test_templates_considered(app_client, path, expected_considered):
 
 def test_table_html_simple_primary_key(app_client):
     response = app_client.get("/fixtures/simple_primary_key?_size=3")
-    assert_permissions_checked(
-        app_client.ds,
-        [
-            "view-instance",
-            ("view-database", "database", "fixtures"),
-            ("view-table", "table", ("fixtures", "simple_primary_key")),
-        ],
-    )
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
@@ -881,19 +861,6 @@ def test_database_metadata(app_client):
     assert_footer_links(soup)
 
 
-def test_database_query_permission_checks(app_client):
-    response = app_client.get("/fixtures?sql=select+1")
-    assert response.status == 200
-    assert_permissions_checked(
-        app_client.ds,
-        [
-            "view-instance",
-            ("view-database", "database", "fixtures"),
-            ("execute-sql", "database", "fixtures"),
-        ],
-    )
-
-
 def test_database_metadata_with_custom_sql(app_client):
     response = app_client.get("/fixtures?sql=select+*+from+simple_primary_key")
     assert response.status == 200
@@ -929,14 +896,6 @@ def test_database_download_allowed_for_immutable():
         assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
         # Check we can actually download it
         assert 200 == client.get("/fixtures.db").status
-        assert_permissions_checked(
-            client.ds,
-            [
-                "view-instance",
-                ("view-database", "database", "fixtures"),
-                ("view-database-download", "database", "fixtures"),
-            ],
-        )
 
 
 def test_database_download_disallowed_for_mutable(app_client):
@@ -1032,14 +991,6 @@ def test_404_content_type(app_client):
 
 def test_canned_query_with_custom_metadata(app_client):
     response = app_client.get("/fixtures/neighborhood_search?text=town")
-    assert_permissions_checked(
-        app_client.ds,
-        [
-            "view-instance",
-            ("view-database", "database", "fixtures"),
-            ("view-query", "query", ("fixtures", "neighborhood_search")),
-        ],
-    )
     assert response.status == 200
     soup = Soup(response.body, "html.parser")
     assert "Search neighborhoods" == soup.find("h1").text

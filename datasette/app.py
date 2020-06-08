@@ -298,7 +298,7 @@ class Datasette:
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 
         self._register_renderers()
-        self._permission_checks = collections.deque(maxlen=30)
+        self._permission_checks = collections.deque(maxlen=200)
         self._root_token = os.urandom(32).hex()
 
     def sign(self, value, namespace="default"):

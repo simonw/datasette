@@ -1,4 +1,4 @@
-from .fixtures import make_app_client
+from .fixtures import app_client, assert_permissions_checked, make_app_client
 import pytest
 
 
@@ -139,3 +139,53 @@ def test_query_list_respects_view_query():
             "/fixtures", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")}
         )
         assert html_fragment in auth_response.text
+
+
+@pytest.mark.parametrize(
+    "path,permissions",
+    [
+        ("/", ["view-instance"]),
+        ("/fixtures", ["view-instance", ("view-database", "database", "fixtures")]),
+        (
+            "/fixtures/facetable/1",
+            ["view-instance", ("view-table", "table", ("fixtures", "facetable"))],
+        ),
+        (
+            "/fixtures/simple_primary_key",
+            [
+                "view-instance",
+                ("view-database", "database", "fixtures"),
+                ("view-table", "table", ("fixtures", "simple_primary_key")),
+            ],
+        ),
+        (
+            "/fixtures?sql=select+1",
+            [
+                "view-instance",
+                ("view-database", "database", "fixtures"),
+                ("execute-sql", "database", "fixtures"),
+            ],
+        ),
+        (
+            "/fixtures.db",
+            [
+                "view-instance",
+                ("view-database", "database", "fixtures"),
+                ("view-database-download", "database", "fixtures"),
+            ],
+        ),
+        (
+            "/fixtures/neighborhood_search",
+            [
+                "view-instance",
+                ("view-database", "database", "fixtures"),
+                ("view-query", "query", ("fixtures", "neighborhood_search")),
+            ],
+        ),
+    ],
+)
+def test_permissions_checked(app_client, path, permissions):
+    app_client.ds._permission_checks.clear()
+    response = app_client.get(path)
+    assert response.status in (200, 403)
+    assert_permissions_checked(app_client.ds, permissions)

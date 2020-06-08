@@ -85,9 +85,7 @@ class PermissionsDebugView(BaseView):
         self.ds = datasette
 
     async def get(self, request):
-        if not await self.ds.permission_allowed(
-            request.actor, "permissions-debug"
-        ):
+        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
             return Response("Permission denied", status=403)
         return await self.render(
             ["permissions_debug.html"],

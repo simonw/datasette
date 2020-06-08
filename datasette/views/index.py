@@ -26,7 +26,7 @@ class IndexView(BaseView):
         databases = []
         for name, db in self.ds.databases.items():
             visible, database_private = await check_visibility(
-                self.ds, request.actor, "view-database", "database", name,
+                self.ds, request.actor, "view-database", name,
             )
             if not visible:
                 continue
@@ -36,7 +36,7 @@ class IndexView(BaseView):
             views = []
             for view_name in await db.view_names():
                 visible, private = await check_visibility(
-                    self.ds, request.actor, "view-table", "table", (name, view_name),
+                    self.ds, request.actor, "view-table", (name, view_name),
                 )
                 if visible:
                     views.append({"name": view_name, "private": private})
@@ -52,7 +52,7 @@ class IndexView(BaseView):
             tables = {}
             for table in table_names:
                 visible, private = await check_visibility(
-                    self.ds, request.actor, "view-table", "table", (name, table),
+                    self.ds, request.actor, "view-table", (name, table),
                 )
                 if not visible:
                     continue

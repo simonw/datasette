@@ -121,17 +121,14 @@ Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ usin
 
 .. _datasette_permission_allowed:
 
-await .permission_allowed(actor, action, resource_type=None, resource_identifier=None, default=False)
------------------------------------------------------------------------------------------------------
+await .permission_allowed(actor, action, resource_identifier=None, default=False)
+---------------------------------------------------------------------------------
 
 ``actor`` - dictionary
     The authenticated actor. This is usually ``request.actor``.
 
 ``action`` - string
     The name of the action that is being permission checked.
-
-``resource_type`` - string, optional
-    The type of resource being checked, e.g. ``"table"``.
 
 ``resource_identifier`` - string, optional
     The resource identifier, e.g. the name of the table.

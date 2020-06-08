@@ -21,7 +21,7 @@ class DatabaseView(DataView):
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
         await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", "database", database)
+        await self.check_permission(request, "view-database", database)
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)
 
@@ -43,7 +43,7 @@ class DatabaseView(DataView):
         views = []
         for view_name in await db.view_names():
             visible, private = await check_visibility(
-                self.ds, request.actor, "view-table", "table", (database, view_name),
+                self.ds, request.actor, "view-table", (database, view_name),
             )
             if visible:
                 views.append(
@@ -53,7 +53,7 @@ class DatabaseView(DataView):
         tables = []
         for table in table_counts:
             visible, private = await check_visibility(
-                self.ds, request.actor, "view-table", "table", (database, table),
+                self.ds, request.actor, "view-table", (database, table),
             )
             if not visible:
                 continue
@@ -75,11 +75,7 @@ class DatabaseView(DataView):
         canned_queries = []
         for query in self.ds.get_canned_queries(database):
             visible, private = await check_visibility(
-                self.ds,
-                request.actor,
-                "view-query",
-                "query",
-                (database, query["name"]),
+                self.ds, request.actor, "view-query", (database, query["name"]),
             )
             if visible:
                 canned_queries.append(dict(query, private=private))
@@ -112,10 +108,8 @@ class DatabaseDownload(DataView):
 
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
         await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", "database", database)
-        await self.check_permission(
-            request, "view-database-download", "database", database
-        )
+        await self.check_permission(request, "view-database", database)
+        await self.check_permission(request, "view-database-download", database)
         if database not in self.ds.databases:
             raise DatasetteError("Invalid database", status=404)
         db = self.ds.databases[database]
@@ -155,17 +149,15 @@ class QueryView(DataView):
 
         # Respect canned query permissions
         await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", "database", database)
+        await self.check_permission(request, "view-database", database)
         private = False
         if canned_query:
-            await self.check_permission(
-                request, "view-query", "query", (database, canned_query)
-            )
+            await self.check_permission(request, "view-query", (database, canned_query))
             private = not await self.ds.permission_allowed(
-                None, "view-query", "query", (database, canned_query), default=True
+                None, "view-query", (database, canned_query), default=True
             )
         else:
-            await self.check_permission(request, "execute-sql", "database", database)
+            await self.check_permission(request, "execute-sql", database)
         # Extract any :named parameters
         named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {

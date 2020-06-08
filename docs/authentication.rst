@@ -52,7 +52,7 @@ The URL on the first line includes a one-use token which can be used to sign in 
 Permissions
 ===========
 
-Datasette plugins can check if an actor has permission to perform an action using the :ref:`datasette.permission_allowed(...)<datasette_permission_allowed>` method. This method is also used by Datasette core code itself, which allows plugins to help make decisions on which actions are allowed by implementing the :ref:`permission_allowed(...) <plugin_permission_allowed>` plugin hook.
+Datasette plugins can check if an actor has permission to perform an action using the :ref:`datasette.permission_allowed(...)<datasette_permission_allowed>` method. This method is also used by Datasette core code itself, which allows plugins to help make decisions on which actions are allowed by implementing the :ref:`plugin_permission_allowed` plugin hook.
 
 .. _authentication_permissions_canned_queries:
 
@@ -159,7 +159,7 @@ This is designed to help administrators and plugin authors understand exactly ho
 Permissions
 ===========
 
-This section lists all of the permission checks that are carried out by Datasette core, along with their ``resource_type`` and ``resource_identifier`` if those are passed.
+This section lists all of the permission checks that are carried out by Datasette core, along with the ``resource_identifier`` if it was passed.
 
 .. _permissions_view_instance:
 
@@ -176,9 +176,6 @@ view-database
 
 Actor is allowed to view a database page, e.g. https://latest.datasette.io/fixtures
 
-``resource_type`` - string
-    "database"
-
 ``resource_identifier`` - string
     The name of the database
 
@@ -188,9 +185,6 @@ view-database-download
 -----------------------
 
 Actor is allowed to download a database, e.g. https://latest.datasette.io/fixtures.db
-
-``resource_type`` - string
-    "database"
 
 ``resource_identifier`` - string
     The name of the database
@@ -202,9 +196,6 @@ view-table
 
 Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.io/fixtures/complex_foreign_keys
 
-``resource_type`` - string
-    "table" - even if this is actually a SQL view
-
 ``resource_identifier`` - tuple: (string, string)
     The name of the database, then the name of the table
 
@@ -215,9 +206,6 @@ view-query
 
 Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size
 
-``resource_type`` - string
-    "query"
-
 ``resource_identifier`` - string
     The name of the canned query
 
@@ -227,9 +215,6 @@ execute-sql
 -----------
 
 Actor is allowed to run arbitrary SQL queries against a specific database, e.g. https://latest.datasette.io/fixtures?sql=select+100
-
-``resource_type`` - string
-    "database"
 
 ``resource_identifier`` - string
     The name of the database

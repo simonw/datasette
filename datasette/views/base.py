@@ -64,13 +64,10 @@ class BaseView(AsgiView):
         response.body = b""
         return response
 
-    async def check_permission(
-        self, request, action, resource_type=None, resource_identifier=None
-    ):
+    async def check_permission(self, request, action, resource_identifier=None):
         ok = await self.ds.permission_allowed(
             request.actor,
             action,
-            resource_type=resource_type,
             resource_identifier=resource_identifier,
             default=True,
         )

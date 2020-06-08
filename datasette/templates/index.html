@@ -22,7 +22,7 @@
         {% endif %}
     </p>
     <p>{% for table in database.tables_and_views_truncated %}<a href="{{ database.path }}/{{ table.name|quote_plus 
-    }}"{% if table.count %} title="{{ table.count }} rows"{% endif %}>{{ table.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_and_views_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
+    }}"{% if table.count %} title="{{ table.count }} rows"{% endif %}>{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_and_views_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
 {% endfor %}
 
 {% endblock %}

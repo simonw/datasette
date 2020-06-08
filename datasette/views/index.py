@@ -25,14 +25,22 @@ class IndexView(BaseView):
         await self.check_permission(request, "view-instance")
         databases = []
         for name, db in self.ds.databases.items():
-            visible, private = await check_visibility(
+            visible, database_private = await check_visibility(
                 self.ds, request.actor, "view-database", "database", name,
             )
             if not visible:
                 continue
             table_names = await db.table_names()
             hidden_table_names = set(await db.hidden_table_names())
-            views = await db.view_names()
+
+            views = []
+            for view_name in await db.view_names():
+                visible, private = await check_visibility(
+                    self.ds, request.actor, "view-table", "table", (name, view_name),
+                )
+                if visible:
+                    views.append({"name": view_name, "private": private})
+
             # Perform counts only for immutable or DBS with <= COUNT_TABLE_LIMIT tables
             table_counts = {}
             if not db.is_mutable or db.size < COUNT_DB_SIZE_LIMIT:
@@ -40,8 +48,14 @@ class IndexView(BaseView):
                 # If any of these are None it means at least one timed out - ignore them all
                 if any(v is None for v in table_counts.values()):
                     table_counts = {}
+
             tables = {}
             for table in table_names:
+                visible, private = await check_visibility(
+                    self.ds, request.actor, "view-table", "table", (name, table),
+                )
+                if not visible:
+                    continue
                 table_columns = await db.table_columns(table)
                 tables[table] = {
                     "name": table,
@@ -51,6 +65,7 @@ class IndexView(BaseView):
                     "hidden": table in hidden_table_names,
                     "fts_table": await db.fts_table(table),
                     "num_relationships_for_sorting": 0,
+                    "private": private,
                 }
 
             if request.args.get("_sort") == "relationships" or not table_counts:
@@ -78,8 +93,8 @@ class IndexView(BaseView):
             # Only add views if this is less than TRUNCATE_AT
             if len(tables_and_views_truncated) < TRUNCATE_AT:
                 num_views_to_add = TRUNCATE_AT - len(tables_and_views_truncated)
-                for view_name in views[:num_views_to_add]:
-                    tables_and_views_truncated.append({"name": view_name})
+                for view in views[:num_views_to_add]:
+                    tables_and_views_truncated.append(view)
 
             databases.append(
                 {
@@ -100,7 +115,7 @@ class IndexView(BaseView):
                     ),
                     "hidden_tables_count": len(hidden_tables),
                     "views_count": len(views),
-                    "private": private,
+                    "private": database_private,
                 }
             )
 

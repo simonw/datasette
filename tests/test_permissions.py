@@ -74,6 +74,37 @@ def test_database_list_respects_view_database():
         assert '<a href="/fixtures">fixtures</a> 🔒</h2>' in auth_response.text
 
 
+def test_database_list_respects_view_table():
+    with make_app_client(
+        metadata={
+            "databases": {
+                "data": {
+                    "tables": {
+                        "names": {"allow": {"id": "root"}},
+                        "v": {"allow": {"id": "root"}},
+                    }
+                }
+            }
+        },
+        extra_databases={
+            "data.db": "create table names (name text); create view v as select * from names"
+        },
+    ) as client:
+        html_fragments = [
+            ">names</a> 🔒",
+            ">v</a> 🔒",
+        ]
+        anon_response_text = client.get("/").text
+        assert "0 rows in 0 tables" in anon_response_text
+        for html_fragment in html_fragments:
+            assert html_fragment not in anon_response_text
+        auth_response_text = client.get(
+            "/", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")},
+        ).text
+        for html_fragment in html_fragments:
+            assert html_fragment in auth_response_text
+
+
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],

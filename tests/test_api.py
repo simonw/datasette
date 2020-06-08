@@ -70,6 +70,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "Table With Space In Name",
@@ -79,6 +80,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "attraction_characteristic",
@@ -97,6 +99,7 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
+            "private": False,
         },
         {
             "name": "binary_data",
@@ -106,6 +109,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "complex_foreign_keys",
@@ -134,6 +138,7 @@ def test_database_page(app_client):
                     },
                 ],
             },
+            "private": False,
         },
         {
             "name": "compound_primary_key",
@@ -143,6 +148,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "compound_three_primary_keys",
@@ -152,6 +158,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "custom_foreign_key_label",
@@ -170,6 +177,7 @@ def test_database_page(app_client):
                     }
                 ],
             },
+            "private": False,
         },
         {
             "name": "facet_cities",
@@ -188,6 +196,7 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
+            "private": False,
         },
         {
             "name": "facetable",
@@ -217,6 +226,7 @@ def test_database_page(app_client):
                     }
                 ],
             },
+            "private": False,
         },
         {
             "name": "foreign_key_references",
@@ -240,6 +250,7 @@ def test_database_page(app_client):
                     },
                 ],
             },
+            "private": False,
         },
         {
             "name": "infinity",
@@ -249,6 +260,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "primary_key_multiple_columns",
@@ -267,6 +279,7 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
+            "private": False,
         },
         {
             "name": "primary_key_multiple_columns_explicit_label",
@@ -285,6 +298,7 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
+            "private": False,
         },
         {
             "name": "roadside_attraction_characteristics",
@@ -308,6 +322,7 @@ def test_database_page(app_client):
                     },
                 ],
             },
+            "private": False,
         },
         {
             "name": "roadside_attractions",
@@ -326,6 +341,7 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
+            "private": False,
         },
         {
             "name": "searchable",
@@ -344,6 +360,7 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
+            "private": False,
         },
         {
             "name": "searchable_tags",
@@ -363,6 +380,7 @@ def test_database_page(app_client):
                     },
                 ],
             },
+            "private": False,
         },
         {
             "name": "select",
@@ -372,6 +390,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "simple_primary_key",
@@ -405,6 +424,7 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
+            "private": False,
         },
         {
             "name": "sortable",
@@ -422,6 +442,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "table/with/slashes.csv",
@@ -431,6 +452,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "tags",
@@ -449,6 +471,7 @@ def test_database_page(app_client):
                 ],
                 "outgoing": [],
             },
+            "private": False,
         },
         {
             "name": "units",
@@ -458,6 +481,7 @@ def test_database_page(app_client):
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "no_primary_key",
@@ -467,6 +491,7 @@ def test_database_page(app_client):
             "hidden": True,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "searchable_fts",
@@ -476,6 +501,7 @@ def test_database_page(app_client):
             "hidden": True,
             "fts_table": "searchable_fts",
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "searchable_fts_content",
@@ -491,6 +517,7 @@ def test_database_page(app_client):
             "hidden": True,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "searchable_fts_segdir",
@@ -507,6 +534,7 @@ def test_database_page(app_client):
             "hidden": True,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
         {
             "name": "searchable_fts_segments",
@@ -516,6 +544,7 @@ def test_database_page(app_client):
             "hidden": True,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
         },
     ] == data["tables"]
 
@@ -537,6 +566,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
             "tables_and_views_more": False,
             "tables_and_views_truncated": [],
             "views_count": 0,
+            "private": False,
         }
     } == response.json
     # Try that SQL query

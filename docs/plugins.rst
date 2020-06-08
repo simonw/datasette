@@ -1006,7 +1006,7 @@ Instead of returning a dictionary, this function can return an awaitable functio
 .. _plugin_permission_allowed:
 
 permission_allowed(datasette, actor, action, resource)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
@@ -1022,4 +1022,40 @@ permission_allowed(datasette, actor, action, resource)
 
 Called to check that an actor has permission to perform an action on a resource. Can return ``True`` if the action is allowed, ``False`` if the action is not allowed or ``None`` if the plugin does not have an opinion one way or the other.
 
-See :ref:`permissions` for a full list of permissions included in Datasette core.
+Here's an example plugin which randomly selects if a permission should be allowed or denied, except for ``view-instance`` which always uses the default permission scheme instead.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import random
+
+    @hookimpl
+    def permission_allowed(action):
+        if action != "view-instance":
+            # Return True or False at random
+            return random.random() > 0.5
+        # Returning None falls back to default permissions
+
+This function can alternatively return an awaitable function which itself returns ``True``, ``False`` or ``None``. You can use this option if you need to execute additional database queries using ``await datasette.execute(...)``.
+
+Here's an example that allows users to view the ``admin_log`` table only if their actor ``id`` is present in the ``admin_users`` table. It aso disallows arbitrary SQL queries for the ``staff.db`` database for all users.
+
+.. code-block:: python
+
+    @hookimpl
+    def permission_allowed(datasette, actor, action, resource):
+        async def inner():
+            if action == "execute-sql" and resource == "staff":
+                return False
+            if action == "view-table" and resource == ("staff", "admin_log"):
+                if not actor:
+                    return False
+                user_id = actor["id"]
+                return await datasette.get_database("staff").execute(
+                    "select count(*) from admin_users where user_id = :user_id",
+                    {"user_id": user_id},
+                )
+
+        return inner
+
+See :ref:`permissions` for a full list of permissions that are included in Datasette core.

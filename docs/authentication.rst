@@ -174,11 +174,11 @@ To limit access to the ``users`` table in your ``bakery.db`` database:
 This works for SQL views as well - you can treat them as if they are tables.
 
 .. warning::
-    Restricting access to tables and views in this way will NOT prevent users from querying them using arbitrary SQL queries.
+    Restricting access to tables and views in this way will NOT prevent users from querying them using arbitrary SQL queries, `like this <https://latest.datasette.io/fixtures?sql=select+*+from+facetable>`__ for example.
 
     If you are restricting access to specific tables you should also use the ``"allow_sql"`` block to prevent users from accessing 
 
-.. _authentication_permissions_table:
+.. _authentication_permissions_query:
 
 Controlling access to specific canned queries
 ---------------------------------------------

@@ -2,7 +2,7 @@ from datasette import hookimpl
 from datasette.utils import actor_matches_allow
 
 
-@hookimpl
+@hookimpl(tryfirst=True)
 def permission_allowed(datasette, actor, action, resource):
     if action == "permissions-debug":
         if actor and actor.get("id") == "root":

@@ -22,6 +22,26 @@ def test_view_query(allow, expected_anon, expected_auth):
         assert expected_auth == auth_response.status
 
 
+def test_query_list_respects_view_query():
+    with make_app_client(
+        metadata={
+            "databases": {
+                "fixtures": {
+                    "queries": {"q": {"sql": "select 1 + 1", "allow": {"id": "root"}}}
+                }
+            }
+        }
+    ) as client:
+        html_fragment = '<li><a href="/fixtures/q" title="select 1 + 1">q</a> 🔒</li>'
+        anon_response = client.get("/fixtures")
+        assert html_fragment not in anon_response.text
+        assert '"/fixtures/q"' not in anon_response.text
+        auth_response = client.get(
+            "/fixtures", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")}
+        )
+        assert html_fragment in auth_response.text
+
+
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],

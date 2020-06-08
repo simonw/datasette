@@ -60,7 +60,7 @@
     <h2 id="queries">Queries</h2>
     <ul>
         {% for query in queries %}
-            <li><a href="{{ database_url(database) }}/{{ query.name|urlencode }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a> {% if query.requires_auth %} - requires authentication{% endif %}</li>
+            <li><a href="{{ database_url(database) }}/{{ query.name|urlencode }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a> {% if query.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
 {% endif %}

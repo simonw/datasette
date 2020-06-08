@@ -58,8 +58,7 @@ class DatabaseView(DataView):
         tables.sort(key=lambda t: (t["hidden"], t["name"]))
         canned_queries = [
             dict(
-                query,
-                requires_auth=not actor_matches_allow(None, query.get("allow", None)),
+                query, private=not actor_matches_allow(None, query.get("allow", None)),
             )
             for query in self.ds.get_canned_queries(database)
             if actor_matches_allow(

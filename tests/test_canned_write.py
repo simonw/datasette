@@ -120,13 +120,12 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
     )
     assert 200 == response.status
     assert [
-        {"name": "add_name", "requires_auth": False},
-        {"name": "add_name_specify_id", "requires_auth": False},
-        {"name": "delete_name", "requires_auth": True},
-        {"name": "update_name", "requires_auth": False},
+        {"name": "add_name", "private": False},
+        {"name": "add_name_specify_id", "private": False},
+        {"name": "delete_name", "private": True},
+        {"name": "update_name", "private": False},
     ] == [
-        {"name": q["name"], "requires_auth": q["requires_auth"]}
-        for q in response.json["queries"]
+        {"name": q["name"], "private": q["private"]} for q in response.json["queries"]
     ]
 
 

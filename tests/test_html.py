@@ -207,10 +207,7 @@ def test_row_page_does_not_truncate():
         assert response.status == 200
         assert_permissions_checked(
             client.ds,
-            [
-                "view-instance",
-                ("view-table", "table", ("fixtures", "facetable")),
-            ],
+            ["view-instance", ("view-table", "table", ("fixtures", "facetable")),],
         )
         table = Soup(response.body, "html.parser").find("table")
         assert table["class"] == ["rows-and-columns"]

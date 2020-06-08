@@ -2,7 +2,7 @@ import hashlib
 import json
 
 from datasette.utils import CustomJSONEncoder
-from datasette.utils.asgi import Response
+from datasette.utils.asgi import Response, Forbidden
 from datasette.version import __version__
 
 from .base import BaseView
@@ -25,6 +25,22 @@ class IndexView(BaseView):
         await self.check_permission(request, "view-instance")
         databases = []
         for name, db in self.ds.databases.items():
+            # Check permission
+            allowed = await self.ds.permission_allowed(
+                request.scope.get("actor"),
+                "view-database",
+                resource_type="database",
+                resource_identifier=name,
+                default=True,
+            )
+            if not allowed:
+                continue
+            private = not await self.ds.permission_allowed(
+                None,
+                "view-database",
+                resource_type="database",
+                resource_identifier=name,
+            )
             table_names = await db.table_names()
             hidden_table_names = set(await db.hidden_table_names())
             views = await db.view_names()
@@ -95,6 +111,7 @@ class IndexView(BaseView):
                     ),
                     "hidden_tables_count": len(hidden_tables),
                     "views_count": len(views),
+                    "private": private,
                 }
             )
 

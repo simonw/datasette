@@ -11,6 +11,12 @@ def permission_allowed(datasette, actor, action, resource_type, resource_identif
         allow = datasette.metadata("allow")
         if allow is not None:
             return actor_matches_allow(actor, allow)
+    elif action == "view-database":
+        assert resource_type == "database"
+        database_allow = datasette.metadata("allow", database=resource_identifier)
+        if database_allow is None:
+            return True
+        return actor_matches_allow(actor, database_allow)
     elif action == "view-query":
         # Check if this query has a "allow" block in metadata
         assert resource_type == "query"
@@ -20,7 +26,6 @@ def permission_allowed(datasette, actor, action, resource_type, resource_identif
         if isinstance(queries_metadata[query_name], str):
             return True
         allow = queries_metadata[query_name].get("allow")
-        print("checking allow - actor = {}, allow = {}".format(actor, allow))
         if allow is None:
             return True
         return actor_matches_allow(actor, allow)

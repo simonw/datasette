@@ -45,7 +45,7 @@ class DatabaseView(DataView):
         for table in table_counts:
             visible, private = await check_visibility(
                 self.ds,
-                request.scope.get("actor"),
+                request.actor,
                 "view-table",
                 "table",
                 (database, table),
@@ -71,7 +71,7 @@ class DatabaseView(DataView):
         for query in self.ds.get_canned_queries(database):
             visible, private = await check_visibility(
                 self.ds,
-                request.scope.get("actor"),
+                request.actor,
                 "view-query",
                 "query",
                 (database, query["name"]),

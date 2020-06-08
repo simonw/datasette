@@ -42,6 +42,9 @@ The request object is passed to various plugin hooks. It represents an incoming 
 ``.args`` - MultiParams
     An object representing the parsed querystring parameters, see below.
 
+``.actor`` - dictionary (str -> Any) or None
+    The currently authenticated actor (see :ref:`actors <authentication_actor>`), or ``None`` if the request is unauthenticated.
+
 The object also has one awaitable method:
 
 ``await request.post_vars()`` - dictionary
@@ -122,7 +125,7 @@ await .permission_allowed(actor, action, resource_type=None, resource_identifier
 -----------------------------------------------------------------------------------------------------
 
 ``actor`` - dictionary
-    The authenticated actor. This is usually ``request.scope.get("actor")``.
+    The authenticated actor. This is usually ``request.actor``.
 
 ``action`` - string
     The name of the action that is being permission checked.

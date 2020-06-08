@@ -74,6 +74,10 @@ class Request:
     def args(self):
         return MultiParams(parse_qs(qs=self.query_string))
 
+    @property
+    def actor(self):
+        return self.scope.get("actor", None)
+
     async def post_vars(self):
         body = []
         body = b""

@@ -140,6 +140,8 @@ Plugins that wish to implement the same permissions scheme as canned queries can
     actor_matches_allow({"id": "root"}, {"id": "*"})
     # returns True
 
+The currently authenticated actor is made available to plugins as ``request.actor``.
+
 .. _PermissionsDebugView:
 
 Permissions Debug

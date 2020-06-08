@@ -26,7 +26,7 @@ class IndexView(BaseView):
         databases = []
         for name, db in self.ds.databases.items():
             visible, private = await check_visibility(
-                self.ds, request.scope.get("actor"), "view-database", "database", name,
+                self.ds, request.actor, "view-database", "database", name,
             )
             if not visible:
                 continue

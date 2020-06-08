@@ -68,7 +68,7 @@ class BaseView(AsgiView):
         self, request, action, resource_type=None, resource_identifier=None
     ):
         ok = await self.ds.permission_allowed(
-            request.scope.get("actor"),
+            request.actor,
             action,
             resource_type=resource_type,
             resource_identifier=resource_identifier,

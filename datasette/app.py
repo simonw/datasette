@@ -667,7 +667,7 @@ class Datasette:
         return d
 
     def _actor(self, request):
-        return {"actor": request.scope.get("actor", None)}
+        return {"actor": request.actor}
 
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."

@@ -86,7 +86,7 @@ class PermissionsDebugView(BaseView):
 
     async def get(self, request):
         if not await self.ds.permission_allowed(
-            request.scope.get("actor"), "permissions-debug"
+            request.actor, "permissions-debug"
         ):
             return Response("Permission denied", status=403)
         return await self.render(

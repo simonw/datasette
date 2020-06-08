@@ -136,10 +136,15 @@ def test_view_query(allow, expected_anon, expected_auth):
     ) as client:
         anon_response = client.get("/fixtures/q")
         assert expected_anon == anon_response.status
+        if allow and anon_response.status == 200:
+            # Should be no padlock
+            assert ">fixtures 🔒</h1>" not in anon_response.text
         auth_response = client.get(
             "/fixtures/q", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")}
         )
         assert expected_auth == auth_response.status
+        if allow and expected_anon == 403 and expected_auth == 200:
+            assert ">fixtures 🔒</h1>" in auth_response.text
 
 
 def test_query_list_respects_view_query():

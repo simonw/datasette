@@ -147,9 +147,13 @@ class QueryView(DataView):
         # Respect canned query permissions
         await self.check_permission(request, "view-instance")
         await self.check_permission(request, "view-database", "database", database)
+        private = False
         if canned_query:
             await self.check_permission(
                 request, "view-query", "query", (database, canned_query)
+            )
+            private = not await self.ds.permission_allowed(
+                None, "view-query", "query", (database, canned_query), default=True
             )
         else:
             await self.check_permission(request, "execute-sql", "database", database)
@@ -214,6 +218,7 @@ class QueryView(DataView):
                         "truncated": False,
                         "columns": [],
                         "query": {"sql": sql, "params": params},
+                        "private": private,
                     },
                     extra_template,
                     templates,
@@ -282,6 +287,7 @@ class QueryView(DataView):
                 "truncated": results.truncated,
                 "columns": columns,
                 "query": {"sql": sql, "params": params},
+                "private": private,
             },
             extra_template,
             templates,

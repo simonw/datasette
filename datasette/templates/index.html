@@ -5,7 +5,7 @@
 {% block body_class %}index{% endblock %}
 
 {% block content %}
-<h1>{{ metadata.title or "Datasette" }}</h1>
+<h1>{{ metadata.title or "Datasette" }}{% if private %} 🔒{% endif %}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 

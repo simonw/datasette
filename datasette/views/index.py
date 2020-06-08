@@ -121,5 +121,8 @@ class IndexView(BaseView):
                     "databases": databases,
                     "metadata": self.ds.metadata(),
                     "datasette_version": __version__,
+                    "private": not await self.ds.permission_allowed(
+                        None, "view-instance"
+                    ),
                 },
             )

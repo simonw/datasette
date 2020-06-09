@@ -42,6 +42,9 @@ The request object is passed to various plugin hooks. It represents an incoming 
 ``.args`` - MultiParams
     An object representing the parsed querystring parameters, see below.
 
+``.url_vars`` - dictionary (str -> str)
+    Variables extracted from the URL path, if that path was defined using a regular expression. See :ref:`plugin_register_routes`.
+
 ``.actor`` - dictionary (str -> Any) or None
     The currently authenticated actor (see :ref:`actors <authentication_actor>`), or ``None`` if the request is unauthenticated.
 

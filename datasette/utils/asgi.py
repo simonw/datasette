@@ -33,6 +33,10 @@ class Request:
         )
 
     @property
+    def url_vars(self):
+        return (self.scope.get("url_route") or {}).get("kwargs") or {}
+
+    @property
     def scheme(self):
         return self.scope.get("scheme") or "http"
 

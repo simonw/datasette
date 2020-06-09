@@ -850,8 +850,8 @@ Return a list of ``(regex, async_view_function)`` pairs, something like this:
     import html
 
 
-    async def hello_from(scope):
-        name = scope["url_route"]["kwargs"]["name"]
+    async def hello_from(request):
+        name = request.url_vars["name"]
         return Response.html("Hello from {}".format(
             html.escape(name)
         ))

@@ -152,8 +152,8 @@ def register_routes():
             (await datasette.get_database().execute("select 1 + 1")).first()[0]
         )
 
-    async def two(request, scope):
-        name = scope["url_route"]["kwargs"]["name"]
+    async def two(request):
+        name = request.url_vars["name"]
         greeting = request.args.get("greeting")
         return Response.text("{} {}".format(greeting, name))
 

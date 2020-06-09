@@ -1015,7 +1015,16 @@ class DatasetteRouter(AsgiRouter):
         templates = ["500.html"]
         if status != 500:
             templates = ["{}.html".format(status)] + templates
-        info.update({"ok": False, "error": message, "status": status, "title": title})
+        info.update(
+            {
+                "ok": False,
+                "error": message,
+                "status": status,
+                "title": title,
+                "base_url": self.ds.config("base_url"),
+                "app_css_hash": self.ds.app_css_hash(),
+            }
+        )
         headers = {}
         if self.ds.cors:
             headers["Access-Control-Allow-Origin"] = "*"

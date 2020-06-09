@@ -965,6 +965,18 @@ def inner_html(soup):
     return inner_html.strip()
 
 
+@pytest.mark.parametrize("path", ["/404", "/fixtures/404"])
+def test_404(app_client, path):
+    response = app_client.get(path)
+    assert 404 == response.status
+    assert (
+        '<link rel="stylesheet" href="/-/static/app.css?{}'.format(
+            app_client.ds.app_css_hash()
+        )
+        in response.text
+    )
+
+
 @pytest.mark.parametrize(
     "path,expected_redirect",
     [("/fixtures/", "/fixtures"), ("/fixtures/simple_view/", "/fixtures/simple_view")],

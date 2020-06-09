@@ -867,7 +867,8 @@ async def async_call_with_supported_arguments(fn, **kwargs):
 
 
 def actor_matches_allow(actor, allow):
-    actor = actor or {}
+    if actor is None:
+        actor = {"anonymous": True}
     if allow is None:
         return True
     for key, values in allow.items():

@@ -239,7 +239,7 @@ To limit this ability for just one specific database, use this:
 actor_matches_allow()
 =====================
 
-Plugins that wish to implement the same permissions scheme as canned queries can take advantage of the ``datasette.utils.actor_matches_allow(actor, allow)`` function:
+Plugins that wish to implement this same ``"allow"`` block permissions scheme can take advantage of the ``datasette.utils.actor_matches_allow(actor, allow)`` function:
 
 .. code-block:: python
 

@@ -842,7 +842,7 @@ register_routes()
 
 Register additional view functions to execute for specified URL routes.
 
-Return a list of `(regex, async_view_function)` pairs, something like this:
+Return a list of ``(regex, async_view_function)`` pairs, something like this:
 
 .. code-block:: python
 

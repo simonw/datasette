@@ -1,3 +1,5 @@
+.. _sql:
+
 Running SQL queries
 ===================
 
@@ -21,6 +23,8 @@ using your browser back button.
 
 You can also retrieve the results of any query as JSON by adding ``.json`` to
 the base URL.
+
+.. _sql_parameters:
 
 Named parameters
 ----------------
@@ -50,6 +54,8 @@ Datasette disallows custom SQL containing the string PRAGMA, as SQLite pragma
 statements can be used to change database settings at runtime. If you need to
 include the string "pragma" in a query you can do so safely using a named
 parameter.
+
+.. _sql_views:
 
 Views
 -----

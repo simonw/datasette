@@ -4,7 +4,7 @@
  Authentication and permissions
 ================================
 
-Datasette does not require authentication by default. Any visitor to a Datasette instance can explore the full data and execute SQL queries.
+Datasette does not require authentication by default. Any visitor to a Datasette instance can explore the full data and execute read-only SQL queries.
 
 Datasette's plugin system can be used to add many different styles of authentication, such as user accounts, single sign-on or API keys.
 
@@ -49,10 +49,20 @@ The URL on the first line includes a one-use token which can be used to sign in 
 
 .. _authentication_permissions:
 
-Checking permission
-===================
+Permissions
+===========
 
-Datasette plugins can check if an actor has permission to perform an action using the :ref:`datasette.permission_allowed(...)<datasette_permission_allowed>` method. This method is also used by Datasette core code itself, which allows plugins to help make decisions on which actions are allowed by implementing the :ref:`plugin_permission_allowed` plugin hook.
+Datasette has an extensive permissions system built-in, which can be further extended and customized by plugins.
+
+The key question the permissions system answers is this:
+
+    Is this **actor** allowed to perform this **action**, optionally against this particular **resource**?
+
+**Actors** are :ref:`described above <authentication_actor>`.
+
+An **action** is a string describing the action the actor would like to perfom. A full list is :ref:`provided below <permissions>` - examples include ``view-table`` and ``execute-sql``.
+
+A **resource** is the item the actor wishes to interact with - for example a specific database or table. Some actions, such as ``permissions-debug``, are not associated with a particular resource.
 
 .. _authentication_permissions_metadata:
 
@@ -115,7 +125,7 @@ You can provide access to any user that has "developer" as one of their roles li
         }
     }
 
-Note that "roles" is not a concept that is baked into Datasette - it's more of a convention that plugins can choose to implement and act on.
+Note that "roles" is not a concept that is baked into Datasette - it's a convention that plugins can choose to implement and act on.
 
 If you want to provide access to any actor with a value for a specific key, use ``"*"``. For example, to spceify that a query can be accessed by any logged-in user use this:
 
@@ -171,7 +181,7 @@ To limit access to the ``users`` table in your ``bakery.db`` database:
         }
     }
 
-This works for SQL views as well - you can treat them as if they are tables.
+This works for SQL views as well - you can list their names in the ``"tables"`` block above in the same way as regular tables.
 
 .. warning::
     Restricting access to tables and views in this way will NOT prevent users from querying them using arbitrary SQL queries, `like this <https://latest.datasette.io/fixtures?sql=select+*+from+facetable>`__ for example.
@@ -182,6 +192,8 @@ This works for SQL views as well - you can treat them as if they are tables.
 
 Controlling access to specific canned queries
 ---------------------------------------------
+
+:ref:`canned_queries` allow you to configure named SQL queries in your ``metadata.json`` that can be executed by users. These queries can be set up to both read and write to the database, so controlling who can execute them can be important.
 
 To limit access to the ``add_name`` canned query in your ``dogs.db`` database to just the :ref:`root user<authentication_root>`:
 
@@ -234,6 +246,15 @@ To limit this ability for just one specific database, use this:
         }
     }
 
+.. _permissions_plugins:
+
+Checking permissions in plugins
+===============================
+
+Datasette plugins can check if an actor has permission to perform an action using the :ref:`datasette.permission_allowed(...)<datasette_permission_allowed>` method.
+
+Datasette core performs a number of permission checks, :ref:`documented below <permissions>`. Plugins can implement the :ref:`plugin_permission_allowed` plugin hook to participate in decisions about whether an actor should be able to perform a specified action.
+
 .. _authentication_actor_matches_allow:
 
 actor_matches_allow()
@@ -264,8 +285,8 @@ This is designed to help administrators and plugin authors understand exactly ho
 
 .. _permissions:
 
-Permissions
-===========
+Built-in permissions
+====================
 
 This section lists all of the permission checks that are carried out by Datasette core, along with the ``resource`` if it was passed.
 

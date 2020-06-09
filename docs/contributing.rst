@@ -156,6 +156,18 @@ To release a new version, first create a commit that updates :ref:`the changelog
 
 Referencing the issues that are part of the release in the commit message ensures the name of the release shows up on those issue pages, e.g. `here <https://github.com/simonw/datasette/issues/581#ref-commit-d56f402>`__.
 
+You can generate the list of issue references for a specific release by pasting the following into the browser devtools while looking at the :ref:`changelog` page (replace ``v0-44`` with the most recent version):
+
+.. code-block:: javascript
+
+    [
+        ...new Set(
+            Array.from(
+                document.getElementById("v0-44").querySelectorAll("a[href*=issues]")
+            ).map((a) => "#" + a.href.split("/issues/")[1])
+        ),
+    ].sort().join(", ");
+
 For non-bugfix releases you may want to update the news section of ``README.md`` as part of the same commit.
 
 To tag and push the releaes, run the following::

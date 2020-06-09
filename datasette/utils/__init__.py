@@ -873,12 +873,12 @@ def actor_matches_allow(actor, allow):
     for key, values in allow.items():
         if values == "*" and key in actor:
             return True
-        if isinstance(values, str):
+        if not isinstance(values, list):
             values = [values]
         actor_values = actor.get(key)
         if actor_values is None:
             return False
-        if isinstance(actor_values, str):
+        if not isinstance(actor_values, list):
             actor_values = [actor_values]
         actor_values = set(actor_values)
         if actor_values.intersection(values):

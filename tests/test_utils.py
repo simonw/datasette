@@ -466,6 +466,7 @@ def test_multi_params(data, should_raise):
     [
         ({"id": "root"}, None, True),
         ({"id": "root"}, {}, False),
+        ({"anonymous": True}, {"anonymous": True}, True),
         (None, None, True),
         (None, {}, False),
         (None, {"id": "root"}, False),

@@ -184,11 +184,16 @@ await .permission_allowed(actor, action, resource=None, default=False)
 ``resource`` - string, optional
     The resource, e.g. the name of the table. Only some permissions apply to a resource.
 
-Check if the given actor has permission to perform the given action on the given resource. This uses plugins that implement the :ref:`plugin_permission_allowed` plugin hook to decide if the action is allowed or not.
+``default`` - optional, True or False
+    Should this permission check be default allow or default deny.
 
-If none of the plugins express an opinion, the return value will be the ``default`` argument. This is deny, but you can pass ``default=True`` to default allow instead.
+Check if the given actor has :ref:`permission <authentication_permissions>` to perform the given action on the given resource.
 
-See :ref:`permissions` for a full list of permissions included in Datasette core.
+Some permission checks are carried out against :ref:`rules defined in metadata.json <authentication_permissions_metadata>`, while other custom permissions may be decided by plugins that implement the :ref:`plugin_permission_allowed` plugin hook.
+
+If neither ``metadata.json`` nor any of the plugins provide an answer to the permission query the ``default`` argument will be returned.
+
+See :ref:`permissions` for a full list of permission actions included in Datasette core.
 
 .. _datasette_get_database:
 

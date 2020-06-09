@@ -464,12 +464,16 @@ def test_multi_params(data, should_raise):
 @pytest.mark.parametrize(
     "actor,allow,expected",
     [
-        ({"id": "root"}, None, True),
-        ({"id": "root"}, {}, False),
-        ({"anonymous": True}, {"anonymous": True}, True),
         (None, None, True),
         (None, {}, False),
         (None, {"id": "root"}, False),
+        ({"id": "root"}, None, True),
+        ({"id": "root"}, {}, False),
+        ({"id": "simon", "staff": True}, {"staff": True}, True),
+        ({"id": "simon", "staff": False}, {"staff": True}, False),
+        # Special case for "unauthenticated": true
+        (None, {"unauthenticated": True}, True),
+        (None, {"unauthenticated": False}, False),
         # Special "*" value for any key:
         ({"id": "root"}, {"id": "*"}, True),
         ({}, {"id": "*"}, False),

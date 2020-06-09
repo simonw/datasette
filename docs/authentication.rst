@@ -64,6 +64,91 @@ An **action** is a string describing the action the actor would like to perfom. 
 
 A **resource** is the item the actor wishes to interact with - for example a specific database or table. Some actions, such as ``permissions-debug``, are not associated with a particular resource.
 
+Datasette's built-in view permissions (``view-database``, ``view-table`` etc) default to *allow* - unless you :ref:`configure additional permission rules <authentication_permissions_metadata>` unauthenticated users will be allowed to access content.
+
+Permissions with potentially harmful effects should default to *deny*. Plugin authors should account for this when designing new plugins - for example, the `datasette-upload-csvs <https://github.com/simonw/datasette-upload-csvs>`__ plugin defaults to deny so that installations don't accidentally allow unauthenticated users to create new tables by uploading a CSV file.
+
+.. _authentication_permissions_allow:
+
+Defining permissions with "allow" blocks
+----------------------------------------
+
+The standard way to define permissions in Datasette is to use an ``"allow"`` block. This is a JSON document describing which actors are allowed to perfom a permission.
+
+The most basic form of allow block is this:
+
+.. code-block:: json
+
+    {
+        "allow": {
+            "id": "root"
+        }
+    }
+
+This will match any actors with an ``"id"`` property of ``"root"`` - for example, an actor that looks like this:
+
+.. code-block:: json
+
+    {
+        "id": "root",
+        "name": "Root User"
+    }
+
+Allow keys can provide a list of values. These will match any actor that has any of those values.
+
+.. code-block:: json
+
+    {
+        "allow": {
+            "id": ["simon", "cleopaws"]
+        }
+    }
+
+This will match any actor with an ``"id"`` of either ``"simon"`` or ``"cleopaws"``.
+
+Actors can have properties that feature a list of values. These will be matched against the list of values in an allow block. Consider the following actor:
+
+.. code-block:: json
+
+    {
+        "id": "simon",
+        "roles": ["staff", "developer"]
+    }
+
+This allow block will provide access to any actor that has ``"developer"`` as one of their roles:
+
+.. code-block:: json
+
+    {
+        "allow": {
+            "roles": ["developer"]
+        }
+    }
+
+Note that "roles" is not a concept that is baked into Datasette - it's a convention that plugins can choose to implement and act on.
+
+If you want to provide access to any actor with a value for a specific key, use ``"*"``. For example, to match any logged-in user specify the following:
+
+.. code-block:: json
+
+    {
+        "allow": {
+            "id": "*"
+        }
+    }
+
+You can specify that unauthenticated actors (from anynomous HTTP requests) should be allowed access using the special ``"unauthenticated": true`` key in an allow block:
+
+.. code-block:: json
+
+    {
+        "allow": {
+            "unauthenticated": true
+        }
+    }
+
+Allow keys act as an "or" mechanism. An actor will be able to execute the query if any of their JSON properties match any of the values in the corresponding lists in the ``allow`` block.
+
 .. _authentication_permissions_metadata:
 
 Configuring permissions in metadata.json
@@ -95,49 +180,6 @@ Here's how to restrict access to your entire Datasette instance to just the ``"i
             "id": "root"
         }
     }
-
-To allow any of the actors with an ``id`` matching a specific list of values, use this:
-
-.. code-block:: json
-
-    {
-        "allow": {
-            "id": ["simon", "cleopaws"]
-        }
-    }
-
-This works for other keys as well. Imagine an actor that looks like this:
-
-.. code-block:: json
-
-    {
-        "id": "simon",
-        "roles": ["staff", "developer"]
-    }
-
-You can provide access to any user that has "developer" as one of their roles like so:
-
-.. code-block:: json
-
-    {
-        "allow": {
-            "roles": ["developer"]
-        }
-    }
-
-Note that "roles" is not a concept that is baked into Datasette - it's a convention that plugins can choose to implement and act on.
-
-If you want to provide access to any actor with a value for a specific key, use ``"*"``. For example, to spceify that a query can be accessed by any logged-in user use this:
-
-.. code-block:: json
-
-    {
-        "allow": {
-            "id": "*"
-        }
-    }
-
-These keys act as an "or" mechanism. A actor will be able to execute the query if any of their JSON properties match any of the values in the corresponding lists in the ``allow`` block.
 
 .. _authentication_permissions_database:
 
@@ -297,6 +339,8 @@ view-instance
 
 Top level permission - Actor is allowed to view any pages within this instance, starting at https://latest.datasette.io/
 
+Default *allow*.
+
 .. _permissions_view_database:
 
 view-database
@@ -306,6 +350,8 @@ Actor is allowed to view a database page, e.g. https://latest.datasette.io/fixtu
 
 ``resource`` - string
     The name of the database
+
+Default *allow*.
 
 .. _permissions_view_database_download:
 
@@ -317,6 +363,8 @@ Actor is allowed to download a database, e.g. https://latest.datasette.io/fixtur
 ``resource`` - string
     The name of the database
 
+Default *allow*.
+
 .. _permissions_view_table:
 
 view-table
@@ -326,6 +374,8 @@ Actor is allowed to view a table (or view) page, e.g. https://latest.datasette.i
 
 ``resource`` - tuple: (string, string)
     The name of the database, then the name of the table
+
+Default *allow*.
 
 .. _permissions_view_query:
 
@@ -337,6 +387,8 @@ Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https
 ``resource`` - tuple: (string, string)
     The name of the database, then the name of the canned query
 
+Default *allow*.
+
 .. _permissions_execute_sql:
 
 execute-sql
@@ -347,9 +399,13 @@ Actor is allowed to run arbitrary SQL queries against a specific database, e.g. 
 ``resource`` - string
     The name of the database
 
+Default *allow*.
+
 .. _permissions_permissions_debug:
 
 permissions-debug
 -----------------
 
 Actor is allowed to view the ``/-/permissions`` debug page.
+
+Default *deny*.

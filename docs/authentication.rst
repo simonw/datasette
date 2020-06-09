@@ -17,7 +17,7 @@ Through plugins, Datasette can support both authenticated users (with cookies) a
 
 Every request to Datasette has an associated actor value, available in the code as ``request.actor``. This can be ``None`` for unauthenticated requests, or a JSON compatible Python dictionary for authenticated users or API agents.
 
-The only required field in an actor is ``"id"``, which must be a string. Plugins may decide to add any other fields to the actor dictionary.
+The actor dictionary can be any shape - the design of that data structure is left up to the plugins. A useful convention is to include an ``"id"`` string, as demonstrated by the "root" actor below.
 
 Plugins can use the :ref:`plugin_actor_from_request` hook to implement custom logic for authenticating an actor based on the incoming HTTP request.
 

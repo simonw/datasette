@@ -309,14 +309,10 @@ def test_permissions_debug(app_client):
     ] == checks
 
 
-@pytest.mark.parametrize("allow,expected", [
-    ({"id": "root"}, 403),
-    ({"id": "root", "unauthenticated": True}, 200),
-])
+@pytest.mark.parametrize(
+    "allow,expected",
+    [({"id": "root"}, 403), ({"id": "root", "unauthenticated": True}, 200),],
+)
 def test_allow_unauthenticated(allow, expected):
-    with make_app_client(
-        metadata={
-            "allow": allow
-        }
-    ) as client:
+    with make_app_client(metadata={"allow": allow}) as client:
         assert expected == client.get("/").status

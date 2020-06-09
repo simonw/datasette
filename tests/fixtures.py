@@ -2,6 +2,7 @@ from datasette.app import Datasette
 from datasette.utils import sqlite3, MultiParams
 from asgiref.testing import ApplicationCommunicator
 from asgiref.sync import async_to_sync
+import click
 import contextlib
 from http.cookies import SimpleCookie
 import itertools
@@ -813,49 +814,6 @@ INSERT INTO "searchable_fts" (rowid, text1, text2)
     SELECT rowid, text1, text2 FROM searchable;
 """
 
-if __name__ == "__main__":
-    # Can be called with data.db OR data.db metadata.json
-    arg_index = -1
-    db_filename = sys.argv[arg_index]
-    metadata_filename = None
-    plugins_path = None
-    if db_filename.endswith("/"):
-        # It's the plugins dir
-        plugins_path = db_filename
-        arg_index -= 1
-        db_filename = sys.argv[arg_index]
-    if db_filename.endswith(".json"):
-        metadata_filename = db_filename
-        arg_index -= 1
-        db_filename = sys.argv[arg_index]
-    if db_filename.endswith(".db"):
-        conn = sqlite3.connect(db_filename)
-        conn.executescript(TABLES)
-        for sql, params in TABLE_PARAMETERIZED_SQL:
-            with conn:
-                conn.execute(sql, params)
-        print("Test tables written to {}".format(db_filename))
-        if metadata_filename:
-            open(metadata_filename, "w").write(json.dumps(METADATA))
-            print("- metadata written to {}".format(metadata_filename))
-        if plugins_path:
-            path = pathlib.Path(plugins_path)
-            if not path.exists():
-                path.mkdir()
-                for filename, content in (
-                    ("my_plugin.py", PLUGIN1),
-                    ("my_plugin_2.py", PLUGIN2),
-                ):
-                    filepath = path / filename
-                    filepath.write_text(content)
-                    print("  Wrote plugin: {}".format(filepath))
-    else:
-        print(
-            "Usage: {} db_to_write.db [metadata_to_write.json] [plugins-dir/]".format(
-                sys.argv[0]
-            )
-        )
-
 
 def assert_permissions_checked(datasette, actions):
     # actions is a list of "action" or (action, resource) tuples
@@ -873,3 +831,56 @@ def assert_permissions_checked(datasette, actions):
         """.format(
             action, resource, json.dumps(list(datasette._permission_checks), indent=4),
         )
+
+
+@click.command()
+@click.argument(
+    "db_filename",
+    default="fixtures.db",
+    type=click.Path(file_okay=True, dir_okay=False),
+)
+@click.argument("metadata", required=False)
+@click.argument(
+    "plugins_path", type=click.Path(file_okay=False, dir_okay=True), required=False
+)
+@click.option(
+    "--recreate",
+    is_flag=True,
+    default=False,
+    help="Delete and recreate database if it exists",
+)
+def cli(db_filename, metadata, plugins_path, recreate):
+    "Write out the fixtures database used by Datasette's test suite"
+    if metadata and not metadata.endswith(".json"):
+        raise click.ClickException("Metadata should end with .json")
+    if not db_filename.endswith(".db"):
+        raise click.ClickException("Database file should end with .db")
+    if pathlib.Path(db_filename).exists():
+        if not recreate:
+            raise click.ClickException(
+                "{} already exists, use --recreate to reset it".format(db_filename)
+            )
+        else:
+            pathlib.Path(db_filename).unlink()
+    conn = sqlite3.connect(db_filename)
+    conn.executescript(TABLES)
+    for sql, params in TABLE_PARAMETERIZED_SQL:
+        with conn:
+            conn.execute(sql, params)
+    print("Test tables written to {}".format(db_filename))
+    if metadata:
+        open(metadata, "w").write(json.dumps(METADATA, indent=4))
+        print("- metadata written to {}".format(metadata))
+    if plugins_path:
+        path = pathlib.Path(plugins_path)
+        if not path.exists():
+            path.mkdir()
+        test_plugins = pathlib.Path(__file__).parent / "plugins"
+        for filepath in test_plugins.glob("*.py"):
+            newpath = path / filepath.name
+            newpath.write_text(filepath.open().read())
+            print("  Wrote plugin: {}".format(newpath))
+
+
+if __name__ == "__main__":
+    cli()

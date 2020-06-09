@@ -70,11 +70,20 @@ You can also use the ``fixtures.py`` script to recreate the testing version of `
 
     python tests/fixtures.py fixtures.db fixtures-metadata.json
 
-(You may need to delete ``fixtures.db`` before running this command.)
+Or to output the plugins used by the tests, run this::
+
+    python tests/fixtures.py fixtures.db fixtures-metadata.json fixtures-plugins
+    Test tables written to fixtures.db
+    - metadata written to fixtures-metadata.json
+    Wrote plugin: fixtures-plugins/register_output_renderer.py
+    Wrote plugin: fixtures-plugins/view_name.py
+    Wrote plugin: fixtures-plugins/my_plugin.py
+    Wrote plugin: fixtures-plugins/messages_output_renderer.py
+    Wrote plugin: fixtures-plugins/my_plugin_2.py
 
 Then run Datasette like this::
 
-    datasette fixtures.db -m fixtures-metadata.json
+    datasette fixtures.db -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
 
 .. _contributing_documentation:
 

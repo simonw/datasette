@@ -51,7 +51,7 @@ The request object is passed to various plugin hooks. It represents an incoming 
 The object also has one awaitable method:
 
 ``await request.post_vars()`` - dictionary
-    Returns a dictionary of form variables that were submitted in the request body via ``POST``.
+    Returns a dictionary of form variables that were submitted in the request body via ``POST``. Don't forget to read about :ref:`internals_csrf`!
 
 .. _internals_multiparams:
 
@@ -500,3 +500,17 @@ The ``Database`` class also provides properties and methods for introspecting th
                 }
             ]
         }
+
+
+.. _internals_csrf:
+
+CSRF protection
+~~~~~~~~~~~~~~~
+
+Datasette uses `asgi-csrf <https://github.com/simonw/asgi-csrf>`__ to guard against CSRF attacks on form POST submissions. Users receive a ``ds_csrftoken`` cookie which is compared against the ``csrftoken`` form field (or ``x-csrftoken`` HTTP header) for every incoming request.
+
+If your plugin implements a ``<form method="POST">`` anywhere you will need to include that token. You can do so with the following template snippet:
+
+.. code-block:: html
+
+    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">

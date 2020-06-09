@@ -315,8 +315,8 @@ The currently authenticated actor is made available to plugins as ``request.acto
 
 .. _PermissionsDebugView:
 
-Permissions Debug
-=================
+The permissions debug tool
+==========================
 
 The debug tool at ``/-/permissions`` is only available to the :ref:`authenticated root user <authentication_root>` (or any actor granted the ``permissions-debug`` action according to a plugin).
 
@@ -324,6 +324,22 @@ It shows the thirty most recent permission checks that have been carried out by 
 
 This is designed to help administrators and plugin authors understand exactly how permission checks are being carried out, in order to effectively configure Datasette's permission system.
 
+.. _authentication_ds_actor:
+
+The ds_actor cookie
+===================
+
+Datasette includes a default authentication plugin which looks for a signed ``ds_actor`` cookie containing a JSON actor dictionary. This is how the :ref:`root actor <authentication_root>` mechanism works.
+
+Authentication plugins can set signed ``ds_actor`` cookies themselves like so:
+
+.. code-block:: python
+
+    response = Response.redirect("/")
+    response.set_cookie("ds_actor", datasette.sign({"id": "cleopaws"}, "actor"))
+    return response
+
+Note that you need to pass ``"actor"`` as the namespace to :ref:`datasette_sign`.
 
 .. _permissions:
 

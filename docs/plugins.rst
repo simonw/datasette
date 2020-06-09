@@ -882,7 +882,7 @@ The optional view function arguments are as follows:
 ``receive`` - function
     The ASGI receive function.
 
-The function can either return a ``Response`` or it can return nothing and instead respond directly to the request using the ASGI ``receive`` function (for advanced uses only).
+The function can either return a :ref:`internals_response` or it can return nothing and instead respond directly to the request using the ASGI ``send`` function (for advanced uses only).
 
 .. _plugin_register_facet_classes:
 

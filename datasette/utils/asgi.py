@@ -406,6 +406,15 @@ class Response:
         )
 
     @classmethod
+    def json(cls, body, status=200, headers=None):
+        return cls(
+            json.dumps(body),
+            status=status,
+            headers=headers,
+            content_type="application/json; charset=utf-8",
+        )
+
+    @classmethod
     def redirect(cls, path, status=302, headers=None):
         headers = headers or {}
         headers["Location"] = path

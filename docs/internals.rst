@@ -80,6 +80,54 @@ Consider the querystring ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` an
 ``len(request.args)`` - integer
     Returns the number of keys.
 
+.. _internals_response:
+
+Response class
+~~~~~~~~~~~~~~
+
+The ``Response`` class can be returned from view functions that have been registered using the :ref:`plugin_register_routes` hook.
+
+The ``Response()`` constructor takes the following arguments:
+
+``body`` - string
+    The body of the response.
+
+``status`` - integer (optional)
+    The HTTP status - defaults to 200.
+
+``headers`` - dictionary (optional)
+    A dictionary of extra HTTP headers, e.g. ``{"x-hello": "world"}``.
+
+``content_type`` - string (optional)
+    The content-type for the response. Defaults to ``text/plain``.
+
+For example:
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+
+    response = Response(
+        "<xml>This is XML</xml>",
+        content_type="application/xml; charset=utf-8"
+    )
+
+The easiest way to create responses is using the ``Response.text(...)``, ``Response.html(...)``, ``Response.json(...)`` or ``Response.redirect(...)`` helper methods:
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+
+    html_response = Response.html("This is HTML")
+    json_response = Response.json({"this_is": "json"})
+    text_response = Response.text("This will become utf-8 encoded text")
+    # Redirects are served as 302, unless you pass status=301:
+    redirect_response = Response.redirect("https://latest.datasette.io/")
+
+Each of these responses will use the correct corresponding content-type - ``text/html; charset=utf-8``, ``application/json; charset=utf-8`` or ``text/plain; charset=utf-8`` respectively.
+
+Each of the helper methods take optional ``status=`` and ``headers=`` arguments, documented above.
+
 .. _internals_datasette:
 
 Datasette class

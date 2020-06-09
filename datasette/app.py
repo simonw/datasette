@@ -8,6 +8,7 @@ import itertools
 import json
 import os
 import re
+import secrets
 import sys
 import threading
 import traceback
@@ -186,7 +187,7 @@ class Datasette:
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
-        self._secret = secret or os.urandom(32).hex()
+        self._secret = secret or secrets.token_hex(32)
         self.files = tuple(files) + tuple(immutables or [])
         if config_dir:
             self.files += tuple([str(p) for p in config_dir.glob("*.db")])
@@ -299,7 +300,7 @@ class Datasette:
 
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
-        self._root_token = os.urandom(32).hex()
+        self._root_token = secrets.token_hex(32)
 
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)

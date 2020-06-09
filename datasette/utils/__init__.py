@@ -842,7 +842,7 @@ def parse_metadata(content):
             raise BadMetadataError("Metadata is not valid JSON or YAML")
 
 
-def call_with_supported_arguments(fn, **kwargs):
+def _gather_arguments(fn, kwargs):
     parameters = inspect.signature(fn).parameters.keys()
     call_with = []
     for parameter in parameters:
@@ -853,7 +853,17 @@ def call_with_supported_arguments(fn, **kwargs):
                 )
             )
         call_with.append(kwargs[parameter])
+    return call_with
+
+
+def call_with_supported_arguments(fn, **kwargs):
+    call_with = _gather_arguments(fn, kwargs)
     return fn(*call_with)
+
+
+async def async_call_with_supported_arguments(fn, **kwargs):
+    call_with = _gather_arguments(fn, kwargs)
+    return await fn(*call_with)
 
 
 def actor_matches_allow(actor, allow):

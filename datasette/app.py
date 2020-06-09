@@ -39,6 +39,7 @@ from .renderer import json_renderer
 from .database import Database, QueryInterrupted
 
 from .utils import (
+    async_call_with_supported_arguments,
     escape_css_string,
     escape_sqlite,
     format_bytes,
@@ -783,6 +784,10 @@ class Datasette:
         "Returns an ASGI app function that serves the whole of Datasette"
         routes = []
 
+        for routes_to_add in pm.hook.register_routes():
+            for regex, view_fn in routes_to_add:
+                routes.append((regex, wrap_view(view_fn, self)))
+
         def add_route(view, regex):
             routes.append((regex, view))
 
@@ -1048,3 +1053,19 @@ def _cleaner_task_str(task):
     # running at /Users/simonw/Dropbox/Development/datasette/venv-3.7.5/lib/python3.7/site-packages/uvicorn/main.py:361>
     # Clean up everything up to and including site-packages
     return _cleaner_task_str_re.sub("", s)
+
+
+def wrap_view(view_fn, datasette):
+    async def asgi_view_fn(scope, receive, send):
+        response = await async_call_with_supported_arguments(
+            view_fn,
+            scope=scope,
+            receive=receive,
+            send=send,
+            request=Request(scope, receive),
+            datasette=datasette,
+        )
+        if response is not None:
+            await response.asgi_send(send)
+
+    return asgi_view_fn

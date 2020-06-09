@@ -61,6 +61,11 @@ def register_facet_classes():
 
 
 @hookspec
+def register_routes():
+    "Register URL routes: return a list of (regex, view_function) pairs"
+
+
+@hookspec
 def actor_from_request(datasette, request):
     "Return an actor dictionary based on the incoming request"
 

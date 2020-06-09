@@ -399,7 +399,7 @@ class Response:
     @classmethod
     def text(cls, body, status=200, headers=None):
         return cls(
-            body,
+            str(body),
             status=status,
             headers=headers,
             content_type="text/plain; charset=utf-8",

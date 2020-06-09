@@ -835,6 +835,55 @@ And here is an example ``can_render`` function which returns ``True`` only if th
 
 Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `datasette-ics <https://github.com/simonw/datasette-ics>`_
 
+.. _plugin_register_routes:
+
+register_routes()
+~~~~~~~~~~~~~~~~~
+
+Register additional view functions to execute for specified URL routes.
+
+Return a list of ``(regex, async_view_function)`` pairs, something like this:
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+    import html
+
+
+    async def hello_from(scope):
+        name = scope["url_route"]["kwargs"]["name"]
+        return Response.html("Hello from {}".format(
+            html.escape(name)
+        ))
+
+
+    @hookimpl
+    def register_routes():
+        return [
+            (r"^/hello-from/(?P<name>.*)$"), hello_from)
+        ]
+
+The view functions can take a number of different optional arguments. The corresponding argument will be passed to your function depending on its named parameters - a form of dependency injection.
+
+The optional view function arguments are as follows:
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``request`` - Request object
+    The current HTTP :ref:`internals_request`.
+
+``scope`` - dictionary
+    The incoming ASGI scope dictionary.
+
+``send`` - function
+    The ASGI send function.
+
+``receive`` - function
+    The ASGI receive function.
+
+The function can either return a ``Response`` or it can return nothing and instead respond directly to the request using the ASGI ``receive`` function (for advanced uses only).
+
 .. _plugin_register_facet_classes:
 
 register_facet_classes()
@@ -900,7 +949,6 @@ The plugin hook can then be used to register the new facet class like this:
     @hookimpl
     def register_facet_classes():
         return [SpecialFacet]
-
 
 .. _plugin_asgi_wrapper:
 

@@ -1016,14 +1016,7 @@ class DatasetteRouter(AsgiRouter):
         if status != 500:
             templates = ["{}.html".format(status)] + templates
         info.update(
-            {
-                "ok": False,
-                "error": message,
-                "status": status,
-                "title": title,
-                "base_url": self.ds.config("base_url"),
-                "app_css_hash": self.ds.app_css_hash(),
-            }
+            {"ok": False, "error": message, "status": status, "title": title,}
         )
         headers = {}
         if self.ds.cors:
@@ -1033,7 +1026,16 @@ class DatasetteRouter(AsgiRouter):
         else:
             template = self.ds.jinja_env.select_template(templates)
             await asgi_send_html(
-                send, await template.render_async(info), status=status, headers=headers
+                send,
+                await template.render_async(
+                    dict(
+                        info,
+                        base_url=self.ds.config("base_url"),
+                        app_css_hash=self.ds.app_css_hash(),
+                    )
+                ),
+                status=status,
+                headers=headers,
             )
 
 

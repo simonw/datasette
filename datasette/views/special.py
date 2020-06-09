@@ -1,7 +1,6 @@
 import json
 from datasette.utils.asgi import Response
 from .base import BaseView
-from http.cookies import SimpleCookie
 import secrets
 
 
@@ -62,17 +61,8 @@ class AuthTokenView(BaseView):
             return Response("Root token has already been used", status=403)
         if secrets.compare_digest(token, self.ds._root_token):
             self.ds._root_token = None
-            cookie = SimpleCookie()
-            cookie["ds_actor"] = self.ds.sign({"id": "root"}, "actor")
-            cookie["ds_actor"]["path"] = "/"
-            response = Response(
-                body="",
-                status=302,
-                headers={
-                    "Location": "/",
-                    "set-cookie": cookie.output(header="").lstrip(),
-                },
-            )
+            response = Response.redirect("/")
+            response.set_cookie("ds_actor", self.ds.sign({"id": "root"}, "actor"))
             return response
         else:
             return Response("Invalid token", status=403)

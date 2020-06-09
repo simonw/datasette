@@ -131,6 +131,36 @@ Each of these responses will use the correct corresponding content-type - ``text
 
 Each of the helper methods take optional ``status=`` and ``headers=`` arguments, documented above.
 
+.. _internals_response_set_cookie:
+
+Setting cookies with response.set_cookie()
+------------------------------------------
+
+To set cookies on the response, use the ``response.set_cookie(...)`` method. The method signature looks like this:
+
+.. code-block:: python
+
+    def set_cookie(
+        self,
+        key,
+        value="",
+        max_age=None,
+        expires=None,
+        path="/",
+        domain=None,
+        secure=False,
+        httponly=False,
+        samesite="lax",
+    ):
+
+You can use this with :ref:`datasette.sign() <datasette_sign>` to set signed cookies. Here's how you would set the ``ds_actor`` cookie for use with Datasette :ref:`authentication <authentication>`:
+
+.. code-block:: python
+
+    response = Response.redirect("/")
+    response.set_cookie("ds_actor", datasette.sign({"id": "cleopaws"}, "actor"))
+    return response
+
 .. _internals_datasette:
 
 Datasette class

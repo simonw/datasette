@@ -3,7 +3,6 @@ import asgi_csrf
 import collections
 import datetime
 import hashlib
-from http.cookies import SimpleCookie
 import itertools
 import json
 import os
@@ -442,19 +441,9 @@ class Datasette:
     def _write_messages_to_response(self, request, response):
         if getattr(request, "_messages", None):
             # Set those messages
-            cookie = SimpleCookie()
-            cookie["ds_messages"] = self.sign(request._messages, "messages")
-            cookie["ds_messages"]["path"] = "/"
-            # TODO: Co-exist with existing set-cookie headers
-            assert "set-cookie" not in response.headers
-            response.headers["set-cookie"] = cookie.output(header="").lstrip()
+            response.set_cookie("ds_messages", self.sign(request._messages, "messages"))
         elif getattr(request, "_messages_should_clear", False):
-            cookie = SimpleCookie()
-            cookie["ds_messages"] = ""
-            cookie["ds_messages"]["path"] = "/"
-            # TODO: Co-exist with existing set-cookie headers
-            assert "set-cookie" not in response.headers
-            response.headers["set-cookie"] = cookie.output(header="").lstrip()
+            response.set_cookie("ds_messages", "", expires=0, max_age=0)
 
     def _show_messages(self, request):
         if getattr(request, "_messages", None):

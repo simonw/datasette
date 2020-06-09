@@ -1,6 +1,5 @@
 from datasette import hookimpl
 from itsdangerous import BadSignature
-from http.cookies import SimpleCookie
 
 
 @hookimpl

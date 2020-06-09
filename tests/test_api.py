@@ -634,13 +634,6 @@ def test_invalid_custom_sql(app_client):
     assert "Statement must be a SELECT" == response.json["error"]
 
 
-def test_allow_sql_off():
-    with make_app_client(config={"allow_sql": False}) as client:
-        response = client.get("/fixtures.json?sql=select+sleep(0.01)")
-        assert 400 == response.status
-        assert "sql= is not allowed" == response.json["error"]
-
-
 def test_table_json(app_client):
     response = app_client.get("/fixtures/simple_primary_key.json?_shape=objects")
     assert response.status == 200
@@ -1137,9 +1130,9 @@ def test_table_filter_extra_where_invalid(app_client):
 
 
 def test_table_filter_extra_where_disabled_if_no_sql_allowed():
-    with make_app_client(config={"allow_sql": False}) as client:
+    with make_app_client(metadata={"allow_sql": {}}) as client:
         response = client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
-        assert 400 == response.status
+        assert 403 == response.status
         assert "_where= is not allowed" == response.json["error"]
 
 
@@ -1325,7 +1318,6 @@ def test_config_json(app_client):
         "allow_download": True,
         "allow_facet": True,
         "suggest_facets": True,
-        "allow_sql": True,
         "default_cache_ttl": 5,
         "default_cache_ttl_hashed": 365 * 24 * 60 * 60,
         "num_sql_threads": 3,

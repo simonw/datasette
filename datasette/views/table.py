@@ -342,8 +342,10 @@ class TableView(RowTableShared):
         extra_wheres_for_ui = []
         # Add _where= from querystring
         if "_where" in request.args:
-            if not self.ds.config("allow_sql"):
-                raise DatasetteError("_where= is not allowed", status=400)
+            if not await self.ds.permission_allowed(
+                request.actor, "execute-sql", resource=database, default=True,
+            ):
+                raise DatasetteError("_where= is not allowed", status=403)
             else:
                 where_clauses.extend(request.args.getlist("_where"))
                 extra_wheres_for_ui = [
@@ -839,6 +841,9 @@ class TableView(RowTableShared):
                 "next": next_value and str(next_value) or None,
                 "next_url": next_url,
                 "private": private,
+                "allow_execute_sql": await self.ds.permission_allowed(
+                    request.actor, "execute-sql", database, default=True
+                ),
             },
             extra_template,
             (

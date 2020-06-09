@@ -10,7 +10,6 @@ from datasette import hookimpl
 
 @hookimpl
 def extra_template_vars():
-    print("this is template vars")
     return {
         "from_plugin": "hooray"
     }
@@ -18,7 +17,6 @@ def extra_template_vars():
 METADATA = {"title": "This is from metadata"}
 CONFIG = {
     "default_cache_ttl": 60,
-    "allow_sql": False,
 }
 CSS = """
 body { margin-top: 3em}
@@ -91,7 +89,6 @@ def test_config(config_dir_client):
     response = config_dir_client.get("/-/config.json")
     assert 200 == response.status
     assert 60 == response.json["default_cache_ttl"]
-    assert not response.json["allow_sql"]
 
 
 def test_plugins(config_dir_client):

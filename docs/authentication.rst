@@ -176,7 +176,7 @@ This works for SQL views as well - you can treat them as if they are tables.
 .. warning::
     Restricting access to tables and views in this way will NOT prevent users from querying them using arbitrary SQL queries, `like this <https://latest.datasette.io/fixtures?sql=select+*+from+facetable>`__ for example.
 
-    If you are restricting access to specific tables you should also use the ``"allow_sql"`` block to prevent users from accessing 
+    If you are restricting access to specific tables you should also use the ``"allow_sql"`` block to prevent users from bypassing the limit with their own SQL queries - see :ref:`authentication_permissions_execute_sql`.
 
 .. _authentication_permissions_query:
 
@@ -198,6 +198,37 @@ To limit access to the ``add_name`` canned query in your ``dogs.db`` database to
                             "id": ["root"]
                         }
                     }
+                }
+            }
+        }
+    }
+
+.. _authentication_permissions_execute_sql:
+
+Controlling the ability to execute arbitrary SQL
+------------------------------------------------
+
+The ``"allow_sql"`` block can be used to control who is allowed to execute arbitrary SQL queries, both using the form on the database page e.g. https://latest.datasette.io/fixtures or by appending a ``?_where=`` parameter to the table page as seen on https://latest.datasette.io/fixtures/facetable?_where=city_id=1.
+
+To enable just the :ref:`root user<authentication_root>` to execute SQL for all databases in your instance, use the following:
+
+.. code-block:: json
+
+    {
+        "allow_sql": {
+            "id": "root"
+        }
+    }
+
+To limit this ability for just one specific database, use this:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "mydatabase": {
+                "allow_sql": {
+                    "id": "root"
                 }
             }
         }

@@ -110,7 +110,6 @@ CONFIG_OPTIONS = (
         "Allow users to download the original SQLite database files",
     ),
     ConfigOption("suggest_facets", True, "Calculate and display suggested facets"),
-    ConfigOption("allow_sql", True, "Allow arbitrary SQL queries via ?sql= parameter"),
     ConfigOption(
         "default_cache_ttl",
         5,

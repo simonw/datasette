@@ -186,6 +186,35 @@ def test_view_query(allow, expected_anon, expected_auth):
             assert ">fixtures 🔒</h1>" in auth_response.text
 
 
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"allow_sql": {"id": "root"}},
+        {"databases": {"fixtures": {"allow_sql": {"id": "root"}}}},
+    ],
+)
+def test_execute_sql(metadata):
+    with make_app_client(metadata=metadata) as client:
+        form_fragment = '<form class="sql" action="/fixtures"'
+
+        # Anonymous users - should not display the form:
+        assert form_fragment not in client.get("/fixtures").text
+        # This should 403:
+        assert 403 == client.get("/fixtures?sql=select+1").status
+        # ?_where= not allowed on tables:
+        assert 403 == client.get("/fixtures/facet_cities?_where=id=3").status
+
+        # But for logged in user all of these should work:
+        cookies = {"ds_actor": client.ds.sign({"id": "root"}, "actor")}
+        response_text = client.get("/fixtures", cookies=cookies).text
+        assert form_fragment in response_text
+        assert 200 == client.get("/fixtures?sql=select+1", cookies=cookies).status
+        assert (
+            200
+            == client.get("/fixtures/facet_cities?_where=id=3", cookies=cookies).status
+        )
+
+
 def test_query_list_respects_view_query():
     with make_app_client(
         metadata={

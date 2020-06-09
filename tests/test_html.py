@@ -924,16 +924,8 @@ def test_allow_download_off():
         assert 403 == response.status
 
 
-def test_allow_sql_on(app_client):
-    response = app_client.get("/fixtures")
-    soup = Soup(response.body, "html.parser")
-    assert len(soup.findAll("textarea", {"name": "sql"}))
-    response = app_client.get("/fixtures/sortable")
-    assert b"View and edit SQL" in response.body
-
-
 def test_allow_sql_off():
-    with make_app_client(config={"allow_sql": False}) as client:
+    with make_app_client(metadata={"allow_sql": {}}) as client:
         response = client.get("/fixtures")
         soup = Soup(response.body, "html.parser")
         assert not len(soup.findAll("textarea", {"name": "sql"}))

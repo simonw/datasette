@@ -26,8 +26,6 @@ class DatabaseView(DataView):
         self.ds.update_with_inherited_metadata(metadata)
 
         if request.args.get("sql"):
-            if not self.ds.config("allow_sql"):
-                raise DatasetteError("sql= is not allowed", status=400)
             sql = request.args.get("sql")
             validate_sql_select(sql)
             return await QueryView(self.ds).data(
@@ -89,6 +87,9 @@ class DatabaseView(DataView):
                 "queries": canned_queries,
                 "private": not await self.ds.permission_allowed(
                     None, "view-database", database
+                ),
+                "allow_execute_sql": await self.ds.permission_allowed(
+                    request.actor, "execute-sql", database, default=True
                 ),
             },
             {
@@ -289,6 +290,9 @@ class QueryView(DataView):
                 "columns": columns,
                 "query": {"sql": sql, "params": params},
                 "private": private,
+                "allow_execute_sql": await self.ds.permission_allowed(
+                    request.actor, "execute-sql", database, default=True
+                ),
             },
             extra_template,
             templates,

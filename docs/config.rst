@@ -150,15 +150,6 @@ Should users be able to download the original SQLite database using a link on th
 
     datasette mydatabase.db --config allow_download:off
 
-.. _config_allow_sql:
-
-allow_sql
-~~~~~~~~~
-
-Enable/disable the ability for users to run custom SQL directly against a database. To disable this feature, run::
-
-    datasette mydatabase.db --config allow_sql:off
-
 .. _config_default_cache_ttl:
 
 default_cache_ttl

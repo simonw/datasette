@@ -4,6 +4,146 @@
 Changelog
 =========
 
+.. _v0_44:
+
+0.44 (2020-06-??)
+-----------------
+
+Authentication and permissions, writable canned queries, flash messages, new plugin hooks and more.
+
+Authentication
+~~~~~~~~~~~~~~
+
+Prior to this release the Datasette ecosystem has treated authentication as exclusively the realm of plugins, most notably through `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__.
+
+0.44 introduces :ref:`authentication` as core Datasette concepts (`#699 <https://github.com/simonw/datasette/issues/699>`__). This makes it easier for different plugins can share responsibility for authenticating requests - you might have one plugin that handles user accounts and another one that allows automated access via API keys, for example.
+
+You'll need to install plugins if you want full user accounts, but default Datasette can now authenticate a single root user with the new ``--root`` command-line option, which outputs a one-time use URL to :ref:`authenticate as a root actor <authentication_root>` (`#784 <https://github.com/simonw/datasette/issues/784>`__)::
+
+    $ datasette fixtures.db --root
+    http://127.0.0.1:8001/-/auth-token?token=5b632f8cd44b868df625f5a6e2185d88eea5b22237fd3cc8773f107cc4fd6477
+    INFO:     Started server process [14973]
+    INFO:     Waiting for application startup.
+    INFO:     Application startup complete.
+    INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+
+Plugins can implement new ways of authenticating users using the new :ref:`plugin_actor_from_request` hook.
+
+Permissions
+~~~~~~~~~~~
+
+Datasette also now has a built-in concept of :ref:`authentication_permissions`. The permissions system answers the following question:
+
+    Is this **actor** allowed to perform this **action**, optionally against this particular **resource**?
+
+You can use the new ``"allow"`` block syntax in ``metadata.json`` (or ``metadata.yaml``) to set required permissions at the instance, database, table or canned query level. For example, to restrict access to the ``fixtures.db`` database to the ``"root"`` user:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "fixtures": {
+                "allow": {
+                    "id" "root"
+                }
+            }
+        }
+    }
+
+See :ref:`authentication_permissions_allow` for more details.
+
+Plugins can implement their own custom permission checks using the new :ref:`plugin_permission_allowed` hook.
+
+A new debug page at ``/-/permissions`` shows recent permission checks, to help administrators and plugin authors understand exactly what checks are being performed. This tool defaults to only being available to the root user, but can be exposed to other users by plugins that respond to the ``permissions-debug`` permission. (`#788 <https://github.com/simonw/datasette/issues/788>`__)
+
+Writable canned queries
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette's :ref:`canned_queries` feature lets you define SQL queries in ``metadata.json`` which can then be executed by users visiting a specific URL. https://latest.datasette.io/fixtures/neighborhood_search for example.
+
+Canned queries were previously restricted to ``SELECT``, but Datasette 0.44 introduces the ability for canned queries to execute ``INSERT`` or ``UPDATE`` queries as well, using the new ``"write": true`` property (`#800 <https://github.com/simonw/datasette/issues/800>`__):
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "dogs": {
+                "queries": {
+                    "add_name": {
+                        "sql": "INSERT INTO names (name) VALUES (:name)",
+                        "write": true
+                    }
+                }
+            }
+        }
+    }
+
+See :ref:`canned_queries_writable` for more details.
+
+Flash messages
+~~~~~~~~~~~~~~
+
+Writable canned queries needed a mechanism to let the user know that the query has been successfully executed. The new flash messaging system (`#790 <https://github.com/simonw/datasette/issues/790>`__) allows messages to persist in signed cookies which are then displayed to the user on the next page that they visit. Plugins can use this mechanism to display their own messages, see :ref:`datasette_add_message` for details.
+
+You can try out the new messages using the ``/-/messages`` debug tool, for example at https://latest.datasette.io/-/messages
+
+Signed values and secrets
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Both flash messages and user authentication needed a way to sign values and set signed cookies. Two new methods are now available for plugins to take advantage of this mechanism: :ref:`datasette_sign` and :ref:`datasette_unsign`.
+
+Datasette will generate a secret automatically when it starts up, but to avoid resetting the secret (and hence invalidating any cookies) every time the server restarts you should set your own secret. You can pass a secret to Datasette using the new ``--secret`` option or with a ``DATASETTE_SECRET`` environment variable. See :ref:`config_secret` for more details.
+
+Plugins can now sign value and verify their signatures using the :ref:`datasette.sign() <datasette_sign>` and :ref:`datasette.unsign() <datasette_unsign>` methods.
+
+CSRF protection
+~~~~~~~~~~~~~~~
+
+Since writable canned queries are built using POST forms, Datasette now ships with :ref:`internals_csrf` (`#798 <https://github.com/simonw/datasette/issues/798>`__). This applies automatically to any POST request, which means plugins need to include a ``csrftoken`` in any POST forms that they render. They can do that like so:
+
+.. code-block:: html
+
+    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+
+register_routes() plugin hooks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Plugins can now register new views and routes via the :ref:`plugin_register_routes` plugin hook (`#819 <https://github.com/simonw/datasette/issues/819>`__). View functions can be defined that accept any of the current ``datasette`` object, the current ``request``, or the ASGI ``scope``, ``send`` and ``receive`` objects.
+
+Smaller changes
+~~~~~~~~~~~~~~~
+
+- New internals documentation for :ref:`internals_request` and :ref:`internals_response`. (`#706 <https://github.com/simonw/datasette/issues/706>`__)
+- ``request.url`` now respects the ``force_https_urls`` config setting. closes (`#781 <https://github.com/simonw/datasette/issues/781>`__)
+- ``request.args.getlist()`` returns ``[]`` if missing. Removed ``request.raw_args`` entirely. (`#774 <https://github.com/simonw/datasette/issues/774>`__)
+- New :ref:`datasette.get_database() <datasette_get_database>` method.
+- Added ``_`` prefix to many private, undocumented methods of the Datasette class. (`#576 <https://github.com/simonw/datasette/issues/576>`__)
+- Removed the ``db.get_outbound_foreign_keys()`` method which duplicated the behaviour of ``db.foreign_keys_for_table()``.
+- New :ref:`await datasette.permission_allowed() <datasette_permission_allowed>` method.
+- ``/-/actor`` debugging endpoint for viewing the currently authenticated actor.
+- New ``request.cookies`` property.
+- ``/-/plugins`` endpoint now shows a list of hooks implemented by each plugin, e.g. https://latest.datasette.io/-/plugins?all=1
+- ``request.post_vars()`` method no longer discards empty values.
+- New "params" canned query key for explicitly setting named parameters, see :ref:`canned_queries_named_parameters`. (`#797 <https://github.com/simonw/datasette/issues/797>`__)
+- ``request.args`` is now a :ref:`MultiParams <internals_multiparams>` object.
+- Fixed a bug with the ``datasette plugins`` command. (`#802 <https://github.com/simonw/datasette/issues/802>`__)
+- Nicer pattern for using ``make_app_client()`` in tests. (`#395 <https://github.com/simonw/datasette/issues/395>`__)
+- New ``request.actor`` property.
+- Fixed broken CSS on nested 404 pages. (`#777 <https://github.com/simonw/datasette/issues/777>`__)
+- New ``request.url_vars`` property. (`#822 <https://github.com/simonw/datasette/issues/822>`__)
+- Fixed a bug with the ``python tests/fixtures.py`` command for outputting Datasette's testing fixtures database and plugins. (`#804 <https://github.com/simonw/datasette/issues/804>`__)
+
+The road to Datasette 1.0
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+I've assembled a `milestone for Datasette 1.0 <https://github.com/simonw/datasette/milestone/7>`__. The focus of the 1.0 release will be the following:
+
+- Signify confidence in the quality/stability of Datasette
+- Give plugin authors confidence that their plugins will work for the whole 1.x release cycle
+- Provide the same confidence to developers building against Datasette JSON APIs
+
+If you have thoughts about what you would like to see for Datasette 1.0 you can join `the conversation on issue #519 <https://github.com/simonw/datasette/issues/519>`__.
+
 .. _v0_43:
 
 0.43 (2020-05-28)

@@ -2,7 +2,6 @@ import os
 import jinja2
 
 from datasette.utils import (
-    actor_matches_allow,
     check_visibility,
     to_css_class,
     validate_sql_select,

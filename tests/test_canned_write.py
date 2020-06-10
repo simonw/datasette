@@ -55,7 +55,7 @@ def test_custom_success_message(canned_write_client):
     response = canned_write_client.post(
         "/data/delete_name",
         {"rowid": 1},
-        cookies={"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")},
+        cookies={"ds_actor": canned_write_client.actor_cookie({"id": "root"})},
         allow_redirects=False,
         csrftoken_from=True,
     )
@@ -116,7 +116,7 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
     # With auth shows four
     response = canned_write_client.get(
         "/data.json",
-        cookies={"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")},
+        cookies={"ds_actor": canned_write_client.actor_cookie({"id": "root"})},
     )
     assert 200 == response.status
     assert [
@@ -132,6 +132,6 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
 def test_canned_query_permissions(canned_write_client):
     assert 403 == canned_write_client.get("/data/delete_name").status
     assert 200 == canned_write_client.get("/data/update_name").status
-    cookies = {"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")}
+    cookies = {"ds_actor": canned_write_client.actor_cookie({"id": "root"})}
     assert 200 == canned_write_client.get("/data/delete_name", cookies=cookies).status
     assert 200 == canned_write_client.get("/data/update_name", cookies=cookies).status

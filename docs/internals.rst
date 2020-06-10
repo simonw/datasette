@@ -153,12 +153,12 @@ To set cookies on the response, use the ``response.set_cookie(...)`` method. The
         samesite="lax",
     ):
 
-You can use this with :ref:`datasette.sign() <datasette_sign>` to set signed cookies. Here's how you would set the ``ds_actor`` cookie for use with Datasette :ref:`authentication <authentication>`:
+You can use this with :ref:`datasette.sign() <datasette_sign>` to set signed cookies. Here's how you would set the :ref:`ds_actor cookie <authentication_ds_actor>` for use with Datasette :ref:`authentication <authentication>`:
 
 .. code-block:: python
 
     response = Response.redirect("/")
-    response.set_cookie("ds_actor", datasette.sign({"id": "cleopaws"}, "actor"))
+    response.set_cookie("ds_actor", datasette.sign({"a": {"id": "cleopaws"}}, "actor"))
     return response
 
 .. _internals_datasette:

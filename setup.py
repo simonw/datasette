@@ -57,6 +57,7 @@ setup(
         "PyYAML~=5.3",
         "mergedeep>=1.1.1,<1.4.0",
         "itsdangerous~=1.1",
+        "python-baseconv==1.2.2",
     ],
     entry_points="""
         [console_scripts]

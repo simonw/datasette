@@ -21,7 +21,7 @@ def test_view_instance(allow, expected_anon, expected_auth):
                 # Should be no padlock
                 assert "<h1>Datasette 🔒</h1>" not in anon_response.text
             auth_response = client.get(
-                path, cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")},
+                path, cookies={"ds_actor": client.actor_cookie({"id": "root"})},
             )
             assert expected_auth == auth_response.status
             # Check for the padlock
@@ -48,7 +48,7 @@ def test_view_database(allow, expected_anon, expected_auth):
                 # Should be no padlock
                 assert ">fixtures 🔒</h1>" not in anon_response.text
             auth_response = client.get(
-                path, cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")},
+                path, cookies={"ds_actor": client.actor_cookie({"id": "root"})},
             )
             assert expected_auth == auth_response.status
             if (
@@ -69,7 +69,7 @@ def test_database_list_respects_view_database():
         assert '<a href="/data">data</a></h2>' in anon_response.text
         assert '<a href="/fixtures">fixtures</a>' not in anon_response.text
         auth_response = client.get(
-            "/", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")},
+            "/", cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         )
         assert '<a href="/data">data</a></h2>' in auth_response.text
         assert '<a href="/fixtures">fixtures</a> 🔒</h2>' in auth_response.text
@@ -100,7 +100,7 @@ def test_database_list_respects_view_table():
         for html_fragment in html_fragments:
             assert html_fragment not in anon_response_text
         auth_response_text = client.get(
-            "/", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")},
+            "/", cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         ).text
         for html_fragment in html_fragments:
             assert html_fragment in auth_response_text
@@ -127,7 +127,7 @@ def test_view_table(allow, expected_anon, expected_auth):
             assert ">compound_three_primary_keys 🔒</h1>" not in anon_response.text
         auth_response = client.get(
             "/fixtures/compound_three_primary_keys",
-            cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")},
+            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         )
         assert expected_auth == auth_response.status
         if allow and expected_anon == 403 and expected_auth == 200:
@@ -156,7 +156,7 @@ def test_table_list_respects_view_table():
         for html_fragment in html_fragments:
             assert html_fragment not in anon_response.text
         auth_response = client.get(
-            "/fixtures", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")}
+            "/fixtures", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
         )
         for html_fragment in html_fragments:
             assert html_fragment in auth_response.text
@@ -180,7 +180,7 @@ def test_view_query(allow, expected_anon, expected_auth):
             # Should be no padlock
             assert ">fixtures 🔒</h1>" not in anon_response.text
         auth_response = client.get(
-            "/fixtures/q", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")}
+            "/fixtures/q", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
         )
         assert expected_auth == auth_response.status
         if allow and expected_anon == 403 and expected_auth == 200:
@@ -206,7 +206,7 @@ def test_execute_sql(metadata):
         assert 403 == client.get("/fixtures/facet_cities?_where=id=3").status
 
         # But for logged in user all of these should work:
-        cookies = {"ds_actor": client.ds.sign({"id": "root"}, "actor")}
+        cookies = {"ds_actor": client.actor_cookie({"id": "root"})}
         response_text = client.get("/fixtures", cookies=cookies).text
         assert form_fragment in response_text
         assert 200 == client.get("/fixtures?sql=select+1", cookies=cookies).status
@@ -231,7 +231,7 @@ def test_query_list_respects_view_query():
         assert html_fragment not in anon_response.text
         assert '"/fixtures/q"' not in anon_response.text
         auth_response = client.get(
-            "/fixtures", cookies={"ds_actor": client.ds.sign({"id": "root"}, "actor")}
+            "/fixtures", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
         )
         assert html_fragment in auth_response.text
 
@@ -290,7 +290,7 @@ def test_permissions_debug(app_client):
     app_client.ds._permission_checks.clear()
     assert 403 == app_client.get("/-/permissions").status
     # With the cookie it should work
-    cookie = app_client.ds.sign({"id": "root"}, "actor")
+    cookie = app_client.actor_cookie({"id": "root"})
     response = app_client.get("/-/permissions", cookies={"ds_actor": cookie})
     # Should show one failure and one success
     soup = Soup(response.body, "html.parser")

@@ -109,6 +109,9 @@ class TestClient:
     def __init__(self, asgi_app):
         self.asgi_app = asgi_app
 
+    def actor_cookie(self, actor):
+        return self.ds.sign({"a": actor}, "actor")
+
     @async_to_sync
     async def get(
         self, path, allow_redirects=True, redirect_count=0, method="GET", cookies=None

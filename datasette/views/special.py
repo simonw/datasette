@@ -62,7 +62,9 @@ class AuthTokenView(BaseView):
         if secrets.compare_digest(token, self.ds._root_token):
             self.ds._root_token = None
             response = Response.redirect("/")
-            response.set_cookie("ds_actor", self.ds.sign({"id": "root"}, "actor"))
+            response.set_cookie(
+                "ds_actor", self.ds.sign({"a": {"id": "root"}}, "actor")
+            )
             return response
         else:
             return Response("Invalid token", status=403)

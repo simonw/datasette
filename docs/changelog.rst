@@ -1051,9 +1051,7 @@ request all rows where that column is less than 50 meters or more than 20 feet f
 - Fix SQLite error when loading rows with no incoming FKs. [Russ
   Garrett]
 
-  This fixes ``ERROR: conn=<sqlite3.Connection object at 0x10bbb9f10>, sql
-  = 'select ', params = {'id': '1'}`` caused by an invalid query when
-  loading incoming FKs.
+  This fixes an error caused by an invalid query when loading incoming FKs.
 
   The error was ignored due to async but it still got printed to the
   console.

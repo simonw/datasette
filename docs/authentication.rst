@@ -94,6 +94,14 @@ This will match any actors with an ``"id"`` property of ``"root"`` - for example
         "name": "Root User"
     }
 
+An allow block can specify "no-one is allowed to do this" using an empty ``{}``:
+
+.. code-block:: json
+
+    {
+        "allow": {}
+    }
+
 Allow keys can provide a list of values. These will match any actor that has any of those values.
 
 .. code-block:: json
@@ -180,6 +188,17 @@ Here's how to restrict access to your entire Datasette instance to just the ``"i
             "id": "root"
         }
     }
+
+To deny access to all users, you can use ``"allow": {}``:
+
+.. code-block:: json
+
+    {
+        "title": "My entirely inaccessible instance",
+        "allow": {}
+    }
+
+One reason to do this is if you are using a Datasette plugin - such as `datasette-permissions-sql <https://github.com/simonw/datasette-permissions-sql>`__ - to control permissions instead.
 
 .. _authentication_permissions_database:
 

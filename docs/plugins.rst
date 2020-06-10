@@ -891,6 +891,9 @@ register_facet_classes()
 
 Return a list of additional Facet subclasses to be registered.
 
+.. warning::
+    The design of this plugin hook is unstable and may change. See `issue 830 <https://github.com/simonw/datasette/issues/830>`__.
+
 Each Facet subclass implements a new type of facet operation. The class should look like this:
 
 .. code-block:: python

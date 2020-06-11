@@ -306,3 +306,16 @@ One way to generate a secure random secret is to use Python like this::
     cdb19e94283a20f9d42cca50c5a4871c0aa07392db308755d60a1a5b9bb0fa52
 
 Plugin authors make use of this signing mechanism in their plugins using :ref:`datasette_sign` and :ref:`datasette_unsign`.
+
+.. _config_publish_secrets:
+
+Using secrets with datasette publish
+------------------------------------
+
+The :ref:`cli_publish` and :ref:`cli_package` commands both generate a secret for you automatically when Datasette is deployed.
+
+This means that every time you deploy a new version of a Datasette project, a new secret will be generated. This will cause signed cookies to become inalid on every fresh deploy.
+
+You can fix this by creating a secret that will be used for multiple deploys and passing it using the ``--secret`` option::
+
+    datasette publish cloudrun mydb.db --service=my-service --secret=cdb19e94283a20f9d42cca5

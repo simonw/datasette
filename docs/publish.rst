@@ -100,6 +100,8 @@ If a plugin has any :ref:`plugins_configuration_secret` you can use the ``--plug
         --plugin-secret datasette-auth-github client_id your_client_id \
         --plugin-secret datasette-auth-github client_secret your_client_secret
 
+.. _cli_package:
+
 datasette package
 =================
 

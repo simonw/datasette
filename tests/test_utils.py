@@ -497,6 +497,8 @@ def test_multi_params(data, should_raise):
         ({"id": "garry", "roles": ["staff", "dev"]}, {"roles": ["dev", "otter"]}, True),
         ({"id": "garry", "roles": []}, {"roles": ["staff"]}, False),
         ({"id": "garry"}, {"roles": ["staff"]}, False),
+        # Any single matching key works:
+        ({"id": "root"}, {"bot_id": "my-bot", "id": ["root"]}, True),
     ],
 )
 def test_actor_matches_allow(actor, allow, expected):

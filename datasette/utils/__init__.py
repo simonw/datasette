@@ -884,7 +884,7 @@ def actor_matches_allow(actor, allow):
             values = [values]
         actor_values = actor.get(key)
         if actor_values is None:
-            return False
+            continue
         if not isinstance(actor_values, list):
             actor_values = [actor_values]
         actor_values = set(actor_values)

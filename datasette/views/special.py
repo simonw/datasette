@@ -14,6 +14,7 @@ class JsonDataView(BaseView):
         self.needs_request = needs_request
 
     async def get(self, request, as_format):
+        await self.check_permission(request, "view-instance")
         if self.needs_request:
             data = self.data_callback(request)
         else:
@@ -46,6 +47,7 @@ class PatternPortfolioView(BaseView):
         self.ds = datasette
 
     async def get(self, request):
+        await self.check_permission(request, "view-instance")
         return await self.render(["patterns.html"], request=request)
 
 
@@ -77,8 +79,8 @@ class PermissionsDebugView(BaseView):
         self.ds = datasette
 
     async def get(self, request):
-        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
-            return Response("Permission denied", status=403)
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "permissions-debug")
         return await self.render(
             ["permissions_debug.html"],
             request,
@@ -93,9 +95,11 @@ class MessagesDebugView(BaseView):
         self.ds = datasette
 
     async def get(self, request):
+        await self.check_permission(request, "view-instance")
         return await self.render(["messages_debug.html"], request)
 
     async def post(self, request):
+        await self.check_permission(request, "view-instance")
         post = await request.post_vars()
         message = post.get("message", "")
         message_type = post.get("message_type") or "INFO"

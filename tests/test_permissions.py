@@ -316,3 +316,33 @@ def test_permissions_debug(app_client):
 def test_allow_unauthenticated(allow, expected):
     with make_app_client(metadata={"allow": allow}) as client:
         assert expected == client.get("/").status
+
+
+@pytest.fixture(scope="session")
+def view_instance_client():
+    with make_app_client(metadata={"allow": {}}) as client:
+        yield client
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/",
+        "/fixtures",
+        "/fixtures/facetable",
+        "/-/metadata",
+        "/-/versions",
+        "/-/plugins",
+        "/-/config",
+        "/-/threads",
+        "/-/databases",
+        "/-/actor",
+        "/-/permissions",
+        "/-/messages",
+        "/-/patterns",
+    ],
+)
+def test_view_instance(path, view_instance_client):
+    assert 403 == view_instance_client.get(path).status
+    if path not in ("/-/permissions", "/-/messages", "/-/patterns"):
+        assert 403 == view_instance_client.get(path + ".json").status

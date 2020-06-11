@@ -172,6 +172,8 @@ def test_publish_cloudrun_plugin_secrets(mock_call, mock_output, mock_which):
                 "client_id",
                 "x-client-id",
                 "--show-files",
+                "--secret",
+                "x-secret",
             ],
         )
         dockerfile = (
@@ -184,6 +186,7 @@ COPY . /app
 WORKDIR /app
 
 ENV DATASETTE_AUTH_GITHUB_CLIENT_ID 'x-client-id'
+ENV DATASETTE_SECRET 'x-secret'
 RUN pip install -U datasette
 RUN datasette inspect test.db --inspect-file inspect-data.json
 ENV PORT 8001

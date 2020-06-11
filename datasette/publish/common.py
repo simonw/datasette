@@ -1,5 +1,6 @@
 from ..utils import StaticMount
 import click
+import os
 import shutil
 import sys
 
@@ -51,6 +52,12 @@ def add_common_publish_arguments_and_options(subcommand):
             ),
             click.option(
                 "--version-note", help="Additional note to show on /-/versions"
+            ),
+            click.option(
+                "--secret",
+                help="Secret used for signing secure values, such as signed cookies",
+                envvar="DATASETTE_PUBLISH_SECRET",
+                default=lambda: os.urandom(32).hex(),
             ),
             click.option("--title", help="Title for metadata"),
             click.option("--license", help="License label for metadata"),

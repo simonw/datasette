@@ -17,6 +17,9 @@ Options:
   --install TEXT            Additional packages (e.g. plugins) to install
   --spatialite              Enable SpatialLite extension
   --version-note TEXT       Additional note to show on /-/versions
+  --secret TEXT             Secret used for signing secure values, such as signed
+                            cookies
+
   -p, --port INTEGER        Port to run the server on, defaults to 8001
   --title TEXT              Title for metadata
   --license TEXT            License label for metadata

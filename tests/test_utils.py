@@ -247,6 +247,7 @@ def test_temporary_docker_directory_uses_hard_link():
             install=[],
             spatialite=False,
             version_note=None,
+            secret="secret",
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
             assert "world" == open(hello).read()
@@ -274,6 +275,7 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             install=[],
             spatialite=False,
             version_note=None,
+            secret=None,
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
             assert "world" == open(hello).read()
@@ -297,11 +299,13 @@ def test_temporary_docker_directory_quotes_args():
             install=[],
             spatialite=False,
             version_note="$PWD",
+            secret="secret",
         ) as temp_docker:
             df = os.path.join(temp_docker, "Dockerfile")
             df_contents = open(df).read()
             assert "'$PWD'" in df_contents
             assert "'--$HOME'" in df_contents
+            assert "ENV DATASETTE_SECRET 'secret'" in df_contents
 
 
 def test_compound_keys_after_sql():

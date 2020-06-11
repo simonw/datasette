@@ -278,10 +278,13 @@ def make_dockerfile(
     install,
     spatialite,
     version_note,
+    secret,
     environment_variables=None,
     port=8001,
 ):
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
+    environment_variables = environment_variables or {}
+    environment_variables["DATASETTE_SECRET"] = secret
     for filename in files:
         cmd.extend(["-i", filename])
     cmd.extend(["--cors", "--inspect-file", "inspect-data.json"])
@@ -324,7 +327,7 @@ CMD {cmd}""".format(
         environment_variables="\n".join(
             [
                 "ENV {} '{}'".format(key, value)
-                for key, value in (environment_variables or {}).items()
+                for key, value in environment_variables.items()
             ]
         ),
         files=" ".join(files),
@@ -348,6 +351,7 @@ def temporary_docker_directory(
     install,
     spatialite,
     version_note,
+    secret,
     extra_metadata=None,
     environment_variables=None,
     port=8001,
@@ -381,6 +385,7 @@ def temporary_docker_directory(
             install,
             spatialite,
             version_note,
+            secret,
             environment_variables,
             port=port,
         )

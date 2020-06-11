@@ -47,6 +47,7 @@ def publish_subcommand(publish):
         install,
         plugin_secret,
         version_note,
+        secret,
         title,
         license,
         license_url,
@@ -120,6 +121,7 @@ def publish_subcommand(publish):
             install,
             spatialite,
             version_note,
+            secret,
             extra_metadata,
             environment_variables,
         ):

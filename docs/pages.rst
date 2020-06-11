@@ -29,7 +29,7 @@ Database
 ========
 
 Each database has a page listing the tables, views and canned queries
-available for that database. If the :ref:`config_allow_sql` config option is enabled (it's turned on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
+available for that database. If the :ref:`permissions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
 
 Examples:
 

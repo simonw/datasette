@@ -267,6 +267,14 @@ class TableView(RowTableShared):
         if not is_view and not table_exists:
             raise NotFound("Table not found: {}".format(table))
 
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", database)
+        await self.check_permission(request, "view-table", (database, table))
+
+        private = not await self.ds.permission_allowed(
+            None, "view-table", (database, table), default=True
+        )
+
         pks = await db.primary_keys(table)
         table_columns = await db.table_columns(table)
 
@@ -334,8 +342,10 @@ class TableView(RowTableShared):
         extra_wheres_for_ui = []
         # Add _where= from querystring
         if "_where" in request.args:
-            if not self.ds.config("allow_sql"):
-                raise DatasetteError("_where= is not allowed", status=400)
+            if not await self.ds.permission_allowed(
+                request.actor, "execute-sql", resource=database, default=True,
+            ):
+                raise DatasetteError("_where= is not allowed", status=403)
             else:
                 where_clauses.extend(request.args.getlist("_where"))
                 extra_wheres_for_ui = [
@@ -830,6 +840,10 @@ class TableView(RowTableShared):
                 "suggested_facets": suggested_facets,
                 "next": next_value and str(next_value) or None,
                 "next_url": next_url,
+                "private": private,
+                "allow_execute_sql": await self.ds.permission_allowed(
+                    request.actor, "execute-sql", database, default=True
+                ),
             },
             extra_template,
             (
@@ -844,6 +858,9 @@ class RowView(RowTableShared):
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
         pk_values = urlsafe_components(pk_path)
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", database)
+        await self.check_permission(request, "view-table", (database, table))
         db = self.ds.databases[database]
         pks = await db.primary_keys(table)
         use_rowid = not pks

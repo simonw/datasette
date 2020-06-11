@@ -4,7 +4,7 @@ from .fixtures import make_app_client
 
 @pytest.fixture
 def canned_write_client():
-    for client in make_app_client(
+    with make_app_client(
         extra_databases={"data.db": "create table names (name text)"},
         metadata={
             "databases": {
@@ -35,7 +35,7 @@ def canned_write_client():
                 }
             }
         },
-    ):
+    ) as client:
         yield client
 
 
@@ -55,7 +55,7 @@ def test_custom_success_message(canned_write_client):
     response = canned_write_client.post(
         "/data/delete_name",
         {"rowid": 1},
-        cookies={"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")},
+        cookies={"ds_actor": canned_write_client.actor_cookie({"id": "root"})},
         allow_redirects=False,
         csrftoken_from=True,
     )
@@ -116,23 +116,22 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
     # With auth shows four
     response = canned_write_client.get(
         "/data.json",
-        cookies={"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")},
+        cookies={"ds_actor": canned_write_client.actor_cookie({"id": "root"})},
     )
     assert 200 == response.status
     assert [
-        {"name": "add_name", "requires_auth": False},
-        {"name": "add_name_specify_id", "requires_auth": False},
-        {"name": "delete_name", "requires_auth": True},
-        {"name": "update_name", "requires_auth": False},
+        {"name": "add_name", "private": False},
+        {"name": "add_name_specify_id", "private": False},
+        {"name": "delete_name", "private": True},
+        {"name": "update_name", "private": False},
     ] == [
-        {"name": q["name"], "requires_auth": q["requires_auth"]}
-        for q in response.json["queries"]
+        {"name": q["name"], "private": q["private"]} for q in response.json["queries"]
     ]
 
 
 def test_canned_query_permissions(canned_write_client):
     assert 403 == canned_write_client.get("/data/delete_name").status
     assert 200 == canned_write_client.get("/data/update_name").status
-    cookies = {"ds_actor": canned_write_client.ds.sign({"id": "root"}, "actor")}
+    cookies = {"ds_actor": canned_write_client.actor_cookie({"id": "root"})}
     assert 200 == canned_write_client.get("/data/delete_name", cookies=cookies).status
     assert 200 == canned_write_client.get("/data/update_name", cookies=cookies).status

@@ -42,10 +42,16 @@ The request object is passed to various plugin hooks. It represents an incoming 
 ``.args`` - MultiParams
     An object representing the parsed querystring parameters, see below.
 
+``.url_vars`` - dictionary (str -> str)
+    Variables extracted from the URL path, if that path was defined using a regular expression. See :ref:`plugin_register_routes`.
+
+``.actor`` - dictionary (str -> Any) or None
+    The currently authenticated actor (see :ref:`actors <authentication_actor>`), or ``None`` if the request is unauthenticated.
+
 The object also has one awaitable method:
 
 ``await request.post_vars()`` - dictionary
-    Returns a dictionary of form variables that were submitted in the request body via ``POST``.
+    Returns a dictionary of form variables that were submitted in the request body via ``POST``. Don't forget to read about :ref:`internals_csrf`!
 
 .. _internals_multiparams:
 
@@ -76,6 +82,84 @@ Consider the querystring ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` an
 
 ``len(request.args)`` - integer
     Returns the number of keys.
+
+.. _internals_response:
+
+Response class
+~~~~~~~~~~~~~~
+
+The ``Response`` class can be returned from view functions that have been registered using the :ref:`plugin_register_routes` hook.
+
+The ``Response()`` constructor takes the following arguments:
+
+``body`` - string
+    The body of the response.
+
+``status`` - integer (optional)
+    The HTTP status - defaults to 200.
+
+``headers`` - dictionary (optional)
+    A dictionary of extra HTTP headers, e.g. ``{"x-hello": "world"}``.
+
+``content_type`` - string (optional)
+    The content-type for the response. Defaults to ``text/plain``.
+
+For example:
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+
+    response = Response(
+        "<xml>This is XML</xml>",
+        content_type="application/xml; charset=utf-8"
+    )
+
+The easiest way to create responses is using the ``Response.text(...)``, ``Response.html(...)``, ``Response.json(...)`` or ``Response.redirect(...)`` helper methods:
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+
+    html_response = Response.html("This is HTML")
+    json_response = Response.json({"this_is": "json"})
+    text_response = Response.text("This will become utf-8 encoded text")
+    # Redirects are served as 302, unless you pass status=301:
+    redirect_response = Response.redirect("https://latest.datasette.io/")
+
+Each of these responses will use the correct corresponding content-type - ``text/html; charset=utf-8``, ``application/json; charset=utf-8`` or ``text/plain; charset=utf-8`` respectively.
+
+Each of the helper methods take optional ``status=`` and ``headers=`` arguments, documented above.
+
+.. _internals_response_set_cookie:
+
+Setting cookies with response.set_cookie()
+------------------------------------------
+
+To set cookies on the response, use the ``response.set_cookie(...)`` method. The method signature looks like this:
+
+.. code-block:: python
+
+    def set_cookie(
+        self,
+        key,
+        value="",
+        max_age=None,
+        expires=None,
+        path="/",
+        domain=None,
+        secure=False,
+        httponly=False,
+        samesite="lax",
+    ):
+
+You can use this with :ref:`datasette.sign() <datasette_sign>` to set signed cookies. Here's how you would set the :ref:`ds_actor cookie <authentication_ds_actor>` for use with Datasette :ref:`authentication <authentication>`:
+
+.. code-block:: python
+
+    response = Response.redirect("/")
+    response.set_cookie("ds_actor", datasette.sign({"a": {"id": "cleopaws"}}, "actor"))
+    return response
 
 .. _internals_datasette:
 
@@ -116,24 +200,30 @@ This method lets you read plugin configuration values that were set in ``metadat
 
 Renders a `Jinja template <https://jinja.palletsprojects.com/en/2.11.x/>`__ using Datasette's preconfigured instance of Jinja and returns the resulting string. The template will have access to Datasette's default template functions and any functions that have been made available by other plugins.
 
-await .permission_allowed(actor, action, resource_type=None, resource_identifier=None, default=False)
------------------------------------------------------------------------------------------------------
+.. _datasette_permission_allowed:
+
+await .permission_allowed(actor, action, resource=None, default=False)
+----------------------------------------------------------------------
 
 ``actor`` - dictionary
-    The authenticated actor. This is usually ``request.scope.get("actor")``.
+    The authenticated actor. This is usually ``request.actor``.
 
 ``action`` - string
     The name of the action that is being permission checked.
 
-``resource_type`` - string, optional
-    The type of resource being checked, e.g. ``"table"``.
+``resource`` - string, optional
+    The resource, e.g. the name of the table. Only some permissions apply to a resource.
 
-``resource_identifier`` - string, optional
-    The resource identifier, e.g. the name of the table.
+``default`` - optional, True or False
+    Should this permission check be default allow or default deny.
 
-Check if the given actor has permission to perform the given action on the given resource. This uses plugins that implement the :ref:`plugin_permission_allowed` plugin hook to decide if the action is allowed or not.
+Check if the given actor has :ref:`permission <authentication_permissions>` to perform the given action on the given resource.
 
-If none of the plugins express an opinion, the return value will be the ``default`` argument. This is deny, but you can pass ``default=True`` to default allow instead.
+Some permission checks are carried out against :ref:`rules defined in metadata.json <authentication_permissions_metadata>`, while other custom permissions may be decided by plugins that implement the :ref:`plugin_permission_allowed` plugin hook.
+
+If neither ``metadata.json`` nor any of the plugins provide an answer to the permission query the ``default`` argument will be returned.
+
+See :ref:`permissions` for a full list of permission actions included in Datasette core.
 
 .. _datasette_get_database:
 
@@ -440,3 +530,17 @@ The ``Database`` class also provides properties and methods for introspecting th
                 }
             ]
         }
+
+
+.. _internals_csrf:
+
+CSRF protection
+~~~~~~~~~~~~~~~
+
+Datasette uses `asgi-csrf <https://github.com/simonw/asgi-csrf>`__ to guard against CSRF attacks on form POST submissions. Users receive a ``ds_csrftoken`` cookie which is compared against the ``csrftoken`` form field (or ``x-csrftoken`` HTTP header) for every incoming request.
+
+If your plugin implements a ``<form method="POST">`` anywhere you will need to include that token. You can do so with the following template snippet:
+
+.. code-block:: html
+
+    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">

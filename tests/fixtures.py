@@ -2,6 +2,8 @@ from datasette.app import Datasette
 from datasette.utils import sqlite3, MultiParams
 from asgiref.testing import ApplicationCommunicator
 from asgiref.sync import async_to_sync
+import click
+import contextlib
 from http.cookies import SimpleCookie
 import itertools
 import json
@@ -45,6 +47,7 @@ EXPECTED_PLUGINS = [
             "prepare_connection",
             "prepare_jinja2_environment",
             "register_facet_classes",
+            "register_routes",
             "render_cell",
         ],
     },
@@ -105,6 +108,9 @@ class TestClient:
 
     def __init__(self, asgi_app):
         self.asgi_app = asgi_app
+
+    def actor_cookie(self, actor):
+        return self.ds.sign({"a": actor}, "actor")
 
     @async_to_sync
     async def get(
@@ -220,6 +226,7 @@ class TestClient:
         return response
 
 
+@contextlib.contextmanager
 def make_app_client(
     sql_time_limit_ms=None,
     max_returned_rows=None,
@@ -281,7 +288,8 @@ def make_app_client(
 
 @pytest.fixture(scope="session")
 def app_client():
-    yield from make_app_client()
+    with make_app_client() as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
@@ -294,64 +302,75 @@ def app_client_no_files():
 
 @pytest.fixture(scope="session")
 def app_client_two_attached_databases():
-    yield from make_app_client(
+    with make_app_client(
         extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
-    )
+    ) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_conflicting_database_names():
-    yield from make_app_client(
+    with make_app_client(
         extra_databases={"foo.db": EXTRA_DATABASE_SQL, "foo-bar.db": EXTRA_DATABASE_SQL}
-    )
+    ) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_two_attached_databases_one_immutable():
-    yield from make_app_client(
+    with make_app_client(
         is_immutable=True, extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
-    )
+    ) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_with_hash():
-    yield from make_app_client(config={"hash_urls": True}, is_immutable=True)
+    with make_app_client(config={"hash_urls": True}, is_immutable=True) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_shorter_time_limit():
-    yield from make_app_client(20)
+    with make_app_client(20) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_returned_rows_matches_page_size():
-    yield from make_app_client(max_returned_rows=50)
+    with make_app_client(max_returned_rows=50) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_larger_cache_size():
-    yield from make_app_client(config={"cache_size_kb": 2500})
+    with make_app_client(config={"cache_size_kb": 2500}) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_csv_max_mb_one():
-    yield from make_app_client(config={"max_csv_mb": 1})
+    with make_app_client(config={"max_csv_mb": 1}) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_with_dot():
-    yield from make_app_client(filename="fixtures.dot.db")
+    with make_app_client(filename="fixtures.dot.db") as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_with_cors():
-    yield from make_app_client(cors=True)
+    with make_app_client(cors=True) as client:
+        yield client
 
 
 @pytest.fixture(scope="session")
 def app_client_immutable_and_inspect_file():
     inspect_data = {"fixtures": {"tables": {"sortable": {"count": 100}}}}
-    yield from make_app_client(is_immutable=True, inspect_data=inspect_data)
+    with make_app_client(is_immutable=True, inspect_data=inspect_data) as client:
+        yield client
 
 
 def generate_compound_rows(num):
@@ -798,45 +817,73 @@ INSERT INTO "searchable_fts" (rowid, text1, text2)
     SELECT rowid, text1, text2 FROM searchable;
 """
 
-if __name__ == "__main__":
-    # Can be called with data.db OR data.db metadata.json
-    arg_index = -1
-    db_filename = sys.argv[arg_index]
-    metadata_filename = None
-    plugins_path = None
-    if db_filename.endswith("/"):
-        # It's the plugins dir
-        plugins_path = db_filename
-        arg_index -= 1
-        db_filename = sys.argv[arg_index]
-    if db_filename.endswith(".json"):
-        metadata_filename = db_filename
-        arg_index -= 1
-        db_filename = sys.argv[arg_index]
-    if db_filename.endswith(".db"):
-        conn = sqlite3.connect(db_filename)
-        conn.executescript(TABLES)
-        for sql, params in TABLE_PARAMETERIZED_SQL:
-            with conn:
-                conn.execute(sql, params)
-        print("Test tables written to {}".format(db_filename))
-        if metadata_filename:
-            open(metadata_filename, "w").write(json.dumps(METADATA))
-            print("- metadata written to {}".format(metadata_filename))
-        if plugins_path:
-            path = pathlib.Path(plugins_path)
-            if not path.exists():
-                path.mkdir()
-                for filename, content in (
-                    ("my_plugin.py", PLUGIN1),
-                    ("my_plugin_2.py", PLUGIN2),
-                ):
-                    filepath = path / filename
-                    filepath.write_text(content)
-                    print("  Wrote plugin: {}".format(filepath))
-    else:
-        print(
-            "Usage: {} db_to_write.db [metadata_to_write.json] [plugins-dir/]".format(
-                sys.argv[0]
-            )
+
+def assert_permissions_checked(datasette, actions):
+    # actions is a list of "action" or (action, resource) tuples
+    for action in actions:
+        if isinstance(action, str):
+            resource = None
+        else:
+            action, resource = action
+        assert [
+            pc
+            for pc in datasette._permission_checks
+            if pc["action"] == action and pc["resource"] == resource
+        ], """Missing expected permission check: action={}, resource={}
+        Permission checks seen: {}
+        """.format(
+            action, resource, json.dumps(list(datasette._permission_checks), indent=4),
         )
+
+
+@click.command()
+@click.argument(
+    "db_filename",
+    default="fixtures.db",
+    type=click.Path(file_okay=True, dir_okay=False),
+)
+@click.argument("metadata", required=False)
+@click.argument(
+    "plugins_path", type=click.Path(file_okay=False, dir_okay=True), required=False
+)
+@click.option(
+    "--recreate",
+    is_flag=True,
+    default=False,
+    help="Delete and recreate database if it exists",
+)
+def cli(db_filename, metadata, plugins_path, recreate):
+    "Write out the fixtures database used by Datasette's test suite"
+    if metadata and not metadata.endswith(".json"):
+        raise click.ClickException("Metadata should end with .json")
+    if not db_filename.endswith(".db"):
+        raise click.ClickException("Database file should end with .db")
+    if pathlib.Path(db_filename).exists():
+        if not recreate:
+            raise click.ClickException(
+                "{} already exists, use --recreate to reset it".format(db_filename)
+            )
+        else:
+            pathlib.Path(db_filename).unlink()
+    conn = sqlite3.connect(db_filename)
+    conn.executescript(TABLES)
+    for sql, params in TABLE_PARAMETERIZED_SQL:
+        with conn:
+            conn.execute(sql, params)
+    print("Test tables written to {}".format(db_filename))
+    if metadata:
+        open(metadata, "w").write(json.dumps(METADATA, indent=4))
+        print("- metadata written to {}".format(metadata))
+    if plugins_path:
+        path = pathlib.Path(plugins_path)
+        if not path.exists():
+            path.mkdir()
+        test_plugins = pathlib.Path(__file__).parent / "plugins"
+        for filepath in test_plugins.glob("*.py"):
+            newpath = path / filepath.name
+            newpath.write_text(filepath.open().read())
+            print("  Wrote plugin: {}".format(newpath))
+
+
+if __name__ == "__main__":
+    cli()

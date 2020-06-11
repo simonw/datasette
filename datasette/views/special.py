@@ -1,7 +1,6 @@
 import json
 from datasette.utils.asgi import Response
 from .base import BaseView
-from http.cookies import SimpleCookie
 import secrets
 
 
@@ -62,16 +61,9 @@ class AuthTokenView(BaseView):
             return Response("Root token has already been used", status=403)
         if secrets.compare_digest(token, self.ds._root_token):
             self.ds._root_token = None
-            cookie = SimpleCookie()
-            cookie["ds_actor"] = self.ds.sign({"id": "root"}, "actor")
-            cookie["ds_actor"]["path"] = "/"
-            response = Response(
-                body="",
-                status=302,
-                headers={
-                    "Location": "/",
-                    "set-cookie": cookie.output(header="").lstrip(),
-                },
+            response = Response.redirect("/")
+            response.set_cookie(
+                "ds_actor", self.ds.sign({"a": {"id": "root"}}, "actor")
             )
             return response
         else:
@@ -85,9 +77,7 @@ class PermissionsDebugView(BaseView):
         self.ds = datasette
 
     async def get(self, request):
-        if not await self.ds.permission_allowed(
-            request.scope.get("actor"), "permissions-debug"
-        ):
+        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
             return Response("Permission denied", status=403)
         return await self.render(
             ["permissions_debug.html"],

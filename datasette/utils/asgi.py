@@ -4,13 +4,25 @@ from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
 from html import escape
-from http.cookies import SimpleCookie
+from http.cookies import SimpleCookie, Morsel
 import re
 import aiofiles
+
+# Workaround for adding samesite support to pre 3.8 python
+Morsel._reserved["samesite"] = "SameSite"
+# Thanks, Starlette:
+# https://github.com/encode/starlette/blob/519f575/starlette/responses.py#L17
 
 
 class NotFound(Exception):
     pass
+
+
+class Forbidden(Exception):
+    pass
+
+
+SAMESITE_VALUES = ("strict", "lax", "none")
 
 
 class Request:
@@ -27,6 +39,10 @@ class Request:
         return urlunparse(
             (self.scheme, self.host, self.path, None, self.query_string, None)
         )
+
+    @property
+    def url_vars(self):
+        return (self.scope.get("url_route") or {}).get("kwargs") or {}
 
     @property
     def scheme(self):
@@ -69,6 +85,10 @@ class Request:
     @property
     def args(self):
         return MultiParams(parse_qs(qs=self.query_string))
+
+    @property
+    def actor(self):
+        return self.scope.get("actor", None)
 
     async def post_vars(self):
         body = []
@@ -358,26 +378,61 @@ class Response:
         self.body = body
         self.status = status
         self.headers = headers or {}
+        self._set_cookie_headers = []
         self.content_type = content_type
 
     async def asgi_send(self, send):
         headers = {}
         headers.update(self.headers)
         headers["content-type"] = self.content_type
+        raw_headers = [
+            [key.encode("utf-8"), value.encode("utf-8")]
+            for key, value in headers.items()
+        ]
+        for set_cookie in self._set_cookie_headers:
+            raw_headers.append([b"set-cookie", set_cookie.encode("utf-8")])
         await send(
             {
                 "type": "http.response.start",
                 "status": self.status,
-                "headers": [
-                    [key.encode("utf-8"), value.encode("utf-8")]
-                    for key, value in headers.items()
-                ],
+                "headers": raw_headers,
             }
         )
         body = self.body
         if not isinstance(body, bytes):
             body = body.encode("utf-8")
         await send({"type": "http.response.body", "body": body})
+
+    def set_cookie(
+        self,
+        key,
+        value="",
+        max_age=None,
+        expires=None,
+        path="/",
+        domain=None,
+        secure=False,
+        httponly=False,
+        samesite="lax",
+    ):
+        assert samesite in SAMESITE_VALUES, "samesite should be one of {}".format(
+            SAMESITE_VALUES
+        )
+        cookie = SimpleCookie()
+        cookie[key] = value
+        for prop_name, prop_value in (
+            ("max_age", max_age),
+            ("expires", expires),
+            ("path", path),
+            ("domain", domain),
+            ("samesite", samesite),
+        ):
+            if prop_value is not None:
+                cookie[key][prop_name.replace("_", "-")] = prop_value
+        for prop_name, prop_value in (("secure", secure), ("httponly", httponly)):
+            if prop_value:
+                cookie[key][prop_name] = True
+        self._set_cookie_headers.append(cookie.output(header="").strip())
 
     @classmethod
     def html(cls, body, status=200, headers=None):
@@ -391,10 +446,19 @@ class Response:
     @classmethod
     def text(cls, body, status=200, headers=None):
         return cls(
-            body,
+            str(body),
             status=status,
             headers=headers,
             content_type="text/plain; charset=utf-8",
+        )
+
+    @classmethod
+    def json(cls, body, status=200, headers=None):
+        return cls(
+            json.dumps(body),
+            status=status,
+            headers=headers,
+            content_type="application/json; charset=utf-8",
         )
 
     @classmethod

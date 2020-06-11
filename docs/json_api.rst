@@ -291,7 +291,7 @@ Special table arguments
     though this could potentially result in errors if the wrong syntax is used.
 
 ``?_where=SQL-fragment``
-    If the :ref:`config_allow_sql` config option is enabled, this parameter
+    If the :ref:`permissions_execute_sql` permission is enabled, this parameter
     can be used to pass one or more additional SQL fragments to be used in the
     `WHERE` clause of the SQL used to query the table.
 

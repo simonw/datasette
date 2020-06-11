@@ -690,14 +690,14 @@ Function that returns an awaitable function that returns a dictionary
 
 Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
 
-Here's an example plugin that returns an authentication object from the ASGI scope:
+Here's an example plugin that adds a ``"user_agent"`` variable to the template context containing the current request's User-Agent header:
 
 .. code-block:: python
 
     @hookimpl
     def extra_template_vars(request):
         return {
-            "auth": request.scope.get("auth")
+            "user_agent": request.headers.get("user-agent")
         }
 
 This example returns an awaitable function which adds a list of ``hidden_table_names`` to the context:
@@ -836,12 +836,64 @@ And here is an example ``can_render`` function which returns ``True`` only if th
 
 Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `datasette-ics <https://github.com/simonw/datasette-ics>`_
 
+.. _plugin_register_routes:
+
+register_routes()
+~~~~~~~~~~~~~~~~~
+
+Register additional view functions to execute for specified URL routes.
+
+Return a list of ``(regex, async_view_function)`` pairs, something like this:
+
+.. code-block:: python
+
+    from datasette.utils.asgi import Response
+    import html
+
+
+    async def hello_from(request):
+        name = request.url_vars["name"]
+        return Response.html("Hello from {}".format(
+            html.escape(name)
+        ))
+
+
+    @hookimpl
+    def register_routes():
+        return [
+            (r"^/hello-from/(?P<name>.*)$"), hello_from)
+        ]
+
+The view functions can take a number of different optional arguments. The corresponding argument will be passed to your function depending on its named parameters - a form of dependency injection.
+
+The optional view function arguments are as follows:
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``request`` - Request object
+    The current HTTP :ref:`internals_request`.
+
+``scope`` - dictionary
+    The incoming ASGI scope dictionary.
+
+``send`` - function
+    The ASGI send function.
+
+``receive`` - function
+    The ASGI receive function.
+
+The function can either return a :ref:`internals_response` or it can return nothing and instead respond directly to the request using the ASGI ``send`` function (for advanced uses only).
+
 .. _plugin_register_facet_classes:
 
 register_facet_classes()
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 Return a list of additional Facet subclasses to be registered.
+
+.. warning::
+    The design of this plugin hook is unstable and may change. See `issue 830 <https://github.com/simonw/datasette/issues/830>`__.
 
 Each Facet subclass implements a new type of facet operation. The class should look like this:
 
@@ -901,7 +953,6 @@ The plugin hook can then be used to register the new facet class like this:
     @hookimpl
     def register_facet_classes():
         return [SpecialFacet]
-
 
 .. _plugin_asgi_wrapper:
 
@@ -1006,8 +1057,8 @@ Instead of returning a dictionary, this function can return an awaitable functio
 
 .. _plugin_permission_allowed:
 
-permission_allowed(datasette, actor, action, resource_type, resource_identifier)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+permission_allowed(datasette, actor, action, resource)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
@@ -1018,10 +1069,45 @@ permission_allowed(datasette, actor, action, resource_type, resource_identifier)
 ``action`` - string
     The action to be performed, e.g. ``"edit-table"``.
 
-``resource_type`` - string
-    The type of resource being acted on, e.g. ``"table"``.
-
-``resource`` - string
+``resource`` - string or None
     An identifier for the individual resource, e.g. the name of the table.
 
 Called to check that an actor has permission to perform an action on a resource. Can return ``True`` if the action is allowed, ``False`` if the action is not allowed or ``None`` if the plugin does not have an opinion one way or the other.
+
+Here's an example plugin which randomly selects if a permission should be allowed or denied, except for ``view-instance`` which always uses the default permission scheme instead.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import random
+
+    @hookimpl
+    def permission_allowed(action):
+        if action != "view-instance":
+            # Return True or False at random
+            return random.random() > 0.5
+        # Returning None falls back to default permissions
+
+This function can alternatively return an awaitable function which itself returns ``True``, ``False`` or ``None``. You can use this option if you need to execute additional database queries using ``await datasette.execute(...)``.
+
+Here's an example that allows users to view the ``admin_log`` table only if their actor ``id`` is present in the ``admin_users`` table. It aso disallows arbitrary SQL queries for the ``staff.db`` database for all users.
+
+.. code-block:: python
+
+    @hookimpl
+    def permission_allowed(datasette, actor, action, resource):
+        async def inner():
+            if action == "execute-sql" and resource == "staff":
+                return False
+            if action == "view-table" and resource == ("staff", "admin_log"):
+                if not actor:
+                    return False
+                user_id = actor["id"]
+                return await datasette.get_database("staff").execute(
+                    "select count(*) from admin_users where user_id = :user_id",
+                    {"user_id": user_id},
+                )
+
+        return inner
+
+See :ref:`permissions` for a full list of permissions that are included in Datasette core.

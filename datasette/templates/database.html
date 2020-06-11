@@ -18,11 +18,11 @@
 
 {% block content %}
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-{% if config.allow_sql %}
+{% if allow_execute_sql %}
     <form class="sql" action="{{ database_url(database) }}" method="get">
         <h3>Custom SQL query</h3>
         <p><textarea id="sql-editor" name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
@@ -36,7 +36,7 @@
 {% for table in tables %}
 {% if show_hidden or not table.hidden %}
 <div class="db-table">
-    <h2><a href="{{ database_url(database) }}/{{ table.name|quote_plus }}">{{ table.name }}</a>{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
+    <h2><a href="{{ database_url(database) }}/{{ table.name|quote_plus }}">{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
     <p><em>{% for column in table.columns[:9] %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}{% if table.columns|length > 9 %}...{% endif %}</em></p>
     <p>{% if table.count is none %}Many rows{% else %}{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}{% endif %}</p>
 </div>
@@ -51,7 +51,7 @@
     <h2 id="views">Views</h2>
     <ul>
         {% for view in views %}
-            <li><a href="{{ database_url(database) }}/{{ view|urlencode }}">{{ view }}</a></li>
+            <li><a href="{{ database_url(database) }}/{{ view.name|urlencode }}">{{ view.name }}</a>{% if view.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
 {% endif %}
@@ -60,7 +60,7 @@
     <h2 id="queries">Queries</h2>
     <ul>
         {% for query in queries %}
-            <li><a href="{{ database_url(database) }}/{{ query.name|urlencode }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a> {% if query.requires_auth %} - requires authentication{% endif %}</li>
+            <li><a href="{{ database_url(database) }}/{{ query.name|urlencode }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
 {% endif %}

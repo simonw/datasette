@@ -1,6 +1,7 @@
 from datasette import hookimpl
 from datasette.facets import Facet
 from datasette.utils import path_with_added_args
+from datasette.utils.asgi import asgi_send_json, Response
 import base64
 import pint
 import json
@@ -142,3 +143,27 @@ def permission_allowed(actor, action):
         return True
     elif action == "this_is_denied":
         return False
+
+
+@hookimpl
+def register_routes():
+    async def one(datasette):
+        return Response.text(
+            (await datasette.get_database().execute("select 1 + 1")).first()[0]
+        )
+
+    async def two(request):
+        name = request.url_vars["name"]
+        greeting = request.args.get("greeting")
+        return Response.text("{} {}".format(greeting, name))
+
+    async def three(scope, send):
+        await asgi_send_json(
+            send, {"hello": "world"}, status=200, headers={"x-three": "1"}
+        )
+
+    return [
+        (r"/one/$", one),
+        (r"/two/(?P<name>.*)$", two),
+        (r"/three/$", three),
+    ]

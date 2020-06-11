@@ -12,6 +12,7 @@ General guidelines
 
 * **master should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
 * **The ideal commit** should bundle together the implementation, unit tests and associated documentation updates. The commit message should link to an associated issue.
+* **New plugin hooks** should only be shipped if accompanied by a separate release of a non-demo plugin that uses them.
 
 .. _devenvironment:
 
@@ -70,11 +71,20 @@ You can also use the ``fixtures.py`` script to recreate the testing version of `
 
     python tests/fixtures.py fixtures.db fixtures-metadata.json
 
-(You may need to delete ``fixtures.db`` before running this command.)
+Or to output the plugins used by the tests, run this::
+
+    python tests/fixtures.py fixtures.db fixtures-metadata.json fixtures-plugins
+    Test tables written to fixtures.db
+    - metadata written to fixtures-metadata.json
+    Wrote plugin: fixtures-plugins/register_output_renderer.py
+    Wrote plugin: fixtures-plugins/view_name.py
+    Wrote plugin: fixtures-plugins/my_plugin.py
+    Wrote plugin: fixtures-plugins/messages_output_renderer.py
+    Wrote plugin: fixtures-plugins/my_plugin_2.py
 
 Then run Datasette like this::
 
-    datasette fixtures.db -m fixtures-metadata.json
+    datasette fixtures.db -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
 
 .. _contributing_documentation:
 
@@ -146,6 +156,18 @@ To release a new version, first create a commit that updates :ref:`the changelog
     git push
 
 Referencing the issues that are part of the release in the commit message ensures the name of the release shows up on those issue pages, e.g. `here <https://github.com/simonw/datasette/issues/581#ref-commit-d56f402>`__.
+
+You can generate the list of issue references for a specific release by pasting the following into the browser devtools while looking at the :ref:`changelog` page (replace ``v0-44`` with the most recent version):
+
+.. code-block:: javascript
+
+    [
+        ...new Set(
+            Array.from(
+                document.getElementById("v0-44").querySelectorAll("a[href*=issues]")
+            ).map((a) => "#" + a.href.split("/issues/")[1])
+        ),
+    ].sort().join(", ");
 
 For non-bugfix releases you may want to update the news section of ``README.md`` as part of the same commit.
 

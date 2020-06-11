@@ -61,10 +61,15 @@ def register_facet_classes():
 
 
 @hookspec
+def register_routes():
+    "Register URL routes: return a list of (regex, view_function) pairs"
+
+
+@hookspec
 def actor_from_request(datasette, request):
     "Return an actor dictionary based on the incoming request"
 
 
 @hookspec
-def permission_allowed(datasette, actor, action, resource_type, resource_identifier):
+def permission_allowed(datasette, actor, action, resource):
     "Check if actor is allowed to perfom this action - return True, False or None"

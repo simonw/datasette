@@ -150,15 +150,6 @@ Should users be able to download the original SQLite database using a link on th
 
     datasette mydatabase.db --config allow_download:off
 
-.. _config_allow_sql:
-
-allow_sql
-~~~~~~~~~
-
-Enable/disable the ability for users to run custom SQL directly against a database. To disable this feature, run::
-
-    datasette mydatabase.db --config allow_sql:off
-
 .. _config_default_cache_ttl:
 
 default_cache_ttl
@@ -311,7 +302,7 @@ Or::
 
 One way to generate a secure random secret is to use Python like this::
 
-    $ python3 -c 'import os; print(os.urandom(32).hex())'
+    $ python3 -c 'import secrets; print(secrets.token_hex(32))'
     cdb19e94283a20f9d42cca50c5a4871c0aa07392db308755d60a1a5b9bb0fa52
 
 Plugin authors make use of this signing mechanism in their plugins using :ref:`datasette_sign` and :ref:`datasette_unsign`.

@@ -61,9 +61,9 @@ def test_static(app_client):
 
 
 def test_static_mounts():
-    for client in make_app_client(
+    with make_app_client(
         static_mounts=[("custom-static", str(pathlib.Path(__file__).parent))]
-    ):
+    ) as client:
         response = client.get("/custom-static/test_html.py")
         assert response.status == 200
         response = client.get("/custom-static/not_exists.py")
@@ -73,7 +73,7 @@ def test_static_mounts():
 
 
 def test_memory_database_page():
-    for client in make_app_client(memory=True):
+    with make_app_client(memory=True) as client:
         response = client.get("/:memory:")
         assert response.status == 200
 
@@ -169,7 +169,7 @@ def test_definition_sql(path, expected_definition_sql, app_client):
 
 
 def test_table_cell_truncation():
-    for client in make_app_client(config={"truncate_cells_html": 5}):
+    with make_app_client(config={"truncate_cells_html": 5}) as client:
         response = client.get("/fixtures/facetable")
         assert response.status == 200
         table = Soup(response.body, "html.parser").find("table")
@@ -194,7 +194,7 @@ def test_table_cell_truncation():
 
 
 def test_row_page_does_not_truncate():
-    for client in make_app_client(config={"truncate_cells_html": 5}):
+    with make_app_client(config={"truncate_cells_html": 5}) as client:
         response = client.get("/fixtures/facetable/1")
         assert response.status == 200
         table = Soup(response.body, "html.parser").find("table")
@@ -888,7 +888,7 @@ def test_table_metadata(app_client):
 
 
 def test_database_download_allowed_for_immutable():
-    for client in make_app_client(is_immutable=True):
+    with make_app_client(is_immutable=True) as client:
         assert not client.ds.databases["fixtures"].is_mutable
         # Regular page should have a download link
         response = client.get("/fixtures")
@@ -906,7 +906,7 @@ def test_database_download_disallowed_for_mutable(app_client):
 
 
 def test_database_download_disallowed_for_memory():
-    for client in make_app_client(memory=True):
+    with make_app_client(memory=True) as client:
         # Memory page should NOT have a download link
         response = client.get("/:memory:")
         soup = Soup(response.body, "html.parser")
@@ -915,7 +915,7 @@ def test_database_download_disallowed_for_memory():
 
 
 def test_allow_download_off():
-    for client in make_app_client(is_immutable=True, config={"allow_download": False}):
+    with make_app_client(is_immutable=True, config={"allow_download": False}) as client:
         response = client.get("/fixtures")
         soup = Soup(response.body, "html.parser")
         assert not len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
@@ -924,16 +924,8 @@ def test_allow_download_off():
         assert 403 == response.status
 
 
-def test_allow_sql_on(app_client):
-    response = app_client.get("/fixtures")
-    soup = Soup(response.body, "html.parser")
-    assert len(soup.findAll("textarea", {"name": "sql"}))
-    response = app_client.get("/fixtures/sortable")
-    assert b"View and edit SQL" in response.body
-
-
 def test_allow_sql_off():
-    for client in make_app_client(config={"allow_sql": False}):
+    with make_app_client(metadata={"allow_sql": {}}) as client:
         response = client.get("/fixtures")
         soup = Soup(response.body, "html.parser")
         assert not len(soup.findAll("textarea", {"name": "sql"}))
@@ -971,6 +963,18 @@ def inner_html(soup):
     # This includes the parent tag - so remove that
     inner_html = html.split(">", 1)[1].rsplit("<", 1)[0]
     return inner_html.strip()
+
+
+@pytest.mark.parametrize("path", ["/404", "/fixtures/404"])
+def test_404(app_client, path):
+    response = app_client.get(path)
+    assert 404 == response.status
+    assert (
+        '<link rel="stylesheet" href="/-/static/app.css?{}'.format(
+            app_client.ds.app_css_hash()
+        )
+        in response.text
+    )
 
 
 @pytest.mark.parametrize(
@@ -1117,9 +1121,9 @@ def test_metadata_json_html(app_client):
 
 
 def test_custom_table_include():
-    for client in make_app_client(
+    with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ):
+    ) as client:
         response = client.get("/fixtures/complex_foreign_keys")
         assert response.status == 200
         assert (
@@ -1144,7 +1148,7 @@ def test_zero_results(app_client, path):
 
 
 def test_config_template_debug_on():
-    for client in make_app_client(config={"template_debug": True}):
+    with make_app_client(config={"template_debug": True}) as client:
         response = client.get("/fixtures/facetable?_context=1")
         assert response.status == 200
         assert response.text.startswith("<pre>{")
@@ -1158,7 +1162,7 @@ def test_config_template_debug_off(app_client):
 
 def test_debug_context_includes_extra_template_vars():
     # https://github.com/simonw/datasette/issues/693
-    for client in make_app_client(config={"template_debug": True}):
+    with make_app_client(config={"template_debug": True}) as client:
         response = client.get("/fixtures/facetable?_context=1")
         # scope_path is added by PLUGIN1
         assert "scope_path" in response.text
@@ -1239,7 +1243,7 @@ def test_metadata_sort_desc(app_client):
     ],
 )
 def test_base_url_config(base_url, path):
-    for client in make_app_client(config={"base_url": base_url}):
+    with make_app_client(config={"base_url": base_url}) as client:
         response = client.get(base_url + path.lstrip("/"))
         soup = Soup(response.body, "html.parser")
         for el in soup.findAll(["a", "link", "script"]):

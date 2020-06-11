@@ -2,7 +2,7 @@ import os
 import jinja2
 
 from datasette.utils import (
-    actor_matches_allow,
+    check_visibility,
     to_css_class,
     validate_sql_select,
     is_url,
@@ -19,12 +19,12 @@ class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", database)
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)
 
         if request.args.get("sql"):
-            if not self.ds.config("allow_sql"):
-                raise DatasetteError("sql= is not allowed", status=400)
             sql = request.args.get("sql")
             validate_sql_select(sql)
             return await QueryView(self.ds).data(
@@ -34,12 +34,26 @@ class DatabaseView(DataView):
         db = self.ds.databases[database]
 
         table_counts = await db.table_counts(5)
-        views = await db.view_names()
         hidden_table_names = set(await db.hidden_table_names())
         all_foreign_keys = await db.get_all_foreign_keys()
 
+        views = []
+        for view_name in await db.view_names():
+            visible, private = await check_visibility(
+                self.ds, request.actor, "view-table", (database, view_name),
+            )
+            if visible:
+                views.append(
+                    {"name": view_name, "private": private,}
+                )
+
         tables = []
         for table in table_counts:
+            visible, private = await check_visibility(
+                self.ds, request.actor, "view-table", (database, table),
+            )
+            if not visible:
+                continue
             table_columns = await db.table_columns(table)
             tables.append(
                 {
@@ -50,20 +64,18 @@ class DatabaseView(DataView):
                     "hidden": table in hidden_table_names,
                     "fts_table": await db.fts_table(table),
                     "foreign_keys": all_foreign_keys[table],
+                    "private": private,
                 }
             )
 
         tables.sort(key=lambda t: (t["hidden"], t["name"]))
-        canned_queries = [
-            dict(
-                query,
-                requires_auth=not actor_matches_allow(None, query.get("allow", None)),
+        canned_queries = []
+        for query in self.ds.get_canned_queries(database):
+            visible, private = await check_visibility(
+                self.ds, request.actor, "view-query", (database, query["name"]),
             )
-            for query in self.ds.get_canned_queries(database)
-            if actor_matches_allow(
-                request.scope.get("actor", None), query.get("allow", None)
-            )
-        ]
+            if visible:
+                canned_queries.append(dict(query, private=private))
         return (
             {
                 "database": database,
@@ -72,6 +84,12 @@ class DatabaseView(DataView):
                 "hidden_count": len([t for t in tables if t["hidden"]]),
                 "views": views,
                 "queries": canned_queries,
+                "private": not await self.ds.permission_allowed(
+                    None, "view-database", database
+                ),
+                "allow_execute_sql": await self.ds.permission_allowed(
+                    request.actor, "execute-sql", database, default=True
+                ),
             },
             {
                 "show_hidden": request.args.get("_show_hidden"),
@@ -89,6 +107,9 @@ class DatabaseDownload(DataView):
     name = "database_download"
 
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", database)
+        await self.check_permission(request, "view-database-download", database)
         if database not in self.ds.databases:
             raise DatasetteError("Invalid database", status=404)
         db = self.ds.databases[database]
@@ -127,12 +148,16 @@ class QueryView(DataView):
             params.pop("_shape")
 
         # Respect canned query permissions
+        await self.check_permission(request, "view-instance")
+        await self.check_permission(request, "view-database", database)
+        private = False
         if canned_query:
-            if not actor_matches_allow(
-                request.scope.get("actor", None), metadata.get("allow")
-            ):
-                return Response("Permission denied", status=403)
-
+            await self.check_permission(request, "view-query", (database, canned_query))
+            private = not await self.ds.permission_allowed(
+                None, "view-query", (database, canned_query), default=True
+            )
+        else:
+            await self.check_permission(request, "execute-sql", database)
         # Extract any :named parameters
         named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {
@@ -194,6 +219,7 @@ class QueryView(DataView):
                         "truncated": False,
                         "columns": [],
                         "query": {"sql": sql, "params": params},
+                        "private": private,
                     },
                     extra_template,
                     templates,
@@ -262,6 +288,10 @@ class QueryView(DataView):
                 "truncated": results.truncated,
                 "columns": columns,
                 "query": {"sql": sql, "params": params},
+                "private": private,
+                "allow_execute_sql": await self.ds.permission_allowed(
+                    request.actor, "execute-sql", database, default=True
+                ),
             },
             extra_template,
             templates,

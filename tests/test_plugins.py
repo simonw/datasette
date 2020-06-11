@@ -229,9 +229,9 @@ def test_plugins_asgi_wrapper(app_client):
 
 
 def test_plugins_extra_template_vars(restore_working_directory):
-    for client in make_app_client(
+    with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ):
+    ) as client:
         response = client.get("/-/metadata")
         assert response.status == 200
         extra_template_vars = json.loads(
@@ -254,9 +254,9 @@ def test_plugins_extra_template_vars(restore_working_directory):
 
 
 def test_plugins_async_template_function(restore_working_directory):
-    for client in make_app_client(
+    with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
-    ):
+    ) as client:
         response = client.get("/-/metadata")
         assert response.status == 200
         extra_from_awaitable_function = (
@@ -544,3 +544,18 @@ def test_actor_json(app_client):
     assert {"actor": {"id": "bot2", "1+1": 2}} == app_client.get(
         "/-/actor.json/?_bot2=1"
     ).json
+
+
+@pytest.mark.parametrize(
+    "path,body", [("/one/", "2"), ("/two/Ray?greeting=Hail", "Hail Ray"),]
+)
+def test_register_routes(app_client, path, body):
+    response = app_client.get(path)
+    assert 200 == response.status
+    assert body == response.text
+
+
+def test_register_routes_asgi(app_client):
+    response = app_client.get("/three/")
+    assert {"hello": "world"} == response.json
+    assert "1" == response.headers["x-three"]

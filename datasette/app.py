@@ -3,11 +3,11 @@ import asgi_csrf
 import collections
 import datetime
 import hashlib
-from http.cookies import SimpleCookie
 import itertools
 import json
 import os
 import re
+import secrets
 import sys
 import threading
 import traceback
@@ -39,6 +39,7 @@ from .renderer import json_renderer
 from .database import Database, QueryInterrupted
 
 from .utils import (
+    async_call_with_supported_arguments,
     escape_css_string,
     escape_sqlite,
     format_bytes,
@@ -49,6 +50,7 @@ from .utils import (
 )
 from .utils.asgi import (
     AsgiLifespan,
+    Forbidden,
     NotFound,
     Request,
     Response,
@@ -109,7 +111,6 @@ CONFIG_OPTIONS = (
         "Allow users to download the original SQLite database files",
     ),
     ConfigOption("suggest_facets", True, "Calculate and display suggested facets"),
-    ConfigOption("allow_sql", True, "Allow arbitrary SQL queries via ?sql= parameter"),
     ConfigOption(
         "default_cache_ttl",
         5,
@@ -185,7 +186,7 @@ class Datasette:
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
-        self._secret = secret or os.urandom(32).hex()
+        self._secret = secret or secrets.token_hex(32)
         self.files = tuple(files) + tuple(immutables or [])
         if config_dir:
             self.files += tuple([str(p) for p in config_dir.glob("*.db")])
@@ -297,8 +298,8 @@ class Datasette:
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 
         self._register_renderers()
-        self._permission_checks = collections.deque(maxlen=30)
-        self._root_token = os.urandom(32).hex()
+        self._permission_checks = collections.deque(maxlen=200)
+        self._root_token = secrets.token_hex(32)
 
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)
@@ -440,19 +441,9 @@ class Datasette:
     def _write_messages_to_response(self, request, response):
         if getattr(request, "_messages", None):
             # Set those messages
-            cookie = SimpleCookie()
-            cookie["ds_messages"] = self.sign(request._messages, "messages")
-            cookie["ds_messages"]["path"] = "/"
-            # TODO: Co-exist with existing set-cookie headers
-            assert "set-cookie" not in response.headers
-            response.headers["set-cookie"] = cookie.output(header="").lstrip()
+            response.set_cookie("ds_messages", self.sign(request._messages, "messages"))
         elif getattr(request, "_messages_should_clear", False):
-            cookie = SimpleCookie()
-            cookie["ds_messages"] = ""
-            cookie["ds_messages"]["path"] = "/"
-            # TODO: Co-exist with existing set-cookie headers
-            assert "set-cookie" not in response.headers
-            response.headers["set-cookie"] = cookie.output(header="").lstrip()
+            response.set_cookie("ds_messages", "", expires=0, max_age=0)
 
     def _show_messages(self, request):
         if getattr(request, "_messages", None):
@@ -463,17 +454,11 @@ class Datasette:
         else:
             return []
 
-    async def permission_allowed(
-        self, actor, action, resource_type=None, resource_identifier=None, default=False
-    ):
+    async def permission_allowed(self, actor, action, resource=None, default=False):
         "Check permissions using the permissions_allowed plugin hook"
         result = None
         for check in pm.hook.permission_allowed(
-            datasette=self,
-            actor=actor,
-            action=action,
-            resource_type=resource_type,
-            resource_identifier=resource_identifier,
+            datasette=self, actor=actor, action=action, resource=resource,
         ):
             if callable(check):
                 check = check()
@@ -490,8 +475,7 @@ class Datasette:
                 "when": datetime.datetime.utcnow().isoformat(),
                 "actor": actor,
                 "action": action,
-                "resource_type": resource_type,
-                "resource_identifier": resource_identifier,
+                "resource": resource,
                 "used_default": used_default,
                 "result": result,
             }
@@ -666,7 +650,7 @@ class Datasette:
         return d
 
     def _actor(self, request):
-        return {"actor": request.scope.get("actor", None)}
+        return {"actor": request.actor}
 
     def table_metadata(self, database, table):
         "Fetch table-specific metadata."
@@ -789,6 +773,10 @@ class Datasette:
     def app(self):
         "Returns an ASGI app function that serves the whole of Datasette"
         routes = []
+
+        for routes_to_add in pm.hook.register_routes():
+            for regex, view_fn in routes_to_add:
+                routes.append((regex, wrap_view(view_fn, self)))
 
         def add_route(view, regex):
             routes.append((regex, view))
@@ -1003,6 +991,10 @@ class DatasetteRouter(AsgiRouter):
             status = 404
             info = {}
             message = exception.args[0]
+        elif isinstance(exception, Forbidden):
+            status = 403
+            info = {}
+            message = exception.args[0]
         elif isinstance(exception, DatasetteError):
             status = exception.status
             info = exception.error_dict
@@ -1018,7 +1010,9 @@ class DatasetteRouter(AsgiRouter):
         templates = ["500.html"]
         if status != 500:
             templates = ["{}.html".format(status)] + templates
-        info.update({"ok": False, "error": message, "status": status, "title": title})
+        info.update(
+            {"ok": False, "error": message, "status": status, "title": title,}
+        )
         headers = {}
         if self.ds.cors:
             headers["Access-Control-Allow-Origin"] = "*"
@@ -1027,7 +1021,16 @@ class DatasetteRouter(AsgiRouter):
         else:
             template = self.ds.jinja_env.select_template(templates)
             await asgi_send_html(
-                send, await template.render_async(info), status=status, headers=headers
+                send,
+                await template.render_async(
+                    dict(
+                        info,
+                        base_url=self.ds.config("base_url"),
+                        app_css_hash=self.ds.app_css_hash(),
+                    )
+                ),
+                status=status,
+                headers=headers,
             )
 
 
@@ -1040,3 +1043,19 @@ def _cleaner_task_str(task):
     # running at /Users/simonw/Dropbox/Development/datasette/venv-3.7.5/lib/python3.7/site-packages/uvicorn/main.py:361>
     # Clean up everything up to and including site-packages
     return _cleaner_task_str_re.sub("", s)
+
+
+def wrap_view(view_fn, datasette):
+    async def asgi_view_fn(scope, receive, send):
+        response = await async_call_with_supported_arguments(
+            view_fn,
+            scope=scope,
+            receive=receive,
+            send=send,
+            request=Request(scope, receive),
+            datasette=datasette,
+        )
+        if response is not None:
+            await response.asgi_send(send)
+
+    return asgi_view_fn

@@ -44,3 +44,20 @@ def test_request_args():
     assert 2 == len(request.args)
     with pytest.raises(KeyError):
         request.args["missing"]
+
+
+def test_request_url_vars():
+    scope = {
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "scheme": "http",
+        "type": "http",
+        "headers": [[b"content-type", b"application/x-www-form-urlencoded"]],
+    }
+    assert {} == Request(scope, None).url_vars
+    assert {"name": "cleo"} == Request(
+        dict(scope, url_route={"kwargs": {"name": "cleo"}}), None
+    ).url_vars

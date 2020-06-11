@@ -1,3 +1,5 @@
+.. _sql:
+
 Running SQL queries
 ===================
 
@@ -12,8 +14,8 @@ you like. You can also construct queries using the filter interface on the
 tables page, then click "View and edit SQL" to open that query in the custom
 SQL editor.
 
-Note that this interface is only available if the :ref:`config_allow_sql` option
-has not been disabled.
+Note that this interface is only available if the :ref:`permissions_execute_sql`
+permission is allowed.
 
 Any Datasette SQL query is reflected in the URL of the page, allowing you to
 bookmark them, share them with others and navigate through previous queries
@@ -21,6 +23,8 @@ using your browser back button.
 
 You can also retrieve the results of any query as JSON by adding ``.json`` to
 the base URL.
+
+.. _sql_parameters:
 
 Named parameters
 ----------------
@@ -50,6 +54,8 @@ Datasette disallows custom SQL containing the string PRAGMA, as SQLite pragma
 statements can be used to change database settings at runtime. If you need to
 include the string "pragma" in a query you can do so safely using a named
 parameter.
+
+.. _sql_views:
 
 Views
 -----
@@ -217,7 +223,7 @@ Writable canned queries
 
 Canned queries by default are read-only. You can use the ``"write": true`` key to indicate that a canned query can write to the database.
 
-See :ref:`authentication_permissions_canned_queries` for details on how to add permission checks to canned queries, using the ``"allow"`` key.
+See :ref:`authentication_permissions_query` for details on how to add permission checks to canned queries, using the ``"allow"`` key.
 
 .. code-block:: json
 

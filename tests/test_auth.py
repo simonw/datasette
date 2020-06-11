@@ -1,5 +1,7 @@
 from .fixtures import app_client
-from bs4 import BeautifulSoup as Soup
+import baseconv
+import pytest
+import time
 
 
 def test_auth_token(app_client):
@@ -9,7 +11,9 @@ def test_auth_token(app_client):
     response = app_client.get(path, allow_redirects=False,)
     assert 302 == response.status
     assert "/" == response.headers["Location"]
-    assert {"id": "root"} == app_client.ds.unsign(response.cookies["ds_actor"], "actor")
+    assert {"a": {"id": "root"}} == app_client.ds.unsign(
+        response.cookies["ds_actor"], "actor"
+    )
     # Check that a second with same token fails
     assert app_client.ds._root_token is None
     assert 403 == app_client.get(path, allow_redirects=False,).status
@@ -17,28 +21,18 @@ def test_auth_token(app_client):
 
 def test_actor_cookie(app_client):
     "A valid actor cookie sets request.scope['actor']"
-    cookie = app_client.ds.sign({"id": "test"}, "actor")
+    cookie = app_client.actor_cookie({"id": "test"})
     response = app_client.get("/", cookies={"ds_actor": cookie})
     assert {"id": "test"} == app_client.ds._last_request.scope["actor"]
 
 
-def test_permissions_debug(app_client):
-    assert 403 == app_client.get("/-/permissions").status
-    # With the cookie it should work
-    cookie = app_client.ds.sign({"id": "root"}, "actor")
-    response = app_client.get("/-/permissions", cookies={"ds_actor": cookie})
-    # Should show one failure and one success
-    soup = Soup(response.body, "html.parser")
-    check_divs = soup.findAll("div", {"class": "check"})
-    checks = [
-        {
-            "action": div.select_one(".check-action").text,
-            "result": bool(div.select(".check-result-true")),
-            "used_default": bool(div.select(".check-used-default")),
-        }
-        for div in check_divs
-    ]
-    assert [
-        {"action": "permissions-debug", "result": True, "used_default": False},
-        {"action": "permissions-debug", "result": False, "used_default": True},
-    ] == checks
+@pytest.mark.parametrize(
+    "offset,expected", [((24 * 60 * 60), {"id": "test"}), (-(24 * 60 * 60), None),]
+)
+def test_actor_cookie_that_expires(app_client, offset, expected):
+    expires_at = int(time.time()) + offset
+    cookie = app_client.ds.sign(
+        {"a": {"id": "test"}, "e": baseconv.base62.encode(expires_at)}, "actor"
+    )
+    response = app_client.get("/", cookies={"ds_actor": cookie})
+    assert expected == app_client.ds._last_request.scope["actor"]

@@ -173,7 +173,7 @@ def test_publish_cloudrun_plugin_secrets(mock_call, mock_output, mock_which):
                 "x-client-id",
                 "--show-files",
                 "--secret",
-                "x-secret"
+                "x-secret",
             ],
         )
         dockerfile = (

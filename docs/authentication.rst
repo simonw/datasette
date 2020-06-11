@@ -461,7 +461,7 @@ Default *allow*.
 view-query
 ----------
 
-Actor is allowed to view a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size
+Actor is allowed to view (and execute) a :ref:`canned query <canned_queries>` page, e.g. https://latest.datasette.io/fixtures/pragma_cache_size - this includes executing :ref:`canned_queries_writable`.
 
 ``resource`` - tuple: (string, string)
     The name of the database, then the name of the canned query

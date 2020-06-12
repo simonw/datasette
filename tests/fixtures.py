@@ -408,6 +408,7 @@ METADATA = {
     "plugins": {
         "name-of-plugin": {"depth": "root"},
         "env-plugin": {"foo": {"$env": "FOO_ENV"}},
+        "env-plugin-list": [{"in_a_list": {"$env": "FOO_ENV"}}],
         "file-plugin": {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}},
     },
     "databases": {

@@ -94,6 +94,8 @@ Both flash messages and user authentication needed a way to sign values and set 
 
 Datasette will generate a secret automatically when it starts up, but to avoid resetting the secret (and hence invalidating any cookies) every time the server restarts you should set your own secret. You can pass a secret to Datasette using the new ``--secret`` option or with a ``DATASETTE_SECRET`` environment variable. See :ref:`config_secret` for more details.
 
+You can also set a secret when you deploy Datasette using ``datasette publish`` or ``datasette package`` - see :ref:`config_publish_secrets`.
+
 Plugins can now sign value and verify their signatures using the :ref:`datasette.sign() <datasette_sign>` and :ref:`datasette.unsign() <datasette_unsign>` methods.
 
 CSRF protection

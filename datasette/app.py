@@ -45,6 +45,7 @@ from .utils import (
     format_bytes,
     module_from_path,
     parse_metadata,
+    resolve_env_secrets,
     sqlite3,
     to_css_class,
 )
@@ -367,18 +368,7 @@ class Datasette:
             return None
         plugin_config = plugins.get(plugin_name)
         # Resolve any $file and $env keys
-        if isinstance(plugin_config, dict):
-            # Create a copy so we don't mutate the version visible at /-/metadata.json
-            plugin_config_copy = dict(plugin_config)
-            for key, value in plugin_config_copy.items():
-                if isinstance(value, dict):
-                    if list(value.keys()) == ["$env"]:
-                        plugin_config_copy[key] = os.environ.get(
-                            list(value.values())[0]
-                        )
-                    elif list(value.keys()) == ["$file"]:
-                        plugin_config_copy[key] = open(list(value.values())[0]).read()
-            return plugin_config_copy
+        plugin_config = resolve_env_secrets(plugin_config, os.environ)
         return plugin_config
 
     def app_css_hash(self):

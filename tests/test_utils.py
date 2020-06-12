@@ -503,3 +503,17 @@ def test_multi_params(data, should_raise):
 )
 def test_actor_matches_allow(actor, allow, expected):
     assert expected == utils.actor_matches_allow(actor, allow)
+
+
+@pytest.mark.parametrize(
+    "config,expected",
+    [
+        ({"foo": "bar"}, {"foo": "bar"}),
+        ({"$env": "FOO"}, "x"),
+        ({"k": {"$env": "FOO"}}, {"k": "x"}),
+        ([{"k": {"$env": "FOO"}}, {"z": {"$env": "FOO"}}], [{"k": "x"}, {"z": "x"}]),
+        ({"k": [{"in_a_list": {"$env": "FOO"}}]}, {"k": [{"in_a_list": "x"}]}),
+    ],
+)
+def test_resolve_env_secrets(config, expected):
+    assert expected == utils.resolve_env_secrets(config, {"FOO": "x"})

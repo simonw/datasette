@@ -904,3 +904,19 @@ async def check_visibility(datasette, actor, action, resource, default=True):
         None, action, resource=resource, default=default,
     )
     return visible, private
+
+
+def resolve_env_secrets(config, environ):
+    'Create copy that recursively replaces {"$env": "NAME"} with values from environ'
+    if isinstance(config, dict):
+        if list(config.keys()) == ["$env"]:
+            return environ.get(list(config.values())[0])
+        else:
+            return {
+                key: resolve_env_secrets(value, environ)
+                for key, value in config.items()
+            }
+    elif isinstance(config, list):
+        return [resolve_env_secrets(value, environ) for value in config]
+    else:
+        return config

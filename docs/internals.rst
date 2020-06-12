@@ -219,7 +219,7 @@ await .permission_allowed(actor, action, resource=None, default=False)
 
 Check if the given actor has :ref:`permission <authentication_permissions>` to perform the given action on the given resource.
 
-Some permission checks are carried out against :ref:`rules defined in metadata.json <authentication_permissions_metadata>`, while other custom permissions may be decided by plugins that implement the :ref:`plugin_permission_allowed` plugin hook.
+Some permission checks are carried out against :ref:`rules defined in metadata.json <authentication_permissions_metadata>`, while other custom permissions may be decided by plugins that implement the :ref:`plugin_hook_permission_allowed` plugin hook.
 
 If neither ``metadata.json`` nor any of the plugins provide an answer to the permission query the ``default`` argument will be returned.
 

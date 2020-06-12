@@ -25,9 +25,8 @@ Things you can do with plugins include:
 * Customize how database values are rendered in the Datasette interface, for example
   `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`__ and
   `datasette-pretty-json <https://github.com/simonw/datasette-pretty-json>`__.
-* Wrap the entire Datasette application in custom ASGI middleware to add new pages
-  or implement authentication, for example
-  `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__.
+* Customize how Datasette's authentication and permissions systems work, for example `datasette-auth-tokens <https://github.com/simonw/datasette-auth-tokens>`__ and
+  `datasette-permissions-sql <https://github.com/simonw/datasette-permissions-sql>`__.
 
 .. _plugins_installing:
 
@@ -996,7 +995,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
 
 Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`_, `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-media <https://github.com/simonw/datasette-media>`_
 
-.. _plugin_actor_from_request:
+.. _plugin_hook_actor_from_request:
 
 actor_from_request(datasette, request)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1055,7 +1054,9 @@ Instead of returning a dictionary, this function can return an awaitable functio
 
         return inner
 
-.. _plugin_permission_allowed:
+Example: `datasette-auth-tokens <https://github.com/simonw/datasette-auth-tokens>`_
+
+.. _plugin_hook_permission_allowed:
 
 permission_allowed(datasette, actor, action, resource)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1064,7 +1065,7 @@ permission_allowed(datasette, actor, action, resource)
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
 
 ``actor`` - dictionary
-    The current actor, as decided by :ref:`plugin_actor_from_request`.
+    The current actor, as decided by :ref:`plugin_hook_actor_from_request`.
 
 ``action`` - string
     The action to be performed, e.g. ``"edit-table"``.
@@ -1110,4 +1111,6 @@ Here's an example that allows users to view the ``admin_log`` table only if thei
 
         return inner
 
-See :ref:`permissions` for a full list of permissions that are included in Datasette core.
+See :ref:`built-in permissions <permissions>` for a full list of permissions that are included in Datasette core.
+
+Example: `datasette-permissions-sql <https://github.com/simonw/datasette-permissions-sql>`_

@@ -27,7 +27,7 @@ You'll need to install plugins if you want full user accounts, but default Datas
     INFO:     Application startup complete.
     INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
 
-Plugins can implement new ways of authenticating users using the new :ref:`plugin_actor_from_request` hook.
+Plugins can implement new ways of authenticating users using the new :ref:`plugin_hook_actor_from_request` hook.
 
 Permissions
 ~~~~~~~~~~~
@@ -52,7 +52,7 @@ You can use the new ``"allow"`` block syntax in ``metadata.json`` (or ``metadata
 
 See :ref:`authentication_permissions_allow` for more details.
 
-Plugins can implement their own custom permission checks using the new :ref:`plugin_permission_allowed` hook.
+Plugins can implement their own custom permission checks using the new :ref:`plugin_hook_permission_allowed` hook.
 
 A new debug page at ``/-/permissions`` shows recent permission checks, to help administrators and plugin authors understand exactly what checks are being performed. This tool defaults to only being available to the root user, but can be exposed to other users by plugins that respond to the ``permissions-debug`` permission. (`#788 <https://github.com/simonw/datasette/issues/788>`__)
 

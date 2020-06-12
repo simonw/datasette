@@ -87,6 +87,16 @@ datasette-auth-github
 
 `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ adds an authentication layer to Datasette. Users will have to sign in using their GitHub account before they can view data or interact with Datasette. You can also use it to restrict access to specific GitHub users, or to members of specified GitHub `organizations <https://help.github.com/en/articles/about-organizations>`__ or `teams <https://help.github.com/en/articles/organizing-members-into-teams>`__.
 
+datasette-auth-tokens
+---------------------
+
+`datasette-auth-tokens <https://tokens.com/simonw/datasette-auth-tokens>`__ provides a mechanism for creating secret API tokens that can then be used with Datasette's :ref:`authentication` system.
+
+datasette-permissions-sql
+---------------------
+
+`datasette-permissions-sql <https://tokens.com/simonw/datasette-permissions-sql>`__ lets you configure Datasette permissions checks to use custom SQL queries, which means you can make permisison decisions based on data contained within your databases.
+
 datasette-upload-csvs
 ---------------------
 

@@ -19,7 +19,7 @@ Every request to Datasette has an associated actor value, available in the code 
 
 The actor dictionary can be any shape - the design of that data structure is left up to the plugins. A useful convention is to include an ``"id"`` string, as demonstrated by the "root" actor below.
 
-Plugins can use the :ref:`plugin_actor_from_request` hook to implement custom logic for authenticating an actor based on the incoming HTTP request.
+Plugins can use the :ref:`plugin_hook_actor_from_request` hook to implement custom logic for authenticating an actor based on the incoming HTTP request.
 
 .. _authentication_root:
 
@@ -314,7 +314,7 @@ Checking permissions in plugins
 
 Datasette plugins can check if an actor has permission to perform an action using the :ref:`datasette.permission_allowed(...)<datasette_permission_allowed>` method.
 
-Datasette core performs a number of permission checks, :ref:`documented below <permissions>`. Plugins can implement the :ref:`plugin_permission_allowed` plugin hook to participate in decisions about whether an actor should be able to perform a specified action.
+Datasette core performs a number of permission checks, :ref:`documented below <permissions>`. Plugins can implement the :ref:`plugin_hook_permission_allowed` plugin hook to participate in decisions about whether an actor should be able to perform a specified action.
 
 .. _authentication_actor_matches_allow:
 

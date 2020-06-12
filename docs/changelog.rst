@@ -6,7 +6,7 @@ Changelog
 
 .. _v0_44:
 
-0.44 (2020-06-??)
+0.44 (2020-06-11)
 -----------------
 
 Authentication and permissions, writable canned queries, flash messages, new plugin hooks and more.

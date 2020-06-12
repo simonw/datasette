@@ -22,6 +22,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 11th June 2020: [Datasette 0.44](http://datasette.readthedocs.io/en/latest/changelog.html#v0-44) - [Authentication and permissions](https://datasette.readthedocs.io/en/latest/authentication.html), [writable canned queries](https://datasette.readthedocs.io/en/latest/sql_queries.html#writable-canned-queries), flash messages, new plugin hooks and much, much more.
  * 28th May 2020: [Datasette 0.43](http://datasette.readthedocs.io/en/latest/changelog.html#v0-43) - Redesigned [register_output_renderer](https://datasette.readthedocs.io/en/latest/plugins.html#plugin-register-output-renderer) plugin hook and various small improvements and fixes.
  * 8th May 2020: [Datasette 0.42](http://datasette.readthedocs.io/en/latest/changelog.html#v0-42) - Documented internal methods for plugins to execute read queries against a database.
  * 6th May 2020: [Datasette 0.41](http://datasette.readthedocs.io/en/latest/changelog.html#v0-41) - New mechanism for [creating custom pages](https://datasette.readthedocs.io/en/0.41/custom_templates.html#custom-pages), new [configuration directory mode](https://datasette.readthedocs.io/en/0.41/config.html#configuration-directory-mode), new `?column__notlike=` table filter and various other smaller improvements.

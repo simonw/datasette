@@ -911,6 +911,8 @@ def resolve_env_secrets(config, environ):
     if isinstance(config, dict):
         if list(config.keys()) == ["$env"]:
             return environ.get(list(config.values())[0])
+        elif list(config.keys()) == ["$file"]:
+            return open(list(config.values())[0]).read()
         else:
             return {
                 key: resolve_env_secrets(value, environ)

@@ -107,6 +107,13 @@ Since writable canned queries are built using POST forms, Datasette now ships wi
 
     <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
 
+Cookie methods
+~~~~~~~~~~~~~~
+
+Plugins can now use the new :ref:`response.set_cookie() <internals_response_set_cookie>` method to set cookies.
+
+A new ``request.cookies`` method on the :ref:internals_request` can be used to read incoming cookies.
+
 register_routes() plugin hooks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -134,6 +141,9 @@ Smaller changes
 - Fixed broken CSS on nested 404 pages. (`#777 <https://github.com/simonw/datasette/issues/777>`__)
 - New ``request.url_vars`` property. (`#822 <https://github.com/simonw/datasette/issues/822>`__)
 - Fixed a bug with the ``python tests/fixtures.py`` command for outputting Datasette's testing fixtures database and plugins. (`#804 <https://github.com/simonw/datasette/issues/804>`__)
+- ``datasette publish heroku`` now deploys using Python 3.8.3.
+- Added a warning that the :ref:`plugin_register_facet_classes` hook is unstable and may change in the future. (`#830 <https://github.com/simonw/datasette/issues/830>`__)
+- The ``{"$env": "ENVIRONMENT_VARIBALE"}`` mechanism (see :ref:`plugins_configuration_secret`) now works with variables inside nested lists. (`#837 <https://github.com/simonw/datasette/issues/837>`__)
 
 The road to Datasette 1.0
 ~~~~~~~~~~~~~~~~~~~~~~~~~

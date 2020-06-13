@@ -578,3 +578,4 @@ def test_register_routes_asgi(app_client):
 async def test_startup(app_client):
     await app_client.ds.invoke_startup()
     assert app_client.ds._startup_hook_fired
+    assert 2 == app_client.ds._startup_hook_calculation

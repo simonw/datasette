@@ -167,3 +167,8 @@ def register_routes():
         (r"/two/(?P<name>.*)$", two),
         (r"/three/$", three),
     ]
+
+
+@hookimpl
+def startup(datasette):
+    datasette._startup_hook_fired = True

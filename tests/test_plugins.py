@@ -572,3 +572,9 @@ def test_register_routes_asgi(app_client):
     response = app_client.get("/three/")
     assert {"hello": "world"} == response.json
     assert "1" == response.headers["x-three"]
+
+
+@pytest.mark.asyncio
+async def test_startup(app_client):
+    await app_client.ds.invoke_startup()
+    assert app_client.ds._startup_hook_fired

@@ -49,6 +49,7 @@ EXPECTED_PLUGINS = [
             "register_facet_classes",
             "register_routes",
             "render_cell",
+            "startup",
         ],
     },
     {

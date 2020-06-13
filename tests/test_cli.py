@@ -10,6 +10,7 @@ from click.testing import CliRunner
 import io
 import json
 import pathlib
+import pytest
 import textwrap
 
 

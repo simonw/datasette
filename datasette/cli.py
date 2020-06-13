@@ -397,6 +397,9 @@ def serve(
         # Private utility mechanism for writing unit tests
         return ds
 
+    # Run the "startup" plugin hooks
+    asyncio.get_event_loop().run_until_complete(ds.invoke_startup())
+
     # Run async sanity checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
 

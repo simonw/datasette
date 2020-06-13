@@ -302,6 +302,13 @@ class Datasette:
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
 
+    async def invoke_startup(self):
+        for hook in pm.hook.startup(datasette=self):
+            if callable(hook):
+                hook = hook()
+            if asyncio.iscoroutine(hook):
+                hook = await hook
+
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)
 

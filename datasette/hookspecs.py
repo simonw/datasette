@@ -6,6 +6,11 @@ hookimpl = HookimplMarker("datasette")
 
 
 @hookspec
+def startup(datasette):
+    "Fires directly after Datasette first starts running"
+
+
+@hookspec
 def asgi_wrapper(datasette):
     "Returns an ASGI middleware callable to wrap our ASGI application with"
 

@@ -995,6 +995,39 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
 
 Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`_, `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-media <https://github.com/simonw/datasette-media>`_
 
+.. _plugin_hook_startup:
+
+startup(datasette)
+~~~~~~~~~~~~~~~~~~
+
+This hook fires when the Datasette application server first starts up. You can implement a regular function, for example to validate required plugin configuration:
+
+.. code-block:: python
+
+    @hookimpl
+    def startup(datasette):
+        config = datasette.plugin_config("my-plugin") or {}
+        assert "required-setting" in config, "my-plugin requires setting required-setting"
+
+Or you can return an async function which will be awaited on startup. Use this option if you need to make any database queries:
+
+    @hookimpl
+    def startup(datasette):
+        async def inner():
+            db = datasette.get_database()
+            if "my_table" not in await db.table_names():
+                await db.execute_write("""
+                    create table my_table (mycol text)
+                """, block=True)
+        return inner
+
+
+Potential use-cases:
+
+* Run some initialization code for the plugin
+* Create database tables that a plugin needs
+* Validate the metadata configuration for a plugin on startup, and raise an error if it is invalid
+
 .. _plugin_hook_actor_from_request:
 
 actor_from_request(datasette, request)

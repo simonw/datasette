@@ -26,6 +26,17 @@ def test_actor_cookie(app_client):
     assert {"id": "test"} == app_client.ds._last_request.scope["actor"]
 
 
+def test_actor_cookie_invalid(app_client):
+    cookie = app_client.actor_cookie({"id": "test"})
+    # Break the signature
+    response = app_client.get("/", cookies={"ds_actor": cookie[:-1] + "."})
+    assert None == app_client.ds._last_request.scope["actor"]
+    # Break the cookie format
+    cookie = app_client.ds.sign({"b": {"id": "test"}}, "actor")
+    response = app_client.get("/", cookies={"ds_actor": cookie})
+    assert None == app_client.ds._last_request.scope["actor"]
+
+
 @pytest.mark.parametrize(
     "offset,expected", [((24 * 60 * 60), {"id": "test"}), (-(24 * 60 * 60), None),]
 )

@@ -1,0 +1,2 @@
+[run]
+omit = datasette/_version.py, datasette/utils/shutil_backport.py

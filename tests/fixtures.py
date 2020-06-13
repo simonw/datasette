@@ -64,6 +64,7 @@ EXPECTED_PLUGINS = [
             "extra_template_vars",
             "permission_allowed",
             "render_cell",
+            "startup",
         ],
     },
     {

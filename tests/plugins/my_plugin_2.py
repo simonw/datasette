@@ -127,4 +127,5 @@ def startup(datasette):
     async def inner():
         result = await datasette.get_database().execute("select 1 + 1")
         datasette._startup_hook_calculation = result.first()[0]
+
     return inner

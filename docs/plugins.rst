@@ -884,6 +884,8 @@ The optional view function arguments are as follows:
 
 The function can either return a :ref:`internals_response` or it can return nothing and instead respond directly to the request using the ASGI ``send`` function (for advanced uses only).
 
+Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__, `datasette-psutil <https://github.com/simonw/datasette-psutil>`__
+
 .. _plugin_register_facet_classes:
 
 register_facet_classes()
@@ -993,7 +995,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
             return add_x_databases_header
         return wrap_with_databases_header
 
-Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`_, `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-media <https://github.com/simonw/datasette-media>`_
+Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-media <https://github.com/simonw/datasette-media>`_
 
 .. _plugin_hook_startup:
 

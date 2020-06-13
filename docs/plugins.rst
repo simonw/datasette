@@ -1011,6 +1011,8 @@ This hook fires when the Datasette application server first starts up. You can i
 
 Or you can return an async function which will be awaited on startup. Use this option if you need to make any database queries:
 
+.. code-block:: python
+
     @hookimpl
     def startup(datasette):
         async def inner():
@@ -1020,7 +1022,6 @@ Or you can return an async function which will be awaited on startup. Use this o
                     create table my_table (mycol text)
                 """, block=True)
         return inner
-
 
 Potential use-cases:
 

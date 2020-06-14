@@ -268,6 +268,9 @@ def make_app_client(
                 "default_page_size": 50,
                 "max_returned_rows": max_returned_rows or 100,
                 "sql_time_limit_ms": sql_time_limit_ms or 200,
+                # Default is 3 but this results in "too many open files"
+                # errors when running the full test suite:
+                "num_sql_threads": 1,
             }
         )
         ds = Datasette(

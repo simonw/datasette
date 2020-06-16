@@ -22,7 +22,6 @@ import jinja2
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
-import uvicorn
 
 from .views.base import DatasetteError, ureg, AsgiRouter
 from .views.database import DatabaseDownload, DatabaseView
@@ -589,6 +588,11 @@ class Datasette:
         datasette_version = {"version": __version__}
         if self.version_note:
             datasette_version["note"] = self.version_note
+        try:
+            import uvicorn
+            uvicorn_version = uvicorn.__version__
+        except ImportError:
+            uvicorn_version = None
         return {
             "python": {
                 "version": ".".join(map(str, sys.version_info[:3])),

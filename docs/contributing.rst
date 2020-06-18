@@ -147,6 +147,8 @@ We increment ``minor`` for new features.
 
 We increment ``patch`` for bugfix releass.
 
+:ref:`contributing_release_alpha_beta` may have an additional ``a0`` or ``b0`` prefix - the integer component will be incremented with each subsequent alpha or beta.
+
 To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/d56f402822df102f9cf1a9a056449d01a15e3aae>`__::
 
     # Update changelog
@@ -180,3 +182,14 @@ Final steps once the release has deployed to https://pypi.org/project/datasette/
 
 * Manually post the new release to GitHub releases: https://github.com/simonw/datasette/releases - you can convert the release notes to Markdown by copying and pasting the rendered HTML into this tool: https://euangoddard.github.io/clipboard2markdown/
 * Manually kick off a build of the `stable` branch on Read The Docs: https://readthedocs.org/projects/datasette/builds/
+
+.. _contributing_release_alpha_beta:
+
+Alpha and beta releases
+-----------------------
+
+Alpha and beta releases are published to preview upcoming features that may not yet be stable - in particular to preview new plugin hooks.
+
+You are welcome to try these out, but please be aware that details may change before the final release.
+
+Please join `discussions on the issue tracker <https://github.com/simonw/datasette/issues>`__ to share your thoughts and experiences with on alpha and beta features that you try out.

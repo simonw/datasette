@@ -39,6 +39,7 @@ EXPECTED_PLUGINS = [
         "version": None,
         "hooks": [
             "actor_from_request",
+            "asgi_wrapper",
             "extra_body_script",
             "extra_css_urls",
             "extra_js_urls",

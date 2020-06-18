@@ -908,6 +908,7 @@ class DatasetteRouter(AsgiRouter):
         ):
             scope_modifications["scheme"] = "https"
         # Handle authentication
+        default_actor = scope.get("actor") or None
         actor = None
         for actor in pm.hook.actor_from_request(
             datasette=self.ds, request=Request(scope, receive)
@@ -918,7 +919,7 @@ class DatasetteRouter(AsgiRouter):
                 actor = await actor
             if actor:
                 break
-        scope_modifications["actor"] = actor
+        scope_modifications["actor"] = actor or default_actor
         return await super().route_path(
             dict(scope, **scope_modifications), receive, send, path
         )

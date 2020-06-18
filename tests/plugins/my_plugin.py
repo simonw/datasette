@@ -138,6 +138,20 @@ def actor_from_request(datasette, request):
 
 
 @hookimpl
+def asgi_wrapper():
+    def wrap(app):
+        async def maybe_set_actor_in_scope(scope, recieve, send):
+            if b"_actor_in_scope" in scope["query_string"]:
+                scope = dict(scope, actor={"id": "from-scope"})
+                print(scope)
+            await app(scope, recieve, send)
+
+        return maybe_set_actor_in_scope
+
+    return wrap
+
+
+@hookimpl
 def permission_allowed(actor, action):
     if action == "this_is_allowed":
         return True

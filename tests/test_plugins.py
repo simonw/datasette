@@ -534,6 +534,11 @@ def test_actor_from_request_async(app_client):
     assert {"id": "bot2", "1+1": 2} == app_client.ds._last_request.scope["actor"]
 
 
+def test_existing_scope_actor_respected(app_client):
+    app_client.get("/?_actor_in_scope=1")
+    assert {"id": "from-scope"} == app_client.ds._last_request.scope["actor"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "action,expected",

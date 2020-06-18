@@ -32,7 +32,7 @@ jobs:
             branch: master
             tags: true
     - stage: publish docker image
-      if: tag IS present
+      if: (tag IS present) AND NOT (tag =~ [ab])
       python: 3.6
       script:
         # Build and release to Docker Hub

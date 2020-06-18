@@ -162,10 +162,17 @@ def register_routes():
             send, {"hello": "world"}, status=200, headers={"x-three": "1"}
         )
 
+    async def post(request):
+        if request.method == "GET":
+            return Response.html(request.scope["csrftoken"]())
+        else:
+            return Response.json(await request.post_vars())
+
     return [
         (r"/one/$", one),
         (r"/two/(?P<name>.*)$", two),
         (r"/three/$", three),
+        (r"/post/$", post),
     ]
 
 

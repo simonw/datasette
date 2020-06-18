@@ -568,6 +568,13 @@ def test_register_routes(app_client, path, body):
     assert body == response.text
 
 
+def test_register_routes_post(app_client):
+    response = app_client.post("/post/", {"this is": "post data"}, csrftoken_from=True)
+    assert 200 == response.status
+    assert "csrftoken" in response.json
+    assert "post data" == response.json["this is"]
+
+
 def test_register_routes_asgi(app_client):
     response = app_client.get("/three/")
     assert {"hello": "world"} == response.json

@@ -108,16 +108,16 @@ def test_vary_header(canned_write_client):
 
 def test_canned_query_permissions_on_database_page(canned_write_client):
     # Without auth only shows three queries
-    query_names = [
+    query_names = {
         q["name"] for q in canned_write_client.get("/data.json").json["queries"]
-    ]
-    assert [
+    }
+    assert {
         "add_name",
         "add_name_specify_id",
         "update_name",
         "from_async_hook",
         "from_hook",
-    ] == query_names
+    } == query_names
 
     # With auth shows four
     response = canned_write_client.get(
@@ -129,12 +129,16 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
         {"name": "add_name", "private": False},
         {"name": "add_name_specify_id", "private": False},
         {"name": "delete_name", "private": True},
-        {"name": "update_name", "private": False},
         {"name": "from_async_hook", "private": False},
         {"name": "from_hook", "private": False},
-    ] == [
-        {"name": q["name"], "private": q["private"]} for q in response.json["queries"]
-    ]
+        {"name": "update_name", "private": False},
+    ] == sorted(
+        [
+            {"name": q["name"], "private": q["private"]}
+            for q in response.json["queries"]
+        ],
+        key=lambda q: q["name"],
+    )
 
 
 def test_canned_query_permissions(canned_write_client):

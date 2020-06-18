@@ -95,11 +95,13 @@ def test_database_page(app_client):
             "/fixtures/%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC",
             "𝐜𝐢𝐭𝐢𝐞𝐬",
         ),
-        ("/fixtures/pragma_cache_size", "pragma_cache_size"),
-        ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
         ("/fixtures/from_async_hook", "from_async_hook"),
         ("/fixtures/from_hook", "from_hook"),
-    ] == [(a["href"], a.text) for a in queries_ul.find_all("a")]
+        ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
+        ("/fixtures/pragma_cache_size", "pragma_cache_size"),
+    ] == sorted(
+        [(a["href"], a.text) for a in queries_ul.find_all("a")], key=lambda p: p[0]
+    )
 
 
 def test_invalid_custom_sql(app_client):

@@ -1043,7 +1043,7 @@ canned_queries(datasette, database, actor)
     The name of the database.
 
 ``actor`` - dictionary or None
-    The currently authenticated :ref:`authentication_actor`.
+    The currently authenticated :ref:`actor <authentication_actor>`.
 
 Ues this hook to return a dictionary of additional :ref:`canned query <canned_queries>` definitions for the specified database. The return value should be the same shape as the JSON described in the :ref:`canned query <canned_queries>` documentation.
 

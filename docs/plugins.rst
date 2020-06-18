@@ -1031,6 +1031,73 @@ Potential use-cases:
 * Create database tables that a plugin needs
 * Validate the metadata configuration for a plugin on startup, and raise an error if it is invalid
 
+.. _plugin_hook_canned_queries:
+
+canned_queries(datasette, database, actor)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``database`` - string
+    The name of the database.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`authentication_actor`.
+
+Ues this hook to return a dictionary of additional :ref:`canned query <canned_queries>` definitions for the specified database. The return value should be the same shape as the JSON described in the :ref:`canned query <canned_queries>` documentation.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def canned_queries(datasette, database):
+        if database == "mydb":
+            return {
+                "my_query": {
+                    "sql": "select * from my_table where id > :min_id"
+                }
+            }
+
+The hook can alternatively return an awaitable function that returns a list. Here's an example that returns queries that have been stored in the ``saved_queries`` database table, if one exists:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def canned_queries(datasette, database):
+        async def inner():
+            db = datasette.get_database(database)
+            if await db.table_exists("saved_queries"):
+                results = await db.execute("select name, sql from saved_queries")
+                return {result["name"]: {
+                    "sql": result["sql"]
+                } for result in results}
+        return inner
+
+The actor parameter can be used to include the currently authenticated actor in your decision. Here's an example that returns saved queries that were saved by that actor:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def canned_queries(datasette, database, actor):
+        async def inner():
+            db = datasette.get_database(database)
+            if actor is not None and await db.table_exists("saved_queries"):
+                results = await db.execute(
+                    "select name, sql from saved_queries where actor_id = :id", {
+                        "id": actor["id"]
+                    }
+                )
+                return {result["name"]: {
+                    "sql": result["sql"]
+                } for result in results}
+        return inner
+
 .. _plugin_hook_actor_from_request:
 
 actor_from_request(datasette, request)

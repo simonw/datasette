@@ -97,6 +97,8 @@ def test_database_page(app_client):
         ),
         ("/fixtures/pragma_cache_size", "pragma_cache_size"),
         ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
+        ("/fixtures/from_async_hook", "from_async_hook"),
+        ("/fixtures/from_hook", "from_hook"),
     ] == [(a["href"], a.text) for a in queries_ul.find_all("a")]
 
 

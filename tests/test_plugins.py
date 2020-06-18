@@ -591,3 +591,34 @@ async def test_startup(app_client):
     await app_client.ds.invoke_startup()
     assert app_client.ds._startup_hook_fired
     assert 2 == app_client.ds._startup_hook_calculation
+
+
+def test_canned_queries(app_client):
+    queries = app_client.get("/fixtures.json").json["queries"]
+    queries_by_name = {q["name"]: q for q in queries}
+    assert {
+        "sql": "select 2",
+        "name": "from_async_hook",
+        "private": False,
+    } == queries_by_name["from_async_hook"]
+    assert {
+        "sql": "select 1, 'null' as actor_id",
+        "name": "from_hook",
+        "private": False,
+    } == queries_by_name["from_hook"]
+
+
+def test_canned_queries_non_async(app_client):
+    response = app_client.get("/fixtures/from_hook.json?_shape=array")
+    assert [{"1": 1, "actor_id": "null"}] == response.json
+
+
+def test_canned_queries_async(app_client):
+    response = app_client.get("/fixtures/from_async_hook.json?_shape=array")
+    assert [{"2": 2}] == response.json
+
+
+def test_canned_queries_actor(app_client):
+    assert [{"1": 1, "actor_id": "bot"}] == app_client.get(
+        "/fixtures/from_hook.json?_bot=1&_shape=array"
+    ).json

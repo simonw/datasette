@@ -40,6 +40,7 @@ EXPECTED_PLUGINS = [
         "hooks": [
             "actor_from_request",
             "asgi_wrapper",
+            "canned_queries",
             "extra_body_script",
             "extra_css_urls",
             "extra_js_urls",
@@ -61,6 +62,7 @@ EXPECTED_PLUGINS = [
         "hooks": [
             "actor_from_request",
             "asgi_wrapper",
+            "canned_queries",
             "extra_js_urls",
             "extra_template_vars",
             "permission_allowed",

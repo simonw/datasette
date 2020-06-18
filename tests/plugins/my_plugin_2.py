@@ -129,3 +129,17 @@ def startup(datasette):
         datasette._startup_hook_calculation = result.first()[0]
 
     return inner
+
+
+@hookimpl
+def canned_queries(datasette, database):
+    async def inner():
+        return {
+            "from_async_hook": "select {}".format(
+                (
+                    await datasette.get_database(database).execute("select 1 + 1")
+                ).first()[0]
+            )
+        }
+
+    return inner

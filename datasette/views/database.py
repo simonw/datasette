@@ -70,7 +70,9 @@ class DatabaseView(DataView):
 
         tables.sort(key=lambda t: (t["hidden"], t["name"]))
         canned_queries = []
-        for query in self.ds.get_canned_queries(database):
+        for query in (
+            await self.ds.get_canned_queries(database, request.actor)
+        ).values():
             visible, private = await check_visibility(
                 self.ds, request.actor, "view-query", (database, query["name"]),
             )

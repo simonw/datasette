@@ -387,18 +387,28 @@ class Datasette:
             ).hexdigest()[:6]
         return self._app_css_hash
 
-    def get_canned_queries(self, database_name):
+    async def get_canned_queries(self, database_name, actor):
         queries = self.metadata("queries", database=database_name, fallback=False) or {}
-        names = queries.keys()
-        return [self.get_canned_query(database_name, name) for name in names]
+        for more_queries in pm.hook.canned_queries(
+            datasette=self, database=database_name, actor=actor,
+        ):
+            if callable(more_queries):
+                more_queries = more_queries()
+            if asyncio.iscoroutine(more_queries):
+                more_queries = await more_queries
+            queries.update(more_queries or {})
+        # Fix any {"name": "select ..."} queries to be {"name": {"sql": "select ..."}}
+        for key in queries:
+            if not isinstance(queries[key], dict):
+                queries[key] = {"sql": queries[key]}
+            # Also make sure "name" is available:
+            queries[key]["name"] = key
+        return queries
 
-    def get_canned_query(self, database_name, query_name):
-        queries = self.metadata("queries", database=database_name, fallback=False) or {}
+    async def get_canned_query(self, database_name, query_name, actor):
+        queries = await self.get_canned_queries(database_name, actor)
         query = queries.get(query_name)
         if query:
-            if not isinstance(query, dict):
-                query = {"sql": query}
-            query["name"] = query_name
             return query
 
     def update_with_inherited_metadata(self, metadata):

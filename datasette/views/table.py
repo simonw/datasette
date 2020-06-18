@@ -223,7 +223,9 @@ class TableView(RowTableShared):
 
     async def post(self, request, db_name, table_and_format):
         # Handle POST to a canned query
-        canned_query = self.ds.get_canned_query(db_name, table_and_format)
+        canned_query = await self.ds.get_canned_query(
+            db_name, table_and_format, request.actor
+        )
         assert canned_query, "You may only POST to a canned query"
         return await QueryView(self.ds).data(
             request,
@@ -247,7 +249,7 @@ class TableView(RowTableShared):
         _next=None,
         _size=None,
     ):
-        canned_query = self.ds.get_canned_query(database, table)
+        canned_query = await self.ds.get_canned_query(database, table, request.actor)
         if canned_query:
             return await QueryView(self.ds).data(
                 request,

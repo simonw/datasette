@@ -78,3 +78,8 @@ def actor_from_request(datasette, request):
 @hookspec
 def permission_allowed(datasette, actor, action, resource):
     "Check if actor is allowed to perfom this action - return True, False or None"
+
+
+@hookspec
+def canned_queries(datasette, database, actor):
+    "Return a dictonary of canned query definitions or an awaitable function that returns them"

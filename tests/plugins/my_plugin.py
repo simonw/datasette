@@ -193,3 +193,12 @@ def register_routes():
 @hookimpl
 def startup(datasette):
     datasette._startup_hook_fired = True
+
+
+@hookimpl
+def canned_queries(datasette, database, actor):
+    return {
+        "from_hook": "select 1, '{}' as actor_id".format(
+            actor["id"] if actor else "null"
+        )
+    }

@@ -1,7 +1,7 @@
 # Datasette
 
 [![PyPI](https://img.shields.io/pypi/v/datasette.svg)](https://pypi.org/project/datasette/)
-[![Changelog](https://img.shields.io/github/v/release/simonw/datasette?include_prereleases&label=changelog)](https://datasette.readthedocs.io/en/stable/changelog.html)
+[![Changelog](https://img.shields.io/github/v/release/simonw/datasette?label=changelog)](https://datasette.readthedocs.io/en/stable/changelog.html)
 [![Python 3.x](https://img.shields.io/pypi/pyversions/datasette.svg?logo=python&logoColor=white)](https://pypi.org/project/datasette/)
 [![Travis CI](https://travis-ci.org/simonw/datasette.svg?branch=master)](https://travis-ci.org/simonw/datasette)
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](http://datasette.readthedocs.io/en/latest/?badge=latest)

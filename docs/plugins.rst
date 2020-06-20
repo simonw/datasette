@@ -1028,8 +1028,10 @@ Or you can return an async function which will be awaited on startup. Use this o
 Potential use-cases:
 
 * Run some initialization code for the plugin
-* Create database tables that a plugin needs
+* Create database tables that a plugin needs on startup
 * Validate the metadata configuration for a plugin on startup, and raise an error if it is invalid
+
+Example: `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__
 
 .. _plugin_hook_canned_queries:
 
@@ -1097,6 +1099,8 @@ The actor parameter can be used to include the currently authenticated actor in 
                     "sql": result["sql"]
                 } for result in results}
         return inner
+
+Example: `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__
 
 .. _plugin_hook_actor_from_request:
 

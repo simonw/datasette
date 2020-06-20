@@ -12,7 +12,7 @@ Changelog
 .. warning:: This is an **alpha** release. See :ref:`contributing_alpha_beta`.
 
 - New :ref:`plugin_hook_startup` plugin hook. (`#834 <https://github.com/simonw/datasette/issues/834>`__)
-- New :ref:`plugin_hook_canned_queries` plugin hook. (`#852 <https://github.com/simonw/datasette/issues/852>`__)
+- New :ref:`plugin_hook_canned_queries` plugin hook. See `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ for an example of this hook in action. (`#852 <https://github.com/simonw/datasette/issues/852>`__)
 - Workaround for "Too many open files" error in test runs. (`#846 <https://github.com/simonw/datasette/issues/846>`__)
 - Respect existing ``scope["actor"]`` if already set by ASGI middleware. (`#854 <https://github.com/simonw/datasette/issues/854>`__)
 - New process for shipping :ref:`contributing_alpha_beta`. (`#807 <https://github.com/simonw/datasette/issues/807>`__)

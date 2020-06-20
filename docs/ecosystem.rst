@@ -157,11 +157,15 @@ datasette-leaflet-geojson
 
 `datasette-leaflet-geojson <https://github.com/simonw/datasette-leaflet-geojson>`__ looks out for columns containing GeoJSON formatted geographical information and displays them on a `Leaflet-powered <https://leafletjs.com/>`__ map.
 
-
 datasette-pretty-json
 ---------------------
 
 `datasette-pretty-json <https://github.com/simonw/datasette-pretty-json>`__ seeks out JSON values in Datasette's table browsing interface and pretty-prints them, making them easier to read.
+
+datasette-saved-queries
+-----------------------
+
+`datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ lets users interactively save queries to a ``saved_queries`` table. They are then made available as additional :ref:`canned queries <canned_queries>`.
 
 datasette-haversine
 -------------------

@@ -6,7 +6,7 @@ datasette|
 
 .. |PyPI| image:: https://img.shields.io/pypi/v/datasette.svg
    :target: https://pypi.org/project/datasette/
-.. |Changelog| image:: https://img.shields.io/github/v/release/simonw/datasette?include_prereleases&label=changelog
+.. |Changelog| image:: https://img.shields.io/github/v/release/simonw/datasette?label=changelog
    :target: https://datasette.readthedocs.io/en/stable/changelog.html
 .. |Python 3.x| image:: https://img.shields.io/pypi/pyversions/datasette.svg?logo=python&logoColor=white
    :target: https://pypi.org/project/datasette/

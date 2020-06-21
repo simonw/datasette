@@ -93,7 +93,7 @@ datasette-auth-tokens
 `datasette-auth-tokens <https://tokens.com/simonw/datasette-auth-tokens>`__ provides a mechanism for creating secret API tokens that can then be used with Datasette's :ref:`authentication` system.
 
 datasette-permissions-sql
----------------------
+-------------------------
 
 `datasette-permissions-sql <https://tokens.com/simonw/datasette-permissions-sql>`__ lets you configure Datasette permissions checks to use custom SQL queries, which means you can make permisison decisions based on data contained within your databases.
 

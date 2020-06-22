@@ -51,6 +51,7 @@ Contents
    introspection
    custom_templates
    plugins
+   writing_plugins
    plugin_hooks
    internals
    contributing

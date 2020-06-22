@@ -9,7 +9,7 @@ Each plugin can implement one or more hooks using the ``@hookimpl`` decorator ag
 
 When you implement a plugin hook you can accept any or all of the parameters that are documented as being passed to that hook.
 
-For example, you can implement the ``render_cell`` plugin hook like thiseven though the full documented hook signature is ``render_cell(value, column, table, database, datasette)``:
+For example, you can implement the ``render_cell`` plugin hook like this even though the full documented hook signature is ``render_cell(value, column, table, database, datasette)``:
 
 .. code-block:: python
 

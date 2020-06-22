@@ -53,7 +53,7 @@ def test_help_includes(name, filename):
     "plugin", [name for name in dir(app.pm.hook) if not name.startswith("_")]
 )
 def test_plugin_hooks_are_documented(plugin):
-    headings = [s.split("(")[0] for s in get_headings("plugins.rst", "~")]
+    headings = [s.split("(")[0] for s in get_headings("plugin_hooks.rst", "-")]
     assert plugin in headings
 
 

@@ -52,7 +52,7 @@ The files that can be included in this directory are as follows. All are optiona
 * ``inspect-data.json`` - the result of running ``datasette inspect`` - any database files listed here will be treated as immutable, so they should not be changed while Datasette is running
 * ``config.json`` - settings that would normally be passed using ``--config`` - here they should be stored as a JSON object of key/value pairs
 * ``templates/`` - a directory containing :ref:`customization_custom_templates`
-* ``plugins/`` - a directory containing plugins, see :ref:`plugins_writing_one_off`
+* ``plugins/`` - a directory containing plugins, see :ref:`writing_plugins_one_off`
 * ``static/`` - a directory containing static files - these will be served from ``/static/filename.txt``, see :ref:`customization_static_files`
 
 Configuration options

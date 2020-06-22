@@ -53,6 +53,7 @@ Contents
    plugins
    writing_plugins
    plugin_hooks
+   testing_plugins
    internals
    contributing
    changelog

@@ -5,7 +5,7 @@ Writing plugins
 
 You can write one-off plugins that apply to just one Datasette instance, or you can write plugins which can be installed using ``pip`` and can be shipped to the Python Package Index (`PyPI <https://pypi.org/>`__) for other people to install.
 
-.. _plugins_writing_one_off:
+.. _writing_plugins_one_off:
 
 Writing one-off plugins
 -----------------------
@@ -30,8 +30,10 @@ Now you can navigate to http://localhost:8001/mydb and run this SQL::
 
 To see the output of your plugin.
 
-Writing an installable plugin
------------------------------
+.. _writing_plugins_cookiecutter:
+
+Starting an installable plugin using cookiecutter
+-------------------------------------------------
 
 Plugins that can be installed should be written as Python packages using a ``setup.py`` file.
 
@@ -42,6 +44,8 @@ The easiest way to start writing one an installable plugin is to use the `datase
     cookiecutter gh:simonw/datasette-plugin
 
 Read `a cookiecutter template for writing Datasette plugins <https://simonwillison.net/2020/Jun/20/cookiecutter-plugins/>`__ for more information about this template.
+
+.. _writing_plugins_packaging:
 
 Packaging a plugin
 ------------------
@@ -102,6 +106,8 @@ You can then install your new plugin into a Datasette virtual environment or Doc
 
 To learn how to upload your plugin to `PyPI <https://pypi.org/>`_ for use by other people, read the PyPA guide to `Packaging and distributing projects <https://packaging.python.org/tutorials/distributing-packages/>`_.
 
+.. _writing_plugins_static_assets:
+
 Static assets
 -------------
 
@@ -110,6 +116,8 @@ If your plugin has a ``static/`` directory, Datasette will automatically configu
     /-/static-plugins/NAME_OF_PLUGIN_PACKAGE/yourfile.js
 
 See `the datasette-plugin-demos repository <https://github.com/simonw/datasette-plugin-demos/tree/0ccf9e6189e923046047acd7878d1d19a2cccbb1>`_ for an example of how to create a package that includes a static folder.
+
+.. _writing_plugins_custom_templates:
 
 Custom templates
 ----------------
@@ -124,7 +132,7 @@ The priority order for template loading is:
 
 See :ref:`customization` for more details on how to write custom templates, including which filenames to use to customize which parts of the Datasette UI.
 
-.. _plugins_plugin_config:
+.. _writing_plugins_configuration:
 
 Writing plugins that accept configuration
 -----------------------------------------

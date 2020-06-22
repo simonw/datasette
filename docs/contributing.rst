@@ -43,7 +43,7 @@ The next step is to create a virtual environment for your project and use it to 
 
 That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "use the setup.py in this directory and install the optional testing dependencies as well".
 
-Once you have done this, you can run the Datasette unit tests from inside your ``datasette/`` directory using `pytest <https://docs.pytest.org/en/latest/>`__ like so::
+Once you have done this, you can run the Datasette unit tests from inside your ``datasette/`` directory using `pytest <https://docs.pytest.org/>`__ like so::
 
     pytest
 

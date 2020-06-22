@@ -182,7 +182,7 @@ This object is an instance of the ``Datasette`` class, passed to many plugin hoo
 ``table`` - None or string
     The table the user is interacting with.
 
-This method lets you read plugin configuration values that were set in ``metadata.json``. See :ref:`plugins_plugin_config` for full details of how this method should be used.
+This method lets you read plugin configuration values that were set in ``metadata.json``. See :ref:`writing_plugins_configuration` for full details of how this method should be used.
 
 .. _datasette_render_template:
 

@@ -3,7 +3,13 @@
 Plugin hooks
 ============
 
-When you implement a plugin hook you can accept any or all of the parameters that are documented as being passed to that hook. For example, you can implement a ``render_cell`` plugin hook like this even though the hook definition defines more parameters than just ``value`` and ``column``:
+Datasette :ref:`plugins <plugins>` use *plugin hooks* to customize Datasette's behavior. These hooks are powered by the `pluggy <https://pluggy.readthedocs.io/>`__ plugin system.
+
+Each plugin can implement one or more hooks using the ``@hookimpl`` decorator against a function named that matches one of the hooks documented on this page.
+
+When you implement a plugin hook you can accept any or all of the parameters that are documented as being passed to that hook.
+
+For example, you can implement the ``render_cell`` plugin hook like thiseven though the full documented hook signature is ``render_cell(value, column, table, database, datasette)``:
 
 .. code-block:: python
 
@@ -12,7 +18,8 @@ When you implement a plugin hook you can accept any or all of the parameters tha
         if column == "stars":
             return "*" * int(value)
 
-The full list of available plugin hooks is as follows.
+.. contents:: List of plugin hooks
+   :local:
 
 .. _plugin_hook_prepare_connection:
 

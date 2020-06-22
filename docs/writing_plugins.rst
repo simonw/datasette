@@ -30,6 +30,19 @@ Now you can navigate to http://localhost:8001/mydb and run this SQL::
 
 To see the output of your plugin.
 
+Writing an installable plugin
+-----------------------------
+
+Plugins that can be installed should be written as Python packages using a ``setup.py`` file.
+
+The easiest way to start writing one an installable plugin is to use the `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template. This creates a new plugin structure for you complete with an example test and GitHub Actions workflows for testing and publishing your plugin.
+
+`Install cookiecutter <https://cookiecutter.readthedocs.io/en/1.7.2/installation.html>`__ and then run this command to start building a plugin using the template::
+
+    cookiecutter gh:simonw/datasette-plugin
+
+Read `a cookiecutter template for writing Datasette plugins <https://simonwillison.net/2020/Jun/20/cookiecutter-plugins/>`__ for more information about this template.
+
 Packaging a plugin
 ------------------
 

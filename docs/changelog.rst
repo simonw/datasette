@@ -17,7 +17,7 @@ Changelog
 - Respect existing ``scope["actor"]`` if already set by ASGI middleware. (`#854 <https://github.com/simonw/datasette/issues/854>`__)
 - New process for shipping :ref:`contributing_alpha_beta`. (`#807 <https://github.com/simonw/datasette/issues/807>`__)
 - Re-arranged plugins documentation into :ref:`plugins`, :ref:`writing_plugins`, :ref:`plugin_hooks` and a new section on :ref:`testing_plugins`. (`#687 <https://github.com/simonw/datasette/issues/687>`__)
-- ``{{ csrftoken() }}`` now works when plugins render a template using ``datasette.render_template()``. (`#863 <https://github.com/simonw/datasette/issues/863>`__)
+- ``{{ csrftoken() }}`` now works when plugins render a template using ``datasette.render_template(..., request=request)``. (`#863 <https://github.com/simonw/datasette/issues/863>`__)
 
 .. _v0_44:
 

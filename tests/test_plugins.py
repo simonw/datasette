@@ -580,9 +580,8 @@ def test_register_routes_post(app_client):
     assert "post data" == response.json["this is"]
 
 
-def test_register_routes_csrftoken(tmpdir):
-    templates = tmpdir / "templates"
-    templates.mkdir()
+def test_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
+    templates = tmpdir_factory.mktemp("templates")
     (templates / "csrftoken_form.html").write_text(
         "CSRFTOKEN: {{ csrftoken() }}", "utf-8"
     )

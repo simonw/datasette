@@ -186,8 +186,8 @@ This method lets you read plugin configuration values that were set in ``metadat
 
 .. _datasette_render_template:
 
-.render_template(template, context=None, request=None)
-------------------------------------------------------
+await .render_template(template, context=None, request=None)
+------------------------------------------------------------
 
 ``template`` - string
     The template file to be rendered, e.g. ``my_plugin.html``. Datasette will search for this file first in the ``--template-dir=`` location, if it was specified - then in the plugin's bundled templates and finally in Datasette's set of default templates.

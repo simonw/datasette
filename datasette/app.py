@@ -739,6 +739,7 @@ class Datasette:
                 "extra_css_urls": self._asset_urls("extra_css_urls", template, context),
                 "extra_js_urls": self._asset_urls("extra_js_urls", template, context),
                 "base_url": self.config("base_url"),
+                "csrftoken": request.scope["csrftoken"] if request else lambda: "",
             },
             **extra_template_vars,
         }

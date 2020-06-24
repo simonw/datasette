@@ -103,7 +103,6 @@ class BaseView(AsgiView):
             **context,
             **{
                 "database_url": self.database_url,
-                "csrftoken": request.scope["csrftoken"],
                 "database_color": self.database_color,
                 "show_messages": lambda: self.ds._show_messages(request),
                 "select_templates": [

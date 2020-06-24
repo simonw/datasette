@@ -182,11 +182,17 @@ def register_routes():
         else:
             return Response.json(await request.post_vars())
 
+    async def csrftoken_form(request, datasette):
+        return Response.html(
+            await datasette.render_template("csrftoken_form.html", request=request)
+        )
+
     return [
         (r"/one/$", one),
         (r"/two/(?P<name>.*)$", two),
         (r"/three/$", three),
         (r"/post/$", post),
+        (r"/csrftoken-form/$", csrftoken_form),
     ]
 
 

@@ -580,6 +580,18 @@ def test_register_routes_post(app_client):
     assert "post data" == response.json["this is"]
 
 
+def test_register_routes_csrftoken(tmpdir):
+    templates = tmpdir / "templates"
+    templates.mkdir()
+    (templates / "csrftoken_form.html").write_text(
+        "CSRFTOKEN: {{ csrftoken() }}", "utf-8"
+    )
+    with make_app_client(template_dir=templates) as client:
+        response = client.get("/csrftoken-form/")
+        expected_token = client.ds._last_request.scope["csrftoken"]()
+        assert "CSRFTOKEN: {}".format(expected_token) == response.text
+
+
 def test_register_routes_asgi(app_client):
     response = app_client.get("/three/")
     assert {"hello": "world"} == response.json

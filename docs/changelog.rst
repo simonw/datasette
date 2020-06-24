@@ -4,9 +4,9 @@
 Changelog
 =========
 
-.. _v0_45a1:
+.. _v0_45a2:
 
-0.45a1 (2020-06-18)
+0.45a2 (2020-06-23)
 -------------------
 
 .. warning:: This is an **alpha** release. See :ref:`contributing_alpha_beta`.
@@ -16,6 +16,8 @@ Changelog
 - Workaround for "Too many open files" error in test runs. (`#846 <https://github.com/simonw/datasette/issues/846>`__)
 - Respect existing ``scope["actor"]`` if already set by ASGI middleware. (`#854 <https://github.com/simonw/datasette/issues/854>`__)
 - New process for shipping :ref:`contributing_alpha_beta`. (`#807 <https://github.com/simonw/datasette/issues/807>`__)
+- Re-arranged plugins documentation into :ref:`plugins`, :ref:`writing_plugins`, :ref:`plugin_hooks` and a new section on :ref:`testing_plugins`. (`#687 <https://github.com/simonw/datasette/issues/687>`__)
+- ``{{ csrftoken() }}`` now works when plugins render a template using ``datasette.render_template()``. (`#863 <https://github.com/simonw/datasette/issues/863>`__)
 
 .. _v0_44:
 

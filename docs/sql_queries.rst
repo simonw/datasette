@@ -307,8 +307,7 @@ Available magic parameters are:
 ``_random_chars_*`` - e.g. ``_random_chars_128``
     A random string of characters of the specified length.
 
-Here's an example configuration (this time using ``metadata.yaml``) that adds a message from the authenticated user, storing various pieces of additional metadata:
-
+Here's an example configuration (this time using ``metadata.yaml`` since that provides better support for multi-line SQL queries) that adds a message from the authenticated user, storing various pieces of additional metadata using magic parameters:
 
 .. code-block:: yaml
 

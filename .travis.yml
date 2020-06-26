@@ -1,19 +1,11 @@
 language: python
 dist: xenial
 
-language: python
-
-matrix:
-  include:
-    - os: windows
-      python: "3.7"
-      name: Windows
-    - os: linux
-      python: "3.5"
-    - os: linux
-      python: "3.6"
-    - os: linux
-      python: "3.7"
+# 3.6 is listed first so it gets used for the later build stages
+python:
+  - "3.6"
+  - "3.7"
+  - "3.8"
 
 # Executed for 3.5 AND 3.5 as the first "test" stage:
 script:

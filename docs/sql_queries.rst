@@ -283,16 +283,13 @@ Named parameters that start with an underscore are special: they can be used to 
 
 Available magic parameters are:
 
-``_actor_*`` - e.g. ``actor_id``, ``actor_name``
-    Fields from the currently authenticated :ref:`actor`.
+``_actor_*`` - e.g. ``_actor_id``, ``_actor_name``
+    Fields from the currently authenticated :ref:`authentication_actor`.
 
-``_request_ip``
-    The IP of the incoming request.
+``_header_*`` - e.g. ``_header_user_agent``
+    Header from the incoming HTTP request. The key should be in lower case and with hyphens converted to underscores e.g. ``_header_user_agent`` or ``_header_accept_language``.
 
-``_request_user_agent``
-    The browser user-agent of the incoming request.
-
-``_cookie_*`` - e.g. ``cookie_lang``
+``_cookie_*`` - e.g. ``_cookie_lang``
     The value of the incoming cookie of that name.
 
 ``_timestamp_epoch``

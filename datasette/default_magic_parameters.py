@@ -5,7 +5,7 @@ import os
 import time
 
 
-def request(key, request):
+def header(key, request):
     key = key.replace("_", "-").encode("utf-8")
     headers_dict = dict(request.scope["headers"])
     return headers_dict[key].decode("utf-8")
@@ -27,7 +27,7 @@ def timestamp(key, request):
     elif key == "date_utc":
         return datetime.datetime.utcnow().date().isoformat()
     elif key == "datetime_utc":
-        return datetime.datetime.utcnow().isoformat()
+        return datetime.datetime.utcnow().strftime(r"%Y-%m-%dT%H:%M:%S") + "Z"
     else:
         raise KeyError
 
@@ -47,7 +47,7 @@ def random(key, request):
 @hookimpl
 def register_magic_parameters():
     return [
-        ("request", request),
+        ("header", header),
         ("actor", actor),
         ("cookie", cookie),
         ("timestamp", timestamp),

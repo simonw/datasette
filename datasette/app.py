@@ -3,6 +3,7 @@ import asgi_csrf
 import collections
 import datetime
 import hashlib
+import inspect
 import itertools
 import json
 import os
@@ -40,6 +41,7 @@ from .database import Database, QueryInterrupted
 
 from .utils import (
     async_call_with_supported_arguments,
+    call_with_supported_arguments,
     escape_css_string,
     escape_sqlite,
     format_bytes,
@@ -1056,14 +1058,24 @@ def _cleaner_task_str(task):
 
 def wrap_view(view_fn, datasette):
     async def asgi_view_fn(scope, receive, send):
-        response = await async_call_with_supported_arguments(
-            view_fn,
-            scope=scope,
-            receive=receive,
-            send=send,
-            request=Request(scope, receive),
-            datasette=datasette,
-        )
+        if inspect.iscoroutinefunction(view_fn):
+            response = await async_call_with_supported_arguments(
+                view_fn,
+                scope=scope,
+                receive=receive,
+                send=send,
+                request=Request(scope, receive),
+                datasette=datasette,
+            )
+        else:
+            response = call_with_supported_arguments(
+                view_fn,
+                scope=scope,
+                receive=receive,
+                send=send,
+                request=Request(scope, receive),
+                datasette=datasette,
+            )
         if response is not None:
             await response.asgi_send(send)
 

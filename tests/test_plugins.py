@@ -565,7 +565,12 @@ def test_actor_json(app_client):
 
 
 @pytest.mark.parametrize(
-    "path,body", [("/one/", "2"), ("/two/Ray?greeting=Hail", "Hail Ray"),]
+    "path,body",
+    [
+        ("/one/", "2"),
+        ("/two/Ray?greeting=Hail", "Hail Ray"),
+        ("/not-async/", "This was not async"),
+    ],
 )
 def test_register_routes(app_client, path, body):
     response = app_client.get(path)

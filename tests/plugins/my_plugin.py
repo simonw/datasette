@@ -187,12 +187,16 @@ def register_routes():
             await datasette.render_template("csrftoken_form.html", request=request)
         )
 
+    def not_async():
+        return Response.html("This was not async")
+
     return [
         (r"/one/$", one),
         (r"/two/(?P<name>.*)$", two),
         (r"/three/$", three),
         (r"/post/$", post),
         (r"/csrftoken-form/$", csrftoken_form),
+        (r"/not-async/$", not_async),
     ]
 
 

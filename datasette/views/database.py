@@ -1,4 +1,5 @@
 import os
+import itertools
 import jinja2
 
 from datasette.utils import (
@@ -169,7 +170,7 @@ class QueryView(DataView):
 
         # Set to blank string if missing from params
         for named_parameter in named_parameters:
-            if named_parameter not in params:
+            if named_parameter not in params and not named_parameter.startswith("_"):
                 params[named_parameter] = ""
 
         extra_args = {}
@@ -184,9 +185,10 @@ class QueryView(DataView):
         if write:
             if request.method == "POST":
                 params = await request.post_vars()
+                params2 = MagicParameters(params, request, self.ds)
                 try:
                     cursor = await self.ds.databases[database].execute_write(
-                        sql, params, block=True
+                        sql, params2, block=True
                     )
                     message = metadata.get(
                         "on_success_message"
@@ -227,8 +229,10 @@ class QueryView(DataView):
                     templates,
                 )
         else:  # Not a write
+            # TODO: REMOVE THIS for security:
+            params2 = MagicParameters(params, request, self.ds)
             results = await self.ds.execute(
-                database, sql, params, truncate=True, **extra_args
+                database, sql, params2, truncate=True, **extra_args
             )
             columns = [r[0] for r in results.description]
 
@@ -298,3 +302,25 @@ class QueryView(DataView):
             extra_template,
             templates,
         )
+
+
+class MagicParameters(dict):
+    def __init__(self, data, request, datasette):
+        super().__init__(data)
+        self._request = request
+        self._magics = dict(
+            itertools.chain.from_iterable(
+                pm.hook.register_magic_parameters(datasette=datasette)
+            )
+        )
+
+    def __missing__(self, key):
+        if key.startswith("_") and key.count("_") >= 2:
+            prefix, suffix = key[1:].split("_", 1)
+            if prefix in self._magics:
+                try:
+                    return self._magics[prefix](suffix, self._request)
+                except KeyError:
+                    return ""
+        else:
+            return ""

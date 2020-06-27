@@ -633,3 +633,8 @@ def test_canned_queries_actor(app_client):
     assert [{"1": 1, "actor_id": "bot"}] == app_client.get(
         "/fixtures/from_hook.json?_bot=1&_shape=array"
     ).json
+
+
+def test_register_magic_parameters(app_client):
+    # TODO: Tests
+    assert True

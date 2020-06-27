@@ -83,3 +83,8 @@ def permission_allowed(datasette, actor, action, resource):
 @hookspec
 def canned_queries(datasette, database, actor):
     "Return a dictonary of canned query definitions or an awaitable function that returns them"
+
+
+@hookspec
+def register_magic_parameters(datasette):
+    "Return a list of (name, function) magic parameter functions"

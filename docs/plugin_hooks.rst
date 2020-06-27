@@ -893,3 +893,12 @@ Here's an example that allows users to view the ``admin_log`` table only if thei
 See :ref:`built-in permissions <permissions>` for a full list of permissions that are included in Datasette core.
 
 Example: `datasette-permissions-sql <https://github.com/simonw/datasette-permissions-sql>`_
+
+.. _plugin_hook_register_magic_parameters:
+
+register_magic_parameters(datasette)
+------------------------------------
+
+Register additional magic parameter types.
+
+TODO: More docs.

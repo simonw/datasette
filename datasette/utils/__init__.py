@@ -4,6 +4,7 @@ import base64
 import click
 import hashlib
 import inspect
+import itertools
 import json
 import mergedeep
 import os
@@ -17,6 +18,7 @@ import urllib
 import numbers
 import yaml
 from .shutil_backport import copytree
+from ..plugins import pm
 
 try:
     import pysqlite3 as sqlite3

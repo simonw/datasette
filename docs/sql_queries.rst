@@ -324,6 +324,8 @@ Here's an example configuration (this time using ``metadata.yaml`` since that pr
 
 The form presented at ``/mydatabase/add_message`` will have just a field for ``message`` - the other parameters will be populated by the magic parameter mechanism.
 
+Additional custom magic parameters can be added by plugins using the :ref:`plugin_hook_register_magic_parameters` hook.
+
 .. _pagination:
 
 Pagination

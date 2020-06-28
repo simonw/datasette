@@ -27,7 +27,6 @@ from datasette.utils import (
 from datasette.utils.asgi import (
     AsgiStream,
     AsgiWriter,
-    AsgiRouter,
     AsgiView,
     Forbidden,
     NotFound,

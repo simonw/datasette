@@ -25,7 +25,7 @@ from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 import uvicorn
 
-from .views.base import DatasetteError, ureg, AsgiRouter
+from .views.base import DatasetteError, ureg
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
 from .views.special import (
@@ -902,10 +902,23 @@ class Datasette:
         return asgi
 
 
-class DatasetteRouter(AsgiRouter):
+class DatasetteRouter:
     def __init__(self, datasette, routes):
         self.ds = datasette
-        super().__init__(routes)
+        routes = routes or []
+        self.routes = [
+            # Compile any strings to regular expressions
+            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
+            for pattern, view in routes
+        ]
+
+    async def __call__(self, scope, receive, send):
+        # Because we care about "foo/bar" v.s. "foo%2Fbar" we decode raw_path ourselves
+        path = scope["path"]
+        raw_path = scope.get("raw_path")
+        if raw_path:
+            path = raw_path.decode("ascii")
+        return await self.route_path(scope, receive, send, path)
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing
@@ -933,9 +946,18 @@ class DatasetteRouter(AsgiRouter):
             if actor:
                 break
         scope_modifications["actor"] = actor or default_actor
-        return await super().route_path(
-            dict(scope, **scope_modifications), receive, send, path
-        )
+        scope = dict(scope, **scope_modifications)
+        for regex, view in self.routes:
+            match = regex.match(path)
+            if match is not None:
+                new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
+                try:
+                    return await view(new_scope, receive, send)
+                except NotFound as exception:
+                    return await self.handle_404(scope, receive, send, exception)
+                except Exception as exception:
+                    return await self.handle_500(scope, receive, send, exception)
+        return await self.handle_404(scope, receive, send)
 
     async def handle_404(self, scope, receive, send, exception=None):
         # If URL has a trailing slash, redirect to URL without it

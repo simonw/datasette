@@ -118,58 +118,6 @@ class Request:
         return cls(scope, None)
 
 
-class AsgiRouter:
-    def __init__(self, routes=None):
-        routes = routes or []
-        self.routes = [
-            # Compile any strings to regular expressions
-            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
-            for pattern, view in routes
-        ]
-
-    async def __call__(self, scope, receive, send):
-        # Because we care about "foo/bar" v.s. "foo%2Fbar" we decode raw_path ourselves
-        path = scope["path"]
-        raw_path = scope.get("raw_path")
-        if raw_path:
-            path = raw_path.decode("ascii")
-        return await self.route_path(scope, receive, send, path)
-
-    async def route_path(self, scope, receive, send, path):
-        for regex, view in self.routes:
-            match = regex.match(path)
-            if match is not None:
-                new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
-                try:
-                    return await view(new_scope, receive, send)
-                except NotFound as exception:
-                    return await self.handle_404(scope, receive, send, exception)
-                except Exception as exception:
-                    return await self.handle_500(scope, receive, send, exception)
-        return await self.handle_404(scope, receive, send)
-
-    async def handle_404(self, scope, receive, send, exception=None):
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 404,
-                "headers": [[b"content-type", b"text/html; charset=utf-8"]],
-            }
-        )
-        await send({"type": "http.response.body", "body": b"<h1>404</h1>"})
-
-    async def handle_500(self, scope, receive, send, exception):
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 404,
-                "headers": [[b"content-type", b"text/html; charset=utf-8"]],
-            }
-        )
-        html = "<h1>500</h1><pre{}></pre>".format(escape(repr(exception)))
-        await send({"type": "http.response.body", "body": html.encode("utf-8")})
-
-
 class AsgiLifespan:
     def __init__(self, app, on_startup=None, on_shutdown=None):
         self.app = app

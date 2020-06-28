@@ -640,6 +640,23 @@ def test_canned_queries_actor(app_client):
     ).json
 
 
-def test_register_magic_parameters(app_client):
-    # TODO: Tests
-    assert True
+def test_register_magic_parameters():
+    with make_app_client(
+        extra_databases={"data.db": "create table logs (line text)"},
+        metadata={
+            "databases": {
+                "data": {
+                    "queries": {
+                        "runme": {
+                            "sql": "insert into logs (line) values (:_request_http_version)",
+                            "write": True,
+                        },
+                    }
+                }
+            }
+        },
+    ) as client:
+        response = client.post("/data/runme", {}, csrftoken_from=True)
+        assert 200 == response.status
+        actual = client.get("/data/logs.json?_sort_desc=rowid&_shape=array").json
+    assert [{"rowid": 1, "line": "1.0"}] == actual

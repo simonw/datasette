@@ -212,3 +212,14 @@ def canned_queries(datasette, database, actor):
             actor["id"] if actor else "null"
         )
     }
+
+
+@hookimpl
+def register_magic_parameters():
+    def request(key, request):
+        if key == "http_version":
+            return request.scope["http_version"]
+        else:
+            raise KeyError
+
+    return [("request", request)]

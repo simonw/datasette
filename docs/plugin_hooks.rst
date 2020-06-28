@@ -895,3 +895,42 @@ Here's an example that allows users to view the ``admin_log`` table only if thei
 See :ref:`built-in permissions <permissions>` for a full list of permissions that are included in Datasette core.
 
 Example: `datasette-permissions-sql <https://github.com/simonw/datasette-permissions-sql>`_
+
+.. _plugin_hook_register_magic_parameters:
+
+register_magic_parameters(datasette)
+------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+:ref:`canned_queries_magic_parameters` can be used to add automatic parameters to :ref:`canned queries <canned_queries>`. This plugin hook allows additional magic parameters to be defined by plugins.
+
+Magic parameters all take this format: ``_prefix_rest_of_parameter``. The prefix indicates which magic parameter function should be called - the rest of the parameter is passed as an argument to that function.
+
+To register a new function, return it as a tuple of ``(string prefix, function)`` from this hook. The function you register should take two arguments: ``key`` and ``request``, where ``key`` is the ``rest_of_parameter`` portion of the parameter and ``request`` is the current :ref:`internals_request`.
+
+This example registers two new magic parameters: ``:_request_http_version`` returning the HTTP version of the current request, and ``:_uuid_new`` which returns a new UUID:
+
+.. code-block:: python
+
+    from uuid import uuid4
+
+    def uuid(key, request):
+        if key == "new":
+            return str(uuid4())
+        else:
+            raise KeyError
+
+    def request(key, request):
+        if key == "http_version":
+            return request.scope["http_version"]
+        else:
+            raise KeyError
+
+    @hookimpl
+    def register_magic_parameters(datasette):
+        return [
+            ("request", request),
+            ("uuid", uuid),
+        ]

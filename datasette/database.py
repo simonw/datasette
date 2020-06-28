@@ -132,7 +132,7 @@ class Database:
             with sqlite_timelimit(conn, time_limit_ms):
                 try:
                     cursor = conn.cursor()
-                    cursor.execute(sql, params or {})
+                    cursor.execute(sql, params if params is not None else {})
                     max_returned_rows = self.ds.max_returned_rows
                     if max_returned_rows == page_size:
                         max_returned_rows += 1

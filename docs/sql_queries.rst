@@ -114,8 +114,8 @@ rendered as HTML (rather than having HTML special characters escaped).
 
 .. _canned_queries_named_parameters:
 
-Named parameters
-~~~~~~~~~~~~~~~~
+Canned query parameters
+~~~~~~~~~~~~~~~~~~~~~~~
 
 Canned queries support named parameters, so if you include those in the SQL you
 will then be able to enter them using the form fields on the canned query page
@@ -273,6 +273,58 @@ For example:
 You can use ``"params"`` to explicitly list the named parameters that should be displayed as form fields - otherwise they will be automatically detected.
 
 You can pre-populate form fields when the page first loads using a querystring, e.g. ``/mydatabase/add_name?name=Prepopulated``. The user will have to submit the form to execute the query.
+
+.. _canned_queries_magic_parameters:
+
+Magic parameters
+~~~~~~~~~~~~~~~~
+
+Named parameters that start with an underscore are special: they can be used to automatically add values created by Datasette that are not contained in the incoming form fields or querystring.
+
+Available magic parameters are:
+
+``_actor_*`` - e.g. ``_actor_id``, ``_actor_name``
+    Fields from the currently authenticated :ref:`authentication_actor`.
+
+``_header_*`` - e.g. ``_header_user_agent``
+    Header from the incoming HTTP request. The key should be in lower case and with hyphens converted to underscores e.g. ``_header_user_agent`` or ``_header_accept_language``.
+
+``_cookie_*`` - e.g. ``_cookie_lang``
+    The value of the incoming cookie of that name.
+
+``_timestamp_epoch``
+    The number of seconds since the Unix epoch.
+
+``_timestamp_date_utc``
+    The date in UTC, e.g. ``2020-06-01``
+
+``_timestamp_datetime_utc``
+    The ISO 8601 datetime in UTC, e.g. ``2020-06-24T18:01:07Z``
+
+``_random_chars_*`` - e.g. ``_random_chars_128``
+    A random string of characters of the specified length.
+
+Here's an example configuration (this time using ``metadata.yaml`` since that provides better support for multi-line SQL queries) that adds a message from the authenticated user, storing various pieces of additional metadata using magic parameters:
+
+.. code-block:: yaml
+
+    databases:
+      mydatabase:
+        queries:
+          add_message:
+            allow:
+              id: "*"
+            sql: |-
+              INSERT INTO messages (
+                user_id, ip, message, datetime
+              ) VALUES (
+                :_actor_id, :_request_ip, :message, :_timestamp_datetime_utc
+              )
+            write: true
+
+The form presented at ``/mydatabase/add_message`` will have just a field for ``message`` - the other parameters will be populated by the magic parameter mechanism.
+
+Additional custom magic parameters can be added by plugins using the :ref:`plugin_hook_register_magic_parameters` hook.
 
 .. _pagination:
 

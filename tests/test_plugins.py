@@ -638,3 +638,31 @@ def test_canned_queries_actor(app_client):
     assert [{"1": 1, "actor_id": "bot"}] == app_client.get(
         "/fixtures/from_hook.json?_bot=1&_shape=array"
     ).json
+
+
+def test_register_magic_parameters(restore_working_directory):
+    with make_app_client(
+        extra_databases={"data.db": "create table logs (line text)"},
+        metadata={
+            "databases": {
+                "data": {
+                    "queries": {
+                        "runme": {
+                            "sql": "insert into logs (line) values (:_request_http_version)",
+                            "write": True,
+                        },
+                        "get_uuid": {"sql": "select :_uuid_new",},
+                    }
+                }
+            }
+        },
+    ) as client:
+        response = client.post("/data/runme", {}, csrftoken_from=True)
+        assert 200 == response.status
+        actual = client.get("/data/logs.json?_sort_desc=rowid&_shape=array").json
+        assert [{"rowid": 1, "line": "1.0"}] == actual
+        # Now try the GET request against get_uuid
+        response_get = client.get("/data/get_uuid.json?_shape=array")
+        assert 200 == response_get.status
+        new_uuid = response_get.json[0][":_uuid_new"]
+        assert 4 == new_uuid.count("-")

@@ -601,18 +601,6 @@ def test_custom_sql(app_client):
     assert not data["truncated"]
 
 
-def test_canned_query_with_named_parameter(app_client):
-    response = app_client.get("/fixtures/neighborhood_search.json?text=town")
-    assert [
-        ["Corktown", "Detroit", "MI"],
-        ["Downtown", "Los Angeles", "CA"],
-        ["Downtown", "Detroit", "MI"],
-        ["Greektown", "Detroit", "MI"],
-        ["Koreatown", "Los Angeles", "CA"],
-        ["Mexicantown", "Detroit", "MI"],
-    ] == response.json["rows"]
-
-
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get("/fixtures.json?sql=select+sleep(0.5)")
     assert 400 == response.status

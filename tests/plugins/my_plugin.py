@@ -212,3 +212,25 @@ def canned_queries(datasette, database, actor):
             actor["id"] if actor else "null"
         )
     }
+
+
+@hookimpl
+def register_magic_parameters():
+    from uuid import uuid4
+
+    def uuid(key, request):
+        if key == "new":
+            return str(uuid4())
+        else:
+            raise KeyError
+
+    def request(key, request):
+        if key == "http_version":
+            return request.scope["http_version"]
+        else:
+            raise KeyError
+
+    return [
+        ("request", request),
+        ("uuid", uuid),
+    ]

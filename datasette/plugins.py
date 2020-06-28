@@ -11,6 +11,7 @@ DEFAULT_PLUGINS = (
     "datasette.sql_functions",
     "datasette.actor_auth_cookie",
     "datasette.default_permissions",
+    "datasette.default_magic_parameters",
 )
 
 pm = pluggy.PluginManager("datasette")

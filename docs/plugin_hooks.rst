@@ -705,6 +705,18 @@ Potential use-cases:
 * Create database tables that a plugin needs on startup
 * Validate the metadata configuration for a plugin on startup, and raise an error if it is invalid
 
+.. note::
+
+   If you are writing :ref:`unit tests <testing_plugins>` for a plugin that uses this hook you will need to explicitly call ``await ds.invoke_startup()`` in your tests. An example:
+
+   .. code-block:: python
+
+        @pytest.mark.asyncio
+        async def test_my_plugin():
+            ds = Datasette([], metadata={})
+            await ds.invoke_startup()
+            # Rest of test goes here
+
 Example: `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__
 
 .. _plugin_hook_canned_queries:

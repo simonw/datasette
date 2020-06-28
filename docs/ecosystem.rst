@@ -107,6 +107,11 @@ datasette-json-html
 
 `datasette-json-html <https://github.com/simonw/datasette-json-html>`__ renders HTML in Datasette's table view driven by JSON returned from your SQL queries. This provides a way to embed images, links and lists of links directly in Datasette's main interface, defined using custom SQL statements.
 
+datasette-init
+--------------
+
+`datasette-init <https://github.com/simonw/datasette-init>`__ allows you to define tables and views in your metadata file that should be created on startup if they do not already exist.
+
 datasette-media
 ---------------
 

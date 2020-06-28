@@ -53,7 +53,7 @@ arguments and can be called like this::
 
     select random_integer(1, 10);
 
-Examples: `datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`_, `datasette-jq <https://github.com/simonw/datasette-jq>`_, `datasette-haversine <https://github.com/simonw/datasette-haversine>`__, `datasette-rure <https://github.com/simonw/datasette-rure>`__
+Examples: `datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`__, `datasette-jq <https://github.com/simonw/datasette-jq>`__, `datasette-haversine <https://github.com/simonw/datasette-haversine>`__, `datasette-rure <https://github.com/simonw/datasette-rure>`__
 
 .. _plugin_hook_prepare_jinja2_environment:
 
@@ -717,7 +717,7 @@ Potential use-cases:
             await ds.invoke_startup()
             # Rest of test goes here
 
-Example: `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__
+Examples: `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__, `datasette-init <https://github.com/simonw/datasette-init>`__
 
 .. _plugin_hook_canned_queries:
 

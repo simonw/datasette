@@ -292,13 +292,13 @@ Available magic parameters are:
 ``_cookie_*`` - e.g. ``_cookie_lang``
     The value of the incoming cookie of that name.
 
-``_timestamp_epoch``
+``_now_epoch``
     The number of seconds since the Unix epoch.
 
-``_timestamp_date_utc``
+``_now_date_utc``
     The date in UTC, e.g. ``2020-06-01``
 
-``_timestamp_datetime_utc``
+``_now_datetime_utc``
     The ISO 8601 datetime in UTC, e.g. ``2020-06-24T18:01:07Z``
 
 ``_random_chars_*`` - e.g. ``_random_chars_128``
@@ -318,7 +318,7 @@ Here's an example configuration (this time using ``metadata.yaml`` since that pr
               INSERT INTO messages (
                 user_id, ip, message, datetime
               ) VALUES (
-                :_actor_id, :_request_ip, :message, :_timestamp_datetime_utc
+                :_actor_id, :_request_ip, :message, :_now_datetime_utc
               )
             write: true
 

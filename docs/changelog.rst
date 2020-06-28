@@ -16,7 +16,7 @@ Changelog
       insert into logs
         (user_id, timestamp)
       values
-        (:_actor_id, :_timestamp_datetime_utc)
+        (:_actor_id, :_now_datetime_utc)
 
   This inserts the currently authenticated actor ID and the current datetime. (`#842 <https://github.com/simonw/datasette/issues/842>`__)
 - New :ref:`plugin_hook_register_magic_parameters` plugin hook.

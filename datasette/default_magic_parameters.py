@@ -21,7 +21,7 @@ def cookie(key, request):
     return request.cookies[key]
 
 
-def timestamp(key, request):
+def now(key, request):
     if key == "epoch":
         return int(time.time())
     elif key == "date_utc":
@@ -50,6 +50,6 @@ def register_magic_parameters():
         ("header", header),
         ("actor", actor),
         ("cookie", cookie),
-        ("timestamp", timestamp),
+        ("now", now),
         ("random", random),
     ]

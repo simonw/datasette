@@ -4,13 +4,20 @@
 Changelog
 =========
 
-.. _v0_45a2:
+.. _v0_45a3:
 
-0.45a2 (2020-06-23)
+0.45a3 (2020-06-27)
 -------------------
 
 .. warning:: This is an **alpha** release. See :ref:`contributing_alpha_beta`.
 
+- Canned queries now support :ref:`canned_queries_magic_parameters`, which can be used to insert or select automatically generated values. For example::
+
+      insert into logs
+        (user_id, timestamp)
+      values
+        (:_actor_id, :_timestamp_datetime_utc)
+ This inserts the currently authenticated actor ID and the current datetime. (`#842 <https://github.com/simonw/datasette/issues/842>`__)
 - New :ref:`plugin_hook_startup` plugin hook. (`#834 <https://github.com/simonw/datasette/issues/834>`__)
 - New :ref:`plugin_hook_canned_queries` plugin hook. See `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ for an example of this hook in action. (`#852 <https://github.com/simonw/datasette/issues/852>`__)
 - Workaround for "Too many open files" error in test runs. (`#846 <https://github.com/simonw/datasette/issues/846>`__)

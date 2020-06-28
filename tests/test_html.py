@@ -97,9 +97,9 @@ def test_database_page(app_client):
         ),
         ("/fixtures/from_async_hook", "from_async_hook"),
         ("/fixtures/from_hook", "from_hook"),
+        ("/fixtures/magic_parameters", "magic_parameters"),
         ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
         ("/fixtures/pragma_cache_size", "pragma_cache_size"),
-        ("/fixtures/magic_parameters", "magic_parameters"),
     ] == sorted(
         [(a["href"], a.text) for a in queries_ul.find_all("a")], key=lambda p: p[0]
     )

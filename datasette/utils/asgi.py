@@ -269,8 +269,8 @@ async def asgi_send_file(
 
 
 def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
-    async def inner_static(scope, receive, send):
-        path = scope["url_route"]["kwargs"]["path"]
+    async def inner_static(request, send):
+        path = request.scope["url_route"]["kwargs"]["path"]
         try:
             full_path = (Path(root_path) / path).resolve().absolute()
         except FileNotFoundError:

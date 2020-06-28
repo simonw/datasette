@@ -120,17 +120,11 @@ class BaseView:
         )
 
     @classmethod
-    def as_asgi(cls, *class_args, **class_kwargs):
-        async def view(scope, receive, send):
-            # Uses scope to create a request object, then dispatches that to
-            # self.get(...) or self.options(...) along with keyword arguments
-            # that were already tucked into scope["url_route"]["kwargs"] by
-            # the router, similar to how Django Channels works:
-            # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
-            request = Request(scope, receive)
+    def as_view(cls, *class_args, **class_kwargs):
+        async def view(request, send):
             self = view.view_class(*class_args, **class_kwargs)
             response = await self.dispatch_request(
-                request, **scope["url_route"]["kwargs"]
+                request, **request.scope["url_route"]["kwargs"]
             )
             await response.asgi_send(send)
 

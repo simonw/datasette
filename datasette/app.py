@@ -794,7 +794,7 @@ class Datasette:
         # Generate a regex snippet to match all registered renderer file extensions
         renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
 
-        add_route(IndexView.as_asgi(self), r"/(?P<as_format>(\.jsono?)?$)")
+        add_route(IndexView.as_view(self), r"/(?P<as_format>(\.jsono?)?$)")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         add_route(favicon, "/favicon.ico")
 
@@ -819,62 +819,62 @@ class Datasette:
                     ),
                 )
         add_route(
-            JsonDataView.as_asgi(self, "metadata.json", lambda: self._metadata),
+            JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
             r"/-/metadata(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "versions.json", self._versions),
+            JsonDataView.as_view(self, "versions.json", self._versions),
             r"/-/versions(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(
+            JsonDataView.as_view(
                 self, "plugins.json", self._plugins, needs_request=True
             ),
             r"/-/plugins(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "config.json", lambda: self._config),
+            JsonDataView.as_view(self, "config.json", lambda: self._config),
             r"/-/config(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "threads.json", self._threads),
+            JsonDataView.as_view(self, "threads.json", self._threads),
             r"/-/threads(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "databases.json", self._connected_databases),
+            JsonDataView.as_view(self, "databases.json", self._connected_databases),
             r"/-/databases(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_asgi(self, "actor.json", self._actor, needs_request=True),
+            JsonDataView.as_view(self, "actor.json", self._actor, needs_request=True),
             r"/-/actor(?P<as_format>(\.json)?)$",
         )
         add_route(
-            AuthTokenView.as_asgi(self), r"/-/auth-token$",
+            AuthTokenView.as_view(self), r"/-/auth-token$",
         )
         add_route(
-            PermissionsDebugView.as_asgi(self), r"/-/permissions$",
+            PermissionsDebugView.as_view(self), r"/-/permissions$",
         )
         add_route(
-            MessagesDebugView.as_asgi(self), r"/-/messages$",
+            MessagesDebugView.as_view(self), r"/-/messages$",
         )
         add_route(
-            PatternPortfolioView.as_asgi(self), r"/-/patterns$",
+            PatternPortfolioView.as_view(self), r"/-/patterns$",
         )
         add_route(
-            DatabaseDownload.as_asgi(self), r"/(?P<db_name>[^/]+?)(?P<as_db>\.db)$"
+            DatabaseDownload.as_view(self), r"/(?P<db_name>[^/]+?)(?P<as_db>\.db)$"
         )
         add_route(
-            DatabaseView.as_asgi(self),
+            DatabaseView.as_view(self),
             r"/(?P<db_name>[^/]+?)(?P<as_format>"
             + renderer_regex
             + r"|.jsono|\.csv)?$",
         )
         add_route(
-            TableView.as_asgi(self),
+            TableView.as_view(self),
             r"/(?P<db_name>[^/]+)/(?P<table_and_format>[^/]+?$)",
         )
         add_route(
-            RowView.as_asgi(self),
+            RowView.as_view(self),
             r"/(?P<db_name>[^/]+)/(?P<table>[^/]+?)/(?P<pk_path>[^/]+?)(?P<as_format>"
             + renderer_regex
             + r")?$",
@@ -952,7 +952,7 @@ class DatasetteRouter:
             if match is not None:
                 new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
                 try:
-                    return await view(new_scope, receive, send)
+                    return await view(Request(new_scope, receive), send)
                 except NotFound as exception:
                     return await self.handle_404(scope, receive, send, exception)
                 except Exception as exception:

@@ -314,13 +314,13 @@ class MagicParameters(dict):
             )
         )
 
-    def __missing__(self, key):
+    def __getitem__(self, key):
         if key.startswith("_") and key.count("_") >= 2:
             prefix, suffix = key[1:].split("_", 1)
             if prefix in self._magics:
                 try:
                     return self._magics[prefix](suffix, self._request)
                 except KeyError:
-                    return ""
+                    return super().__getitem__(key)
         else:
-            return ""
+            return super().__getitem__(key)

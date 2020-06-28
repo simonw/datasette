@@ -1,5 +1,6 @@
 import pytest
-from .fixtures import make_app_client
+import re
+from .fixtures import make_app_client, app_client
 
 
 @pytest.fixture
@@ -37,6 +38,18 @@ def canned_write_client():
         },
     ) as client:
         yield client
+
+
+def test_canned_query_with_named_parameter(app_client):
+    response = app_client.get("/fixtures/neighborhood_search.json?text=town")
+    assert [
+        ["Corktown", "Detroit", "MI"],
+        ["Downtown", "Los Angeles", "CA"],
+        ["Downtown", "Detroit", "MI"],
+        ["Greektown", "Detroit", "MI"],
+        ["Koreatown", "Los Angeles", "CA"],
+        ["Mexicantown", "Detroit", "MI"],
+    ] == response.json["rows"]
 
 
 def test_insert(canned_write_client):
@@ -147,3 +160,44 @@ def test_canned_query_permissions(canned_write_client):
     cookies = {"ds_actor": canned_write_client.actor_cookie({"id": "root"})}
     assert 200 == canned_write_client.get("/data/delete_name", cookies=cookies).status
     assert 200 == canned_write_client.get("/data/update_name", cookies=cookies).status
+
+
+@pytest.fixture(scope="session")
+def magic_parameters_client():
+    with make_app_client(
+        extra_databases={"data.db": "create table logs (line text)"},
+        metadata={
+            "databases": {"data": {"queries": {"runme": {"sql": "", "write": True,},}}}
+        },
+    ) as client:
+        yield client
+
+
+@pytest.mark.parametrize(
+    "magic_parameter,expected_re",
+    [
+        ("_actor_id", "root"),
+        ("_header_host", "localhost"),
+        ("_cookie_foo", "bar"),
+        ("_timestamp_epoch", r"^\d+$"),
+        ("_timestamp_date_utc", r"^\d{4}-\d{2}-\d{2}$"),
+        ("_timestamp_datetime_utc", r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"),
+        ("_random_chars_1", r"^\w$"),
+        ("_random_chars_10", r"^\w{10}$"),
+    ],
+)
+def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re):
+    magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme"][
+        "sql"
+    ] = "insert into logs (line) values (:{})".format(magic_parameter)
+    cookies = {
+        "ds_actor": magic_parameters_client.actor_cookie({"id": "root"}),
+        "foo": "bar",
+    }
+    response = magic_parameters_client.post(
+        "/data/runme", {}, csrftoken_from=True, cookies=cookies
+    )
+    actual = magic_parameters_client.get(
+        "/data/logs.json?_sort_desc=rowid&_shape=array"
+    ).json[0]["line"]
+    assert re.match(expected_re, actual)

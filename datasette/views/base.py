@@ -27,9 +27,9 @@ from datasette.utils import (
 from datasette.utils.asgi import (
     AsgiStream,
     AsgiWriter,
-    AsgiView,
     Forbidden,
     NotFound,
+    Request,
     Response,
 )
 
@@ -55,7 +55,7 @@ class DatasetteError(Exception):
         self.messagge_is_html = messagge_is_html
 
 
-class BaseView(AsgiView):
+class BaseView:
     ds = None
 
     async def head(self, *args, **kwargs):
@@ -90,7 +90,8 @@ class BaseView(AsgiView):
                 )
             except BadSignature:
                 pass
-        response = await super().dispatch_request(request, *args, **kwargs)
+        handler = getattr(self, request.method.lower(), None)
+        response = await handler(request, *args, **kwargs)
         if self.ds:
             self.ds._write_messages_to_response(request, response)
         return response
@@ -117,6 +118,27 @@ class BaseView(AsgiView):
                 template, template_context, request=request, view_name=self.name
             )
         )
+
+    @classmethod
+    def as_asgi(cls, *class_args, **class_kwargs):
+        async def view(scope, receive, send):
+            # Uses scope to create a request object, then dispatches that to
+            # self.get(...) or self.options(...) along with keyword arguments
+            # that were already tucked into scope["url_route"]["kwargs"] by
+            # the router, similar to how Django Channels works:
+            # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
+            request = Request(scope, receive)
+            self = view.view_class(*class_args, **class_kwargs)
+            response = await self.dispatch_request(
+                request, **scope["url_route"]["kwargs"]
+            )
+            await response.asgi_send(send)
+
+        view.view_class = cls
+        view.__doc__ = cls.__doc__
+        view.__module__ = cls.__module__
+        view.__name__ = cls.__name__
+        return view
 
 
 class DataView(BaseView):

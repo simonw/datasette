@@ -147,33 +147,6 @@ class AsgiLifespan:
             await self.app(scope, receive, send)
 
 
-class AsgiView:
-    async def dispatch_request(self, request, *args, **kwargs):
-        handler = getattr(self, request.method.lower(), None)
-        return await handler(request, *args, **kwargs)
-
-    @classmethod
-    def as_asgi(cls, *class_args, **class_kwargs):
-        async def view(scope, receive, send):
-            # Uses scope to create a request object, then dispatches that to
-            # self.get(...) or self.options(...) along with keyword arguments
-            # that were already tucked into scope["url_route"]["kwargs"] by
-            # the router, similar to how Django Channels works:
-            # https://channels.readthedocs.io/en/latest/topics/routing.html#urlrouter
-            request = Request(scope, receive)
-            self = view.view_class(*class_args, **class_kwargs)
-            response = await self.dispatch_request(
-                request, **scope["url_route"]["kwargs"]
-            )
-            await response.asgi_send(send)
-
-        view.view_class = cls
-        view.__doc__ = cls.__doc__
-        view.__module__ = cls.__module__
-        view.__name__ = cls.__name__
-        return view
-
-
 class AsgiStream:
     def __init__(self, stream_fn, status=200, headers=None, content_type="text/plain"):
         self.stream_fn = stream_fn

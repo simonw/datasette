@@ -186,10 +186,13 @@ class QueryView(DataView):
         if write:
             if request.method == "POST":
                 params = await request.post_vars()
-                params2 = MagicParameters(params, request, self.ds)
+                if canned_query:
+                    params_for_query = MagicParameters(params, request, self.ds)
+                else:
+                    params_for_query = params
                 try:
                     cursor = await self.ds.databases[database].execute_write(
-                        sql, params2, block=True
+                        sql, params_for_query, block=True
                     )
                     message = metadata.get(
                         "on_success_message"
@@ -230,10 +233,12 @@ class QueryView(DataView):
                     templates,
                 )
         else:  # Not a write
-            # TODO: REMOVE THIS for security:
-            params2 = MagicParameters(params, request, self.ds)
+            if canned_query:
+                params_for_query = MagicParameters(params, request, self.ds)
+            else:
+                params_for_query = params
             results = await self.ds.execute(
-                database, sql, params2, truncate=True, **extra_args
+                database, sql, params_for_query, truncate=True, **extra_args
             )
             columns = [r[0] for r in results.description]
 

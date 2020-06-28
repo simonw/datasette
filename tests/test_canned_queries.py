@@ -168,7 +168,14 @@ def magic_parameters_client():
     with make_app_client(
         extra_databases={"data.db": "create table logs (line text)"},
         metadata={
-            "databases": {"data": {"queries": {"runme": {"sql": "", "write": True,},}}}
+            "databases": {
+                "data": {
+                    "queries": {
+                        "runme_post": {"sql": "", "write": True},
+                        "runme_get": {"sql": ""},
+                    }
+                }
+            }
         },
     ) as client:
         yield client
@@ -188,23 +195,40 @@ def magic_parameters_client():
     ],
 )
 def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re):
-    magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme"][
+    magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme_post"][
         "sql"
     ] = "insert into logs (line) values (:{})".format(magic_parameter)
+    magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme_get"][
+        "sql"
+    ] = "select :{} as result".format(magic_parameter)
     cookies = {
         "ds_actor": magic_parameters_client.actor_cookie({"id": "root"}),
         "foo": "bar",
     }
+    # Test the GET version
+    get_response = magic_parameters_client.get(
+        "/data/runme_get.json?_shape=array", cookies=cookies
+    )
+    get_actual = get_response.json[0]["result"]
+    assert re.match(expected_re, str(get_actual))
     # Test the form
-    form_response = magic_parameters_client.get("/data/runme")
+    form_response = magic_parameters_client.get("/data/runme_post")
     soup = Soup(form_response.body, "html.parser")
     # The magic parameter should not be represented as a form field
     assert None is soup.find("input", {"name": magic_parameter})
     # Submit the form to create a log line
     response = magic_parameters_client.post(
-        "/data/runme", {}, csrftoken_from=True, cookies=cookies
+        "/data/runme_post", {}, csrftoken_from=True, cookies=cookies
     )
-    actual = magic_parameters_client.get(
+    post_actual = magic_parameters_client.get(
         "/data/logs.json?_sort_desc=rowid&_shape=array"
     ).json[0]["line"]
-    assert re.match(expected_re, actual)
+    assert re.match(expected_re, post_actual)
+
+
+def test_magic_parameters_cannot_be_used_in_arbitrary_queries(magic_parameters_client):
+    response = magic_parameters_client.get(
+        "/data.json?sql=select+:_header_host&_shape=array"
+    )
+    assert 500 == response.status
+    assert "You did not supply a value for binding 1." == response.json["error"]

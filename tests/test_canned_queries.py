@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup as Soup
 import pytest
 import re
 from .fixtures import make_app_client, app_client
@@ -194,6 +195,12 @@ def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re)
         "ds_actor": magic_parameters_client.actor_cookie({"id": "root"}),
         "foo": "bar",
     }
+    # Test the form
+    form_response = magic_parameters_client.get("/data/runme")
+    soup = Soup(form_response.body, "html.parser")
+    # The magic parameter should not be represented as a form field
+    assert None is soup.find("input", {"name": magic_parameter})
+    # Submit the form to create a log line
     response = magic_parameters_client.post(
         "/data/runme", {}, csrftoken_from=True, cookies=cookies
     )

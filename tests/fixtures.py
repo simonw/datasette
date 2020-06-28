@@ -49,6 +49,7 @@ EXPECTED_PLUGINS = [
             "prepare_connection",
             "prepare_jinja2_environment",
             "register_facet_classes",
+            "register_magic_parameters",
             "register_routes",
             "render_cell",
             "startup",

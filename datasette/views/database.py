@@ -166,6 +166,7 @@ class QueryView(DataView):
         named_parameter_values = {
             named_parameter: params.get(named_parameter) or ""
             for named_parameter in named_parameters
+            if not named_parameter.startswith("_")
         }
 
         # Set to blank string if missing from params

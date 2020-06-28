@@ -640,7 +640,7 @@ def test_canned_queries_actor(app_client):
     ).json
 
 
-def test_register_magic_parameters():
+def test_register_magic_parameters(restore_working_directory):
     with make_app_client(
         extra_databases={"data.db": "create table logs (line text)"},
         metadata={

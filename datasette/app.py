@@ -160,7 +160,7 @@ CONFIG_OPTIONS = (
 DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
 
 
-async def favicon(scope, receive, send):
+async def favicon(request, send):
     await asgi_send(send, "", 200)
 
 

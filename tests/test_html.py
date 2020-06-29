@@ -52,6 +52,12 @@ def test_http_head(app_client):
     assert response.status == 200
 
 
+def test_favicon(app_client):
+    response = app_client.get("/favicon.ico")
+    assert response.status == 200
+    assert "" == response.text
+
+
 def test_static(app_client):
     response = app_client.get("/-/static/app2.css")
     assert response.status == 404

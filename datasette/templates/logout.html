@@ -13,7 +13,7 @@
 
 <h1>Log out</h1>
 
-<p>You are logged in as <strong>{{ actor.id or actor }}</strong></p>
+<p>You are logged in as <strong>{{ display_actor(actor) }}</strong></p>
 
 <form action="/-/logout" method="post">
     <div>

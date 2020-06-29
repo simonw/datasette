@@ -78,3 +78,17 @@ def test_logout(app_client):
     # Should also have set a message
     messages = app_client.ds.unsign(response4.cookies["ds_messages"], "messages")
     assert [["You are now logged out", 2]] == messages
+
+
+@pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])
+def test_logout_button_in_navigation(app_client, path):
+    response = app_client.get(
+        path, cookies={"ds_actor": app_client.actor_cookie({"id": "test"})}
+    )
+    anon_response = app_client.get(path)
+    for fragment in (
+        "<strong>test</strong> &middot;",
+        '<form action="/-/logout" method="post">',
+    ):
+        assert fragment in response.text
+        assert fragment not in anon_response.text

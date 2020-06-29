@@ -100,6 +100,14 @@ table a:visited {
 .hd .crumbs {
     float: left;
 }
+.hd .logout {
+    float: right;
+    text-align: right;
+    padding-left: 1em;
+}
+.hd .logout form {
+    display: inline;
+}
 .ft {
     margin: 1em 0;
     padding: 0.5em 1em 0 1em;
@@ -366,4 +374,14 @@ p.zero-results {
     padding: 1em;
     border: 1px solid red;
     background-color: pink;
+}
+
+button.button-as-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: blue;
+    text-decoration: none;
+    cursor: pointer;
+    font-size: 1em;
 }

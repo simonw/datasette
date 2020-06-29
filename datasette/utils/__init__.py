@@ -924,3 +924,10 @@ def resolve_env_secrets(config, environ):
         return [resolve_env_secrets(value, environ) for value in config]
     else:
         return config
+
+
+def display_actor(actor):
+    for key in ("display", "name", "username", "login", "id"):
+        if actor.get(key):
+            return actor[key]
+    return str(actor)

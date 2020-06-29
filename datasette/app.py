@@ -44,6 +44,7 @@ from .database import Database, QueryInterrupted
 from .utils import (
     async_call_with_supported_arguments,
     call_with_supported_arguments,
+    display_actor,
     escape_css_string,
     escape_sqlite,
     format_bytes,
@@ -736,6 +737,8 @@ class Datasette:
         template_context = {
             **context,
             **{
+                "actor": request.actor if request else None,
+                "display_actor": display_actor,
                 "app_css_hash": self.app_css_hash(),
                 "zip": zip,
                 "body_scripts": body_scripts,

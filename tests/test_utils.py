@@ -517,3 +517,22 @@ def test_actor_matches_allow(actor, allow, expected):
 )
 def test_resolve_env_secrets(config, expected):
     assert expected == utils.resolve_env_secrets(config, {"FOO": "x"})
+
+
+@pytest.mark.parametrize(
+    "actor,expected",
+    [
+        ({"id": "blah"}, "blah"),
+        ({"id": "blah", "login": "l"}, "l"),
+        ({"id": "blah", "login": "l"}, "l"),
+        ({"id": "blah", "login": "l", "username": "u"}, "u"),
+        ({"login": "l", "name": "n"}, "n"),
+        (
+            {"id": "blah", "login": "l", "username": "u", "name": "n", "display": "d"},
+            "d",
+        ),
+        ({"weird": "shape"}, "{'weird': 'shape'}"),
+    ],
+)
+def test_display_actor(actor, expected):
+    assert expected == utils.display_actor(actor)

@@ -14,7 +14,17 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
 
-<nav class="hd">{% block nav %}{% endblock %}</nav>
+<nav class="hd">{% block nav %}
+    {% if actor %}
+    <div class="logout">
+        <strong>{{ display_actor(actor) }}</strong> &middot;
+        <form action="/-/logout" method="post">
+            <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+            <button class="button-as-link">Log out</button>
+        </form>
+    </div>
+    {% endif %}
+{% endblock %}</nav>
 
 <div class="bd">
 {% block messages %}

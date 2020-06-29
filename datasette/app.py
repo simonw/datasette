@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import inspect
 import itertools
+from itsdangerous import BadSignature
 import json
 import os
 import re
@@ -926,6 +927,14 @@ class DatasetteRouter:
         if base_url != "/" and path.startswith(base_url):
             path = "/" + path[len(base_url) :]
         request = Request(scope, receive)
+        # Populate request_messages if ds_messages cookie is present
+        try:
+            request._messages = self.ds.unsign(
+                request.cookies.get("ds_messages", ""), "messages"
+            )
+        except BadSignature:
+            pass
+
         scope_modifications = {}
         # Apply force_https_urls, if set
         if (
@@ -952,7 +961,11 @@ class DatasetteRouter:
                 new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
                 request.scope = new_scope
                 try:
-                    return await view(request, send)
+                    response = await view(request, send)
+                    if response:
+                        self.ds._write_messages_to_response(request, response)
+                        await response.asgi_send(send)
+                    return
                 except NotFound as exception:
                     return await self.handle_404(scope, receive, send, exception)
                 except Exception as exception:
@@ -1099,6 +1112,6 @@ def wrap_view(view_fn, datasette):
                 datasette=datasette,
             )
         if response is not None:
-            await response.asgi_send(send)
+            return response
 
     return async_view_fn

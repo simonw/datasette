@@ -602,6 +602,14 @@ def test_register_routes_asgi(app_client):
     assert "1" == response.headers["x-three"]
 
 
+def test_register_routes_add_message(app_client):
+    response = app_client.get("/add-message/")
+    assert 200 == response.status
+    assert "Added message" == response.text
+    decoded = app_client.ds.unsign(response.cookies["ds_messages"], "messages")
+    assert [["Hello from messages", 1]] == decoded
+
+
 @pytest.mark.asyncio
 async def test_startup(app_client):
     await app_client.ds.invoke_startup()

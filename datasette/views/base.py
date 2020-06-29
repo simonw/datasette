@@ -1,7 +1,6 @@
 import asyncio
 import csv
 import itertools
-from itsdangerous import BadSignature
 import json
 import re
 import time
@@ -82,19 +81,8 @@ class BaseView:
         return "ff0000"
 
     async def dispatch_request(self, request, *args, **kwargs):
-        # Populate request_messages if ds_messages cookie is present
-        if self.ds:
-            try:
-                request._messages = self.ds.unsign(
-                    request.cookies.get("ds_messages", ""), "messages"
-                )
-            except BadSignature:
-                pass
         handler = getattr(self, request.method.lower(), None)
-        response = await handler(request, *args, **kwargs)
-        if self.ds:
-            self.ds._write_messages_to_response(request, response)
-        return response
+        return await handler(request, *args, **kwargs)
 
     async def render(self, templates, request, context=None):
         context = context or {}
@@ -123,10 +111,9 @@ class BaseView:
     def as_view(cls, *class_args, **class_kwargs):
         async def view(request, send):
             self = view.view_class(*class_args, **class_kwargs)
-            response = await self.dispatch_request(
+            return await self.dispatch_request(
                 request, **request.scope["url_route"]["kwargs"]
             )
-            await response.asgi_send(send)
 
         view.view_class = cls
         view.__doc__ = cls.__doc__

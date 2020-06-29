@@ -190,6 +190,12 @@ def register_routes():
     def not_async():
         return Response.html("This was not async")
 
+    def add_message(datasette, request):
+        datasette.add_message(request, "Hello from messages")
+        print("Adding message")
+        print(request._messages)
+        return Response.html("Added message")
+
     return [
         (r"/one/$", one),
         (r"/two/(?P<name>.*)$", two),
@@ -197,6 +203,7 @@ def register_routes():
         (r"/post/$", post),
         (r"/csrftoken-form/$", csrftoken_form),
         (r"/not-async/$", not_async),
+        (r"/add-message/$", add_message),
     ]
 
 

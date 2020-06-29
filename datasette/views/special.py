@@ -72,6 +72,23 @@ class AuthTokenView(BaseView):
             return Response("Invalid token", status=403)
 
 
+class LogoutView(BaseView):
+    name = "logout"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        if not request.actor:
+            return Response.redirect("/")
+        return await self.render(["logout.html"], request, {"actor": request.actor},)
+
+    async def post(self, request):
+        response = Response.redirect("/")
+        response.set_cookie("ds_actor", "", expires=0, max_age=0)
+        return response
+
+
 class PermissionsDebugView(BaseView):
     name = "permissions_debug"
 

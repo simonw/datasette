@@ -47,3 +47,32 @@ def test_actor_cookie_that_expires(app_client, offset, expected):
     )
     response = app_client.get("/", cookies={"ds_actor": cookie})
     assert expected == app_client.ds._last_request.scope["actor"]
+
+
+def test_logout(app_client):
+    response = app_client.get(
+        "/-/logout", cookies={"ds_actor": app_client.actor_cookie({"id": "test"})}
+    )
+    assert 200 == response.status
+    assert "<p>You are logged in as <strong>test</strong></p>" in response.text
+    # Actors without an id get full serialization
+    response2 = app_client.get(
+        "/-/logout", cookies={"ds_actor": app_client.actor_cookie({"name2": "bob"})}
+    )
+    assert 200 == response2.status
+    assert (
+        "<p>You are logged in as <strong>{&#39;name2&#39;: &#39;bob&#39;}</strong></p>"
+        in response2.text
+    )
+    # If logged out you get a redirect to /
+    response3 = app_client.get("/-/logout", allow_redirects=False)
+    assert 302 == response3.status
+    # A POST to that page should log the user out
+    response4 = app_client.post(
+        "/-/logout",
+        csrftoken_from=True,
+        cookies={"ds_actor": app_client.actor_cookie({"id": "test"})},
+        allow_redirects=False,
+    )
+    assert {"ds_actor": ""} == response4.cookies
+    assert 302 == response4.status

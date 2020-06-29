@@ -404,6 +404,14 @@ The resulting cookie will encode data that looks something like this:
         "e": "1jjSji"
     }
 
+
+.. _LogoutView:
+
+The /-/logout page
+------------------
+
+The page at ``/-/logout`` provides the ability to log out of a ``ds_actor`` cookie authentication session.
+
 .. _permissions:
 
 Built-in permissions

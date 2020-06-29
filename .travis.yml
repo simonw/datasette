@@ -1,27 +1,43 @@
-cache: pip
-
 language: python
+dist: xenial
 
-matrix:
-  include:
-    - os: windows
-      language: bash
-      name: Windows
-    - os: linux
-      python: "3.5"
-    - os: linux
-      python: "3.6"
-    - os: linux
-      python: "3.7-dev"
+# 3.6 is listed first so it gets used for the later build stages
+python:
+  - "3.6"
+  - "3.7"
+  - "3.8"
 
-install:
-    - if [ "$TRAVIS_OS_NAME" = "windows" ]; then
-        choco install python3;
-        export PATH=/c/Python37:/c/Python37/Scripts:/c/Python38:/c/Python38/Scripts:$PATH;
-        python -m pip install -e .[test];
-      else
-        pip install -e .[test];
-      fi;
-
+# Executed for 3.5 AND 3.5 as the first "test" stage:
 script:
-    - pytest
+  - pip install -U pip wheel
+  - pip install .[test]
+  - pytest
+
+cache:
+    directories:
+        - $HOME/.cache/pip
+
+# This defines further stages that execute after the tests
+jobs:
+  include:
+    - stage: release tagged version
+      if: tag IS present
+      python: 3.6
+      deploy:
+        - provider: pypi
+          user: simonw
+          distributions: bdist_wheel
+          password: ${PYPI_PASSWORD}
+          on:
+            branch: master
+            tags: true
+    - stage: publish docker image
+      if: (tag IS present) AND NOT (tag =~ [ab])
+      python: 3.6
+      script:
+        # Build and release to Docker Hub
+        - docker login -u $DOCKER_USER -p $DOCKER_PASS
+        - export REPO=datasetteproject/datasette
+        - docker build -f Dockerfile -t $REPO:$TRAVIS_TAG .
+        - docker tag $REPO:$TRAVIS_TAG $REPO:latest
+        - docker push $REPO

@@ -406,7 +406,7 @@ def serve(
     # Start the server
     if root:
         print("http://{}:{}/-/auth-token?token={}".format(host, port, ds._root_token))
-    uvicorn.run(ds.app(), host=host, port=port, log_level="info")
+    uvicorn.run(ds.app(), host=host, port=port, log_level="info", lifespan="on")
 
 
 async def check_databases(ds):

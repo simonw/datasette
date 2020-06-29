@@ -4,9 +4,9 @@
 Changelog
 =========
 
-.. _v0_45a3:
+.. _v0_45a4:
 
-0.45a3 (2020-06-27)
+0.45a4 (2020-06-28)
 -------------------
 
 .. warning:: This is an **alpha** release. See :ref:`contributing_alpha_beta`.
@@ -22,6 +22,7 @@ Changelog
 - New :ref:`plugin_hook_register_magic_parameters` plugin hook.
 - New :ref:`plugin_hook_startup` plugin hook. (`#834 <https://github.com/simonw/datasette/issues/834>`__)
 - New :ref:`plugin_hook_canned_queries` plugin hook. See `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ for an example of this hook in action. (`#852 <https://github.com/simonw/datasette/issues/852>`__)
+- ``datasette.add_message()`` now works inside plugins. (`#864 <https://github.com/simonw/datasette/issues/864>`__)
 - Workaround for "Too many open files" error in test runs. (`#846 <https://github.com/simonw/datasette/issues/846>`__)
 - Respect existing ``scope["actor"]`` if already set by ASGI middleware. (`#854 <https://github.com/simonw/datasette/issues/854>`__)
 - New process for shipping :ref:`contributing_alpha_beta`. (`#807 <https://github.com/simonw/datasette/issues/807>`__)

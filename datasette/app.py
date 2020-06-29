@@ -925,6 +925,7 @@ class DatasetteRouter:
         base_url = self.ds.config("base_url")
         if base_url != "/" and path.startswith(base_url):
             path = "/" + path[len(base_url) :]
+        request = Request(scope, receive)
         scope_modifications = {}
         # Apply force_https_urls, if set
         if (
@@ -936,9 +937,7 @@ class DatasetteRouter:
         # Handle authentication
         default_actor = scope.get("actor") or None
         actor = None
-        for actor in pm.hook.actor_from_request(
-            datasette=self.ds, request=Request(scope, receive)
-        ):
+        for actor in pm.hook.actor_from_request(datasette=self.ds, request=request):
             if callable(actor):
                 actor = actor()
             if asyncio.iscoroutine(actor):
@@ -951,8 +950,9 @@ class DatasetteRouter:
             match = regex.match(path)
             if match is not None:
                 new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
+                request.scope = new_scope
                 try:
-                    return await view(Request(new_scope, receive), send)
+                    return await view(request, send)
                 except NotFound as exception:
                     return await self.handle_404(scope, receive, send, exception)
                 except Exception as exception:
@@ -1079,26 +1079,26 @@ def _cleaner_task_str(task):
 
 
 def wrap_view(view_fn, datasette):
-    async def asgi_view_fn(scope, receive, send):
+    async def async_view_fn(request, send):
         if inspect.iscoroutinefunction(view_fn):
             response = await async_call_with_supported_arguments(
                 view_fn,
-                scope=scope,
-                receive=receive,
+                scope=request.scope,
+                receive=request.receive,
                 send=send,
-                request=Request(scope, receive),
+                request=request,
                 datasette=datasette,
             )
         else:
             response = call_with_supported_arguments(
                 view_fn,
-                scope=scope,
-                receive=receive,
+                scope=request.scope,
+                receive=request.receive,
                 send=send,
-                request=Request(scope, receive),
+                request=request,
                 datasette=datasette,
             )
         if response is not None:
             await response.asgi_send(send)
 
-    return asgi_view_fn
+    return async_view_fn

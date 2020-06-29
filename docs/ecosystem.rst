@@ -112,6 +112,11 @@ datasette-init
 
 `datasette-init <https://github.com/simonw/datasette-init>`__ allows you to define tables and views in your metadata file that should be created on startup if they do not already exist.
 
+datasette-write
+---------------
+
+`datasette-write <https://github.com/simonw/datasette-write>`__ provides an interface at ``/-/write`` allowing users to execute SQL write queries against a selected database.
+
 datasette-media
 ---------------
 

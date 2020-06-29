@@ -9,7 +9,7 @@ on:
       - master
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-latest, windows-latest]
     steps:
     - name: Check out datasette
       uses: actions/checkout@v2

@@ -86,6 +86,7 @@ class LogoutView(BaseView):
     async def post(self, request):
         response = Response.redirect("/")
         response.set_cookie("ds_actor", "", expires=0, max_age=0)
+        self.ds.add_message(request, "You are now logged out", self.ds.WARNING)
         return response
 
 

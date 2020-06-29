@@ -97,7 +97,8 @@ class TestResponse:
     @property
     def cookies(self):
         cookie = SimpleCookie()
-        cookie.load(self.headers.get("set-cookie") or "")
+        for header in self.headers.getlist("set-cookie"):
+            cookie.load(header)
         return {key: value.value for key, value in cookie.items()}
 
     @property

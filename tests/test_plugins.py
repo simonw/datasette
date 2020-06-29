@@ -610,6 +610,16 @@ def test_register_routes_add_message(app_client):
     assert [["Hello from messages", 1]] == decoded
 
 
+def test_register_routes_render_message(restore_working_directory, tmpdir_factory):
+    templates = tmpdir_factory.mktemp("templates")
+    (templates / "render_message.html").write_text('{% extends "base.html" %}', "utf-8")
+    with make_app_client(template_dir=templates) as client:
+        response1 = client.get("/add-message/")
+        response2 = client.get("/render-message/", cookies=response1.cookies)
+        assert 200 == response2.status
+        assert "Hello from messages" in response2.text
+
+
 @pytest.mark.asyncio
 async def test_startup(app_client):
     await app_client.ds.invoke_startup()

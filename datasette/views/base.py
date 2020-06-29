@@ -92,7 +92,6 @@ class BaseView:
             **{
                 "database_url": self.database_url,
                 "database_color": self.database_color,
-                "show_messages": lambda: self.ds._show_messages(request),
                 "select_templates": [
                     "{}{}".format(
                         "*" if template_name == template.name else "", template_name

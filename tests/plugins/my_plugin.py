@@ -192,9 +192,12 @@ def register_routes():
 
     def add_message(datasette, request):
         datasette.add_message(request, "Hello from messages")
-        print("Adding message")
-        print(request._messages)
         return Response.html("Added message")
+
+    async def render_message(datasette, request):
+        return Response.html(
+            await datasette.render_template("render_message.html", request=request)
+        )
 
     return [
         (r"/one/$", one),
@@ -204,6 +207,7 @@ def register_routes():
         (r"/csrftoken-form/$", csrftoken_form),
         (r"/not-async/$", not_async),
         (r"/add-message/$", add_message),
+        (r"/render-message/$", render_message),
     ]
 
 

@@ -739,6 +739,7 @@ class Datasette:
                 "zip": zip,
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,
+                "show_messages": lambda: self._show_messages(request),
                 "extra_css_urls": self._asset_urls("extra_css_urls", template, context),
                 "extra_js_urls": self._asset_urls("extra_js_urls", template, context),
                 "base_url": self.config("base_url"),

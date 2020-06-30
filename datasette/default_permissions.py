@@ -15,14 +15,14 @@ def permission_allowed(datasette, actor, action, resource):
         elif action == "view-database":
             database_allow = datasette.metadata("allow", database=resource)
             if database_allow is None:
-                return True
+                return None
             return actor_matches_allow(actor, database_allow)
         elif action == "view-table":
             database, table = resource
             tables = datasette.metadata("tables", database=database) or {}
             table_allow = (tables.get(table) or {}).get("allow")
             if table_allow is None:
-                return True
+                return None
             return actor_matches_allow(actor, table_allow)
         elif action == "view-query":
             # Check if this query has a "allow" block in metadata
@@ -31,7 +31,7 @@ def permission_allowed(datasette, actor, action, resource):
             assert query is not None
             allow = query.get("allow")
             if allow is None:
-                return True
+                return None
             return actor_matches_allow(actor, allow)
         elif action == "execute-sql":
             # Use allow_sql block from database block, or from top-level
@@ -39,7 +39,7 @@ def permission_allowed(datasette, actor, action, resource):
             if database_allow_sql is None:
                 database_allow_sql = datasette.metadata("allow_sql")
             if database_allow_sql is None:
-                return True
+                return None
             return actor_matches_allow(actor, database_allow_sql)
 
     return inner

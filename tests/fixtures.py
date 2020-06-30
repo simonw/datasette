@@ -462,7 +462,9 @@ METADATA = {
             "queries": {
                 "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
                 "pragma_cache_size": "PRAGMA cache_size;",
-                "magic_parameters": "select :_header_user_agent as user_agent, :_now_datetime_utc as datetime",
+                "magic_parameters": {
+                    "sql": "select :_header_user_agent as user_agent, :_now_datetime_utc as datetime",
+                },
                 "neighborhood_search": {
                     "sql": textwrap.dedent(
                         """

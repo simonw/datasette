@@ -1,5 +1,6 @@
 from .fixtures import app_client, assert_permissions_checked, make_app_client
 from bs4 import BeautifulSoup as Soup
+import copy
 import pytest
 
 
@@ -43,7 +44,7 @@ def test_view_database(allow, expected_anon, expected_auth):
             "/fixtures/compound_three_primary_keys/a,a,a",
         ):
             anon_response = client.get(path)
-            assert expected_anon == anon_response.status
+            assert expected_anon == anon_response.status, path
             if allow and path == "/fixtures" and anon_response.status == 200:
                 # Should be no padlock
                 assert ">fixtures 🔒</h1>" not in anon_response.text
@@ -348,3 +349,61 @@ def test_view_instance(path, view_instance_client):
     assert 403 == view_instance_client.get(path).status
     if path not in ("/-/permissions", "/-/messages", "/-/patterns"):
         assert 403 == view_instance_client.get(path + ".json").status
+
+
+@pytest.fixture(scope="session")
+def cascade_app_client():
+    with make_app_client() as client:
+        yield client
+
+
+@pytest.mark.parametrize(
+    "path,expected_status,permissions",
+    [
+        ("/", 403, []),
+        ("/", 200, ["instance"]),
+        # Can view table even if not allowed database or instance
+        ("/fixtures/facet_cities", 403, []),
+        ("/fixtures/facet_cities", 403, ["database"]),
+        ("/fixtures/facet_cities", 403, ["instance"]),
+        ("/fixtures/facet_cities", 200, ["table"]),
+        ("/fixtures/facet_cities", 200, ["table", "database"]),
+        ("/fixtures/facet_cities", 200, ["table", "database", "instance"]),
+        # Can view query even if not allowed database or instance
+        ("/fixtures/magic_parameters", 403, []),
+        ("/fixtures/magic_parameters", 403, ["database"]),
+        ("/fixtures/magic_parameters", 403, ["instance"]),
+        ("/fixtures/magic_parameters", 200, ["query"]),
+        ("/fixtures/magic_parameters", 200, ["query", "database"]),
+        ("/fixtures/magic_parameters", 200, ["query", "database", "instance"]),
+        # Can view database even if not allowed instance
+        ("/fixtures", 403, []),
+        ("/fixtures", 403, ["instance"]),
+        ("/fixtures", 200, ["database"]),
+    ],
+)
+def test_permissions_cascade(cascade_app_client, path, expected_status, permissions):
+    "Test that e.g. having view-table but NOT view-database lets you view table page, etc"
+    allow = {"id": "*"}
+    deny = {}
+    previous_metadata = cascade_app_client.ds._metadata
+    updated_metadata = copy.deepcopy(previous_metadata)
+    try:
+        # Set up the different allow blocks
+        updated_metadata["allow"] = allow if "instance" in permissions else deny
+        updated_metadata["databases"]["fixtures"]["allow"] = (
+            allow if "database" in permissions else deny
+        )
+        updated_metadata["databases"]["fixtures"]["tables"]["facet_cities"]["allow"] = (
+            allow if "table" in permissions else deny
+        )
+        updated_metadata["databases"]["fixtures"]["queries"]["magic_parameters"][
+            "allow"
+        ] = (allow if "query" in permissions else deny)
+        cascade_app_client.ds._metadata = updated_metadata
+        response = cascade_app_client.get(
+            path, cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
+        )
+        assert expected_status == response.status
+    finally:
+        cascade_app_client.ds._metadata = previous_metadata

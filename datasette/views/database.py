@@ -20,8 +20,9 @@ class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
+        await self.check_permissions(
+            request, [("view-database", database), "view-instance",],
+        )
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)
 
@@ -88,7 +89,7 @@ class DatabaseView(DataView):
                 "views": views,
                 "queries": canned_queries,
                 "private": not await self.ds.permission_allowed(
-                    None, "view-database", database
+                    None, "view-database", database, default=True
                 ),
                 "allow_execute_sql": await self.ds.permission_allowed(
                     request.actor, "execute-sql", database, default=True
@@ -150,17 +151,23 @@ class QueryView(DataView):
         if "_shape" in params:
             params.pop("_shape")
 
-        # Respect canned query permissions
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
         private = False
         if canned_query:
-            await self.check_permission(request, "view-query", (database, canned_query))
+            # Respect canned query permissions
+            await self.check_permissions(
+                request,
+                [
+                    ("view-query", (database, canned_query)),
+                    ("view-database", database),
+                    "view-instance",
+                ],
+            )
             private = not await self.ds.permission_allowed(
                 None, "view-query", (database, canned_query), default=True
             )
         else:
             await self.check_permission(request, "execute-sql", database)
+
         # Extract any :named parameters
         named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {

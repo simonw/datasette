@@ -269,9 +269,14 @@ class TableView(RowTableShared):
         if not is_view and not table_exists:
             raise NotFound("Table not found: {}".format(table))
 
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
-        await self.check_permission(request, "view-table", (database, table))
+        await self.check_permissions(
+            request,
+            [
+                ("view-table", (database, table)),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
 
         private = not await self.ds.permission_allowed(
             None, "view-table", (database, table), default=True

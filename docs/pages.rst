@@ -28,24 +28,17 @@ Add ``/.json`` to the end of the URL for the JSON version of the underlying data
 Database
 ========
 
-Each database has a page listing the tables, views and canned queries
-available for that database. If the :ref:`permissions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
+Each database has a page listing the tables, views and canned queries available for that database. If the :ref:`permissions_execute_sql` permission is enabled (it's on by default) there will also be an interface for executing arbitrary SQL select queries against the data.
 
 Examples:
 
-* `fivethirtyeight.datasettes.com/fivethirtyeight-ac35616 <https://fivethirtyeight.datasettes.com/fivethirtyeight-ac35616>`_
-* `global-power-plants.datasettes.com/global-power-plants-9e55be2 <https://global-power-plants.datasettes.com/global-power-plants-9e55be2>`_
+* `fivethirtyeight.datasettes.com/fivethirtyeight <https://fivethirtyeight.datasettes.com/fivethirtyeight>`_
+* `global-power-plants.datasettes.com/global-power-plants <https://global-power-plants.datasettes.com/global-power-plants>`_
 
 The JSON version of this page provides programmatic access to the underlying data:
 
-* `fivethirtyeight.datasettes.com/fivethirtyeight-ac35616.json <https://fivethirtyeight.datasettes.com/fivethirtyeight-ac35616.json>`_
-* `global-power-plants.datasettes.com/global-power-plants-9e55be2.json <https://global-power-plants.datasettes.com/global-power-plants-9e55be2.json>`_
-
-Note that these URLs end in a 7 character hash. This hash is derived from the contents of the database, and ensures that each URL is immutable: the data returned from a URL containing the hash will always be the same, since if the contents of the database file changes by even a single byte a new hash will be generated.
-
-If you access one of these URLs with an incorrect hash (say because a new version of the underlying database has been published) Datasette will 302 redirect you to the correct URL. This happens for all URLs below the database page as well.
-
-Thanks to this hashing scheme, Datasette URLs can all be returned with far-future cache expiry headers. This means browsers will cache the data (including data from the JSON APIs) for a long time, and CDNs such as `Cloudflare <https://www.cloudflare.com/>`_ or `Fastly <https://www.cloudflare.com/>`_ can be used to dramatically improve the performance of a Datasette hosted API.
+* `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
+* `global-power-plants.datasettes.com/global-power-plants.json <https://global-power-plants.datasettes.com/global-power-plants.json>`_
 
 .. _TableView:
 
@@ -62,8 +55,8 @@ You can also use the table page to interactively construct a SQL query - by appl
 
 Some examples:
 
-* `../items <https://register-of-members-interests.datasettes.com/regmem-d22c12c/items>`_ lists all of the line-items registered by UK MPs as potential conflicts of interest. It demonstrates Datasette's support for :ref:`full_text_search`.
-* `../antiquities-act%2Factions_under_antiquities_act <https://fivethirtyeight.datasettes.com/fivethirtyeight-ac35616/antiquities-act%2Factions_under_antiquities_act>`_ is an interface for exploring the "actions under the antiquities act" data table published by FiveThirtyEight.
+* `../items <https://register-of-members-interests.datasettes.com/regmem/items>`_ lists all of the line-items registered by UK MPs as potential conflicts of interest. It demonstrates Datasette's support for :ref:`full_text_search`.
+* `../antiquities-act%2Factions_under_antiquities_act <https://fivethirtyeight.datasettes.com/fivethirtyeight/antiquities-act%2Factions_under_antiquities_act>`_ is an interface for exploring the "actions under the antiquities act" data table published by FiveThirtyEight.
 * `../global-power-plants?country_long=United+Kingdom&primary_fuel=Gas <https://global-power-plants.datasettes.com/global-power-plants/global-power-plants?_facet=primary_fuel&_facet=owner&_facet=country_long&country_long__exact=United+Kingdom&primary_fuel=Gas>`_ is a filtered table page showing every Gas power plant in the United Kingdom. It includes some default facets (configured using `its metadata.json <https://global-power-plants.datasettes.com/-/metadata>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
 
 .. _RowView:
@@ -77,10 +70,10 @@ Table cells with extremely long text contents are truncated on the table view ac
 
 Rows which are the targets of foreign key references from other tables will show a link to a filtered search for all records that reference that row. Here's an example from the Registers of Members Interests database:
 
-`../people/uk.org.publicwhip%2Fperson%2F10001 <https://register-of-members-interests.datasettes.com/regmem-d22c12c/people/uk.org.publicwhip%2Fperson%2F10001>`_
+`../people/uk.org.publicwhip%2Fperson%2F10001 <https://register-of-members-interests.datasettes.com/regmem/people/uk.org.publicwhip%2Fperson%2F10001>`_
 
 Note that this URL includes the encoded primary key of the record.
 
 Here's that same page as JSON:
 
-`../people/uk.org.publicwhip%2Fperson%2F10001.json <https://register-of-members-interests.datasettes.com/regmem-d22c12c/people/uk.org.publicwhip%2Fperson%2F10001.json>`_
+`../people/uk.org.publicwhip%2Fperson%2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk.org.publicwhip%2Fperson%2F10001.json>`_

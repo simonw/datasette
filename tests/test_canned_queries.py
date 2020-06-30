@@ -186,6 +186,7 @@ def magic_parameters_client():
     [
         ("_actor_id", "root"),
         ("_header_host", "localhost"),
+        ("_header_not_a_thing", ""),
         ("_cookie_foo", "bar"),
         ("_now_epoch", r"^\d+$"),
         ("_now_date_utc", r"^\d{4}-\d{2}-\d{2}$"),

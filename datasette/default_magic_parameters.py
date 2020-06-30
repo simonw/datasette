@@ -8,7 +8,7 @@ import time
 def header(key, request):
     key = key.replace("_", "-").encode("utf-8")
     headers_dict = dict(request.scope["headers"])
-    return headers_dict[key].decode("utf-8")
+    return headers_dict.get(key, b"").decode("utf-8")
 
 
 def actor(key, request):

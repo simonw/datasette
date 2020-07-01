@@ -55,7 +55,11 @@ def test_canned_query_with_named_parameter(app_client):
 
 def test_insert(canned_write_client):
     response = canned_write_client.post(
-        "/data/add_name", {"name": "Hello"}, allow_redirects=False, csrftoken_from=True,
+        "/data/add_name",
+        {"name": "Hello"},
+        allow_redirects=False,
+        csrftoken_from=True,
+        cookies={"foo": "bar"},
     )
     assert 302 == response.status
     assert "/data/add_name?success" == response.headers["Location"]
@@ -63,6 +67,24 @@ def test_insert(canned_write_client):
         response.cookies["ds_messages"], "messages"
     )
     assert [["Query executed, 1 row affected", 1]] == messages
+
+
+def test_insert_with_cookies_requires_csrf(canned_write_client):
+    response = canned_write_client.post(
+        "/data/add_name",
+        {"name": "Hello"},
+        allow_redirects=False,
+        cookies={"foo": "bar"},
+    )
+    assert 403 == response.status
+
+
+def test_insert_no_cookies_no_csrf(canned_write_client):
+    response = canned_write_client.post(
+        "/data/add_name", {"name": "Hello"}, allow_redirects=False
+    )
+    assert 302 == response.status
+    assert "/data/add_name?success" == response.headers["Location"]
 
 
 def test_custom_success_message(canned_write_client):

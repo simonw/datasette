@@ -90,7 +90,7 @@ datasette-auth-github
 datasette-auth-tokens
 ---------------------
 
-`datasette-auth-tokens <https://tokens.com/simonw/datasette-auth-tokens>`__ provides a mechanism for creating secret API tokens that can then be used with Datasette's :ref:`authentication` system.
+`datasette-auth-tokens <https://tokens.com/simonw/datasette-auth-tokens>`__ provides a mechanism for creating secret API tokens that can then be used with Datasette's :ref:`authentication` system. These tokens can be hard-coded into the plugin configuration or the plugin can be configured to access tokens stored in a SQLite database table.
 
 datasette-permissions-sql
 -------------------------

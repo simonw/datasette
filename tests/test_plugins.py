@@ -684,3 +684,16 @@ def test_register_magic_parameters(restore_working_directory):
         assert 200 == response_get.status
         new_uuid = response_get.json[0][":_uuid_new"]
         assert 4 == new_uuid.count("-")
+
+
+def test_forbidden(restore_working_directory):
+    with make_app_client(
+        extra_databases={"data2.db": "create table logs (line text)"},
+        metadata={"allow": {}},
+    ) as client:
+        response = client.get("/")
+        assert 403 == response.status
+        response2 = client.get("/data2", allow_redirects=False)
+        assert 302 == response2.status
+        assert "/login?message=view-database" == response2.headers["Location"]
+        assert "view-database" == client.ds._last_forbidden_message

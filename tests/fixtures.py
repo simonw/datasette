@@ -45,6 +45,7 @@ EXPECTED_PLUGINS = [
             "extra_css_urls",
             "extra_js_urls",
             "extra_template_vars",
+            "forbidden",
             "permission_allowed",
             "prepare_connection",
             "prepare_jinja2_environment",

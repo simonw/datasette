@@ -1,5 +1,5 @@
 import json
-from datasette.utils.asgi import Response
+from datasette.utils.asgi import Response, Forbidden
 from .base import BaseView
 import secrets
 
@@ -60,7 +60,7 @@ class AuthTokenView(BaseView):
     async def get(self, request):
         token = request.args.get("token") or ""
         if not self.ds._root_token:
-            return Response("Root token has already been used", status=403)
+            raise Forbidden("Root token has already been used")
         if secrets.compare_digest(token, self.ds._root_token):
             self.ds._root_token = None
             response = Response.redirect("/")
@@ -69,7 +69,7 @@ class AuthTokenView(BaseView):
             )
             return response
         else:
-            return Response("Invalid token", status=403)
+            raise Forbidden("Invalid token")
 
 
 class LogoutView(BaseView):
@@ -99,7 +99,7 @@ class PermissionsDebugView(BaseView):
     async def get(self, request):
         await self.check_permission(request, "view-instance")
         if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
-            return Response("Permission denied", status=403)
+            raise Forbidden("Permission denied")
         return await self.render(
             ["permissions_debug.html"],
             request,

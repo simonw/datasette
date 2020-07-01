@@ -10,7 +10,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
 )
-from datasette.utils.asgi import AsgiFileDownload, Response
+from datasette.utils.asgi import AsgiFileDownload, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import DatasetteError, DataView
@@ -120,7 +120,7 @@ class DatabaseDownload(DataView):
         if db.is_memory:
             raise DatasetteError("Cannot download :memory: database", status=404)
         if not self.ds.config("allow_download") or db.is_mutable:
-            raise DatasetteError("Database download is forbidden", status=403)
+            raise Forbidden("Database download is forbidden")
         if not db.path:
             raise DatasetteError("Cannot download database", status=404)
         filepath = db.path

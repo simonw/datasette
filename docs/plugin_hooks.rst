@@ -946,3 +946,46 @@ This example registers two new magic parameters: ``:_request_http_version`` retu
             ("request", request),
             ("uuid", uuid),
         ]
+
+.. _plugin_hook_forbidden:
+
+forbidden(datasette, request, message)
+--------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``request`` - object
+    The current HTTP :ref:`internals_request`.
+
+``message`` - string
+    A message hinting at why the request was forbidden.
+
+Plugins can use this to customize how Datasette responds when a 403 Forbidden error occurs - usually because a page failed a permission check, see :authentication_permissions:.
+
+If a plugin hook wishes to react to the error, it should return a :ref:`Response object <internals_response>`.
+
+This example returns a redirect to a ``/-/login`` page:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from urllib.parse import urlencode
+
+    @hookimpl
+    def forbidden(request, message):
+        return Response.redirect("/-/login?=" + urlencode({"message": message}))
+
+The function can alternatively return an awaitable function if it needs to make any asynchronous method calls. This example renders a template:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.utils.asgi import Response
+
+    @hookimpl
+    def forbidden(datasette):
+        async def inner():
+            return Response.html(await datasette.render_template("forbidden.html"))
+
+        return inner

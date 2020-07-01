@@ -245,3 +245,10 @@ def register_magic_parameters():
         ("request", request),
         ("uuid", uuid),
     ]
+
+
+@hookimpl
+def forbidden(datasette, request, message):
+    datasette._last_forbidden_message = message
+    if request.path == "/data2":
+        return Response.redirect("/login?message=" + message)

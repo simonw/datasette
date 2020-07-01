@@ -88,3 +88,8 @@ def canned_queries(datasette, database, actor):
 @hookspec
 def register_magic_parameters(datasette):
     "Return a list of (name, function) magic parameter functions"
+
+
+@hookspec
+def forbidden(datasette, request, message):
+    "Custom response for a 403 forbidden error"

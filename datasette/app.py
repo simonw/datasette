@@ -975,22 +975,24 @@ class DatasetteRouter:
                         await response.asgi_send(send)
                     return
                 except NotFound as exception:
-                    return await self.handle_404(scope, receive, send, exception)
+                    return await self.handle_404(request, send, exception)
                 except Exception as exception:
-                    return await self.handle_500(scope, receive, send, exception)
-        return await self.handle_404(scope, receive, send)
+                    return await self.handle_500(request, send, exception)
+        return await self.handle_404(request, send)
 
-    async def handle_404(self, scope, receive, send, exception=None):
+    async def handle_404(self, request, send, exception=None):
         # If URL has a trailing slash, redirect to URL without it
-        path = scope.get("raw_path", scope["path"].encode("utf8"))
+        path = request.scope.get("raw_path", request.scope["path"].encode("utf8"))
         if path.endswith(b"/"):
             path = path.rstrip(b"/")
-            if scope["query_string"]:
-                path += b"?" + scope["query_string"]
+            if request.scope["query_string"]:
+                path += b"?" + request.scope["query_string"]
             await asgi_send_redirect(send, path.decode("latin1"))
         else:
             # Is there a pages/* template matching this path?
-            template_path = os.path.join("pages", *scope["path"].split("/")) + ".html"
+            template_path = (
+                os.path.join("pages", *request.scope["path"].split("/")) + ".html"
+            )
             try:
                 template = self.ds.jinja_env.select_template([template_path])
             except TemplateNotFound:
@@ -1019,7 +1021,7 @@ class DatasetteRouter:
                         "custom_status": custom_status,
                         "custom_redirect": custom_redirect,
                     },
-                    request=Request(scope, receive),
+                    request=request,
                     view_name="page",
                 )
                 # Pull content-type out into separate parameter
@@ -1035,11 +1037,9 @@ class DatasetteRouter:
                     content_type=content_type,
                 )
             else:
-                await self.handle_500(
-                    scope, receive, send, exception or NotFound("404")
-                )
+                await self.handle_500(request, send, exception or NotFound("404"))
 
-    async def handle_500(self, scope, receive, send, exception):
+    async def handle_500(self, request, send, exception):
         title = None
         if isinstance(exception, NotFound):
             status = 404
@@ -1049,6 +1049,17 @@ class DatasetteRouter:
             status = 403
             info = {}
             message = exception.args[0]
+            # Try the forbidden() plugin hook
+            for custom_response in pm.hook.forbidden(
+                datasette=self.ds, request=request, message=message
+            ):
+                if callable(custom_response):
+                    custom_response = custom_response()
+                if asyncio.iscoroutine(custom_response):
+                    custom_response = await custom_response
+                if custom_response is not None:
+                    await custom_response.asgi_send(send)
+                    return
         elif isinstance(exception, DatasetteError):
             status = exception.status
             info = exception.error_dict
@@ -1070,7 +1081,7 @@ class DatasetteRouter:
         headers = {}
         if self.ds.cors:
             headers["Access-Control-Allow-Origin"] = "*"
-        if scope["path"].split("?")[0].endswith(".json"):
+        if request.path.split("?")[0].endswith(".json"):
             await asgi_send_json(send, info, status=status, headers=headers)
         else:
             template = self.ds.jinja_env.select_template(templates)

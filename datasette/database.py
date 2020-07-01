@@ -178,8 +178,11 @@ class Database:
             return self.cached_table_counts
         # Try to get counts for each table, $limit timeout for each count
         counts = {}
-        visible_tables = set(await self.table_names()) - set(await self.hidden_table_names())
-        for table in visible_tables:
+        hidden_tables = await self.hidden_table_names()
+        for table in await self.table_names():
+            if table in hidden_tables:
+                counts[table] = None
+                continue
             try:
                 table_count = (
                     await self.execute(

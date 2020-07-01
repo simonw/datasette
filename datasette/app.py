@@ -739,6 +739,7 @@ class Datasette:
             **{
                 "actor": request.actor if request else None,
                 "display_actor": display_actor,
+                "show_logout": "ds_actor" in request.cookies,
                 "app_css_hash": self.app_css_hash(),
                 "zip": zip,
                 "body_scripts": body_scripts,

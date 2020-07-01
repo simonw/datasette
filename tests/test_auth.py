@@ -92,3 +92,11 @@ def test_logout_button_in_navigation(app_client, path):
     ):
         assert fragment in response.text
         assert fragment not in anon_response.text
+
+
+@pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])
+def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(app_client, path):
+    response = app_client.get(path + "?_bot=1")
+    assert "<strong>bot</strong>" in response.text
+    assert "<strong>bot</strong> &middot;" not in response.text
+    assert '<form action="/-/logout" method="post">' not in response.text

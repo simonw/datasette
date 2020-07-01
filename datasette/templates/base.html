@@ -17,11 +17,11 @@
 <nav class="hd">{% block nav %}
     {% if actor %}
     <div class="logout">
-        <strong>{{ display_actor(actor) }}</strong> &middot;
+        <strong>{{ display_actor(actor) }}</strong>{% if show_logout %} &middot;
         <form action="/-/logout" method="post">
             <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
             <button class="button-as-link">Log out</button>
-        </form>
+        </form>{% endif %}
     </div>
     {% endif %}
 {% endblock %}</nav>

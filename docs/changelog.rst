@@ -4,34 +4,61 @@
 Changelog
 =========
 
-.. _v0_45a5:
+.. _v0_45:
 
-0.45a5 (2020-06-30)
--------------------
+0.45 (2020-07-01)
+-----------------
 
-.. warning:: This is an **alpha** release. See :ref:`contributing_alpha_beta`.
+Magic parameters for canned queries, a log out feature, improved plugin documentation and four new plugin hooks.
 
-- Canned queries now support :ref:`canned_queries_magic_parameters`, which can be used to insert or select automatically generated values. For example::
+Magic parameters for canned queries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-      insert into logs
-        (user_id, timestamp)
-      values
-        (:_actor_id, :_now_datetime_utc)
+Canned queries now support :ref:`canned_queries_magic_parameters`, which can be used to insert or select automatically generated values. For example::
 
-  This inserts the currently authenticated actor ID and the current datetime. (`#842 <https://github.com/simonw/datasette/issues/842>`__)
-- New ``/-/logout`` page, linked to from the navigation if you are logged in with a ``ds_actor`` cookie. (`#840 <https://github.com/simonw/datasette/issues/840>`__)
+    insert into logs
+      (user_id, timestamp)
+    values
+      (:_actor_id, :_now_datetime_utc)
+
+This inserts the currently authenticated actor ID and the current datetime. (`#842 <https://github.com/simonw/datasette/issues/842>`__)
+
+Log out
+~~~~~~~
+
+The :ref:`ds_actor cookie <authentication_ds_actor>` can be used by plugins (or by Datasette's :ref:`--root mechanism<authentication_root>`) to authenticate users. The new ``/-/logout`` page provides a way to clear that cookie.
+
+A "Log out" button now shows in the global navigation provided the user is authenticated using the ``ds_actor`` cookie. (`#840 <https://github.com/simonw/datasette/issues/840>`__)
+
+Better plugin documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The plugin documentation has been re-arranged into four sections, including a brand new section on testing plugins. (`#687 <https://github.com/simonw/datasette/issues/687>`__)
+
+- :ref:`plugins` introduces Datasette's plugin system and describes how to install and configure plugins.
+- :ref:`writing_plugins` describes how to author plugins, from simple one-off plugins to packaged plugins that can be published to PyPI. It also describes how to start a plugin using the new `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template.
+- :ref:`plugin_hooks` is a full list of detailed documentation for every Datasette plugin hook.
+- :ref:`testing_plugins` describes how to write tests for Datasette plugins, using `pytest <https://docs.pytest.org/>`__ and `HTTPX <https://www.python-httpx.org/>`__.
+
+New plugin hooks
+~~~~~~~~~~~~~~~~
+
+- :ref:`plugin_hook_register_magic_parameters` can be used to define new types of magic canned query parameters.
+- :ref:`plugin_hook_startup` can run custom code when Datasette first starts up. `datasette-init <https://github.com/simonw/datasette-init>`__ is a new plugin that uses this hook to create database tables and views on startup if they have not yet been created. (`#834 <https://github.com/simonw/datasette/issues/834>`__)
+- :ref:`plugin_hook_canned_queries` lets plugins provide additional canned queries beyond those defined in Datasette's metadata. See `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ for an example of this hook in action. (`#852 <https://github.com/simonw/datasette/issues/852>`__)
+- :ref:`plugin_hook_forbidden` is a hook for customizing how Datasette responds to 403 forbidden errors. (`#812 <https://github.com/simonw/datasette/issues/812>`__)
+
+Smaller changes
+~~~~~~~~~~~~~~~
+
 - Cascading view permissons - so if a user has ``view-table`` they can view the table page even if they do not have ``view-database`` or ``view-instance``. (`#832 <https://github.com/simonw/datasette/issues/832>`__)
 - CSRF protection no longer applies to ``Authentication: Bearer token`` requests or requests without cookies. (`#835 <https://github.com/simonw/datasette/issues/835>`__)
-- New :ref:`plugin_hook_forbidden` plugin hook for customizing how Datasette responds to a 403 forbidden error. (`#812 <https://github.com/simonw/datasette/issues/812>`__)
-- New :ref:`plugin_hook_register_magic_parameters` plugin hook.
-- New :ref:`plugin_hook_startup` plugin hook. (`#834 <https://github.com/simonw/datasette/issues/834>`__)
-- New :ref:`plugin_hook_canned_queries` plugin hook. See `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ for an example of this hook in action. (`#852 <https://github.com/simonw/datasette/issues/852>`__)
 - ``datasette.add_message()`` now works inside plugins. (`#864 <https://github.com/simonw/datasette/issues/864>`__)
 - Workaround for "Too many open files" error in test runs. (`#846 <https://github.com/simonw/datasette/issues/846>`__)
 - Respect existing ``scope["actor"]`` if already set by ASGI middleware. (`#854 <https://github.com/simonw/datasette/issues/854>`__)
 - New process for shipping :ref:`contributing_alpha_beta`. (`#807 <https://github.com/simonw/datasette/issues/807>`__)
-- Re-arranged plugins documentation into :ref:`plugins`, :ref:`writing_plugins`, :ref:`plugin_hooks` and a new section on :ref:`testing_plugins`. (`#687 <https://github.com/simonw/datasette/issues/687>`__)
 - ``{{ csrftoken() }}`` now works when plugins render a template using ``datasette.render_template(..., request=request)``. (`#863 <https://github.com/simonw/datasette/issues/863>`__)
+- Datasette now creates a single :ref:`internals_request` and uses it throughout the lifetime of the current HTTP request. (`#870 <https://github.com/simonw/datasette/issues/870>`__)
 
 .. _v0_44:
 

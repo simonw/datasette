@@ -176,7 +176,7 @@ class Database:
     async def table_counts(self, limit=10):
         if not self.is_mutable and self.cached_table_counts is not None:
             return self.cached_table_counts
-        # Try to get counts for each table, $limit timeout for each count
+        # Try to get counts for visible tables, $limit timeout for each count
         counts = {}
         hidden_tables = await self.hidden_table_names()
         for table in await self.table_names():

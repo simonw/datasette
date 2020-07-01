@@ -4,9 +4,9 @@
 Changelog
 =========
 
-.. _v0_45a4:
+.. _v0_45a5:
 
-0.45a4 (2020-06-28)
+0.45a5 (2020-06-30)
 -------------------
 
 .. warning:: This is an **alpha** release. See :ref:`contributing_alpha_beta`.
@@ -19,6 +19,10 @@ Changelog
         (:_actor_id, :_now_datetime_utc)
 
   This inserts the currently authenticated actor ID and the current datetime. (`#842 <https://github.com/simonw/datasette/issues/842>`__)
+- New ``/-/logout`` page, linked to from the navigation if you are logged in with a ``ds_actor`` cookie. (`#840 <https://github.com/simonw/datasette/issues/840>`__)
+- Cascading view permissons - so if a user has ``view-table`` they can view the table page even if they do not have ``view-database`` or ``view-instance``. (`#832 <https://github.com/simonw/datasette/issues/832>`__)
+- CSRF protection no longer applies to ``Authentication: Bearer token`` requests or requests without cookies. (`#835 <https://github.com/simonw/datasette/issues/835>`__)
+- New :ref:`plugin_hook_forbidden` plugin hook for customizing how Datasette responds to a 403 forbidden error. (`#812 <https://github.com/simonw/datasette/issues/812>`__)
 - New :ref:`plugin_hook_register_magic_parameters` plugin hook.
 - New :ref:`plugin_hook_startup` plugin hook. (`#834 <https://github.com/simonw/datasette/issues/834>`__)
 - New :ref:`plugin_hook_canned_queries` plugin hook. See `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__ for an example of this hook in action. (`#852 <https://github.com/simonw/datasette/issues/852>`__)

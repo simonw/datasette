@@ -144,6 +144,7 @@ class QueryView(DataView):
         _size=None,
         named_parameters=None,
         write=False,
+        json_format=False,
     ):
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
@@ -212,6 +213,16 @@ class QueryView(DataView):
                     message = metadata.get("on_error_message") or str(e)
                     message_type = self.ds.ERROR
                     redirect_url = metadata.get("on_error_redirect")
+                if json_format:
+                    return (
+                        {
+                            "message": message,
+                            "message_type": message_type,
+                            "redirect_url": redirect_url,
+                        },
+                        {},
+                        [],
+                    )
                 self.ds.add_message(request, message, message_type)
                 return self.redirect(request, redirect_url or request.path)
             else:

@@ -18,6 +18,7 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
     path_with_replaced_args,
+    resolve_table_and_format,
     sqlite3,
     to_css_class,
     urlsafe_components,
@@ -223,9 +224,17 @@ class TableView(RowTableShared):
 
     async def post(self, request, db_name, table_and_format):
         # Handle POST to a canned query
-        canned_query = await self.ds.get_canned_query(
-            db_name, table_and_format, request.actor
+        async def async_query_exists(query):
+            canned_query = await self.ds.get_canned_query(db_name, query, request.actor)
+            return bool(canned_query)
+
+        query, _format = await resolve_table_and_format(
+            table_and_format=urllib.parse.unquote_plus(table_and_format),
+            table_exists=async_query_exists,
+            allowed_formats=self.ds.renderers.keys(),
         )
+
+        canned_query = await self.ds.get_canned_query(db_name, query, request.actor)
         assert canned_query, "You may only POST to a canned query"
         return await QueryView(self.ds).data(
             request,
@@ -234,9 +243,10 @@ class TableView(RowTableShared):
             canned_query["sql"],
             metadata=canned_query,
             editable=False,
-            canned_query=table_and_format,
+            canned_query=query,
             named_parameters=canned_query.get("params"),
             write=bool(canned_query.get("write")),
+            json_format=(_format == "json"),
         )
 
     async def data(

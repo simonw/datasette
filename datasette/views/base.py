@@ -356,12 +356,14 @@ class DataView(BaseView):
         if "table_and_format" in args:
             db = self.ds.databases[database]
 
-            async def async_table_exists(t):
-                return await db.table_exists(t)
+            async def async_table_or_query_exists(t):
+                return await db.table_exists(t) or await self.ds.get_canned_query(
+                    database, t, request.actor
+                )
 
             table, _ext_format = await resolve_table_and_format(
                 table_and_format=urllib.parse.unquote_plus(args["table_and_format"]),
-                table_exists=async_table_exists,
+                table_exists=async_table_or_query_exists,
                 allowed_formats=self.ds.renderers.keys(),
             )
             _format = _format or _ext_format

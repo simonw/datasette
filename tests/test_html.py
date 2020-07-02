@@ -1004,6 +1004,13 @@ def test_404_content_type(app_client):
     assert "text/html; charset=utf-8" == response.headers["content-type"]
 
 
+def test_canned_query_default_title(app_client):
+    response = app_client.get("/fixtures/magic_parameters")
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    assert "fixtures: magic_parameters" == soup.find("h1").text
+
+
 def test_canned_query_with_custom_metadata(app_client):
     response = app_client.get("/fixtures/neighborhood_search?text=town")
     assert response.status == 200

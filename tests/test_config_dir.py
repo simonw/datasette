@@ -30,6 +30,8 @@ def config_dir_client(tmp_path_factory):
     plugins_dir = config_dir / "plugins"
     plugins_dir.mkdir()
     (plugins_dir / "hooray.py").write_text(PLUGIN, "utf-8")
+    (plugins_dir / "non_py_file.txt").write_text(PLUGIN, "utf-8")
+    (plugins_dir / ".mypy_cache").mkdir()
 
     templates_dir = config_dir / "templates"
     templates_dir.mkdir()
@@ -95,6 +97,8 @@ def test_plugins(config_dir_client):
     response = config_dir_client.get("/-/plugins.json")
     assert 200 == response.status
     assert "hooray.py" in {p["name"] for p in response.json}
+    assert "non_py_file.txt" not in {p["name"] for p in response.json}
+    assert "mypy_cache" not in {p["name"] for p in response.json}
 
 
 def test_templates_and_plugin(config_dir_client):

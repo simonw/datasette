@@ -2,6 +2,7 @@ import asyncio
 import asgi_csrf
 import collections
 import datetime
+import glob
 import hashlib
 import inspect
 import itertools
@@ -263,9 +264,10 @@ class Datasette:
         # Execute plugins in constructor, to ensure they are available
         # when the rest of `datasette inspect` executes
         if self.plugins_dir:
-            for filename in os.listdir(self.plugins_dir):
-                filepath = os.path.join(self.plugins_dir, filename)
-                mod = module_from_path(filepath, name=filename)
+            for filepath in glob.glob(os.path.join(self.plugins_dir, "*.py")):
+                if not os.path.isfile(filepath):
+                    continue
+                mod = module_from_path(filepath, name=os.path.basename(filepath))
                 try:
                     pm.register(mod)
                 except ValueError:

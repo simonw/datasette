@@ -17,7 +17,7 @@ datasette|
 .. |docker: datasette| image:: https://img.shields.io/badge/docker-datasette-blue
    :target: https://hub.docker.com/r/datasetteproject/datasette
 
-*A tool for exploring and publishing data*
+*An open source multi-tool for exploring and publishing data*
 
 Datasette is a tool for exploring and publishing data. It helps people take data of any shape or size and publish that as an interactive, explorable website and accompanying API.
 

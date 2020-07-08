@@ -669,7 +669,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
             return add_x_databases_header
         return wrap_with_databases_header
 
-Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-media <https://github.com/simonw/datasette-media>`_
+Example: `datasette-cors <https://github.com/simonw/datasette-cors>`_
 
 .. _plugin_hook_startup:
 

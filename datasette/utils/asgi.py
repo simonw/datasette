@@ -90,8 +90,7 @@ class Request:
     def actor(self):
         return self.scope.get("actor", None)
 
-    async def post_vars(self):
-        body = []
+    async def post_body(self):
         body = b""
         more_body = True
         while more_body:
@@ -99,7 +98,10 @@ class Request:
             assert message["type"] == "http.request", message
             body += message.get("body", b"")
             more_body = message.get("more_body", False)
+        return body
 
+    async def post_vars(self):
+        body = await self.post_body()
         return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
 
     @classmethod

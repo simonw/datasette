@@ -293,6 +293,7 @@ def make_app_client(
         client = TestClient(ds.app())
         client.ds = ds
         yield client
+        conn.close()
 
 
 @pytest.fixture(scope="session")

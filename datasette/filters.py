@@ -191,7 +191,9 @@ class Filters:
     )
     _filters_by_key = {f.key: f for f in _filters}
 
-    def __init__(self, pairs, units={}, ureg=None):
+    def __init__(self, pairs, units=None, ureg=None):
+        if units is None:
+            units = {}
         self.pairs = pairs
         self.units = units
         self.ureg = ureg

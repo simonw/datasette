@@ -214,8 +214,8 @@ await .permission_allowed(actor, action, resource=None, default=False)
 ``action`` - string
     The name of the action that is being permission checked.
 
-``resource`` - string, optional
-    The resource, e.g. the name of the table. Only some permissions apply to a resource.
+``resource`` - string or tuple, optional
+    The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
 
 ``default`` - optional, True or False
     Should this permission check be default allow or default deny.

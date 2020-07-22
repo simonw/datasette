@@ -54,6 +54,8 @@ You may need to interact with prompts from the tool. Once it has finished it wil
     Service [my-service] revision [my-service-00001] has been deployed
     and is serving traffic at https://my-service-j7hipcg4aq-uc.a.run.app
 
+Cloud Run provides a URL on the ``.run.app`` domain, but you can also point your own domain or subdomain at your Cloud Run service - see `mapping custom domains <https://cloud.google.com/run/docs/mapping-custom-domains>`__ in the Cloud Run documentation for details.
+
 .. literalinclude:: datasette-publish-cloudrun-help.txt
 
 .. _publish_fly:

@@ -7,6 +7,7 @@ from html import escape
 from http.cookies import SimpleCookie, Morsel
 import re
 import aiofiles
+import aiofiles.os
 
 # Workaround for adding samesite support to pre 3.8 python
 Morsel._reserved["samesite"] = "SameSite"
@@ -252,6 +253,7 @@ async def asgi_send_file(
     if filename:
         headers["Content-Disposition"] = 'attachment; filename="{}"'.format(filename)
     first = True
+    headers["content-length"] = str((await aiofiles.os.stat(str(filepath))).st_size)
     async with aiofiles.open(str(filepath), mode="rb") as fp:
         if first:
             await asgi_start(

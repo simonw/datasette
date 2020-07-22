@@ -898,7 +898,7 @@ def test_table_metadata(app_client):
     assert_footer_links(soup)
 
 
-def test_database_download_allowed_for_immutable():
+def test_database_download_for_immutable():
     with make_app_client(is_immutable=True) as client:
         assert not client.ds.databases["fixtures"].is_mutable
         # Regular page should have a download link
@@ -906,7 +906,13 @@ def test_database_download_allowed_for_immutable():
         soup = Soup(response.body, "html.parser")
         assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
         # Check we can actually download it
-        assert 200 == client.get("/fixtures.db").status
+        download_response = client.get("/fixtures.db")
+        assert 200 == download_response.status
+        # Check the content-length header exists
+        assert "content-length" in download_response.headers
+        content_length = download_response.headers["content-length"]
+        assert content_length.isdigit()
+        assert int(content_length) > 100
 
 
 def test_database_download_disallowed_for_mutable(app_client):

@@ -2,6 +2,7 @@ from .fixtures import app_client, assert_permissions_checked, make_app_client
 from bs4 import BeautifulSoup as Soup
 import copy
 import pytest
+import urllib
 
 
 @pytest.mark.parametrize(
@@ -310,6 +311,23 @@ def test_permissions_debug(app_client):
         {"action": "permissions-debug", "result": False, "used_default": True},
         {"action": "view-instance", "result": True, "used_default": True},
     ] == checks
+
+
+@pytest.mark.parametrize(
+    "actor,allow,expected_fragment",
+    [
+        ('{"id":"root"}', "{}", "Result: deny"),
+        ('{"id":"root"}', '{"id": "*"}', "Result: allow"),
+        ('{"', '{"id": "*"}', "Actor JSON error"),
+        ('{"id":"root"}', '"*"}', "Allow JSON error"),
+    ],
+)
+def test_allow_debug(app_client, actor, allow, expected_fragment):
+    response = app_client.get(
+        "/-/allow-debug?" + urllib.parse.urlencode({"actor": actor, "allow": allow})
+    )
+    assert 200 == response.status
+    assert expected_fragment in response.text
 
 
 @pytest.mark.parametrize(

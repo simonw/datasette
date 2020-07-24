@@ -157,6 +157,13 @@ You can specify that unauthenticated actors (from anynomous HTTP requests) shoul
 
 Allow keys act as an "or" mechanism. An actor will be able to execute the query if any of their JSON properties match any of the values in the corresponding lists in the ``allow`` block.
 
+.. _AllowDebugView:
+
+The /-/allow-debug tool
+-----------------------
+
+The ``/-/allow-debug`` tool lets you try out different  ``"action"`` blocks against different ``"actor"`` JSON objects. You can try that out here: https://latest.datasette.io/-/allow-debug
+
 .. _authentication_permissions_metadata:
 
 Configuring permissions in metadata.json

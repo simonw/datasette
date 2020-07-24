@@ -1,5 +1,6 @@
 import json
 from datasette.utils.asgi import Response, Forbidden
+from datasette.utils import actor_matches_allow
 from .base import BaseView
 import secrets
 
@@ -104,6 +105,43 @@ class PermissionsDebugView(BaseView):
             ["permissions_debug.html"],
             request,
             {"permission_checks": reversed(self.ds._permission_checks)},
+        )
+
+
+class AllowDebugView(BaseView):
+    name = "allow_debug"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def get(self, request):
+        errors = []
+        actor_input = request.args.get("actor") or '{"id": "root"}'
+        try:
+            actor = json.loads(actor_input)
+            actor_input = json.dumps(actor, indent=4)
+        except json.decoder.JSONDecodeError as ex:
+            errors.append("Actor JSON error: {}".format(ex))
+        allow_input = request.args.get("allow") or '{"id": "*"}'
+        try:
+            allow = json.loads(allow_input)
+            allow_input = json.dumps(allow, indent=4)
+        except json.decoder.JSONDecodeError as ex:
+            errors.append("Allow JSON error: {}".format(ex))
+
+        result = None
+        if not errors:
+            result = str(actor_matches_allow(actor, allow))
+
+        return await self.render(
+            ["allow_debug.html"],
+            request,
+            {
+                "result": result,
+                "error": "\n\n".join(errors) if errors else "",
+                "actor_input": actor_input,
+                "allow_input": allow_input,
+            },
         )
 
 

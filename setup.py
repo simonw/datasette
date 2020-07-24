@@ -40,7 +40,7 @@ setup(
         "Issues": "https://github.com/simonw/datasette/issues",
         "CI": "https://travis-ci.org/simonw/datasette",
     },
-    packages=find_packages(exclude="tests"),
+    packages=find_packages(exclude=("tests",)),
     package_data={"datasette": ["templates/*.html"]},
     include_package_data=True,
     install_requires=[

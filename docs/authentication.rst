@@ -94,15 +94,7 @@ This will match any actors with an ``"id"`` property of ``"root"`` - for example
         "name": "Root User"
     }
 
-An allow block can specify "deny all" using an empty ``{}`` (`demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22root%22%0D%0A%7D&allow=%7B%7D>`__):
-
-.. code-block:: json
-
-    {
-        "allow": {}
-    }
-
-You can also use ``false`` to deny all (`demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22root%22%0D%0A%7D&allow=false>`__):
+An allow block can specify "deny all" using ``false`` (`demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22root%22%0D%0A%7D&allow=false>`__):
 
 .. code-block:: json
 

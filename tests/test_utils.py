@@ -473,6 +473,12 @@ def test_multi_params(data, should_raise):
         # {} means deny-all:
         (None, {}, False),
         ({"id": "root"}, {}, False),
+        # true means allow-all
+        ({"id": "root"}, True, True),
+        (None, True, True),
+        # false means deny-all
+        ({"id": "root"}, False, False),
+        (None, False, False),
         # Special case for "unauthenticated": true
         (None, {"unauthenticated": True}, True),
         (None, {"unauthenticated": False}, False),

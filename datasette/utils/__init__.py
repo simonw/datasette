@@ -874,6 +874,10 @@ async def async_call_with_supported_arguments(fn, **kwargs):
 
 
 def actor_matches_allow(actor, allow):
+    if allow is True:
+        return True
+    if allow is False:
+        return False
     if actor is None and allow and allow.get("unauthenticated") is True:
         return True
     if allow is None:

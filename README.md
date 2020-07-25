@@ -22,7 +22,8 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
- * 1st July 2020: [Datasette 0.45](http://datasette.readthedocs.io/en/latest/changelog.html#v0-45) - [Magic parameters for canned queries](https://datasette.readthedocs.io/en/latest/sql_queries.html#canned-queries-magic-parameters), a log out feature, improved plugin documentation and four new plugin hooks.
+ * 24th July 2020: Two new plugins: [datasette-copyable and datasette-insert-api](https://simonwillison.net/2020/Jul/23/datasette-copyable-datasette-insert-api/). `datasette-copyable` adds copy-and-paste export options, and `datasette-insert-api` lets you create tables and insert or update data by POSTing JSON directly to Datasette.
+ * 1st July 2020: [Datasette 0.45](http://datasette.readthedocs.io/en/latest/changelog.html#v0-45) - [Magic parameters for canned queries](https://datasette.readthedocs.io/en/latest/sql_queries.html#canned-queries-magic-parameters), a log out feature, improved plugin documentation and four new plugin hooks. See also [Datasette 0.45: The annotated release notes](https://simonwillison.net/2020/Jul/1/datasette-045/).
  * 20th June 2020: [A cookiecutter template for writing Datasette plugins](https://simonwillison.net/2020/Jun/20/cookiecutter-plugins/)
  * 11th June 2020: [Datasette 0.44](http://datasette.readthedocs.io/en/latest/changelog.html#v0-44) - [Authentication and permissions](https://datasette.readthedocs.io/en/latest/authentication.html), [writable canned queries](https://datasette.readthedocs.io/en/latest/sql_queries.html#writable-canned-queries), flash messages, new plugin hooks and much, much more.
  * 28th May 2020: [Datasette 0.43](http://datasette.readthedocs.io/en/latest/changelog.html#v0-43) - Redesigned [register_output_renderer](https://datasette.readthedocs.io/en/latest/plugins.html#plugin-register-output-renderer) plugin hook and various small improvements and fixes.

@@ -337,7 +337,7 @@ class DataView(BaseView):
             disposition = 'attachment; filename="{}.csv"'.format(
                 kwargs.get("table", database)
             )
-            headers["Content-Disposition"] = disposition
+            headers["content-disposition"] = disposition
 
         return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 

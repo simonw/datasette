@@ -92,7 +92,7 @@ def test_table_csv_download(app_client):
     assert response.status == 200
     assert "text/csv; charset=utf-8" == response.headers["content-type"]
     expected_disposition = 'attachment; filename="simple_primary_key.csv"'
-    assert expected_disposition == response.headers["Content-Disposition"]
+    assert expected_disposition == response.headers["content-disposition"]
 
 
 def test_csv_with_non_ascii_characters(app_client):

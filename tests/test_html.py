@@ -913,6 +913,11 @@ def test_database_download_for_immutable():
         content_length = download_response.headers["content-length"]
         assert content_length.isdigit()
         assert int(content_length) > 100
+        assert "content-disposition" in download_response.headers
+        assert (
+            download_response.headers["content-disposition"]
+            == 'attachment; filename="fixtures.db"'
+        )
 
 
 def test_database_download_disallowed_for_mutable(app_client):

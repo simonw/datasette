@@ -251,7 +251,7 @@ async def asgi_send_file(
 ):
     headers = {}
     if filename:
-        headers["Content-Disposition"] = 'attachment; filename="{}"'.format(filename)
+        headers["content-disposition"] = 'attachment; filename="{}"'.format(filename)
     first = True
     headers["content-length"] = str((await aiofiles.os.stat(str(filepath))).st_size)
     async with aiofiles.open(str(filepath), mode="rb") as fp:
@@ -402,4 +402,6 @@ class AsgiFileDownload:
         self.content_type = content_type
 
     async def asgi_send(self, send):
-        return await asgi_send_file(send, self.filepath, content_type=self.content_type)
+        return await asgi_send_file(
+            send, self.filepath, filename=self.filename, content_type=self.content_type
+        )

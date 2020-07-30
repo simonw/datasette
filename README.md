@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/master/LICENSE)
 [![docker: datasette](https://img.shields.io/badge/docker-datasette-blue)](https://hub.docker.com/r/datasetteproject/datasette)
 
-*A tool for exploring and publishing data*
+*An open source multi-tool for exploring and publishing data*
 
 Datasette is a tool for exploring and publishing data. It helps people take data of any shape or size and publish that as an interactive, explorable website and accompanying API.
 

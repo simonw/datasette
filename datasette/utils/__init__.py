@@ -626,7 +626,11 @@ def module_from_path(path, name):
     return mod
 
 
-async def resolve_table_and_format(table_and_format, table_exists, allowed_formats=[]):
+async def resolve_table_and_format(
+    table_and_format, table_exists, allowed_formats=None
+):
+    if allowed_formats is None:
+        allowed_formats = []
     if "." in table_and_format:
         # Check if a table exists with this exact name
         it_exists = await table_exists(table_and_format)

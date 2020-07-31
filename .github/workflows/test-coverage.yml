@@ -3,10 +3,10 @@ name: Calculate test coverage
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
-      - master
+      - main
 jobs:
   test:
     runs-on: ubuntu-latest

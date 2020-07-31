@@ -3,7 +3,7 @@ name: Deploy latest.datasette.io
 on:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   deploy:

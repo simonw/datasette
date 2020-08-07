@@ -70,6 +70,11 @@ Datasette Plugins
 
 Datasette's :ref:`plugin system <plugins>` makes it easy to enhance Datasette with additional functionality.
 
+datasette-graphql
+-----------------
+
+`datasette-graphql <https://github.com/simonw/datasette-graphql>`__ provides a GraphQL interface for querying the data contained in your Datasette instance.
+
 datasette-cluster-map
 ---------------------
 

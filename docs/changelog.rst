@@ -4,6 +4,29 @@
 Changelog
 =========
 
+.. _v0_46:
+
+0.46 (2020-08-09)
+-----------------
+
+.. warning::
+    This release contains a security fix related to authenticated writable canned queries. If you are using this feature you should upgrade as soon as possible.
+
+- **Security fix:** CSRF tokens were incorrectly included in read-only canned query forms, which could allow them to be leaked to a sophisticated attacker. See `issue xxx <>`__ for details.
+- Datasette now supports GraphQL via the new `datasette-graphql <https://github.com/simonw/datasette-graphql>`__ plugin - see `GraphQL in Datasette with the new datasette-graphql plugin <https://simonwillison.net/2020/Aug/7/datasette-graphql/>`__.
+- Principle git branch has been renamed from ``main`` to ``master``. (`#849 <https://github.com/simonw/datasette/issues/849>`__)
+- New debugging tool: ``/-/allow-debug tool`` (`demo here <https://latest.datasette.io/-/allow-debug>`__) helps test allow blocks against actors, as described in :ref:`authentication_permissions_allow`. (`#908 <https://github.com/simonw/datasette/issues/908>`__)
+- New logo for the documentation, and a new project tagline: "An open source multi-tool for exploring and publishing data".
+- Whitespace in column values is now respected on display, using ``white-space: pre-wrap``. (`#896 <https://github.com/simonw/datasette/issues/896>`__)
+- New ``await request.post_body()`` method for accessing the raw POST body, see :ref:`internals_request`. (`#897 <https://github.com/simonw/datasette/issues/897>`__)
+- Database file downloads now include a ``content-length`` HTTP header, enabling download progress bars. (`#905 <https://github.com/simonw/datasette/issues/905>`__)
+- File downloads now also correctly set the suggested file name using a ``content-disposition`` HTTP header. (`#909 <https://github.com/simonw/datasette/issues/909>`__)
+- ``tests`` are now excluded from the Datasette package properly - thanks, abeyerpath. (`#456 <https://github.com/simonw/datasette/issues/456>`__)
+- The Datasette package published to PyPI now includes ``sdist`` as well as ``bdist_wheel``.
+- Better titles for canned query pages. (`#887 <https://github.com/simonw/datasette/issues/887>`__)
+- Now only loads Python files from a directory passed using the ``--plugins-dir`` option - thanks, Amjith Ramanujam. (`#890 <https://github.com/simonw/datasette/pull/890>`__)
+- New documentation section on :ref:`publish_vercel`.
+
 .. _v0_45:
 
 0.45 (2020-07-01)

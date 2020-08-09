@@ -26,7 +26,7 @@ jobs:
       deploy:
         - provider: pypi
           user: simonw
-          distributions: bdist_wheel
+          distributions: "sdist bdist_wheel"
           password: ${PYPI_PASSWORD}
           on:
             branch: master

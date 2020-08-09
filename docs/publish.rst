@@ -58,7 +58,7 @@ You can specify a custom app name by passing ``-n my-app-name`` to the publish c
 
 .. literalinclude:: datasette-publish-heroku-help.txt
 
-.. _publish_fly:
+.. _publish_vercel:
 
 Publishing to Vercel
 --------------------

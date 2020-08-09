@@ -129,7 +129,6 @@ Release process
 Datasette releases are performed using tags. When a new version tag is pushed to GitHub, a `Travis CI task <https://github.com/simonw/datasette/blob/master/.travis.yml>`__ will perform the following:
 
 * Run the unit tests against all supported Python versions. If the tests pass...
-* Set up https://v0-25-1.datasette.io/ (but with the new tag) to point to a live demo of this release
 * Build a Docker image of the release and push a tag to https://hub.docker.com/r/datasetteproject/datasette
 * Re-point the "latest" tag on Docker Hub to the new image
 * Build a wheel bundle of the underlying Python source code

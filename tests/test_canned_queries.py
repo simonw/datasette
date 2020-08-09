@@ -12,6 +12,7 @@ def canned_write_client():
             "databases": {
                 "data": {
                     "queries": {
+                        "canned_read": {"sql": "select * from names"},
                         "add_name": {
                             "sql": "insert into names (name) values (:name)",
                             "write": True,
@@ -67,6 +68,22 @@ def test_insert(canned_write_client):
         response.cookies["ds_messages"], "messages"
     )
     assert [["Query executed, 1 row affected", 1]] == messages
+
+
+@pytest.mark.parametrize(
+    "query_name,expect_csrf_hidden_field",
+    [("canned_read", False), ("add_name_specify_id", True), ("add_name", True),],
+)
+def test_canned_query_form_csrf_hidden_field(
+    canned_write_client, query_name, expect_csrf_hidden_field
+):
+    response = canned_write_client.get("/data/{}".format(query_name))
+    html = response.text
+    fragment = '<input type="hidden" name="csrftoken" value="'
+    if expect_csrf_hidden_field:
+        assert fragment in html
+    else:
+        assert fragment not in html
 
 
 def test_insert_with_cookies_requires_csrf(canned_write_client):
@@ -148,6 +165,7 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
         q["name"] for q in canned_write_client.get("/data.json").json["queries"]
     }
     assert {
+        "canned_read",
         "add_name",
         "add_name_specify_id",
         "update_name",
@@ -164,6 +182,7 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
     assert [
         {"name": "add_name", "private": False},
         {"name": "add_name_specify_id", "private": False},
+        {"name": "canned_read", "private": False},
         {"name": "delete_name", "private": True},
         {"name": "from_async_hook", "private": False},
         {"name": "from_hook", "private": False},

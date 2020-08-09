@@ -1,6 +1,10 @@
 language: python
 dist: xenial
 
+branches:
+  except:
+  - master
+
 # 3.6 is listed first so it gets used for the later build stages
 python:
   - "3.6"

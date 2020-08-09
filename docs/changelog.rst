@@ -14,7 +14,7 @@ Changelog
 
 - **Security fix:** CSRF tokens were incorrectly included in read-only canned query forms, which could allow them to be leaked to a sophisticated attacker. See `issue 918 <https://github.com/simonw/datasette/issues/918>`__ for details.
 - Datasette now supports GraphQL via the new `datasette-graphql <https://github.com/simonw/datasette-graphql>`__ plugin - see `GraphQL in Datasette with the new datasette-graphql plugin <https://simonwillison.net/2020/Aug/7/datasette-graphql/>`__.
-- Principle git branch has been renamed from ``main`` to ``master``. (`#849 <https://github.com/simonw/datasette/issues/849>`__)
+- Principle git branch has been renamed from ``master`` to ``main``. (`#849 <https://github.com/simonw/datasette/issues/849>`__)
 - New debugging tool: ``/-/allow-debug tool`` (`demo here <https://latest.datasette.io/-/allow-debug>`__) helps test allow blocks against actors, as described in :ref:`authentication_permissions_allow`. (`#908 <https://github.com/simonw/datasette/issues/908>`__)
 - New logo for the documentation, and a new project tagline: "An open source multi-tool for exploring and publishing data".
 - Whitespace in column values is now respected on display, using ``white-space: pre-wrap``. (`#896 <https://github.com/simonw/datasette/issues/896>`__)

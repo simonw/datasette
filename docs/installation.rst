@@ -22,10 +22,6 @@ You can install Datasette and its dependencies using ``pip``::
 
     pip install datasette
 
-The last version to support Python 3.5 was 0.30.2. If you are running Python 3.5 (check using ``python3 --version``) you can install that version of Datasette like so::
-
-    pip install datasette==0.30.2
-
 You can now run Datasette like so::
 
     datasette

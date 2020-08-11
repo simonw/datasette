@@ -11,6 +11,7 @@ import io
 import json
 import pathlib
 import pytest
+import sys
 import textwrap
 from unittest import mock
 
@@ -110,17 +111,22 @@ def test_metadata_yaml():
     assert {"title": "Hello from YAML"} == response.json
 
 
-@mock.patch("pip._internal.cli.main.main")
-def test_install(main):
+@mock.patch("datasette.cli.run_module")
+def test_install(run_module):
     runner = CliRunner()
     runner.invoke(cli, ["install", "datasette-mock-plugin", "datasette-mock-plugin2"])
-    main.assert_called_once_with(
-        ["install", "datasette-mock-plugin", "datasette-mock-plugin2"]
-    )
+    run_module.assert_called_once_with("pip", run_name="__main__")
+    assert sys.argv == [
+        "pip",
+        "install",
+        "datasette-mock-plugin",
+        "datasette-mock-plugin2",
+    ]
 
 
-@mock.patch("pip._internal.cli.main.main")
-def test_uninstall(main):
+@mock.patch("datasette.cli.run_module")
+def test_uninstall(run_module):
     runner = CliRunner()
     runner.invoke(cli, ["uninstall", "datasette-mock-plugin", "-y"])
-    main.assert_called_once_with(["uninstall", "datasette-mock-plugin", "-y"])
+    run_module.assert_called_once_with("pip", run_name="__main__")
+    assert sys.argv == ["pip", "uninstall", "datasette-mock-plugin", "-y"]

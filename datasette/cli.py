@@ -234,7 +234,7 @@ def package(
 @cli.command()
 @click.argument("packages", nargs=-1, required=True)
 def install(packages):
-    "Install Python packages - e.g. Datasette plugins - into the same environment as Datasett"
+    "Install Python packages - e.g. Datasette plugins - into the same environment as Datasette"
     from pip._internal.cli.main import main
 
     try:

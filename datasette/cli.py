@@ -232,6 +232,31 @@ def package(
 
 
 @cli.command()
+@click.argument("packages", nargs=-1, required=True)
+def install(packages):
+    "Install Python packages - e.g. Datasette plugins - into the same environment as Datasett"
+    from pip._internal.cli.main import main
+
+    try:
+        main(["install"] + list(packages))
+    except SystemExit as e:
+        pass
+
+
+@cli.command()
+@click.argument("packages", nargs=-1, required=True)
+@click.option("-y", "--yes", is_flag=True, help="Don't ask for confirmation")
+def uninstall(packages, yes):
+    "Uninstall Python packages (e.g. plugins) from the Datasette environment"
+    from pip._internal.cli.main import main
+
+    try:
+        main(["uninstall"] + list(packages) + (["-y"] if yes else []))
+    except SystemExit as e:
+        pass
+
+
+@cli.command()
 @click.argument("files", type=click.Path(exists=True), nargs=-1)
 @click.option(
     "-i",

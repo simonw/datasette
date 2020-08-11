@@ -35,9 +35,25 @@ Installing plugins
 
 If a plugin has been packaged for distribution using setuptools you can use the plugin by installing it alongside Datasette in the same virtual environment or Docker container.
 
+You can install plugins using the ``datasette install`` command::
+
+    datasette install datasette-vega
+
+You can uninstall plugins with ``datasette uninstall``::
+
+    datasette uninstall datasette-vega
+
+These ommands are thin wrappers around ``pip install`` and ``pip uninstall``, which ensure they run ``pip`` in the same virtual environment as Datasette itself.
+
+One-off plugins using --plugins-dir
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 You can also define one-off per-project plugins by saving them as ``plugin_name.py`` functions in a ``plugins/`` folder and then passing that folder to ``datasette`` using the ``--plugins-dir`` option::
 
     datasette mydb.db --plugins-dir=plugins/
+
+Deploying plugins using datasette publish
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The ``datasette publish`` and ``datasette package`` commands both take an optional ``--install`` argument. You can use this one or more times to tell Datasette to ``pip install`` specific plugins as part of the process::
 

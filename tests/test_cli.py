@@ -12,6 +12,7 @@ import json
 import pathlib
 import pytest
 import textwrap
+from unittest import mock
 
 
 def test_inspect_cli(app_client):
@@ -107,3 +108,19 @@ def test_metadata_yaml():
     client.ds = ds
     response = client.get("/-/metadata.json")
     assert {"title": "Hello from YAML"} == response.json
+
+
+@mock.patch("pip._internal.cli.main.main")
+def test_install(main):
+    runner = CliRunner()
+    runner.invoke(cli, ["install", "datasette-mock-plugin", "datasette-mock-plugin2"])
+    main.assert_called_once_with(
+        ["install", "datasette-mock-plugin", "datasette-mock-plugin2"]
+    )
+
+
+@mock.patch("pip._internal.cli.main.main")
+def test_uninstall(main):
+    runner = CliRunner()
+    runner.invoke(cli, ["uninstall", "datasette-mock-plugin", "-y"])
+    main.assert_called_once_with(["uninstall", "datasette-mock-plugin", "-y"])

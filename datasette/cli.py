@@ -20,6 +20,7 @@ from .utils import (
     StaticMount,
     ValueAsBooleanError,
 )
+from .utils.testing import TestClient
 
 
 class Config(click.ParamType):
@@ -342,6 +343,9 @@ def uninstall(packages, yes):
     help="Output URL that sets a cookie authenticating the root user",
     is_flag=True,
 )
+@click.option(
+    "--get", help="Run an HTTP GET request against this path, print results and exit",
+)
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")
 def serve(
@@ -362,6 +366,7 @@ def serve(
     config,
     secret,
     root,
+    get,
     version_note,
     help_config,
     return_instance=False,
@@ -417,6 +422,12 @@ def serve(
         files = []
 
     ds = Datasette(files, **kwargs)
+
+    if get:
+        client = TestClient(ds.app())
+        response = client.get(get)
+        click.echo(response.text)
+        return
 
     if return_instance:
         # Private utility mechanism for writing unit tests

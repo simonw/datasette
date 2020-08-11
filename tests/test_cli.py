@@ -101,6 +101,7 @@ def test_metadata_yaml():
         secret=None,
         root=False,
         version_note=None,
+        get=None,
         help_config=False,
         return_instance=True,
     )

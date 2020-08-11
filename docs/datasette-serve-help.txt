@@ -33,6 +33,9 @@ Options:
                             cookies
 
   --root                    Output URL that sets a cookie authenticating the root user
+  --get TEXT                Run an HTTP GET request against this path, print results and
+                            exit
+
   --version-note TEXT       Additional note to show on /-/versions
   --help-config             Show available config options
   --help                    Show this message and exit.

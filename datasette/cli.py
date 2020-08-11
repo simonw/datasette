@@ -9,6 +9,7 @@ import pathlib
 import shutil
 from subprocess import call
 import sys
+from runpy import run_module
 from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
 from .utils import (
     check_connection,
@@ -236,12 +237,8 @@ def package(
 @click.argument("packages", nargs=-1, required=True)
 def install(packages):
     "Install Python packages - e.g. Datasette plugins - into the same environment as Datasette"
-    from pip._internal.cli.main import main
-
-    try:
-        main(["install"] + list(packages))
-    except SystemExit as e:
-        pass
+    sys.argv = ["pip", "install"] + list(packages)
+    run_module("pip", run_name="__main__")
 
 
 @cli.command()
@@ -249,12 +246,8 @@ def install(packages):
 @click.option("-y", "--yes", is_flag=True, help="Don't ask for confirmation")
 def uninstall(packages, yes):
     "Uninstall Python packages (e.g. plugins) from the Datasette environment"
-    from pip._internal.cli.main import main
-
-    try:
-        main(["uninstall"] + list(packages) + (["-y"] if yes else []))
-    except SystemExit as e:
-        pass
+    sys.argv = ["pip", "uninstall"] + list(packages) + (["-y"] if yes else [])
+    run_module("pip", run_name="__main__")
 
 
 @cli.command()

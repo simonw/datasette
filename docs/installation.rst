@@ -1,7 +1,8 @@
 .. _installation:
 
-Installation
-============
+==============
+ Installation
+==============
 
 .. note::
     If you just want to try Datasette out you don't need to install anything: see :ref:`glitch`
@@ -9,14 +10,35 @@ Installation
 There are two main options for installing Datasette. You can install it directly
 on to your machine, or you can install it using Docker.
 
+If you want to start making contributions to the Datasette project by installing a copy that lets you directly modify the code, take a look at our guide to :ref:`devenvironment`.
+
 .. contents::
+   :local:
+
+.. _installation_basic:
+
+Basic installation
+==================
+
+.. _installation_homebrew:
+
+Using Homebrew
+--------------
+
+If you have a Mac and use `Homebrew <https://brew.sh/>`__, you can install Datasette by running this command in your terminal::
+
+    brew install simonw/datasette/datasette
+
+If you install Datasette using Homebrew you can install plugins using the following::
+
+    /usr/local/opt/datasette/libexec/bin/pip install datasette-vega
 
 .. _installation_pip:
 
-Install using pip
------------------
+Using pip
+---------
 
-To run Datasette without Docker you will need Python 3.6 or higher.
+Datasette requires Python 3.6 or higher. Visit `InstallPython3.com <https://installpython3.com/>`__ for step-by-step installation guides for your operating system.
 
 You can install Datasette and its dependencies using ``pip``::
 
@@ -26,12 +48,16 @@ You can now run Datasette like so::
 
     datasette
 
-If you want to start making contributions to the Datasette project by installing a copy that lets you directly modify the code, take a look at our guide to :ref:`devenvironment`.
+.. _installation_advanced::
+
+Advanced installation options
+=============================
+
 
 .. _installation_pipx:
 
-Install using pipx
-------------------
+Using pipx
+----------
 
 `pipx <https://pipxproject.github.io/pipx/>`__ is a tool for installing Python software with all of its dependencies in an isolated environment, to ensure that they will not conflict with any other installed Python software.
 

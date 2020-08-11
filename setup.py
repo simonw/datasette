@@ -69,7 +69,6 @@ setup(
         "test": [
             "pytest>=5.2.2,<6.1.0",
             "pytest-asyncio>=0.10,<0.15",
-            "aiohttp~=3.6.2",
             "beautifulsoup4>=4.8.1,<4.10.0",
             "asgiref~=3.2.3",
             "black~=19.10b0",

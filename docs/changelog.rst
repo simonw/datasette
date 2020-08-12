@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_47_2:
+
+0.47.2 (2020-08-12)
+-------------------
+
+- Fixed an issue with the Docker image `published to Docker Hub <https://hub.docker.com/r/datasetteproject/datasette>`__. (`#931 <https://github.com/simonw/datasette/issues/931>`__)
+
 .. _v0_47_1:
 
 0.47.1 (2020-08-11)

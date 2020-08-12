@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_47_1:
+
+0.47.1 (2020-08-11)
+-------------------
+
+- Fixed a bug where the ``sdist`` distribution of Datasette was not correctly including the template files. (`#930 <https://github.com/simonw/datasette/issues/930>`__)
+
 .. _v0_47:
 
 0.47 (2020-08-11)

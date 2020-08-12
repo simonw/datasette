@@ -961,7 +961,7 @@ forbidden(datasette, request, message)
 ``message`` - string
     A message hinting at why the request was forbidden.
 
-Plugins can use this to customize how Datasette responds when a 403 Forbidden error occurs - usually because a page failed a permission check, see :authentication_permissions:.
+Plugins can use this to customize how Datasette responds when a 403 Forbidden error occurs - usually because a page failed a permission check, see :ref:`authentication_permissions`.
 
 If a plugin hook wishes to react to the error, it should return a :ref:`Response object <internals_response>`.
 

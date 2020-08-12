@@ -48,11 +48,10 @@ You can now run Datasette like so::
 
     datasette
 
-.. _installation_advanced::
+.. _installation_advanced:
 
 Advanced installation options
 =============================
-
 
 .. _installation_pipx:
 

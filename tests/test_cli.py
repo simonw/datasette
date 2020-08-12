@@ -50,6 +50,20 @@ def test_serve_with_inspect_file_prepopulates_table_counts_cache():
         assert {"hithere": 44} == db.cached_table_counts
 
 
+def test_serve_with_get():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        ["serve", "--memory", "--get", "/:memory:.json?sql=select+sqlite_version()"],
+    )
+    assert 0 == result.exit_code, result.output
+    assert {
+        "database": ":memory:",
+        "truncated": False,
+        "columns": ["sqlite_version()"],
+    }.items() <= json.loads(result.output).items()
+
+
 def test_spatialite_error_if_attempt_to_open_spatialite():
     runner = CliRunner()
     result = runner.invoke(
@@ -102,6 +116,7 @@ def test_metadata_yaml():
         secret=None,
         root=False,
         version_note=None,
+        get=None,
         help_config=False,
         return_instance=True,
     )

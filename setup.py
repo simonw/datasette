@@ -44,6 +44,7 @@ setup(
     package_data={"datasette": ["templates/*.html"]},
     include_package_data=True,
     install_requires=[
+        "asgiref~=3.2.10",
         "click~=7.1.1",
         "click-default-group~=1.2.2",
         "Jinja2>=2.10.3,<2.12.0",
@@ -70,7 +71,6 @@ setup(
             "pytest>=5.2.2,<6.1.0",
             "pytest-asyncio>=0.10,<0.15",
             "beautifulsoup4>=4.8.1,<4.10.0",
-            "asgiref~=3.2.3",
             "black~=19.10b0",
         ],
     },

@@ -29,9 +29,9 @@ If you have a Mac and use `Homebrew <https://brew.sh/>`__, you can install Datas
 
     brew install simonw/datasette/datasette
 
-If you install Datasette using Homebrew you can install plugins using the following::
+Once you have installed Datasette you can install plugins using the following::
 
-    /usr/local/opt/datasette/libexec/bin/pip install datasette-vega
+    datasette install datasette-vega
 
 .. _installation_pip:
 
@@ -77,28 +77,6 @@ Once pipx is installed you can use it to install Datasette like this::
     pipx install datasette
 
 Then run ``datasette --version`` to confirm that it has been successfully installed.
-
-Installing plugins using pipx
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Datasette plugins need to be installed into the same environment as Datasette itself. You can do this using ``pipx inject datasette name-of-plugin`` - and then confirm that the plugin has been installed using the ``datasette plugins`` command::
-
-    $ datasette plugins
-    []
-
-    $ pipx inject datasette datasette-json-html            
-      injected package datasette-json-html into venv datasette
-    done! ✨ 🌟 ✨
-
-    $ datasette plugins
-    [
-        {
-            "name": "datasette-json-html",
-            "static": false,
-            "templates": false,
-            "version": "0.6"
-        }
-    ]
 
 Upgrading packages using pipx
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

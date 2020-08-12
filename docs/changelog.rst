@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v0_47:
+
+0.47 (2020-08-11)
+-----------------
+
+- Datasette now has `a GitHub discussions forum <https://github.com/simonw/datasette/discussions>`__ for conversations about the project that go beyond just bug reports and issues.
+- Datasette can now be installed on macOS using Homebrew! Run ``brew install simonw/datasette/datasette``. See :ref:`installation_homebrew`. (`#335 <https://github.com/simonw/datasette/issues/335>`__)
+- Two new commands: ``datasette install name-of-plugin`` and ``datasette uninstall name-of-plugin``. These are equivalent to ``pip install`` and ``pip uninstall`` but automatically run in the same virtual environment as Datasette, so users don't have to figure out where that virtual environment is - useful for installations created using Homebrew or ``pipx``. See :ref:`plugins_installing`. (`#925 <https://github.com/simonw/datasette/issues/925>`__)
+- A new command-line option, ``datasette --get``, accepts a path to a URL within the Datasette instance. It will run that request through Datasette (without starting a web server) and print out the repsonse. See :ref:`getting_started_datasette_get` for an example. (`#926 <https://github.com/simonw/datasette/issues/926>`__)
+
 .. _v0_46:
 
 0.46 (2020-08-09)

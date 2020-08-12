@@ -23,6 +23,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 11th August 2020: [Datasette 0.47](http://datasette.readthedocs.io/en/latest/changelog.html#v0-47) - Datasette can now be installed using Homebrew! `brew install simonw/datasette/datasette`. Also new: `datasette install name-of-plugin` and `datasette uninstall name-of-plugin` commands, and `datasette --get '/-/versions.json'` to output the result of Datasette HTTP calls on the command-line.
  * 9th August 2020: [Datasette 0.46](http://datasette.readthedocs.io/en/latest/changelog.html#v0-46) - security fix relating to CSRF protection for writable canned queries, a new logo, new debugging tools, improved file downloads and more.
  * 6th August 2020: [GraphQL in Datasette with the new datasette-graphql plugin](https://simonwillison.net/2020/Aug/7/datasette-graphql/)
  * 24th July 2020: Two new plugins: [datasette-copyable and datasette-insert-api](https://simonwillison.net/2020/Jul/23/datasette-copyable-datasette-insert-api/). `datasette-copyable` adds copy-and-paste export options, and `datasette-insert-api` lets you create tables and insert or update data by POSTing JSON directly to Datasette.

@@ -215,13 +215,13 @@ Here's how to restrict access to your entire Datasette instance to just the ``"i
         }
     }
 
-To deny access to all users, you can use ``"allow": {}``:
+To deny access to all users, you can use ``"allow": false``:
 
 .. code-block:: json
 
     {
         "title": "My entirely inaccessible instance",
-        "allow": {}
+        "allow": false
     }
 
 One reason to do this is if you are using a Datasette plugin - such as `datasette-permissions-sql <https://github.com/simonw/datasette-permissions-sql>`__ - to control permissions instead.

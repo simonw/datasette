@@ -10,15 +10,15 @@ RUN wget "https://www.sqlite.org/2020/sqlite-autoconf-3310100.tar.gz" && tar xzf
     && cd sqlite-autoconf-3310100 && ./configure --disable-static --enable-fts5 --enable-json1 CFLAGS="-g -O2 -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS4=1 -DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_JSON1" \
     && make && make install
 
-RUN wget "https://www.gaia-gis.it/gaia-sins/freexl-1.0.5.tar.gz" && tar zxf freexl-1.0.5.tar.gz \
+RUN wget "http://www.gaia-gis.it/gaia-sins/freexl-sources/freexl-1.0.5.tar.gz" && tar zxf freexl-1.0.5.tar.gz \
     && cd freexl-1.0.5 && ./configure && make && make install
 
-RUN wget "https://www.gaia-gis.it/gaia-sins/libspatialite-4.4.0-RC0.tar.gz" && tar zxf libspatialite-4.4.0-RC0.tar.gz \
+RUN wget "http://www.gaia-gis.it/gaia-sins/libspatialite-sources/libspatialite-4.4.0-RC0.tar.gz" && tar zxf libspatialite-4.4.0-RC0.tar.gz \
     && cd libspatialite-4.4.0-RC0 && ./configure && make && make install
 
-RUN wget "https://www.gaia-gis.it/gaia-sins/readosm-1.1.0.tar.gz" && tar zxf readosm-1.1.0.tar.gz && cd readosm-1.1.0 && ./configure && make && make install
+RUN wget "http://www.gaia-gis.it/gaia-sins/readosm-sources/readosm-1.1.0.tar.gz" && tar zxf readosm-1.1.0.tar.gz && cd readosm-1.1.0 && ./configure && make && make install
 
-RUN wget "https://www.gaia-gis.it/gaia-sins/spatialite-tools-4.4.0-RC0.tar.gz" && tar zxf spatialite-tools-4.4.0-RC0.tar.gz \
+RUN wget "http://www.gaia-gis.it/gaia-sins/spatialite-tools-sources/spatialite-tools-4.4.0-RC0.tar.gz" && tar zxf spatialite-tools-4.4.0-RC0.tar.gz \
     && cd spatialite-tools-4.4.0-RC0 && ./configure && make && make install
 
 

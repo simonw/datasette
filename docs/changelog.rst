@@ -970,7 +970,7 @@ The big new feature in this release is :ref:`facets`. Datasette can now apply fa
 
 In addition to the work on facets:
 
-- Added `docs for introspection endpoints <https://datasette.readthedocs.io/en/latest/introspection.html>`_
+- Added `docs for introspection endpoints <https://docs.datasette.io/en/stable/introspection.html>`_
 
 - New ``--config`` option, added ``--help-config``, closes `#274 <https://github.com/simonw/datasette/issues/274>`_
 
@@ -1000,7 +1000,7 @@ In addition to the work on facets:
   https://fivethirtyeight.datasettes.com/fivethirtyeight/nba-elo%2Fnbaallelo
 
 - Refactored views into new ``views/`` modules, refs `#256 <https://github.com/simonw/datasette/issues/256>`_
-- `Documentation for SQLite full-text search <http://datasette.readthedocs.io/en/latest/full_text_search.html>`_ support, closes `#253 <https://github.com/simonw/datasette/issues/253>`_
+- `Documentation for SQLite full-text search <https://docs.datasette.io/en/stable/full_text_search.html>`_ support, closes `#253 <https://github.com/simonw/datasette/issues/253>`_
 - ``/-/versions`` now includes SQLite ``fts_versions``, closes `#252 <https://github.com/simonw/datasette/issues/252>`_
 
 0.21 (2018-05-05)
@@ -1101,7 +1101,7 @@ Mostly new work on the :ref:`plugins` mechanism: plugins can now bundle static a
 This is the first preview of the new Datasette plugins mechanism. Only two
 plugin hooks are available so far - for custom SQL functions and custom template
 filters. There's plenty more to come - read `the documentation
-<https://datasette.readthedocs.io/en/latest/plugins.html>`_ and get involved in
+<https://docs.datasette.io/en/stable/plugins.html>`_ and get involved in
 `the tracking ticket <https://github.com/simonw/datasette/issues/14>`_ if you
 have feedback on the direction so far.
 
@@ -1111,7 +1111,7 @@ have feedback on the direction so far.
 
 - Initial documentation for plugins, closes `#213 <https://github.com/simonw/datasette/issues/213>`_
 
-  https://datasette.readthedocs.io/en/latest/plugins.html
+  https://docs.datasette.io/en/stable/plugins.html
 
 - New ``--plugins-dir=plugins/`` option (`#212 <https://github.com/simonw/datasette/issues/212>`_)
 
@@ -1153,7 +1153,7 @@ have feedback on the direction so far.
 0.18 (2018-04-14)
 -----------------
 
-This release introduces `support for units <http://datasette.readthedocs.io/en/latest/metadata.html#specifying-units-for-a-column>`_,
+This release introduces `support for units <https://docs.datasette.io/en/stable/metadata.html#specifying-units-for-a-column>`_,
 contributed by Russ Garrett (`#203 <https://github.com/simonw/datasette/issues/203>`_).
 You can now optionally specify the units for specific columns using ``metadata.json``.
 Once specified, units will be displayed in the HTML view of your table. They also become
@@ -1337,16 +1337,16 @@ in the URL.
 -----------------
 
 The theme of this release is customization: Datasette now allows every aspect
-of its presentation `to be customized <http://datasette.readthedocs.io/en/latest/custom_templates.html>`_
+of its presentation `to be customized <https://docs.datasette.io/en/stable/custom_templates.html>`_
 either using additional CSS or by providing entirely new templates.
 
-Datasette's `metadata.json format <http://datasette.readthedocs.io/en/latest/metadata.html>`_
+Datasette's `metadata.json format <https://docs.datasette.io/en/stable/metadata.html>`_
 has also been expanded, to allow per-database and per-table metadata. A new
 ``datasette skeleton`` command can be used to generate a skeleton JSON file
 ready to be filled in with per-database and per-table details.
 
 The ``metadata.json`` file can also be used to define
-`canned queries <http://datasette.readthedocs.io/en/latest/sql_queries.html#canned-queries>`_,
+`canned queries <https://docs.datasette.io/en/stable/sql_queries.html#canned-queries>`_,
 as a more powerful alternative to SQL views.
 
 - ``extra_css_urls``/``extra_js_urls`` in metadata

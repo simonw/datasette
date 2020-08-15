@@ -323,7 +323,7 @@ def uninstall(packages, yes):
 @click.option(
     "--config",
     type=Config(),
-    help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
+    help="Set config option using configname:value docs.datasette.io/en/stable/config.html",
     multiple=True,
 )
 @click.option(
@@ -448,7 +448,7 @@ async def check_databases(ds):
             raise click.UsageError(
                 "It looks like you're trying to load a SpatiaLite"
                 " database without first loading the SpatiaLite module."
-                "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+                "\n\nRead more: https://docs.datasette.io/en/stable/spatialite.html"
             )
         except ConnectionProblem as e:
             raise click.UsageError(

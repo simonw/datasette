@@ -33,8 +33,8 @@ setup(
     license="Apache License, Version 2.0",
     url="https://github.com/simonw/datasette",
     project_urls={
-        "Documentation": "https://datasette.readthedocs.io/en/stable/",
-        "Changelog": "https://datasette.readthedocs.io/en/stable/changelog.html",
+        "Documentation": "https://docs.datasette.io/en/stable/",
+        "Changelog": "https://docs.datasette.io/en/stable/changelog.html",
         "Live demo": "https://latest.datasette.io/",
         "Source code": "https://github.com/simonw/datasette",
         "Issues": "https://github.com/simonw/datasette/issues",

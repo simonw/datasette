@@ -27,7 +27,7 @@ Options:
   --static MOUNT:DIRECTORY  Serve static files from this directory at /MOUNT/...
   --memory                  Make :memory: database available
   --config CONFIG           Set config option using configname:value
-                            datasette.readthedocs.io/en/latest/config.html
+                            docs.datasette.io/en/stable/config.html
 
   --secret TEXT             Secret used for signing secure values, such as signed
                             cookies

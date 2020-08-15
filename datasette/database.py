@@ -92,7 +92,7 @@ class Database:
         conn_exception = None
         conn = None
         try:
-            self.connect(write=True)
+            conn = self.connect(write=True)
         except Exception as e:
             conn_exception = e
         while True:

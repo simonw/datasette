@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_47_3:
+
+0.47.3 (2020-08-15)
+-------------------
+
+- The ``datasette --get`` command-line mechanism now ensures any plugins using the ``startup()`` hook are correctly executed. (`#934 <https://github.com/simonw/datasette/issues/934>`__)
+
 .. _v0_47_2:
 
 0.47.2 (2020-08-12)

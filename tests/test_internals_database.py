@@ -213,4 +213,10 @@ async def test_mtime_ns(db):
 
 def test_mtime_ns_is_none_for_memory(app_client):
     memory_db = Database(app_client.ds, is_memory=True)
+    assert memory_db.is_memory is True
     assert None is memory_db.mtime_ns
+
+
+def test_is_mutable(app_client):
+    assert Database(app_client.ds, is_memory=True, is_mutable=True).is_mutable is True
+    assert Database(app_client.ds, is_memory=True, is_mutable=False).is_mutable is False

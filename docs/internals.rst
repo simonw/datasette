@@ -480,6 +480,12 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``db.mtime_ns`` - integer or None
     The last modification time of the database file in nanoseconds since the epoch. ``None`` for ``:memory:`` databases.
 
+``db.is_mutable`` - boolean
+    Is this database mutable, and allowed to accept writes?
+
+``db.is_memory`` - boolean
+    Is this database an in-memory database?
+
 ``await db.table_exists(table)`` - boolean
     Check if a table called ``table`` exists.
 

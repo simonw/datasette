@@ -89,14 +89,22 @@ class Database:
     def _execute_writes(self):
         # Infinite looping thread that protects the single write connection
         # to this database
-        conn = self.connect(write=True)
+        conn_exception = None
+        conn = None
+        try:
+            conn = self.connect(write=True)
+        except Exception as e:
+            conn_exception = e
         while True:
             task = self._write_queue.get()
-            try:
-                result = task.fn(conn)
-            except Exception as e:
-                print(e)
-                result = e
+            if conn_exception is not None:
+                result = conn_exception
+            else:
+                try:
+                    result = task.fn(conn)
+                except Exception as e:
+                    print(e)
+                    result = e
             task.reply_queue.sync_q.put(result)
 
     async def execute_fn(self, fn):

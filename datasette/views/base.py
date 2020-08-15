@@ -398,7 +398,7 @@ class DataView(BaseView):
             raise DatasetteError(
                 """
                 SQL query took too long. The time limit is controlled by the
-                <a href="https://datasette.readthedocs.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
+                <a href="https://docs.datasette.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
                 configuration option.
             """,
                 title="SQL Interrupted",

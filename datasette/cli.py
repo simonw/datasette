@@ -416,12 +416,6 @@ def serve(
 
     ds = Datasette(files, **kwargs)
 
-    if get:
-        client = TestClient(ds.app())
-        response = client.get(get)
-        click.echo(response.text)
-        return
-
     if return_instance:
         # Private utility mechanism for writing unit tests
         return ds
@@ -431,6 +425,12 @@ def serve(
 
     # Run async sanity checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
+
+    if get:
+        client = TestClient(ds.app())
+        response = client.get(get)
+        click.echo(response.text)
+        return
 
     # Start the server
     if root:

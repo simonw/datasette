@@ -189,6 +189,29 @@ async def test_execute_write_fn_exception(db):
         await db.execute_write_fn(write_fn, block=True)
 
 
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(1)
+async def test_execute_write_fn_connection_exception(tmpdir, app_client):
+    path = str(tmpdir / "immutable.db")
+    sqlite3.connect(path).execute("vacuum")
+    db = Database(
+        app_client.ds,
+        path=path,
+        is_mutable=False
+    )
+    app_client.ds.add_database("immutable-db", db)
+
+    def write_fn(conn):
+        assert False
+
+    with pytest.raises(AssertionError):
+        await db.execute_write_fn(write_fn, block=True)
+
+    app_client.ds.remove_database("immutable-db")
+
+
+
 @pytest.mark.asyncio
 async def test_mtime_ns(db):
     assert isinstance(db.mtime_ns, int)

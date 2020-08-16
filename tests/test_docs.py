@@ -13,8 +13,7 @@ docs_path = Path(__file__).parent.parent / "docs"
 label_re = re.compile(r"\.\. _([^\s:]+):")
 
 
-def get_headings(filename, underline="-"):
-    content = (docs_path / filename).open().read()
+def get_headings(content, underline="-"):
     heading_re = re.compile(r"(\w+)(\([^)]*\))?\n\{}+\n".format(underline))
     return set(h[0] for h in heading_re.findall(content))
 
@@ -24,9 +23,14 @@ def get_labels(filename):
     return set(label_re.findall(content))
 
 
+@pytest.fixture(scope="session")
+def config_headings():
+    return get_headings((docs_path / "config.rst").open().read(), "~")
+
+
 @pytest.mark.parametrize("config", app.CONFIG_OPTIONS)
-def test_config_options_are_documented(config):
-    assert config.name in get_headings("config.rst", "~")
+def test_config_options_are_documented(config_headings, config):
+    assert config.name in config_headings
 
 
 @pytest.mark.parametrize(
@@ -49,12 +53,22 @@ def test_help_includes(name, filename):
     assert expected == actual
 
 
+@pytest.fixture(scope="session")
+def plugin_hooks_content():
+    return (docs_path / "plugin_hooks.rst").open().read()
+
+
 @pytest.mark.parametrize(
     "plugin", [name for name in dir(app.pm.hook) if not name.startswith("_")]
 )
-def test_plugin_hooks_are_documented(plugin):
-    headings = [s.split("(")[0] for s in get_headings("plugin_hooks.rst", "-")]
+def test_plugin_hooks_are_documented(plugin, plugin_hooks_content):
+    headings = get_headings(plugin_hooks_content, "-")
     assert plugin in headings
+    hook_caller = getattr(app.pm.hook, plugin)
+    arg_names = [a for a in hook_caller.spec.argnames if a != "__multicall__"]
+    # Check for plugin_name(arg1, arg2, arg3)
+    expected = "{}({})".format(plugin, ", ".join(arg_names))
+    assert expected in plugin_hooks_content, "Missing from plugin hook documentation: {}".format(expected)
 
 
 @pytest.fixture(scope="session")

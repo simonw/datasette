@@ -26,7 +26,7 @@ def prepare_connection(conn, database, datasette):
 
 
 @hookimpl
-def extra_css_urls(template, database, table, view_name, request, datasette):
+def extra_css_urls(template, database, table, view_name, columns, request, datasette):
     async def inner():
         return [
             "https://plugin-example.com/{}/extra-css-urls-demo.css".format(
@@ -43,6 +43,7 @@ def extra_css_urls(template, database, table, view_name, request, datasette):
                             "added": (
                                 await datasette.get_database().execute("select 3 * 5")
                             ).first()[0],
+                            "columns": columns,
                         }
                     ).encode("utf8")
                 ).decode("utf8")
@@ -61,7 +62,9 @@ def extra_js_urls():
 
 
 @hookimpl
-def extra_body_script(template, database, table, view_name, request, datasette):
+def extra_body_script(
+    template, database, table, view_name, columns, request, datasette
+):
     async def inner():
         return "var extra_body_script = {};".format(
             json.dumps(
@@ -77,6 +80,7 @@ def extra_body_script(template, database, table, view_name, request, datasette):
                     "added": (
                         await datasette.get_database().execute("select 3 * 5")
                     ).first()[0],
+                    "columns": columns,
                 }
             )
         )
@@ -102,12 +106,15 @@ def render_cell(value, column, table, database, datasette):
 
 
 @hookimpl
-def extra_template_vars(template, database, table, view_name, request, datasette):
+def extra_template_vars(
+    template, database, table, view_name, columns, request, datasette
+):
     return {
         "extra_template_vars": json.dumps(
             {
                 "template": template,
                 "scope_path": request.scope["path"] if request else None,
+                "columns": columns,
             },
             default=lambda b: b.decode("utf8"),
         )

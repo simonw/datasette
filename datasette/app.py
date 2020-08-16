@@ -713,6 +713,7 @@ class Datasette:
             template=template.name,
             database=context.get("database"),
             table=context.get("table"),
+            columns=context.get("columns"),
             view_name=view_name,
             request=request,
             datasette=self,
@@ -729,6 +730,7 @@ class Datasette:
             template=template.name,
             database=context.get("database"),
             table=context.get("table"),
+            columns=context.get("columns"),
             view_name=view_name,
             request=request,
             datasette=self,
@@ -779,9 +781,10 @@ class Datasette:
             template=template.name,
             database=context.get("database"),
             table=context.get("table"),
-            datasette=self,
+            columns=context.get("columns"),
             view_name=view_name,
             request=request,
+            datasette=self,
         ):
             if callable(hook):
                 hook = hook()

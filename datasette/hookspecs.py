@@ -26,22 +26,26 @@ def prepare_jinja2_environment(env):
 
 
 @hookspec
-def extra_css_urls(template, database, table, view_name, request, datasette):
+def extra_css_urls(template, database, table, columns, view_name, request, datasette):
     "Extra CSS URLs added by this plugin"
 
 
 @hookspec
-def extra_js_urls(template, database, table, view_name, request, datasette):
+def extra_js_urls(template, database, table, columns, view_name, request, datasette):
     "Extra JavaScript URLs added by this plugin"
 
 
 @hookspec
-def extra_body_script(template, database, table, view_name, request, datasette):
+def extra_body_script(
+    template, database, table, columns, view_name, request, datasette
+):
     "Extra JavaScript code to be included in <script> at bottom of body"
 
 
 @hookspec
-def extra_template_vars(template, database, table, view_name, request, datasette):
+def extra_template_vars(
+    template, database, table, columns, view_name, request, datasette
+):
     "Extra template variables to be made available to the template - can return dict or callable or awaitable"
 
 

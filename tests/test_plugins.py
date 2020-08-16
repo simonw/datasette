@@ -65,6 +65,7 @@ def test_hook_plugin_prepare_connection_arguments(app_client):
                 "view_name": "index",
                 "request_path": "/",
                 "added": 15,
+                "columns": None,
             },
         ),
         (
@@ -76,6 +77,7 @@ def test_hook_plugin_prepare_connection_arguments(app_client):
                 "view_name": "database",
                 "request_path": "/fixtures",
                 "added": 15,
+                "columns": None,
             },
         ),
         (
@@ -87,6 +89,15 @@ def test_hook_plugin_prepare_connection_arguments(app_client):
                 "view_name": "table",
                 "request_path": "/fixtures/sortable",
                 "added": 15,
+                "columns": [
+                    "pk1",
+                    "pk2",
+                    "content",
+                    "sortable",
+                    "sortable_with_nulls",
+                    "sortable_with_nulls_2",
+                    "text",
+                ],
             },
         ),
     ],
@@ -234,6 +245,7 @@ def test_plugin_config_file(app_client):
                 "view_name": "index",
                 "request_path": "/",
                 "added": 15,
+                "columns": None,
             },
         ),
         (
@@ -246,6 +258,7 @@ def test_plugin_config_file(app_client):
                 "view_name": "database",
                 "request_path": "/fixtures",
                 "added": 15,
+                "columns": None,
             },
         ),
         (
@@ -258,11 +271,20 @@ def test_plugin_config_file(app_client):
                 "view_name": "table",
                 "request_path": "/fixtures/sortable",
                 "added": 15,
+                "columns": [
+                    "pk1",
+                    "pk2",
+                    "content",
+                    "sortable",
+                    "sortable_with_nulls",
+                    "sortable_with_nulls_2",
+                    "text",
+                ],
             },
         ),
     ],
 )
-def test_hook__extra_body_script(app_client, path, expected_extra_body_script):
+def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
     r = re.compile(r"<script>var extra_body_script = (.*?);</script>")
     json_data = r.search(app_client.get(path).text).group(1)
     actual_data = json.loads(json_data)
@@ -286,6 +308,7 @@ def test_hook_extra_template_vars(restore_working_directory):
         assert {
             "template": "show_json.html",
             "scope_path": "/-/metadata",
+            "columns": None,
         } == extra_template_vars
         extra_template_vars_from_awaitable = json.loads(
             Soup(response.body, "html.parser")

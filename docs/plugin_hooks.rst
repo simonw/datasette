@@ -80,150 +80,11 @@ You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
 
-.. _plugin_hook_extra_css_urls:
-
-extra_css_urls(template, database, table, view_name, request, datasette)
-------------------------------------------------------------------------
-
-``template`` - string
-    The template that is being rendered, e.g. ``database.html``
-
-``database`` - string or None
-    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
-
-``table`` - string or None
-    The name of the table, or ``None`` if the page does not correct to a table
-
-``view_name`` - string
-    The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
-
-``request`` - object or None
-    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
-
-Return a list of extra CSS URLs that should be included on the page. These can
-take advantage of the CSS class hooks described in :ref:`customization`.
-
-This can be a list of URLs:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_css_urls():
-        return [
-            'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css'
-        ]
-
-Or a list of dictionaries defining both a URL and an
-`SRI hash <https://www.srihash.org/>`_:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_css_urls():
-        return [{
-            'url': 'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css',
-            'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
-        }]
-
-This function can also return an awaitable function, useful if it needs to run any async code:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_css_urls(datasette):
-        async def inner():
-            db = datasette.get_database()
-            results = await db.execute("select url from css_files")
-            return [r[0] for r in results]
-
-        return inner
-
-Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
-
-.. _plugin_hook_extra_js_urls:
-
-extra_js_urls(template, database, table, view_name, request, datasette)
------------------------------------------------------------------------
-
-Same arguments as ``extra_css_urls``.
-
-This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
-return a list of URLs, a list of dictionaries or an awaitable function that returns those things:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_js_urls():
-        return [{
-            'url': 'https://code.jquery.com/jquery-3.3.1.slim.min.js',
-            'sri': 'sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo',
-        }]
-
-You can also return URLs to files from your plugin's ``static/`` directory, if
-you have one:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_js_urls():
-        return [
-            '/-/static-plugins/your-plugin/app.js'
-        ]
-
-Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
-
-.. _plugin_hook_extra_body_script:
-
-extra_body_script(template, database, table, view_name, request, datasette)
----------------------------------------------------------------------------
-
-Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
-
-``template`` - string
-    The template that is being rendered, e.g. ``database.html``
-
-``database`` - string or None
-    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
-
-``table`` - string or None
-    The name of the table, or ``None`` if the page does not correct to a table
-
-``view_name`` - string
-    The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
-
-``request`` - object or None
-    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
-
-The ``template``, ``database``, ``table`` and ``view_name`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
-
-The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
-
-The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
-
-You can also return an awaitable function that returns a string.
-
-Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
 
 .. _plugin_hook_extra_template_vars:
 
-extra_template_vars(template, database, table, view_name, request, datasette)
------------------------------------------------------------------------------
+extra_template_vars(template, database, table, columns, view_name, request, datasette)
+--------------------------------------------------------------------------------------
 
 Extra template variables that should be made available in the rendered template context.
 
@@ -235,6 +96,9 @@ Extra template variables that should be made available in the rendered template 
 
 ``table`` - string or None
     The name of the table, or ``None`` if the page does not correct to a table
+
+``columns`` - list of strings or None
+    The names of the database columns that will be displayed on this page. ``None`` if the page does not contain a table.
 
 ``view_name`` - string
     The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
@@ -298,6 +162,114 @@ You can then use the new function in a template like so::
     SQLite version: {{ sql_first("select sqlite_version()") }}
 
 Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`_
+
+.. _plugin_hook_extra_css_urls:
+
+extra_css_urls(template, database, table, columns, view_name, request, datasette)
+---------------------------------------------------------------------------------
+
+Same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+
+Return a list of extra CSS URLs that should be included on the page. These can
+take advantage of the CSS class hooks described in :ref:`customization`.
+
+This can be a list of URLs:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_css_urls():
+        return [
+            'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css'
+        ]
+
+Or a list of dictionaries defining both a URL and an
+`SRI hash <https://www.srihash.org/>`_:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_css_urls():
+        return [{
+            'url': 'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css',
+            'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
+        }]
+
+This function can also return an awaitable function, useful if it needs to run any async code:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_css_urls(datasette):
+        async def inner():
+            db = datasette.get_database()
+            results = await db.execute("select url from css_files")
+            return [r[0] for r in results]
+
+        return inner
+
+Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
+
+.. _plugin_hook_extra_js_urls:
+
+extra_js_urls(template, database, table, columns, view_name, request, datasette)
+--------------------------------------------------------------------------------
+
+Same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+
+This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
+return a list of URLs, a list of dictionaries or an awaitable function that returns those things:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_js_urls():
+        return [{
+            'url': 'https://code.jquery.com/jquery-3.3.1.slim.min.js',
+            'sri': 'sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo',
+        }]
+
+You can also return URLs to files from your plugin's ``static/`` directory, if
+you have one:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_js_urls():
+        return [
+            '/-/static-plugins/your-plugin/app.js'
+        ]
+
+Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
+
+.. _plugin_hook_extra_body_script:
+
+extra_body_script(template, database, table, columns, view_name, request, datasette)
+------------------------------------------------------------------------------------
+
+Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
+
+Same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+
+The ``template``, ``database``, ``table`` and ``view_name`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
+
+The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
+
+The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
+
+You can also return an awaitable function that returns a string.
+
+Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
 
 .. _plugin_hook_publish_subcommand:
 

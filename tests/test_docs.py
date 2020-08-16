@@ -68,7 +68,9 @@ def test_plugin_hooks_are_documented(plugin, plugin_hooks_content):
     arg_names = [a for a in hook_caller.spec.argnames if a != "__multicall__"]
     # Check for plugin_name(arg1, arg2, arg3)
     expected = "{}({})".format(plugin, ", ".join(arg_names))
-    assert expected in plugin_hooks_content, "Missing from plugin hook documentation: {}".format(expected)
+    assert (
+        expected in plugin_hooks_content
+    ), "Missing from plugin hook documentation: {}".format(expected)
 
 
 @pytest.fixture(scope="session")

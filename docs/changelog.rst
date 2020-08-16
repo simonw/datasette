@@ -4,6 +4,18 @@
 Changelog
 =========
 
+.. _v0_48:
+
+0.48 (2020-08-16)
+-----------------
+
+- Datasette documentation now lives at `docs.datasette.io <https://docs.datasette.io/>`__.
+- ``db.is_mutable`` property is now documented and tested, see :ref:`internals_database_introspection`.
+- The ``extra_template_vars``, ``extra_css_urls``, ``extra_js_urls`` and ``extra_body_script`` plugin hooks now all accept the same arguments. See :ref:`plugin_hook_extra_template_vars` for details. (`#939 <https://github.com/simonw/datasette/issues/939>`__)
+- Those hooks now accept a new ``columns`` argument detailing the table columns that will be rendered on that page. (`#938 <https://github.com/simonw/datasette/issues/938>`__)
+- Fixed bug where plugins calling ``db.execute_write_fn()`` could hang Datasette if the connection failed. (`#935 <https://github.com/simonw/datasette/issues/935>`__)
+- Fixed bug with the ``?_nl=on`` output option and binary data. (`#914 <https://github.com/simonw/datasette/issues/914>`__)
+
 .. _v0_47_3:
 
 0.47.3 (2020-08-15)

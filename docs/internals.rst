@@ -466,6 +466,8 @@ Here's an example of ``block=True`` in action:
     except Exception as e:
         print("An error occurred:", e)
 
+.. _internals_database_introspection:
+
 Database introspection
 ----------------------
 

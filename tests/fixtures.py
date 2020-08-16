@@ -663,7 +663,8 @@ CREATE VIEW searchable_view_configured_by_metadata AS
     )
 )
 TABLE_PARAMETERIZED_SQL = [
-    ("insert into binary_data (data) values (?);", [b"this is binary data"])
+    ("insert into binary_data (data) values (?);", [b"\x15\x1c\x02\xc7\xad\x05\xfe"]),
+    ("insert into binary_data (data) values (?);", [b"\x15\x1c\x03\xc7\xad\x05\xfe"]),
 ]
 
 EXTRA_DATABASE_SQL = """

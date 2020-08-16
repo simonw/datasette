@@ -84,7 +84,7 @@ def json_renderer(args, data, view_name):
     # Handle _nl option for _shape=array
     nl = args.get("_nl", "")
     if nl and shape == "array":
-        body = "\n".join(json.dumps(item) for item in data)
+        body = "\n".join(json.dumps(item, cls=CustomJSONEncoder) for item in data)
         content_type = "text/plain"
     else:
         body = json.dumps(data, cls=CustomJSONEncoder)

@@ -105,7 +105,7 @@ def test_database_page(app_client):
             "name": "binary_data",
             "columns": ["data"],
             "primary_keys": [],
-            "count": 1,
+            "count": 2,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
@@ -1793,3 +1793,32 @@ def test_null_foreign_keys_are_not_expanded(app_client):
 def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
     response = app_client_immutable_and_inspect_file.get("/fixtures/sortable.json")
     assert response.json["filtered_table_rows_count"] == 100
+
+
+@pytest.mark.parametrize(
+    "path,expected_json,expected_text",
+    [
+        (
+            "/fixtures/binary_data.json?_shape=array",
+            [
+                {"rowid": 1, "data": {"$base64": True, "encoded": "FRwCx60F/g=="}},
+                {"rowid": 2, "data": {"$base64": True, "encoded": "FRwDx60F/g=="}},
+            ],
+            None,
+        ),
+        (
+            "/fixtures/binary_data.json?_shape=array&_nl=on",
+            None,
+            (
+                '{"rowid": 1, "data": {"$base64": true, "encoded": "FRwCx60F/g=="}}\n'
+                '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}'
+            ),
+        ),
+    ],
+)
+def test_binary_data_in_json(app_client, path, expected_json, expected_text):
+    response = app_client.get(path)
+    if expected_json:
+        assert response.json == expected_json
+    else:
+        assert response.text == expected_text

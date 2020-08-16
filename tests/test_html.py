@@ -1134,8 +1134,13 @@ def test_binary_data_display(app_client):
         [
             '<td class="col-Link type-pk"><a href="/fixtures/binary_data/1">1</a></td>',
             '<td class="col-rowid type-int">1</td>',
-            '<td class="col-data type-bytes">&lt;Binary\xa0data:\xa019\xa0bytes&gt;</td>',
-        ]
+            '<td class="col-data type-bytes">&lt;Binary\xa0data:\xa07\xa0bytes&gt;</td>',
+        ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/binary_data/2">2</a></td>',
+            '<td class="col-rowid type-int">2</td>',
+            '<td class="col-data type-bytes">&lt;Binary\xa0data:\xa07\xa0bytes&gt;</td>',
+        ],
     ]
     assert expected_tds == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")

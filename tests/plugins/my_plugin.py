@@ -26,16 +26,30 @@ def prepare_connection(conn, database, datasette):
 
 
 @hookimpl
-def extra_css_urls(template, database, table, datasette):
-    return [
-        "https://plugin-example.com/{}/extra-css-urls-demo.css".format(
-            base64.b64encode(
-                json.dumps(
-                    {"template": template, "database": database, "table": table,}
-                ).encode("utf8")
-            ).decode("utf8")
-        )
-    ]
+def extra_css_urls(template, database, table, view_name, request, datasette):
+    async def inner():
+        return [
+            "https://plugin-example.com/{}/extra-css-urls-demo.css".format(
+                base64.b64encode(
+                    json.dumps(
+                        {
+                            "template": template,
+                            "database": database,
+                            "table": table,
+                            "view_name": view_name,
+                            "request_path": request.path
+                            if request is not None
+                            else None,
+                            "added": (
+                                await datasette.get_database().execute("select 3 * 5")
+                            ).first()[0],
+                        }
+                    ).encode("utf8")
+                ).decode("utf8")
+            )
+        ]
+
+    return inner
 
 
 @hookimpl
@@ -47,19 +61,27 @@ def extra_js_urls():
 
 
 @hookimpl
-def extra_body_script(template, database, table, datasette):
-    return "var extra_body_script = {};".format(
-        json.dumps(
-            {
-                "template": template,
-                "database": database,
-                "table": table,
-                "config": datasette.plugin_config(
-                    "name-of-plugin", database=database, table=table,
-                ),
-            }
+def extra_body_script(template, database, table, view_name, request, datasette):
+    async def inner():
+        return "var extra_body_script = {};".format(
+            json.dumps(
+                {
+                    "template": template,
+                    "database": database,
+                    "table": table,
+                    "config": datasette.plugin_config(
+                        "name-of-plugin", database=database, table=table,
+                    ),
+                    "view_name": view_name,
+                    "request_path": request.path if request is not None else None,
+                    "added": (
+                        await datasette.get_database().execute("select 3 * 5")
+                    ).first()[0],
+                }
+            )
         )
-    )
+
+    return inner
 
 
 @hookimpl

@@ -56,14 +56,38 @@ def test_plugin_prepare_connection_arguments(app_client):
 @pytest.mark.parametrize(
     "path,expected_decoded_object",
     [
-        ("/", {"template": "index.html", "database": None, "table": None}),
+        (
+            "/",
+            {
+                "template": "index.html",
+                "database": None,
+                "table": None,
+                "view_name": "index",
+                "request_path": "/",
+                "added": 15,
+            },
+        ),
         (
             "/fixtures/",
-            {"template": "database.html", "database": "fixtures", "table": None},
+            {
+                "template": "database.html",
+                "database": "fixtures",
+                "table": None,
+                "view_name": "database",
+                "request_path": "/fixtures",
+                "added": 15,
+            },
         ),
         (
             "/fixtures/sortable",
-            {"template": "table.html", "database": "fixtures", "table": "sortable"},
+            {
+                "template": "table.html",
+                "database": "fixtures",
+                "table": "sortable",
+                "view_name": "table",
+                "request_path": "/fixtures/sortable",
+                "added": 15,
+            },
         ),
     ],
 )
@@ -207,6 +231,9 @@ def test_plugin_config_file(app_client):
                 "database": None,
                 "table": None,
                 "config": {"depth": "root"},
+                "view_name": "index",
+                "request_path": "/",
+                "added": 15,
             },
         ),
         (
@@ -216,6 +243,9 @@ def test_plugin_config_file(app_client):
                 "database": "fixtures",
                 "table": None,
                 "config": {"depth": "database"},
+                "view_name": "database",
+                "request_path": "/fixtures",
+                "added": 15,
             },
         ),
         (
@@ -225,6 +255,9 @@ def test_plugin_config_file(app_client):
                 "database": "fixtures",
                 "table": "sortable",
                 "config": {"depth": "table"},
+                "view_name": "table",
+                "request_path": "/fixtures/sortable",
+                "added": 15,
             },
         ),
     ],

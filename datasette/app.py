@@ -709,14 +709,19 @@ class Datasette:
             template = self.jinja_env.select_template(templates)
         body_scripts = []
         # pylint: disable=no-member
-        for script in pm.hook.extra_body_script(
+        for extra_script in pm.hook.extra_body_script(
             template=template.name,
             database=context.get("database"),
             table=context.get("table"),
             view_name=view_name,
+            request=request,
             datasette=self,
         ):
-            body_scripts.append(Markup(script))
+            if callable(extra_script):
+                extra_script = extra_script()
+            if asyncio.iscoroutine(extra_script):
+                extra_script = await extra_script
+            body_scripts.append(Markup(extra_script))
 
         extra_template_vars = {}
         # pylint: disable=no-member
@@ -748,8 +753,12 @@ class Datasette:
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,
                 "show_messages": lambda: self._show_messages(request),
-                "extra_css_urls": self._asset_urls("extra_css_urls", template, context),
-                "extra_js_urls": self._asset_urls("extra_js_urls", template, context),
+                "extra_css_urls": await self._asset_urls(
+                    "extra_css_urls", template, context, request, view_name
+                ),
+                "extra_js_urls": await self._asset_urls(
+                    "extra_js_urls", template, context, request, view_name
+                ),
                 "base_url": self.config("base_url"),
                 "csrftoken": request.scope["csrftoken"] if request else lambda: "",
             },
@@ -762,20 +771,26 @@ class Datasette:
 
         return await template.render_async(template_context)
 
-    def _asset_urls(self, key, template, context):
+    async def _asset_urls(self, key, template, context, request, view_name):
         # Flatten list-of-lists from plugins:
         seen_urls = set()
-        for url_or_dict in itertools.chain(
-            itertools.chain.from_iterable(
-                getattr(pm.hook, key)(
-                    template=template.name,
-                    database=context.get("database"),
-                    table=context.get("table"),
-                    datasette=self,
-                )
-            ),
-            (self.metadata(key) or []),
+        collected = []
+        for hook in getattr(pm.hook, key)(
+            template=template.name,
+            database=context.get("database"),
+            table=context.get("table"),
+            datasette=self,
+            view_name=view_name,
+            request=request,
         ):
+            if callable(hook):
+                hook = hook()
+            if asyncio.iscoroutine(hook):
+                hook = await hook
+            collected.extend(hook)
+        collected.extend(self.metadata(key) or [])
+        output = []
+        for url_or_dict in collected:
             if isinstance(url_or_dict, dict):
                 url = url_or_dict["url"]
                 sri = url_or_dict.get("sri")
@@ -786,9 +801,10 @@ class Datasette:
                 continue
             seen_urls.add(url)
             if sri:
-                yield {"url": url, "sri": sri}
+                output.append({"url": url, "sri": sri})
             else:
-                yield {"url": url}
+                output.append({"url": url})
+        return output
 
     def app(self):
         "Returns an ASGI app function that serves the whole of Datasette"

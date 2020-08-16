@@ -82,17 +82,23 @@ You can now use this filter in your custom templates like so::
 
 .. _plugin_hook_extra_css_urls:
 
-extra_css_urls(template, database, table, datasette)
-----------------------------------------------------
+extra_css_urls(template, database, table, view_name, request, datasette)
+------------------------------------------------------------------------
 
 ``template`` - string
     The template that is being rendered, e.g. ``database.html``
 
 ``database`` - string or None
-    The name of the database
+    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
 
 ``table`` - string or None
-    The name of the table
+    The name of the table, or ``None`` if the page does not correct to a table
+
+``view_name`` - string
+    The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
+
+``request`` - object or None
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
@@ -126,17 +132,32 @@ Or a list of dictionaries defining both a URL and an
             'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
         }]
 
+This function can also return an awaitable function, useful if it needs to run any async code:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_css_urls(datasette):
+        async def inner():
+            db = datasette.get_database()
+            results = await db.execute("select url from css_files")
+            return [r[0] for r in results]
+
+        return inner
+
 Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
 
 .. _plugin_hook_extra_js_urls:
 
-extra_js_urls(template, database, table, datasette)
----------------------------------------------------
+extra_js_urls(template, database, table, view_name, request, datasette)
+-----------------------------------------------------------------------
 
 Same arguments as ``extra_css_urls``.
 
 This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
-return either a list of URLs or a list of dictionaries:
+return a list of URLs, a list of dictionaries or an awaitable function that returns those things:
 
 .. code-block:: python
 
@@ -163,6 +184,120 @@ you have one:
         ]
 
 Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
+
+.. _plugin_hook_extra_body_script:
+
+extra_body_script(template, database, table, view_name, request, datasette)
+---------------------------------------------------------------------------
+
+Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
+
+``template`` - string
+    The template that is being rendered, e.g. ``database.html``
+
+``database`` - string or None
+    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
+
+``table`` - string or None
+    The name of the table, or ``None`` if the page does not correct to a table
+
+``view_name`` - string
+    The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
+
+``request`` - object or None
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+The ``template``, ``database``, ``table`` and ``view_name`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
+
+The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
+
+The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
+
+You can also return an awaitable function that returns a string.
+
+Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
+
+.. _plugin_hook_extra_template_vars:
+
+extra_template_vars(template, database, table, view_name, request, datasette)
+-----------------------------------------------------------------------------
+
+Extra template variables that should be made available in the rendered template context.
+
+``template`` - string
+    The template that is being rendered, e.g. ``database.html``
+
+``database`` - string or None
+    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
+
+``table`` - string or None
+    The name of the table, or ``None`` if the page does not correct to a table
+
+``view_name`` - string
+    The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
+
+``request`` - object or None
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+This hook can return one of three different types:
+
+Dictionary
+    If you return a dictionary its keys and values will be merged into the template context.
+
+Function that returns a dictionary
+    If you return a function it will be executed. If it returns a dictionary those values will will be merged into the template context.
+
+Function that returns an awaitable function that returns a dictionary
+    You can also return a function which returns an awaitable function which returns a dictionary.
+
+Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
+
+Here's an example plugin that adds a ``"user_agent"`` variable to the template context containing the current request's User-Agent header:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_template_vars(request):
+        return {
+            "user_agent": request.headers.get("user-agent")
+        }
+
+This example returns an awaitable function which adds a list of ``hidden_table_names`` to the context:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_template_vars(datasette, database):
+        async def hidden_table_names():
+            if database:
+                db = datasette.databases[database]
+                return {"hidden_table_names": await db.hidden_table_names()}
+            else:
+                return {}
+        return hidden_table_names
+
+And here's an example which adds a ``sql_first(sql_query)`` function which executes a SQL statement and returns the first column of the first row of results:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_template_vars(datasette, database):
+        async def sql_first(sql, dbname=None):
+            dbname = dbname or database or next(iter(datasette.databases.keys()))
+            return (await datasette.execute(dbname, sql)).rows[0][0]
+        return {"sql_first": sql_first}
+
+You can then use the new function in a template like so::
+
+    SQLite version: {{ sql_first("select sqlite_version()") }}
+
+Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`_
 
 .. _plugin_hook_publish_subcommand:
 
@@ -292,115 +427,6 @@ If the value matches that pattern, the plugin returns an HTML link element:
         ))
 
 Examples: `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`_, `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`_
-
-.. _plugin_hook_extra_body_script:
-
-extra_body_script(template, database, table, view_name, datasette)
-------------------------------------------------------------------
-
-Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
-
-``template`` - string
-    The template that is being rendered, e.g. ``database.html``
-
-``database`` - string or None
-    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
-
-``table`` - string or None
-    The name of the table, or ``None`` if the page does not correct to a table
-
-``view_name`` - string
-    The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
-
-The ``template``, ``database`` and ``table`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
-
-The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
-
-The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
-
-Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
-
-.. _plugin_hook_extra_template_vars:
-
-extra_template_vars(template, database, table, view_name, request, datasette)
------------------------------------------------------------------------------
-
-Extra template variables that should be made available in the rendered template context.
-
-``template`` - string
-    The template that is being rendered, e.g. ``database.html``
-
-``database`` - string or None
-    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
-
-``table`` - string or None
-    The name of the table, or ``None`` if the page does not correct to a table
-
-``view_name`` - string
-    The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
-
-``request`` - object
-    The current HTTP :ref:`internals_request`.
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
-
-This hook can return one of three different types:
-
-Dictionary
-    If you return a dictionary its keys and values will be merged into the template context.
-
-Function that returns a dictionary
-    If you return a function it will be executed. If it returns a dictionary those values will will be merged into the template context.
-
-Function that returns an awaitable function that returns a dictionary
-    You can also return a function which returns an awaitable function which returns a dictionary.
-
-Datasette runs Jinja2 in `async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__, which means you can add awaitable functions to the template scope and they will be automatically awaited when they are rendered by the template.
-
-Here's an example plugin that adds a ``"user_agent"`` variable to the template context containing the current request's User-Agent header:
-
-.. code-block:: python
-
-    @hookimpl
-    def extra_template_vars(request):
-        return {
-            "user_agent": request.headers.get("user-agent")
-        }
-
-This example returns an awaitable function which adds a list of ``hidden_table_names`` to the context:
-
-.. code-block:: python
-
-    @hookimpl
-    def extra_template_vars(datasette, database):
-        async def hidden_table_names():
-            if database:
-                db = datasette.databases[database]
-                return {"hidden_table_names": await db.hidden_table_names()}
-            else:
-                return {}
-        return hidden_table_names
-
-And here's an example which adds a ``sql_first(sql_query)`` function which executes a SQL statement and returns the first column of the first row of results:
-
-.. code-block:: python
-
-    @hookimpl
-    def extra_template_vars(datasette, database):
-        async def sql_first(sql, dbname=None):
-            dbname = dbname or database or next(iter(datasette.databases.keys()))
-            return (await datasette.execute(dbname, sql)).rows[0][0]
-        return {"sql_first": sql_first}
-
-You can then use the new function in a template like so::
-
-    SQLite version: {{ sql_first("select sqlite_version()") }}
-
-Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`_
 
 .. _plugin_register_output_renderer:
 

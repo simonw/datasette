@@ -26,17 +26,17 @@ def prepare_jinja2_environment(env):
 
 
 @hookspec
-def extra_css_urls(template, database, table, datasette):
+def extra_css_urls(template, database, table, view_name, request, datasette):
     "Extra CSS URLs added by this plugin"
 
 
 @hookspec
-def extra_js_urls(template, database, table, datasette):
+def extra_js_urls(template, database, table, view_name, request, datasette):
     "Extra JavaScript URLs added by this plugin"
 
 
 @hookspec
-def extra_body_script(template, database, table, view_name, datasette):
+def extra_body_script(template, database, table, view_name, request, datasette):
     "Extra JavaScript code to be included in <script> at bottom of body"
 
 

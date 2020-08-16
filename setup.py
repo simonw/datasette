@@ -38,7 +38,7 @@ setup(
         "Live demo": "https://latest.datasette.io/",
         "Source code": "https://github.com/simonw/datasette",
         "Issues": "https://github.com/simonw/datasette/issues",
-        "CI": "https://travis-ci.org/simonw/datasette",
+        "CI": "https://github.com/simonw/datasette/actions?query=workflow%3ATest",
     },
     packages=find_packages(exclude=("tests",)),
     package_data={"datasette": ["templates/*.html"]},

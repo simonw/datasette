@@ -3,7 +3,6 @@
 .eggs
 .gitignore
 .ipynb_checkpoints
-.travis.yml
 build
 *.spec
 *.egg-info

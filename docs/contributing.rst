@@ -126,7 +126,7 @@ Now browse to ``http://localhost:8000/`` to view the documentation. Any edits yo
 Release process
 ---------------
 
-Datasette releases are performed using tags. When a new version tag is pushed to GitHub, a `Travis CI task <https://github.com/simonw/datasette/blob/master/.travis.yml>`__ will perform the following:
+Datasette releases are performed using tags. When a new release is published on GitHub, a `GitHub Action workflow <https://github.com/simonw/datasette/blob/main/.github/workflows/deploy-latest.yml>`__ will perform the following:
 
 * Run the unit tests against all supported Python versions. If the tests pass...
 * Build a Docker image of the release and push a tag to https://hub.docker.com/r/datasetteproject/datasette

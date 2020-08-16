@@ -29,7 +29,7 @@ at_memory_re = re.compile(r" at 0x\w+")
 )
 def test_plugin_hooks_have_tests(plugin_hook):
     "Every plugin hook should be referenced in this test module"
-    tests_in_this_module = [t for t in globals().keys() if t.startswith("test_")]
+    tests_in_this_module = [t for t in globals().keys() if t.startswith("test_hook_")]
     ok = False
     for test in tests_in_this_module:
         if plugin_hook in test:
@@ -37,14 +37,14 @@ def test_plugin_hooks_have_tests(plugin_hook):
     assert ok, "Plugin hook is missing tests: {}".format(plugin_hook)
 
 
-def test_plugins_dir_plugin_prepare_connection(app_client):
+def test_hook_plugins_dir_plugin_prepare_connection(app_client):
     response = app_client.get(
         "/fixtures.json?sql=select+convert_units(100%2C+'m'%2C+'ft')"
     )
     assert pytest.approx(328.0839) == response.json["rows"][0][0]
 
 
-def test_plugin_prepare_connection_arguments(app_client):
+def test_hook_plugin_prepare_connection_arguments(app_client):
     response = app_client.get(
         "/fixtures.json?sql=select+prepare_connection_args()&_shape=arrayfirst"
     )
@@ -91,7 +91,7 @@ def test_plugin_prepare_connection_arguments(app_client):
         ),
     ],
 )
-def test_plugin_extra_css_urls(app_client, path, expected_decoded_object):
+def test_hook_extra_css_urls(app_client, path, expected_decoded_object):
     response = app_client.get(path)
     links = Soup(response.body, "html.parser").findAll("link")
     special_href = [
@@ -104,7 +104,7 @@ def test_plugin_extra_css_urls(app_client, path, expected_decoded_object):
     )
 
 
-def test_plugin_extra_js_urls(app_client):
+def test_hook_extra_js_urls(app_client):
     response = app_client.get("/")
     scripts = Soup(response.body, "html.parser").findAll("script")
     assert [
@@ -145,7 +145,7 @@ def test_plugins_with_duplicate_js_urls(app_client):
     )
 
 
-def test_plugins_render_cell_link_from_json(app_client):
+def test_hook_render_cell_link_from_json(app_client):
     sql = """
         select '{"href": "http://example.com/", "label":"Example"}'
     """.strip()
@@ -159,7 +159,7 @@ def test_plugins_render_cell_link_from_json(app_client):
     assert a.text == "Example"
 
 
-def test_plugins_render_cell_demo(app_client):
+def test_hook_render_cell_demo(app_client):
     response = app_client.get("/fixtures/simple_primary_key?id=4")
     soup = Soup(response.body, "html.parser")
     td = soup.find("td", {"class": "col-content"})
@@ -262,19 +262,19 @@ def test_plugin_config_file(app_client):
         ),
     ],
 )
-def test_plugins_extra_body_script(app_client, path, expected_extra_body_script):
+def test_hook__extra_body_script(app_client, path, expected_extra_body_script):
     r = re.compile(r"<script>var extra_body_script = (.*?);</script>")
     json_data = r.search(app_client.get(path).text).group(1)
     actual_data = json.loads(json_data)
     assert expected_extra_body_script == actual_data
 
 
-def test_plugins_asgi_wrapper(app_client):
+def test_hook_asgi_wrapper(app_client):
     response = app_client.get("/fixtures")
     assert "fixtures" == response.headers["x-databases"]
 
 
-def test_plugins_extra_template_vars(restore_working_directory):
+def test_hook_extra_template_vars(restore_working_directory):
     with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
     ) as client:
@@ -380,13 +380,13 @@ def test_view_names(view_names_client, path, view_name):
     assert "view_name:{}".format(view_name) == response.text
 
 
-def test_register_output_renderer_no_parameters(app_client):
+def test_hook_register_output_renderer_no_parameters(app_client):
     response = app_client.get("/fixtures/facetable.testnone")
     assert 200 == response.status
     assert b"Hello" == response.body
 
 
-def test_register_output_renderer_all_parameters(app_client):
+def test_hook_register_output_renderer_all_parameters(app_client):
     response = app_client.get("/fixtures/facetable.testall")
     assert 200 == response.status
     # Lots of 'at 0x103a4a690' in here - replace those so we can do
@@ -436,19 +436,19 @@ def test_register_output_renderer_all_parameters(app_client):
     assert "pragma_cache_size" == json.loads(query_response.body)["query_name"]
 
 
-def test_register_output_renderer_custom_status_code(app_client):
+def test_hook_register_output_renderer_custom_status_code(app_client):
     response = app_client.get("/fixtures/pragma_cache_size.testall?status_code=202")
     assert 202 == response.status
 
 
-def test_register_output_renderer_custom_content_type(app_client):
+def test_hook_register_output_renderer_custom_content_type(app_client):
     response = app_client.get(
         "/fixtures/pragma_cache_size.testall?content_type=text/blah"
     )
     assert "text/blah" == response.headers["content-type"]
 
 
-def test_register_output_renderer_custom_headers(app_client):
+def test_hook_register_output_renderer_custom_headers(app_client):
     response = app_client.get(
         "/fixtures/pragma_cache_size.testall?header=x-wow:1&header=x-gosh:2"
     )
@@ -456,7 +456,7 @@ def test_register_output_renderer_custom_headers(app_client):
     assert "2" == response.headers["x-gosh"]
 
 
-def test_register_output_renderer_can_render(app_client):
+def test_hook_register_output_renderer_can_render(app_client):
     response = app_client.get("/fixtures/facetable?_no_can_render=1")
     assert response.status == 200
     links = (
@@ -492,7 +492,7 @@ def test_register_output_renderer_can_render(app_client):
 
 
 @pytest.mark.asyncio
-async def test_prepare_jinja2_environment(app_client):
+async def test_hook_prepare_jinja2_environment(app_client):
     template = app_client.ds.jinja_env.from_string(
         "Hello there, {{ a|format_numeric }}", {"a": 3412341}
     )
@@ -500,7 +500,7 @@ async def test_prepare_jinja2_environment(app_client):
     assert "Hello there, 3,412,341" == rendered
 
 
-def test_publish_subcommand():
+def test_hook_publish_subcommand():
     # This is hard to test properly, because publish subcommand plugins
     # cannot be loaded using the --plugins-dir mechanism - they need
     # to be installed using "pip install". So I'm cheating and taking
@@ -509,7 +509,7 @@ def test_publish_subcommand():
     assert ["cloudrun", "heroku"] == cli.publish.list_commands({})
 
 
-def test_register_facet_classes(app_client):
+def test_hook_register_facet_classes(app_client):
     response = app_client.get(
         "/fixtures/compound_three_primary_keys.json?_dummy_facet=1"
     )
@@ -549,7 +549,7 @@ def test_register_facet_classes(app_client):
     ] == response.json["suggested_facets"]
 
 
-def test_actor_from_request(app_client):
+def test_hook_actor_from_request(app_client):
     app_client.get("/")
     # Should have no actor
     assert None == app_client.ds._last_request.scope["actor"]
@@ -558,7 +558,7 @@ def test_actor_from_request(app_client):
     assert {"id": "bot"} == app_client.ds._last_request.scope["actor"]
 
 
-def test_actor_from_request_async(app_client):
+def test_hook_actor_from_request_async(app_client):
     app_client.get("/")
     # Should have no actor
     assert None == app_client.ds._last_request.scope["actor"]
@@ -583,7 +583,7 @@ def test_existing_scope_actor_respected(app_client):
         ("no_match", None),
     ],
 )
-async def test_permission_allowed(app_client, action, expected):
+async def test_hook_permission_allowed(app_client, action, expected):
     actual = await app_client.ds.permission_allowed(
         {"id": "actor"}, action, default=None
     )
@@ -605,20 +605,20 @@ def test_actor_json(app_client):
         ("/not-async/", "This was not async"),
     ],
 )
-def test_register_routes(app_client, path, body):
+def test_hook_register_routes(app_client, path, body):
     response = app_client.get(path)
     assert 200 == response.status
     assert body == response.text
 
 
-def test_register_routes_post(app_client):
+def test_hook_register_routes_post(app_client):
     response = app_client.post("/post/", {"this is": "post data"}, csrftoken_from=True)
     assert 200 == response.status
     assert "csrftoken" in response.json
     assert "post data" == response.json["this is"]
 
 
-def test_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
+def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
     templates = tmpdir_factory.mktemp("templates")
     (templates / "csrftoken_form.html").write_text(
         "CSRFTOKEN: {{ csrftoken() }}", "utf-8"
@@ -629,13 +629,13 @@ def test_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
         assert "CSRFTOKEN: {}".format(expected_token) == response.text
 
 
-def test_register_routes_asgi(app_client):
+def test_hook_register_routes_asgi(app_client):
     response = app_client.get("/three/")
     assert {"hello": "world"} == response.json
     assert "1" == response.headers["x-three"]
 
 
-def test_register_routes_add_message(app_client):
+def test_hook_register_routes_add_message(app_client):
     response = app_client.get("/add-message/")
     assert 200 == response.status
     assert "Added message" == response.text
@@ -643,7 +643,7 @@ def test_register_routes_add_message(app_client):
     assert [["Hello from messages", 1]] == decoded
 
 
-def test_register_routes_render_message(restore_working_directory, tmpdir_factory):
+def test_hook_register_routes_render_message(restore_working_directory, tmpdir_factory):
     templates = tmpdir_factory.mktemp("templates")
     (templates / "render_message.html").write_text('{% extends "base.html" %}', "utf-8")
     with make_app_client(template_dir=templates) as client:
@@ -654,13 +654,13 @@ def test_register_routes_render_message(restore_working_directory, tmpdir_factor
 
 
 @pytest.mark.asyncio
-async def test_startup(app_client):
+async def test_hook_startup(app_client):
     await app_client.ds.invoke_startup()
     assert app_client.ds._startup_hook_fired
     assert 2 == app_client.ds._startup_hook_calculation
 
 
-def test_canned_queries(app_client):
+def test_hook_canned_queries(app_client):
     queries = app_client.get("/fixtures.json").json["queries"]
     queries_by_name = {q["name"]: q for q in queries}
     assert {
@@ -675,23 +675,23 @@ def test_canned_queries(app_client):
     } == queries_by_name["from_hook"]
 
 
-def test_canned_queries_non_async(app_client):
+def test_hook_canned_queries_non_async(app_client):
     response = app_client.get("/fixtures/from_hook.json?_shape=array")
     assert [{"1": 1, "actor_id": "null"}] == response.json
 
 
-def test_canned_queries_async(app_client):
+def test_hook_canned_queries_async(app_client):
     response = app_client.get("/fixtures/from_async_hook.json?_shape=array")
     assert [{"2": 2}] == response.json
 
 
-def test_canned_queries_actor(app_client):
+def test_hook_canned_queries_actor(app_client):
     assert [{"1": 1, "actor_id": "bot"}] == app_client.get(
         "/fixtures/from_hook.json?_bot=1&_shape=array"
     ).json
 
 
-def test_register_magic_parameters(restore_working_directory):
+def test_hook_register_magic_parameters(restore_working_directory):
     with make_app_client(
         extra_databases={"data.db": "create table logs (line text)"},
         metadata={
@@ -719,7 +719,7 @@ def test_register_magic_parameters(restore_working_directory):
         assert 4 == new_uuid.count("-")
 
 
-def test_forbidden(restore_working_directory):
+def test_hook_forbidden(restore_working_directory):
     with make_app_client(
         extra_databases={"data2.db": "create table logs (line text)"},
         metadata={"allow": {}},

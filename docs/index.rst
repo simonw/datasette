@@ -10,8 +10,8 @@ datasette|
    :target: https://docs.datasette.io/en/stable/changelog.html
 .. |Python 3.x| image:: https://img.shields.io/pypi/pyversions/datasette.svg?logo=python&logoColor=white
    :target: https://pypi.org/project/datasette/
-.. |Travis CI| image:: https://travis-ci.org/simonw/datasette.svg?branch=main
-   :target: https://travis-ci.org/simonw/datasette
+.. |Tests| image:: https://github.com/simonw/datasette/workflows/Test/badge.svg
+   :target: https://github.com/simonw/datasette/actions?query=workflow%3ATest
 .. |License| image:: https://img.shields.io/badge/license-Apache%202.0-blue.svg
    :target: https://github.com/simonw/datasette/blob/main/LICENSE
 .. |docker: datasette| image:: https://img.shields.io/badge/docker-datasette-blue

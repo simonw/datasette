@@ -170,7 +170,7 @@ def temporary_heroku_directory(
         if metadata_content:
             open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
 
-        open("runtime.txt", "w").write("python-3.8.3")
+        open("runtime.txt", "w").write("python-3.8.5")
 
         if branch:
             install = [

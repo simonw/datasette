@@ -43,7 +43,15 @@ You can uninstall plugins with ``datasette uninstall``::
 
     datasette uninstall datasette-vega
 
-These ommands are thin wrappers around ``pip install`` and ``pip uninstall``, which ensure they run ``pip`` in the same virtual environment as Datasette itself.
+You can upgrade plugins with ``datasette install --upgrade`` or ``datasette install -U``::
+
+    datasette install -U datasette-vega
+
+This command can also be used to upgrade Datasette itself to the latest released version::
+
+    datasette install -U datasette
+
+These commands are thin wrappers around ``pip install`` and ``pip uninstall``, which ensure they run ``pip`` in the same virtual environment as Datasette itself.
 
 One-off plugins using --plugins-dir
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

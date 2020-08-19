@@ -235,9 +235,16 @@ def package(
 
 @cli.command()
 @click.argument("packages", nargs=-1, required=True)
-def install(packages):
+@click.option(
+    "-U", "--upgrade", is_flag=True, help="Upgrade packages to latest version"
+)
+def install(packages, upgrade):
     "Install Python packages - e.g. Datasette plugins - into the same environment as Datasette"
-    sys.argv = ["pip", "install"] + list(packages)
+    args = ["pip", "install"]
+    if upgrade:
+        args += ["--upgrade"]
+    args += list(packages)
+    sys.argv = args
     run_module("pip", run_name="__main__")
 
 

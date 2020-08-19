@@ -125,6 +125,15 @@ def test_install(run_module):
     ]
 
 
+@pytest.mark.parametrize("flag", ["-U", "--upgrade"])
+@mock.patch("datasette.cli.run_module")
+def test_install_upgrade(run_module, flag):
+    runner = CliRunner()
+    runner.invoke(cli, ["install", flag, "datasette"])
+    run_module.assert_called_once_with("pip", run_name="__main__")
+    assert sys.argv == ["pip", "install", "--upgrade", "datasette"]
+
+
 @mock.patch("datasette.cli.run_module")
 def test_uninstall(run_module):
     runner = CliRunner()

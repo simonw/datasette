@@ -1,7 +1,7 @@
 Datasette
 =========
 
-|PyPI| |Changelog| |Python 3.x| |Travis CI| |License| |docker:
+|PyPI| |Changelog| |Python 3.x| |Tests| |License| |docker:
 datasette|
 
 .. |PyPI| image:: https://img.shields.io/pypi/v/datasette.svg

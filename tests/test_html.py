@@ -559,6 +559,7 @@ def test_table_csv_json_export_interface(app_client):
         "simple_primary_key.json?id__gt=2",
         "simple_primary_key.testall?id__gt=2",
         "simple_primary_key.testnone?id__gt=2",
+        "simple_primary_key.testresponse?id__gt=2",
         "simple_primary_key.csv?id__gt=2&_size=max",
         "#export",
     ]
@@ -597,6 +598,7 @@ def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
         "facetable.json?_labels=on",
         "facetable.testall?_labels=on",
         "facetable.testnone?_labels=on",
+        "facetable.testresponse?_labels=on",
         "facetable.csv?_labels=on&_size=max",
         "#export",
     ]

@@ -479,6 +479,18 @@ def test_hook_register_output_renderer_custom_headers(app_client):
     assert "2" == response.headers["x-gosh"]
 
 
+def test_hook_register_output_renderer_returning_response(app_client):
+    response = app_client.get("/fixtures/facetable.testresponse")
+    assert 200 == response.status
+    assert response.json == {"this_is": "json"}
+
+
+def test_hook_register_output_renderer_returning_broken_value(app_client):
+    response = app_client.get("/fixtures/facetable.testresponse?_broken=1")
+    assert 500 == response.status
+    assert "this should break should be dict or Response" in response.text
+
+
 def test_hook_register_output_renderer_can_render(app_client):
     response = app_client.get("/fixtures/facetable?_no_can_render=1")
     assert response.status == 200

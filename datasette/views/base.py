@@ -455,13 +455,17 @@ class DataView(BaseView):
                 result = await result
             if result is None:
                 raise NotFound("No data")
-
-            r = Response(
-                body=result.get("body"),
-                status=result.get("status_code", 200),
-                content_type=result.get("content_type", "text/plain"),
-                headers=result.get("headers"),
-            )
+            if isinstance(result, dict):
+                r = Response(
+                    body=result.get("body"),
+                    status=result.get("status_code", 200),
+                    content_type=result.get("content_type", "text/plain"),
+                    headers=result.get("headers"),
+                )
+            elif isinstance(result, Response):
+                r = result
+            else:
+                assert False, "{} should be dict or Response".format(result)
         else:
             extras = {}
             if callable(extra_template_data):

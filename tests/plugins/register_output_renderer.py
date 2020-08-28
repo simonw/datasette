@@ -1,4 +1,5 @@
 from datasette import hookimpl
+from datasette.utils.asgi import Response
 import json
 
 
@@ -56,6 +57,12 @@ def render_test_no_parameters():
     return {"body": "Hello"}
 
 
+async def render_response(request):
+    if request.args.get("_broken"):
+        return "this should break"
+    return Response.json({"this_is": "json"})
+
+
 @hookimpl
 def register_output_renderer(datasette):
     return [
@@ -65,4 +72,5 @@ def register_output_renderer(datasette):
             "can_render": can_render,
         },
         {"extension": "testnone", "callback": render_test_no_parameters},
+        {"extension": "testresponse", "render": render_response},
     ]

@@ -455,7 +455,9 @@ When a request is received, the ``"render"`` callback function is called with ze
 ``view_name`` - string
     The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
 
-The callback function can return ``None``, if it is unable to render the data, or a dictionary with the following keys:
+The callback function can return ``None``, if it is unable to render the data, or a :ref:`internals_response` that will be returned to the caller.
+
+It can also return a dictionary with the following keys. This format is **deprecated** as-of Datasette 0.49 and will be removed by Datasette 1.0.
 
 ``body`` - string or bytes, optional
     The response body, default empty
@@ -474,9 +476,7 @@ A simple example of an output renderer callback function:
 .. code-block:: python
 
     def render_demo():
-        return {
-            "body": "Hello World"
-        }
+        return Response.text("Hello World")
 
 Here is a more complex example:
 
@@ -490,11 +490,11 @@ Here is a more complex example:
         lines.append("=" * len(first_row))
         for row in rows:
             lines.append(" | ".join(row))
-        return {
-            "body": "\n".join(lines),
-            "content_type": "text/plain; charset=utf-8",
-            "headers": {"x-sqlite-version": result.first()[0]},
-        }
+        return Response(
+            "\n".join(lines),
+            content_type="text/plain; charset=utf-8",
+            headers={"x-sqlite-version": result.first()[0]}
+        )
 
 And here is an example ``can_render`` function which returns ``True`` only if the query results contain the columns ``atom_id``, ``atom_title`` and ``atom_updated``:
 

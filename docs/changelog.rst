@@ -4,6 +4,17 @@
 Changelog
 =========
 
+.. _v0_49a0:
+
+0.49a0 (2020-08-28)
+-------------------
+
+.. warning:: This is an **alpha** release. See :ref:`contributing_alpha_beta`.
+
+- ``register_output_renderer()`` render functions can now return a ``Response``. (`#953 <https://github.com/simonw/datasette/issues/953>`__)
+- New ``--upgrade`` option for ``datasette install``. (`#945 <https://github.com/simonw/datasette/issues/945>`__)
+- ``datasette publish heroku`` now deploys using Python 3.8.5
+
 .. _v0_48:
 
 0.48 (2020-08-16)

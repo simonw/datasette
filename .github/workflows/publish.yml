@@ -58,6 +58,8 @@ jobs:
   deploy_docker:
     runs-on: ubuntu-latest
     needs: [deploy]
+    if: |
+      !(contains(github.ref, "a") || contains(github.ref, "b"))
     steps:
     - uses: actions/checkout@v2
     - name: Build and push to Docker Hub

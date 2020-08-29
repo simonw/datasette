@@ -69,6 +69,6 @@ jobs:
       run: |-
          docker login -u $DOCKER_USER -p $DOCKER_PASS 
          export REPO=datasetteproject/datasette 
-         docker build -f Dockerfile -t $REPO::${GITHUB_REF#refs/tags/} . 
-         docker tag $REPO::${GITHUB_REF#refs/tags/} $REPO:latest
+         docker build -f Dockerfile -t $REPO:${GITHUB_REF#refs/tags/} . 
+         docker tag $REPO:${GITHUB_REF#refs/tags/} $REPO:latest
          docker push $REPO 

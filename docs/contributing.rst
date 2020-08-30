@@ -192,3 +192,28 @@ Alpha and beta releases are published to preview upcoming features that may not 
 You are welcome to try these out, but please be aware that details may change before the final release.
 
 Please join `discussions on the issue tracker <https://github.com/simonw/datasette/issues>`__ to share your thoughts and experiences with on alpha and beta features that you try out.
+
+.. _contributing_upgrading_codemirror:
+
+Upgrading CodeMirror
+--------------------
+
+Datasette bundles `CodeMirror <https://codemirror.net/>`__ for the SQL editing interface, e.g. on `this page <https://latest.datasette.io/fixtures>`__. Here are the steps for upgrading to a new version of CodeMirror:
+
+* Download and extract latest CodeMirror zip file from https://codemirror.net/codemirror.zip
+* Rename ``lib/codemirror.js`` to ``codemirror-5.57.0.js`` (using latest version number)
+* Rename ``lib/codemirror.css`` to ``codemirror-5.57.0.css``
+* Rename ``mode/sql/sql.js`` to ``codemirror-5.57.0-sql.js``
+* Edit both JavaScript files to make the top license comment a ``/* */`` block instead of multiple ``//`` lines
+* Minify the JavaScript files like this::
+
+       npx uglify-js codemirror-5.57.0.js -o codemirror-5.57.0.min.js --comments '/LICENSE/'
+       npx uglify-js codemirror-5.57.0-sql.js -o codemirror-5.57.0-sql.min.js --comments '/LICENSE/'
+
+* Check that the LICENSE comment did indeed survive minification
+* Minify the CSS file like this::
+
+       npx clean-css-cli codemirror-5.57.0.css -o codemirror-5.57.0.min.css
+
+* Edit the ``_codemirror.html`` template to reference the new files
+* ``git rm`` the old files, ``git add`` the new files

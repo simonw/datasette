@@ -12,6 +12,7 @@ from datasette import __version__
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette.utils import (
+    await_me_maybe,
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
@@ -492,8 +493,7 @@ class DataView(BaseView):
                     request=request,
                     view_name=self.name,
                 )
-                if asyncio.iscoroutine(it_can_render):
-                    it_can_render = await it_can_render
+                it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:
                     renderers[key] = path_with_format(
                         request, key, {**url_labels_extra}

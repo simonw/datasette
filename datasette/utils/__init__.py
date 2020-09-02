@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import contextmanager
 from collections import OrderedDict
 import base64
@@ -49,6 +50,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
 """
+
+
+async def await_me_maybe(value):
+    if callable(value):
+        value = value()
+    if asyncio.iscoroutine(value):
+        value = await value
+    return value
 
 
 def urlsafe_components(token):

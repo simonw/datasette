@@ -65,7 +65,10 @@ class BaseView:
 
     async def check_permission(self, request, action, resource=None):
         ok = await self.ds.permission_allowed(
-            request.actor, action, resource=resource, default=True,
+            request.actor,
+            action,
+            resource=resource,
+            default=True,
         )
         if not ok:
             raise Forbidden(action)
@@ -85,7 +88,10 @@ class BaseView:
                     repr(permission)
                 )
             ok = await self.ds.permission_allowed(
-                request.actor, action, resource=resource, default=None,
+                request.actor,
+                action,
+                resource=resource,
+                default=None,
             )
             if ok is not None:
                 if ok:
@@ -343,10 +349,10 @@ class DataView(BaseView):
         return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
     async def get_format(self, request, database, args):
-        """ Determine the format of the response from the request, from URL
-            parameters or from a file extension.
+        """Determine the format of the response from the request, from URL
+        parameters or from a file extension.
 
-            `args` is a dict of the path components parsed from the URL by the router.
+        `args` is a dict of the path components parsed from the URL by the router.
         """
         # If ?_format= is provided, use that as the format
         _format = request.args.get("_format", None)

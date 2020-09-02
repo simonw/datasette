@@ -737,7 +737,9 @@ def test_hook_register_magic_parameters(restore_working_directory):
                             "sql": "insert into logs (line) values (:_request_http_version)",
                             "write": True,
                         },
-                        "get_uuid": {"sql": "select :_uuid_new",},
+                        "get_uuid": {
+                            "sql": "select :_uuid_new",
+                        },
                     }
                 }
             }

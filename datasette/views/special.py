@@ -82,7 +82,11 @@ class LogoutView(BaseView):
     async def get(self, request):
         if not request.actor:
             return Response.redirect("/")
-        return await self.render(["logout.html"], request, {"actor": request.actor},)
+        return await self.render(
+            ["logout.html"],
+            request,
+            {"actor": request.actor},
+        )
 
     async def post(self, request):
         response = Response.redirect("/")

@@ -66,8 +66,8 @@ def urlsafe_components(token):
 
 
 def path_from_row_pks(row, pks, use_rowid, quote=True):
-    """ Generate an optionally URL-quoted unique identifier
-        for a row from its primary keys."""
+    """Generate an optionally URL-quoted unique identifier
+    for a row from its primary keys."""
     if use_rowid:
         bits = [row["rowid"]]
     else:
@@ -839,7 +839,9 @@ def check_connection(conn):
     ]
     for table in tables:
         try:
-            conn.execute("PRAGMA table_info({});".format(escape_sqlite(table)),)
+            conn.execute(
+                "PRAGMA table_info({});".format(escape_sqlite(table)),
+            )
         except sqlite3.OperationalError as e:
             if e.args[0] == "no such module: VirtualSpatialIndex":
                 raise SpatialiteConnectionProblem(e)
@@ -915,12 +917,18 @@ def actor_matches_allow(actor, allow):
 async def check_visibility(datasette, actor, action, resource, default=True):
     "Returns (visible, private) - visible = can you see it, private = can others see it too"
     visible = await datasette.permission_allowed(
-        actor, action, resource=resource, default=default,
+        actor,
+        action,
+        resource=resource,
+        default=default,
     )
     if not visible:
         return (False, False)
     private = not await datasette.permission_allowed(
-        None, action, resource=resource, default=default,
+        None,
+        action,
+        resource=resource,
+        default=default,
     )
     return visible, private
 

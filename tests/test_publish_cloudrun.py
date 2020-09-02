@@ -105,7 +105,13 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which):
 @mock.patch("datasette.publish.cloudrun.check_call")
 @pytest.mark.parametrize(
     "memory,should_fail",
-    [["1Gi", False], ["2G", False], ["256Mi", False], ["4", True], ["GB", True],],
+    [
+        ["1Gi", False],
+        ["2G", False],
+        ["256Mi", False],
+        ["4", True],
+        ["GB", True],
+    ],
 )
 def test_publish_cloudrun_memory(
     mock_call, mock_output, mock_which, memory, should_fail

@@ -56,7 +56,10 @@ def extra_css_urls(template, database, table, view_name, columns, request, datas
 @hookimpl
 def extra_js_urls():
     return [
-        {"url": "https://plugin-example.com/jquery.js", "sri": "SRIHASH",},
+        {
+            "url": "https://plugin-example.com/jquery.js",
+            "sri": "SRIHASH",
+        },
         "https://plugin-example.com/plugin1.js",
     ]
 
@@ -73,7 +76,9 @@ def extra_body_script(
                     "database": database,
                     "table": table,
                     "config": datasette.plugin_config(
-                        "name-of-plugin", database=database, table=table,
+                        "name-of-plugin",
+                        database=database,
+                        table=table,
                     ),
                     "view_name": view_name,
                     "request_path": request.path if request is not None else None,
@@ -99,7 +104,9 @@ def render_cell(value, column, table, database, datasette):
             "table": table,
             "database": database,
             "config": datasette.plugin_config(
-                "name-of-plugin", database=database, table=table,
+                "name-of-plugin",
+                database=database,
+                table=table,
             ),
         }
     )

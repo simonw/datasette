@@ -700,7 +700,9 @@ def assert_permissions_checked(datasette, actions):
         ], """Missing expected permission check: action={}, resource={}
         Permission checks seen: {}
         """.format(
-            action, resource, json.dumps(list(datasette._permission_checks), indent=4),
+            action,
+            resource,
+            json.dumps(list(datasette._permission_checks), indent=4),
         )
 
 

@@ -7,7 +7,10 @@ import json
 @hookimpl
 def extra_js_urls():
     return [
-        {"url": "https://plugin-example.com/jquery.js", "sri": "SRIHASH",},
+        {
+            "url": "https://plugin-example.com/jquery.js",
+            "sri": "SRIHASH",
+        },
         "https://plugin-example.com/plugin2.js",
     ]
 

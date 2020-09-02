@@ -72,7 +72,11 @@ def test_insert(canned_write_client):
 
 @pytest.mark.parametrize(
     "query_name,expect_csrf_hidden_field",
-    [("canned_read", False), ("add_name_specify_id", True), ("add_name", True),],
+    [
+        ("canned_read", False),
+        ("add_name_specify_id", True),
+        ("add_name", True),
+    ],
 )
 def test_canned_query_form_csrf_hidden_field(
     canned_write_client, query_name, expect_csrf_hidden_field

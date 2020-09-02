@@ -21,7 +21,11 @@ class DatabaseView(DataView):
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
         await self.check_permissions(
-            request, [("view-database", database), "view-instance",],
+            request,
+            [
+                ("view-database", database),
+                "view-instance",
+            ],
         )
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)
@@ -42,17 +46,26 @@ class DatabaseView(DataView):
         views = []
         for view_name in await db.view_names():
             visible, private = await check_visibility(
-                self.ds, request.actor, "view-table", (database, view_name),
+                self.ds,
+                request.actor,
+                "view-table",
+                (database, view_name),
             )
             if visible:
                 views.append(
-                    {"name": view_name, "private": private,}
+                    {
+                        "name": view_name,
+                        "private": private,
+                    }
                 )
 
         tables = []
         for table in table_counts:
             visible, private = await check_visibility(
-                self.ds, request.actor, "view-table", (database, table),
+                self.ds,
+                request.actor,
+                "view-table",
+                (database, table),
             )
             if not visible:
                 continue
@@ -76,7 +89,10 @@ class DatabaseView(DataView):
             await self.ds.get_canned_queries(database, request.actor)
         ).values():
             visible, private = await check_visibility(
-                self.ds, request.actor, "view-query", (database, query["name"]),
+                self.ds,
+                request.actor,
+                "view-query",
+                (database, query["name"]),
             )
             if visible:
                 canned_queries.append(dict(query, private=private))

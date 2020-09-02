@@ -7,7 +7,11 @@ import urllib
 
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
-    [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
+    [
+        (None, 200, 200),
+        ({}, 403, 403),
+        ({"id": "root"}, 403, 200),
+    ],
 )
 def test_view_instance(allow, expected_anon, expected_auth):
     with make_app_client(metadata={"allow": allow}) as client:
@@ -23,7 +27,8 @@ def test_view_instance(allow, expected_anon, expected_auth):
                 # Should be no padlock
                 assert "<h1>Datasette 🔒</h1>" not in anon_response.text
             auth_response = client.get(
-                path, cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+                path,
+                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
             )
             assert expected_auth == auth_response.status
             # Check for the padlock
@@ -33,7 +38,11 @@ def test_view_instance(allow, expected_anon, expected_auth):
 
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
-    [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
+    [
+        (None, 200, 200),
+        ({}, 403, 403),
+        ({"id": "root"}, 403, 200),
+    ],
 )
 def test_view_database(allow, expected_anon, expected_auth):
     with make_app_client(
@@ -50,7 +59,8 @@ def test_view_database(allow, expected_anon, expected_auth):
                 # Should be no padlock
                 assert ">fixtures 🔒</h1>" not in anon_response.text
             auth_response = client.get(
-                path, cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+                path,
+                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
             )
             assert expected_auth == auth_response.status
             if (
@@ -71,7 +81,8 @@ def test_database_list_respects_view_database():
         assert '<a href="/data">data</a></h2>' in anon_response.text
         assert '<a href="/fixtures">fixtures</a>' not in anon_response.text
         auth_response = client.get(
-            "/", cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+            "/",
+            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         )
         assert '<a href="/data">data</a></h2>' in auth_response.text
         assert '<a href="/fixtures">fixtures</a> 🔒</h2>' in auth_response.text
@@ -102,7 +113,8 @@ def test_database_list_respects_view_table():
         for html_fragment in html_fragments:
             assert html_fragment not in anon_response_text
         auth_response_text = client.get(
-            "/", cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+            "/",
+            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         ).text
         for html_fragment in html_fragments:
             assert html_fragment in auth_response_text
@@ -110,7 +122,11 @@ def test_database_list_respects_view_table():
 
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
-    [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
+    [
+        (None, 200, 200),
+        ({}, 403, 403),
+        ({"id": "root"}, 403, 200),
+    ],
 )
 def test_view_table(allow, expected_anon, expected_auth):
     with make_app_client(
@@ -166,7 +182,11 @@ def test_table_list_respects_view_table():
 
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
-    [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
+    [
+        (None, 200, 200),
+        ({}, 403, 403),
+        ({"id": "root"}, 403, 200),
+    ],
 )
 def test_view_query(allow, expected_anon, expected_auth):
     with make_app_client(
@@ -332,7 +352,10 @@ def test_allow_debug(app_client, actor, allow, expected_fragment):
 
 @pytest.mark.parametrize(
     "allow,expected",
-    [({"id": "root"}, 403), ({"id": "root", "unauthenticated": True}, 200),],
+    [
+        ({"id": "root"}, 403),
+        ({"id": "root", "unauthenticated": True}, 200),
+    ],
 )
 def test_allow_unauthenticated(allow, expected):
     with make_app_client(metadata={"allow": allow}) as client:
@@ -420,7 +443,8 @@ def test_permissions_cascade(cascade_app_client, path, expected_status, permissi
         ] = (allow if "query" in permissions else deny)
         cascade_app_client.ds._metadata = updated_metadata
         response = cascade_app_client.get(
-            path, cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
+            path,
+            cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
         )
         assert expected_status == response.status
     finally:

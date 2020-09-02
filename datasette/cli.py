@@ -174,7 +174,10 @@ def plugins(all, plugins_dir):
     default=lambda: os.urandom(32).hex(),
 )
 @click.option(
-    "-p", "--port", default=8001, help="Port to run the server on, defaults to 8001",
+    "-p",
+    "--port",
+    default=8001,
+    help="Port to run the server on, defaults to 8001",
 )
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
@@ -344,7 +347,8 @@ def uninstall(packages, yes):
     is_flag=True,
 )
 @click.option(
-    "--get", help="Run an HTTP GET request against this path, print results and exit",
+    "--get",
+    help="Run an HTTP GET request against this path, print results and exit",
 )
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")

@@ -396,7 +396,9 @@ class Datasette:
     async def get_canned_queries(self, database_name, actor):
         queries = self.metadata("queries", database=database_name, fallback=False) or {}
         for more_queries in pm.hook.canned_queries(
-            datasette=self, database=database_name, actor=actor,
+            datasette=self,
+            database=database_name,
+            actor=actor,
         ):
             more_queries = await await_me_maybe(more_queries)
             queries.update(more_queries or {})
@@ -468,7 +470,10 @@ class Datasette:
         "Check permissions using the permissions_allowed plugin hook"
         result = None
         for check in pm.hook.permission_allowed(
-            datasette=self, actor=actor, action=action, resource=resource,
+            datasette=self,
+            actor=actor,
+            action=action,
+            resource=resource,
         ):
             check = await await_me_maybe(check)
             if check is not None:
@@ -861,22 +866,28 @@ class Datasette:
             r"/-/actor(?P<as_format>(\.json)?)$",
         )
         add_route(
-            AuthTokenView.as_view(self), r"/-/auth-token$",
+            AuthTokenView.as_view(self),
+            r"/-/auth-token$",
         )
         add_route(
-            LogoutView.as_view(self), r"/-/logout$",
+            LogoutView.as_view(self),
+            r"/-/logout$",
         )
         add_route(
-            PermissionsDebugView.as_view(self), r"/-/permissions$",
+            PermissionsDebugView.as_view(self),
+            r"/-/permissions$",
         )
         add_route(
-            MessagesDebugView.as_view(self), r"/-/messages$",
+            MessagesDebugView.as_view(self),
+            r"/-/messages$",
         )
         add_route(
-            AllowDebugView.as_view(self), r"/-/allow-debug$",
+            AllowDebugView.as_view(self),
+            r"/-/allow-debug$",
         )
         add_route(
-            PatternPortfolioView.as_view(self), r"/-/patterns$",
+            PatternPortfolioView.as_view(self),
+            r"/-/patterns$",
         )
         add_route(
             DatabaseDownload.as_view(self), r"/(?P<db_name>[^/]+?)(?P<as_db>\.db)$"
@@ -1079,7 +1090,12 @@ class DatasetteRouter:
         if status != 500:
             templates = ["{}.html".format(status)] + templates
         info.update(
-            {"ok": False, "error": message, "status": status, "title": title,}
+            {
+                "ok": False,
+                "error": message,
+                "status": status,
+                "title": title,
+            }
         )
         headers = {}
         if self.ds.cors:

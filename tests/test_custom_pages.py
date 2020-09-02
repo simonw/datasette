@@ -16,7 +16,8 @@ def custom_pages_client(tmp_path_factory):
         "utf-8",
     )
     (pages_dir / "atom.html").write_text(
-        '{{ custom_header("content-type", "application/xml") }}<?xml ...>', "utf-8",
+        '{{ custom_header("content-type", "application/xml") }}<?xml ...>',
+        "utf-8",
     )
     (pages_dir / "redirect.html").write_text(
         '{{ custom_redirect("/example") }}', "utf-8"

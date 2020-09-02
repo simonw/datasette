@@ -149,7 +149,8 @@ async def test_execute_write_block_true(db):
 @pytest.mark.asyncio
 async def test_execute_write_block_false(db):
     await db.execute_write(
-        "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1],
+        "update roadside_attractions set name = ? where pk = ?",
+        ["Mystery!", 1],
     )
     time.sleep(0.1)
     rows = await db.execute("select name from roadside_attractions where pk = 1")

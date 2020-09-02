@@ -1786,7 +1786,11 @@ def test_null_foreign_keys_are_not_expanded(app_client):
             "foreign_key_with_label": {"value": "1", "label": "hello"},
             "foreign_key_with_no_label": {"value": "1", "label": "1"},
         },
-        {"pk": "2", "foreign_key_with_label": None, "foreign_key_with_no_label": None,},
+        {
+            "pk": "2",
+            "foreign_key_with_label": None,
+            "foreign_key_with_no_label": None,
+        },
     ] == response.json
 
 

@@ -350,7 +350,10 @@ class TableView(RowTableShared):
         # Add _where= from querystring
         if "_where" in request.args:
             if not await self.ds.permission_allowed(
-                request.actor, "execute-sql", resource=database, default=True,
+                request.actor,
+                "execute-sql",
+                resource=database,
+                default=True,
             ):
                 raise DatasetteError("_where= is not allowed", status=403)
             else:

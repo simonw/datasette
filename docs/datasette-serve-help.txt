@@ -38,4 +38,5 @@ Options:
 
   --version-note TEXT       Additional note to show on /-/versions
   --help-config             Show available config options
+  --pdb                     Launch debugger on any errors
   --help                    Show this message and exit.

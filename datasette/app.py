@@ -191,10 +191,12 @@ class Datasette:
         secret=None,
         version_note=None,
         config_dir=None,
+        pdb=False,
     ):
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
+        self.pdb = pdb
         self._secret = secret or secrets.token_hex(32)
         self.files = tuple(files) + tuple(immutables or [])
         if config_dir:
@@ -1057,6 +1059,11 @@ class DatasetteRouter:
                 await self.handle_500(request, send, exception or NotFound("404"))
 
     async def handle_500(self, request, send, exception):
+        if self.ds.pdb:
+            import pdb
+
+            pdb.post_mortem(exception.__traceback__)
+
         title = None
         if isinstance(exception, NotFound):
             status = 404

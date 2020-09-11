@@ -352,6 +352,7 @@ def uninstall(packages, yes):
 )
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")
+@click.option("--pdb", is_flag=True, help="Launch debugger on any errors")
 def serve(
     files,
     immutable,
@@ -373,6 +374,7 @@ def serve(
     get,
     version_note,
     help_config,
+    pdb,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -418,6 +420,7 @@ def serve(
         memory=memory,
         secret=secret,
         version_note=version_note,
+        pdb=pdb,
     )
 
     # if files is a single directory, use that as config_dir=

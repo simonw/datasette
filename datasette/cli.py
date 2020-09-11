@@ -444,6 +444,8 @@ def serve(
         client = TestClient(ds.app())
         response = client.get(get)
         click.echo(response.text)
+        exit_code = 0 if response.status == 200 else 1
+        sys.exit(exit_code)
         return
 
     # Start the server

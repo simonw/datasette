@@ -39,6 +39,7 @@ def test_serve_with_get(tmp_path_factory):
         "truncated": False,
         "columns": ["sqlite_version()"],
     }.items() <= json.loads(result.output).items()
+
     # The plugin should have created hello.txt
     assert (plugins_dir / "hello.txt").read_text() == "hello"
 
@@ -48,3 +49,18 @@ def test_serve_with_get(tmp_path_factory):
         p for p in pm.get_plugins() if p.__name__ == "init_for_serve_with_get.py"
     ][0]
     pm.unregister(to_unregister)
+
+
+def test_serve_with_get_exit_code_for_error(tmp_path_factory):
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "serve",
+            "--memory",
+            "--get",
+            "/this-is-404",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "404" in result.output

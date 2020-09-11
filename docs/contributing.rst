@@ -86,6 +86,17 @@ Then run Datasette like this::
 
     datasette fixtures.db -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
 
+.. _contributing_debugging:
+
+Debugging
+---------
+
+Any errors that occur while Datasette is running while display a stack trace on the console.
+
+You can tell Datasette to open an interactive ``pdb`` debugger session if an error occurs using the ``--pdb`` option::
+
+    datasette --pdb fixtures.db
+
 .. _contributing_documentation:
 
 Editing and building the documentation

@@ -448,12 +448,16 @@ def test_facet_display(app_client):
 
 
 def test_facets_persist_through_filter_form(app_client):
-    response = app_client.get("/fixtures/facetable?_facet=planet_int&_facet=city_id")
+    response = app_client.get(
+        "/fixtures/facetable?_facet=planet_int&_facet=city_id&_facet_array=tags"
+    )
     assert response.status == 200
     inputs = Soup(response.body, "html.parser").find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
-    assert [("_facet", "city_id"), ("_facet", "planet_int")] == [
-        (hidden["name"], hidden["value"]) for hidden in hiddens
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
+        ("_facet", "planet_int"),
+        ("_facet", "city_id"),
+        ("_facet_array", "tags"),
     ]
 
 

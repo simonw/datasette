@@ -778,6 +778,12 @@ class TableView(RowTableShared):
             )
             self.ds.update_with_inherited_metadata(metadata)
             form_hidden_args = []
+            # Add currently selected facets
+            for arg in special_args:
+                if arg == "_facet" or arg.startswith("_facet_"):
+                    form_hidden_args.extend(
+                        (arg, item) for item in request.args.getlist(arg)
+                    )
             for arg in ("_fts_table", "_fts_pk"):
                 if arg in special_args:
                     form_hidden_args.append((arg, special_args[arg]))

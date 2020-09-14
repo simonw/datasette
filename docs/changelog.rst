@@ -4,22 +4,24 @@
 Changelog
 =========
 
-.. _v0_49a1:
+.. _v0_49:
 
-0.49a1 (2020-09-13)
--------------------
+0.49 (2020-09-14)
+-----------------
 
-.. warning:: This is an **alpha** release. See :ref:`contributing_alpha_beta`.
-
+- Writable canned queries now expose a JSON API, see :ref:`canned_queries_json_api`. (`#880 <https://github.com/simonw/datasette/issues/880>`__)
+- New mechanism for defining page templates with custom path parameters - a template file called ``pages/about/{slug}.html`` will be used to render any requests to ``/about/something``. See :ref:`custom_pages_parameters`. (`#944 <https://github.com/simonw/datasette/issues/944>`__)
 - ``register_output_renderer()`` render functions can now return a ``Response``. (`#953 <https://github.com/simonw/datasette/issues/953>`__)
 - New ``--upgrade`` option for ``datasette install``. (`#945 <https://github.com/simonw/datasette/issues/945>`__)
+- New ``datasette --pdb`` option. (`#962 <https://github.com/simonw/datasette/issues/962>`__)
+- ``datasette --get`` exit code now reflects the internal HTTP status code. (`#947 <https://github.com/simonw/datasette/issues/947>`__)
+- New ``raise_404()`` template function for returning 404 errors. (`#964 <https://github.com/simonw/datasette/issues/964>`__)
 - ``datasette publish heroku`` now deploys using Python 3.8.5
 - Upgraded `CodeMirror <https://codemirror.net/>`__ to 5.57.0. (`#948 <https://github.com/simonw/datasette/issues/948>`__)
 - Upgraded code style to Black 20.8b1. (`#958 <https://github.com/simonw/datasette/issues/958>`__)
-- New ``datasette --pdb`` option. (`#962 <https://github.com/simonw/datasette/issues/962>`__)
-- ``datasette --get`` exit code now reflects the internal HTTP status code. (`#947 <https://github.com/simonw/datasette/issues/947>`__)
 - Fixed bug where selected facets were not correctly persisted in hidden form fields on the table page. (`#963 <https://github.com/simonw/datasette/issues/963>`__)
-- New mechanism for defining page templates with custom path parameters. (`#944 <https://github.com/simonw/datasette/issues/944>`__)
+- Renamed the default error template from ``500.html`` to ``error.html``.
+- Custom error pages are now documented, see :ref:`custom_pages_errors`. (`#965 <https://github.com/simonw/datasette/issues/965>`__)
 
 .. _v0_48:
 

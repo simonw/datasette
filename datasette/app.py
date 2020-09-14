@@ -1124,9 +1124,7 @@ class DatasetteRouter:
             info = {}
             message = str(exception)
             traceback.print_exc()
-        templates = ["500.html"]
-        if status != 500:
-            templates = ["{}.html".format(status)] + templates
+        templates = ["{}.html".format(status), "error.html"]
         info.update(
             {
                 "ok": False,

@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup as Soup
+import json
 import pytest
 import re
 from .fixtures import make_app_client, app_client
@@ -161,6 +162,16 @@ def test_vary_header(canned_write_client):
     # These forms embed a csrftoken so they should be served with Vary: Cookie
     assert "vary" not in canned_write_client.get("/data").headers
     assert "Cookie" == canned_write_client.get("/data/update_name").headers["vary"]
+
+
+def test_json_post_body(canned_write_client):
+    response = canned_write_client.post(
+        "/data/add_name",
+        body=json.dumps({"name": "Hello"}),
+        allow_redirects=False,
+    )
+    assert 302 == response.status
+    assert "/data/add_name?success" == response.headers["Location"]
 
 
 def test_canned_query_permissions_on_database_page(canned_write_client):

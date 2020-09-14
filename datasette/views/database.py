@@ -1,6 +1,8 @@
 import os
 import itertools
 import jinja2
+import json
+from urllib.parse import parse_qsl
 
 from datasette.utils import (
     check_visibility,
@@ -208,7 +210,15 @@ class QueryView(DataView):
         # Execute query - as write or as read
         if write:
             if request.method == "POST":
-                params = await request.post_vars()
+                body = await request.post_body()
+                body = body.decode("utf-8").strip()
+                if body.startswith("{") and body.endswith("}"):
+                    params = json.loads(body)
+                    # But we want key=value strings
+                    for key, value in params.items():
+                        params[key] = str(value)
+                else:
+                    params = dict(parse_qsl(body, keep_blank_values=True))
                 if canned_query:
                     params_for_query = MagicParameters(params, request, self.ds)
                 else:

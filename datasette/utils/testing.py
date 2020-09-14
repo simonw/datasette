@@ -50,6 +50,7 @@ class TestClient:
         self,
         path,
         post_data=None,
+        body=None,
         allow_redirects=True,
         redirect_count=0,
         content_type="application/x-www-form-urlencoded",
@@ -58,21 +59,25 @@ class TestClient:
     ):
         cookies = cookies or {}
         post_data = post_data or {}
+        assert not (post_data and body), "Provide one or other of body= or post_data="
         # Maybe fetch a csrftoken first
         if csrftoken_from is not None:
+            assert body is None, "body= is not compatible with csrftoken_from="
             if csrftoken_from is True:
                 csrftoken_from = path
             token_response = await self._request(csrftoken_from, cookies=cookies)
             csrftoken = token_response.cookies["ds_csrftoken"]
             cookies["ds_csrftoken"] = csrftoken
             post_data["csrftoken"] = csrftoken
+        if post_data:
+            body = urlencode(post_data, doseq=True)
         return await self._request(
             path,
             allow_redirects,
             redirect_count,
             "POST",
             cookies,
-            post_data,
+            body,
             content_type,
         )
 
@@ -83,7 +88,7 @@ class TestClient:
         redirect_count=0,
         method="GET",
         cookies=None,
-        post_data=None,
+        post_body=None,
         content_type=None,
     ):
         query_string = b""
@@ -113,8 +118,8 @@ class TestClient:
         }
         instance = ApplicationCommunicator(self.asgi_app, scope)
 
-        if post_data:
-            body = urlencode(post_data, doseq=True).encode("utf-8")
+        if post_body:
+            body = post_body.encode("utf-8")
             await instance.send_input({"type": "http.request", "body": body})
         else:
             await instance.send_input({"type": "http.request"})

@@ -396,3 +396,27 @@ These redirects are served with a ``301 Found`` status code by default. You can 
 .. code-block:: jinja
 
     {{ custom_redirect("https://github.com/simonw/datasette", 301) }}
+
+.. _custom_pages_errors:
+
+Custom error pages
+------------------
+
+Datasette returns an error page if an unexpected error occurs, access is forbidden or content cannot be found.
+
+You can customize the response returned for these errors by providing a custom error page template.
+
+Content not found errors use a ``404.html`` template. Access denied errors use ``403.html``. Invalid input errors use ``400.html``. Unexpected errors of other kinds use ``500.html``.
+
+If a template for the specific error code is not found a template called ``error.html`` will be used instead. If you do not provide that template Datasette's `default error.html template <https://github.com/simonw/datasette/blob/main/datasette/templates/error.html>`__ will be used.
+
+The error template will be passed the following context:
+
+``status`` - integer
+    The integer HTTP status code, e.g. 404, 500, 403, 400.
+
+``error`` - string
+    Details of the specific error, usually a full sentence.
+
+``title`` - string or None
+    A title for the page representing the class of error. This is often ``None`` for errors that do not provide a title separate from their ``error`` message.

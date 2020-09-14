@@ -1,7 +1,7 @@
 .. _customization:
 
-Customization
-=============
+Custom pages and templates
+==========================
 
 Datasette provides a number of ways of customizing the way data is displayed.
 
@@ -12,7 +12,9 @@ When you launch Datasette, you can specify a custom metadata file like this::
 
     datasette mydb.db --metadata metadata.json
 
-Your ``metadata.json`` file can include links that look like this::
+Your ``metadata.json`` file can include links that look like this:
+
+.. code-block:: json
 
     {
         "extra_css_urls": [
@@ -25,7 +27,9 @@ Your ``metadata.json`` file can include links that look like this::
 
 The extra CSS and JavaScript files will be linked in the ``<head>`` of every page.
 
-You can also specify a SRI (subresource integrity hash) for these assets::
+You can also specify a SRI (subresource integrity hash) for these assets:
+
+.. code-block:: json
 
     {
         "extra_css_urls": [
@@ -51,27 +55,39 @@ CSS classes on the <body>
 Every default template includes CSS classes in the body designed to support
 custom styling.
 
-The index template (the top level page at ``/``) gets this::
+The index template (the top level page at ``/``) gets this:
+
+.. code-block:: html
 
     <body class="index">
 
-The database template (``/dbname``) gets this::
+The database template (``/dbname``) gets this:
+
+.. code-block:: html
 
     <body class="db db-dbname">
 
-The custom SQL template (``/dbname?sql=...``) gets this::
+The custom SQL template (``/dbname?sql=...``) gets this:
+
+.. code-block:: html
 
     <body class="query db-dbname">
 
-A canned query template (``/dbname/queryname``) gets this::
+A canned query template (``/dbname/queryname``) gets this:
+
+.. code-block:: html
 
     <body class="query db-dbname query-queryname">
 
-The table template (``/dbname/tablename``) gets::
+The table template (``/dbname/tablename``) gets:
+
+.. code-block:: html
 
     <body class="table db-dbname table-tablename">
 
-The row template (``/dbname/tablename/rowid``) gets::
+The row template (``/dbname/tablename/rowid``) gets:
+
+.. code-block:: html
 
     <body class="row db-dbname table-tablename">
 
@@ -92,7 +108,9 @@ Some examples::
     "no $ characters" => "no--characters-59e024"
 
 ``<td>`` and ``<th>`` elements also get custom CSS classes reflecting the
-database column they are representing, for example::
+database column they are representing, for example:
+
+.. code-block:: html
 
     <table>
         <thead>
@@ -131,7 +149,9 @@ The following URLs will now serve the content from those CSS and JS files::
     http://localhost:8001/static/styles.css
     http://localhost:8001/static/app.js
 
-You can reference those files from ``metadata.json`` like so::
+You can reference those files from ``metadata.json`` like so:
+
+.. code-block:: json
 
     {
         "extra_css_urls": [
@@ -229,7 +249,9 @@ used that - but if that template had not been found, it would have tried for
 
 It is possible to extend the default templates using Jinja template
 inheritance. If you want to customize EVERY row template with some additional
-content you can do so by creating a ``row.html`` template like this::
+content you can do so by creating a ``row.html`` template like this:
+
+.. code-block:: jinja
 
     {% extends "default:row.html" %}
 
@@ -258,7 +280,9 @@ of a specific column.
 If you want to output the rendered HTML version of a column, including any
 links to foreign keys, you can use ``{{ row.display("column_name") }}``.
 
-Here is an example of a custom ``_table.html`` template::
+Here is an example of a custom ``_table.html`` template:
+
+.. code-block:: jinja
 
     {% for row in display_rows %}
         <div>
@@ -294,7 +318,7 @@ For example, to capture any request to a URL matching ``/about/*``, you would cr
 
 A hit to ``/about/news`` would render that template and pass in a variable called ``slug`` with a value of ``"news"``.
 
-If you use this mechanism don't forget to return a 404 status code if the page should not be considered a valid page. You can do this using ``{{ custom_status(404) }}`` described below.
+If you use this mechanism don't forget to return a 404 if the referenced content could not be found. You can do this using ``{{ raise_404() }}`` described below.
 
 Templates defined using custom page routes work particularly well with the ``sql()`` template function from `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`__ or the ``graphql()`` template function from `datasette-graphql <https://github.com/simonw/datasette-graphql#the-graphql-template-function>`__.
 
@@ -305,7 +329,9 @@ Custom headers and status codes
 
 Custom pages default to being served with a content-type of ``text/html; charset=utf-8`` and a ``200`` status code. You can change these by calling a custom function from within your template.
 
-For example, to serve a custom page with a ``418 I'm a teapot`` HTTP status code, create a file in ``pages/teapot.html`` containing the following::
+For example, to serve a custom page with a ``418 I'm a teapot`` HTTP status code, create a file in ``pages/teapot.html`` containing the following:
+
+.. code-block:: jinja
 
     {{ custom_status(418) }}
     <html>
@@ -315,7 +341,9 @@ For example, to serve a custom page with a ``418 I'm a teapot`` HTTP status code
     </body>
     </html>
 
-To serve a custom HTTP header, add a ``custom_header(name, value)`` function call. For example::
+To serve a custom HTTP header, add a ``custom_header(name, value)`` function call. For example:
+
+.. code-block:: jinja
 
     {{ custom_status(418) }}
     {{ custom_header("x-teapot", "I am") }}
@@ -335,17 +363,36 @@ You can verify this is working using ``curl`` like this::
     x-teapot: I am
     content-type: text/html; charset=utf-8
 
+.. _custom_pages_404:
+
+Returning 404s
+~~~~~~~~~~~~~~
+
+To indicate that content could not be found and display the default 404 page you can use the ``raise_404(message)`` function:
+
+.. code-block:: jinja
+
+    {% if not rows %}
+        {{ raise_404("Content not found") }}
+    {% endif %}
+
+If you call ``raise_404()`` the other content in your template will be ignored.
+
 .. _custom_pages_redirects:
 
 Custom redirects
 ~~~~~~~~~~~~~~~~
 
-You can use the ``custom_redirect(location)`` function to redirect users to another page, for example in a file called ``pages/datasette.html``::
+You can use the ``custom_redirect(location)`` function to redirect users to another page, for example in a file called ``pages/datasette.html``:
+
+.. code-block:: jinja
 
     {{ custom_redirect("https://github.com/simonw/datasette") }}
 
 Now requests to ``http://localhost:8001/datasette`` will result in a redirect.
 
-These redirects are served with a ``301 Found`` status code by default. You can send a ``301 Moved Permanently`` code by passing ``301`` as the second argument to the function::
+These redirects are served with a ``301 Found`` status code by default. You can send a ``301 Moved Permanently`` code by passing ``301`` as the second argument to the function:
+
+.. code-block:: jinja
 
     {{ custom_redirect("https://github.com/simonw/datasette", 301) }}

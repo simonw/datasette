@@ -1053,19 +1053,27 @@ class DatasetteRouter:
                     headers["Location"] = location
                     return ""
 
+                def raise_404(message=""):
+                    raise NotFoundExplicit(message)
+
                 context.update(
                     {
                         "custom_header": custom_header,
                         "custom_status": custom_status,
                         "custom_redirect": custom_redirect,
+                        "raise_404": raise_404,
                     }
                 )
-                body = await self.ds.render_template(
-                    template,
-                    context,
-                    request=request,
-                    view_name="page",
-                )
+                try:
+                    body = await self.ds.render_template(
+                        template,
+                        context,
+                        request=request,
+                        view_name="page",
+                    )
+                except NotFoundExplicit as e:
+                    await self.handle_500(request, send, e)
+                    return
                 # Pull content-type out into separate parameter
                 content_type = "text/html; charset=utf-8"
                 matches = [k for k in headers if k.lower() == "content-type"]
@@ -1199,3 +1207,7 @@ def route_pattern_from_filepath(filepath):
         else:
             re_bits.append(re.escape(bit))
     return re.compile("".join(re_bits))
+
+
+class NotFoundExplicit(NotFound):
+    pass

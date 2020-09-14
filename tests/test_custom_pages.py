@@ -26,7 +26,11 @@ def custom_pages_client(tmp_path_factory):
         '{{ custom_redirect("/example", 301) }}', "utf-8"
     )
     (pages_dir / "route_{name}.html").write_text(
-        "<p>Hello from {{ name }}</p>", "utf-8"
+        """
+        {% if name == "OhNo" %}{{ raise_404("Oh no") }}{% endif %}
+        <p>Hello from {{ name }}</p>
+        """,
+        "utf-8",
     )
     nested_dir = pages_dir / "nested"
     nested_dir.mkdir()
@@ -91,4 +95,11 @@ def test_redirect2(custom_pages_client):
 def test_custom_route_pattern(custom_pages_client):
     response = custom_pages_client.get("/route_Sally")
     assert response.status == 200
-    assert response.text == "<p>Hello from Sally</p>"
+    assert response.text.strip() == "<p>Hello from Sally</p>"
+
+
+def test_custom_route_pattern_404(custom_pages_client):
+    response = custom_pages_client.get("/route_OhNo")
+    assert response.status == 404
+    assert "<h1>Error 404</h1>" in response.text
+    assert ">Oh no</" in response.text

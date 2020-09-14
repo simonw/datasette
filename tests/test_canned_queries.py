@@ -167,11 +167,13 @@ def test_vary_header(canned_write_client):
 def test_json_post_body(canned_write_client):
     response = canned_write_client.post(
         "/data/add_name",
-        body=json.dumps({"name": "Hello"}),
+        body=json.dumps({"name": ["Hello", "there"]}),
         allow_redirects=False,
     )
     assert 302 == response.status
     assert "/data/add_name?success" == response.headers["Location"]
+    rows = canned_write_client.get("/data/names.json?_shape=array").json
+    assert rows == [{"rowid": 1, "name": "['Hello', 'there']"}]
 
 
 def test_canned_query_permissions_on_database_page(canned_write_client):

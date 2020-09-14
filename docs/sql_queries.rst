@@ -326,6 +326,43 @@ The form presented at ``/mydatabase/add_message`` will have just a field for ``m
 
 Additional custom magic parameters can be added by plugins using the :ref:`plugin_hook_register_magic_parameters` hook.
 
+.. _canned_queries_json_api:
+
+JSON API for writable canned queries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Writable canned queries can also be accessed using a JSON API. You can POST data to them using JSON, and you can request that their response is returned to you as JSON.
+
+To submit JSON to a writable canned query, encode key/value parameters as a JSON document::
+
+    POST /mydatabase/add_message
+
+    {"message": "Message goes here"}
+
+You can also continue to submit data using regular form encoding, like so::
+
+    POST /mydatabase/add_message
+
+    message=Message+goes+here
+
+There are three options for specifying that you would like the response to your request to return JSON data, as opposed to an HTTP redirect to another page.
+
+- Set an ``Accept: application/json`` header on your request
+- Include ``?_json=1`` in the URL that you POST to
+- Include ``"_json": 1`` in your JSON body, or ``&_json=1`` in your form encoded body
+
+The JSON response will look like this:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "message": "Query executed, 1 row affected",
+        "redirect": "/data/add_name"
+    }
+
+The ``"message"`` and ``"redirect"`` values here will take into account ``on_success_message``, ``on_success_redirect``, ``on_error_message`` and ``on_error_redirect``, if they have been set.
+
 .. _pagination:
 
 Pagination

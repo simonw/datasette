@@ -219,10 +219,17 @@ class QueryView(DataView):
                         params[key] = str(value)
                 else:
                     params = dict(parse_qsl(body, keep_blank_values=True))
+                # Should we return JSON?
+                should_return_json = (
+                    request.headers.get("accept") == "application/json"
+                    or request.args.get("_json")
+                    or params.get("_json")
+                )
                 if canned_query:
                     params_for_query = MagicParameters(params, request, self.ds)
                 else:
                     params_for_query = params
+                ok = None
                 try:
                     cursor = await self.ds.databases[database].execute_write(
                         sql, params_for_query, block=True
@@ -234,12 +241,23 @@ class QueryView(DataView):
                     )
                     message_type = self.ds.INFO
                     redirect_url = metadata.get("on_success_redirect")
+                    ok = True
                 except Exception as e:
                     message = metadata.get("on_error_message") or str(e)
                     message_type = self.ds.ERROR
                     redirect_url = metadata.get("on_error_redirect")
-                self.ds.add_message(request, message, message_type)
-                return self.redirect(request, redirect_url or request.path)
+                    ok = False
+                if should_return_json:
+                    return Response.json(
+                        {
+                            "ok": ok,
+                            "message": message,
+                            "redirect": redirect_url,
+                        }
+                    )
+                else:
+                    self.ds.add_message(request, message, message_type)
+                    return self.redirect(request, redirect_url or request.path)
             else:
 
                 async def extra_template():

@@ -55,6 +55,7 @@ class TestClient:
         redirect_count=0,
         content_type="application/x-www-form-urlencoded",
         cookies=None,
+        headers=None,
         csrftoken_from=None,
     ):
         cookies = cookies or {}
@@ -72,13 +73,14 @@ class TestClient:
         if post_data:
             body = urlencode(post_data, doseq=True)
         return await self._request(
-            path,
-            allow_redirects,
-            redirect_count,
-            "POST",
-            cookies,
-            body,
-            content_type,
+            path=path,
+            allow_redirects=allow_redirects,
+            redirect_count=redirect_count,
+            method="POST",
+            cookies=cookies,
+            headers=headers,
+            post_body=body,
+            content_type=content_type,
         )
 
     async def _request(
@@ -88,6 +90,7 @@ class TestClient:
         redirect_count=0,
         method="GET",
         cookies=None,
+        headers=None,
         post_body=None,
         content_type=None,
     ):
@@ -99,14 +102,17 @@ class TestClient:
             raw_path = path.encode("latin-1")
         else:
             raw_path = quote(path, safe="/:,").encode("latin-1")
-        headers = [[b"host", b"localhost"]]
+        asgi_headers = [[b"host", b"localhost"]]
+        if headers:
+            for key, value in headers.items():
+                asgi_headers.append([key.encode("utf-8"), value.encode("utf-8")])
         if content_type:
-            headers.append((b"content-type", content_type.encode("utf-8")))
+            asgi_headers.append((b"content-type", content_type.encode("utf-8")))
         if cookies:
             sc = SimpleCookie()
             for key, value in cookies.items():
                 sc[key] = value
-            headers.append([b"cookie", sc.output(header="").encode("utf-8")])
+            asgi_headers.append([b"cookie", sc.output(header="").encode("utf-8")])
         scope = {
             "type": "http",
             "http_version": "1.0",
@@ -114,7 +120,7 @@ class TestClient:
             "path": unquote(path),
             "raw_path": raw_path,
             "query_string": query_string,
-            "headers": headers,
+            "headers": asgi_headers,
         }
         instance = ApplicationCommunicator(self.asgi_app, scope)
 

@@ -176,6 +176,33 @@ def test_json_post_body(canned_write_client):
     assert rows == [{"rowid": 1, "name": "['Hello', 'there']"}]
 
 
+@pytest.mark.parametrize(
+    "headers,body,querystring",
+    (
+        (None, "name=NameGoesHere", "?_json=1"),
+        ({"Accept": "application/json"}, "name=NameGoesHere", None),
+        (None, "name=NameGoesHere&_json=1", None),
+        (None, '{"name": "NameGoesHere", "_json": 1}', None),
+    ),
+)
+def test_json_response(canned_write_client, headers, body, querystring):
+    response = canned_write_client.post(
+        "/data/add_name" + (querystring or ""),
+        body=body,
+        allow_redirects=False,
+        headers=headers,
+    )
+    assert 200 == response.status
+    assert response.headers["content-type"] == "application/json; charset=utf-8"
+    assert response.json == {
+        "ok": True,
+        "message": "Query executed, 1 row affected",
+        "redirect": "/data/add_name?success",
+    }
+    rows = canned_write_client.get("/data/names.json?_shape=array").json
+    assert rows == [{"rowid": 1, "name": "NameGoesHere"}]
+
+
 def test_canned_query_permissions_on_database_page(canned_write_client):
     # Without auth only shows three queries
     query_names = {
@@ -196,7 +223,14 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
         cookies={"ds_actor": canned_write_client.actor_cookie({"id": "root"})},
     )
     assert 200 == response.status
-    assert [
+    query_names_and_private = sorted(
+        [
+            {"name": q["name"], "private": q["private"]}
+            for q in response.json["queries"]
+        ],
+        key=lambda q: q["name"],
+    )
+    assert query_names_and_private == [
         {"name": "add_name", "private": False},
         {"name": "add_name_specify_id", "private": False},
         {"name": "canned_read", "private": False},
@@ -204,13 +238,7 @@ def test_canned_query_permissions_on_database_page(canned_write_client):
         {"name": "from_async_hook", "private": False},
         {"name": "from_hook", "private": False},
         {"name": "update_name", "private": False},
-    ] == sorted(
-        [
-            {"name": q["name"], "private": q["private"]}
-            for q in response.json["queries"]
-        ],
-        key=lambda q: q["name"],
-    )
+    ]
 
 
 def test_canned_query_permissions(canned_write_client):

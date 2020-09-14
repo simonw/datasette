@@ -281,6 +281,25 @@ For example, to add a custom page that is served at ``http://localhost/about`` y
 
 You can nest directories within pages to create a nested structure. To create a ``http://localhost:8001/about/map`` page you would create ``templates/pages/about/map.html``.
 
+.. _custom_pages_parameters:
+
+Path parameters for pages
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can define custom pages that match multiple paths by creating files with ``{variable}`` definitions in their filenames.
+
+For example, to capture any request to a URL matching ``/about/*``, you would create a template in the following location::
+
+    templates/pages/about/{slug}.html
+
+A hit to ``/about/news`` would render that template and pass in a variable called ``slug`` with a value of ``"news"``.
+
+If you use this mechanism don't forget to return a 404 status code if the page should not be considered a valid page. You can do this using ``{{ custom_status(404) }}`` described below.
+
+Templates defined using custom page routes work particularly well with the ``sql()`` template function from `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`__ or the ``graphql()`` template function from `datasette-graphql <https://github.com/simonw/datasette-graphql#the-graphql-template-function>`__.
+
+.. _custom_pages_headers:
+
 Custom headers and status codes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -315,6 +334,8 @@ You can verify this is working using ``curl`` like this::
     server: uvicorn
     x-teapot: I am
     content-type: text/html; charset=utf-8
+
+.. _custom_pages_redirects:
 
 Custom redirects
 ~~~~~~~~~~~~~~~~

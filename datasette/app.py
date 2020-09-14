@@ -942,6 +942,16 @@ class DatasetteRouter:
             ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
             for pattern, view in routes
         ]
+        # Build a list of pages/blah/{name}.html matching expressions
+        pattern_templates = [
+            filepath
+            for filepath in self.ds.jinja_env.list_templates()
+            if "{" in filepath and filepath.startswith("pages/")
+        ]
+        self.page_routes = [
+            (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
+            for filepath in pattern_templates
+        ]
 
     async def __call__(self, scope, receive, send):
         # Because we care about "foo/bar" v.s. "foo%2Fbar" we decode raw_path ourselves
@@ -1002,6 +1012,7 @@ class DatasetteRouter:
     async def handle_404(self, request, send, exception=None):
         # If URL has a trailing slash, redirect to URL without it
         path = request.scope.get("raw_path", request.scope["path"].encode("utf8"))
+        context = {}
         if path.endswith(b"/"):
             path = path.rstrip(b"/")
             if request.scope["query_string"]:
@@ -1016,6 +1027,15 @@ class DatasetteRouter:
                 template = self.ds.jinja_env.select_template([template_path])
             except TemplateNotFound:
                 template = None
+            if template is None:
+                # Try for a pages/blah/{name}.html template match
+                for regex, wildcard_template in self.page_routes:
+                    match = regex.match(request.scope["path"])
+                    if match is not None:
+                        context.update(match.groupdict())
+                        template = wildcard_template
+                        break
+
             if template:
                 headers = {}
                 status = [200]
@@ -1033,13 +1053,16 @@ class DatasetteRouter:
                     headers["Location"] = location
                     return ""
 
-                body = await self.ds.render_template(
-                    template,
+                context.update(
                     {
                         "custom_header": custom_header,
                         "custom_status": custom_status,
                         "custom_redirect": custom_redirect,
-                    },
+                    }
+                )
+                body = await self.ds.render_template(
+                    template,
+                    context,
                     request=request,
                     view_name="page",
                 )
@@ -1160,3 +1183,19 @@ def wrap_view(view_fn, datasette):
             return response
 
     return async_view_fn
+
+
+_curly_re = re.compile("(\{.*?\})")
+
+
+def route_pattern_from_filepath(filepath):
+    # Drop the ".html" suffix
+    if filepath.endswith(".html"):
+        filepath = filepath[: -len(".html")]
+    re_bits = ["/"]
+    for bit in _curly_re.split(filepath):
+        if _curly_re.match(bit):
+            re_bits.append("(?P<{}>[^/]*)".format(bit[1:-1]))
+        else:
+            re_bits.append(re.escape(bit))
+    return re.compile("".join(re_bits))

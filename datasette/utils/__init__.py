@@ -26,6 +26,9 @@ try:
 except ImportError:
     import sqlite3
 
+if hasattr(sqlite3, "enable_callback_tracebacks"):
+    sqlite3.enable_callback_tracebacks(True)
+
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set(
     (

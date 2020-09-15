@@ -371,6 +371,11 @@ class MagicParameters(dict):
             )
         )
 
+    def __len__(self):
+        # Workaround for 'Incorrect number of bindings' error
+        # https://github.com/simonw/datasette/issues/967#issuecomment-692951144
+        return super().__len__() or 1
+
     def __getitem__(self, key):
         if key.startswith("_") and key.count("_") >= 2:
             prefix, suffix = key[1:].split("_", 1)

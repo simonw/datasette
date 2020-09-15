@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_49_1:
+
+0.49.1 (2020-09-15)
+-------------------
+
+- Fixed a bug with writable canned queries that use magic parameters but accept no non-magic arguments. (`#967 <https://github.com/simonw/datasette/issues/967>`__)
+
 .. _v0_49:
 
 0.49 (2020-09-14)

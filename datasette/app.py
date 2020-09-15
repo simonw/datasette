@@ -1191,7 +1191,7 @@ def wrap_view(view_fn, datasette):
     return async_view_fn
 
 
-_curly_re = re.compile("(\{.*?\})")
+_curly_re = re.compile(r"(\{.*?\})")
 
 
 def route_pattern_from_filepath(filepath):

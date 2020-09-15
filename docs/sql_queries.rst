@@ -316,9 +316,9 @@ Here's an example configuration (this time using ``metadata.yaml`` since that pr
               id: "*"
             sql: |-
               INSERT INTO messages (
-                user_id, ip, message, datetime
+                user_id, message, datetime
               ) VALUES (
-                :_actor_id, :_request_ip, :message, :_now_datetime_utc
+                :_actor_id, :message, :_now_datetime_utc
               )
             write: true
 

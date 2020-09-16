@@ -16,6 +16,8 @@ Changelog
 0.49 (2020-09-14)
 -----------------
 
+See also `Datasette 0.49: The annotated release notes <https://simonwillison.net/2020/Sep/15/datasette-0-49/>`__.
+
 - Writable canned queries now expose a JSON API, see :ref:`canned_queries_json_api`. (`#880 <https://github.com/simonw/datasette/issues/880>`__)
 - New mechanism for defining page templates with custom path parameters - a template file called ``pages/about/{slug}.html`` will be used to render any requests to ``/about/something``. See :ref:`custom_pages_parameters`. (`#944 <https://github.com/simonw/datasette/issues/944>`__)
 - ``register_output_renderer()`` render functions can now return a ``Response``. (`#953 <https://github.com/simonw/datasette/issues/953>`__)
@@ -101,6 +103,8 @@ Changelog
 0.45 (2020-07-01)
 -----------------
 
+See also `Datasette 0.45: The annotated release notes <https://simonwillison.net/2020/Jul/1/datasette-045/>`__.
+
 Magic parameters for canned queries, a log out feature, improved plugin documentation and four new plugin hooks.
 
 Magic parameters for canned queries
@@ -156,6 +160,8 @@ Smaller changes
 
 0.44 (2020-06-11)
 -----------------
+
+See also `Datasette 0.44: The annotated release notes <https://simonwillison.net/2020/Jun/12/annotated-release-notes/>`__.
 
 Authentication and permissions, writable canned queries, flash messages, new plugin hooks and more.
 

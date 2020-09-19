@@ -250,7 +250,7 @@ Datasette will generate a secret automatically when it starts up, but to avoid r
 
 You can also set a secret when you deploy Datasette using ``datasette publish`` or ``datasette package`` - see :ref:`config_publish_secrets`.
 
-Plugins can now sign value and verify their signatures using the :ref:`datasette.sign() <datasette_sign>` and :ref:`datasette.unsign() <datasette_unsign>` methods.
+Plugins can now sign values and verify their signatures using the :ref:`datasette.sign() <datasette_sign>` and :ref:`datasette.unsign() <datasette_unsign>` methods.
 
 CSRF protection
 ~~~~~~~~~~~~~~~

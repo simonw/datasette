@@ -354,7 +354,13 @@ def uninstall(packages, yes):
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")
 @click.option("--pdb", is_flag=True, help="Launch debugger on any errors")
-@click.option("-o", "--open", is_flag=True, help="Open Datasette in your web browser")
+@click.option(
+    "-o",
+    "--open",
+    "open_browser",
+    is_flag=True,
+    help="Open Datasette in your web browser",
+)
 def serve(
     files,
     immutable,
@@ -377,7 +383,7 @@ def serve(
     version_note,
     help_config,
     pdb,
-    open,
+    open_browser,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -457,7 +463,7 @@ def serve(
         print(url)
     else:
         url = "http://{}:{}/".format(host, port)
-    if open:
+    if open_browser:
         webbrowser.open(url)
     uvicorn.run(ds.app(), host=host, port=port, log_level="info", lifespan="on")
 

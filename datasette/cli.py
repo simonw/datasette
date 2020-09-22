@@ -10,6 +10,7 @@ import shutil
 from subprocess import call
 import sys
 from runpy import run_module
+import webbrowser
 from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
 from .utils import (
     check_connection,
@@ -353,6 +354,7 @@ def uninstall(packages, yes):
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")
 @click.option("--pdb", is_flag=True, help="Launch debugger on any errors")
+@click.option("-o", "--open", is_flag=True, help="Open Datasette in your web browser")
 def serve(
     files,
     immutable,
@@ -375,6 +377,7 @@ def serve(
     version_note,
     help_config,
     pdb,
+    open,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -450,7 +453,12 @@ def serve(
 
     # Start the server
     if root:
-        print("http://{}:{}/-/auth-token?token={}".format(host, port, ds._root_token))
+        url = "http://{}:{}/-/auth-token?token={}".format(host, port, ds._root_token)
+        print(url)
+    else:
+        url = "http://{}:{}/".format(host, port)
+    if open:
+        webbrowser.open(url)
     uvicorn.run(ds.app(), host=host, port=port, log_level="info", lifespan="on")
 
 

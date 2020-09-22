@@ -47,6 +47,10 @@ First, follow the :ref:`installation` instructions. Now you can run Datasette ag
 This will start a web server on port 8001 - visit http://localhost:8001/
 to access the web interface.
 
+Add ``-o`` to open your browser automatically once Datasette has started::
+
+    datasette path/to/database.db -o
+
 Use Chrome on OS X? You can run datasette against your browser history
 like so:
 

@@ -105,6 +105,7 @@ def test_metadata_yaml():
         get=None,
         help_config=False,
         pdb=False,
+        open=False,
         return_instance=True,
     )
     client = _TestClient(ds.app())

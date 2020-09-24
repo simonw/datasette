@@ -398,7 +398,7 @@ If the value matches that pattern, the plugin returns an HTML link element:
             label=jinja2.escape(data["label"] or "") or "&nbsp;"
         ))
 
-Examples: `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`_, `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`_
+Examples: `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`_, `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`__, `datasette-json-html <https://github.com/simonw/datasette-json-html>`__
 
 .. _plugin_register_output_renderer:
 

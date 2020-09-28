@@ -68,7 +68,7 @@ setup(
     extras_require={
         "docs": ["sphinx_rtd_theme", "sphinx-autobuild"],
         "test": [
-            "pytest>=5.2.2,<6.1.0",
+            "pytest>=5.2.2,<6.2.0",
             "pytest-asyncio>=0.10,<0.15",
             "beautifulsoup4>=4.8.1,<4.10.0",
             "black==20.8b1",

@@ -420,6 +420,17 @@ def test_escape_fts(query, expected):
     assert expected == utils.escape_fts(query)
 
 
+@pytest.mark.parametrize(
+    "input,expected",
+    [
+        ("dog", "dog"),
+        ('dateutil_parse("1/2/2020")', r"dateutil_parse(\0000221/2/2020\000022)"),
+    ],
+)
+def test_escape_css_string(input, expected):
+    assert expected == utils.escape_css_string(input)
+
+
 def test_check_connection_spatialite_raises():
     path = str(pathlib.Path(__file__).parent / "spatialite.db")
     conn = sqlite3.connect(path)

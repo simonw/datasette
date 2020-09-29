@@ -271,7 +271,10 @@ _boring_keyword_re = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 def escape_css_string(s):
-    return _css_re.sub(lambda m: "\\" + ("{:X}".format(ord(m.group())).zfill(6)), s)
+    return _css_re.sub(
+        lambda m: "\\" + ("{:X}".format(ord(m.group())).zfill(6)),
+        s.replace("\r\n", "\n"),
+    )
 
 
 def escape_sqlite(s):

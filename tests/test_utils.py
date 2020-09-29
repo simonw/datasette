@@ -425,6 +425,7 @@ def test_escape_fts(query, expected):
     [
         ("dog", "dog"),
         ('dateutil_parse("1/2/2020")', r"dateutil_parse(\0000221/2/2020\000022)"),
+        ("this\r\nand\r\nthat", r"this\00000Aand\00000Athat"),
     ],
 )
 def test_escape_css_string(input, expected):

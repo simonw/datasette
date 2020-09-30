@@ -44,8 +44,19 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     function isFacetedBy(column) {
         return getParams().getAll('_facet').includes(column);
     }
+    document.body.addEventListener('click', (ev) => {
+        /* was this click outside the menu? */
+        var target = ev.target;
+        while (target && target != menu) {
+            target = target.parentNode;
+        }
+        if (!target) {
+            menu.style.display = 'none';
+        }
+    });
     function iconClicked(ev) {
         ev.preventDefault();
+        ev.stopPropagation();
         var th = ev.target;
         while (th.nodeName != 'TH') {
             th = th.parentNode;
@@ -91,9 +102,9 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     svg.style.top = '1px';
     var menu = document.createElement('div');
     menu.innerHTML = DROPDOWN_HTML;
+    menu = menu.querySelector('*');
     menu.style.position = 'absolute';
     menu.style.display = 'none';
-    menu = menu.querySelector('*');
     document.body.appendChild(menu);
 
     var ths = Array.from(document.querySelectorAll('.rows-and-columns th'));

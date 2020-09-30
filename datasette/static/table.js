@@ -4,6 +4,7 @@ var DROPDOWN_HTML = `<div class="dropdown-menu">
   <li><a class="dropdown-sort-asc" href="#">Sort ascending</a></li>
   <li><a class="dropdown-sort-desc" href="#">Sort descending</a></li>
   <li><a class="dropdown-facet" href="#">Facet by this</a></li>
+  <li><a class="dropdown-not-blank" href="#">Show not-blank rows</a></li>
 </ul>
 </div>`;
 
@@ -41,6 +42,11 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         params.append('_facet', column);
         return paramsToUrl(params);
     }
+    function notBlankUrl(column) {
+        var params = getParams();
+        params.set(`${column}__notblank`, '1');
+        return paramsToUrl(params);
+    }
     function isFacetedBy(column) {
         return getParams().getAll('_facet').includes(column);
     }
@@ -69,6 +75,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         var sort = menu.querySelector('a.dropdown-sort-asc');
         var sortDesc = menu.querySelector('a.dropdown-sort-desc');
         var facetItem = menu.querySelector('a.dropdown-facet');
+        var notBlank = menu.querySelector('a.dropdown-not-blank');
         if (params.get('_sort') == column) {
             sort.style.display = 'none';
         } else {
@@ -89,10 +96,23 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
             facetItem.style.display = 'block';
             facetItem.setAttribute('href', facetUrl(column));
         }
+        /* Show notBlank option if not selected AND at least one visible blank value */
+        var tdsForThisColumn = Array.from(
+            th.closest('table').querySelectorAll('td.' + th.className)
+        );
+        if (
+            params.get(`${column}__notblank`) != '1' &&
+            tdsForThisColumn.filter(el => el.innerText.trim() == '').length
+        ) {
+            notBlank.style.display = 'block';
+            notBlank.setAttribute('href', notBlankUrl(column));
+        } else {
+            notBlank.style.display = 'none';
+        }
         menu.style.position = 'absolute';
         menu.style.top = (menuTop + 6) + 'px';
         menu.style.left = menuLeft + 'px';
-        menu.style.display = 'block';
+        menu.style.display = 'inline-flex';
     }
     var svg = document.createElement('div');
     svg.innerHTML = DROPDOWN_ICON_SVG;

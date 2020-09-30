@@ -418,6 +418,7 @@ button.button-as-link {
     display: block;
     padding: 4px 8px 2px 8px;
     color: #222;
+    white-space: nowrap;
 }
 .dropdown-menu a:hover {
     background-color: #eee;

@@ -91,10 +91,18 @@ class RowTableShared(DataView):
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
         sortable_columns = await self.sortable_columns_for_table(database, table, True)
-        columns = [
-            {"name": r[0], "sortable": r[0] in sortable_columns} for r in description
-        ]
         pks = await db.primary_keys(table)
+        pks_for_display = pks
+        if not pks_for_display:
+            pks_for_display = ["rowid"]
+        columns = [
+            {
+                "name": r[0],
+                "sortable": r[0] in sortable_columns,
+                "is_pk": r[0] in pks_for_display,
+            }
+            for r in description
+        ]
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
             for fk in await db.foreign_keys_for_table(table)

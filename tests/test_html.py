@@ -344,21 +344,37 @@ def test_sort_links(app_client):
     ]
     assert [
         {
-            "attrs": {"class": ["col-Link"], "data-column": "Link", "scope": "col"},
+            "attrs": {
+                "class": ["col-Link"],
+                "data-column": "Link",
+                "data-is-pk": "0",
+                "scope": "col",
+            },
             "a_href": None,
         },
         {
-            "attrs": {"class": ["col-pk1"], "data-column": "pk1", "scope": "col"},
+            "attrs": {
+                "class": ["col-pk1"],
+                "data-column": "pk1",
+                "data-is-pk": "1",
+                "scope": "col",
+            },
             "a_href": None,
         },
         {
-            "attrs": {"class": ["col-pk2"], "data-column": "pk2", "scope": "col"},
+            "attrs": {
+                "class": ["col-pk2"],
+                "data-column": "pk2",
+                "data-is-pk": "1",
+                "scope": "col",
+            },
             "a_href": None,
         },
         {
             "attrs": {
                 "class": ["col-content"],
                 "data-column": "content",
+                "data-is-pk": "0",
                 "scope": "col",
             },
             "a_href": None,
@@ -367,6 +383,7 @@ def test_sort_links(app_client):
             "attrs": {
                 "class": ["col-sortable"],
                 "data-column": "sortable",
+                "data-is-pk": "0",
                 "scope": "col",
             },
             "a_href": "sortable?_sort_desc=sortable",
@@ -375,6 +392,7 @@ def test_sort_links(app_client):
             "attrs": {
                 "class": ["col-sortable_with_nulls"],
                 "data-column": "sortable_with_nulls",
+                "data-is-pk": "0",
                 "scope": "col",
             },
             "a_href": "sortable?_sort=sortable_with_nulls",
@@ -383,12 +401,18 @@ def test_sort_links(app_client):
             "attrs": {
                 "class": ["col-sortable_with_nulls_2"],
                 "data-column": "sortable_with_nulls_2",
+                "data-is-pk": "0",
                 "scope": "col",
             },
             "a_href": "sortable?_sort=sortable_with_nulls_2",
         },
         {
-            "attrs": {"class": ["col-text"], "data-column": "text", "scope": "col"},
+            "attrs": {
+                "class": ["col-text"],
+                "data-column": "text",
+                "data-is-pk": "0",
+                "scope": "col",
+            },
             "a_href": "sortable?_sort=text",
         },
     ] == attrs_and_link_attrs

@@ -13,16 +13,37 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
 </svg>`;
 
 (function() {
+    // Feature detection
+    if (!window.URLSearchParams) {
+        return;
+    }
+    function getParams() {
+        return new URLSearchParams(location.search);
+    }
+    function paramsToUrl(params) {
+        var s = params.toString();
+        return s ? ('?' + s) : '';
+    }
     function sortDescUrl(column) {
-        return '?_sort_desc=' + encodeURIComponent(column);
+        var params = getParams();
+        params.set('_sort_desc', column);
+        params.delete('_sort');
+        return paramsToUrl(params);
     }
     function sortAscUrl(column) {
-        return '?_sort=' + encodeURIComponent(column);
+        var params = getParams();
+        params.set('_sort', column);
+        params.delete('_sort_desc');
+        return paramsToUrl(params);
     }
     function facetUrl(column) {
-        return '?_facet=' + encodeURIComponent(column);
+        var params = getParams();
+        params.append('_facet', column);
+        return paramsToUrl(params);
     }
-
+    function isFacetedBy(column) {
+        return getParams().getAll('_facet').includes(column);
+    }
     function iconClicked(ev) {
         ev.preventDefault();
         var th = ev.target;
@@ -33,12 +54,25 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         var menuTop = rect.bottom + window.scrollY;
         var menuLeft = rect.left + window.scrollX;
         var column = th.getAttribute('data-column');
-        menu.querySelector('a.dropdown-sort-desc').setAttribute('href', sortDescUrl(column));
-        menu.querySelector('a.dropdown-sort-asc').setAttribute('href', sortAscUrl(column));
-        /* Only show facet if it's not the first column */
-        var isFirstColumn = th.parentElement.querySelector('th:first-of-type') == th;
+        var params = getParams();
+        var sort = menu.querySelector('a.dropdown-sort-asc');
+        var sortDesc = menu.querySelector('a.dropdown-sort-desc');
         var facetItem = menu.querySelector('a.dropdown-facet');
-        if (isFirstColumn) {
+        if (params.get('_sort') == column) {
+            sort.style.display = 'none';
+        } else {
+            sort.style.display = 'block';
+            sort.setAttribute('href', sortAscUrl(column));
+        }
+        if (params.get('_sort_desc') == column) {
+            sortDesc.style.display = 'none';
+        } else {
+            sortDesc.style.display = 'block';
+            sortDesc.setAttribute('href', sortDescUrl(column));
+        }
+        /* Only show facet if it's not the first column, not selected, not a PK */
+        var isFirstColumn = th.parentElement.querySelector('th:first-of-type') == th;
+        if (isFirstColumn || params.getAll('_facet').includes(column) || th.getAttribute('data-is-pk') == '1') {
             facetItem.style.display = 'none';
         } else {
             facetItem.style.display = 'block';

@@ -4,6 +4,7 @@ import collections
 import datetime
 import glob
 import hashlib
+import httpx
 import inspect
 import itertools
 from itsdangerous import BadSignature
@@ -312,6 +313,7 @@ class Datasette:
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
+        self.client = DatasetteClient(self)
 
     async def invoke_startup(self):
         for hook in pm.hook.startup(datasette=self):
@@ -1209,3 +1211,34 @@ def route_pattern_from_filepath(filepath):
 
 class NotFoundExplicit(NotFound):
     pass
+
+
+class DatasetteClient:
+    def __init__(self, ds):
+        self._client = httpx.AsyncClient(app=ds.app())
+
+    def _fix(self, path):
+        if path.startswith("/"):
+            path = "http://localhost{}".format(path)
+        return path
+
+    async def get(self, path, **kwargs):
+        return await self._client.get(self._fix(path), **kwargs)
+
+    async def options(self, path, **kwargs):
+        return await self._client.options(self._fix(path), **kwargs)
+
+    async def head(self, path, **kwargs):
+        return await self._client.head(self._fix(path), **kwargs)
+
+    async def post(self, path, **kwargs):
+        return await self._client.post(self._fix(path), **kwargs)
+
+    async def put(self, path, **kwargs):
+        return await self._client.put(self._fix(path), **kwargs)
+
+    async def patch(self, path, **kwargs):
+        return await self._client.patch(self._fix(path), **kwargs)
+
+    async def delete(self, path, **kwargs):
+        return await self._client.delete(self._fix(path), **kwargs)

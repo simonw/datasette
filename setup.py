@@ -49,6 +49,7 @@ setup(
         "click-default-group~=1.2.2",
         "Jinja2>=2.10.3,<2.12.0",
         "hupper~=1.9",
+        "httpx~=0.15",
         "pint~=0.9",
         "pluggy~=0.13.0",
         "uvicorn~=0.11",

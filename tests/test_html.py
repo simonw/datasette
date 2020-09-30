@@ -343,24 +343,52 @@ def test_sort_links(app_client):
         for th in ths
     ]
     assert [
-        {"attrs": {"class": ["col-Link"], "scope": "col"}, "a_href": None},
-        {"attrs": {"class": ["col-pk1"], "scope": "col"}, "a_href": None},
-        {"attrs": {"class": ["col-pk2"], "scope": "col"}, "a_href": None},
-        {"attrs": {"class": ["col-content"], "scope": "col"}, "a_href": None},
         {
-            "attrs": {"class": ["col-sortable"], "scope": "col"},
+            "attrs": {"class": ["col-Link"], "data-column": "Link", "scope": "col"},
+            "a_href": None,
+        },
+        {
+            "attrs": {"class": ["col-pk1"], "data-column": "pk1", "scope": "col"},
+            "a_href": None,
+        },
+        {
+            "attrs": {"class": ["col-pk2"], "data-column": "pk2", "scope": "col"},
+            "a_href": None,
+        },
+        {
+            "attrs": {
+                "class": ["col-content"],
+                "data-column": "content",
+                "scope": "col",
+            },
+            "a_href": None,
+        },
+        {
+            "attrs": {
+                "class": ["col-sortable"],
+                "data-column": "sortable",
+                "scope": "col",
+            },
             "a_href": "sortable?_sort_desc=sortable",
         },
         {
-            "attrs": {"class": ["col-sortable_with_nulls"], "scope": "col"},
+            "attrs": {
+                "class": ["col-sortable_with_nulls"],
+                "data-column": "sortable_with_nulls",
+                "scope": "col",
+            },
             "a_href": "sortable?_sort=sortable_with_nulls",
         },
         {
-            "attrs": {"class": ["col-sortable_with_nulls_2"], "scope": "col"},
+            "attrs": {
+                "class": ["col-sortable_with_nulls_2"],
+                "data-column": "sortable_with_nulls_2",
+                "scope": "col",
+            },
             "a_href": "sortable?_sort=sortable_with_nulls_2",
         },
         {
-            "attrs": {"class": ["col-text"], "scope": "col"},
+            "attrs": {"class": ["col-text"], "data-column": "text", "scope": "col"},
             "a_href": "sortable?_sort=text",
         },
     ] == attrs_and_link_attrs

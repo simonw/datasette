@@ -117,9 +117,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     var svg = document.createElement('div');
     svg.innerHTML = DROPDOWN_ICON_SVG;
     svg = svg.querySelector('*');
-    svg.style.display = 'inline-block';
-    svg.style.position = 'relative';
-    svg.style.top = '1px';
+    svg.classList.add('dropdown-menu-icon');
     var menu = document.createElement('div');
     menu.innerHTML = DROPDOWN_HTML;
     menu = menu.querySelector('*');
@@ -134,7 +132,6 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         }
         var icon = svg.cloneNode(true);
         icon.addEventListener('click', iconClicked);
-        icon.style.cursor = 'pointer';
         th.appendChild(icon);
     });
 })();

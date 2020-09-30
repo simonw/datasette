@@ -1,8 +1,8 @@
 var DROPDOWN_HTML = `<div class="dropdown-menu">
 <div class="hook"></div>
 <ul>
-  <li><a class="dropdown-sort-desc" href="#">Sort descending</a></li>
   <li><a class="dropdown-sort-asc" href="#">Sort ascending</a></li>
+  <li><a class="dropdown-sort-desc" href="#">Sort descending</a></li>
   <li><a class="dropdown-facet" href="#">Facet by this</a></li>
 </ul>
 </div>`;
@@ -63,10 +63,13 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     document.body.appendChild(menu);
 
     var ths = Array.from(document.querySelectorAll('.rows-and-columns th'));
-    ths.forEach(el => {
+    ths.forEach(th => {
+        if (!th.querySelector('a')) {
+            return;
+        }
         var icon = svg.cloneNode(true);
         icon.addEventListener('click', iconClicked);
         icon.style.cursor = 'pointer';
-        el.appendChild(icon);
+        th.appendChild(icon);
     });
 })();

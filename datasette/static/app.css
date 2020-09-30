@@ -32,6 +32,7 @@ td em {
 }
 th {
     padding-right: 1em;
+    white-space: nowrap;
 }
 table a:link {
     text-decoration: none;
@@ -385,4 +386,50 @@ button.button-as-link {
     text-decoration: none;
     cursor: pointer;
     font-size: 1em;
+}
+
+.dropdown-menu {
+    display: inline-flex;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    line-height: 1.4;
+    font-size: 16px;
+    box-shadow: 2px 2px 2px #aaa;
+    background-color: #fff;
+}
+.dropdown-menu ul,
+.dropdown-menu li {
+    list-style-type: none;
+    margin: 0;
+    padding: 0;
+}
+.dropdown-menu li {
+    border-bottom: 1px solid #ccc;
+}
+.dropdown-menu li:last-child {
+    border: none;
+}
+.dropdown-menu a:link,
+.dropdown-menu a:visited,
+.dropdown-menu a:hover,
+.dropdown-menu a:focus
+.dropdown-menu a:active {
+    text-decoration: none;
+    display: block;
+    padding: 4px 8px 2px 8px;
+    color: #222;
+}
+.dropdown-menu a:hover {
+    background-color: #eee;
+}
+.dropdown-menu .hook {
+    display: block;
+    position: absolute;
+    top: -5px;
+    left: 6px;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 5px solid #666;
 }

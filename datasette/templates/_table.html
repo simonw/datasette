@@ -3,7 +3,7 @@
         <thead>
             <tr>
                 {% for column in display_columns %}
-                    <th class="col-{{ column.name|to_css_class }}" scope="col">
+                    <th class="col-{{ column.name|to_css_class }}" scope="col" data-column="{{ column.name }}">
                         {% if not column.sortable %}
                             {{ column.name }}
                         {% else %}

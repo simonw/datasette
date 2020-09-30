@@ -16,6 +16,7 @@ from .utils import (
     sqlite_timelimit,
     sqlite3,
     table_columns,
+    QueryInterrupted,
 )
 from .inspect import inspect_hash
 
@@ -374,10 +375,6 @@ class WriteTask:
         self.fn = fn
         self.task_id = task_id
         self.reply_queue = reply_queue
-
-
-class QueryInterrupted(Exception):
-    pass
 
 
 class MultipleValues(Exception):

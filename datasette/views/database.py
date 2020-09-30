@@ -11,6 +11,7 @@ from datasette.utils import (
     is_url,
     path_with_added_args,
     path_with_removed_args,
+    QueryInterrupted,
 )
 from datasette.utils.asgi import AsgiFileDownload, Response, Forbidden
 from datasette.plugins import pm
@@ -34,7 +35,6 @@ class DatabaseView(DataView):
 
         if request.args.get("sql"):
             sql = request.args.get("sql")
-            validate_sql_select(sql)
             return await QueryView(self.ds).data(
                 request, database, hash, sql, _size=_size, metadata=metadata
             )
@@ -207,6 +207,12 @@ class QueryView(DataView):
 
         templates = ["query-{}.html".format(to_css_class(database)), "query.html"]
 
+        error = None
+        truncated = False
+        rows = []
+        columns = []
+        http_status = 200
+
         # Execute query - as write or as read
         if write:
             if request.method == "POST":
@@ -242,6 +248,17 @@ class QueryView(DataView):
                     message_type = self.ds.INFO
                     redirect_url = metadata.get("on_success_redirect")
                     ok = True
+                except QueryInterrupted:
+                    raise DatasetteError(
+                        """
+                        SQL query took too long. The time limit is controlled by the
+                        <a href="https://docs.datasette.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
+                        configuration option.
+                    """,
+                        title="SQL Interrupted",
+                        status=400,
+                        messagge_is_html=True,
+                    )
                 except Exception as e:
                     message = metadata.get("on_error_message") or str(e)
                     message_type = self.ds.ERROR
@@ -288,10 +305,22 @@ class QueryView(DataView):
                 params_for_query = MagicParameters(params, request, self.ds)
             else:
                 params_for_query = params
-            results = await self.ds.execute(
-                database, sql, params_for_query, truncate=True, **extra_args
-            )
-            columns = [r[0] for r in results.description]
+            ok = False
+            try:
+                validate_sql_select(sql)
+                results = await self.ds.execute(
+                    database, sql, params_for_query, truncate=True, **extra_args
+                )
+                rows = results.rows
+                truncated = results.truncated
+                columns = [r[0] for r in results.description]
+                ok = True
+            except Exception as e:
+                rows = []
+                columns = []
+                error = str(e)
+                ok = False
+                http_status = 400
 
         if canned_query:
             templates.insert(
@@ -303,9 +332,9 @@ class QueryView(DataView):
 
         async def extra_template():
             display_rows = []
-            for row in results.rows:
+            for row in rows:
                 display_row = []
-                for column, value in zip(results.columns, row):
+                for column, value in zip(columns, row):
                     display_value = value
                     # Let the plugins have a go
                     # pylint: disable=no-member
@@ -345,10 +374,13 @@ class QueryView(DataView):
 
         return (
             {
+                "ok": ok,
+                "error": error,
                 "database": database,
+                "error": error,
                 "query_name": canned_query,
-                "rows": results.rows,
-                "truncated": results.truncated,
+                "rows": rows,
+                "truncated": truncated,
                 "columns": columns,
                 "query": {"sql": sql, "params": params},
                 "private": private,
@@ -358,6 +390,7 @@ class QueryView(DataView):
             },
             extra_template,
             templates,
+            http_status,
         )
 
 

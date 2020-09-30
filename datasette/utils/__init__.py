@@ -158,6 +158,10 @@ class InvalidSql(Exception):
     pass
 
 
+class QueryInterrupted(Exception):
+    pass
+
+
 allowed_sql_res = [
     re.compile(r"^select\b"),
     re.compile(r"^explain select\b"),

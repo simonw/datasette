@@ -276,7 +276,7 @@ class DataView(BaseView):
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
             else:
-                data, _, _ = response_or_template_contexts
+                data = response_or_template_contexts[0]
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
@@ -307,7 +307,8 @@ class DataView(BaseView):
                     if next:
                         kwargs["_next"] = next
                     if not first:
-                        data, _, _ = await self.data(request, database, hash, **kwargs)
+                        bits = await self.data(request, database, hash, **kwargs)
+                        data = bits[0]
                     if first:
                         await writer.writerow(headings)
                         first = False
@@ -398,9 +399,18 @@ class DataView(BaseView):
             )
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
-
             else:
-                data, extra_template_data, templates = response_or_template_contexts
+                if len(response_or_template_contexts) == 3:
+                    data, extra_template_data, templates = response_or_template_contexts
+                elif len(response_or_template_contexts) == 4:
+                    (
+                        data,
+                        extra_template_data,
+                        templates,
+                        status_code,
+                    ) = response_or_template_contexts
+                else:
+                    assert False, "response_or_template_contexts should be 3 or 4 items"
         except QueryInterrupted:
             raise DatasetteError(
                 """

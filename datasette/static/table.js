@@ -88,9 +88,13 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
             sortDesc.style.display = 'block';
             sortDesc.setAttribute('href', sortDescUrl(column));
         }
-        /* Only show facet if it's not the first column, not selected, not a PK */
+        /* Only show facet if it's not the first column, not selected, not a single PK */
         var isFirstColumn = th.parentElement.querySelector('th:first-of-type') == th;
-        if (isFirstColumn || params.getAll('_facet').includes(column) || th.getAttribute('data-is-pk') == '1') {
+        var isSinglePk = (
+            th.getAttribute('data-is-pk') == '1' &&
+            document.querySelectorAll('th[data-is-pk="1"]').length == 1
+        );
+        if (isFirstColumn || params.getAll('_facet').includes(column) || isSinglePk) {
             facetItem.style.display = 'none';
         } else {
             facetItem.style.display = 'block';

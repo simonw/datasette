@@ -90,7 +90,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         }
         /* Only show facet if it's not the first column, not selected, not a PK */
         var isFirstColumn = th.parentElement.querySelector('th:first-of-type') == th;
-        if (isFirstColumn || params.getAll('_facet').includes(column) || th.getAttribute('data-is-pk') == '1') {
+        if (isFirstColumn || params.getAll('_facet').includes(column)) {
             facetItem.style.display = 'none';
         } else {
             facetItem.style.display = 'block';

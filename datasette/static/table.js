@@ -29,12 +29,14 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         var params = getParams();
         params.set('_sort_desc', column);
         params.delete('_sort');
+        params.delete('_next');
         return paramsToUrl(params);
     }
     function sortAscUrl(column) {
         var params = getParams();
         params.set('_sort', column);
         params.delete('_sort_desc');
+        params.delete('_next');
         return paramsToUrl(params);
     }
     function facetUrl(column) {

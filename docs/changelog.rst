@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_50_a1:
+
+0.50a1 (2020-10-06)
+-------------------
+
+- Column action menu now shows the column type. (`#993 <https://github.com/simonw/datasette/issues/993>`__)
+- Column action sort links now correctly link to the first page of sorted results. (`#989 <https://github.com/simonw/datasette/issues/989>`__)
+- :ref:`publish_cloud_run` documentation now covers Google Cloud SDK options. Thanks, Geoffrey Hing. (`#995 <https://github.com/simonw/datasette/pull/995>`__)
+
 .. _v0_50_a0:
 
 0.50a0 (2020-10-01)

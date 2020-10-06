@@ -6,6 +6,7 @@ var DROPDOWN_HTML = `<div class="dropdown-menu">
   <li><a class="dropdown-facet" href="#">Facet by this</a></li>
   <li><a class="dropdown-not-blank" href="#">Show not-blank rows</a></li>
 </ul>
+<p class="dropdown-column-type"></p>
 </div>`;
 
 var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -115,10 +116,20 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         } else {
             notBlank.style.display = 'none';
         }
+        var columnTypeP = menu.querySelector('.dropdown-column-type');
+        var columnType = th.dataset.columnType;
+        var notNull = th.dataset.columnNotNull == 1 ? ' NOT NULL' : '';
+
+        if (columnType) {
+            columnTypeP.style.display = 'block';
+            columnTypeP.innerText = `Type: ${columnType.toUpperCase()}${notNull}`;
+        } else {
+            columnTypeP.style.display = 'none';
+        }
         menu.style.position = 'absolute';
         menu.style.top = (menuTop + 6) + 'px';
         menu.style.left = menuLeft + 'px';
-        menu.style.display = 'inline-flex';
+        menu.style.display = 'block';
     }
     var svg = document.createElement('div');
     svg.innerHTML = DROPDOWN_ICON_SVG;

@@ -342,80 +342,96 @@ def test_sort_links(app_client):
         }
         for th in ths
     ]
-    assert [
+    assert attrs_and_link_attrs == [
         {
             "attrs": {
                 "class": ["col-Link"],
-                "data-column": "Link",
-                "data-is-pk": "0",
                 "scope": "col",
+                "data-column": "Link",
+                "data-column-type": "",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
             },
             "a_href": None,
         },
         {
             "attrs": {
                 "class": ["col-pk1"],
-                "data-column": "pk1",
-                "data-is-pk": "1",
                 "scope": "col",
+                "data-column": "pk1",
+                "data-column-type": "varchar(30)",
+                "data-column-not-null": "0",
+                "data-is-pk": "1",
             },
             "a_href": None,
         },
         {
             "attrs": {
                 "class": ["col-pk2"],
-                "data-column": "pk2",
-                "data-is-pk": "1",
                 "scope": "col",
+                "data-column": "pk2",
+                "data-column-type": "varchar(30)",
+                "data-column-not-null": "0",
+                "data-is-pk": "1",
             },
             "a_href": None,
         },
         {
             "attrs": {
                 "class": ["col-content"],
-                "data-column": "content",
-                "data-is-pk": "0",
                 "scope": "col",
+                "data-column": "content",
+                "data-column-type": "text",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
             },
             "a_href": None,
         },
         {
             "attrs": {
                 "class": ["col-sortable"],
-                "data-column": "sortable",
-                "data-is-pk": "0",
                 "scope": "col",
+                "data-column": "sortable",
+                "data-column-type": "integer",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
             },
             "a_href": "sortable?_sort_desc=sortable",
         },
         {
             "attrs": {
                 "class": ["col-sortable_with_nulls"],
-                "data-column": "sortable_with_nulls",
-                "data-is-pk": "0",
                 "scope": "col",
+                "data-column": "sortable_with_nulls",
+                "data-column-type": "real",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
             },
             "a_href": "sortable?_sort=sortable_with_nulls",
         },
         {
             "attrs": {
                 "class": ["col-sortable_with_nulls_2"],
-                "data-column": "sortable_with_nulls_2",
-                "data-is-pk": "0",
                 "scope": "col",
+                "data-column": "sortable_with_nulls_2",
+                "data-column-type": "real",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
             },
             "a_href": "sortable?_sort=sortable_with_nulls_2",
         },
         {
             "attrs": {
                 "class": ["col-text"],
-                "data-column": "text",
-                "data-is-pk": "0",
                 "scope": "col",
+                "data-column": "text",
+                "data-column-type": "text",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
             },
             "a_href": "sortable?_sort=text",
         },
-    ] == attrs_and_link_attrs
+    ]
 
 
 def test_facet_display(app_client):

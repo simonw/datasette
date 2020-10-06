@@ -396,7 +396,6 @@ svg.dropdown-menu-icon {
     opacity: 0.8;
 }
 .dropdown-menu {
-    display: inline-flex;
     border: 1px solid #ccc;
     border-radius: 4px;
     line-height: 1.4;
@@ -409,6 +408,13 @@ svg.dropdown-menu-icon {
     list-style-type: none;
     margin: 0;
     padding: 0;
+}
+.dropdown-menu .dropdown-column-type {
+    font-size: 0.7em;
+    color: #666;
+    margin: 0;
+    padding: 0;
+    padding: 4px 8px 4px 8px;
 }
 .dropdown-menu li {
     border-bottom: 1px solid #ccc;

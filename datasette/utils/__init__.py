@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import contextmanager
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 import base64
 import click
 import hashlib
@@ -53,6 +53,11 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
 """
+
+# Can replace this with Column from sqlite_utils when I add that dependency
+Column = namedtuple(
+    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk")
+)
 
 
 async def await_me_maybe(value):
@@ -525,8 +530,12 @@ def detect_json1(conn=None):
 
 
 def table_columns(conn, table):
+    return [column.name for column in table_column_details(conn, table)]
+
+
+def table_column_details(conn, table):
     return [
-        r[1]
+        Column(*r)
         for r in conn.execute(
             "PRAGMA table_info({});".format(escape_sqlite(table))
         ).fetchall()

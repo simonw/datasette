@@ -64,11 +64,14 @@ def test_redirect2(custom_pages_client):
     assert "/example" == response.headers["Location"]
 
 
-@pytest.mark.parametrize("path,expected", [
-    ("/route_Sally", "<p>Hello from Sally</p>"),
-    ("/topic_python", "Topic page for python"),
-    ("/topic_python/info", "Slug: info, Topic: python"),
-])
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("/route_Sally", "<p>Hello from Sally</p>"),
+        ("/topic_python", "Topic page for python"),
+        ("/topic_python/info", "Slug: info, Topic: python"),
+    ],
+)
 def test_custom_route_pattern(custom_pages_client, path, expected):
     response = custom_pages_client.get(path)
     assert response.status == 200

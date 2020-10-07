@@ -1204,7 +1204,7 @@ def route_pattern_from_filepath(filepath):
             re_bits.append("(?P<{}>[^/]*)".format(bit[1:-1]))
         else:
             re_bits.append(re.escape(bit))
-    return re.compile("".join(re_bits))
+    return re.compile("^" + "".join(re_bits) + "$")
 
 
 class NotFoundExplicit(NotFound):

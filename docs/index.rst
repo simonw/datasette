@@ -40,6 +40,7 @@ Contents
    ecosystem
    pages
    publish
+   deploying
    json_api
    sql_queries
    authentication

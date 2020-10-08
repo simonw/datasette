@@ -88,7 +88,7 @@ Ubuntu offer `a tutorial on installing nginx <https://ubuntu.com/tutorials/insta
 Deploying using buildpacks
 ==========================
 
-Some hosting providers such as Heroku, DigitalOcean App Platform and Scalingo support the `Buildpacks standard <https://buildpacks.io/>`__ for deploying Python web applications.
+Some hosting providers such as `Heroku <https://www.heroku.com/>`__, `DigitalOcean App Platform <https://www.digitalocean.com/docs/app-platform/>`__ and `Scalingo <https://scalingo.com/>`__ support the `Buildpacks standard <https://buildpacks.io/>`__ for deploying Python web applications.
 
 Deploying Datasette on these platforms requires two files: ``requirements.txt`` and ``Procfile``.
 

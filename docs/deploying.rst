@@ -95,7 +95,6 @@ Deploying Datasette on these platforms requires two files: ``requirements.txt`` 
 The ``requirements.txt`` file lets the platform know which Python packages should be installed. It should contain ``datasette`` at a minimum, but can also list any Datasette plugins you wish to install - for example::
 
     datasette
-    datasette-graphql
     datasette-vega
 
 The ``Procfile`` lets the hosting platform know how to run the command that serves web traffic. It should look like this::

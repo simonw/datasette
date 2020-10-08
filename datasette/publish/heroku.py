@@ -24,6 +24,10 @@ def publish_subcommand(publish):
         default="datasette",
         help="Application name to use when deploying",
     )
+    @click.option(
+        "--tar",
+        help="--tar option to pass to Heroku, e.g. --tar=/usr/local/bin/gtar",
+    )
     def heroku(
         files,
         metadata,
@@ -44,6 +48,7 @@ def publish_subcommand(publish):
         about,
         about_url,
         name,
+        tar,
     ):
         fail_if_publish_binary_not_installed(
             "heroku", "Heroku", "https://cli.heroku.com"
@@ -127,8 +132,13 @@ def publish_subcommand(publish):
                 call(
                     ["heroku", "config:set", "-a", app_name, "{}={}".format(key, value)]
                 )
-
-            call(["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"])
+            tar_option = []
+            if tar:
+                tar_option = ["--tar", tar]
+            call(
+                ["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"]
+                + tar_option
+            )
 
 
 @contextmanager

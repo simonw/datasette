@@ -82,3 +82,32 @@ Ubuntu offer `a tutorial on installing nginx <https://ubuntu.com/tutorials/insta
             proxy_set_header Host $host;
         }
     }
+
+.. _deploying_buildpacks:
+
+Deploying using buildpacks
+==========================
+
+Some hosting providers such as Heroku, DigitalOcean App Platform and Scalingo support the `Buildpacks standard <https://buildpacks.io/>`__ for deploying Python web applications.
+
+Deploying Datasette on these platforms requires two files: ``requirements.txt`` and ``Procfile``.
+
+The ``requirements.txt`` file lets the platform know which Python packages should be installed. It should contain ``datasette`` at a minimum, but can also list any Datasette plugins you wish to install - for example::
+
+    datasette
+    datasette-graphql
+    datasette-vega
+
+The ``Procfile`` lets the hosting platform know how to run the command that serves web traffic. It should look like this::
+
+    web: datasette . -h 0.0.0.0 -p $PORT --cors
+
+The ``$PORT`` environment variable is provided by the hosting platform. ``--cors`` enables CORS requests from JavaScript running on other websites to your domain - omit this if you don't want to allow CORS. You can add additional Datasette :ref:`config` options here too.
+
+These two files should be enough to deploy Datasette on any host that supports buildpacks. Datasette will serve any SQLite files that are included in the root directory of the application.
+
+If you want to build SQLite files or download them as part of the deployment process you can do so using a ``bin/post_compile`` file. For example, the following ``bin/post_compile`` will download an example database that will then be served by Datasette::
+
+    wget https://fivethirtyeight.datasettes.com/fivethirtyeight.db
+
+`simonw/buildpack-datasette-demo <https://github.com/simonw/buildpack-datasette-demo>`__ is an example GitHub repository showing a simple Datasette configuration that can be deployed to a buildpack-supporting host.

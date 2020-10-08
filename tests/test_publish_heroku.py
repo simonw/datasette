@@ -60,15 +60,6 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
         mock_call.assert_has_calls(
             [
                 mock.call(
-                    [
-                        "heroku",
-                        "config:set",
-                        "-a",
-                        "f",
-                        "WEB_CONCURRENCY=1",
-                    ]
-                ),
-                mock.call(
                     ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
                 ),
             ]

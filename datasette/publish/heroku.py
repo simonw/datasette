@@ -73,10 +73,7 @@ def publish_subcommand(publish):
             "about_url": about_url,
         }
 
-        environment_variables = {
-            # Avoid uvicorn error: https://github.com/simonw/datasette/issues/633
-            "WEB_CONCURRENCY": "1"
-        }
+        environment_variables = {}
         if plugin_secret:
             extra_metadata["plugins"] = {}
             for plugin_name, plugin_setting, setting_value in plugin_secret:

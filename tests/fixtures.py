@@ -144,9 +144,7 @@ def make_app_client(
             template_dir=template_dir,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
-        client = TestClient(ds.app())
-        client.ds = ds
-        yield client
+        yield TestClient(ds)
 
 
 @pytest.fixture(scope="session")
@@ -158,9 +156,7 @@ def app_client():
 @pytest.fixture(scope="session")
 def app_client_no_files():
     ds = Datasette([])
-    client = TestClient(ds.app())
-    client.ds = ds
-    yield client
+    yield TestClient(ds)
 
 
 @pytest.fixture(scope="session")

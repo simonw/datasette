@@ -380,9 +380,7 @@ def view_names_client(tmp_path_factory):
     conn = sqlite3.connect(db_path)
     conn.executescript(TABLES)
     return _TestClient(
-        Datasette(
-            [db_path], template_dir=str(templates), plugins_dir=str(plugins)
-        ).app()
+        Datasette([db_path], template_dir=str(templates), plugins_dir=str(plugins))
     )
 
 

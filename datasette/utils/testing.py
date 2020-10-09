@@ -1,23 +1,32 @@
-from datasette.utils import MultiParams
-from asgiref.testing import ApplicationCommunicator
 from asgiref.sync import async_to_sync
-from urllib.parse import unquote, quote, urlencode
-from http.cookies import SimpleCookie
+from urllib.parse import urlencode
 import json
+
+# These wrapper classes pre-date the introduction of
+# datasette.client and httpx to Datasette. They could
+# be removed if the Datasette tests are modified to
+# call datasette.client directly.
 
 
 class TestResponse:
-    def __init__(self, status, headers, body):
-        self.status = status
-        self.headers = headers
-        self.body = body
+    def __init__(self, httpx_response):
+        self.httpx_response = httpx_response
+
+    @property
+    def status(self):
+        return self.httpx_response.status_code
+
+    @property
+    def headers(self):
+        return self.httpx_response.headers
+
+    @property
+    def body(self):
+        return self.httpx_response.content
 
     @property
     def cookies(self):
-        cookie = SimpleCookie()
-        for header in self.headers.getlist("set-cookie"):
-            cookie.load(header)
-        return {key: value.value for key, value in cookie.items()}
+        return dict(self.httpx_response.cookies)
 
     @property
     def json(self):
@@ -31,8 +40,8 @@ class TestResponse:
 class TestClient:
     max_redirects = 5
 
-    def __init__(self, asgi_app):
-        self.asgi_app = asgi_app
+    def __init__(self, ds):
+        self.ds = ds
 
     def actor_cookie(self, actor):
         return self.ds.sign({"a": actor}, "actor")
@@ -94,61 +103,18 @@ class TestClient:
         post_body=None,
         content_type=None,
     ):
-        query_string = b""
-        if "?" in path:
-            path, _, query_string = path.partition("?")
-            query_string = query_string.encode("utf8")
-        if "%" in path:
-            raw_path = path.encode("latin-1")
-        else:
-            raw_path = quote(path, safe="/:,").encode("latin-1")
-        asgi_headers = [[b"host", b"localhost"]]
-        if headers:
-            for key, value in headers.items():
-                asgi_headers.append([key.encode("utf-8"), value.encode("utf-8")])
+        headers = headers or {}
         if content_type:
-            asgi_headers.append((b"content-type", content_type.encode("utf-8")))
-        if cookies:
-            sc = SimpleCookie()
-            for key, value in cookies.items():
-                sc[key] = value
-            asgi_headers.append([b"cookie", sc.output(header="").encode("utf-8")])
-        scope = {
-            "type": "http",
-            "http_version": "1.0",
-            "method": method,
-            "path": unquote(path),
-            "raw_path": raw_path,
-            "query_string": query_string,
-            "headers": asgi_headers,
-        }
-        instance = ApplicationCommunicator(self.asgi_app, scope)
-
-        if post_body:
-            body = post_body.encode("utf-8")
-            await instance.send_input({"type": "http.request", "body": body})
-        else:
-            await instance.send_input({"type": "http.request"})
-
-        # First message back should be response.start with headers and status
-        messages = []
-        start = await instance.receive_output(2)
-        messages.append(start)
-        assert start["type"] == "http.response.start"
-        response_headers = MultiParams(
-            [(k.decode("utf8"), v.decode("utf8")) for k, v in start["headers"]]
+            headers["content-type"] = content_type
+        httpx_response = await self.ds.client.request(
+            method,
+            path,
+            allow_redirects=allow_redirects,
+            cookies=cookies,
+            headers=headers,
+            content=post_body,
         )
-        status = start["status"]
-        # Now loop until we run out of response.body
-        body = b""
-        while True:
-            message = await instance.receive_output(2)
-            messages.append(message)
-            assert message["type"] == "http.response.body"
-            body += message["body"]
-            if not message.get("more_body"):
-                break
-        response = TestResponse(status, response_headers, body)
+        response = TestResponse(httpx_response)
         if allow_redirects and response.status in (301, 302):
             assert (
                 redirect_count < self.max_redirects

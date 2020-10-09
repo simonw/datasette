@@ -6,7 +6,6 @@ import glob
 import hashlib
 import httpx
 import inspect
-import itertools
 from itsdangerous import BadSignature
 import json
 import os
@@ -19,7 +18,6 @@ import urllib.parse
 from concurrent import futures
 from pathlib import Path
 
-import click
 from markupsafe import Markup
 from itsdangerous import URLSafeSerializer
 import jinja2
@@ -63,7 +61,6 @@ from .utils.asgi import (
     Forbidden,
     NotFound,
     Request,
-    Response,
     asgi_static,
     asgi_send,
     asgi_send_html,
@@ -1215,7 +1212,7 @@ class NotFoundExplicit(NotFound):
 
 class DatasetteClient:
     def __init__(self, ds):
-        self._client = httpx.AsyncClient(app=ds.app())
+        self.app = ds.app()
 
     def _fix(self, path):
         if path.startswith("/"):
@@ -1223,22 +1220,33 @@ class DatasetteClient:
         return path
 
     async def get(self, path, **kwargs):
-        return await self._client.get(self._fix(path), **kwargs)
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.get(self._fix(path), **kwargs)
 
     async def options(self, path, **kwargs):
-        return await self._client.options(self._fix(path), **kwargs)
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.options(self._fix(path), **kwargs)
 
     async def head(self, path, **kwargs):
-        return await self._client.head(self._fix(path), **kwargs)
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.head(self._fix(path), **kwargs)
 
     async def post(self, path, **kwargs):
-        return await self._client.post(self._fix(path), **kwargs)
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.post(self._fix(path), **kwargs)
 
     async def put(self, path, **kwargs):
-        return await self._client.put(self._fix(path), **kwargs)
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.put(self._fix(path), **kwargs)
 
     async def patch(self, path, **kwargs):
-        return await self._client.patch(self._fix(path), **kwargs)
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.patch(self._fix(path), **kwargs)
 
     async def delete(self, path, **kwargs):
-        return await self._client.delete(self._fix(path), **kwargs)
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.delete(self._fix(path), **kwargs)
+
+    async def request(self, method, path, **kwargs):
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.request(method, self._fix(path), **kwargs)

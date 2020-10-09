@@ -23,6 +23,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 ## News
 
+ * 9th October 2020: [Datasette 0.50](https://docs.datasette.io/en/stable/changelog.html#v0-50) - New column actions menu. `datasette.client` object for plugins to make internal API requests. Improved documentation on deploying Datasette.
  * 14th September 2020: [Datasette 0.49](https://docs.datasette.io/en/stable/changelog.html#v0-49) - JSON API for writable canned queries, path parameters for custom pages. See also [Datasette 0.49: The annotated release notes](https://simonwillison.net/2020/Sep/15/datasette-0-49/).
  * 16th August 2020: [Datasette 0.48](https://docs.datasette.io/en/stable/changelog.html#v0-48) - Documentation now lives at [docs.datasette.io](https://docs.datasette.io/), improvements to the `extra_template_vars`, `extra_css_urls`, `extra_js_urls` and `extra_body_script` plugin hooks.
  * 11th August 2020: [Datasette 0.47](https://docs.datasette.io/en/stable/changelog.html#v0-47) - Datasette can now be installed using Homebrew! `brew install simonw/datasette/datasette`. Also new: `datasette install name-of-plugin` and `datasette uninstall name-of-plugin` commands, and `datasette --get '/-/versions.json'` to output the result of Datasette HTTP calls on the command-line.

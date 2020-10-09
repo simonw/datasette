@@ -330,8 +330,8 @@ You can try out these messages (including the different visual styling of the th
 
 .. _internals_datasette_client:
 
-.client
--------
+datasette.client
+----------------
 
 Plugins can make internal HTTP requests to the Datasette instance within which they are running. This ensures that all of Datasette's external JSON APIs are also available to plugins.
 
@@ -364,7 +364,6 @@ It offers the following methods:
     Execute an internal request with the given HTTP method against that path.
 
 For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
-
 
 .. _internals_database:
 

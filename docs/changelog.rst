@@ -4,24 +4,28 @@
 Changelog
 =========
 
-.. _v0_50_a1:
+.. _v0_50:
 
-0.50a1 (2020-10-06)
--------------------
+0.50 (2020-10-09)
+-----------------
 
-- Column action menu now shows the column type. (`#993 <https://github.com/simonw/datasette/issues/993>`__)
-- Column action sort links now correctly link to the first page of sorted results. (`#989 <https://github.com/simonw/datasette/issues/989>`__)
+The key new feature in this release is the **column actions** menu on the table page (`#891 <https://github.com/simonw/datasette/issues/891>`__). This can be used to sort a column in ascending or descending order, facet data by that column or filter the table to just rows that have a value for that column.
+
+Plugin authors can use the new :ref:`internals_datasette_client` object to make internal HTTP requests from their plugins, allowing them to make use of Datasette's JSON API. (`#943 <https://github.com/simonw/datasette/issues/943>`__)
+
+New :ref:`deploying` documentation with guides for deploying Datasette on a Linux server :ref:`using systemd <deploying_systemd>` or to hosting providers :ref:`that support buildpacks <deploying_buildpacks>`. (`#514 <https://github.com/simonw/datasette/issues/514>`__, `#997 <https://github.com/simonw/datasette/issues/997>`__)
+
+Other improvements in this release:
+
 - :ref:`publish_cloud_run` documentation now covers Google Cloud SDK options. Thanks, Geoffrey Hing. (`#995 <https://github.com/simonw/datasette/pull/995>`__)
-
-.. _v0_50_a0:
-
-0.50a0 (2020-10-01)
--------------------
-
-- New column action menu - table columns now show a cog icon which provides a contextual menu for that column. (`#981 <https://github.com/simonw/datasette/issues/981>`__)
 - New ``datasette -o`` option which opens your browser as soon as Datasette starts up. (`#970 <https://github.com/simonw/datasette/issues/970>`__)
-- ``sqlite3.enable_callback_tracebacks(True)`` so errors in custom SQL functions will now display tracebacks. (`#891 <https://github.com/simonw/datasette/issues/891>`__)
+- Datasette now sets ``sqlite3.enable_callback_tracebacks(True)`` so that errors in custom SQL functions will display tracebacks. (`#891 <https://github.com/simonw/datasette/issues/891>`__)
 - Fixed two rendering bugs with column headers in portrait mobile view. (`#978 <https://github.com/simonw/datasette/issues/978>`__, `#980 <https://github.com/simonw/datasette/issues/980>`__)
+- New ``db.table_column_details(table)`` introspection method for retrieving full details of the columns in a specific table, see :ref:`internals_database_introspection`.
+- Fixed a routing bug with custom page wildcard templates. (`#996 <https://github.com/simonw/datasette/issues/996>`__)
+- ``datasette publish heroku`` now deploys using Python 3.8.6.
+- New ``datasette publish heroku --tar=`` option. (`#969 <https://github.com/simonw/datasette/issues/969>`__)
+- ``OPTIONS`` requests against HTML pages no longer return a 500 error. (`#1001 <https://github.com/simonw/datasette/issues/1001>`__)
 
 .. _v0_49_1:
 

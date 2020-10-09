@@ -113,6 +113,15 @@ class BaseView:
     async def options(self, request, *args, **kwargs):
         return Response.text("Method not allowed", status=405)
 
+    async def put(self, request, *args, **kwargs):
+        return Response.text("Method not allowed", status=405)
+
+    async def patch(self, request, *args, **kwargs):
+        return Response.text("Method not allowed", status=405)
+
+    async def delete(self, request, *args, **kwargs):
+        return Response.text("Method not allowed", status=405)
+
     async def dispatch_request(self, request, *args, **kwargs):
         handler = getattr(self, request.method.lower(), None)
         return await handler(request, *args, **kwargs)

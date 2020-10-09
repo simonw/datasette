@@ -2,7 +2,7 @@
 Tests for the datasette.database.Database class
 """
 from datasette.database import Database, Results, MultipleValues
-from datasette.utils import sqlite3
+from datasette.utils import sqlite3, Column
 from .fixtures import app_client
 import pytest
 import time
@@ -67,6 +67,201 @@ async def test_table_exists(db, tables, exists):
     for table in tables:
         actual = await db.table_exists(table)
         assert exists == actual
+
+
+@pytest.mark.parametrize(
+    "table,expected",
+    (
+        (
+            "facetable",
+            [
+                "pk",
+                "created",
+                "planet_int",
+                "on_earth",
+                "state",
+                "city_id",
+                "neighborhood",
+                "tags",
+                "complex_array",
+                "distinct_some_null",
+            ],
+        ),
+        (
+            "sortable",
+            [
+                "pk1",
+                "pk2",
+                "content",
+                "sortable",
+                "sortable_with_nulls",
+                "sortable_with_nulls_2",
+                "text",
+            ],
+        ),
+    ),
+)
+@pytest.mark.asyncio
+async def test_table_columns(db, table, expected):
+    columns = await db.table_columns(table)
+    assert columns == expected
+
+
+@pytest.mark.parametrize(
+    "table,expected",
+    (
+        (
+            "facetable",
+            [
+                Column(
+                    cid=0,
+                    name="pk",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=1,
+                ),
+                Column(
+                    cid=1,
+                    name="created",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=2,
+                    name="planet_int",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=3,
+                    name="on_earth",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=4,
+                    name="state",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=5,
+                    name="city_id",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=6,
+                    name="neighborhood",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=7,
+                    name="tags",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=8,
+                    name="complex_array",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=9,
+                    name="distinct_some_null",
+                    type="",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+            ],
+        ),
+        (
+            "sortable",
+            [
+                Column(
+                    cid=0,
+                    name="pk1",
+                    type="varchar(30)",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=1,
+                ),
+                Column(
+                    cid=1,
+                    name="pk2",
+                    type="varchar(30)",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=2,
+                ),
+                Column(
+                    cid=2,
+                    name="content",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=3,
+                    name="sortable",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=4,
+                    name="sortable_with_nulls",
+                    type="real",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=5,
+                    name="sortable_with_nulls_2",
+                    type="real",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+                Column(
+                    cid=6,
+                    name="text",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                ),
+            ],
+        ),
+    ),
+)
+@pytest.mark.asyncio
+async def test_table_column_details(db, table, expected):
+    columns = await db.table_column_details(table)
+    assert columns == expected
 
 
 @pytest.mark.asyncio

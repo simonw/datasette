@@ -24,6 +24,10 @@ def publish_subcommand(publish):
         default="datasette",
         help="Application name to use when deploying",
     )
+    @click.option(
+        "--tar",
+        help="--tar option to pass to Heroku, e.g. --tar=/usr/local/bin/gtar",
+    )
     def heroku(
         files,
         metadata,
@@ -44,6 +48,7 @@ def publish_subcommand(publish):
         about,
         about_url,
         name,
+        tar,
     ):
         fail_if_publish_binary_not_installed(
             "heroku", "Heroku", "https://cli.heroku.com"
@@ -73,10 +78,7 @@ def publish_subcommand(publish):
             "about_url": about_url,
         }
 
-        environment_variables = {
-            # Avoid uvicorn error: https://github.com/simonw/datasette/issues/633
-            "WEB_CONCURRENCY": "1"
-        }
+        environment_variables = {}
         if plugin_secret:
             extra_metadata["plugins"] = {}
             for plugin_name, plugin_setting, setting_value in plugin_secret:
@@ -130,8 +132,13 @@ def publish_subcommand(publish):
                 call(
                     ["heroku", "config:set", "-a", app_name, "{}={}".format(key, value)]
                 )
-
-            call(["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"])
+            tar_option = []
+            if tar:
+                tar_option = ["--tar", tar]
+            call(
+                ["heroku", "builds:create", "-a", app_name, "--include-vcs-ignore"]
+                + tar_option
+            )
 
 
 @contextmanager
@@ -170,7 +177,7 @@ def temporary_heroku_directory(
         if metadata_content:
             open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
 
-        open("runtime.txt", "w").write("python-3.8.5")
+        open("runtime.txt", "w").write("python-3.8.6")
 
         if branch:
             install = [

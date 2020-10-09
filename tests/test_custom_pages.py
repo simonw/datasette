@@ -1,41 +1,13 @@
+import pathlib
 import pytest
 from .fixtures import make_app_client
 
 
 @pytest.fixture(scope="session")
-def custom_pages_client(tmp_path_factory):
-    template_dir = tmp_path_factory.mktemp("page-templates")
-    pages_dir = template_dir / "pages"
-    pages_dir.mkdir()
-    (pages_dir / "about.html").write_text("ABOUT! view_name:{{ view_name }}", "utf-8")
-    (pages_dir / "request.html").write_text("path:{{ request.path }}", "utf-8")
-    (pages_dir / "202.html").write_text("{{ custom_status(202) }}202!", "utf-8")
-    (pages_dir / "headers.html").write_text(
-        '{{ custom_header("x-this-is-foo", "foo") }}FOO'
-        '{{ custom_header("x-this-is-bar", "bar") }}BAR',
-        "utf-8",
-    )
-    (pages_dir / "atom.html").write_text(
-        '{{ custom_header("content-type", "application/xml") }}<?xml ...>',
-        "utf-8",
-    )
-    (pages_dir / "redirect.html").write_text(
-        '{{ custom_redirect("/example") }}', "utf-8"
-    )
-    (pages_dir / "redirect2.html").write_text(
-        '{{ custom_redirect("/example", 301) }}', "utf-8"
-    )
-    (pages_dir / "route_{name}.html").write_text(
-        """
-        {% if name == "OhNo" %}{{ raise_404("Oh no") }}{% endif %}
-        <p>Hello from {{ name }}</p>
-        """,
-        "utf-8",
-    )
-    nested_dir = pages_dir / "nested"
-    nested_dir.mkdir()
-    (nested_dir / "nest.html").write_text("Nest!", "utf-8")
-    with make_app_client(template_dir=str(template_dir)) as client:
+def custom_pages_client():
+    with make_app_client(
+        template_dir=str(pathlib.Path(__file__).parent / "test_templates")
+    ) as client:
         yield client
 
 
@@ -92,10 +64,18 @@ def test_redirect2(custom_pages_client):
     assert "/example" == response.headers["Location"]
 
 
-def test_custom_route_pattern(custom_pages_client):
-    response = custom_pages_client.get("/route_Sally")
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("/route_Sally", "<p>Hello from Sally</p>"),
+        ("/topic_python", "Topic page for python"),
+        ("/topic_python/info", "Slug: info, Topic: python"),
+    ],
+)
+def test_custom_route_pattern(custom_pages_client, path, expected):
+    response = custom_pages_client.get(path)
     assert response.status == 200
-    assert response.text.strip() == "<p>Hello from Sally</p>"
+    assert response.text.strip() == expected
 
 
 def test_custom_route_pattern_404(custom_pages_client):

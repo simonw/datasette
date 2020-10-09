@@ -4,6 +4,25 @@
 Changelog
 =========
 
+.. _v0_50_a1:
+
+0.50a1 (2020-10-06)
+-------------------
+
+- Column action menu now shows the column type. (`#993 <https://github.com/simonw/datasette/issues/993>`__)
+- Column action sort links now correctly link to the first page of sorted results. (`#989 <https://github.com/simonw/datasette/issues/989>`__)
+- :ref:`publish_cloud_run` documentation now covers Google Cloud SDK options. Thanks, Geoffrey Hing. (`#995 <https://github.com/simonw/datasette/pull/995>`__)
+
+.. _v0_50_a0:
+
+0.50a0 (2020-10-01)
+-------------------
+
+- New column action menu - table columns now show a cog icon which provides a contextual menu for that column. (`#981 <https://github.com/simonw/datasette/issues/981>`__)
+- New ``datasette -o`` option which opens your browser as soon as Datasette starts up. (`#970 <https://github.com/simonw/datasette/issues/970>`__)
+- ``sqlite3.enable_callback_tracebacks(True)`` so errors in custom SQL functions will now display tracebacks. (`#891 <https://github.com/simonw/datasette/issues/891>`__)
+- Fixed two rendering bugs with column headers in portrait mobile view. (`#978 <https://github.com/simonw/datasette/issues/978>`__, `#980 <https://github.com/simonw/datasette/issues/980>`__)
+
 .. _v0_49_1:
 
 0.49.1 (2020-09-15)

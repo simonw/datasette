@@ -32,7 +32,15 @@ A Cloud Run **service** is a single hosted application. The service name you spe
 
 If you omit the ``--service`` option you will be asked to pick a service name interactively during the deploy.
 
-You may need to interact with prompts from the tool. Once it has finished it will output a URL like this one::
+You may need to interact with prompts from the tool. Many of the prompts ask for values that can be `set as properties for the Google Cloud SDK <https://cloud.google.com/sdk/docs/properties>`_ if you want to avoid the prompts. 
+
+For example, the default region for the deployed instance can be set using the command::
+
+    gcloud config set run/region us-central1
+    
+You should replace ``us-central1`` with your desired `region <https://cloud.google.com/about/locations>`_. Alternately, you can specify the region by setting the ``CLOUDSDK_RUN_REGION`` environment variable. 
+
+Once it has finished it will output a URL like this one::
 
     Service [my-service] revision [my-service-00001] has been deployed
     and is serving traffic at https://my-service-j7hipcg4aq-uc.a.run.app

@@ -16,6 +16,7 @@ from .utils import (
     sqlite_timelimit,
     sqlite3,
     table_columns,
+    table_column_details,
 )
 from .inspect import inspect_hash
 
@@ -230,6 +231,9 @@ class Database:
 
     async def table_columns(self, table):
         return await self.execute_fn(lambda conn: table_columns(conn, table))
+
+    async def table_column_details(self, table):
+        return await self.execute_fn(lambda conn: table_column_details(conn, table))
 
     async def primary_keys(self, table):
         return await self.execute_fn(lambda conn: detect_primary_keys(conn, table))

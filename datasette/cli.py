@@ -465,7 +465,9 @@ def serve(
         url = "http://{}:{}/".format(host, port)
     if open_browser:
         webbrowser.open(url)
-    uvicorn.run(ds.app(), host=host, port=port, log_level="info", lifespan="on")
+    uvicorn.run(
+        ds.app(), host=host, port=port, log_level="info", lifespan="on", workers=1
+    )
 
 
 async def check_databases(ds):

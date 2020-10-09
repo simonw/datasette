@@ -26,4 +26,7 @@ Options:
   --about TEXT                    About label for metadata
   --about_url TEXT                About URL for metadata
   -n, --name TEXT                 Application name to use when deploying
+  --tar TEXT                      --tar option to pass to Heroku, e.g.
+                                  --tar=/usr/local/bin/gtar
+
   --help                          Show this message and exit.

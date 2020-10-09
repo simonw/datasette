@@ -90,11 +90,31 @@ class RowTableShared(DataView):
         "Returns columns, rows for specified table - including fancy foreign key treatment"
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
+        column_details = {col.name: col for col in await db.table_column_details(table)}
         sortable_columns = await self.sortable_columns_for_table(database, table, True)
-        columns = [
-            {"name": r[0], "sortable": r[0] in sortable_columns} for r in description
-        ]
         pks = await db.primary_keys(table)
+        pks_for_display = pks
+        if not pks_for_display:
+            pks_for_display = ["rowid"]
+
+        columns = []
+        for r in description:
+            if r[0] == "rowid" and "rowid" not in column_details:
+                type_ = "integer"
+                notnull = 0
+            else:
+                type_ = column_details[r[0]].type
+                notnull = column_details[r[0]].notnull
+            columns.append(
+                {
+                    "name": r[0],
+                    "sortable": r[0] in sortable_columns,
+                    "is_pk": r[0] in pks_for_display,
+                    "type": type_,
+                    "notnull": notnull,
+                }
+            )
+
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
             for fk in await db.foreign_keys_for_table(table)
@@ -209,12 +229,25 @@ class RowTableShared(DataView):
             # Add the link column header.
             # If it's a simple primary key, we have to remove and re-add that column name at
             # the beginning of the header row.
+            first_column = None
             if len(pks) == 1:
                 columns = [col for col in columns if col["name"] != pks[0]]
-
-            columns = [
-                {"name": pks[0] if len(pks) == 1 else "Link", "sortable": len(pks) == 1}
-            ] + columns
+                first_column = {
+                    "name": pks[0],
+                    "sortable": len(pks) == 1,
+                    "is_pk": True,
+                    "type": column_details[pks[0]].type,
+                    "notnull": column_details[pks[0]].notnull,
+                }
+            else:
+                first_column = {
+                    "name": "Link",
+                    "sortable": False,
+                    "is_pk": False,
+                    "type": "",
+                    "notnull": 0,
+                }
+            columns = [first_column] + columns
         return columns, cell_rows
 
 
@@ -283,7 +316,8 @@ class TableView(RowTableShared):
         )
 
         pks = await db.primary_keys(table)
-        table_columns = await db.table_columns(table)
+        table_column_details = await db.table_column_details(table)
+        table_columns = [column.name for column in table_column_details]
 
         select_columns = ", ".join(escape_sqlite(t) for t in table_columns)
 

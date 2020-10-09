@@ -55,21 +55,22 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
     runner = CliRunner()
     with runner.isolated_filesystem():
         open("test.db", "w").write("data")
-        result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
+        result = runner.invoke(
+            cli.cli, ["publish", "heroku", "test.db", "--tar", "gtar"]
+        )
         assert 0 == result.exit_code, result.output
         mock_call.assert_has_calls(
             [
                 mock.call(
                     [
                         "heroku",
-                        "config:set",
+                        "builds:create",
                         "-a",
                         "f",
-                        "WEB_CONCURRENCY=1",
+                        "--include-vcs-ignore",
+                        "--tar",
+                        "gtar",
                     ]
-                ),
-                mock.call(
-                    ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
                 ),
             ]
         )

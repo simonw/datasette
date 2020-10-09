@@ -5,6 +5,7 @@
 
 {% block extra_head %}
 {{ super() }}
+<script src="{{ base_url }}-/static/table.js" defer></script>
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in display_columns %}

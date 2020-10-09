@@ -500,6 +500,9 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``await db.table_columns(table)`` - list of strings
     Names of columns in a specific table.
 
+``await db.table_column_details(table)`` - list of named tuples
+    Full details of the columns in a specific table. Each column is represented by a ``Column`` named tuple with fields ``cid`` (integer representing the column position), ``name`` (string), ``type`` (string, e.g. ``REAL`` or ``VARCHAR(30)``), ``notnull`` (integer 1 or 0), ``default_value`` (string or None), ``is_pk`` (integer 1 or 0).
+
 ``await db.primary_keys(table)`` - list of strings
     Names of the columns that are part of the primary key for this table.
 

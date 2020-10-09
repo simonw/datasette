@@ -28,6 +28,8 @@ Other improvements in this release:
 - ``OPTIONS`` requests against HTML pages no longer return a 500 error. (`#1001 <https://github.com/simonw/datasette/issues/1001>`__)
 - Datasette now supports Python 3.9.
 
+See also `Datasette 0.50: The annotated release notes <https://simonwillison.net/2020/Oct/9/datasette-0-50/>`__.
+
 .. _v0_49_1:
 
 0.49.1 (2020-09-15)

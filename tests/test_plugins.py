@@ -746,7 +746,7 @@ def test_hook_register_magic_parameters(restore_working_directory):
         response = client.post("/data/runme", {}, csrftoken_from=True)
         assert 200 == response.status
         actual = client.get("/data/logs.json?_sort_desc=rowid&_shape=array").json
-        assert [{"rowid": 1, "line": "1.0"}] == actual
+        assert [{"rowid": 1, "line": "1.1"}] == actual
         # Now try the GET request against get_uuid
         response_get = client.get("/data/get_uuid.json?_shape=array")
         assert 200 == response_get.status

@@ -88,11 +88,7 @@ def test_logout(app_client):
         allow_redirects=False,
     )
     # The ds_actor cookie should have been unset
-    assert [
-        h
-        for h in response4.headers.get_list("set-cookie")
-        if h.startswith('ds_actor=""; ')
-    ]
+    assert response4.cookie_was_deleted("ds_actor")
     # Should also have set a message
     messages = app_client.ds.unsign(response4.cookies["ds_messages"], "messages")
     assert [["You are now logged out", 2]] == messages

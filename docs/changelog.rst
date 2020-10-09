@@ -26,6 +26,7 @@ Other improvements in this release:
 - ``datasette publish heroku`` now deploys using Python 3.8.6.
 - New ``datasette publish heroku --tar=`` option. (`#969 <https://github.com/simonw/datasette/issues/969>`__)
 - ``OPTIONS`` requests against HTML pages no longer return a 500 error. (`#1001 <https://github.com/simonw/datasette/issues/1001>`__)
+- Datasette now supports Python 3.9.
 
 .. _v0_49_1:
 

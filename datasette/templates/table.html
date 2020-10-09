@@ -11,7 +11,6 @@
 {% for column in display_columns %}
     .rows-and-columns td:nth-of-type({{ loop.index }}):before { content: "{{ column.name|escape_css_string }}"; }
 {% endfor %}
-}
 </style>
 {% endblock %}
 
@@ -111,7 +110,7 @@
     <p><a class="not-underlined" title="{{ query.sql }}" href="{{ database_url(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 
-<p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
+<p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ base_url }}{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ base_url }}{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
 
 {% if suggested_facets %}
     <p class="suggested-facets">
@@ -160,10 +159,10 @@
     <div id="export" class="advanced-export">
         <h3>Advanced export</h3>
         <p>JSON shape:
-            <a href="{{ renderers['json'] }}">default</a>,
-            <a href="{{ append_querystring(renderers['json'], '_shape=array') }}">array</a>,
-            <a href="{{ append_querystring(renderers['json'], '_shape=array&_nl=on') }}">newline-delimited</a>{% if primary_keys %},
-                <a href="{{ append_querystring(renderers['json'], '_shape=object') }}">object</a>
+            <a href="{{ base_url }}{{ renderers['json'] }}">default</a>,
+            <a href="{{ base_url }}{{ append_querystring(renderers['json'], '_shape=array') }}">array</a>,
+            <a href="{{ base_url }}{{ append_querystring(renderers['json'], '_shape=array&_nl=on') }}">newline-delimited</a>{% if primary_keys %},
+                <a href="{{ base_url }}{{ append_querystring(renderers['json'], '_shape=object') }}">object</a>
             {% endif %}
         </p>
         <form action="{{ url_csv_path }}" method="get">

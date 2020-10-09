@@ -450,7 +450,7 @@ def serve(
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
 
     if get:
-        client = TestClient(ds.app())
+        client = TestClient(ds)
         response = client.get(get)
         click.echo(response.text)
         exit_code = 0 if response.status == 200 else 1

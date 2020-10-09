@@ -76,9 +76,7 @@ def config_dir_client(tmp_path_factory):
     )
 
     ds = Datasette([], config_dir=config_dir)
-    client = _TestClient(ds.app())
-    client.ds = ds
-    yield client
+    yield _TestClient(ds)
 
 
 def test_metadata(config_dir_client):
@@ -137,8 +135,7 @@ def test_metadata_yaml(tmp_path_factory, filename):
     config_dir = tmp_path_factory.mktemp("yaml-config-dir")
     (config_dir / filename).write_text("title: Title from metadata", "utf-8")
     ds = Datasette([], config_dir=config_dir)
-    client = _TestClient(ds.app())
-    client.ds = ds
+    client = _TestClient(ds)
     response = client.get("/-/metadata.json")
     assert 200 == response.status
     assert {"title": "Title from metadata"} == response.json

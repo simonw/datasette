@@ -108,8 +108,7 @@ def test_metadata_yaml():
         open_browser=False,
         return_instance=True,
     )
-    client = _TestClient(ds.app())
-    client.ds = ds
+    client = _TestClient(ds)
     response = client.get("/-/metadata.json")
     assert {"title": "Hello from YAML"} == response.json
 

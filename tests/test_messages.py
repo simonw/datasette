@@ -25,4 +25,4 @@ def test_messages_are_displayed_and_cleared(app_client):
     # Messages should be in that HTML
     assert "xmessagex" in response.text
     # Cookie should have been set that clears messages
-    assert "" == response.cookies["ds_messages"]
+    assert response.cookie_was_deleted("ds_messages")

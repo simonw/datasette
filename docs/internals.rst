@@ -1,14 +1,15 @@
 .. _internals:
 
-Internals for plugins
-=====================
+=======================
+ Internals for plugins
+=======================
 
 Many :ref:`plugin_hooks` are passed objects that provide access to internal Datasette functionality. The interface to these objects should not be considered stable with the exception of methods that are documented here.
 
 .. _internals_request:
 
 Request object
-~~~~~~~~~~~~~~
+==============
 
 The request object is passed to various plugin hooks. It represents an incoming HTTP request. It has the following properties:
 
@@ -59,7 +60,7 @@ The object also has two awaitable methods:
 .. _internals_multiparams:
 
 The MultiParams class
----------------------
+=====================
 
 ``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to querystring parameters that may have multiple values.
 
@@ -89,7 +90,7 @@ Consider the querystring ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` an
 .. _internals_response:
 
 Response class
-~~~~~~~~~~~~~~
+==============
 
 The ``Response`` class can be returned from view functions that have been registered using the :ref:`plugin_register_routes` hook.
 
@@ -167,7 +168,7 @@ You can use this with :ref:`datasette.sign() <datasette_sign>` to set signed coo
 .. _internals_datasette:
 
 Datasette class
-~~~~~~~~~~~~~~~
+===============
 
 This object is an instance of the ``Datasette`` class, passed to many plugin hooks as an argument called ``datasette``.
 
@@ -327,10 +328,48 @@ Datasette's flash messaging mechanism allows you to add a message that will be d
 
 You can try out these messages (including the different visual styling of the three message types) using the ``/-/messages`` debugging tool.
 
+.. _internals_datasette_client:
+
+.client
+-------
+
+Plugins can make internal HTTP requests to the Datasette instance within which they are running. This ensures that all of Datasette's external JSON APIs are also available to plugins.
+
+The ``datasette.client`` object is a wrapper around the `HTTPX Python library <https://www.python-httpx.org/>`__, providing an async-friendly API that is similar to the widely used `Requests library <https://requests.readthedocs.io/>`__.
+
+It offers the following methods:
+
+``await datasette.client.get(path, **kwargs)`` - returns HTTPX Response
+    Execute an internal GET request against that path.
+
+``await datasette.client.post(path, **kwargs)`` - returns HTTPX Respons
+    Execute an internal POST request. Use ``data={"name": "value"}`` to pass form parameters.
+
+``await datasette.client.options(path, **kwargs)`` - returns HTTPX Response
+    Execute an internal OPTIONS request.
+
+``await datasette.client.head(path, **kwargs)`` - returns HTTPX Respons
+    Execute an internal HEAD request.
+
+``await datasette.client.put(path, **kwargs)`` - returns HTTPX Response
+    Execute an internal PUT request.
+
+``await datasette.client.patch(path, **kwargs)`` - returns HTTPX Response
+    Execute an internal PATCH request.
+
+``await datasette.client.delete(path, **kwargs)`` - returns HTTPX Response
+    Execute an internal DELETE request.
+
+``await datasette.client.request(method, path, **kwargs)`` - returns HTTPX Response
+    Execute an internal request with the given HTTP method against that path.
+
+For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
+
+
 .. _internals_database:
 
 Database class
-~~~~~~~~~~~~~~
+==============
 
 Instances of the ``Database`` class can be used to execute queries against attached SQLite databases, and to run introspection against their schemas.
 
@@ -549,7 +588,7 @@ The ``Database`` class also provides properties and methods for introspecting th
 .. _internals_csrf:
 
 CSRF protection
-~~~~~~~~~~~~~~~
+===============
 
 Datasette uses `asgi-csrf <https://github.com/simonw/asgi-csrf>`__ to guard against CSRF attacks on form POST submissions. Users receive a ``ds_csrftoken`` cookie which is compared against the ``csrftoken`` form field (or ``x-csrftoken`` HTTP header) for every incoming request.
 

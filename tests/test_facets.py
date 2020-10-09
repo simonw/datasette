@@ -1,7 +1,7 @@
 from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
+from datasette.utils.asgi import Request
 from datasette.utils import detect_json1
 from .fixtures import app_client  # noqa
-from .utils import MockRequest
 import pytest
 
 
@@ -9,7 +9,7 @@ import pytest
 async def test_column_facet_suggest(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -34,7 +34,7 @@ async def test_column_facet_suggest(app_client):
 async def test_column_facet_suggest_skip_if_already_selected(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/?_facet=planet_int&_facet=on_earth"),
+        Request.fake("/?_facet=planet_int&_facet=on_earth"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -72,7 +72,7 @@ async def test_column_facet_suggest_skip_if_already_selected(app_client):
 async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -94,7 +94,7 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
 async def test_column_facet_results(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/?_facet=city_id"),
+        Request.fake("/?_facet=city_id"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -146,7 +146,7 @@ async def test_column_facet_results(app_client):
 async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -200,7 +200,7 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
 async def test_array_facet_suggest(app_client):
     facet = ArrayFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -220,7 +220,7 @@ async def test_array_facet_suggest(app_client):
 async def test_array_facet_suggest_not_if_all_empty_arrays(app_client):
     facet = ArrayFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable where tags = '[]'",
         table="facetable",
@@ -234,7 +234,7 @@ async def test_array_facet_suggest_not_if_all_empty_arrays(app_client):
 async def test_array_facet_results(app_client):
     facet = ArrayFacet(
         app_client.ds,
-        MockRequest("http://localhost/?_facet_array=tags"),
+        Request.fake("/?_facet_array=tags"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -279,7 +279,7 @@ async def test_array_facet_results(app_client):
 async def test_date_facet_results(app_client):
     facet = DateFacet(
         app_client.ds,
-        MockRequest("http://localhost/?_facet_date=created"),
+        Request.fake("/?_facet_date=created"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",

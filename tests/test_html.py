@@ -672,6 +672,13 @@ def test_row_json_export_link(app_client):
     assert '<a href="/fixtures/simple_primary_key/1.json">json</a>' in response.text
 
 
+def test_query_json_csv_export_links(app_client):
+    response = app_client.get("/fixtures?sql=select+1")
+    assert response.status == 200
+    assert '<a href="/fixtures.json?sql=select+1">json</a>' in response.text
+    assert '<a href="/fixtures.csv?sql=select+1&amp;_size=max">CSV</a>' in response.text
+
+
 def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
     response = app_client.get("/fixtures/facetable")
     assert response.status == 200

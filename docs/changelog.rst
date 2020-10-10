@@ -11,7 +11,6 @@ Changelog
 
 - Fixed another bug introduced in 0.50 where column header links on the table page were broken. (`#1011 <https://github.com/simonw/datasette/issues/1011>`__)
 
-
 .. _v0_50_1:
 
 0.50.1 (2020-10-09)

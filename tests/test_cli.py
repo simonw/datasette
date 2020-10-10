@@ -89,7 +89,6 @@ def test_metadata_yaml():
         immutable=[],
         host="127.0.0.1",
         port=8001,
-        debug=False,
         reload=False,
         cors=False,
         sqlite_extensions=[],

@@ -14,7 +14,6 @@ Options:
   -p, --port INTEGER        Port for server, defaults to 8001. Use -p 0 to automatically
                             assign an available port.
 
-  --debug                   Enable debug mode - useful for development
   --reload                  Automatically reload if database or code change detected -
                             useful for development
 

@@ -287,9 +287,6 @@ def uninstall(packages, yes):
     help="Port for server, defaults to 8001. Use -p 0 to automatically assign an available port.",
 )
 @click.option(
-    "--debug", is_flag=True, help="Enable debug mode - useful for development"
-)
-@click.option(
     "--reload",
     is_flag=True,
     help="Automatically reload if database or code change detected - useful for development",
@@ -366,7 +363,6 @@ def serve(
     immutable,
     host,
     port,
-    debug,
     reload,
     cors,
     sqlite_extensions,
@@ -417,7 +413,7 @@ def serve(
 
     kwargs = dict(
         immutables=immutable,
-        cache_headers=not debug and not reload,
+        cache_headers=not reload,
         cors=cors,
         inspect_data=inspect_data,
         metadata=metadata_data,

@@ -345,7 +345,7 @@ def test_sort_links(app_client):
     attrs_and_link_attrs = [
         {
             "attrs": th.attrs,
-            "a_href": (th.find("a")["href"].split("/")[-1] if th.find("a") else None),
+            "a_href": (th.find("a")["href"] if th.find("a") else None),
         }
         for th in ths
     ]
@@ -403,7 +403,7 @@ def test_sort_links(app_client):
                 "data-column-not-null": "0",
                 "data-is-pk": "0",
             },
-            "a_href": "sortable?_sort_desc=sortable",
+            "a_href": "/fixtures/sortable?_sort_desc=sortable",
         },
         {
             "attrs": {
@@ -414,7 +414,7 @@ def test_sort_links(app_client):
                 "data-column-not-null": "0",
                 "data-is-pk": "0",
             },
-            "a_href": "sortable?_sort=sortable_with_nulls",
+            "a_href": "/fixtures/sortable?_sort=sortable_with_nulls",
         },
         {
             "attrs": {
@@ -425,7 +425,7 @@ def test_sort_links(app_client):
                 "data-column-not-null": "0",
                 "data-is-pk": "0",
             },
-            "a_href": "sortable?_sort=sortable_with_nulls_2",
+            "a_href": "/fixtures/sortable?_sort=sortable_with_nulls_2",
         },
         {
             "attrs": {
@@ -436,7 +436,7 @@ def test_sort_links(app_client):
                 "data-column-not-null": "0",
                 "data-is-pk": "0",
             },
-            "a_href": "sortable?_sort=text",
+            "a_href": "/fixtures/sortable?_sort=text",
         },
     ]
 

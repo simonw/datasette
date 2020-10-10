@@ -497,9 +497,9 @@ def test_hook_register_output_renderer_can_render(app_client):
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
-    actual = [l["href"].split("/")[-1] for l in links]
+    actual = [l["href"] for l in links]
     # Should not be present because we sent ?_no_can_render=1
-    assert "facetable.testall?_labels=on" not in actual
+    assert "/fixtures/facetable.testall?_labels=on" not in actual
     # Check that it was passed the values we expected
     assert hasattr(app_client.ds, "_can_render_saw")
     assert {

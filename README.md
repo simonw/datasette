@@ -21,6 +21,8 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 * Live demo of current main: https://latest.datasette.io/
 * Support questions, feedback? Join our [GitHub Discussions forum](https://github.com/simonw/datasette/discussions)
 
+Want to stay up-to-date with the project? Subscribe to the [Datasette Weekly newsletter](https://datasette.substack.com/) for tips, tricks and news on what's new in the Datasette ecosystem.
+
 ## News
 
  * 9th October 2020: [Datasette 0.50](https://docs.datasette.io/en/stable/changelog.html#v0-50) - New column actions menu. `datasette.client` object for plugins to make internal API requests. Improved documentation on deploying Datasette. [Annotated release notes](https://simonwillison.net/2020/Oct/9/datasette-0-50/).

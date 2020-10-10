@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_50.1:
+
+0.50.1 (2020-10-09)
+-------------------
+
+- Fixed a bug introduced in 0.50 where the export as JSON/CSV links on the table, row and query pages were broken. (`#1010 <https://github.com/simonw/datasette/issues/1010>`__)
+
 .. _v0_50:
 
 0.50 (2020-10-09)

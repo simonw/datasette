@@ -27,11 +27,23 @@ Using Homebrew
 
 If you have a Mac and use `Homebrew <https://brew.sh/>`__, you can install Datasette by running this command in your terminal::
 
-    brew install simonw/datasette/datasette
+    brew install datasette
+
+This should install the latest version. You can confirm by running::
+
+    datasette --version
+
+You can upgrade to the latest Homebrew packaged version using::
+
+    brew upgrade datasette
 
 Once you have installed Datasette you can install plugins using the following::
 
     datasette install datasette-vega
+
+If the latest packaged release of Datasette has not yet been made available through Homebrew, you can upgrade your Homebrew installation in-place using::
+
+    datasette install -U datasette
 
 .. _installation_pip:
 

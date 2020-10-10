@@ -29,7 +29,7 @@
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<p>This data as {% for name, url in renderers.items() %}<a href="{{ base_url }}{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}</p>
+<p>This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}</p>
 
 {% include custom_table_templates %}
 

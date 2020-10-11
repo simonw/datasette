@@ -1828,3 +1828,31 @@ def test_binary_data_in_json(app_client, path, expected_json, expected_text):
         assert response.json == expected_json
     else:
         assert response.text == expected_text
+
+
+@pytest.mark.parametrize(
+    "qs",
+    [
+        "",
+        "?_shape=arrays",
+        "?_shape=arrayfirst",
+        "?_shape=object",
+        "?_shape=objects",
+        "?_shape=array",
+        "?_shape=array&_nl=on",
+    ],
+)
+def test_paginate_using_link_header(app_client, qs):
+    path = "/fixtures/compound_three_primary_keys.json{}".format(qs)
+    num_pages = 0
+    while path:
+        response = app_client.get(path)
+        num_pages += 1
+        link = response.headers.get("link")
+        if link:
+            assert link.startswith("<")
+            assert link.endswith('>; rel="next"')
+            path = link[1:].split(">")[0]
+        else:
+            path = None
+    assert num_pages == 21

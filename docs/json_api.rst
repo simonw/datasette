@@ -1,3 +1,5 @@
+.. _json_api:
+
 JSON API
 ========
 
@@ -17,6 +19,8 @@ requests to fetch the data.
 
 If you start Datasette without the ``--cors`` option only JavaScript running on
 the same domain as Datasette will be able to access the API.
+
+.. _json_api_shapes:
 
 Different shapes
 ----------------
@@ -137,6 +141,34 @@ this format.
 
 The ``object`` keys are always strings. If your table has a compound primary
 key, the ``object`` keys will be a comma-separated string.
+
+.. _json_api_pagination:
+
+Pagination
+----------
+
+The default JSON representation includes a ``"next_url"`` key which can be used to access the next page of results. If that key is null or missing then it means you have reached the final page of results.
+
+Other representations include pagination information in the ``link`` HTTP header. That header will look something like this::
+
+    link: <https://latest.datasette.io/fixtures/sortable.json?_next=d%2Cv>; rel="next"
+
+Here is an example Python function built using `requests <https://requests.readthedocs.io/>`__ that returns a list of all of the paginated items from one of these API endpoints:
+
+.. code-block:: python
+
+    def paginate(url):
+        items = []
+        while url:
+            response = requests.get(url)
+            try:
+                url = response.links.get("next").get("url")
+            except AttributeError:
+                url = None
+            items.extend(response.json())
+        return items
+
+.. _json_api_special:
 
 Special JSON arguments
 ----------------------

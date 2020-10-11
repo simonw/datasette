@@ -5,6 +5,7 @@ from datasette.utils import (
     CustomJSONEncoder,
     path_from_row_pks,
 )
+from datasette.utils.asgi import Response
 
 
 def convert_specific_columns_to_json(rows, columns, json_cols):
@@ -44,6 +45,9 @@ def json_renderer(args, data, view_name):
 
     # Deal with the _shape option
     shape = args.get("_shape", "arrays")
+
+    next_url = data.get("next_url")
+
     if shape == "arrayfirst":
         data = [row[0] for row in data["rows"]]
     elif shape in ("objects", "object", "array"):
@@ -71,6 +75,7 @@ def json_renderer(args, data, view_name):
                 data = {"ok": False, "error": error}
         elif shape == "array":
             data = data["rows"]
+
     elif shape == "arrays":
         pass
     else:
@@ -89,4 +94,9 @@ def json_renderer(args, data, view_name):
     else:
         body = json.dumps(data, cls=CustomJSONEncoder)
         content_type = "application/json; charset=utf-8"
-    return {"body": body, "status_code": status_code, "content_type": content_type}
+    headers = {}
+    if next_url:
+        headers["link"] = '<{}>; rel="next"'.format(next_url)
+    return Response(
+        body, status=status_code, headers=headers, content_type=content_type
+    )

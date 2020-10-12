@@ -152,3 +152,33 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         th.appendChild(icon);
     });
 })();
+
+/* Add x buttons to the filter rows */
+(function() {
+    var x = '✖';
+    var rows = Array.from(
+        document.querySelectorAll('.filter-row')
+    ).filter(
+        el => el.querySelector('.filter-op')
+    );
+    rows.forEach(row => {
+        var a = document.createElement('a');
+        a.setAttribute('href', '#');
+        a.setAttribute('aria-label', 'Remove this filter');
+        a.style.textDecoration = 'none';
+        a.innerText = x;
+        a.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            let row = ev.target.closest('div');
+            row.querySelector('select').value = '';
+            row.querySelector('.filter-op select').value = 'exact';
+            row.querySelector('input.filter-value').value = '';
+            ev.target.closest('a').style.display = 'none';
+        });
+        row.appendChild(a);
+        var column = row.querySelector('select');
+        if (!column.value) {
+            a.style.display = 'none';
+        }
+    });
+})();

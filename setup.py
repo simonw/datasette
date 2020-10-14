@@ -44,7 +44,7 @@ setup(
     package_data={"datasette": ["templates/*.html"]},
     include_package_data=True,
     install_requires=[
-        "asgiref~=3.2.10",
+        "asgiref>=3.2.10,<3.4.0",
         "click~=7.1.1",
         "click-default-group~=1.2.2",
         "Jinja2>=2.10.3,<2.12.0",

@@ -65,7 +65,7 @@ Here's a recipe for taking a table with existing latitude and longitude columns,
     conn.execute("SELECT AddGeometryColumn('museums', 'point_geom', 4326, 'POINT', 2);")
     # Now update that geometry column with the lat/lon points
     conn.execute('''
-        UPDATE events SET
+        UPDATE museums SET
         point_geom = GeomFromText('POINT('||"longitude"||' '||"latitude"||')',4326);
     ''')
     # Now add a spatial index to that column

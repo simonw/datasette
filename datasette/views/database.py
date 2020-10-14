@@ -2,7 +2,7 @@ import os
 import itertools
 import jinja2
 import json
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlencode
 
 from datasette.utils import (
     check_visibility,
@@ -11,6 +11,7 @@ from datasette.utils import (
     is_url,
     path_with_added_args,
     path_with_removed_args,
+    InvalidSql,
 )
 from datasette.utils.asgi import AsgiFileDownload, Response, Forbidden
 from datasette.plugins import pm
@@ -301,6 +302,10 @@ class QueryView(DataView):
                 ),
             )
 
+        allow_execute_sql = await self.ds.permission_allowed(
+            request.actor, "execute-sql", database, default=True
+        )
+
         async def extra_template():
             display_rows = []
             for row in results.rows:
@@ -329,12 +334,38 @@ class QueryView(DataView):
                             )
                     display_row.append(display_value)
                 display_rows.append(display_row)
+
+            # Show 'Edit SQL' button only if:
+            # - User is allowed to execute SQL
+            # - SQL is an approved SELECT statement
+            # - No magic parameters, so no :_ in the SQL string
+            edit_sql_url = None
+            is_validated_sql = False
+            try:
+                validate_sql_select(sql)
+                is_validated_sql = True
+            except InvalidSql:
+                pass
+            if allow_execute_sql and is_validated_sql and ":_" not in sql:
+                edit_sql_url = (
+                    self.database_url(database)
+                    + "?"
+                    + urlencode(
+                        {
+                            **{
+                                "sql": sql,
+                            },
+                            **named_parameter_values,
+                        }
+                    )
+                )
             return {
                 "display_rows": display_rows,
                 "custom_sql": True,
                 "named_parameter_values": named_parameter_values,
                 "editable": editable,
                 "canned_query": canned_query,
+                "edit_sql_url": edit_sql_url,
                 "metadata": metadata,
                 "config": self.ds.config_dict(),
                 "request": request,
@@ -352,9 +383,7 @@ class QueryView(DataView):
                 "columns": columns,
                 "query": {"sql": sql, "params": params},
                 "private": private,
-                "allow_execute_sql": await self.ds.permission_allowed(
-                    request.actor, "execute-sql", database, default=True
-                ),
+                "allow_execute_sql": allow_execute_sql,
             },
             extra_template,
             templates,

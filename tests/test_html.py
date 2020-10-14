@@ -1403,3 +1403,48 @@ def test_base_url_config(base_url, path):
                     "href_or_src": href,
                     "element_parent": str(el.parent),
                 }
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        (
+            "/fixtures/neighborhood_search",
+            "/fixtures?sql=%0Aselect+neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+neighborhood%3B%0A&amp;text=",
+        ),
+        (
+            "/fixtures/neighborhood_search?text=ber",
+            "/fixtures?sql=%0Aselect+neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+neighborhood%3B%0A&amp;text=ber",
+        ),
+        ("/fixtures/pragma_cache_size", None),
+        (
+            "/fixtures/𝐜𝐢𝐭𝐢𝐞𝐬",
+            "/fixtures?sql=select+id%2C+name+from+facet_cities+order+by+id+limit+1%3B",
+        ),
+        ("/fixtures/magic_parameters", None),
+    ],
+)
+def test_edit_sql_link_on_canned_queries(app_client, path, expected):
+    response = app_client.get(path)
+    expected_link = '<a href="{}" class="canned-query-edit-sql">Edit SQL</a>'.format(
+        expected
+    )
+    if expected:
+        assert expected_link in response.text
+    else:
+        assert "Edit SQL" not in response.text
+
+
+@pytest.mark.parametrize("permission_allowed", [True, False])
+def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
+    with make_app_client(
+        metadata={
+            "allow_sql": None if permission_allowed else {"id": "not-you"},
+            "databases": {"fixtures": {"queries": {"simple": "select 1 + 1"}}},
+        }
+    ) as client:
+        response = client.get("/fixtures/simple")
+        if permission_allowed:
+            assert "Edit SQL" in response.text
+        else:
+            assert "Edit SQL" not in response.text

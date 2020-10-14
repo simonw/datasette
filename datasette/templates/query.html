@@ -54,6 +54,7 @@
         <button id="sql-format" type="button" hidden>Format SQL</button>
         {% if canned_write %}<input type="hidden" name="csrftoken" value="{{ csrftoken() }}">{% endif %}
         <input type="submit" value="Run SQL">
+        {% if canned_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="canned-query-edit-sql">Edit SQL</a>{% endif %}
     </p>
 </form>
 

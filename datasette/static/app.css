@@ -447,3 +447,9 @@ svg.dropdown-menu-icon {
     border-right: 5px solid transparent;
     border-bottom: 5px solid #666;
 }
+
+.canned-query-edit-sql {
+    padding-left: 0.5em;
+    position: relative;
+    top: 1px;
+}

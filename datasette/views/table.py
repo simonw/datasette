@@ -360,7 +360,7 @@ class TableView(RowTableShared):
                 forward_querystring=False,
             )
 
-        # Spot ?_sort_by_desc and redirect to _sort_desc=(_sort)
+        # If ?_sort_by_desc=on (from checkbox) redirect to _sort_desc=(_sort)
         if "_sort_by_desc" in special_args:
             return self.redirect(
                 request,

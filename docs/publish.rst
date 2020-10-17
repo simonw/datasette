@@ -52,7 +52,7 @@ Cloud Run provides a URL on the ``.run.app`` domain, but you can also point your
 Publishing to Heroku
 --------------------
 
-To publish your data using [Heroku](https://heroku.com/), first create an account there and install and configure the `Heroku CLI tool <https://devcenter.heroku.com/articles/heroku-cli>`_.
+To publish your data using `Heroku <https://www.heroku.com/>`__, first create an account there and install and configure the `Heroku CLI tool <https://devcenter.heroku.com/articles/heroku-cli>`_.
 
 You can publish a database to Heroku using the following command::
 

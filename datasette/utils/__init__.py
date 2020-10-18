@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from collections import OrderedDict, namedtuple
 import base64
 import click
+import glob
 import hashlib
 import inspect
 import itertools
@@ -307,9 +308,22 @@ def make_dockerfile(
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
     environment_variables = environment_variables or {}
     environment_variables["DATASETTE_SECRET"] = secret
+    dir_name = None
+    new_files = None
     for filename in files:
-        cmd.extend(["-i", filename])
-    cmd.extend(["--cors", "--inspect-file", "inspect-data.json"])
+        if os.path.isdir(filename):
+            dir_name = filename
+            cmd.append(filename)
+            new_files = [
+                os.path.basename(p) for p in glob.glob(os.path.join(filename, "*.db"))
+            ]
+        else:
+            cmd.extend(["-i", filename])
+    if new_files is not None:
+        files = new_files
+    cmd.append("--cors")
+    if dir_name is None:
+        cmd.extend(["--inspect-file", "inspect-data.json"])
     if metadata_file:
         cmd.extend(["--metadata", "{}".format(metadata_file)])
     if template_dir:
@@ -342,7 +356,7 @@ WORKDIR /app
 {spatialite_extras}
 {environment_variables}
 RUN pip install -U {install_from}
-RUN datasette inspect {files} --inspect-file inspect-data.json
+RUN {cd}datasette inspect {files} --inspect-file inspect-data.json
 ENV PORT {port}
 EXPOSE {port}
 CMD {cmd}""".format(
@@ -353,6 +367,7 @@ CMD {cmd}""".format(
             ]
         ),
         files=" ".join(files),
+        cd=f"cd {dir_name} && " if dir_name is not None else "",
         cmd=cmd,
         install_from=" ".join(install),
         spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else "",
@@ -416,7 +431,10 @@ def temporary_docker_directory(
             open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
         open("Dockerfile", "w").write(dockerfile)
         for path, filename in zip(file_paths, file_names):
-            link_or_copy(path, os.path.join(datasette_dir, filename))
+            if os.path.isdir(path):
+                link_or_copy_directory(path, os.path.join(datasette_dir, filename))
+            else:
+                link_or_copy(path, os.path.join(datasette_dir, filename))
         if template_dir:
             link_or_copy_directory(
                 os.path.join(saved_cwd, template_dir),

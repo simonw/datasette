@@ -112,6 +112,16 @@ datasette-json-html
 
 `datasette-json-html <https://github.com/simonw/datasette-json-html>`__ renders HTML in Datasette's table view driven by JSON returned from your SQL queries. This provides a way to embed images, links and lists of links directly in Datasette's main interface, defined using custom SQL statements.
 
+datasette-atom
+--------------
+
+`datasette-atom <https://github.com/simonw/datasette-atom>`__ can output Datasette query results as Atom feeds, suitable for subscribing to using a feed reader application.
+
+datasette-ics
+-------------
+
+`datasette-ics <https://github.com/simonw/datasette-ics>`__ can output query results as an iCalendar feed, suitable for subscribing to from calendar software such as Google Calendar or Apple Calendar.
+
 datasette-init
 --------------
 

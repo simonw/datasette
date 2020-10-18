@@ -1,0 +1,12 @@
+# https://docs.readthedocs.io/en/stable/config-file/v2.html
+
+version: 2
+
+sphinx:
+  configuration: docs/conf.py
+
+formats:
+  - pdf
+  - epub
+  - htmlzip
+  - xml

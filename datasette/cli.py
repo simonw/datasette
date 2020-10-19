@@ -412,7 +412,7 @@ def serve(
         metadata_data = parse_metadata(metadata.read())
 
     kwargs = dict(
-        immutables=immutable,
+        immutables=immutable or None,
         cache_headers=not reload,
         cors=cors,
         inspect_data=inspect_data,

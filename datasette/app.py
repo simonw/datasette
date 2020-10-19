@@ -49,12 +49,14 @@ from .utils import (
     display_actor,
     escape_css_string,
     escape_sqlite,
+    find_spatialite,
     format_bytes,
     module_from_path,
     parse_metadata,
     resolve_env_secrets,
     sqlite3,
     to_css_class,
+    SpatialiteNotFound,
 )
 from .utils.asgi import (
     AsgiLifespan,
@@ -242,7 +244,14 @@ class Datasette:
                 metadata = parse_metadata(fp.read())
         self._metadata = metadata or {}
         self.sqlite_functions = []
-        self.sqlite_extensions = sqlite_extensions or []
+        self.sqlite_extensions = []
+        for extension in sqlite_extensions or []:
+            # Resolve spatialite, if requested
+            if extension == "spatialite":
+                # Could raise SpatialiteNotFound
+                self.sqlite_extensions.append(find_spatialite())
+            else:
+                self.sqlite_extensions.append(extension)
         if config_dir and (config_dir / "templates").is_dir() and not template_dir:
             template_dir = str((config_dir / "templates").resolve())
         self.template_dir = template_dir

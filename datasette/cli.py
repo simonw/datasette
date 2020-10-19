@@ -19,6 +19,7 @@ from .utils import (
     SpatialiteConnectionProblem,
     temporary_docker_directory,
     value_as_boolean,
+    SpatialiteNotFound,
     StaticMount,
     ValueAsBooleanError,
 )
@@ -78,7 +79,6 @@ def cli():
     "--load-extension",
     envvar="SQLITE_EXTENSIONS",
     multiple=True,
-    type=click.Path(exists=True, resolve_path=True),
     help="Path to a SQLite extension to load",
 )
 def inspect(files, inspect_file, sqlite_extensions):
@@ -299,7 +299,6 @@ def uninstall(packages, yes):
     "--load-extension",
     envvar="SQLITE_EXTENSIONS",
     multiple=True,
-    type=click.Path(exists=True, resolve_path=True),
     help="Path to a SQLite extension to load",
 )
 @click.option(
@@ -433,7 +432,10 @@ def serve(
         kwargs["config_dir"] = pathlib.Path(files[0])
         files = []
 
-    ds = Datasette(files, **kwargs)
+    try:
+        ds = Datasette(files, **kwargs)
+    except SpatialiteNotFound:
+        raise click.ClickException("Could not find SpatiaLite extension")
 
     if return_instance:
         # Private utility mechanism for writing unit tests

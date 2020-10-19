@@ -8,6 +8,14 @@ The `SpatiaLite module <https://www.gaia-gis.it/fossil/libspatialite/index>`_ fo
 
 To use it with Datasette, you need to install the ``mod_spatialite`` dynamic library. This can then be loaded into Datasette using the ``--load-extension`` command-line option.
 
+Datasette can look for SpatiaLite in common installation locations if you run it like this::
+
+    datasette --load-extension=spatialite
+
+If SpatiaLite is in another location, use the full path to the extension instead::
+
+    datasette --load-extension=/usr/local/lib/mod_spatialite.dylib
+
 Installation
 ============
 
@@ -25,7 +33,7 @@ This will install the ``spatialite`` command-line tool and the ``mod_spatialite`
 
 You can now run Datasette like so::
 
-    datasette --load-extension=/usr/local/lib/mod_spatialite.dylib
+    datasette --load-extension=spatialite
 
 Installing SpatiaLite on Linux
 ------------------------------

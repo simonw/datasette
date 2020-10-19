@@ -170,7 +170,7 @@ module, use the following command::
     docker run -p 8001:8001 -v `pwd`:/mnt \
         datasetteproject/datasette \
         datasette -p 8001 -h 0.0.0.0 /mnt/fixtures.db \
-        --load-extension=/usr/local/lib/mod_spatialite.so
+        --load-extension=spatialite
 
 You can confirm that SpatiaLite is successfully loaded by visiting
 http://127.0.0.1:8001/-/versions

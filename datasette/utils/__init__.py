@@ -54,6 +54,12 @@ RUN apt-get update && \
 ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
 """
 
+# Can replace with sqlite-utils when I add that dependency
+SPATIALITE_PATHS = (
+    "/usr/lib/x86_64-linux-gnu/mod_spatialite.so",
+    "/usr/local/lib/mod_spatialite.dylib",
+)
+
 # Can replace this with Column from sqlite_utils when I add that dependency
 Column = namedtuple(
     "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk")
@@ -971,3 +977,15 @@ def display_actor(actor):
         if actor.get(key):
             return actor[key]
     return str(actor)
+
+
+class SpatialiteNotFound(Exception):
+    pass
+
+
+# Can replace with sqlite-utils when I add that dependency
+def find_spatialite():
+    for path in SPATIALITE_PATHS:
+        if os.path.exists(path):
+            return path
+    raise SpatialiteNotFound

@@ -59,6 +59,17 @@ def test_spatialite_error_if_attempt_to_open_spatialite():
     assert "trying to load a SpatiaLite database" in result.output
 
 
+@mock.patch("datasette.utils.SPATIALITE_PATHS", ["/does/not/exist"])
+def test_spatialite_error_if_cannot_find_load_extension_spatialite():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["serve", str(pathlib.Path(__file__).parent / "spatialite.db"),
+        "--load-extension", "spatialite"]
+    )
+    assert result.exit_code != 0
+    assert "Could not find SpatiaLite extension" in result.output
+
+
 def test_plugins_cli(app_client):
     runner = CliRunner()
     result1 = runner.invoke(cli, ["plugins"])

@@ -193,4 +193,4 @@ This object is exposed in templates as the ``urls`` variable, which can be used 
 
     Back to the <a href="{{ urls.instance() }}">Homepage</a>
 
-see :ref:`internals_datasette_urls` for full details on this object.
+See :ref:`internals_datasette_urls` for full details on this object.

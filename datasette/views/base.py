@@ -218,7 +218,7 @@ class DataView(BaseView):
             elif kwargs.get("table"):
                 kwargs["table"] = urllib.parse.unquote_plus(kwargs["table"])
 
-            should_redirect = "/{}-{}".format(name, expected)
+            should_redirect = self.ds.urls.path("{}-{}".format(name, expected))
             if kwargs.get("table"):
                 should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
             if kwargs.get("pk_path"):

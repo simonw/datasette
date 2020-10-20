@@ -158,7 +158,7 @@ CONFIG_OPTIONS = (
         False,
         "Allow display of template debug information with ?_context=1",
     ),
-    ConfigOption("base_url", "/", "Datasette URLs should use this base"),
+    ConfigOption("base_url", "/", "Datasette URLs should use this base path"),
 )
 
 DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}

@@ -64,7 +64,7 @@ class AuthTokenView(BaseView):
             raise Forbidden("Root token has already been used")
         if secrets.compare_digest(token, self.ds._root_token):
             self.ds._root_token = None
-            response = Response.redirect("/")
+            response = Response.redirect(self.ds.urls.instance())
             response.set_cookie(
                 "ds_actor", self.ds.sign({"a": {"id": "root"}}, "actor")
             )
@@ -81,7 +81,7 @@ class LogoutView(BaseView):
 
     async def get(self, request):
         if not request.actor:
-            return Response.redirect("/")
+            return Response.redirect(self.ds.urls.instance())
         return await self.render(
             ["logout.html"],
             request,
@@ -89,7 +89,7 @@ class LogoutView(BaseView):
         )
 
     async def post(self, request):
-        response = Response.redirect("/")
+        response = Response.redirect(self.ds.urls.instance())
         response.set_cookie("ds_actor", "", expires=0, max_age=0)
         self.ds.add_message(request, "You are now logged out", self.ds.WARNING)
         return response
@@ -172,4 +172,4 @@ class MessagesDebugView(BaseView):
             datasette.add_message(request, message, datasette.ERROR)
         else:
             datasette.add_message(request, message, getattr(datasette, message_type))
-        return Response.redirect("/")
+        return Response.redirect(self.ds.urls.instance())

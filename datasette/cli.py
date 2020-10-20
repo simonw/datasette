@@ -457,10 +457,12 @@ def serve(
 
     # Start the server
     if root:
-        url = "http://{}:{}/-/auth-token?token={}".format(host, port, ds._root_token)
+        url = "http://{}:{}{}?token={}".format(
+            host, port, ds.urls.path("-/auth-token"), ds._root_token
+        )
         print(url)
     else:
-        url = "http://{}:{}/".format(host, port)
+        url = "http://{}:{}{}".format(host, port, ds.urls.instance())
     if open_browser:
         webbrowser.open(url)
     uvicorn.run(

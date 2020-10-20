@@ -1360,8 +1360,6 @@ def test_metadata_sort_desc(app_client):
     assert list(reversed(expected)) == rows
 
 
-@pytest.mark.xfail
-@pytest.mark.parametrize("base_url", ["/prefix/", "https://example.com/"])
 @pytest.mark.parametrize(
     "path",
     [
@@ -1373,7 +1371,8 @@ def test_metadata_sort_desc(app_client):
         "/fixtures/facetable",
     ],
 )
-def test_base_url_config(base_url, path):
+def test_base_url_config(path):
+    base_url = "/prefix/"
     with make_app_client(config={"base_url": base_url}) as client:
         response = client.get(base_url + path.lstrip("/"))
         soup = Soup(response.body, "html.parser")

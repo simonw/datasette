@@ -56,7 +56,7 @@ from .utils import (
     resolve_env_secrets,
     sqlite3,
     to_css_class,
-    SpatialiteNotFound,
+    HASH_LENGTH,
 )
 from .utils.asgi import (
     AsgiLifespan,
@@ -320,6 +320,10 @@ class Datasette:
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
         self.client = DatasetteClient(self)
+
+    @property
+    def urls(self):
+        return Urls(self)
 
     async def invoke_startup(self):
         for hook in pm.hook.startup(datasette=self):
@@ -748,6 +752,7 @@ class Datasette:
         template_context = {
             **context,
             **{
+                "urls": self.urls,
                 "actor": request.actor if request else None,
                 "display_actor": display_actor,
                 "show_logout": request is not None and "ds_actor" in request.cookies,
@@ -1259,3 +1264,28 @@ class DatasetteClient:
     async def request(self, method, path, **kwargs):
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.request(method, self._fix(path), **kwargs)
+
+
+class Urls:
+    def __init__(self, ds):
+        self.ds = ds
+
+    def instance(self):
+        return self.ds.config("base_url")
+
+    def static(self, path):
+        return "{}-/static/{}".format(self.instance(), path)
+
+    def database(self, database):
+        db = self.ds.databases[database]
+        base_url = self.ds.config("base_url")
+        if self.ds.config("hash_urls") and db.hash:
+            return "{}{}-{}".format(base_url, database, db.hash[:HASH_LENGTH])
+        else:
+            return "{}{}".format(base_url, database)
+
+    def table(self, database, table):
+        return "{}/{}".format(self.database(database), urllib.parse.quote_plus(table))
+
+    def query(self, database, query):
+        return "{}/{}".format(self.database(database), urllib.parse.quote_plus(query))

@@ -63,8 +63,13 @@ def test_spatialite_error_if_attempt_to_open_spatialite():
 def test_spatialite_error_if_cannot_find_load_extension_spatialite():
     runner = CliRunner()
     result = runner.invoke(
-        cli, ["serve", str(pathlib.Path(__file__).parent / "spatialite.db"),
-        "--load-extension", "spatialite"]
+        cli,
+        [
+            "serve",
+            str(pathlib.Path(__file__).parent / "spatialite.db"),
+            "--load-extension",
+            "spatialite",
+        ],
     )
     assert result.exit_code != 0
     assert "Could not find SpatiaLite extension" in result.output

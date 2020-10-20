@@ -17,9 +17,9 @@
 
 {% block nav %}
     <p class="crumbs">
-        <a href="{{ base_url }}">home</a> /
-        <a href="{{ database_url(database) }}">{{ database }}</a> /
-        <a href="{{ database_url(database) }}/{{ table|quote_plus }}">{{ table }}</a>
+        <a href="{{ urls.instance() }}">home</a> /
+        <a href="{{ urls.database(database) }}">{{ database }}</a> /
+        <a href="{{ urls.table(database, table) }}">{{ table }}</a>
     </p>
     {{ super() }}
 {% endblock %}
@@ -38,7 +38,7 @@
     <ul>
         {% for other in foreign_key_tables %}
             <li>
-                <a href="{{ database_url(database) }}/{{ other.other_table|quote_plus }}?{{ other.other_column }}={{ ', '.join(primary_key_values) }}">
+                <a href="{{ urls.table(database, other.other_table) }}?{{ other.other_column }}={{ ', '.join(primary_key_values) }}">
                     {{ "{:,}".format(other.count) }} row{% if other.count == 1 %}{% else %}s{% endif %}</a>
                 from {{ other.other_column }} in {{ other.other_table }}
             </li>

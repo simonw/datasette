@@ -112,7 +112,7 @@ class IndexView(BaseView):
                     "color": db.hash[:6]
                     if db.hash
                     else hashlib.md5(name.encode("utf8")).hexdigest()[:6],
-                    "path": self.database_url(name),
+                    "path": self.ds.urls.database(name),
                     "tables_and_views_truncated": tables_and_views_truncated,
                     "tables_and_views_more": (len(visible_tables) + len(views))
                     > TRUNCATE_AT,

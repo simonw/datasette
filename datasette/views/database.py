@@ -348,7 +348,7 @@ class QueryView(DataView):
                 pass
             if allow_execute_sql and is_validated_sql and ":_" not in sql:
                 edit_sql_url = (
-                    self.database_url(database)
+                    self.ds.urls.database(database)
                     + "?"
                     + urlencode(
                         {

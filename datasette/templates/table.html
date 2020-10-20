@@ -5,7 +5,7 @@
 
 {% block extra_head %}
 {{ super() }}
-<script src="{{ base_url }}-/static/table.js" defer></script>
+<script src="{{ urls.static('table.js') }}" defer></script>
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in display_columns %}
@@ -18,8 +18,8 @@
 
 {% block nav %}
     <p class="crumbs">
-        <a href="{{ base_url }}">home</a> /
-        <a href="{{ database_url(database) }}">{{ database }}</a>
+        <a href="{{ urls.instance() }}">home</a> /
+        <a href="{{ urls.database(database) }}">{{ database }}</a>
     </p>
     {{ super() }}
 {% endblock %}
@@ -36,7 +36,7 @@
     </h3>
 {% endif %}
 
-<form class="filters" action="{{ database_url(database) }}/{{ table|quote_plus }}" method="get">
+<form class="filters" action="{{ urls.table(database, table) }}" method="get">
     {% if supports_search %}
         <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
     {% endif %}
@@ -107,7 +107,7 @@
 {% endif %}
 
 {% if query.sql and allow_execute_sql %}
-    <p><a class="not-underlined" title="{{ query.sql }}" href="{{ database_url(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
+    <p><a class="not-underlined" title="{{ query.sql }}" href="{{ urls.database(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 
 <p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>

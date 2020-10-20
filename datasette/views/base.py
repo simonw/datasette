@@ -1,7 +1,5 @@
 import asyncio
 import csv
-import itertools
-import json
 import re
 import time
 import urllib
@@ -16,26 +14,21 @@ from datasette.utils import (
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
-    is_url,
     path_with_added_args,
     path_with_removed_args,
     path_with_format,
     resolve_table_and_format,
     sqlite3,
-    to_css_class,
+    HASH_LENGTH,
 )
 from datasette.utils.asgi import (
     AsgiStream,
-    AsgiWriter,
     Forbidden,
     NotFound,
-    Request,
     Response,
 )
 
 ureg = pint.UnitRegistry()
-
-HASH_LENGTH = 7
 
 
 class DatasetteError(Exception):
@@ -99,14 +92,6 @@ class BaseView:
                 else:
                     raise Forbidden(action)
 
-    def database_url(self, database):
-        db = self.ds.databases[database]
-        base_url = self.ds.config("base_url")
-        if self.ds.config("hash_urls") and db.hash:
-            return "{}{}-{}".format(base_url, database, db.hash[:HASH_LENGTH])
-        else:
-            return "{}{}".format(base_url, database)
-
     def database_color(self, database):
         return "ff0000"
 
@@ -132,7 +117,6 @@ class BaseView:
         template_context = {
             **context,
             **{
-                "database_url": self.database_url,
                 "database_color": self.database_color,
                 "select_templates": [
                     "{}{}".format(

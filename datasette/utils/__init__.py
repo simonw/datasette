@@ -59,6 +59,8 @@ SPATIALITE_PATHS = (
     "/usr/lib/x86_64-linux-gnu/mod_spatialite.so",
     "/usr/local/lib/mod_spatialite.dylib",
 )
+# Length of hash subset used in hashed URLs:
+HASH_LENGTH = 7
 
 # Can replace this with Column from sqlite_utils when I add that dependency
 Column = namedtuple(

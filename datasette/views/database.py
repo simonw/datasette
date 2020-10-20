@@ -102,6 +102,7 @@ class DatabaseView(DataView):
         return (
             {
                 "database": database,
+                "path": self.ds.urls.database(database),
                 "size": db.size,
                 "tables": tables,
                 "hidden_count": len([t for t in tables if t["hidden"]]),

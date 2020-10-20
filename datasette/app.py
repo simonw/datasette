@@ -1158,7 +1158,7 @@ class DatasetteRouter:
                 await template.render_async(
                     dict(
                         info,
-                        base_url=self.ds.config("base_url"),
+                        urls=self.ds.urls,
                         app_css_hash=self.ds.app_css_hash(),
                     )
                 ),
@@ -1270,19 +1270,26 @@ class Urls:
     def __init__(self, ds):
         self.ds = ds
 
+    def path(self, path):
+        if path.startswith("/"):
+            path = path[1:]
+        return self.ds.config("base_url") + path
+
     def instance(self):
-        return self.ds.config("base_url")
+        return self.path("")
 
     def static(self, path):
-        return "{}-/static/{}".format(self.instance(), path)
+        return self.path("-/static/{}".format(path))
+
+    def logout(self):
+        return self.path("-/logout")
 
     def database(self, database):
         db = self.ds.databases[database]
-        base_url = self.ds.config("base_url")
         if self.ds.config("hash_urls") and db.hash:
-            return "{}{}-{}".format(base_url, database, db.hash[:HASH_LENGTH])
+            return self.path("{}-{}".format(database, db.hash[:HASH_LENGTH]))
         else:
-            return "{}{}".format(base_url, database)
+            return self.path(database)
 
     def table(self, database, table):
         return "{}/{}".format(self.database(database), urllib.parse.quote_plus(table))

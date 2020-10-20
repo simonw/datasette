@@ -2,7 +2,7 @@
 <html>
 <head>
     <title>{% block title %}{% endblock %}</title>
-    <link rel="stylesheet" href="{{ base_url }}-/static/app.css?{{ app_css_hash }}">
+    <link rel="stylesheet" href="{{ urls.static('app.css') }}?{{ app_css_hash }}">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 {% for url in extra_css_urls %}
     <link rel="stylesheet" href="{{ url.url }}"{% if url.sri %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}>
@@ -18,7 +18,7 @@
     {% if actor %}
     <div class="logout">
         <strong>{{ display_actor(actor) }}</strong>{% if show_logout %} &middot;
-        <form action="/-/logout" method="post">
+        <form action="{{ urls.logout() }}" method="post">
             <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
             <button class="button-as-link">Log out</button>
         </form>{% endif %}

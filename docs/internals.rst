@@ -375,6 +375,14 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 ``datasette.urls.instance()``
     Returns the URL to the Datasette instance root page. This is usually ``"/"``
 
+``datasette.urls.path(path)``
+    Takes a path and returns the full path, taking ``base_url`` into account.
+
+    For example, ``datasette.urls.path("-/logout")`` will return the path to the logout page, which will be ``"/-/logout"`` by default or ``/prefix-path/-/logout`` if ``base_url`` is set to ``/prefix-path/``
+
+``datasette.urls.logout()``
+    Returns the URL to the logout page, usually ``"/-/logout"``.
+
 ``datasette.urls.database(database_name)``
     Returns the URL to a database page, for example ``"/fixtures"``
 

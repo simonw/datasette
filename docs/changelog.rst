@@ -4,6 +4,19 @@
 Changelog
 =========
 
+.. _v0_51_a0:
+
+0.51a0 (2020-10-19)
+-------------------
+
+- Fixed a bunch of issues relating to the :ref:`config_base_url` setting. (`#1023 <https://github.com/simonw/datasette/issues/1023>`__)
+- New ``datasette.urls`` URL builder for plugins, see :ref:`writing_plugins_building_urls`. (`#904 <https://github.com/simonw/datasette/issues/904>`__)
+- Removed ``--debug`` option, which didn't do anything. (`#814 <https://github.com/simonw/datasette/issues/814>`__)
+- ``Link:`` HTTP header pagination. (`#1014 <https://github.com/simonw/datasette/issues/1014>`__)
+- ``x`` button for clearing filters. (`#1016 <https://github.com/simonw/datasette/issues/1016>`__)
+- Edit SQL button on canned queries, (`#1019 <https://github.com/simonw/datasette/issues/1019>`__)
+- ``--load-extension=spatialite`` shortcut. (`#1028 <https://github.com/simonw/datasette/issues/1028>`__)
+
 .. _v0_50_2:
 
 0.50.2 (2020-10-09)

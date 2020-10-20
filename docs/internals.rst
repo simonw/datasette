@@ -365,6 +365,34 @@ It offers the following methods:
 
 For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
 
+.. _internals_datasette_urls:
+
+datasette.urls
+--------------
+
+The ``datasette.urls`` object contains methods for building URLs to pages within Datasette. Plugins should use this to link to pages, since these methods take into account any :ref:`config_base_url` configuration setting that might be in effect.
+
+``datasette.urls.instance()``
+    Returns the URL to the Datasette instance root page. This is usually ``"/"``
+
+``datasette.urls.database(database_name)``
+    Returns the URL to a database page, for example ``"/fixtures"``
+
+``datasette.urls.table(database_name, table_name)``
+    Returns the URL to a table page, for example ``"/fixtures/facetable"``
+
+``datasette.urls.query(database_name, query_name)``
+    Returns the URL to a query page, for example ``"/fixtures/pragma_cache_size"``
+
+These functions can be accessed via the ``{{ urls }}`` object in Datasette templates, for example:
+
+.. code-block:: jinja
+
+    <a href="{{ urls.instance() }}">Homepage</a>
+    <a href="{{ urls.database("fixtures") }}">Fixtures database</a>
+    <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
+    <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
+
 .. _internals_database:
 
 Database class

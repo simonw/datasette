@@ -175,3 +175,22 @@ The plugin configuration could also be set at the top level of ``metadata.json``
     }
 
 Now that ``datasette-cluster-map`` plugin configuration will apply to every table in every database.
+
+.. _writing_plugins_building_urls:
+
+Building URLs within plugins
+----------------------------
+
+Plugins that define their own custom user interface elements may need to link to other pages within Datasette.
+
+This can be a bit tricky if the Datasette instance is using the :ref:`config_base_url` configuration setting to run behind a proxy, since that can cause Datasette's URLs to include an additional prefix.
+
+The ``datasette.urls`` object provides internal methods for correctly generating URLs to different pages within Datasette, taking any ``base_url`` configuration into account.
+
+This object is exposed in templates as the ``urls`` variable, which can be used like this:
+
+.. code-block:: jinja
+
+    Back to the <a href="{{ urls.instance() }}">Homepage</a>
+
+see :ref:`internals_datasette_urls` for full details on this object.

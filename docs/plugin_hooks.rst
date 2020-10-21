@@ -530,7 +530,7 @@ Return a list of ``(regex, view_function)`` pairs, something like this:
     @hookimpl
     def register_routes():
         return [
-            (r"^/hello-from/(?P<name>.*)$"), hello_from)
+            (r"^/hello-from/(?P<name>.*)$", hello_from)
         ]
 
 The view functions can take a number of different optional arguments. The corresponding argument will be passed to your function depending on its named parameters - a form of dependency injection.

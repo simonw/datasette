@@ -61,6 +61,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         }
         if (!target) {
             menu.style.display = 'none';
+            menu.classList.remove('anim-scale-in');
         }
     });
     function iconClicked(ev) {
@@ -130,6 +131,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         menu.style.top = (menuTop + 6) + 'px';
         menu.style.left = menuLeft + 'px';
         menu.style.display = 'block';
+        menu.classList.add('anim-scale-in');
     }
     var svg = document.createElement('div');
     svg.innerHTML = DROPDOWN_ICON_SVG;

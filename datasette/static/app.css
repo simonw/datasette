@@ -453,3 +453,20 @@ svg.dropdown-menu-icon {
     position: relative;
     top: 1px;
 }
+
+.anim-scale-in {
+    animation-name: scale-in;
+    animation-duration: 0.15s;
+    animation-timing-function: cubic-bezier(0.2, 0, 0.13, 1.5);
+}
+
+@keyframes scale-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.6);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}

@@ -50,9 +50,17 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         params.set(`${column}__notblank`, '1');
         return paramsToUrl(params);
     }
-    function isFacetedBy(column) {
-        return getParams().getAll('_facet').includes(column);
+    function closeMenu() {
+        menu.style.display = 'none';
+        menu.classList.remove('anim-scale-in');
     }
+    // When page loads, add scroll listener on .table-wrapper
+    document.addEventListener('DOMContentLoaded', () => {
+        var tableWrapper = document.querySelector('.table-wrapper');
+        if (tableWrapper) {
+            tableWrapper.addEventListener('scroll', closeMenu);
+        }
+    });
     document.body.addEventListener('click', (ev) => {
         /* was this click outside the menu? */
         var target = ev.target;
@@ -60,8 +68,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
             target = target.parentNode;
         }
         if (!target) {
-            menu.style.display = 'none';
-            menu.classList.remove('anim-scale-in');
+            closeMenu();
         }
     });
     function iconClicked(ev) {

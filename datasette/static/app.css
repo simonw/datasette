@@ -41,6 +41,9 @@ table a:link {
 table a:visited {
     color: #8f54c4;
 }
+.table-wrapper {
+    overflow-x: auto;
+}
 .small-screen-only,
 .select-wrapper.small-screen-only {
     display: none;

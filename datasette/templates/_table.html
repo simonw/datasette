@@ -1,4 +1,5 @@
 {% if display_rows %}
+<div class="table-wrapper">
     <table class="rows-and-columns">
         <thead>
             <tr>
@@ -27,6 +28,7 @@
         {% endfor %}
         </tbody>
     </table>
+</div>
 {% else %}
     <p class="zero-results">0 records</p>
 {% endif %}

@@ -2,3 +2,4 @@ recursive-include datasette/static *
 recursive-include datasette/templates *
 include versioneer.py
 include datasette/_version.py
+include LICENSE

@@ -51,6 +51,9 @@ class DatasetteError(Exception):
 class BaseView:
     ds = None
 
+    def __init__(self, datasette):
+        self.ds = datasette
+
     async def head(self, *args, **kwargs):
         response = await self.get(*args, **kwargs)
         response.body = b""
@@ -150,9 +153,6 @@ class BaseView:
 class DataView(BaseView):
     name = ""
     re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
-
-    def __init__(self, datasette):
-        self.ds = datasette
 
     def options(self, request, *args, **kwargs):
         r = Response.text("ok")

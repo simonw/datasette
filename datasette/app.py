@@ -38,7 +38,7 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import RowView, TableView, make_blob_column_view
+from .views.table import RowView, TableView, BlobView
 from .renderer import json_renderer
 from .database import Database, QueryInterrupted
 
@@ -924,7 +924,7 @@ class Datasette:
             + r")?$",
         )
         add_route(
-            make_blob_column_view(self),
+            BlobView.as_view(self),
             r"/(?P<db_name>[^/]+)/(?P<table>[^/]+?)/\-/blob/(?P<pk_path>[^/]+?)/(?P<column>[^/]+)\.blob$",
         )
         self._register_custom_units()

@@ -1031,15 +1031,9 @@ class RowView(RowTableShared):
         return foreign_key_tables
 
 
-def make_blob_column_view(datasette):
-    async def blob_column_view(request, send):
-        db_name = request.url_vars["db_name"]
-        table = request.url_vars["table"]
-        pk_path = request.url_vars["pk_path"]
-        column = request.url_vars["column"]
-        base_view = BaseView()
-        base_view.ds = datasette
-        await base_view.check_permissions(
+class BlobView(BaseView):
+    async def get(self, request, db_name, table, pk_path, column):
+        await self.check_permissions(
             request,
             [
                 ("view-table", (db_name, table)),
@@ -1048,7 +1042,7 @@ def make_blob_column_view(datasette):
             ],
         )
         try:
-            db = datasette.get_database(db_name)
+            db = self.ds.get_database(db_name)
         except KeyError:
             raise NotFound("Database {} does not exist".format(db_name))
         if not await db.table_exists(table):
@@ -1082,5 +1076,3 @@ def make_blob_column_view(datasette):
             headers=headers,
             content_type="application/binary",
         )
-
-    return blob_column_view

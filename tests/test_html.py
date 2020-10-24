@@ -1244,6 +1244,18 @@ def test_binary_data_display(app_client):
     ]
 
 
+def test_blob_download(app_client):
+    response = app_client.get("/fixtures/binary_data/-/blob/1/data.blob")
+    assert response.status == 200
+    assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="binary_data-1-data.blob"'
+    )
+    assert response.headers["content-type"] == "application/binary"
+
+
 def test_metadata_json_html(app_client):
     response = app_client.get("/-/metadata")
     assert response.status == 200

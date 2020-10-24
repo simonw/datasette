@@ -1244,6 +1244,46 @@ def test_binary_data_display(app_client):
     ]
 
 
+def test_blob_download(app_client):
+    response = app_client.get("/fixtures/binary_data/-/blob/1/data.blob")
+    assert response.status == 200
+    assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="binary_data-1-data.blob"'
+    )
+    assert response.headers["content-type"] == "application/binary"
+
+
+@pytest.mark.parametrize(
+    "path,expected_message",
+    [
+        ("/baddb/binary_data/-/blob/1/data.blob", "Database baddb does not exist"),
+        (
+            "/fixtures/binary_data_bad/-/blob/1/data.blob",
+            "Table binary_data_bad does not exist",
+        ),
+        (
+            "/fixtures/binary_data/-/blob/1/bad.blob",
+            "Table binary_data does not have column bad",
+        ),
+        (
+            "/fixtures/facetable/-/blob/1/state.blob",
+            "Table facetable does not have column state of type BLOB",
+        ),
+        (
+            "/fixtures/binary_data/-/blob/101/data.blob",
+            "Record not found: [&#39;101&#39;]",
+        ),
+    ],
+)
+def test_blob_download_not_found_messages(app_client, path, expected_message):
+    response = app_client.get(path)
+    assert response.status == 404
+    assert expected_message in response.text
+
+
 def test_metadata_json_html(app_client):
     response = app_client.get("/-/metadata")
     assert response.status == 200

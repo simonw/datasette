@@ -44,9 +44,6 @@ class JsonDataView(BaseView):
 class PatternPortfolioView(BaseView):
     name = "patterns"
 
-    def __init__(self, datasette):
-        self.ds = datasette
-
     async def get(self, request):
         await self.check_permission(request, "view-instance")
         return await self.render(["patterns.html"], request=request)
@@ -54,9 +51,6 @@ class PatternPortfolioView(BaseView):
 
 class AuthTokenView(BaseView):
     name = "auth_token"
-
-    def __init__(self, datasette):
-        self.ds = datasette
 
     async def get(self, request):
         token = request.args.get("token") or ""
@@ -75,9 +69,6 @@ class AuthTokenView(BaseView):
 
 class LogoutView(BaseView):
     name = "logout"
-
-    def __init__(self, datasette):
-        self.ds = datasette
 
     async def get(self, request):
         if not request.actor:
@@ -98,9 +89,6 @@ class LogoutView(BaseView):
 class PermissionsDebugView(BaseView):
     name = "permissions_debug"
 
-    def __init__(self, datasette):
-        self.ds = datasette
-
     async def get(self, request):
         await self.check_permission(request, "view-instance")
         if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
@@ -114,9 +102,6 @@ class PermissionsDebugView(BaseView):
 
 class AllowDebugView(BaseView):
     name = "allow_debug"
-
-    def __init__(self, datasette):
-        self.ds = datasette
 
     async def get(self, request):
         errors = []
@@ -151,9 +136,6 @@ class AllowDebugView(BaseView):
 
 class MessagesDebugView(BaseView):
     name = "messages_debug"
-
-    def __init__(self, datasette):
-        self.ds = datasette
 
     async def get(self, request):
         await self.check_permission(request, "view-instance")

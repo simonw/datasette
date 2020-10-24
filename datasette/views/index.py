@@ -18,9 +18,6 @@ COUNT_DB_SIZE_LIMIT = 100 * 1024 * 1024
 class IndexView(BaseView):
     name = "index"
 
-    def __init__(self, datasette):
-        self.ds = datasette
-
     async def get(self, request, as_format):
         await self.check_permission(request, "view-instance")
         databases = []

@@ -48,6 +48,28 @@ def test_static(ds, base_url, file, expected):
 
 
 @pytest.mark.parametrize(
+    "base_url,plugin,file,expected",
+    [
+        (
+            "/",
+            "datasette_cluster_map",
+            "datasette-cluster-map.js",
+            "/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js",
+        ),
+        (
+            "/prefix/",
+            "datasette_cluster_map",
+            "datasette-cluster-map.js",
+            "/prefix/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js",
+        ),
+    ],
+)
+def test_static_plugins(ds, base_url, plugin, file, expected):
+    ds._config["base_url"] = base_url
+    assert ds.urls.static_plugins(plugin, file) == expected
+
+
+@pytest.mark.parametrize(
     "base_url,expected",
     [
         ("/", "/-/logout"),
@@ -59,10 +81,13 @@ def test_logout(ds, base_url, expected):
     assert ds.urls.logout() == expected
 
 
-@pytest.mark.parametrize("base_url,expected", [
-    ("/", "/:memory:"),
-    ("/prefix/", "/prefix/:memory:"),
-])
+@pytest.mark.parametrize(
+    "base_url,expected",
+    [
+        ("/", "/:memory:"),
+        ("/prefix/", "/prefix/:memory:"),
+    ],
+)
 def test_database(ds, base_url, expected):
     ds._config["base_url"] = base_url
     assert ds.urls.database(":memory:") == expected

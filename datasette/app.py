@@ -1281,6 +1281,9 @@ class Urls:
     def static(self, path):
         return self.path("-/static/{}".format(path))
 
+    def static_plugins(self, plugin, path):
+        return self.path("-/static-plugins/{}/{}".format(plugin, path))
+
     def logout(self):
         return self.path("-/logout")
 

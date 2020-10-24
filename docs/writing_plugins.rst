@@ -115,7 +115,21 @@ If your plugin has a ``static/`` directory, Datasette will automatically configu
 
     /-/static-plugins/NAME_OF_PLUGIN_PACKAGE/yourfile.js
 
-See `the datasette-plugin-demos repository <https://github.com/simonw/datasette-plugin-demos/tree/0ccf9e6189e923046047acd7878d1d19a2cccbb1>`_ for an example of how to create a package that includes a static folder.
+Use the ``datasette.urls.static_plugins(plugin_name, path)`` method to generate URLs to that asset that take the ``base_url`` setting into account, see :ref:`internals_datasette_urls`.
+
+To bundle the static assets for a plugin in the package that you publish to PyPI, add the following to the plugin's ``setup.py``:
+
+.. code-block:: python
+
+        package_data={
+            'datasette_plugin_name': [
+                'static/plugin.js',
+            ],
+        },
+
+Where ``datasette_plugin_name`` is the name of the plugin package (note that it uses underscores, not hyphens) and ``static/plugin.js`` is the path within that package to the static file.
+
+`datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ is a useful example of a plugin that includes packaged static assets in this way.
 
 .. _writing_plugins_custom_templates:
 
@@ -131,6 +145,18 @@ The priority order for template loading is:
 * default templates that ship with Datasette
 
 See :ref:`customization` for more details on how to write custom templates, including which filenames to use to customize which parts of the Datasette UI.
+
+Templates should be bundled for distribution using the same ``package_data`` mechanism in ``setup.py`` described for static assets above, for example:
+
+.. code-block:: python
+
+        package_data={
+            'datasette_plugin_name': [
+                'templates/my_template.html',
+            ],
+        },
+
+You can also use wildcards here such as ``templates/*.html``. See `datasette-edit-schema <https://github.com/simonw/datasette-edit-schema>`__ for an example of this pattern.
 
 .. _writing_plugins_configuration:
 

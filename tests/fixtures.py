@@ -160,6 +160,12 @@ def app_client_no_files():
 
 
 @pytest.fixture(scope="session")
+def app_client_base_url_prefix():
+    with make_app_client(config={"base_url": "/prefix/"}) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
 def app_client_two_attached_databases():
     with make_app_client(
         extra_databases={"extra database.db": EXTRA_DATABASE_SQL}

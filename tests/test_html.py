@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (  # noqa
     app_client,
+    app_client_base_url_prefix,
     app_client_shorter_time_limit,
     app_client_two_attached_databases,
     app_client_with_hash,
@@ -1371,37 +1372,35 @@ def test_metadata_sort_desc(app_client):
         "/fixtures/facetable",
     ],
 )
-def test_base_url_config(path):
-    base_url = "/prefix/"
-    with make_app_client(config={"base_url": base_url}) as client:
-        response = client.get(base_url + path.lstrip("/"))
-        soup = Soup(response.body, "html.parser")
-        for el in soup.findAll(["a", "link", "script"]):
-            if "href" in el.attrs:
-                href = el["href"]
-            elif "src" in el.attrs:
-                href = el["src"]
-            else:
-                continue  # Could be a <script>...</script>
-            if (
-                not href.startswith("#")
-                and href
-                not in {
-                    "https://github.com/simonw/datasette",
-                    "https://github.com/simonw/datasette/blob/master/LICENSE",
-                    "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
-                }
-                and not href.startswith("https://plugin-example.com/")
-            ):
-                # If this has been made absolute it may start http://localhost/
-                if href.startswith("http://localhost/"):
-                    href = href[len("http://localost/") :]
-                assert href.startswith(base_url), {
-                    "base_url": base_url,
-                    "path": path,
-                    "href_or_src": href,
-                    "element_parent": str(el.parent),
-                }
+def test_base_url_config(app_client_base_url_prefix, path):
+    client = app_client_base_url_prefix
+    response = client.get("/prefix/" + path.lstrip("/"))
+    soup = Soup(response.body, "html.parser")
+    for el in soup.findAll(["a", "link", "script"]):
+        if "href" in el.attrs:
+            href = el["href"]
+        elif "src" in el.attrs:
+            href = el["src"]
+        else:
+            continue  # Could be a <script>...</script>
+        if (
+            not href.startswith("#")
+            and href
+            not in {
+                "https://github.com/simonw/datasette",
+                "https://github.com/simonw/datasette/blob/master/LICENSE",
+                "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
+            }
+            and not href.startswith("https://plugin-example.com/")
+        ):
+            # If this has been made absolute it may start http://localhost/
+            if href.startswith("http://localhost/"):
+                href = href[len("http://localost/") :]
+            assert href.startswith("/prefix/"), {
+                "path": path,
+                "href_or_src": href,
+                "element_parent": str(el.parent),
+            }
 
 
 @pytest.mark.parametrize(

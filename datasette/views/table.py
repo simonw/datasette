@@ -924,9 +924,14 @@ class RowView(RowTableShared):
     name = "row"
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
-        await self.check_permission(request, "view-table", (database, table))
+        await self.check_permissions(
+            request,
+            [
+                ("view-table", (database, table)),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
         pk_values = urlsafe_components(pk_path)
         db = self.ds.databases[database]
         sql, params, pks = await _sql_params_pks(db, table, pk_values)

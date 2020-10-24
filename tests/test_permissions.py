@@ -399,31 +399,49 @@ def cascade_app_client():
 
 
 @pytest.mark.parametrize(
-    "path,expected_status,permissions",
+    "path,permissions,expected_status",
     [
-        ("/", 403, []),
-        ("/", 200, ["instance"]),
+        ("/", [], 403),
+        ("/", ["instance"], 200),
         # Can view table even if not allowed database or instance
-        ("/fixtures/facet_cities", 403, []),
-        ("/fixtures/facet_cities", 403, ["database"]),
-        ("/fixtures/facet_cities", 403, ["instance"]),
-        ("/fixtures/facet_cities", 200, ["table"]),
-        ("/fixtures/facet_cities", 200, ["table", "database"]),
-        ("/fixtures/facet_cities", 200, ["table", "database", "instance"]),
+        ("/fixtures/binary_data", [], 403),
+        ("/fixtures/binary_data", ["database"], 403),
+        ("/fixtures/binary_data", ["instance"], 403),
+        ("/fixtures/binary_data", ["table"], 200),
+        ("/fixtures/binary_data", ["table", "database"], 200),
+        ("/fixtures/binary_data", ["table", "database", "instance"], 200),
+        # ... same for row
+        ("/fixtures/binary_data/1", [], 403),
+        ("/fixtures/binary_data/1", ["database"], 403),
+        ("/fixtures/binary_data/1", ["instance"], 403),
+        ("/fixtures/binary_data/1", ["table"], 200),
+        ("/fixtures/binary_data/1", ["table", "database"], 200),
+        ("/fixtures/binary_data/1", ["table", "database", "instance"], 200),
+        # ... and for binary blob
+        ("/fixtures/binary_data/-/blob/1/data.blob", [], 403),
+        ("/fixtures/binary_data/-/blob/1/data.blob", ["database"], 403),
+        ("/fixtures/binary_data/-/blob/1/data.blob", ["instance"], 403),
+        ("/fixtures/binary_data/-/blob/1/data.blob", ["table"], 200),
+        ("/fixtures/binary_data/-/blob/1/data.blob", ["table", "database"], 200),
+        (
+            "/fixtures/binary_data/-/blob/1/data.blob",
+            ["table", "database", "instance"],
+            200,
+        ),
         # Can view query even if not allowed database or instance
-        ("/fixtures/magic_parameters", 403, []),
-        ("/fixtures/magic_parameters", 403, ["database"]),
-        ("/fixtures/magic_parameters", 403, ["instance"]),
-        ("/fixtures/magic_parameters", 200, ["query"]),
-        ("/fixtures/magic_parameters", 200, ["query", "database"]),
-        ("/fixtures/magic_parameters", 200, ["query", "database", "instance"]),
+        ("/fixtures/magic_parameters", [], 403),
+        ("/fixtures/magic_parameters", ["database"], 403),
+        ("/fixtures/magic_parameters", ["instance"], 403),
+        ("/fixtures/magic_parameters", ["query"], 200),
+        ("/fixtures/magic_parameters", ["query", "database"], 200),
+        ("/fixtures/magic_parameters", ["query", "database", "instance"], 200),
         # Can view database even if not allowed instance
-        ("/fixtures", 403, []),
-        ("/fixtures", 403, ["instance"]),
-        ("/fixtures", 200, ["database"]),
+        ("/fixtures", [], 403),
+        ("/fixtures", ["instance"], 403),
+        ("/fixtures", ["database"], 200),
     ],
 )
-def test_permissions_cascade(cascade_app_client, path, expected_status, permissions):
+def test_permissions_cascade(cascade_app_client, path, permissions, expected_status):
     "Test that e.g. having view-table but NOT view-database lets you view table page, etc"
     allow = {"id": "*"}
     deny = {}
@@ -435,9 +453,9 @@ def test_permissions_cascade(cascade_app_client, path, expected_status, permissi
         updated_metadata["databases"]["fixtures"]["allow"] = (
             allow if "database" in permissions else deny
         )
-        updated_metadata["databases"]["fixtures"]["tables"]["facet_cities"]["allow"] = (
-            allow if "table" in permissions else deny
-        )
+        updated_metadata["databases"]["fixtures"]["tables"]["binary_data"] = {
+            "allow": (allow if "table" in permissions else deny)
+        }
         updated_metadata["databases"]["fixtures"]["queries"]["magic_parameters"][
             "allow"
         ] = (allow if "query" in permissions else deny)

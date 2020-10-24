@@ -193,10 +193,12 @@ This method lets you read plugin configuration values that were set in ``metadat
 await .render_template(template, context=None, request=None)
 ------------------------------------------------------------
 
-``template`` - string or list of strings
+``template`` - string, list of strings or jinja2.Template
     The template file to be rendered, e.g. ``my_plugin.html``. Datasette will search for this file first in the ``--template-dir=`` location, if it was specified - then in the plugin's bundled templates and finally in Datasette's set of default templates.
 
-    If this is a list of template file names then the first one that exists will be rendered.
+    If this is a list of template file names then the first one that exists will be loaded and rendered.
+
+    If this is a Jinja `Template object <https://jinja.palletsprojects.com/en/2.11.x/api/#jinja2.Template>`__ it will be used directly.
 
 ``context`` - None or a Python dictionary
     The context variables to pass to the template.

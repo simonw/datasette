@@ -50,6 +50,11 @@ def extra_template_vars(
 
 
 @hookspec
+def load_template(template, database, table, columns, view_name, request, datasette):
+    "Load the specified template, returning the template code as a string"
+
+
+@hookspec
 def publish_subcommand(publish):
     "Subcommands for 'datasette publish'"
 

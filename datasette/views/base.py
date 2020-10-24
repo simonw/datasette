@@ -119,15 +119,39 @@ class BaseView:
 
     async def render(self, templates, request, context=None):
         context = context or {}
-        template = self.ds.jinja_env.select_template(templates)
+
+        # Give plugins first chance at loading the template
+        break_outer = False
+        plugin_template_source = None
+        template_name = None
+        for template_name in templates:
+            if break_outer:
+                break
+            for plugin_template_source in pm.hook.load_template(
+                template=template_name,
+                database=context.get("database"),
+                table=context.get("table"),
+                columns=context.get("columns"),
+                view_name=self.name,
+                request=request,
+                datasette=self.ds,
+            ):
+                plugin_template_source = await await_me_maybe(plugin_template_source)
+                if plugin_template_source:
+                    break_outer = True
+                    break
+        if plugin_template_source is not None:
+            template = self.ds.jinja_env.from_string(plugin_template_source)
+        else:
+            template = self.ds.jinja_env.select_template(templates)
         template_context = {
             **context,
             **{
                 "database_color": self.database_color,
-                "select_templates": [
-                    "{}{}".format(
-                        "*" if template_name == template.name else "", template_name
-                    )
+                "templates_considered": [{
+                    "name": template.name,
+                    "used": template_name == template.name
+                }
                     for template_name in templates
                 ],
             },

@@ -167,8 +167,15 @@ class RowTableShared(DataView):
                     display_value = plugin_display_value
                 elif isinstance(value, bytes):
                     display_value = jinja2.Markup(
-                        "&lt;Binary&nbsp;data:&nbsp;{}&nbsp;byte{}&gt;".format(
-                            len(value), "" if len(value) == 1 else "s"
+                        '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
+                            self.ds.urls.row_blob(
+                                database,
+                                table,
+                                path_from_row_pks(row, pks, not pks),
+                                column,
+                            ),
+                            len(value),
+                            "" if len(value) == 1 else "s",
                         )
                     )
                 elif isinstance(value, dict):

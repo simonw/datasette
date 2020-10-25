@@ -1303,3 +1303,11 @@ class Urls:
 
     def query(self, database, query):
         return "{}/{}".format(self.database(database), urllib.parse.quote_plus(query))
+
+    def row(self, database, table, row_path):
+        return "{}/{}".format(self.table(database, table), row_path)
+
+    def row_blob(self, database, table, row_path, column):
+        return self.table(database, table) + "/-/blob/{}/{}.blob".format(
+            row_path, urllib.parse.quote_plus(column)
+        )

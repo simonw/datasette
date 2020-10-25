@@ -457,6 +457,17 @@ svg.dropdown-menu-icon {
     top: 1px;
 }
 
+.blob-download {
+    display: block;
+    white-space: nowrap;
+    padding-right: 20px;
+    position: relative;
+    background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2Ij48cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik03LjQ3IDEwLjc4YS43NS43NSAwIDAwMS4wNiAwbDMuNzUtMy43NWEuNzUuNzUgMCAwMC0xLjA2LTEuMDZMOC43NSA4LjQ0VjEuNzVhLjc1Ljc1IDAgMDAtMS41IDB2Ni42OUw0Ljc4IDUuOTdhLjc1Ljc1IDAgMDAtMS4wNiAxLjA2bDMuNzUgMy43NXpNMy43NSAxM2EuNzUuNzUgMCAwMDAgMS41aDguNWEuNzUuNzUgMCAwMDAtMS41aC04LjV6Ij48L3BhdGg+PC9zdmc+");
+    background-size: 16px 16px;
+    background-position: right;
+    background-repeat: no-repeat;
+}
+
 .anim-scale-in {
     animation-name: scale-in;
     animation-duration: 0.15s;

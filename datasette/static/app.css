@@ -88,6 +88,9 @@ table a:visited {
         margin-left: -10%;
         font-size: 0.8em;
     }
+    a.blob-download {
+        display: inline-block;
+    }
 }
 
 .hd {

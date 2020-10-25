@@ -220,6 +220,7 @@ HTML page. Set this to 0 to disable truncation.
 
     datasette mydatabase.db --config truncate_cells_html:0
 
+.. _config_force_https_urls:
 
 force_https_urls
 ~~~~~~~~~~~~~~~~

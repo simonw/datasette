@@ -332,6 +332,26 @@ Datasette's flash messaging mechanism allows you to add a message that will be d
 
 You can try out these messages (including the different visual styling of the three message types) using the ``/-/messages`` debugging tool.
 
+.. _datasette_absolute_url:
+
+.absolute_url(request, path)
+----------------------------
+
+``request`` - Request
+    The current Request object
+
+``path`` - string
+    A path, for example ``/dbname/table.json``
+
+Returns the absolute URL for the given path, including the protocol and host. For example:
+
+.. code-block:: python
+
+    absolute_url = datasette.absolute_url(request, "/dbname/table.json")
+    # Would return "http://localhost:8001/dbname/table.json"
+
+The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`config_force_https_urls` configuration setting is taken into account.
+
 .. _internals_datasette_client:
 
 datasette.client

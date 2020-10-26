@@ -1,10 +1,9 @@
 """
 Tests for various datasette helper functions.
 """
-
+from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request
-from datasette.filters import Filters
 import json
 import os
 import pathlib
@@ -554,3 +553,26 @@ def test_resolve_env_secrets(config, expected):
 )
 def test_display_actor(actor, expected):
     assert expected == utils.display_actor(actor)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "dbs,expected_path",
+    [
+        (["one_table"], "/one/one"),
+        (["two_tables"], "/two"),
+        (["one_table", "two_tables"], "/"),
+    ],
+)
+async def test_initial_path_for_datasette(tmp_path_factory, dbs, expected_path):
+    db_dir = tmp_path_factory.mktemp("dbs")
+    one_table = str(db_dir / "one.db")
+    sqlite3.connect(one_table).execute("create table one (id integer primary key)")
+    two_tables = str(db_dir / "two.db")
+    sqlite3.connect(two_tables).execute("create table two (id integer primary key)")
+    sqlite3.connect(two_tables).execute("create table three (id integer primary key)")
+    datasette = Datasette(
+        [{"one_table": one_table, "two_tables": two_tables}[db] for db in dbs]
+    )
+    path = await utils.initial_path_for_datasette(datasette)
+    assert path == expected_path

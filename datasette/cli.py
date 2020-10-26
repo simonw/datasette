@@ -17,6 +17,7 @@ from .utils import (
     parse_metadata,
     ConnectionProblem,
     SpatialiteConnectionProblem,
+    initial_path_for_datasette,
     temporary_docker_directory,
     value_as_boolean,
     SpatialiteNotFound,
@@ -456,14 +457,19 @@ def serve(
         return
 
     # Start the server
+    url = None
     if root:
         url = "http://{}:{}{}?token={}".format(
             host, port, ds.urls.path("-/auth-token"), ds._root_token
         )
         print(url)
-    else:
-        url = "http://{}:{}{}".format(host, port, ds.urls.instance())
     if open_browser:
+        if url is None:
+            # Figure out most convenient URL - to table, database or homepage
+            path = asyncio.get_event_loop().run_until_complete(
+                initial_path_for_datasette(ds)
+            )
+            url = "http://{}:{}{}".format(host, port, path)
         webbrowser.open(url)
     uvicorn.run(
         ds.app(), host=host, port=port, log_level="info", lifespan="on", workers=1

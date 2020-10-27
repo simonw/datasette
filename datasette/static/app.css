@@ -55,7 +55,12 @@ th {
     padding-right: 1em;
     white-space: nowrap;
 }
-
+strong {
+    font-weight: bold;
+}
+em {
+    font-style: italic;
+}
 /* end reset */
 
 
@@ -205,11 +210,13 @@ pre {
 }
 
 ul.bullets,
+ul.tight-bullets,
 ul.spaced,
 ol.spaced {
 	margin-bottom: 0.8rem;
 }
-ul.bullets {
+ul.bullets,
+ul.tight-bullets {
 	padding-left: 1.25rem;
 }
 ul.bullets li,
@@ -219,6 +226,10 @@ ol.spaced li {
 }
 ul.bullets li {
 	list-style-type: circle;
+}
+ul.tight-bullets li {
+    list-style-type: disc;
+    margin-bottom: 0;
 }
 a.not-underlined {
     text-decoration: none;

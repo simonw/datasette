@@ -144,10 +144,14 @@ class DatabaseDownload(DataView):
         if not db.path:
             raise DatasetteError("Cannot download database", status=404)
         filepath = db.path
+        headers = {}
+        if self.ds.cors:
+            headers["Access-Control-Allow-Origin"] = "*"
         return AsgiFileDownload(
             filepath,
             filename=os.path.basename(filepath),
             content_type="application/octet-stream",
+            headers=headers,
         )
 
 

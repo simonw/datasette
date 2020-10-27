@@ -272,7 +272,9 @@ footer a:visited,
 footer a:hover,
 footer a:focus,
 footer a:active,
-footer button.button-as-link,
+footer button.button-as-link {
+    color: rgba(255,255,244,0.8);
+}
 header a:link,
 header a:visited,
 header a:hover,
@@ -280,6 +282,7 @@ header a:focus,
 header a:active,
 header button.button-as-link {
     color: rgba(255,255,244,0.8);
+    text-decoration: none;
 }
 
 footer a:hover,

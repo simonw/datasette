@@ -227,7 +227,7 @@ def app_client_with_dot():
 
 @pytest.fixture(scope="session")
 def app_client_with_cors():
-    with make_app_client(cors=True) as client:
+    with make_app_client(is_immutable=True, cors=True) as client:
         yield client
 
 

@@ -1739,6 +1739,7 @@ def test_trace(app_client):
 @pytest.mark.parametrize(
     "path,status_code",
     [
+        ("/fixtures.db", 200),
         ("/fixtures.json", 200),
         ("/fixtures/no_primary_key.json", 200),
         # A 400 invalid SQL query should still have the header:

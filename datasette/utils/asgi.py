@@ -247,9 +247,9 @@ async def asgi_start(send, status, headers=None, content_type="text/plain"):
 
 
 async def asgi_send_file(
-    send, filepath, filename=None, content_type=None, chunk_size=4096
+    send, filepath, filename=None, content_type=None, chunk_size=4096, headers=None
 ):
-    headers = {}
+    headers = headers or {}
     if filename:
         headers["content-disposition"] = 'attachment; filename="{}"'.format(filename)
     first = True
@@ -395,13 +395,22 @@ class Response:
 
 class AsgiFileDownload:
     def __init__(
-        self, filepath, filename=None, content_type="application/octet-stream"
+        self,
+        filepath,
+        filename=None,
+        content_type="application/octet-stream",
+        headers=None,
     ):
+        self.headers = headers or {}
         self.filepath = filepath
         self.filename = filename
         self.content_type = content_type
 
     async def asgi_send(self, send):
         return await asgi_send_file(
-            send, self.filepath, filename=self.filename, content_type=self.content_type
+            send,
+            self.filepath,
+            filename=self.filename,
+            content_type=self.content_type,
+            headers=self.headers,
         )

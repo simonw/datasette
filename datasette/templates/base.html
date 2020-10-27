@@ -14,7 +14,7 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
 
-<nav class="hd">{% block nav %}
+<header><nav>{% block nav %}
     {% if actor %}
     <div class="logout">
         <strong>{{ display_actor(actor) }}</strong>{% if show_logout %} &middot;
@@ -24,9 +24,9 @@
         </form>{% endif %}
     </div>
     {% endif %}
-{% endblock %}</nav>
+{% endblock %}</nav></header>
 
-<div class="bd">
+<section class="content">
 {% block messages %}
 {% if show_messages %}
     {% for message, message_type in show_messages() %}
@@ -37,9 +37,9 @@
 
 {% block content %}
 {% endblock %}
-</div>
+</section>
 
-<div class="ft">{% block footer %}{% include "_footer.html" %}{% endblock %}</div>
+<footer class="ft">{% block footer %}{% include "_footer.html" %}{% endblock %}</footer>
 
 {% for body_script in body_scripts %}
     <script>{{ body_script }}</script>

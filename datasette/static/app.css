@@ -164,9 +164,12 @@ footer,
 	box-sizing: border-box;
 }
 
-a:link,
-a:visited {
+a:link {
 	color: #276890;
+	text-decoration: underline;
+}
+a:visited {
+	color: #54AC8E;
 	text-decoration: underline;
 }
 a:hover,
@@ -363,10 +366,6 @@ th {
 }
 table a:link {
     text-decoration: none;
-    color: #445ac8;
-}
-table a:visited {
-    color: #8f54c4;
 }
 .rows-and-columns td:before {
     display: block;

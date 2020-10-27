@@ -647,6 +647,9 @@ p.zero-results {
     .rows-and-columns tr {
         border: 1px solid #ccc;
         margin-bottom: 1em;
+        border-radius: 10px;
+        background-color: white;
+        padding: 0.2rem;
     }
 
     .rows-and-columns td {
@@ -655,7 +658,6 @@ p.zero-results {
         border-bottom: 1px solid #eee;
         padding: 0;
         padding-left: 10%;
-        background-color: white;
     }
 
     .rows-and-columns td:before {

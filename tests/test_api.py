@@ -1,5 +1,6 @@
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.utils import detect_json1
+from datasette.version import __version__
 from .fixtures import (  # noqa
     app_client,
     app_client_no_files,
@@ -1290,6 +1291,7 @@ def test_versions_json(app_client):
     assert "full" in response.json["python"]
     assert "datasette" in response.json
     assert "version" in response.json["datasette"]
+    assert response.json["datasette"]["version"] == __version__
     assert "sqlite" in response.json
     assert "version" in response.json["sqlite"]
     assert "fts_versions" in response.json["sqlite"]

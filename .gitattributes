@@ -1,2 +1,1 @@
-datasette/_version.py export-subst
 datasette/static/codemirror-* linguist-vendored

@@ -6,6 +6,7 @@ from .fixtures import (
 )
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.cli import cli, serve
+from datasette.version import __version__
 from click.testing import CliRunner
 import io
 import json
@@ -156,3 +157,9 @@ def test_uninstall(run_module):
     runner.invoke(cli, ["uninstall", "datasette-mock-plugin", "-y"])
     run_module.assert_called_once_with("pip", run_name="__main__")
     assert sys.argv == ["pip", "uninstall", "datasette-mock-plugin", "-y"]
+
+
+def test_version():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--version"])
+    assert result.output == "cli, version {}\n".format(__version__)

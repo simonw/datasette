@@ -81,6 +81,9 @@ body {
 .intro {
   font-size: 1rem;
 }
+.metadata-description {
+  margin-bottom: 1em;
+}
 p {
   margin: 0 0 0.75rem 0;
   padding: 0;

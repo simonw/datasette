@@ -131,9 +131,14 @@ class DatabaseDownload(DataView):
     name = "database_download"
 
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
-        await self.check_permission(request, "view-database-download", database)
+        await self.check_permissions(
+            request,
+            [
+                ("view-database-download", database),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
         if database not in self.ds.databases:
             raise DatasetteError("Invalid database", status=404)
         db = self.ds.databases[database]

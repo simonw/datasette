@@ -678,10 +678,12 @@ async def resolve_table_and_format(
     return table_and_format, None
 
 
-def path_with_format(request, format, extra_qs=None):
+def path_with_format(request, format, extra_qs=None, replace_format=None):
     qs = extra_qs or {}
     path = request.path
-    if "." in request.path:
+    if replace_format and path.endswith(".{}".format(replace_format)):
+        path = path[: -(1 + len(replace_format))]
+    if "." in path:
         qs["_format"] = format
     else:
         path = "{}.{}".format(path, format)

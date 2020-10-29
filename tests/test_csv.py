@@ -1,5 +1,3 @@
-import textwrap
-import pytest
 from .fixtures import (  # noqa
     app_client,
     app_client_csv_max_mb_one,
@@ -80,19 +78,27 @@ def test_table_csv_with_nullable_labels(app_client):
     assert EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV == response.text
 
 
-@pytest.mark.xfail
 def test_table_csv_blob_columns(app_client):
     response = app_client.get("/fixtures/binary_data.csv")
     assert response.status == 200
     assert "text/plain; charset=utf-8" == response.headers["content-type"]
-    assert EXPECTED_TABLE_CSV == textwrap.dedent(
-        """
-    rowid,data
-    1,/fixtures/binary_data/-/blob/1/data.blob
-    2,/fixtures/binary_data/-/blob/1/data.blob
-    """.strip().replace(
-            "\n", "\r\n"
-        )
+    assert response.text == (
+        "rowid,data\r\n"
+        "1,http://localhost/fixtures/binary_data/1.blob?_blob_column=data\r\n"
+        "2,http://localhost/fixtures/binary_data/2.blob?_blob_column=data\r\n"
+        "3,\r\n"
+    )
+
+
+def test_custom_sql_csv_blob_columns(app_client):
+    response = app_client.get("/fixtures.csv?sql=select+rowid,+data+from+binary_data")
+    assert response.status == 200
+    assert "text/plain; charset=utf-8" == response.headers["content-type"]
+    assert response.text == (
+        "rowid,data\r\n"
+        '1,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d"\r\n'
+        '2,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724"\r\n'
+        "3,\r\n"
     )
 
 

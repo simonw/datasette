@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import hashlib
 import re
 import time
 import urllib
@@ -14,6 +15,7 @@ from datasette.utils import (
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
+    path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
     path_with_format,
@@ -310,6 +312,40 @@ class DataView(BaseView):
                         first = False
                     next = data.get("next")
                     for row in data["rows"]:
+                        if any(isinstance(r, bytes) for r in row):
+                            new_row = []
+                            for column, cell in zip(headings, row):
+                                if isinstance(cell, bytes):
+                                    # If this is a table page, use .urls.row_blob()
+                                    if data.get("table"):
+                                        pks = data.get("primary_keys") or []
+                                        cell = self.ds.absolute_url(
+                                            request,
+                                            self.ds.urls.row_blob(
+                                                database,
+                                                data["table"],
+                                                path_from_row_pks(row, pks, not pks),
+                                                column,
+                                            ),
+                                        )
+                                    else:
+                                        # Otherwise generate URL for this query
+                                        cell = self.ds.absolute_url(
+                                            request,
+                                            path_with_format(
+                                                request,
+                                                "blob",
+                                                extra_qs={
+                                                    "_blob_column": column,
+                                                    "_blob_hash": hashlib.sha256(
+                                                        cell
+                                                    ).hexdigest(),
+                                                },
+                                                replace_format="csv",
+                                            ),
+                                        )
+                                new_row.append(cell)
+                            row = new_row
                         if not expanded_columns:
                             # Simple path
                             await writer.writerow(row)

@@ -23,7 +23,7 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
 )
-from datasette.utils.asgi import NotFound, Response
+from datasette.utils.asgi import BadRequest, NotFound, Response
 from datasette.filters import Filters
 from .base import BaseView, DataView, DatasetteError, ureg
 from .database import QueryView
@@ -469,7 +469,7 @@ class TableView(RowTableShared):
                 for i, (key, search_text) in enumerate(search_args.items()):
                     search_col = key.split("_search_", 1)[1]
                     if search_col not in await db.table_columns(fts_table):
-                        raise DatasetteError("Cannot search by that column", status=400)
+                        raise BadRequest("Cannot search by that column")
 
                     where_clauses.append(
                         "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
@@ -614,11 +614,11 @@ class TableView(RowTableShared):
                     raise ValueError
 
             except ValueError:
-                raise DatasetteError("_size must be a positive integer", status=400)
+                raise BadRequest("_size must be a positive integer")
 
             if page_size > self.ds.max_returned_rows:
-                raise DatasetteError(
-                    "_size must be <= {}".format(self.ds.max_returned_rows), status=400
+                raise BadRequest(
+                    "_size must be <= {}".format(self.ds.max_returned_rows)
                 )
 
             extra_args["page_size"] = page_size
@@ -665,7 +665,7 @@ class TableView(RowTableShared):
         if not self.ds.config("allow_facet") and any(
             arg.startswith("_facet") for arg in request.args
         ):
-            raise DatasetteError("_facet= is not allowed", status=400)
+            raise BadRequest("_facet= is not allowed")
 
         # pylint: disable=no-member
         facet_classes = list(

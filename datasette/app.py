@@ -60,6 +60,7 @@ from .utils import (
 )
 from .utils.asgi import (
     AsgiLifespan,
+    Base400,
     Forbidden,
     NotFound,
     Request,
@@ -1113,11 +1114,7 @@ class DatasetteRouter:
             pdb.post_mortem(exception.__traceback__)
 
         title = None
-        if isinstance(exception, NotFound):
-            status = 404
-            info = {}
-            message = exception.args[0]
-        elif isinstance(exception, Forbidden):
+        if isinstance(exception, Forbidden):
             status = 403
             info = {}
             message = exception.args[0]
@@ -1129,6 +1126,10 @@ class DatasetteRouter:
                 if custom_response is not None:
                     await custom_response.asgi_send(send)
                     return
+        elif isinstance(exception, Base400):
+            status = exception.status
+            info = {}
+            message = exception.args[0]
         elif isinstance(exception, DatasetteError):
             status = exception.status
             info = exception.error_dict

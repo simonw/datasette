@@ -26,6 +26,7 @@ from datasette.utils.asgi import (
     Forbidden,
     NotFound,
     Response,
+    BadRequest,
 )
 
 ureg = pint.UnitRegistry()
@@ -260,9 +261,9 @@ class DataView(BaseView):
         if stream:
             # Some quick sanity checks
             if not self.ds.config("allow_csv_stream"):
-                raise DatasetteError("CSV streaming is disabled", status=400)
+                raise BadRequest("CSV streaming is disabled")
             if request.args.get("_next"):
-                raise DatasetteError("_next not allowed for CSV streaming", status=400)
+                raise BadRequest("_next not allowed for CSV streaming")
             kwargs["_size"] = "max"
         # Fetch the first page
         try:

@@ -1,4 +1,5 @@
 import json
+from os import EX_CANTCREAT
 from datasette.utils import MultiParams
 from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
@@ -15,12 +16,20 @@ Morsel._reserved["samesite"] = "SameSite"
 # https://github.com/encode/starlette/blob/519f575/starlette/responses.py#L17
 
 
-class NotFound(Exception):
-    pass
+class Base400(Exception):
+    status = 400
 
 
-class Forbidden(Exception):
-    pass
+class NotFound(Base400):
+    status = 404
+
+
+class Forbidden(Base400):
+    status = 403
+
+
+class BadRequest(Base400):
+    status = 400
 
 
 SAMESITE_VALUES = ("strict", "lax", "none")

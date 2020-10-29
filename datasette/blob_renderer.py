@@ -1,18 +1,34 @@
-from datasette.utils import call_with_supported_arguments
 from datasette import hookimpl
-from datasette.utils.asgi import Response
+from datasette.utils.asgi import Response, BadRequest
 from datasette.utils import to_css_class
+import hashlib
 
-COLUMN = "_blob_column"
+_BLOB_COLUMN = "_blob_column"
+_BLOB_HASH = "_blob_hash"
 
 
-async def render_blob(datasette, database, rows, request, table, view_name):
-    if COLUMN not in request.args:
-        return Response.html("?_blob_column= is required", status=400)
-    blob_column = request.args[COLUMN]
-    row = rows[0]
-    if blob_column not in row.keys():
-        return Response.html("_blob_column is not valid", status=400)
+async def render_blob(datasette, database, rows, columns, request, table, view_name):
+    if _BLOB_COLUMN not in request.args:
+        raise BadRequest("?{}= is required".format(_BLOB_COLUMN))
+    blob_column = request.args[_BLOB_COLUMN]
+    if blob_column not in columns:
+        raise BadRequest("{} is not valid".format(_BLOB_COLUMN))
+
+    # If ?_blob_hash= provided, use that to select the row - otherwise use first row
+    if _BLOB_HASH in request.args:
+        blob_hash = request.args[_BLOB_HASH]
+        for row in rows:
+            value = row[blob_column]
+            if hashlib.sha256(value).hexdigest() == blob_hash:
+                break
+        else:
+            # Loop did not break
+            raise BadRequest(
+                "Link has expired - the requested binary content has changed or could not be found"
+            )
+    else:
+        row = rows[0]
+
     value = row[blob_column]
     filename_bits = []
     if table:
@@ -26,7 +42,7 @@ async def render_blob(datasette, database, rows, request, table, view_name):
         "Content-Disposition": 'attachment; filename="{}"'.format(filename),
     }
     return Response(
-        body=value,
+        body=value or b"",
         status=200,
         headers=headers,
         content_type="application/binary",

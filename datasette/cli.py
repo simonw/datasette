@@ -25,6 +25,7 @@ from .utils import (
     ValueAsBooleanError,
 )
 from .utils.testing import TestClient
+from .version import __version__
 
 
 class Config(click.ParamType):
@@ -65,7 +66,7 @@ class Config(click.ParamType):
 
 
 @click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)
-@click.version_option()
+@click.version_option(version=__version__)
 def cli():
     """
     Datasette!

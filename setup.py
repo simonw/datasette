@@ -1,8 +1,7 @@
+from re import VERBOSE
 from setuptools import setup, find_packages
 import os
 import sys
-
-import versioneer
 
 
 def get_long_description():
@@ -24,8 +23,7 @@ def get_version():
 
 setup(
     name="datasette",
-    version=versioneer.get_version(),
-    cmdclass=versioneer.get_cmdclass(),
+    version=get_version(),
     description="An open source multi-tool for exploring and publishing data",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",

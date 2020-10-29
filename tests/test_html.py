@@ -1223,7 +1223,7 @@ def test_extra_where_clauses(app_client):
     ]
 
 
-def test_binary_data_display(app_client):
+def test_binary_data_display_in_table(app_client):
     response = app_client.get("/fixtures/binary_data")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
@@ -1231,12 +1231,12 @@ def test_binary_data_display(app_client):
         [
             '<td class="col-Link type-pk"><a href="/fixtures/binary_data/1">1</a></td>',
             '<td class="col-rowid type-int">1</td>',
-            '<td class="col-data type-bytes"><a class="blob-download" href="/fixtures/binary_data/-/blob/1/data.blob">&lt;Binary:\xa07\xa0bytes&gt;</a></td>',
+            '<td class="col-data type-bytes"><a class="blob-download" href="/fixtures/binary_data/1.blob?_blob_column=data">&lt;Binary:\xa07\xa0bytes&gt;</a></td>',
         ],
         [
             '<td class="col-Link type-pk"><a href="/fixtures/binary_data/2">2</a></td>',
             '<td class="col-rowid type-int">2</td>',
-            '<td class="col-data type-bytes"><a class="blob-download" href="/fixtures/binary_data/-/blob/2/data.blob">&lt;Binary:\xa07\xa0bytes&gt;</a></td>',
+            '<td class="col-data type-bytes"><a class="blob-download" href="/fixtures/binary_data/2.blob?_blob_column=data">&lt;Binary:\xa07\xa0bytes&gt;</a></td>',
         ],
         [
             '<td class="col-Link type-pk"><a href="/fixtures/binary_data/3">3</a></td>',
@@ -1249,21 +1249,38 @@ def test_binary_data_display(app_client):
     ]
 
 
+def test_binary_data_display_in_query(app_client):
+    response = app_client.get("/fixtures?sql=select+*+from+binary_data")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    expected_tds = [
+        [
+            '<td class="col-data"><a class="blob-download" href="/fixtures.blob?sql=select+*+from+binary_data&amp;_blob_column=data&amp;_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d">&lt;Binary:\xa07\xa0bytes&gt;</a></td>'
+        ],
+        [
+            '<td class="col-data"><a class="blob-download" href="/fixtures.blob?sql=select+*+from+binary_data&amp;_blob_column=data&amp;_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724">&lt;Binary:\xa07\xa0bytes&gt;</a></td>'
+        ],
+        ['<td class="col-data">\xa0</td>'],
+    ]
+    assert expected_tds == [
+        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
+    ]
+
+
 @pytest.mark.parametrize(
-    "path,expected_body,expected_filename",
+    "path,expected_filename",
     [
+        ("/fixtures/binary_data/1.blob?_blob_column=data", "binary_data-1-data.blob"),
         (
-            "/fixtures/binary_data/-/blob/1/data.blob",
-            b"\x15\x1c\x02\xc7\xad\x05\xfe",
-            "binary_data-1-data.blob",
+            "/fixtures.blob?sql=select+*+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d",
+            "data-f30889.blob",
         ),
-        ("/fixtures/binary_data/-/blob/3/data.blob", b"", "binary_data-3-data.blob"),
     ],
 )
-def test_blob_download(app_client, path, expected_body, expected_filename):
+def test_blob_download(app_client, path, expected_filename):
     response = app_client.get(path)
     assert response.status == 200
-    assert response.body == expected_body
+    assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers[
         "content-disposition"
@@ -1274,28 +1291,17 @@ def test_blob_download(app_client, path, expected_body, expected_filename):
 @pytest.mark.parametrize(
     "path,expected_message",
     [
-        ("/baddb/binary_data/-/blob/1/data.blob", "Database baddb does not exist"),
+        ("/fixtures/binary_data/1.blob", "?_blob_column= is required"),
+        ("/fixtures/binary_data/1.blob?_blob_column=foo", "foo is not a valid column"),
         (
-            "/fixtures/binary_data_bad/-/blob/1/data.blob",
-            "Table binary_data_bad does not exist",
-        ),
-        (
-            "/fixtures/binary_data/-/blob/1/bad.blob",
-            "Table binary_data does not have column bad",
-        ),
-        (
-            "/fixtures/facetable/-/blob/1/state.blob",
-            "Table facetable does not have column state of type BLOB",
-        ),
-        (
-            "/fixtures/binary_data/-/blob/101/data.blob",
-            "Record not found: [&#39;101&#39;]",
+            "/fixtures/binary_data/1.blob?_blob_column=data&_blob_hash=x",
+            "Link has expired - the requested binary content has changed or could not be found.",
         ),
     ],
 )
-def test_blob_download_not_found_messages(app_client, path, expected_message):
+def test_blob_download_invalid_messages(app_client, path, expected_message):
     response = app_client.get(path)
-    assert response.status == 404
+    assert response.status == 400
     assert expected_message in response.text
 
 

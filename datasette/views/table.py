@@ -23,9 +23,9 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
 )
-from datasette.utils.asgi import NotFound, Response
+from datasette.utils.asgi import BadRequest, NotFound
 from datasette.filters import Filters
-from .base import BaseView, DataView, DatasetteError, ureg
+from .base import DataView, DatasetteError, ureg
 from .database import QueryView
 
 LINK_WITH_LABEL = (
@@ -469,7 +469,7 @@ class TableView(RowTableShared):
                 for i, (key, search_text) in enumerate(search_args.items()):
                     search_col = key.split("_search_", 1)[1]
                     if search_col not in await db.table_columns(fts_table):
-                        raise DatasetteError("Cannot search by that column", status=400)
+                        raise BadRequest("Cannot search by that column")
 
                     where_clauses.append(
                         "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
@@ -614,11 +614,11 @@ class TableView(RowTableShared):
                     raise ValueError
 
             except ValueError:
-                raise DatasetteError("_size must be a positive integer", status=400)
+                raise BadRequest("_size must be a positive integer")
 
             if page_size > self.ds.max_returned_rows:
-                raise DatasetteError(
-                    "_size must be <= {}".format(self.ds.max_returned_rows), status=400
+                raise BadRequest(
+                    "_size must be <= {}".format(self.ds.max_returned_rows)
                 )
 
             extra_args["page_size"] = page_size
@@ -665,7 +665,7 @@ class TableView(RowTableShared):
         if not self.ds.config("allow_facet") and any(
             arg.startswith("_facet") for arg in request.args
         ):
-            raise DatasetteError("_facet= is not allowed", status=400)
+            raise BadRequest("_facet= is not allowed")
 
         # pylint: disable=no-member
         facet_classes = list(
@@ -1041,50 +1041,3 @@ class RowView(RowTableShared):
             )
             foreign_key_tables.append({**fk, **{"count": count}})
         return foreign_key_tables
-
-
-class BlobView(BaseView):
-    async def get(self, request, db_name, table, pk_path, column):
-        await self.check_permissions(
-            request,
-            [
-                ("view-table", (db_name, table)),
-                ("view-database", db_name),
-                "view-instance",
-            ],
-        )
-        try:
-            db = self.ds.get_database(db_name)
-        except KeyError:
-            raise NotFound("Database {} does not exist".format(db_name))
-        if not await db.table_exists(table):
-            raise NotFound("Table {} does not exist".format(table))
-        # Ensure the column exists and is of type BLOB
-        column_types = {c.name: c.type for c in await db.table_column_details(table)}
-        if column not in column_types:
-            raise NotFound("Table {} does not have column {}".format(table, column))
-        if column_types[column].upper() not in ("BLOB", ""):
-            raise NotFound(
-                "Table {} does not have column {} of type BLOB".format(table, column)
-            )
-        # Ensure the row exists for the pk_path
-        pk_values = urlsafe_components(pk_path)
-        sql, params, _ = await _sql_params_pks(db, table, pk_values)
-        results = await db.execute(sql, params, truncate=True)
-        rows = list(results.rows)
-        if not rows:
-            raise NotFound("Record not found: {}".format(pk_values))
-
-        # Serve back the binary data
-        filename_bits = [to_css_class(table), pk_path, to_css_class(column)]
-        filename = "-".join(filename_bits) + ".blob"
-        headers = {
-            "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": 'attachment; filename="{}"'.format(filename),
-        }
-        return Response(
-            body=rows[0][column] or b"",
-            status=200,
-            headers=headers,
-            content_type="application/binary",
-        )

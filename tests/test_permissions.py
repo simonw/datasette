@@ -417,17 +417,6 @@ def cascade_app_client():
         ("/fixtures/binary_data/1", ["table"], 200),
         ("/fixtures/binary_data/1", ["table", "database"], 200),
         ("/fixtures/binary_data/1", ["table", "database", "instance"], 200),
-        # ... and for binary blob
-        ("/fixtures/binary_data/-/blob/1/data.blob", [], 403),
-        ("/fixtures/binary_data/-/blob/1/data.blob", ["database"], 403),
-        ("/fixtures/binary_data/-/blob/1/data.blob", ["instance"], 403),
-        ("/fixtures/binary_data/-/blob/1/data.blob", ["table"], 200),
-        ("/fixtures/binary_data/-/blob/1/data.blob", ["table", "database"], 200),
-        (
-            "/fixtures/binary_data/-/blob/1/data.blob",
-            ["table", "database", "instance"],
-            200,
-        ),
         # Can view query even if not allowed database or instance
         ("/fixtures/magic_parameters", [], 403),
         ("/fixtures/magic_parameters", ["database"], 403),

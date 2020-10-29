@@ -38,7 +38,7 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import RowView, TableView, BlobView
+from .views.table import RowView, TableView
 from .renderer import json_renderer
 from .database import Database, QueryInterrupted
 
@@ -60,6 +60,7 @@ from .utils import (
 )
 from .utils.asgi import (
     AsgiLifespan,
+    Base400,
     Forbidden,
     NotFound,
     Request,
@@ -923,10 +924,6 @@ class Datasette:
             + renderer_regex
             + r")?$",
         )
-        add_route(
-            BlobView.as_view(self),
-            r"/(?P<db_name>[^/]+)/(?P<table>[^/]+?)/\-/blob/(?P<pk_path>[^/]+?)/(?P<column>[^/]+)\.blob$",
-        )
         self._register_custom_units()
 
         async def setup_db():
@@ -1113,11 +1110,7 @@ class DatasetteRouter:
             pdb.post_mortem(exception.__traceback__)
 
         title = None
-        if isinstance(exception, NotFound):
-            status = 404
-            info = {}
-            message = exception.args[0]
-        elif isinstance(exception, Forbidden):
+        if isinstance(exception, Forbidden):
             status = 403
             info = {}
             message = exception.args[0]
@@ -1129,6 +1122,10 @@ class DatasetteRouter:
                 if custom_response is not None:
                     await custom_response.asgi_send(send)
                     return
+        elif isinstance(exception, Base400):
+            status = exception.status
+            info = {}
+            message = exception.args[0]
         elif isinstance(exception, DatasetteError):
             status = exception.status
             info = exception.error_dict
@@ -1308,6 +1305,6 @@ class Urls:
         return "{}/{}".format(self.table(database, table), row_path)
 
     def row_blob(self, database, table, row_path, column):
-        return self.table(database, table) + "/-/blob/{}/{}.blob".format(
+        return self.table(database, table) + "/{}.blob?_blob_column={}".format(
             row_path, urllib.parse.quote_plus(column)
         )

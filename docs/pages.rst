@@ -77,14 +77,3 @@ Note that this URL includes the encoded primary key of the record.
 Here's that same page as JSON:
 
 `../people/uk.org.publicwhip%2Fperson%2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk.org.publicwhip%2Fperson%2F10001.json>`_
-
-.. _BlobView:
-
-Blob
-====
-
-SQLite databases can contain binary data, stored in a ``BLOB`` column. Datasette makes the content of these columns available to download directly, at URLs that look like the following::
-
-    /database-name/table-name/-/blob/row-identifier/column-name.blob
-
-Binary content is also made available as a base64 encoded string in the ``.json`` representation of the row.

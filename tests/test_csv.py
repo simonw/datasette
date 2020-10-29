@@ -1,3 +1,5 @@
+import textwrap
+import pytest
 from .fixtures import (  # noqa
     app_client,
     app_client_csv_max_mb_one,
@@ -76,6 +78,22 @@ def test_table_csv_with_nullable_labels(app_client):
     assert response.status == 200
     assert "text/plain; charset=utf-8" == response.headers["content-type"]
     assert EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV == response.text
+
+
+@pytest.mark.xfail
+def test_table_csv_blob_columns(app_client):
+    response = app_client.get("/fixtures/binary_data.csv")
+    assert response.status == 200
+    assert "text/plain; charset=utf-8" == response.headers["content-type"]
+    assert EXPECTED_TABLE_CSV == textwrap.dedent(
+        """
+    rowid,data
+    1,/fixtures/binary_data/-/blob/1/data.blob
+    2,/fixtures/binary_data/-/blob/1/data.blob
+    """.strip().replace(
+            "\n", "\r\n"
+        )
+    )
 
 
 def test_custom_sql_csv(app_client):

@@ -1,4 +1,5 @@
 import os
+import hashlib
 import itertools
 import jinja2
 import json
@@ -10,6 +11,7 @@ from datasette.utils import (
     validate_sql_select,
     is_url,
     path_with_added_args,
+    path_with_format,
     path_with_removed_args,
     InvalidSql,
 )
@@ -340,6 +342,24 @@ class QueryView(DataView):
                             display_value = jinja2.Markup(
                                 '<a href="{url}">{url}</a>'.format(
                                     url=jinja2.escape(value.strip())
+                                )
+                            )
+                        elif isinstance(display_value, bytes):
+                            blob_url = path_with_format(
+                                request,
+                                "blob",
+                                extra_qs={
+                                    "_blob_column": column,
+                                    "_blob_hash": hashlib.sha256(
+                                        display_value
+                                    ).hexdigest(),
+                                },
+                            )
+                            display_value = jinja2.Markup(
+                                '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
+                                    blob_url,
+                                    len(display_value),
+                                    "" if len(value) == 1 else "s",
                                 )
                             )
                     display_row.append(display_value)

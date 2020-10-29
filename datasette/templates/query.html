@@ -70,7 +70,7 @@
     {% for row in display_rows %}
         <tr>
             {% for column, td in zip(columns, row) %}
-                <td class="col-{{ column|to_css_class }}">{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>
+                <td class="col-{{ column|to_css_class }}">{{ td }}</td>
             {% endfor %}
         </tr>
     {% endfor %}

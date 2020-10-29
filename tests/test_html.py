@@ -1238,21 +1238,36 @@ def test_binary_data_display(app_client):
             '<td class="col-rowid type-int">2</td>',
             '<td class="col-data type-bytes"><a class="blob-download" href="/fixtures/binary_data/-/blob/2/data.blob">&lt;Binary:\xa07\xa0bytes&gt;</a></td>',
         ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/binary_data/3">3</a></td>',
+            '<td class="col-rowid type-int">3</td>',
+            '<td class="col-data type-none">\xa0</td>',
+        ],
     ]
     assert expected_tds == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ]
 
 
-def test_blob_download(app_client):
-    response = app_client.get("/fixtures/binary_data/-/blob/1/data.blob")
+@pytest.mark.parametrize(
+    "path,expected_body,expected_filename",
+    [
+        (
+            "/fixtures/binary_data/-/blob/1/data.blob",
+            b"\x15\x1c\x02\xc7\xad\x05\xfe",
+            "binary_data-1-data.blob",
+        ),
+        ("/fixtures/binary_data/-/blob/3/data.blob", b"", "binary_data-3-data.blob"),
+    ],
+)
+def test_blob_download(app_client, path, expected_body, expected_filename):
+    response = app_client.get(path)
     assert response.status == 200
-    assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
+    assert response.body == expected_body
     assert response.headers["x-content-type-options"] == "nosniff"
-    assert (
-        response.headers["content-disposition"]
-        == 'attachment; filename="binary_data-1-data.blob"'
-    )
+    assert response.headers[
+        "content-disposition"
+    ] == 'attachment; filename="{}"'.format(expected_filename)
     assert response.headers["content-type"] == "application/binary"
 
 

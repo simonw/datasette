@@ -106,7 +106,7 @@ def test_database_page(app_client):
             "name": "binary_data",
             "columns": ["data"],
             "primary_keys": [],
-            "count": 2,
+            "count": 3,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
@@ -1812,6 +1812,7 @@ def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
             [
                 {"rowid": 1, "data": {"$base64": True, "encoded": "FRwCx60F/g=="}},
                 {"rowid": 2, "data": {"$base64": True, "encoded": "FRwDx60F/g=="}},
+                {"rowid": 3, "data": None},
             ],
             None,
         ),
@@ -1820,7 +1821,8 @@ def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
             None,
             (
                 '{"rowid": 1, "data": {"$base64": true, "encoded": "FRwCx60F/g=="}}\n'
-                '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}'
+                '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}\n'
+                '{"rowid": 3, "data": null}'
             ),
         ),
     ],

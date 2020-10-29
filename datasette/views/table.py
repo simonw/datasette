@@ -1083,7 +1083,7 @@ class BlobView(BaseView):
             "Content-Disposition": 'attachment; filename="{}"'.format(filename),
         }
         return Response(
-            body=rows[0][column],
+            body=rows[0][column] or b"",
             status=200,
             headers=headers,
             content_type="application/binary",

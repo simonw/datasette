@@ -556,6 +556,8 @@ The view function can be a regular function or an ``async def`` function, depend
 
 The function can either return a :ref:`internals_response` or it can return nothing and instead respond directly to the request using the ASGI ``send`` function (for advanced uses only).
 
+See :ref:`writing_plugins_designing_urls` for tips on designing the URL routes used by your plugin.
+
 Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__, `datasette-psutil <https://github.com/simonw/datasette-psutil>`__
 
 .. _plugin_register_facet_classes:

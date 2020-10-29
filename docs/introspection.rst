@@ -1,3 +1,5 @@
+.. _introspection:
+
 Introspection
 =============
 

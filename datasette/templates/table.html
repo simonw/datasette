@@ -8,9 +8,9 @@
 <script src="{{ urls.static('table.js') }}" defer></script>
 <style>
 @media only screen and (max-width: 576px) {
-{% for column in display_columns %}
+{% for column in display_columns -%}
     .rows-and-columns td:nth-of-type({{ loop.index }}):before { content: "{{ column.name|escape_css_string }}"; }
-{% endfor %}
+{% endfor %}}
 </style>
 {% endblock %}
 
@@ -132,7 +132,7 @@
                         <a href="{{ facet_info.toggle_url }}" class="cross">&#x2716;</a>
                     {% endif %}
                 </p>
-                <ul>
+                <ul class="tight-bullets">
                     {% for facet_value in facet_info.results %}
                         {% if not facet_value.selected %}
                             <li><a href="{{ facet_value.toggle_url }}">{{ (facet_value.label if facet_value.label is not none else "_") }}</a> {{ "{:,}".format(facet_value.count) }}</li>

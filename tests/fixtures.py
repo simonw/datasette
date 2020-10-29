@@ -227,7 +227,7 @@ def app_client_with_dot():
 
 @pytest.fixture(scope="session")
 def app_client_with_cors():
-    with make_app_client(cors=True) as client:
+    with make_app_client(is_immutable=True, cors=True) as client:
         yield client
 
 
@@ -667,6 +667,7 @@ CREATE VIEW searchable_view_configured_by_metadata AS
 TABLE_PARAMETERIZED_SQL = [
     ("insert into binary_data (data) values (?);", [b"\x15\x1c\x02\xc7\xad\x05\xfe"]),
     ("insert into binary_data (data) values (?);", [b"\x15\x1c\x03\xc7\xad\x05\xfe"]),
+    ("insert into binary_data (data) values (null);", []),
 ]
 
 EXTRA_DATABASE_SQL = """

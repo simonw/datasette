@@ -1058,7 +1058,7 @@ def assert_querystring_equal(expected, actual):
 
 
 def assert_footer_links(soup):
-    footer_links = soup.find("div", {"class": "ft"}).findAll("a")
+    footer_links = soup.find("footer").findAll("a")
     assert 4 == len(footer_links)
     datasette_link, license_link, source_link, about_link = footer_links
     assert "Datasette" == datasette_link.text.strip()
@@ -1238,6 +1238,11 @@ def test_binary_data_display_in_table(app_client):
             '<td class="col-rowid type-int">2</td>',
             '<td class="col-data type-bytes"><a class="blob-download" href="/fixtures/binary_data/2.blob?_blob_column=data">&lt;Binary:\xa07\xa0bytes&gt;</a></td>',
         ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/binary_data/3">3</a></td>',
+            '<td class="col-rowid type-int">3</td>',
+            '<td class="col-data type-none">\xa0</td>',
+        ],
     ]
     assert expected_tds == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
@@ -1274,7 +1279,7 @@ def test_binary_data_display_in_query(app_client):
 def test_blob_download(app_client, path, expected_filename):
     response = app_client.get(path)
     assert response.status == 200
-    assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
+    assert response.body == expected_body
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers[
         "content-disposition"

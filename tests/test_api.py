@@ -1,5 +1,6 @@
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.utils import detect_json1
+from datasette.version import __version__
 from .fixtures import (  # noqa
     app_client,
     app_client_no_files,
@@ -105,7 +106,7 @@ def test_database_page(app_client):
             "name": "binary_data",
             "columns": ["data"],
             "primary_keys": [],
-            "count": 2,
+            "count": 3,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
@@ -1290,6 +1291,7 @@ def test_versions_json(app_client):
     assert "full" in response.json["python"]
     assert "datasette" in response.json
     assert "version" in response.json["datasette"]
+    assert response.json["datasette"]["version"] == __version__
     assert "sqlite" in response.json
     assert "version" in response.json["sqlite"]
     assert "fts_versions" in response.json["sqlite"]
@@ -1739,6 +1741,7 @@ def test_trace(app_client):
 @pytest.mark.parametrize(
     "path,status_code",
     [
+        ("/fixtures.db", 200),
         ("/fixtures.json", 200),
         ("/fixtures/no_primary_key.json", 200),
         # A 400 invalid SQL query should still have the header:
@@ -1809,6 +1812,7 @@ def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
             [
                 {"rowid": 1, "data": {"$base64": True, "encoded": "FRwCx60F/g=="}},
                 {"rowid": 2, "data": {"$base64": True, "encoded": "FRwDx60F/g=="}},
+                {"rowid": 3, "data": None},
             ],
             None,
         ),
@@ -1817,7 +1821,8 @@ def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
             None,
             (
                 '{"rowid": 1, "data": {"$base64": true, "encoded": "FRwCx60F/g=="}}\n'
-                '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}'
+                '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}\n'
+                '{"rowid": 3, "data": null}'
             ),
         ),
     ],

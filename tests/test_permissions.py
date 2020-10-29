@@ -394,7 +394,7 @@ def test_view_instance(path, view_instance_client):
 
 @pytest.fixture(scope="session")
 def cascade_app_client():
-    with make_app_client() as client:
+    with make_app_client(is_immutable=True) as client:
         yield client
 
 
@@ -428,6 +428,11 @@ def cascade_app_client():
         ("/fixtures", [], 403),
         ("/fixtures", ["instance"], 403),
         ("/fixtures", ["database"], 200),
+        # Downloading the fixtures.db file
+        ("/fixtures.db", [], 403),
+        ("/fixtures.db", ["instance"], 403),
+        ("/fixtures.db", ["database"], 200),
+        ("/fixtures.db", ["download"], 200),
     ],
 )
 def test_permissions_cascade(cascade_app_client, path, permissions, expected_status):
@@ -436,6 +441,9 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
     deny = {}
     previous_metadata = cascade_app_client.ds._metadata
     updated_metadata = copy.deepcopy(previous_metadata)
+    actor = {"id": "test"}
+    if "download" in permissions:
+        actor["can_download"] = 1
     try:
         # Set up the different allow blocks
         updated_metadata["allow"] = allow if "instance" in permissions else deny
@@ -451,7 +459,7 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
         cascade_app_client.ds._metadata = updated_metadata
         response = cascade_app_client.get(
             path,
-            cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
+            cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
         )
         assert expected_status == response.status
     finally:

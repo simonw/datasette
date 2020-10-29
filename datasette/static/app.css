@@ -1,3 +1,69 @@
+/* Reset and Page Setup ==================================================== */
+
+/* Reset from http://meyerweb.com/eric/tools/css/reset/
+   v2.0 | 20110126
+   License: none (public domain)
+*/
+html, body, div, span, applet, object, iframe,
+h1, h2, h3, h4, h5, h6, p, blockquote, pre,
+a, abbr, acronym, address, big, cite, code,
+del, dfn, em, img, ins, kbd, q, s, samp,
+small, strike, strong, sub, sup, tt, var,
+b, u, i, center,
+dl, dt, dd, ol, ul, li,
+fieldset, form, label, legend,
+table, caption, tbody, tfoot, thead, tr, th, td,
+article, aside, canvas, details, embed,
+figure, figcaption, footer, header, hgroup,
+menu, nav, output, ruby, section, summary,
+time, mark, audio, video {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	font-size: 100%;
+	font: inherit;
+	vertical-align: baseline;
+}
+/* HTML5 display-role reset for older browsers */
+article, aside, details, figcaption, figure,
+footer, header, hgroup, menu, nav, section {
+	display: block;
+}
+body {
+	line-height: 1;
+}
+ol,
+ul {
+	list-style: none;
+}
+blockquote,
+q {
+	quotes: none;
+}
+blockquote:before,
+blockquote:after,
+q:before,
+q:after {
+	content: '';
+	content: none;
+}
+table {
+	border-collapse: collapse;
+	border-spacing: 0;
+}
+th {
+    padding-right: 1em;
+    white-space: nowrap;
+}
+strong {
+    font-weight: bold;
+}
+em {
+    font-style: italic;
+}
+/* end reset */
+
+
 body {
     margin: 0;
     padding: 0;
@@ -5,12 +71,297 @@ body {
     font-size: 1rem;
     font-weight: 400;
     line-height: 1.5;
-    color: #212529;
+    color: #111A35;
     text-align: left;
-    background-color: #fff;
+    background-color: #F8FAFB;
 }
-.bd {
-    margin: 0 1em;
+
+/* Helper Styles  ===========================================================*/
+
+.intro {
+  font-size: 1rem;
+}
+.metadata-description {
+  margin-bottom: 1em;
+}
+p {
+  margin: 0 0 0.75rem 0;
+  padding: 0;
+}
+.meta {
+  color: rgba(0,0,0,0.3);
+  font-size: 0.75rem
+}
+.intro {
+	font-size: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.context-text {
+	/* for accessibility and hiden from sight */
+	text-indent: -999em;
+	display: block;
+	width:0;
+	overflow: hidden;
+	margin: 0;
+	padding: 0;
+	line-height: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.header1,
+.header2,
+.header3,
+.header4,
+.header5,
+.header6  {
+  font-weight: 700;
+  font-size: 1rem;
+  margin: 0;
+  padding: 0;
+  word-break: break-word;
+}
+h1,
+.header1 {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  margin-top: 1rem;
+}
+h2,
+.header2 {
+  font-size: 1.5rem;
+  margin-bottom: 0.75rem;
+  margin-top: 1rem;
+}
+h3,
+.header3 {
+  font-size: 1.25rem;
+  margin: 1rem 0 0.25rem 0;
+}
+h4,
+.header4 {
+  margin: 1rem 0 0.25rem 0;
+  font-weight: 400;
+  text-decoration: underline;
+}
+h5,
+.header5 {
+  margin: 1rem 0 0.25rem 0;
+  font-weight: 700;
+  text-decoration: underline;
+}
+h6,
+.header6 {
+  margin: 1rem 0 0.25rem 0;
+  font-weight: 400;
+  font-style: italic;
+  text-decoration: underline;
+}
+
+div,
+section,
+article,
+header,
+nav,
+footer,
+.wrapper {
+	display: block;
+	box-sizing: border-box;
+}
+
+a:link {
+	color: #276890;
+	text-decoration: underline;
+}
+a:visited {
+	color: #54AC8E;
+	text-decoration: underline;
+}
+a:hover,
+a:focus,
+a:active  {
+	color: #67C98D;
+	text-decoration: underline;
+}
+
+button.button-as-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #276890;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 1rem;
+}
+button.button-as-link:hover,
+button.button-as-link:focus {
+	color: #67C98D;
+}
+
+a img {
+  display: block;
+  max-width: 100%;
+  border: 0;
+}
+
+code,
+pre {
+  font-family: monospace;
+}
+
+ul.bullets,
+ul.tight-bullets,
+ul.spaced,
+ol.spaced {
+	margin-bottom: 0.8rem;
+}
+ul.bullets,
+ul.tight-bullets {
+	padding-left: 1.25rem;
+}
+ul.bullets li,
+ul.spaced li,
+ol.spaced li {
+	margin-bottom: 0.4rem;
+}
+ul.bullets li {
+	list-style-type: circle;
+}
+ul.tight-bullets li {
+    list-style-type: disc;
+    margin-bottom: 0;
+}
+a.not-underlined {
+    text-decoration: none;
+}
+.not-underlined .underlined {
+    text-decoration: underline;
+}
+
+/* Page Furniture ========================================================= */
+/* Header */
+header,
+footer {
+    padding: 0.6rem 1rem 0.5rem 1rem;
+    background-color: #276890;
+    color: rgba(255,255,244,0.9);
+    overflow: hidden;
+    box-sizing: border-box;
+    min-height: 2.6rem;
+}
+header p,
+footer p {
+    margin: 0;
+    padding: 0;
+}
+header .crumbs {
+    float: left;
+}
+header .logout {
+    float: right;
+    text-align: right;
+    padding-left: 1rem;
+}
+header .logout form {
+    display: inline;
+}
+
+footer a:link,
+footer a:visited,
+footer a:hover,
+footer a:focus,
+footer a:active,
+footer button.button-as-link {
+    color: rgba(255,255,244,0.8);
+}
+header a:link,
+header a:visited,
+header a:hover,
+header a:focus,
+header a:active,
+header button.button-as-link {
+    color: rgba(255,255,244,0.8);
+    text-decoration: none;
+}
+
+footer a:hover,
+footer a:focus,
+footer a:active,
+footer.button-as-link:hover,
+footer.button-as-link:focus,
+header a:hover,
+header a:focus,
+header a:active,
+button.button-as-link:hover,
+button.button-as-link:focus {
+	color: rgba(255,255,244,1);
+}
+
+
+/* Body */
+section.content {
+    margin: 0 1rem;
+}
+
+/* Footer */
+footer {
+	  margin-top: 1rem;
+}
+
+
+/* Components ============================================================== */
+
+
+h2 em {
+    font-style: normal;
+    font-weight: lighter;
+}
+
+/* Messages */
+
+.message-info,
+.message-warning,
+.message-error {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background-color: rgba(103,201,141,0.3);
+}
+.message-warning {
+    background-color: rgba(245,166,35,0.3);
+}
+.message-error {
+    background-color: rgba(208,2,27,0.3);
+}
+
+.pattern-heading {
+  padding: 1rem;
+  margin-top: 2rem;
+  border-top: 1px solid rgba(208,2,27,0.8);
+  border-bottom: 1px solid rgba(208,2,27,0.8);
+  background-color: rgba(208,2,27,0.2)
+}
+
+/* URL arguments */
+.extra-wheres ul,
+.extra-wheres li {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.wrapped-sql {
+    white-space: pre-wrap;
+    margin: 1rem 0;
+    font-family: monospace;
+}
+
+/* Tables ================================================================== */
+.table-wrapper {
+    overflow-x: auto;
 }
 table {
     border-collapse: collapse;
@@ -32,100 +383,19 @@ td em {
 }
 th {
     padding-right: 1em;
-    white-space: nowrap;
 }
 table a:link {
     text-decoration: none;
-    color: #445ac8;
 }
-table a:visited {
-    color: #8f54c4;
-}
-.table-wrapper {
-    overflow-x: auto;
-}
-.small-screen-only,
-.select-wrapper.small-screen-only {
-    display: none;
-}
-@media only screen and (max-width: 576px) {
-    .small-screen-only {
-        display: initial;
-    }
-    /* Force table to not be like tables anymore */
-    table.rows-and-columns,
-    .rows-and-columns thead,
-    .rows-and-columns tbody,
-    .rows-and-columns th,
-    .rows-and-columns td,
-    .rows-and-columns tr {
-        display: block;
-    }
-
-    /* Hide table headers (but not display: none;, for accessibility) */
-    .rows-and-columns thead tr {
-        position: absolute;
-        top: -9999px;
-        left: -9999px;
-    }
-
-    .rows-and-columns tr {
-        border: 1px solid #ccc;
-        margin-bottom: 1em;
-    }
-
-    .rows-and-columns td {
-        /* Behave  like a "row" */
-        border: none;
-        border-bottom: 1px solid #eee;
-        padding: 0;
-        padding-left: 10%;
-    }
-
-    .rows-and-columns td:before {
-        display: block;
-        color: black;
-        margin-left: -10%;
-        font-size: 0.8em;
-    }
-    a.blob-download {
-        display: inline-block;
-    }
-}
-
-.hd {
-    border-bottom: 2px solid #ccc;
-    padding: 0.2em 1em;
-    background-color: #eee;
-    overflow: hidden;
-    box-sizing: border-box;
-    min-height: 2rem;
-}
-.hd p {
-    margin: 0;
-    padding: 0;
-}
-.hd .crumbs {
-    float: left;
-}
-.hd .logout {
-    float: right;
-    text-align: right;
-    padding-left: 1em;
-}
-.hd .logout form {
-    display: inline;
-}
-.ft {
-    margin: 1em 0;
-    padding: 0.5em 1em 0 1em;
-    border-top: 1px solid #ccc;
+.rows-and-columns td:before {
+    display: block;
+    color: black;
+    margin-left: -10%;
     font-size: 0.8em;
 }
-.hd :link {
-    text-decoration: none;
+a.blob-download {
+    display: inline-block;
 }
-
 .db-table p {
     margin-top: 0;
     margin-bottom: 0.3em;
@@ -135,15 +405,10 @@ table a:visited {
     margin-bottom: 0;
 }
 
-h2 em {
-    font-style: normal;
-    font-weight: lighter;
-}
-.extra-wheres ul, .extra-wheres li {
-    list-style-type: none;
-    padding: 0;
-    margin: 0;
-}
+
+/* Forms =================================================================== */
+
+
 form.sql textarea {
     border: 1px solid #ccc;
     width: 70%;
@@ -189,11 +454,7 @@ input[type="search"]::-webkit-search-results-button,
 input[type="search"]::-webkit-search-results-decoration {
     display: none;
 }
-@media only screen and (max-width: 576px) {
-    form.sql textarea {
-        width: 95%;
-    }
-}
+
 form input[type=submit], form button[type=button] {
     font-weight: 400;
     cursor: pointer;
@@ -292,27 +553,9 @@ form button[type=button] {
     font-size: 1em;
     font-family: Helvetica, sans-serif;
 }
-@media only screen and (max-width: 576px) {
-    .select-wrapper.small-screen-only {
-        display: inline-block;
-    }
-    .select-wrapper {
-        width: 100px;
-    }
-    .select-wrapper.filter-op {
-        width: 60px;
-    }
-    .filters input.filter-value {
-        width: 140px;
-    }
-}
 
-a.not-underlined {
-    text-decoration: none;
-}
-.not-underlined .underlined {
-    text-decoration: underline;
-}
+
+
 
 .facet-results {
     display: flex;
@@ -345,6 +588,7 @@ a.not-underlined {
     width: auto;
     display: inline-block;
     box-shadow: 1px 2px 8px 2px rgba(0,0,0,0.08);
+		background-color: white;
 }
 
 .download-sqlite em {
@@ -352,9 +596,7 @@ a.not-underlined {
     font-size: 0.8em;
 }
 
-pre.wrapped-sql {
-    white-space: pre-wrap;
-}
+
 
 p.zero-results {
     border: 2px solid #ccc;
@@ -368,30 +610,78 @@ p.zero-results {
     color: #666;
 }
 
-.message-info {
-    padding: 1em;
-    border: 1px solid green;
-    background-color: #c7fbc7;
-}
-.message-warning {
-    padding: 1em;
-    border: 1px solid #ae7100;
-    background-color: #fbdda5;
-}
-.message-error {
-    padding: 1em;
-    border: 1px solid red;
-    background-color: pink;
-}
 
-button.button-as-link {
-    background: none;
-    border: none;
-    padding: 0;
-    color: blue;
-    text-decoration: none;
-    cursor: pointer;
-    font-size: 1em;
+
+
+
+
+/* Overrides ===============================================================*/
+
+.small-screen-only,
+.select-wrapper.small-screen-only {
+    display: none;
+}
+@media only screen and (max-width: 576px) {
+
+    .small-screen-only {
+        display: initial;
+    }
+    .select-wrapper.small-screen-only {
+        display: inline-block;
+    }
+
+    form.sql textarea {
+        width: 95%;
+    }
+    /* Force table to not be like tables anymore */
+    table.rows-and-columns,
+    .rows-and-columns thead,
+    .rows-and-columns tbody,
+    .rows-and-columns th,
+    .rows-and-columns td,
+    .rows-and-columns tr {
+        display: block;
+    }
+
+    /* Hide table headers (but not display: none;, for accessibility) */
+    .rows-and-columns thead tr {
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+
+    .rows-and-columns tr {
+        border: 1px solid #ccc;
+        margin-bottom: 1em;
+        border-radius: 10px;
+        background-color: white;
+        padding: 0.2rem;
+    }
+
+    .rows-and-columns td {
+        /* Behave  like a "row" */
+        border: none;
+        border-bottom: 1px solid #eee;
+        padding: 0;
+        padding-left: 10%;
+    }
+
+    .rows-and-columns td:before {
+        display: block;
+        color: black;
+        margin-left: -10%;
+        font-size: 0.8em;
+    }
+
+    .select-wrapper {
+        width: 100px;
+    }
+    .select-wrapper.filter-op {
+        width: 60px;
+    }
+    .filters input.filter-value {
+        width: 140px;
+    }
 }
 
 svg.dropdown-menu-icon {

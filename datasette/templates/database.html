@@ -49,7 +49,7 @@
 
 {% if views %}
     <h2 id="views">Views</h2>
-    <ul>
+    <ul class="bullets">
         {% for view in views %}
             <li><a href="{{ urls.database(database) }}/{{ view.name|urlencode }}">{{ view.name }}</a>{% if view.private %} 🔒{% endif %}</li>
         {% endfor %}
@@ -58,7 +58,7 @@
 
 {% if queries %}
     <h2 id="queries">Queries</h2>
-    <ul>
+    <ul class="bullets">
         {% for query in queries %}
             <li><a href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
         {% endfor %}

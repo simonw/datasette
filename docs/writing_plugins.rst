@@ -202,6 +202,36 @@ The plugin configuration could also be set at the top level of ``metadata.json``
 
 Now that ``datasette-cluster-map`` plugin configuration will apply to every table in every database.
 
+.. _writing_plugins_designing_urls:
+
+Designing URLs for your plugin
+------------------------------
+
+You can register new URL routes within Datasette using the :ref:`plugin_register_routes` plugin hook.
+
+Datasette's default URLs include these:
+
+- ``/dbname`` - database page
+- ``/dbname/tablename`` - table page
+- ``/dbname/tablename/pk`` - row page
+
+See :ref:`pages` and :ref:`introspection` for more default URL routes.
+
+To avoid accidentally conflicting with a database file that may be loaded into Datasette, plugins should register URLs using a ``/-/`` prefix. For example, if your plugin adds a new interface for uploading Excel files you might register a URL route like this one:
+
+- ``/-/upload-excel``
+
+Try to avoid registering URLs that clash with other plugins that your users might have installed. There is no central repository of reserved URL paths (yet) but you can review existing plugins by browsing the `datasette-plugin topic <https://github.com/topics/datasette-plugin>`__ on GitHub.
+
+If your plugin includes functionality that relates to a specific database you could also register a URL route like this:
+
+- ``/dbname/-/upload-excel``
+
+Reserving routes under ``/dbname/tablename/-/...`` is not a good idea because a table could conceivably include a row with a primary key value of ``-``. Instead, you could use a pattern like this:
+
+- ``/dbname/-/upload-excel/tablename``
+
+
 .. _writing_plugins_building_urls:
 
 Building URLs within plugins

@@ -38,7 +38,7 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import RowView, TableView, BlobView
+from .views.table import RowView, TableView
 from .renderer import json_renderer
 from .database import Database, QueryInterrupted
 
@@ -924,10 +924,6 @@ class Datasette:
             + renderer_regex
             + r")?$",
         )
-        add_route(
-            BlobView.as_view(self),
-            r"/(?P<db_name>[^/]+)/(?P<table>[^/]+?)/\-/blob/(?P<pk_path>[^/]+?)/(?P<column>[^/]+)\.blob$",
-        )
         self._register_custom_units()
 
         async def setup_db():
@@ -1309,6 +1305,6 @@ class Urls:
         return "{}/{}".format(self.table(database, table), row_path)
 
     def row_blob(self, database, table, row_path, column):
-        return self.table(database, table) + "/-/blob/{}/{}.blob".format(
+        return self.table(database, table) + "/{}.blob?_blob_column={}".format(
             row_path, urllib.parse.quote_plus(column)
         )

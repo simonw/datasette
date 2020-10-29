@@ -1,4 +1,5 @@
 import textwrap
+import pytest
 from .fixtures import (  # noqa
     app_client,
     app_client_csv_max_mb_one,
@@ -79,6 +80,7 @@ def test_table_csv_with_nullable_labels(app_client):
     assert EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV == response.text
 
 
+@pytest.mark.xfail
 def test_table_csv_blob_columns(app_client):
     response = app_client.get("/fixtures/binary_data.csv")
     assert response.status == 200

@@ -23,9 +23,9 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
 )
-from datasette.utils.asgi import BadRequest, NotFound, Response
+from datasette.utils.asgi import BadRequest, NotFound
 from datasette.filters import Filters
-from .base import BaseView, DataView, DatasetteError, ureg
+from .base import DataView, DatasetteError, ureg
 from .database import QueryView
 
 LINK_WITH_LABEL = (
@@ -1041,50 +1041,3 @@ class RowView(RowTableShared):
             )
             foreign_key_tables.append({**fk, **{"count": count}})
         return foreign_key_tables
-
-
-class BlobView(BaseView):
-    async def get(self, request, db_name, table, pk_path, column):
-        await self.check_permissions(
-            request,
-            [
-                ("view-table", (db_name, table)),
-                ("view-database", db_name),
-                "view-instance",
-            ],
-        )
-        try:
-            db = self.ds.get_database(db_name)
-        except KeyError:
-            raise NotFound("Database {} does not exist".format(db_name))
-        if not await db.table_exists(table):
-            raise NotFound("Table {} does not exist".format(table))
-        # Ensure the column exists and is of type BLOB
-        column_types = {c.name: c.type for c in await db.table_column_details(table)}
-        if column not in column_types:
-            raise NotFound("Table {} does not have column {}".format(table, column))
-        if column_types[column].upper() not in ("BLOB", ""):
-            raise NotFound(
-                "Table {} does not have column {} of type BLOB".format(table, column)
-            )
-        # Ensure the row exists for the pk_path
-        pk_values = urlsafe_components(pk_path)
-        sql, params, _ = await _sql_params_pks(db, table, pk_values)
-        results = await db.execute(sql, params, truncate=True)
-        rows = list(results.rows)
-        if not rows:
-            raise NotFound("Record not found: {}".format(pk_values))
-
-        # Serve back the binary data
-        filename_bits = [to_css_class(table), pk_path, to_css_class(column)]
-        filename = "-".join(filename_bits) + ".blob"
-        headers = {
-            "X-Content-Type-Options": "nosniff",
-            "Content-Disposition": 'attachment; filename="{}"'.format(filename),
-        }
-        return Response(
-            body=rows[0][column],
-            status=200,
-            headers=headers,
-            content_type="application/binary",
-        )

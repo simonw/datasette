@@ -12,7 +12,7 @@ async def render_blob(datasette, database, rows, columns, request, table, view_n
         raise BadRequest("?{}= is required".format(_BLOB_COLUMN))
     blob_column = request.args[_BLOB_COLUMN]
     if blob_column not in columns:
-        raise BadRequest("{} is not valid".format(_BLOB_COLUMN))
+        raise BadRequest("{} is not a valid column".format(blob_column))
 
     # If ?_blob_hash= provided, use that to select the row - otherwise use first row
     if _BLOB_HASH in request.args:
@@ -24,7 +24,7 @@ async def render_blob(datasette, database, rows, columns, request, table, view_n
         else:
             # Loop did not break
             raise BadRequest(
-                "Link has expired - the requested binary content has changed or could not be found"
+                "Link has expired - the requested binary content has changed or could not be found."
             )
     else:
         row = rows[0]

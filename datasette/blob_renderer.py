@@ -15,6 +15,7 @@ async def render_blob(datasette, database, rows, columns, request, table, view_n
         raise BadRequest("{} is not a valid column".format(blob_column))
 
     # If ?_blob_hash= provided, use that to select the row - otherwise use first row
+    blob_hash = None
     if _BLOB_HASH in request.args:
         blob_hash = request.args[_BLOB_HASH]
         for row in rows:
@@ -36,6 +37,8 @@ async def render_blob(datasette, database, rows, columns, request, table, view_n
     if "pk_path" in request.url_vars:
         filename_bits.append(request.url_vars["pk_path"])
     filename_bits.append(to_css_class(blob_column))
+    if blob_hash:
+        filename_bits.append(blob_hash[:6])
     filename = "-".join(filename_bits) + ".blob"
     headers = {
         "X-Content-Type-Options": "nosniff",

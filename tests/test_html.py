@@ -1260,6 +1260,7 @@ def test_binary_data_display_in_query(app_client):
         [
             '<td class="col-data"><a class="blob-download" href="/fixtures.blob?sql=select+*+from+binary_data&amp;_blob_column=data&amp;_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724">&lt;Binary:\xa07\xa0bytes&gt;</a></td>'
         ],
+        ['<td class="col-data">\xa0</td>'],
     ]
     assert expected_tds == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
@@ -1279,7 +1280,7 @@ def test_binary_data_display_in_query(app_client):
 def test_blob_download(app_client, path, expected_filename):
     response = app_client.get(path)
     assert response.status == 200
-    assert response.body == expected_body
+    assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers[
         "content-disposition"

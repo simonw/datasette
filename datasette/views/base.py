@@ -127,7 +127,7 @@ class BaseView:
         for template_name in templates:
             if break_outer:
                 break
-            for plugin_template_source in pm.hook.load_template(
+            plugin_template_source = pm.hook.load_template(
                 template=template_name,
                 database=context.get("database"),
                 table=context.get("table"),
@@ -135,11 +135,11 @@ class BaseView:
                 view_name=self.name,
                 request=request,
                 datasette=self.ds,
-            ):
-                plugin_template_source = await await_me_maybe(plugin_template_source)
-                if plugin_template_source:
-                    break_outer = True
-                    break
+            )
+            plugin_template_source = await await_me_maybe(plugin_template_source)
+            if plugin_template_source:
+                break_outer = True
+                break
         if plugin_template_source is not None:
             template = self.ds.jinja_env.from_string(plugin_template_source)
         else:

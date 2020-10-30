@@ -155,3 +155,12 @@ def menu_links(datasette, actor):
             return [{"href": datasette.urls.instance(), "label": "Hello 2"}]
 
     return inner
+
+
+@hookimpl
+def table_actions(datasette, database, table, actor):
+    async def inner():
+        if actor:
+            return [{"href": datasette.urls.instance(), "label": "From async"}]
+
+    return inner

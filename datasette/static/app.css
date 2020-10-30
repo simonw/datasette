@@ -118,7 +118,7 @@ h6,
 .header3,
 .header4,
 .header5,
-.header6  {
+.header6 {
   font-weight: 700;
   font-size: 1rem;
   margin: 0;
@@ -160,6 +160,29 @@ h6,
   font-weight: 400;
   font-style: italic;
   text-decoration: underline;
+}
+
+.page-header {
+  padding-left: 10px;
+  border-left: 10px solid #666;
+  margin-bottom: 0.75rem;
+  margin-top: 1rem;
+}
+.page-header h1 {
+    display: inline;
+    margin: 0;
+    font-size: 2rem;
+    padding-right: 0.2em;
+}
+.page-header details {
+    display: inline;
+}
+.page-header details > summary {
+    list-style: none;
+    display: inline;
+}
+.page-header details > summary::-webkit-details-marker {
+    display: none;
 }
 
 div,
@@ -335,6 +358,15 @@ details .nav-menu-inner {
     display: block;
 }
 
+/* Table actions menu */
+.table-menu-links {
+    position: relative;
+}
+.table-menu-links .dropdown-menu {
+    position: absolute;
+    top: 2rem;
+    right: 0;
+}
 
 /* Components ============================================================== */
 

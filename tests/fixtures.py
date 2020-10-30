@@ -52,6 +52,7 @@ EXPECTED_PLUGINS = [
             "register_routes",
             "render_cell",
             "startup",
+            "table_actions",
         ],
     },
     {
@@ -69,6 +70,7 @@ EXPECTED_PLUGINS = [
             "permission_allowed",
             "render_cell",
             "startup",
+            "table_actions",
         ],
     },
     {

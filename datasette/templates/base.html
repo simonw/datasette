@@ -60,19 +60,19 @@
 <footer class="ft">{% block footer %}{% include "_footer.html" %}{% endblock %}</footer>
 
 <script>
-var menuDetails = document.querySelector('.nav-menu');
 document.body.addEventListener('click', (ev) => {
-    /* was this click outside the menu? */
-    if (menuDetails.getAttribute('open') !== "") {
-        return;
-    }
+    /* Close any open details elements that this click is outside of */
     var target = ev.target;
-    while (target && target != menuDetails) {
+    var detailsClickedWithin = null;
+    while (target && target.tagName != 'DETAILS') {
         target = target.parentNode;
     }
-    if (!target) {
-        menuDetails.removeAttribute('open');
+    if (target && target.tagName == 'DETAILS') {
+        detailsClickedWithin = target;
     }
+    Array.from(document.getElementsByTagName('details')).filter(
+        (details) => details.open && details != detailsClickedWithin
+    ).forEach(details => details.open = false);
 });
 </script>
 {% for body_script in body_scripts %}

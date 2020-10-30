@@ -782,3 +782,22 @@ def test_hook_menu_links(app_client):
         {"label": "Hello", "href": "/"},
         {"label": "Hello 2", "href": "/"},
     ]
+
+
+def test_hook_table_actions(app_client):
+    def get_table_actions_links(html):
+        soup = Soup(html, "html.parser")
+        details = soup.find("details", {"class": "table-menu-links"})
+        if details is None:
+            return []
+        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
+
+    response = app_client.get("/fixtures/facetable")
+    assert get_table_actions_links(response.text) == []
+
+    response_2 = app_client.get("/fixtures/facetable?_bot=1")
+    assert get_table_actions_links(response_2.text) == [
+        {"label": "From async", "href": "/"},
+        {"label": "Database: fixtures", "href": "/"},
+        {"label": "Table: facetable", "href": "/"},
+    ]

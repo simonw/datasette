@@ -7,6 +7,7 @@ import jinja2
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette.utils import (
+    await_me_maybe,
     CustomRow,
     MultiParams,
     append_querystring,
@@ -840,7 +841,21 @@ class TableView(RowTableShared):
                 elif use_rowid:
                     sort = "rowid"
 
+            async def table_actions():
+                links = []
+                for hook in pm.hook.table_actions(
+                    datasette=self.ds,
+                    table=table,
+                    database=database,
+                    actor=request.actor,
+                ):
+                    extra_links = await await_me_maybe(hook)
+                    if extra_links:
+                        links.extend(extra_links)
+                return links
+
             return {
+                "table_actions": table_actions,
                 "supports_search": bool(fts_table),
                 "search": search or "",
                 "use_rowid": use_rowid,
@@ -959,6 +974,7 @@ class RowView(RowTableShared):
             )
             for column in display_columns:
                 column["sortable"] = False
+
             return {
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values

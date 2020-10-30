@@ -998,10 +998,10 @@ menu_links(datasette, actor)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
 
-``request`` - object
-    The current HTTP :ref:`internals_request`.
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
 
-This hook provides items to be included in the menu displayed by Datasette's top right menu icon.
+This hook allows additional items to be included in the menu displayed by Datasette's top right menu icon.
 
 The hook should return a list of ``{"href": "...", "label": "..."}`` menu items. These will be added to the menu.
 
@@ -1021,3 +1021,39 @@ This example adds a new menu item but only if the signed in user is ``"root"``:
             ]
 
 Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`config_base_url` setting into account.
+
+
+.. _plugin_hook_table_actions:
+
+table_actions(datasette, actor, database, table)
+------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``table`` - string
+    The name of the table.
+
+This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items.
+
+It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
+
+This example adds a new table action if the signed in user is ``"root"``:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def table_actions(datasette, actor):
+        if actor and actor.get("id") == "root":
+            return [{
+                "href": datasette.urls.path("/-/edit-schema/{}/{}".format(database, table)),
+                "label": "Edit schema for this table",
+            }]

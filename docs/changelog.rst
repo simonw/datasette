@@ -4,6 +4,25 @@
 Changelog
 =========
 
+.. _v0_51_a1:
+
+0.51a1 (2020-10-29)
+-------------------
+
+- New colour scheme and improved visual design, courtesy of Natalie Downe. (`#1056 <https://github.com/simonw/datasette/pull/1056>`__)
+- scale-in animation for column action menu. (`#1039 <https://github.com/simonw/datasette/issues/1039>`__)
+- Wide tables now scroll horizontally. (`#998 <https://github.com/simonw/datasette/issues/998>`__)
+- Option to pass a list of templates to ``.render_template()`` is now documented. (`#1045 <https://github.com/simonw/datasette/issues/1045>`__)
+- New ``datasette.urls.static_plugins()`` method. (`#1033 <https://github.com/simonw/datasette/issues/1033>`__)
+- ``BLOB`` column values can now be downloaded directly from the Datasette UI. (`#1036 <https://github.com/simonw/datasette/issues/1036>`__)
+- ``.csv`` exports now link to direct ``BLOB`` downloads. (`#1034 <https://github.com/simonw/datasette/issues/1034>`__)
+- ``datasette -o`` option now opens the most relevant page. (`#976 <https://github.com/simonw/datasette/issues/976>`__)
+- ``datasette --cors`` option now enables access to ``/database.db`` downloads. (`#1057 <https://github.com/simonw/datasette/issues/1057>`__)
+- Database file downloads now implement cascading permissions, so you can download a database if you have ``view-database-download`` permission even if you do not have permission to access the Datasette instance. (`#1058 <https://github.com/simonw/datasette/issues/1058>`__)
+- New documentation on :ref:`writing_plugins_designing_urls`. (`#1053 <https://github.com/simonw/datasette/issues/1053>`__)
+- New navigation menu plus a :ref:`plugin_hook_menu_links` plugin hook to customize it. (`#1064 <https://github.com/simonw/datasette/issues/1064>`__)
+- :ref:`plugin_hook_table_actions` plugin hook for the new table actions menu. (`#1066 <https://github.com/simonw/datasette/issues/1066>`__)
+
 .. _v0_51_a0:
 
 0.51a0 (2020-10-19)

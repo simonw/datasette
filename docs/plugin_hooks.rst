@@ -271,6 +271,15 @@ You can also return an awaitable function that returns a string.
 
 Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
 
+.. _plugin_hook_load_template:
+
+load_template(template, database, table, columns, view_name, request, datasette)
+--------------------------------------------------------------------------------
+
+Load the source code for a template from a custom location, returning a string.
+
+Same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+
 .. _plugin_hook_publish_subcommand:
 
 publish_subcommand(publish)

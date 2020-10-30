@@ -8,7 +8,6 @@ import urllib
 import pint
 
 from datasette import __version__
-from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette.utils import (
     await_me_maybe,
@@ -119,22 +118,15 @@ class BaseView:
 
     async def render(self, templates, request, context=None):
         context = context or {}
-        template = self.ds.jinja_env.select_template(templates)
         template_context = {
             **context,
             **{
                 "database_color": self.database_color,
-                "select_templates": [
-                    "{}{}".format(
-                        "*" if template_name == template.name else "", template_name
-                    )
-                    for template_name in templates
-                ],
             },
         }
         return Response.html(
             await self.ds.render_template(
-                template, template_context, request=request, view_name=self.name
+                templates, template_context, request=request, view_name=self.name
             )
         )
 

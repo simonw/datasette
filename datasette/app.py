@@ -21,7 +21,7 @@ from pathlib import Path
 from markupsafe import Markup
 from itsdangerous import URLSafeSerializer
 import jinja2
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 import uvicorn
@@ -713,12 +713,41 @@ class Datasette:
         self, templates, context=None, request=None, view_name=None
     ):
         context = context or {}
+        templates_considered = []
         if isinstance(templates, Template):
             template = templates
         else:
             if isinstance(templates, str):
                 templates = [templates]
-            template = self.jinja_env.select_template(templates)
+
+            # Give plugins first chance at loading the template
+            break_outer = False
+            plugin_template_source = None
+            plugin_template_name = None
+            template_name = None
+            for template_name in templates:
+                if break_outer:
+                    break
+                plugin_template_source = pm.hook.load_template(
+                    template=template_name,
+                    request=request,
+                    datasette=self,
+                )
+                plugin_template_source = await await_me_maybe(plugin_template_source)
+                if plugin_template_source:
+                    break_outer = True
+                    plugin_template_name = template_name
+                    break
+            if plugin_template_source is not None:
+                template = self.jinja_env.from_string(plugin_template_source)
+            else:
+                template = self.jinja_env.select_template(templates)
+            for template_name in templates:
+                from_plugin = template_name == plugin_template_name
+                used = from_plugin or template_name == template.name
+                templates_considered.append(
+                    {"name": template_name, "used": used, "from_plugin": from_plugin}
+                )
         body_scripts = []
         # pylint: disable=no-member
         for extra_script in pm.hook.extra_body_script(
@@ -783,6 +812,7 @@ class Datasette:
                 ),
                 "base_url": self.config("base_url"),
                 "csrftoken": request.scope["csrftoken"] if request else lambda: "",
+                "templates_considered": templates_considered,
             },
             **extra_template_vars,
         }

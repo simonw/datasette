@@ -146,3 +146,12 @@ def canned_queries(datasette, database):
         }
 
     return inner
+
+
+@hookimpl(trylast=True)
+def menu_links(datasette, actor):
+    async def inner():
+        if actor:
+            return [{"href": datasette.urls.instance(), "label": "Hello 2"}]
+
+    return inner

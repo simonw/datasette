@@ -101,7 +101,7 @@ def test_logout_button_in_navigation(app_client, path):
     )
     anon_response = app_client.get(path)
     for fragment in (
-        "<strong>test</strong> &middot;",
+        "<strong>test</strong>",
         '<form action="/-/logout" method="post">',
     ):
         assert fragment in response.text
@@ -112,5 +112,4 @@ def test_logout_button_in_navigation(app_client, path):
 def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(app_client, path):
     response = app_client.get(path + "?_bot=1")
     assert "<strong>bot</strong>" in response.text
-    assert "<strong>bot</strong> &middot;" not in response.text
     assert '<form action="/-/logout" method="post">' not in response.text

@@ -765,3 +765,20 @@ def test_hook_forbidden(restore_working_directory):
         assert 302 == response2.status
         assert "/login?message=view-database" == response2.headers["Location"]
         assert "view-database" == client.ds._last_forbidden_message
+
+
+def test_hook_menu_links(app_client):
+    def get_menu_links(html):
+        soup = Soup(html, "html.parser")
+        return [
+            {"label": a.text, "href": a["href"]} for a in soup.find("nav").select("a")
+        ]
+
+    response = app_client.get("/")
+    assert get_menu_links(response.text) == []
+
+    response_2 = app_client.get("/?_bot=1")
+    assert get_menu_links(response_2.text) == [
+        {"label": "Hello", "href": "/"},
+        {"label": "Hello 2", "href": "/"},
+    ]

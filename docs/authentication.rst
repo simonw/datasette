@@ -522,3 +522,12 @@ permissions-debug
 Actor is allowed to view the ``/-/permissions`` debug page.
 
 Default *deny*.
+
+.. _permissions_debug_menu:
+
+debug-menu
+----------
+
+Controls if the various debug pages are displayed in the navigation menu.
+
+Default *deny*.

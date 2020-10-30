@@ -3,7 +3,10 @@ from datasette import hookimpl
 
 @hookimpl
 def menu_links(datasette, actor):
-    if actor and actor.get("id") == "root":
+    async def inner():
+        if not await datasette.permission_allowed(actor, "debug-menu"):
+            return []
+
         return [
             {"href": datasette.urls.path("/-/databases"), "label": "Databases"},
             {
@@ -38,3 +41,5 @@ def menu_links(datasette, actor):
             {"href": datasette.urls.path("/-/actor"), "label": "Debug actor"},
             {"href": datasette.urls.path("/-/patterns"), "label": "Pattern portfolio"},
         ]
+
+    return inner

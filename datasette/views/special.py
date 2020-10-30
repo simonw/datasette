@@ -96,7 +96,8 @@ class PermissionsDebugView(BaseView):
         return await self.render(
             ["permissions_debug.html"],
             request,
-            {"permission_checks": reversed(self.ds._permission_checks)},
+            # list() avoids error if check is performed during template render:
+            {"permission_checks": list(reversed(self.ds._permission_checks))},
         )
 
 

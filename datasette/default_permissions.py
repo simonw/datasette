@@ -5,7 +5,7 @@ from datasette.utils import actor_matches_allow
 @hookimpl(tryfirst=True)
 def permission_allowed(datasette, actor, action, resource):
     async def inner():
-        if action == "permissions-debug":
+        if action in ("permissions-debug", "debug-menu"):
             if actor and actor.get("id") == "root":
                 return True
         elif action == "view-instance":

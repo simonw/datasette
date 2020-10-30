@@ -310,10 +310,11 @@ def test_permissions_checked(app_client, path, permissions):
 
 def test_permissions_debug(app_client):
     app_client.ds._permission_checks.clear()
-    assert 403 == app_client.get("/-/permissions").status
+    assert app_client.get("/-/permissions").status == 403
     # With the cookie it should work
     cookie = app_client.actor_cookie({"id": "root"})
     response = app_client.get("/-/permissions", cookies={"ds_actor": cookie})
+    assert response.status == 200
     # Should show one failure and one success
     soup = Soup(response.body, "html.parser")
     check_divs = soup.findAll("div", {"class": "check"})

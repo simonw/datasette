@@ -1507,3 +1507,41 @@ def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
             assert "Edit SQL" in response.text
         else:
             assert "Edit SQL" not in response.text
+
+
+@pytest.mark.parametrize(
+    "actor_id,should_have_links,should_not_have_links",
+    [
+        (None, None, None),
+        ("test", None, ["/-/permissions"]),
+        ("root", ["/-/permissions", "/-/allow-debug", "/-/metadata"], None),
+    ],
+)
+def test_navigation_menu_links(
+    app_client, actor_id, should_have_links, should_not_have_links
+):
+    cookies = {}
+    if actor_id:
+        cookies = {"ds_actor": app_client.actor_cookie({"id": actor_id})}
+    html = app_client.get("/", cookies=cookies).text
+    soup = Soup(html, "html.parser")
+    details = soup.find("nav").find("details")
+    if not actor_id:
+        # Should not show a menu
+        assert details is None
+        return
+    # They are logged in: should show a menu
+    assert details is not None
+    # And a rogout form
+    assert details.find("form") is not None
+    if should_have_links:
+        for link in should_have_links:
+            assert (
+                details.find("a", {"href": link}) is not None
+            ), "{} expected but missing from nav menu".format(link)
+
+    if should_not_have_links:
+        for link in should_not_have_links:
+            assert (
+                details.find("a", {"href": link}) is None
+            ), "{} found but should not have been in nav menu".format(link)

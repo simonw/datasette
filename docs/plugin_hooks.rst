@@ -273,12 +273,21 @@ Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map
 
 .. _plugin_hook_load_template:
 
-load_template(template, database, table, columns, view_name, request, datasette)
---------------------------------------------------------------------------------
+load_template(template, request, datasette)
+-------------------------------------------
 
-Load the source code for a template from a custom location, returning a string.
+``template`` - string
+    The template that is being rendered, e.g. ``database.html``
 
-Same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+``request`` - object or None
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+Load the source code for a template from a custom location. Hooks should return a string, or ``None`` if the template is not found.
+
+Datasette will fall back to serving templates from files on disk if the requested template cannot be loaded by any plugins.
 
 .. _plugin_hook_publish_subcommand:
 

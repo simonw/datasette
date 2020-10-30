@@ -50,7 +50,7 @@ def extra_template_vars(
 
 
 @hookspec(firstresult=True)
-def load_template(template, database, table, columns, view_name, request, datasette):
+def load_template(template, request, datasette):
     "Load the specified template, returning the template code as a string"
 
 

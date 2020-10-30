@@ -130,10 +130,6 @@ class BaseView:
                 break
             plugin_template_source = pm.hook.load_template(
                 template=template_name,
-                database=context.get("database"),
-                table=context.get("table"),
-                columns=context.get("columns"),
-                view_name=self.name,
                 request=request,
                 datasette=self.ds,
             )

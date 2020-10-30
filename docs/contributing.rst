@@ -159,12 +159,12 @@ We increment ``patch`` for bugfix releass.
 
 :ref:`contributing_alpha_beta` may have an additional ``a0`` or ``b0`` prefix - the integer component will be incremented with each subsequent alpha or beta.
 
-To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/d56f402822df102f9cf1a9a056449d01a15e3aae>`__::
+To release a new version, first create a commit that updates the version number in ``datasette/version.py`` and the :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/0e1e89c6ba3d0fbdb0823272952cf356f3016def>`__::
 
     # Update changelog
-    git commit -m "Release notes for 0.43
-    
-    Refs #581, #770, #729, #706, #751, #706, #744, #771, #773" -a
+    git commit -m " Release 0.51a1
+
+    Refs #1056, #1039, #998, #1045, #1033, #1036, #1034, #976, #1057, #1058, #1053, #1064, #1066" -a
     git push
 
 Referencing the issues that are part of the release in the commit message ensures the name of the release shows up on those issue pages, e.g. `here <https://github.com/simonw/datasette/issues/581#ref-commit-d56f402>`__.

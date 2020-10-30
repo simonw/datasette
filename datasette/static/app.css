@@ -180,6 +180,7 @@ h6,
 .page-header details > summary {
     list-style: none;
     display: inline;
+    cursor: pointer;
 }
 .page-header details > summary::-webkit-details-marker {
     display: none;
@@ -341,6 +342,7 @@ details.nav-menu > summary {
     display: inline;
     float: right;
     position: relative;
+    cursor: pointer;
 }
 details.nav-menu > summary::-webkit-details-marker {
     display: none;

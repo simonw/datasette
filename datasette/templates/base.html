@@ -23,10 +23,10 @@
         </svg></summary>
         <div class="nav-menu-inner">
             <ul>
-                <li><a href="/">Home</a></li>
-                <li><a href="/-/plugins">Installed plugins</a></li>
-                <li><a href="/-/versions">Software versions</a></li>
-                <li><a href="/-/metadata">Metadata</a></li>
+                <li><a href="{{ urls.instance() }}">Home</a></li>
+                <li><a href="{{ urls.path('/-/plugins') }}">Installed plugins</a></li>
+                <li><a href="{{ urls.path('/-/versions') }}">Software versions</a></li>
+                <li><a href="{{ urls.path('/-/metadata') }}">Metadata</a></li>
                 {% if show_logout %}
                 <form action="{{ urls.logout() }}" method="post">
                     <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">

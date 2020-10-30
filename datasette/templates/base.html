@@ -81,7 +81,7 @@ document.body.addEventListener('click', (ev) => {
 
 {% if templates_considered %}
 <!-- Templates considered:
-{% for template in templates_considered %}{{ template.name }}{% if template.used %} (used){% endif %}
+{% for template in templates_considered %}- {{ template.name }}{% if template.used %} (used{% if template.from_plugin %}, from plugin{% endif %}){% endif %}
 {% endfor %}-->
 {% endif %}
 </body>

@@ -149,7 +149,11 @@ class BaseView:
             **{
                 "database_color": self.database_color,
                 "templates_considered": [
-                    {"name": template.name, "used": template_name == template.name}
+                    {
+                        "name": template_name,
+                        "used": bool(plugin_template_source) or (template_name == template.name),
+                        "from_plugin": bool(plugin_template_source),
+                    }
                     for template_name in templates
                 ],
             },

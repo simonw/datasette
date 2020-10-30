@@ -8,7 +8,6 @@ import urllib
 import pint
 
 from datasette import __version__
-from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette.utils import (
     await_me_maybe,
@@ -119,46 +118,15 @@ class BaseView:
 
     async def render(self, templates, request, context=None):
         context = context or {}
-
-        # Give plugins first chance at loading the template
-        break_outer = False
-        plugin_template_source = None
-        plugin_template_name = None
-        template_name = None
-        for template_name in templates:
-            if break_outer:
-                break
-            plugin_template_source = pm.hook.load_template(
-                template=template_name,
-                request=request,
-                datasette=self.ds,
-            )
-            plugin_template_source = await await_me_maybe(plugin_template_source)
-            if plugin_template_source:
-                break_outer = True
-                plugin_template_name = template_name
-                break
-        if plugin_template_source is not None:
-            template = self.ds.jinja_env.from_string(plugin_template_source)
-        else:
-            template = self.ds.jinja_env.select_template(templates)
-        templates_considered = []
-        for template_name in templates:
-            from_plugin = template_name == plugin_template_name
-            used = from_plugin or template_name == template.name
-            templates_considered.append(
-                {"name": template_name, "used": used, "from_plugin": from_plugin}
-            )
         template_context = {
             **context,
             **{
                 "database_color": self.database_color,
-                "templates_considered": templates_considered,
             },
         }
         return Response.html(
             await self.ds.render_template(
-                template, template_context, request=request, view_name=self.name
+                templates, template_context, request=request, view_name=self.name
             )
         )
 

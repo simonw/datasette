@@ -123,6 +123,7 @@ class BaseView:
         # Give plugins first chance at loading the template
         break_outer = False
         plugin_template_source = None
+        plugin_template_name = None
         template_name = None
         for template_name in templates:
             if break_outer:
@@ -139,23 +140,24 @@ class BaseView:
             plugin_template_source = await await_me_maybe(plugin_template_source)
             if plugin_template_source:
                 break_outer = True
+                plugin_template_name = template_name
                 break
         if plugin_template_source is not None:
             template = self.ds.jinja_env.from_string(plugin_template_source)
         else:
             template = self.ds.jinja_env.select_template(templates)
+        templates_considered = []
+        for template_name in templates:
+            from_plugin = template_name == plugin_template_name
+            used = from_plugin or template_name == template.name
+            templates_considered.append(
+                {"name": template_name, "used": used, "from_plugin": from_plugin}
+            )
         template_context = {
             **context,
             **{
                 "database_color": self.database_color,
-                "templates_considered": [
-                    {
-                        "name": template_name,
-                        "used": bool(plugin_template_source) or (template_name == template.name),
-                        "from_plugin": bool(plugin_template_source),
-                    }
-                    for template_name in templates
-                ],
+                "templates_considered": templates_considered,
             },
         }
         return Response.html(

@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_51_a2:
+
+0.51a2 (2020-10-30)
+-------------------
+
+- New :ref:`plugin_hook_load_template` plugin hook. (`#1042 <https://github.com/simonw/datasette/issues/1042>`__)
+- New :ref:`permissions_debug_menu` permission. (`#1068 <https://github.com/simonw/datasette/issues/1068>`__)
+
 .. _v0_51_a1:
 
 0.51a1 (2020-10-29)

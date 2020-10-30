@@ -329,6 +329,7 @@ details .nav-menu-inner {
     width: 180px;
     background-color: #276890;
     padding: 1rem;
+    z-index: 1000;
 }
 .nav-menu-inner a {
     display: block;

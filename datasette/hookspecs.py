@@ -97,3 +97,8 @@ def register_magic_parameters(datasette):
 @hookspec
 def forbidden(datasette, request, message):
     "Custom response for a 403 forbidden error"
+
+
+@hookspec
+def menu_links(datasette, actor):
+    "Links for the navigation menu"

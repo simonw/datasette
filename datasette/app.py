@@ -750,11 +750,22 @@ class Datasette:
             )
             extra_template_vars.update(extra_vars)
 
+        async def menu_links():
+            links = []
+            for hook in pm.hook.menu_links(
+                datasette=self, actor=request.actor if request else None
+            ):
+                extra_links = await await_me_maybe(hook)
+                if extra_links:
+                    links.extend(extra_links)
+            return links
+
         template_context = {
             **context,
             **{
                 "urls": self.urls,
                 "actor": request.actor if request else None,
+                "menu_links": menu_links,
                 "display_actor": display_actor,
                 "show_logout": request is not None and "ds_actor" in request.cookies,
                 "app_css_hash": self.app_css_hash(),
@@ -1161,6 +1172,7 @@ class DatasetteRouter:
                         info,
                         urls=self.ds.urls,
                         app_css_hash=self.ds.app_css_hash(),
+                        menu_links=lambda: [],
                     )
                 ),
                 status=status,

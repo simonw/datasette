@@ -14,6 +14,7 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <header><nav>{% block nav %}
+    {% set links = menu_links() %}{% if links or show_logout %}
     <details class="nav-menu">
         <summary><svg aria-labelledby="nav-menu-svg-title" role="img"
             fill="currentColor" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"
@@ -22,19 +23,20 @@
                 <path fill-rule="evenodd" d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 7.75zM1.75 12a.75.75 0 100 1.5h12.5a.75.75 0 100-1.5H1.75z"></path>
         </svg></summary>
         <div class="nav-menu-inner">
+            {% if links %}
             <ul>
-                <li><a href="{{ urls.instance() }}">Home</a></li>
-                <li><a href="{{ urls.path('/-/plugins') }}">Installed plugins</a></li>
-                <li><a href="{{ urls.path('/-/versions') }}">Software versions</a></li>
-                <li><a href="{{ urls.path('/-/metadata') }}">Metadata</a></li>
-                {% if show_logout %}
-                <form action="{{ urls.logout() }}" method="post">
-                    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
-                    <button class="button-as-link">Log out</button>
-                </form>{% endif %}
+                {% for link in links %}
+                <li><a href="{{ link.href }}">{{ link.label }}</a></li>
+                {% endfor %}
             </ul>
+            {% endif %}
+            {% if show_logout %}
+            <form action="{{ urls.logout() }}" method="post">
+                <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+                <button class="button-as-link">Log out</button>
+            </form>{% endif %}
         </div>
-    </details>
+    </details>{% endif %}
     {% if actor %}
     <div class="actor">
         <strong>{{ display_actor(actor) }}</strong>

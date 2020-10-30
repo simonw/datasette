@@ -290,3 +290,9 @@ def forbidden(datasette, request, message):
     datasette._last_forbidden_message = message
     if request.path == "/data2":
         return Response.redirect("/login?message=" + message)
+
+
+@hookimpl
+def menu_links(datasette, actor):
+    if actor:
+        return [{"href": datasette.urls.instance(), "label": "Hello"}]

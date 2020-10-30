@@ -989,3 +989,35 @@ The function can alternatively return an awaitable function if it needs to make 
             return Response.html(await datasette.render_template("forbidden.html"))
 
         return inner
+
+.. _plugin_hook_menu_links:
+
+menu_links(datasette, actor)
+----------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``request`` - object
+    The current HTTP :ref:`internals_request`.
+
+This hook provides items to be included in the menu displayed by Datasette's top right menu icon.
+
+The hook should return a list of ``{"href": "...", "label": "..."}`` menu items. These will be added to the menu.
+
+It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
+
+This example adds a new menu item but only if the signed in user is ``"root"``:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def menu_links(datasette, actor):
+        if actor and actor.get("id") == "root":
+            return [
+                {"href": datasette.urls.path("/-/edit-schema"), "label": "Edit schema"},
+            ]
+
+Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`config_base_url` setting into account.

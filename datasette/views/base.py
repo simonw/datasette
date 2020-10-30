@@ -148,10 +148,8 @@ class BaseView:
             **context,
             **{
                 "database_color": self.database_color,
-                "templates_considered": [{
-                    "name": template.name,
-                    "used": template_name == template.name
-                }
+                "templates_considered": [
+                    {"name": template.name, "used": template_name == template.name}
                     for template_name in templates
                 ],
             },

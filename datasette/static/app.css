@@ -261,13 +261,13 @@ footer p {
 header .crumbs {
     float: left;
 }
-header .logout {
+header .actor {
     float: right;
     text-align: right;
     padding-left: 1rem;
-}
-header .logout form {
-    display: inline;
+    padding-right: 1rem;
+    position: relative;
+    top: -3px;
 }
 
 footer a:link,
@@ -310,6 +310,28 @@ section.content {
 /* Footer */
 footer {
 	  margin-top: 1rem;
+}
+
+/* Navigation menu */
+details.nav-menu > summary {
+    list-style: none;
+    display: inline;
+    float: right;
+    position: relative;
+}
+details.nav-menu > summary::-webkit-details-marker {
+    display: none;
+}
+details .nav-menu-inner {
+    position: absolute;
+    top: 2rem;
+    right: 10px;
+    width: 180px;
+    background-color: #276890;
+    padding: 1rem;
+}
+.nav-menu-inner a {
+    display: block;
 }
 
 

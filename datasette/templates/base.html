@@ -13,15 +13,30 @@
 {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
-
 <header><nav>{% block nav %}
+    <details class="nav-menu">
+        <summary><svg
+            fill="currentColor" stroke="currentColor" xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 16 16" width="16" height="16">
+                <path fill-rule="evenodd" d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 2.75zm0 5A.75.75 0 011.75 7h12.5a.75.75 0 110 1.5H1.75A.75.75 0 011 7.75zM1.75 12a.75.75 0 100 1.5h12.5a.75.75 0 100-1.5H1.75z"></path>
+        </svg></summary>
+        <div class="nav-menu-inner">
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/-/plugins">Installed plugins</a></li>
+                <li><a href="/-/versions">Software versions</a></li>
+                <li><a href="/-/metadata">Metadata</a></li>
+                {% if show_logout %}
+                <form action="{{ urls.logout() }}" method="post">
+                    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+                    <button class="button-as-link">Log out</button>
+                </form>{% endif %}
+            </ul>
+        </div>
+    </details>
     {% if actor %}
-    <div class="logout">
-        <strong>{{ display_actor(actor) }}</strong>{% if show_logout %} &middot;
-        <form action="{{ urls.logout() }}" method="post">
-            <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
-            <button class="button-as-link">Log out</button>
-        </form>{% endif %}
+    <div class="actor">
+        <strong>{{ display_actor(actor) }}</strong>
     </div>
     {% endif %}
 {% endblock %}</nav></header>
@@ -41,6 +56,22 @@
 
 <footer class="ft">{% block footer %}{% include "_footer.html" %}{% endblock %}</footer>
 
+<script>
+var menuDetails = document.querySelector('.nav-menu');
+document.body.addEventListener('click', (ev) => {
+    /* was this click outside the menu? */
+    if (menuDetails.getAttribute('open') !== "") {
+        return;
+    }
+    var target = ev.target;
+    while (target && target != menuDetails) {
+        target = target.parentNode;
+    }
+    if (!target) {
+        menuDetails.removeAttribute('open');
+    }
+});
+</script>
 {% for body_script in body_scripts %}
     <script>{{ body_script }}</script>
 {% endfor %}

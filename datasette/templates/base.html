@@ -44,7 +44,6 @@
     {% endif %}
 {% endblock %}</nav></header>
 
-<section class="content">
 {% block messages %}
 {% if show_messages %}
     {% for message, message_type in show_messages() %}
@@ -53,6 +52,7 @@
 {% endif %}
 {% endblock %}
 
+<section class="content">
 {% block content %}
 {% endblock %}
 </section>

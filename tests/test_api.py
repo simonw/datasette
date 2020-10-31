@@ -1859,6 +1859,7 @@ def test_paginate_using_link_header(app_client, qs):
             assert link.startswith("<")
             assert link.endswith('>; rel="next"')
             path = link[1:].split(">")[0]
+            path = path.replace("http://localhost", "")
         else:
             path = None
     assert num_pages == 21

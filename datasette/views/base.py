@@ -333,8 +333,8 @@ class DataView(BaseView):
                                         cell = self.ds.absolute_url(
                                             request,
                                             path_with_format(
-                                                request,
-                                                "blob",
+                                                request=request,
+                                                format="blob",
                                                 extra_qs={
                                                     "_blob_column": column,
                                                     "_blob_hash": hashlib.sha256(
@@ -535,11 +535,13 @@ class DataView(BaseView):
                 it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:
                     renderers[key] = path_with_format(
-                        request, key, {**url_labels_extra}
+                        request=request, format=key, extra_qs={**url_labels_extra}
                     )
 
             url_csv_args = {"_size": "max", **url_labels_extra}
-            url_csv = path_with_format(request, "csv", url_csv_args)
+            url_csv = path_with_format(
+                request=request, format="csv", extra_qs=url_csv_args
+            )
             url_csv_path = url_csv.split("?")[0]
             context = {
                 **data,

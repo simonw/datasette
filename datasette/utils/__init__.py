@@ -678,9 +678,11 @@ async def resolve_table_and_format(
     return table_and_format, None
 
 
-def path_with_format(request, format, extra_qs=None, replace_format=None):
+def path_with_format(
+    *, request=None, path=None, format=None, extra_qs=None, replace_format=None
+):
     qs = extra_qs or {}
-    path = request.path
+    path = request.path if request else path
     if replace_format and path.endswith(".{}".format(replace_format)):
         path = path[: -(1 + len(replace_format))]
     if "." in path:
@@ -689,11 +691,11 @@ def path_with_format(request, format, extra_qs=None, replace_format=None):
         path = "{}.{}".format(path, format)
     if qs:
         extra = urllib.parse.urlencode(sorted(qs.items()))
-        if request.query_string:
+        if request and request.query_string:
             path = "{}?{}&{}".format(path, request.query_string, extra)
         else:
             path = "{}?{}".format(path, extra)
-    elif request.query_string:
+    elif request and request.query_string:
         path = "{}?{}".format(path, request.query_string)
     return path
 

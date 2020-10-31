@@ -396,10 +396,10 @@ datasette.urls
 
 The ``datasette.urls`` object contains methods for building URLs to pages within Datasette. Plugins should use this to link to pages, since these methods take into account any :ref:`config_base_url` configuration setting that might be in effect.
 
-``datasette.urls.instance()``
-    Returns the URL to the Datasette instance root page. This is usually ``"/"``
+``datasette.urls.instance(format=None)``
+    Returns the URL to the Datasette instance root page. This is usually ``"/"``.
 
-``datasette.urls.path(path)``
+``datasette.urls.path(path, format=None)``
     Takes a path and returns the full path, taking ``base_url`` into account.
 
     For example, ``datasette.urls.path("-/logout")`` will return the path to the logout page, which will be ``"/-/logout"`` by default or ``/prefix-path/-/logout`` if ``base_url`` is set to ``/prefix-path/``
@@ -423,13 +423,13 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 
     ``datasette.url.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
-``datasette.urls.database(database_name)``
+``datasette.urls.database(database_name, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``
 
-``datasette.urls.table(database_name, table_name)``
+``datasette.urls.table(database_name, table_name, format=None)``
     Returns the URL to a table page, for example ``"/fixtures/facetable"``
 
-``datasette.urls.query(database_name, query_name)``
+``datasette.urls.query(database_name, query_name, format=None)``
     Returns the URL to a query page, for example ``"/fixtures/pragma_cache_size"``
 
 These functions can be accessed via the ``{{ urls }}`` object in Datasette templates, for example:
@@ -440,6 +440,8 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.database("fixtures") }}">Fixtures database</a>
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
+
+Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is usually the path with ``.json`` added on the end, but it may use ``?_format=json`` in cases where the path already includes ``.json``, for example a URL to a table named ``table.json``.
 
 .. _internals_database:
 

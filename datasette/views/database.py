@@ -346,8 +346,8 @@ class QueryView(DataView):
                             )
                         elif isinstance(display_value, bytes):
                             blob_url = path_with_format(
-                                request,
-                                "blob",
+                                request=request,
+                                format="blob",
                                 extra_qs={
                                     "_blob_column": column,
                                     "_blob_hash": hashlib.sha256(

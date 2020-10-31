@@ -53,6 +53,7 @@ from .utils import (
     format_bytes,
     module_from_path,
     parse_metadata,
+    path_with_format,
     resolve_env_secrets,
     sqlite3,
     to_css_class,
@@ -1285,13 +1286,16 @@ class Urls:
     def __init__(self, ds):
         self.ds = ds
 
-    def path(self, path):
+    def path(self, path, format=None):
         if path.startswith("/"):
             path = path[1:]
-        return self.ds.config("base_url") + path
+        path = self.ds.config("base_url") + path
+        if format is not None:
+            path = path_with_format(path=path, format=format)
+        return path
 
-    def instance(self):
-        return self.path("")
+    def instance(self, format=None):
+        return self.path("", format=format)
 
     def static(self, path):
         return self.path("-/static/{}".format(path))
@@ -1302,21 +1306,33 @@ class Urls:
     def logout(self):
         return self.path("-/logout")
 
-    def database(self, database):
+    def database(self, database, format=None):
         db = self.ds.databases[database]
         if self.ds.config("hash_urls") and db.hash:
-            return self.path("{}-{}".format(database, db.hash[:HASH_LENGTH]))
+            path = self.path(
+                "{}-{}".format(database, db.hash[:HASH_LENGTH]), format=format
+            )
         else:
-            return self.path(database)
+            path = self.path(database, format=format)
+        return path
 
-    def table(self, database, table):
-        return "{}/{}".format(self.database(database), urllib.parse.quote_plus(table))
+    def table(self, database, table, format=None):
+        path = "{}/{}".format(self.database(database), urllib.parse.quote_plus(table))
+        if format is not None:
+            path = path_with_format(path=path, format=format)
+        return path
 
-    def query(self, database, query):
-        return "{}/{}".format(self.database(database), urllib.parse.quote_plus(query))
+    def query(self, database, query, format=None):
+        path = "{}/{}".format(self.database(database), urllib.parse.quote_plus(query))
+        if format is not None:
+            path = path_with_format(path=path, format=format)
+        return path
 
-    def row(self, database, table, row_path):
-        return "{}/{}".format(self.table(database, table), row_path)
+    def row(self, database, table, row_path, format=None):
+        path = "{}/{}".format(self.table(database, table), row_path)
+        if format is not None:
+            path = path_with_format(path=path, format=format)
+        return path
 
     def row_blob(self, database, table, row_path, column):
         return self.table(database, table) + "/{}.blob?_blob_column={}".format(

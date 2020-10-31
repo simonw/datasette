@@ -82,18 +82,44 @@ def test_logout(ds, base_url, expected):
 
 
 @pytest.mark.parametrize(
-    "base_url,expected",
+    "base_url,format,expected",
     [
-        ("/", "/:memory:"),
-        ("/prefix/", "/prefix/:memory:"),
+        ("/", None, "/:memory:"),
+        ("/prefix/", None, "/prefix/:memory:"),
+        ("/", "json", "/:memory:.json"),
     ],
 )
-def test_database(ds, base_url, expected):
+def test_database(ds, base_url, format, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.database(":memory:") == expected
-    # Do table and query while we are here
-    assert ds.urls.table(":memory:", "name") == expected + "/name"
-    assert ds.urls.query(":memory:", "name") == expected + "/name"
+    assert ds.urls.database(":memory:", format=format) == expected
+
+
+@pytest.mark.parametrize(
+    "base_url,name,format,expected",
+    [
+        ("/", "name", None, "/:memory:/name"),
+        ("/prefix/", "name", None, "/prefix/:memory:/name"),
+        ("/", "name", "json", "/:memory:/name.json"),
+        ("/", "name.json", "json", "/:memory:/name.json?_format=json"),
+    ],
+)
+def test_table_and_query(ds, base_url, name, format, expected):
+    ds._config["base_url"] = base_url
+    assert ds.urls.table(":memory:", name, format=format) == expected
+    assert ds.urls.query(":memory:", name, format=format) == expected
+
+
+@pytest.mark.parametrize(
+    "base_url,format,expected",
+    [
+        ("/", None, "/:memory:/facetable/1"),
+        ("/prefix/", None, "/prefix/:memory:/facetable/1"),
+        ("/", "json", "/:memory:/facetable/1.json"),
+    ],
+)
+def test_row(ds, base_url, format, expected):
+    ds._config["base_url"] = base_url
+    assert ds.urls.row(":memory:", "facetable", "1", format=format) == expected
 
 
 @pytest.mark.parametrize("base_url", ["/", "/prefix/"])

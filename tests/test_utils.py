@@ -382,15 +382,19 @@ def test_table_columns():
 )
 def test_path_with_format(path, format, extra_qs, expected):
     request = Request.fake(path)
-    actual = utils.path_with_format(request, format, extra_qs)
+    actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
     assert expected == actual
 
 
 def test_path_with_format_replace_format():
     request = Request.fake("/foo/bar.csv")
-    assert utils.path_with_format(request, "blob") == "/foo/bar.csv?_format=blob"
     assert (
-        utils.path_with_format(request, "blob", replace_format="csv") == "/foo/bar.blob"
+        utils.path_with_format(request=request, format="blob")
+        == "/foo/bar.csv?_format=blob"
+    )
+    assert (
+        utils.path_with_format(request=request, format="blob", replace_format="csv")
+        == "/foo/bar.blob"
     )
 
 

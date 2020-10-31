@@ -110,3 +110,57 @@ If you want to build SQLite files or download them as part of the deployment pro
     wget https://fivethirtyeight.datasettes.com/fivethirtyeight.db
 
 `simonw/buildpack-datasette-demo <https://github.com/simonw/buildpack-datasette-demo>`__ is an example GitHub repository showing a simple Datasette configuration that can be deployed to a buildpack-supporting host.
+
+.. _deploying_proxy:
+
+Running Datasette behind a proxy
+================================
+
+You may wish to run Datasette behind an Apache or nginx proxy, using a path within your existing site.
+
+You can use the :ref:`config_base_url` configuration setting to tell Datasette to serve traffic with a specific URL prefix. For example, you could run Datasette like this::
+
+    datasette my-database.db --config base_url:/my-datasette/ -p 8009
+
+This will run Datasette with the following URLs:
+
+- ``http://127.0.0.1:8009/my-datasette/`` - the Datasette homepage
+- ``http://127.0.0.1:8009/my-datasette/my-database`` - the page for the ``my-database.db`` database
+- ``http://127.0.0.1:8009/my-datasette/my-database/some_table`` - the page for the ``some_table`` table
+
+You can now set your nginx or Apache server to proxy the ``/my-datasette/`` path to this Datasette instance.
+
+Nginx proxy configuration
+-------------------------
+
+Here is an example of an `nginx <https://nginx.org/>`__ configuration file that will proxy traffic to Datasette::
+
+    daemon off;
+
+    events {
+      worker_connections  1024;
+    }
+
+    http {
+      server {
+        listen 80;
+
+        location /my-datasette {
+          proxy_pass              http://127.0.0.1:8009;
+          proxy_set_header        X-Real-IP $remote_addr;
+          proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+      }
+    }
+
+Apache proxy configuration
+--------------------------
+
+For `Apache <https://httpd.apache.org/>`__, you can use the ``ProxyPass`` directive. First make sure the following lines are uncommented::
+
+    LoadModule proxy_module lib/httpd/modules/mod_proxy.so
+    LoadModule proxy_http_module lib/httpd/modules/mod_proxy_http.so
+
+Then add this directive to proxy traffic::
+
+    ProxyPass          /datasette-prefix/    http://127.0.0.1:8009/datasette-prefix/

@@ -1454,7 +1454,7 @@ def test_base_url_config(app_client_base_url_prefix, path):
                 "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
                 "/login-as-root",  # Only used for the latest.datasette.io demo
             }
-            and not href.startswith("https://plugin-example.com/")
+            and not href.startswith("https://plugin-example.datasette.io/")
         ):
             # If this has been made absolute it may start http://localhost/
             if href.startswith("http://localhost/"):

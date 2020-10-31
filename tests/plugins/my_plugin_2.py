@@ -8,10 +8,10 @@ import json
 def extra_js_urls():
     return [
         {
-            "url": "https://plugin-example.com/jquery.js",
+            "url": "https://plugin-example.datasette.io/jquery.js",
             "sri": "SRIHASH",
         },
-        "https://plugin-example.com/plugin2.js",
+        "https://plugin-example.datasette.io/plugin2.js",
     ]
 
 

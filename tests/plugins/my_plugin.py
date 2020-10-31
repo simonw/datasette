@@ -29,7 +29,7 @@ def prepare_connection(conn, database, datasette):
 def extra_css_urls(template, database, table, view_name, columns, request, datasette):
     async def inner():
         return [
-            "https://plugin-example.com/{}/extra-css-urls-demo.css".format(
+            "https://plugin-example.datasette.io/{}/extra-css-urls-demo.css".format(
                 base64.b64encode(
                     json.dumps(
                         {
@@ -57,10 +57,10 @@ def extra_css_urls(template, database, table, view_name, columns, request, datas
 def extra_js_urls():
     return [
         {
-            "url": "https://plugin-example.com/jquery.js",
+            "url": "https://plugin-example.datasette.io/jquery.js",
             "sri": "SRIHASH",
         },
-        "https://plugin-example.com/plugin1.js",
+        "https://plugin-example.datasette.io/plugin1.js",
     ]
 
 

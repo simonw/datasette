@@ -125,7 +125,7 @@ def test_hook_extra_js_urls(app_client):
         == {
             "integrity": "SRIHASH",
             "crossorigin": "anonymous",
-            "src": "https://plugin-example.com/jquery.js",
+            "src": "https://plugin-example.datasette.io/jquery.js",
         }
     ]
 
@@ -135,7 +135,7 @@ def test_plugins_with_duplicate_js_urls(app_client):
     response = app_client.get("/fixtures")
     # This test is a little tricky, as if the user has any other plugins in
     # their current virtual environment those may affect what comes back too.
-    # What matters is that https://plugin-example.com/jquery.js is only there once
+    # What matters is that https://plugin-example.datasette.io/jquery.js is only there once
     # and it comes before plugin1.js and plugin2.js which could be in either
     # order
     scripts = Soup(response.body, "html.parser").findAll("script")
@@ -143,16 +143,16 @@ def test_plugins_with_duplicate_js_urls(app_client):
     # No duplicates allowed:
     assert len(srcs) == len(set(srcs))
     # jquery.js loaded once:
-    assert 1 == srcs.count("https://plugin-example.com/jquery.js")
+    assert 1 == srcs.count("https://plugin-example.datasette.io/jquery.js")
     # plugin1.js and plugin2.js are both there:
-    assert 1 == srcs.count("https://plugin-example.com/plugin1.js")
-    assert 1 == srcs.count("https://plugin-example.com/plugin2.js")
+    assert 1 == srcs.count("https://plugin-example.datasette.io/plugin1.js")
+    assert 1 == srcs.count("https://plugin-example.datasette.io/plugin2.js")
     # jquery comes before them both
-    assert srcs.index("https://plugin-example.com/jquery.js") < srcs.index(
-        "https://plugin-example.com/plugin1.js"
+    assert srcs.index("https://plugin-example.datasette.io/jquery.js") < srcs.index(
+        "https://plugin-example.datasette.io/plugin1.js"
     )
-    assert srcs.index("https://plugin-example.com/jquery.js") < srcs.index(
-        "https://plugin-example.com/plugin2.js"
+    assert srcs.index("https://plugin-example.datasette.io/jquery.js") < srcs.index(
+        "https://plugin-example.datasette.io/plugin2.js"
     )
 
 

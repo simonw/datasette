@@ -6,8 +6,8 @@ Play with a live demo
 
 The best way to experience Datasette for the first time is with a demo:
 
+* `global-power-plants.datasettes.com <https://global-power-plants.datasettes.com/global-power-plants/global-power-plants>`__ provides a searchable database of power plants around the world, using data from the `World Resources Institude <https://www.wri.org/publication/global-power-plant-database>`__ rendered using the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ plugin.
 * `fivethirtyeight.datasettes.com <https://fivethirtyeight.datasettes.com/fivethirtyeight>`__ shows Datasette running against over 400 datasets imported from the `FiveThirtyEight GitHub repository <https://github.com/fivethirtyeight/data>`__.
-* `sf-trees.datasettes.com <https://sf-trees.datasettes.com/trees/Street_Tree_List>`__ demonstrates the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ plugin running against 190,000 trees imported from `data.sfgov.org <https://data.sfgov.org/City-Infrastructure/Street-Tree-List/tkzw-k3nq>`__.
 
 .. _getting_started_glitch:
 

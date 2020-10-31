@@ -1466,6 +1466,11 @@ def test_base_url_config(app_client_base_url_prefix, path):
             }
 
 
+def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
+    html = app_client_base_url_prefix.get("/").text
+    assert '<link rel="stylesheet" href="/prefix/static/extra-css-urls.css">' in html
+
+
 @pytest.mark.parametrize(
     "path,expected",
     [

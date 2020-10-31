@@ -1,8 +1,8 @@
 import asyncio
 from contextlib import contextmanager
+import click
 from collections import OrderedDict, namedtuple
 import base64
-import click
 import hashlib
 import inspect
 import itertools
@@ -1016,8 +1016,11 @@ class PrefixedUrlString(str):
     def __add__(self, other):
         return type(self)(super().__add__(other))
 
+    def __str__(self):
+        return super().__str__()
+
     def __getattribute__(self, name):
-        if name in dir(str):
+        if not name.startswith("__") and name in dir(str):
 
             def method(self, *args, **kwargs):
                 value = getattr(super(), name)(*args, **kwargs)

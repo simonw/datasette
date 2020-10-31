@@ -274,6 +274,7 @@ METADATA = {
     "source_url": "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
     "about": "About Datasette",
     "about_url": "https://github.com/simonw/datasette",
+    "extra_css_urls": ["/static/extra-css-urls.css"],
     "plugins": {
         "name-of-plugin": {"depth": "root"},
         "env-plugin": {"foo": {"$env": "FOO_ENV"}},

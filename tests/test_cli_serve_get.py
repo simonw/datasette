@@ -61,6 +61,7 @@ def test_serve_with_get_exit_code_for_error(tmp_path_factory):
             "--get",
             "/this-is-404",
         ],
+        catch_exceptions=False,
     )
     assert result.exit_code == 1
     assert "404" in result.output

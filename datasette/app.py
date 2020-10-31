@@ -822,6 +822,9 @@ class Datasette:
             if url in seen_urls:
                 continue
             seen_urls.add(url)
+            if url.startswith("/"):
+                # Take base_url into account:
+                url = self.urls.path(url)
             if sri:
                 output.append({"url": url, "sri": sri})
             else:

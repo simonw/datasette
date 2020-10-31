@@ -1852,6 +1852,7 @@ def test_paginate_using_link_header(app_client, qs):
     num_pages = 0
     while path:
         response = app_client.get(path)
+        assert response.status == 200
         num_pages += 1
         link = response.headers.get("link")
         if link:

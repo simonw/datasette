@@ -784,7 +784,8 @@ def test_hook_menu_links(app_client):
     ]
 
 
-def test_hook_table_actions(app_client):
+@pytest.mark.parametrize("table_or_view", ["facetable", "simple_view"])
+def test_hook_table_actions(app_client, table_or_view):
     def get_table_actions_links(html):
         soup = Soup(html, "html.parser")
         details = soup.find("details", {"class": "table-menu-links"})
@@ -792,12 +793,12 @@ def test_hook_table_actions(app_client):
             return []
         return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
 
-    response = app_client.get("/fixtures/facetable")
+    response = app_client.get("/fixtures/{}".format(table_or_view))
     assert get_table_actions_links(response.text) == []
 
-    response_2 = app_client.get("/fixtures/facetable?_bot=1")
+    response_2 = app_client.get("/fixtures/{}?_bot=1".format(table_or_view))
     assert get_table_actions_links(response_2.text) == [
         {"label": "From async", "href": "/"},
         {"label": "Database: fixtures", "href": "/"},
-        {"label": "Table: facetable", "href": "/"},
+        {"label": "Table: {}".format(table_or_view), "href": "/"},
     ]

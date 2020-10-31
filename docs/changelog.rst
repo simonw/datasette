@@ -4,45 +4,65 @@
 Changelog
 =========
 
-.. _v0_51_a2:
+.. _v0_51:
 
-0.51a2 (2020-10-30)
--------------------
+0.51 (2020-10-31)
+-----------------
 
-- New ``load_template`` plugin hook. (`#1042 <https://github.com/simonw/datasette/issues/1042>`__)
+A new visual design, plugin hooks for adding navigation options, better handling of binary data, URL building utility methods and better support for running Datasette behind a proxy.
+
+New visual design
+~~~~~~~~~~~~~~~~~
+
+Datasette is no longer white and grey with blue and purple links! `Natalie Downe <https://twitter.com/natbat>`__ has been working on a visual refresh, the first iteration of which is included in this release. (`#1056 <https://github.com/simonw/datasette/pull/1056>`__)
+
+.. image:: datasette-0.51.png
+   :width: 740px
+   :alt: Screenshot showing Datasette's new visual look
+
+Plugins can now add links within Datasette
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A number of existing Datasette plugins add new pages to the Datasette interface, providig tools for things like `uploading CSVs <https://github.com/simonw/datasette-upload-csvs>`__, `editing table schemas <https://github.com/simonw/datasette-edit-schema>`__ or `configuring full-text search <https://github.com/simonw/datasette-configure-fts>`__.
+
+Plugins like this can now link to themselves from other parts of Datasette interface. The :ref:`plugin_hook_menu_links` hook (`#1064 <https://github.com/simonw/datasette/issues/1064>`__) lets plugins add links to Datasette's new top-right application menu, and the :ref:`plugin_hook_table_actions` hook (`#1066 <https://github.com/simonw/datasette/issues/1066>`__) adds links to a new "table actions" menu on the table page.
+
+The demo at `latest.datasette.io <https://latest.datasette.io/>`__ now includes some example plugins. To see the new table actions menu first `sign into that demo as root <https://latest.datasette.io/login-as-root>`__ and then visit the `facetable <https://latest.datasette.io/fixtures/facetable>`__ table to see the new cog icon menu at the top of the page.
+
+Binary data
+~~~~~~~~~~~
+
+SQLite tables can contain binary data in ``BLOB`` columns. Datasette now provides links for users to download this data directly from Datasette, and uses those links to make binary data available from CSV exports. See :ref:`binary` for more details. (`#1036 <https://github.com/simonw/datasette/issues/1036>`__ and `#1034 <https://github.com/simonw/datasette/issues/1034>`__).
+
+URL building
+~~~~~~~~~~~~
+
+The new :ref:`internals_datasette_urls` family of methods can be used to generate URLs to key pages within the Datasette interface, both within custom templates and Datasette plugins. See :ref:`writing_plugins_building_urls` for more details. (`#904 <https://github.com/simonw/datasette/issues/904>`__)
+
+Running Datasette behind a proxy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`config_base_url` configuration option is designed to help run Datasette on a specific path behind a proxy - for example if you want to run an instance of Datasette at ``/my-datasette/`` within your existing site's URL hierarchy, proxied behind nginx or Apache.
+
+Support for this configuration option has been greatly improved (`#1023 <https://github.com/simonw/datasette/issues/1023>`__), and guidelines for using it are now available in a new documentation section on :ref:`deploying_proxy`. (`#1027 <https://github.com/simonw/datasette/issues/1027>`__)
+
+Smaller changes
+~~~~~~~~~~~~~~~
+
+- Wide tables shown within Datasette now scroll horizontally (`#998 <https://github.com/simonw/datasette/issues/998>`__). This is achieved using a new ``<div class="table-wrapper">`` element which may impact the implementation of some plugins (for example `this change to datasette-cluster-map <https://github.com/simonw/datasette-cluster-map/commit/fcb4abbe7df9071c5ab57defd39147de7145b34e>`__).
 - New :ref:`permissions_debug_menu` permission. (`#1068 <https://github.com/simonw/datasette/issues/1068>`__)
-
-.. _v0_51_a1:
-
-0.51a1 (2020-10-29)
--------------------
-
-- New colour scheme and improved visual design, courtesy of Natalie Downe. (`#1056 <https://github.com/simonw/datasette/pull/1056>`__)
-- scale-in animation for column action menu. (`#1039 <https://github.com/simonw/datasette/issues/1039>`__)
-- Wide tables now scroll horizontally. (`#998 <https://github.com/simonw/datasette/issues/998>`__)
-- Option to pass a list of templates to ``.render_template()`` is now documented. (`#1045 <https://github.com/simonw/datasette/issues/1045>`__)
-- New ``datasette.urls.static_plugins()`` method. (`#1033 <https://github.com/simonw/datasette/issues/1033>`__)
-- ``BLOB`` column values can now be downloaded directly from the Datasette UI. (`#1036 <https://github.com/simonw/datasette/issues/1036>`__)
-- ``.csv`` exports now link to direct ``BLOB`` downloads. (`#1034 <https://github.com/simonw/datasette/issues/1034>`__)
-- ``datasette -o`` option now opens the most relevant page. (`#976 <https://github.com/simonw/datasette/issues/976>`__)
-- ``datasette --cors`` option now enables access to ``/database.db`` downloads. (`#1057 <https://github.com/simonw/datasette/issues/1057>`__)
-- Database file downloads now implement cascading permissions, so you can download a database if you have ``view-database-download`` permission even if you do not have permission to access the Datasette instance. (`#1058 <https://github.com/simonw/datasette/issues/1058>`__)
-- New documentation on :ref:`writing_plugins_designing_urls`. (`#1053 <https://github.com/simonw/datasette/issues/1053>`__)
-- New navigation menu plus a :ref:`plugin_hook_menu_links` plugin hook to customize it. (`#1064 <https://github.com/simonw/datasette/issues/1064>`__)
-- :ref:`plugin_hook_table_actions` plugin hook for the new table actions menu. (`#1066 <https://github.com/simonw/datasette/issues/1066>`__)
-
-.. _v0_51_a0:
-
-0.51a0 (2020-10-19)
--------------------
-
-- Fixed a bunch of issues relating to the :ref:`config_base_url` setting. (`#1023 <https://github.com/simonw/datasette/issues/1023>`__)
-- New ``datasette.urls`` URL builder for plugins, see :ref:`writing_plugins_building_urls`. (`#904 <https://github.com/simonw/datasette/issues/904>`__)
 - Removed ``--debug`` option, which didn't do anything. (`#814 <https://github.com/simonw/datasette/issues/814>`__)
 - ``Link:`` HTTP header pagination. (`#1014 <https://github.com/simonw/datasette/issues/1014>`__)
 - ``x`` button for clearing filters. (`#1016 <https://github.com/simonw/datasette/issues/1016>`__)
 - Edit SQL button on canned queries, (`#1019 <https://github.com/simonw/datasette/issues/1019>`__)
 - ``--load-extension=spatialite`` shortcut. (`#1028 <https://github.com/simonw/datasette/issues/1028>`__)
+- scale-in animation for column action menu. (`#1039 <https://github.com/simonw/datasette/issues/1039>`__)
+- Option to pass a list of templates to ``.render_template()`` is now documented. (`#1045 <https://github.com/simonw/datasette/issues/1045>`__)
+- New ``datasette.urls.static_plugins()`` method. (`#1033 <https://github.com/simonw/datasette/issues/1033>`__)
+- ``datasette -o`` option now opens the most relevant page. (`#976 <https://github.com/simonw/datasette/issues/976>`__)
+- ``datasette --cors`` option now enables access to ``/database.db`` downloads. (`#1057 <https://github.com/simonw/datasette/issues/1057>`__)
+- Database file downloads now implement cascading permissions, so you can download a database if you have ``view-database-download`` permission even if you do not have permission to access the Datasette instance. (`#1058 <https://github.com/simonw/datasette/issues/1058>`__)
+- New documentation on :ref:`writing_plugins_designing_urls`. (`#1053 <https://github.com/simonw/datasette/issues/1053>`__)
 
 .. _v0_50_2:
 

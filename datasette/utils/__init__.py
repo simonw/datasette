@@ -1010,3 +1010,26 @@ async def initial_path_for_datasette(datasette):
     else:
         path = datasette.urls.instance()
     return path
+
+
+class PrefixedUrlString(str):
+    def __add__(self, other):
+        return type(self)(super().__add__(other))
+
+    def __getattribute__(self, name):
+        if name in dir(str):
+
+            def method(self, *args, **kwargs):
+                value = getattr(super(), name)(*args, **kwargs)
+                if isinstance(value, str):
+                    return type(self)(value)
+                elif isinstance(value, list):
+                    return [type(self)(i) for i in value]
+                elif isinstance(value, tuple):
+                    return tuple(type(self)(i) for i in value)
+                else:
+                    return value
+
+            return method.__get__(self)
+        else:
+            return super().__getattribute__(name)

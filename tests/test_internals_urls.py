@@ -1,4 +1,5 @@
 from datasette.app import Datasette
+from datasette.utils import PrefixedUrlString
 from .fixtures import app_client_with_hash
 import pytest
 
@@ -20,7 +21,17 @@ def ds():
 )
 def test_path(ds, base_url, path, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.path(path) == expected
+    actual = ds.urls.path(path)
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
+
+
+def test_path_applied_twice_does_not_double_prefix(ds):
+    ds._config["base_url"] = "/prefix/"
+    path = ds.urls.path("/")
+    assert path == "/prefix/"
+    path = ds.urls.path(path)
+    assert path == "/prefix/"
 
 
 @pytest.mark.parametrize(
@@ -32,7 +43,9 @@ def test_path(ds, base_url, path, expected):
 )
 def test_instance(ds, base_url, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.instance() == expected
+    actual = ds.urls.instance()
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
 
 
 @pytest.mark.parametrize(
@@ -44,7 +57,9 @@ def test_instance(ds, base_url, expected):
 )
 def test_static(ds, base_url, file, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.static(file) == expected
+    actual = ds.urls.static(file)
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
 
 
 @pytest.mark.parametrize(
@@ -66,7 +81,9 @@ def test_static(ds, base_url, file, expected):
 )
 def test_static_plugins(ds, base_url, plugin, file, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.static_plugins(plugin, file) == expected
+    actual = ds.urls.static_plugins(plugin, file)
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
 
 
 @pytest.mark.parametrize(
@@ -78,7 +95,9 @@ def test_static_plugins(ds, base_url, plugin, file, expected):
 )
 def test_logout(ds, base_url, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.logout() == expected
+    actual = ds.urls.logout()
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
 
 
 @pytest.mark.parametrize(
@@ -91,7 +110,9 @@ def test_logout(ds, base_url, expected):
 )
 def test_database(ds, base_url, format, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.database(":memory:", format=format) == expected
+    actual = ds.urls.database(":memory:", format=format)
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
 
 
 @pytest.mark.parametrize(
@@ -105,8 +126,12 @@ def test_database(ds, base_url, format, expected):
 )
 def test_table_and_query(ds, base_url, name, format, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.table(":memory:", name, format=format) == expected
-    assert ds.urls.query(":memory:", name, format=format) == expected
+    actual1 = ds.urls.table(":memory:", name, format=format)
+    assert actual1 == expected
+    assert isinstance(actual1, PrefixedUrlString)
+    actual2 = ds.urls.query(":memory:", name, format=format)
+    assert actual2 == expected
+    assert isinstance(actual2, PrefixedUrlString)
 
 
 @pytest.mark.parametrize(
@@ -119,7 +144,9 @@ def test_table_and_query(ds, base_url, name, format, expected):
 )
 def test_row(ds, base_url, format, expected):
     ds._config["base_url"] = base_url
-    assert ds.urls.row(":memory:", "facetable", "1", format=format) == expected
+    actual = ds.urls.row(":memory:", "facetable", "1", format=format)
+    assert actual == expected
+    assert isinstance(actual, PrefixedUrlString)
 
 
 @pytest.mark.parametrize("base_url", ["/", "/prefix/"])

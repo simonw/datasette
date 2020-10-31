@@ -1,4 +1,4 @@
-from .utils import path_with_format, HASH_LENGTH
+from .utils import path_with_format, HASH_LENGTH, PrefixedUrlString
 import urllib
 
 
@@ -7,12 +7,13 @@ class Urls:
         self.ds = ds
 
     def path(self, path, format=None):
-        if path.startswith("/"):
-            path = path[1:]
-        path = self.ds.config("base_url") + path
+        if not isinstance(path, PrefixedUrlString):
+            if path.startswith("/"):
+                path = path[1:]
+            path = self.ds.config("base_url") + path
         if format is not None:
             path = path_with_format(path=path, format=format)
-        return path
+        return PrefixedUrlString(path)
 
     def instance(self, format=None):
         return self.path("", format=format)
@@ -40,19 +41,19 @@ class Urls:
         path = "{}/{}".format(self.database(database), urllib.parse.quote_plus(table))
         if format is not None:
             path = path_with_format(path=path, format=format)
-        return path
+        return PrefixedUrlString(path)
 
     def query(self, database, query, format=None):
         path = "{}/{}".format(self.database(database), urllib.parse.quote_plus(query))
         if format is not None:
             path = path_with_format(path=path, format=format)
-        return path
+        return PrefixedUrlString(path)
 
     def row(self, database, table, row_path, format=None):
         path = "{}/{}".format(self.table(database, table), row_path)
         if format is not None:
             path = path_with_format(path=path, format=format)
-        return path
+        return PrefixedUrlString(path)
 
     def row_blob(self, database, table, row_path, column):
         return self.table(database, table) + "/{}.blob?_blob_column={}".format(

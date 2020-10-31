@@ -257,6 +257,9 @@ def register_routes():
             )
         )
 
+    def asgi_scope(scope):
+        return Response.json(scope, default=repr)
+
     return [
         (r"/one/$", one),
         (r"/two/(?P<name>.*)$", two),
@@ -267,6 +270,7 @@ def register_routes():
         (r"/not-async/$", not_async),
         (r"/add-message/$", add_message),
         (r"/render-message/$", render_message),
+        (r"/asgi-scope$", asgi_scope),
     ]
 
 

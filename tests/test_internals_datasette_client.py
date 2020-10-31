@@ -31,14 +31,37 @@ async def test_client_methods(datasette, method, path, expected_status):
 
 
 @pytest.mark.asyncio
-async def test_client_post(datasette):
-    response = await datasette.client.post(
-        "/-/messages",
-        data={
-            "message": "A message",
-        },
-        allow_redirects=False,
-    )
-    assert isinstance(response, httpx.Response)
-    assert response.status_code == 302
-    assert "ds_messages" in response.cookies
+@pytest.mark.parametrize("prefix", [None, "/prefix/"])
+async def test_client_post(datasette, prefix):
+    original_base_url = datasette._config["base_url"]
+    try:
+        if prefix is not None:
+            datasette._config["base_url"] = prefix
+        response = await datasette.client.post(
+            "/-/messages",
+            data={
+                "message": "A message",
+            },
+            allow_redirects=False,
+        )
+        assert isinstance(response, httpx.Response)
+        assert response.status_code == 302
+        assert "ds_messages" in response.cookies
+    finally:
+        datasette._config["base_url"] = original_base_url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "prefix,expected_path", [(None, "/asgi-scope"), ("/prefix/", "/prefix/asgi-scope")]
+)
+async def test_client_path(datasette, prefix, expected_path):
+    original_base_url = datasette._config["base_url"]
+    try:
+        if prefix is not None:
+            datasette._config["base_url"] = prefix
+        response = await datasette.client.get("/asgi-scope")
+        path = response.json()["path"]
+        assert path == expected_path
+    finally:
+        datasette._config["base_url"] = original_base_url

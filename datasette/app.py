@@ -44,6 +44,7 @@ from .url_builder import Urls
 from .database import Database, QueryInterrupted
 
 from .utils import (
+    PrefixedUrlString,
     async_call_with_supported_arguments,
     await_me_maybe,
     call_with_supported_arguments,
@@ -1242,9 +1243,12 @@ class NotFoundExplicit(NotFound):
 
 class DatasetteClient:
     def __init__(self, ds):
+        self.ds = ds
         self.app = ds.app()
 
     def _fix(self, path):
+        if not isinstance(path, PrefixedUrlString):
+            path = self.ds.urls.path(path)
         if path.startswith("/"):
             path = "http://localhost{}".format(path)
         return path

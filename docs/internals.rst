@@ -387,6 +387,18 @@ It offers the following methods:
 ``await datasette.client.request(method, path, **kwargs)`` - returns HTTPX Response
     Execute an internal request with the given HTTP method against that path.
 
+These methods can be used with :ref:`internals_datasette_urls` - for example:
+
+.. code-block:: python
+
+    table_json = (
+        await datasette.client.get(
+            datasette.urls.table("fixtures", "facetable", format="json")
+        )
+    ).json()
+
+``datasette.client`` methods automatically take the current :ref:`config_base_url` setting into account, whether or not you use the ``datasette.urls`` family of methods to construct the path.
+
 For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
 
 .. _internals_datasette_urls:

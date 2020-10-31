@@ -387,9 +387,9 @@ class Response:
         )
 
     @classmethod
-    def json(cls, body, status=200, headers=None):
+    def json(cls, body, status=200, headers=None, default=None):
         return cls(
-            json.dumps(body),
+            json.dumps(body, default=default),
             status=status,
             headers=headers,
             content_type="application/json; charset=utf-8",

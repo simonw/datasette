@@ -23,7 +23,7 @@ def test_homepage(app_client_two_attached_databases):
     soup = Soup(response.body, "html.parser")
     assert "Datasette Fixtures" == soup.find("h1").text
     assert (
-        "An example SQLite database demonstrating Datasette"
+        "An example SQLite database demonstrating Datasette. Sign in as root user"
         == soup.select(".metadata-description")[0].text.strip()
     )
     # Should be two attached databases
@@ -949,8 +949,9 @@ def test_index_metadata(app_client):
     assert response.status == 200
     soup = Soup(response.body, "html.parser")
     assert "Datasette Fixtures" == soup.find("h1").text
-    assert "An example SQLite database demonstrating Datasette" == inner_html(
-        soup.find("div", {"class": "metadata-description"})
+    assert (
+        'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>'
+        == inner_html(soup.find("div", {"class": "metadata-description"}))
     )
     assert_footer_links(soup)
 
@@ -1451,6 +1452,7 @@ def test_base_url_config(app_client_base_url_prefix, path):
                 "https://github.com/simonw/datasette",
                 "https://github.com/simonw/datasette/blob/master/LICENSE",
                 "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
+                "/login-as-root",  # Only used for the latest.datasette.io demo
             }
             and not href.startswith("https://plugin-example.com/")
         ):

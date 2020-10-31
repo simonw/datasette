@@ -177,7 +177,7 @@ def actor_from_request(datasette, request):
 def asgi_wrapper():
     def wrap(app):
         async def maybe_set_actor_in_scope(scope, recieve, send):
-            if b"_actor_in_scope" in scope["query_string"]:
+            if b"_actor_in_scope" in scope.get("query_string", b""):
                 scope = dict(scope, actor={"id": "from-scope"})
                 print(scope)
             await app(scope, recieve, send)
@@ -237,12 +237,33 @@ def register_routes():
             await datasette.render_template("render_message.html", request=request)
         )
 
+    def login_as_root(datasette, request):
+        # Mainly for the latest.datasette.io demo
+        if request.method == "POST":
+            response = Response.redirect("/")
+            response.set_cookie(
+                "ds_actor", datasette.sign({"a": {"id": "root"}}, "actor")
+            )
+            return response
+        return Response.html(
+            """
+            <form action="{}" method="POST">
+                <p>
+                    <input type="hidden" name="csrftoken" value="{}">
+                    <input type="submit" value="Sign in as root user"></p>
+            </form>
+        """.format(
+                request.path, request.scope["csrftoken"]()
+            )
+        )
+
     return [
         (r"/one/$", one),
         (r"/two/(?P<name>.*)$", two),
         (r"/three/$", three),
         (r"/post/$", post),
         (r"/csrftoken-form/$", csrftoken_form),
+        (r"/login-as-root$", login_as_root),
         (r"/not-async/$", not_async),
         (r"/add-message/$", add_message),
         (r"/render-message/$", render_message),

@@ -31,7 +31,7 @@ jobs:
     - name: Run tests
       run: pytest
     - name: Build fixtures.db
-      run: python tests/fixtures.py fixtures.db fixtures.json
+      run: python tests/fixtures.py fixtures.db fixtures.json plugins
     - name: Build docs.db
       run: |-
         cd docs
@@ -50,6 +50,7 @@ jobs:
         gcloud config set project datasette-222320
         datasette publish cloudrun fixtures.db \
             -m fixtures.json \
+            --plugins-dir=plugins \
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \
             --extra-options="--config template_debug:1" \

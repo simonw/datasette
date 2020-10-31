@@ -267,7 +267,7 @@ def generate_sortable_rows(num):
 
 METADATA = {
     "title": "Datasette Fixtures",
-    "description": "An example SQLite database demonstrating Datasette",
+    "description_html": 'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>',
     "license": "Apache License 2.0",
     "license_url": "https://github.com/simonw/datasette/blob/master/LICENSE",
     "source": "tests/fixtures.py",

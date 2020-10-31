@@ -1,6 +1,6 @@
 .. _csv_export:
 
-CSV Export
+CSV export
 ==========
 
 Any Datasette table, view or custom SQL query can be exported as CSV.

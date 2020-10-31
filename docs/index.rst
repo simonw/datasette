@@ -46,6 +46,7 @@ Contents
    authentication
    performance
    csv_export
+   binary_data
    facets
    full_text_search
    spatialite

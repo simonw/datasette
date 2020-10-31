@@ -49,11 +49,6 @@ def extra_template_vars(
     "Extra template variables to be made available to the template - can return dict or callable or awaitable"
 
 
-@hookspec(firstresult=True)
-def load_template(template, request, datasette):
-    "Load the specified template, returning the template code as a string"
-
-
 @hookspec
 def publish_subcommand(publish):
     "Subcommands for 'datasette publish'"

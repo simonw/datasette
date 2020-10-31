@@ -119,15 +119,22 @@ class BaseView:
 
     async def render(self, templates, request, context=None):
         context = context or {}
+        template = self.ds.jinja_env.select_template(templates)
         template_context = {
             **context,
             **{
                 "database_color": self.database_color,
+                "select_templates": [
+                    "{}{}".format(
+                        "*" if template_name == template.name else "", template_name
+                    )
+                    for template_name in templates
+                ],
             },
         }
         return Response.html(
             await self.ds.render_template(
-                templates, template_context, request=request, view_name=self.name
+                template, template_context, request=request, view_name=self.name
             )
         )
 

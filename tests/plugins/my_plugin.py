@@ -308,9 +308,3 @@ def table_actions(datasette, database, table, actor):
             },
             {"href": datasette.urls.instance(), "label": "Table: {}".format(table)},
         ]
-
-
-@hookimpl
-def load_template(template, request):
-    if template == "show_json.html" and request.args.get("_special"):
-        return "<h1>Special show_json: {{ filename }}</h1>"

@@ -79,10 +79,6 @@ document.body.addEventListener('click', (ev) => {
     <script>{{ body_script }}</script>
 {% endfor %}
 
-{% if templates_considered %}
-<!-- Templates considered:
-{% for template in templates_considered %}- {{ template.name }}{% if template.used %} (used{% if template.from_plugin %}, from plugin{% endif %}){% endif %}
-{% endfor %}-->
-{% endif %}
+{% if select_templates %}<!-- Templates considered: {{ select_templates|join(", ") }} -->{% endif %}
 </body>
 </html>

@@ -801,8 +801,3 @@ def test_hook_table_actions(app_client):
         {"label": "Database: fixtures", "href": "/"},
         {"label": "Table: facetable", "href": "/"},
     ]
-
-
-def test_hook_load_template(app_client):
-    response = app_client.get("/-/databases?_special=1")
-    assert response.text == "<h1>Special show_json: databases.json</h1>"

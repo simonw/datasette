@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_51_1:
+
+0.51.1 (2020-10-31)
+-------------------
+
+- Improvements to the new :ref:`binary` documentation page.
+
 .. _v0_51:
 
 0.51 (2020-10-31)

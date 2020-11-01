@@ -63,6 +63,6 @@ Binary plugins
 
 Several Datasette plugins are available that change the way Datasette treats binary data.
 
-- `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`__ modifies
-- https://github.com/simonw/datasette-render-images
-- https://github.com/simonw/datasette-media
+- `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`__ modifies Datasette's default interface to show an automatic guess at what type of binary data is being stored, along with a visual representation of the binary value that displays ASCII strings directly in the interface.
+- `datasette-render-images <https://github.com/simonw/datasette-render-images>`__ detects common image formats and renders them as images directly in the Datasette interface.
+- `datasette-media <https://github.com/simonw/datasette-media>`__ allows Datasette interfaces to be configured to serve binary files from configured SQL queries, and includes the ability to resize images directly before serving them.

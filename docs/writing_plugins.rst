@@ -227,10 +227,11 @@ If your plugin includes functionality that relates to a specific database you co
 
 - ``/dbname/-/upload-excel``
 
-Reserving routes under ``/dbname/tablename/-/...`` is not a good idea because a table could conceivably include a row with a primary key value of ``-``. Instead, you could use a pattern like this:
+Or for a specific table like this:
 
-- ``/dbname/-/upload-excel/tablename``
+- ``/dbname/tablename/-/modify-table-schema``
 
+Note that a row could have a primary key of ``-`` and this URL scheme will still work, because Datasette row pages do not ever have a trailing slash followed by additional path components.
 
 .. _writing_plugins_building_urls:
 

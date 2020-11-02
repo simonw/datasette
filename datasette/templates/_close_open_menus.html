@@ -1,0 +1,16 @@
+<script>
+document.body.addEventListener('click', (ev) => {
+    /* Close any open details elements that this click is outside of */
+    var target = ev.target;
+    var detailsClickedWithin = null;
+    while (target && target.tagName != 'DETAILS') {
+        target = target.parentNode;
+    }
+    if (target && target.tagName == 'DETAILS') {
+        detailsClickedWithin = target;
+    }
+    Array.from(document.getElementsByTagName('details')).filter(
+        (details) => details.open && details != detailsClickedWithin
+    ).forEach(details => details.open = false);
+});
+</script>

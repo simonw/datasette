@@ -6,6 +6,7 @@ import json
 from urllib.parse import parse_qsl, urlencode
 
 from datasette.utils import (
+    await_me_maybe,
     check_visibility,
     to_css_class,
     validate_sql_select,
@@ -101,6 +102,19 @@ class DatabaseView(DataView):
             )
             if visible:
                 canned_queries.append(dict(query, private=private))
+
+        async def database_actions():
+            links = []
+            for hook in pm.hook.database_actions(
+                datasette=self.ds,
+                database=database,
+                actor=request.actor,
+            ):
+                extra_links = await await_me_maybe(hook)
+                if extra_links:
+                    links.extend(extra_links)
+            return links
+
         return (
             {
                 "database": database,
@@ -118,6 +132,7 @@ class DatabaseView(DataView):
                 ),
             },
             {
+                "database_actions": database_actions,
                 "show_hidden": request.args.get("_show_hidden"),
                 "editable": True,
                 "metadata": metadata,

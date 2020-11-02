@@ -107,3 +107,8 @@ def menu_links(datasette, actor):
 @hookspec
 def table_actions(datasette, actor, database, table):
     "Links for the table actions menu"
+
+
+@hookspec
+def database_actions(datasette, actor, database):
+    "Links for the database actions menu"

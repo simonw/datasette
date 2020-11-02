@@ -360,11 +360,11 @@ details .nav-menu-inner {
     display: block;
 }
 
-/* Table actions menu */
-.table-menu-links {
+/* Table/database actions menu */
+.actions-menu-links {
     position: relative;
 }
-.table-menu-links .dropdown-menu {
+.actions-menu-links .dropdown-menu {
     position: absolute;
     top: 2rem;
     right: 0;

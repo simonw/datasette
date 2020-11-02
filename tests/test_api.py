@@ -60,6 +60,7 @@ def test_homepage_sort_by_relationships(app_client):
 
 def test_database_page(app_client):
     response = app_client.get("/fixtures.json")
+    assert response.status == 200
     data = response.json
     assert "fixtures" == data["database"]
     assert [

@@ -788,7 +788,7 @@ def test_hook_menu_links(app_client):
 def test_hook_table_actions(app_client, table_or_view):
     def get_table_actions_links(html):
         soup = Soup(html, "html.parser")
-        details = soup.find("details", {"class": "table-menu-links"})
+        details = soup.find("details", {"class": "actions-menu-links"})
         if details is None:
             return []
         return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
@@ -801,4 +801,21 @@ def test_hook_table_actions(app_client, table_or_view):
         {"label": "From async", "href": "/"},
         {"label": "Database: fixtures", "href": "/"},
         {"label": "Table: {}".format(table_or_view), "href": "/"},
+    ]
+
+
+def test_hook_database_actions(app_client):
+    def get_table_actions_links(html):
+        soup = Soup(html, "html.parser")
+        details = soup.find("details", {"class": "actions-menu-links"})
+        if details is None:
+            return []
+        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
+
+    response = app_client.get("/fixtures")
+    assert get_table_actions_links(response.text) == []
+
+    response_2 = app_client.get("/fixtures?_bot=1")
+    assert get_table_actions_links(response_2.text) == [
+        {"label": "Database: fixtures", "href": "/"},
     ]

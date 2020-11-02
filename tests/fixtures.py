@@ -38,6 +38,7 @@ EXPECTED_PLUGINS = [
             "actor_from_request",
             "asgi_wrapper",
             "canned_queries",
+            "database_actions",
             "extra_body_script",
             "extra_css_urls",
             "extra_js_urls",

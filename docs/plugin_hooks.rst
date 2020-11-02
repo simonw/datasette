@@ -1057,3 +1057,19 @@ This example adds a new table action if the signed in user is ``"root"``:
                 "href": datasette.urls.path("/-/edit-schema/{}/{}".format(database, table)),
                 "label": "Edit schema for this table",
             }]
+
+.. _plugin_hook_database_actions:
+
+database_actions(datasette, actor, database)
+--------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.

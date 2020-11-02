@@ -333,3 +333,14 @@ def table_actions(datasette, database, table, actor):
             },
             {"href": datasette.urls.instance(), "label": "Table: {}".format(table)},
         ]
+
+
+@hookimpl
+def database_actions(datasette, database, actor):
+    if actor:
+        return [
+            {
+                "href": datasette.urls.instance(),
+                "label": "Database: {}".format(database),
+            }
+        ]

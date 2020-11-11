@@ -42,9 +42,9 @@ pk,created,planet_int,on_earth,state,city_id,city_id_label,neighborhood,tags,com
 )
 
 EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV = """
-pk,foreign_key_with_label,foreign_key_with_label_label,foreign_key_with_no_label,foreign_key_with_no_label_label
-1,1,hello,1,1
-2,,,,
+pk,foreign_key_with_label,foreign_key_with_label_label,foreign_key_with_blank_label,foreign_key_with_blank_label_label,foreign_key_with_no_label,foreign_key_with_no_label_label
+1,1,hello,3,,1,1
+2,,,,,,
 """.lstrip().replace(
     "\n", "\r\n"
 )

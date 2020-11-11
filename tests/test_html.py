@@ -464,7 +464,7 @@ def test_facet_display(app_client):
                 ],
             }
         )
-    assert [
+    assert actual == [
         {
             "name": "city_id",
             "items": [
@@ -520,7 +520,7 @@ def test_facet_display(app_client):
                 },
             ],
         },
-    ] == actual
+    ]
 
 
 def test_facets_persist_through_filter_form(app_client):
@@ -801,36 +801,46 @@ def test_table_html_foreign_key_links(app_client):
     response = app_client.get("/fixtures/foreign_key_references")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
-    expected = [
+    actual = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert actual == [
         [
             '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label type-str"><a href="/fixtures/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_blank_label type-str"><a href="/fixtures/simple_primary_key/3">-</a>\xa0<em>3</em></td>',
             '<td class="col-foreign_key_with_no_label type-str"><a href="/fixtures/primary_key_multiple_columns/1">1</a></td>',
         ],
         [
             '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/2">2</a></td>',
             '<td class="col-foreign_key_with_label type-none">\xa0</td>',
+            '<td class="col-foreign_key_with_blank_label type-none">\xa0</td>',
             '<td class="col-foreign_key_with_no_label type-none">\xa0</td>',
         ],
     ]
-    assert expected == [
-        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+
+
+def test_table_html_foreign_key_facets(app_client):
+    response = app_client.get(
+        "/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label"
+    )
+    assert response.status == 200
+    assert (
+        '<li><a href="http://localhost/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label&amp;foreign_key_with_blank_label=3">'
+        "-</a> 1</li>"
+    ) in response.text
 
 
 def test_table_html_disable_foreign_key_links_with_labels(app_client):
     response = app_client.get("/fixtures/foreign_key_references?_labels=off&_size=1")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
-    expected = [
+    actual = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert actual == [
         [
             '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label type-str">1</td>',
+            '<td class="col-foreign_key_with_blank_label type-str">3</td>',
             '<td class="col-foreign_key_with_no_label type-str">1</td>',
         ]
-    ]
-    assert expected == [
-        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ]
 
 

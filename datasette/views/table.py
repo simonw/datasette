@@ -195,7 +195,7 @@ class RowTableShared(DataView):
                             table=urllib.parse.quote_plus(other_table),
                             link_id=urllib.parse.quote_plus(str(value)),
                             id=str(jinja2.escape(value)),
-                            label=str(jinja2.escape(label)),
+                            label=str(jinja2.escape(label)) or "-",
                         )
                     )
                 elif value in ("", None):

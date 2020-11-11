@@ -486,7 +486,7 @@ INSERT INTO searchable_tags (searchable_id, tag) VALUES
 ;
 
 CREATE VIRTUAL TABLE "searchable_fts"
-    USING FTS3 (text1, text2, [name with . and spaces], content="searchable");
+    USING FTS4 (text1, text2, [name with . and spaces], content="searchable");
 INSERT INTO "searchable_fts" (rowid, text1, text2, [name with . and spaces])
     SELECT rowid, text1, text2, [name with . and spaces] FROM searchable;
 

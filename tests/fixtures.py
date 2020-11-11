@@ -386,8 +386,10 @@ CREATE INDEX idx_compound_three_primary_keys_content ON compound_three_primary_k
 CREATE TABLE foreign_key_references (
   pk varchar(30) primary key,
   foreign_key_with_label varchar(30),
+  foreign_key_with_blank_label varchar(30),
   foreign_key_with_no_label varchar(30),
   FOREIGN KEY (foreign_key_with_label) REFERENCES simple_primary_key(id),
+  FOREIGN KEY (foreign_key_with_blank_label) REFERENCES simple_primary_key(id),
   FOREIGN KEY (foreign_key_with_no_label) REFERENCES primary_key_multiple_columns(id)
 );
 
@@ -622,8 +624,8 @@ INSERT INTO simple_primary_key VALUES (4, 'RENDER_CELL_DEMO');
 INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
 INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');
 
-INSERT INTO foreign_key_references VALUES (1, 1, 1);
-INSERT INTO foreign_key_references VALUES (2, null, null);
+INSERT INTO foreign_key_references VALUES (1, 1, 3, 1);
+INSERT INTO foreign_key_references VALUES (2, null, null, null);
 
 INSERT INTO complex_foreign_keys VALUES (1, 1, 2, 1);
 INSERT INTO custom_foreign_key_label VALUES (1, 1);

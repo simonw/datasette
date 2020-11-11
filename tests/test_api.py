@@ -49,13 +49,13 @@ def test_homepage_sort_by_relationships(app_client):
     tables = [
         t["name"] for t in response.json["fixtures"]["tables_and_views_truncated"]
     ]
-    assert [
+    assert tables == [
         "simple_primary_key",
+        "foreign_key_references",
         "complex_foreign_keys",
         "roadside_attraction_characteristics",
         "searchable_tags",
-        "foreign_key_references",
-    ] == tables
+    ]
 
 
 def test_database_page(app_client):
@@ -232,7 +232,12 @@ def test_database_page(app_client):
         },
         {
             "name": "foreign_key_references",
-            "columns": ["pk", "foreign_key_with_label", "foreign_key_with_no_label"],
+            "columns": [
+                "pk",
+                "foreign_key_with_label",
+                "foreign_key_with_blank_label",
+                "foreign_key_with_no_label",
+            ],
             "primary_keys": ["pk"],
             "count": 2,
             "hidden": False,
@@ -243,6 +248,11 @@ def test_database_page(app_client):
                     {
                         "other_table": "primary_key_multiple_columns",
                         "column": "foreign_key_with_no_label",
+                        "other_column": "id",
+                    },
+                    {
+                        "other_table": "simple_primary_key",
+                        "column": "foreign_key_with_blank_label",
                         "other_column": "id",
                     },
                     {
@@ -403,6 +413,11 @@ def test_database_page(app_client):
             "fts_table": None,
             "foreign_keys": {
                 "incoming": [
+                    {
+                        "other_table": "foreign_key_references",
+                        "column": "id",
+                        "other_column": "foreign_key_with_blank_label",
+                    },
                     {
                         "other_table": "foreign_key_references",
                         "column": "id",
@@ -1207,32 +1222,38 @@ def test_row_foreign_key_tables(app_client):
         "/fixtures/simple_primary_key/1.json?_extras=foreign_key_tables"
     )
     assert response.status == 200
-    assert [
+    assert response.json["foreign_key_tables"] == [
         {
-            "column": "id",
-            "count": 1,
-            "other_column": "foreign_key_with_label",
             "other_table": "foreign_key_references",
-        },
-        {
             "column": "id",
-            "count": 1,
-            "other_column": "f3",
-            "other_table": "complex_foreign_keys",
-        },
-        {
-            "column": "id",
+            "other_column": "foreign_key_with_blank_label",
             "count": 0,
-            "other_column": "f2",
-            "other_table": "complex_foreign_keys",
         },
         {
+            "other_table": "foreign_key_references",
             "column": "id",
+            "other_column": "foreign_key_with_label",
             "count": 1,
-            "other_column": "f1",
-            "other_table": "complex_foreign_keys",
         },
-    ] == response.json["foreign_key_tables"]
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f3",
+            "count": 1,
+        },
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f2",
+            "count": 0,
+        },
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f1",
+            "count": 1,
+        },
+    ]
 
 
 def test_unit_filters(app_client):
@@ -1597,13 +1618,14 @@ def test_expand_label(app_client):
         "/fixtures/foreign_key_references.json?_shape=object"
         "&_label=foreign_key_with_label&_size=1"
     )
-    assert {
+    assert response.json == {
         "1": {
             "pk": "1",
             "foreign_key_with_label": {"value": "1", "label": "hello"},
+            "foreign_key_with_blank_label": "3",
             "foreign_key_with_no_label": "1",
         }
-    } == response.json
+    }
 
 
 @pytest.mark.parametrize(
@@ -1794,11 +1816,13 @@ def test_null_foreign_keys_are_not_expanded(app_client):
         {
             "pk": "1",
             "foreign_key_with_label": {"value": "1", "label": "hello"},
+            "foreign_key_with_blank_label": {"value": "3", "label": ""},
             "foreign_key_with_no_label": {"value": "1", "label": "1"},
         },
         {
             "pk": "2",
             "foreign_key_with_label": None,
+            "foreign_key_with_blank_label": None,
             "foreign_key_with_no_label": None,
         },
     ] == response.json

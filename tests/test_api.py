@@ -37,9 +37,9 @@ def test_homepage(app_client):
     assert len(d["tables_and_views_truncated"]) == 5
     assert d["tables_and_views_more"] is True
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
-    assert d["hidden_tables_count"] == 5
-    # 201 in no_primary_key, plus 5 in other hidden tables:
-    assert d["hidden_table_rows_sum"] == 206
+    assert d["hidden_tables_count"] == 6
+    # 201 in no_primary_key, plus 6 in other hidden tables:
+    assert d["hidden_table_rows_sum"] == 207
     assert d["views_count"] == 4
 
 
@@ -62,8 +62,8 @@ def test_database_page(app_client):
     response = app_client.get("/fixtures.json")
     assert response.status == 200
     data = response.json
-    assert "fixtures" == data["database"]
-    assert [
+    assert data["database"] == "fixtures"
+    assert data["tables"] == [
         {
             "name": "123_starts_with_digits",
             "columns": ["content"],
@@ -497,7 +497,7 @@ def test_database_page(app_client):
         },
         {
             "name": "searchable_fts",
-            "columns": ["text1", "text2", "name with . and spaces", "content"],
+            "columns": ["text1", "text2", "name with . and spaces"],
             "primary_keys": [],
             "count": 2,
             "hidden": True,
@@ -506,14 +506,8 @@ def test_database_page(app_client):
             "private": False,
         },
         {
-            "name": "searchable_fts_content",
-            "columns": [
-                "docid",
-                "c0text1",
-                "c1text2",
-                "c2name with . and spaces",
-                "c3content",
-            ],
+            "name": "searchable_fts_docsize",
+            "columns": ["docid", "size"],
             "primary_keys": ["docid"],
             "count": 2,
             "hidden": True,
@@ -548,7 +542,17 @@ def test_database_page(app_client):
             "foreign_keys": {"incoming": [], "outgoing": []},
             "private": False,
         },
-    ] == data["tables"]
+        {
+            "name": "searchable_fts_stat",
+            "columns": ["id", "value"],
+            "primary_keys": ["id"],
+            "count": 1,
+            "hidden": True,
+            "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
+        },
+    ]
 
 
 def test_no_files_uses_memory_database(app_client_no_files):

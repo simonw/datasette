@@ -297,7 +297,7 @@ async def test_get_all_foreign_keys(db):
 @pytest.mark.asyncio
 async def test_table_names(db):
     table_names = await db.table_names()
-    assert [
+    assert table_names == [
         "simple_primary_key",
         "primary_key_multiple_columns",
         "primary_key_multiple_columns_explicit_label",
@@ -316,9 +316,10 @@ async def test_table_names(db):
         "searchable",
         "searchable_tags",
         "searchable_fts",
-        "searchable_fts_content",
         "searchable_fts_segments",
         "searchable_fts_segdir",
+        "searchable_fts_docsize",
+        "searchable_fts_stat",
         "select",
         "infinity",
         "facet_cities",
@@ -327,7 +328,7 @@ async def test_table_names(db):
         "roadside_attractions",
         "attraction_characteristic",
         "roadside_attraction_characteristics",
-    ] == table_names
+    ]
 
 
 @pytest.mark.asyncio

@@ -71,7 +71,7 @@ You can specify a custom app name by passing ``-n my-app-name`` to the publish c
 Publishing to Vercel
 --------------------
 
-`Vercel <https://vercel.com/>`__  - previously known as Zeit Now - provides a layer over AWS Lambda to allow for easy, scale-to-zero deployment. You can deploy Datasette instances to Vercel using the `datasette-publish-vercel <https://github.com/simonw/datasette-publish-vercel>`__ plugin.
+`Vercel <https://vercel.com/>`__  - previously known as Zeit Now - provides a layer over AWS Lambda to allow for quick, scale-to-zero deployment. You can deploy Datasette instances to Vercel using the `datasette-publish-vercel <https://github.com/simonw/datasette-publish-vercel>`__ plugin.
 
 ::
 
@@ -85,7 +85,7 @@ Not every feature is supported: consult the `datasette-publish-vercel README <ht
 Publishing to Fly
 -----------------
 
-`Fly <https://fly.io/>`__ is a `competitively priced <https://fly.io/docs/pricing/>`__ Docker-compatible hosting platform that makes it easy to run applications in globally distributed data centers close to your end users. You can deploy Datasette instances to Fly using the `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`__ plugin.
+`Fly <https://fly.io/>`__ is a `competitively priced <https://fly.io/docs/pricing/>`__ Docker-compatible hosting platform that supports running applications in globally distributed data centers close to your end users. You can deploy Datasette instances to Fly using the `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`__ plugin.
 
 ::
 

@@ -310,7 +310,7 @@ Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`can
               where neighborhood like '%' || :text || '%' order by neighborhood;
             title: Search neighborhoods
             description_html: |-
-              <p>This demonstrates <em>simple</em> LIKE search
+              <p>This demonstrates <em>basic</em> LIKE search
 
 The ``metadata.yml`` file is passed to Datasette using the same ``--metadata`` option::
 

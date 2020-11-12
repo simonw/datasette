@@ -4,7 +4,7 @@
  Deploying Datasette
 =====================
 
-The easiest way to deploy a Datasette instance on the internet is to use the ``datasette publish`` command, described in :ref:`publishing`. This can be used to quickly deploy Datasette to a number of hosting providers including Heroku, Google Cloud Run and Vercel.
+The quickest way to deploy a Datasette instance on the internet is to use the ``datasette publish`` command, described in :ref:`publishing`. This can be used to quickly deploy Datasette to a number of hosting providers including Heroku, Google Cloud Run and Vercel.
 
 You can deploy Datasette to other hosting providers using the instructions on this page.
 
@@ -109,7 +109,7 @@ If you want to build SQLite files or download them as part of the deployment pro
 
     wget https://fivethirtyeight.datasettes.com/fivethirtyeight.db
 
-`simonw/buildpack-datasette-demo <https://github.com/simonw/buildpack-datasette-demo>`__ is an example GitHub repository showing a simple Datasette configuration that can be deployed to a buildpack-supporting host.
+`simonw/buildpack-datasette-demo <https://github.com/simonw/buildpack-datasette-demo>`__ is an example GitHub repository showing a Datasette configuration that can be deployed to a buildpack-supporting host.
 
 .. _deploying_proxy:
 

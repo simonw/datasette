@@ -119,7 +119,7 @@ For example:
         content_type="application/xml; charset=utf-8"
     )
 
-The easiest way to create responses is using the ``Response.text(...)``, ``Response.html(...)``, ``Response.json(...)`` or ``Response.redirect(...)`` helper methods:
+The quickest way to create responses is using the ``Response.text(...)``, ``Response.html(...)``, ``Response.json(...)`` or ``Response.redirect(...)`` helper methods:
 
 .. code-block:: python
 

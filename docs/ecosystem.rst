@@ -68,7 +68,7 @@ For example, to create a SQLite database of the `City of Dallas Payment Register
 Datasette Plugins
 =================
 
-Datasette's :ref:`plugin system <plugins>` makes it easy to enhance Datasette with additional functionality.
+Datasette's :ref:`plugin system <plugins>` allows developers to enhance Datasette with additional functionality.
 
 datasette-graphql
 -----------------

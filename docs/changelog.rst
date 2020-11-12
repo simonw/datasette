@@ -239,7 +239,7 @@ Better plugin documentation
 The plugin documentation has been re-arranged into four sections, including a brand new section on testing plugins. (`#687 <https://github.com/simonw/datasette/issues/687>`__)
 
 - :ref:`plugins` introduces Datasette's plugin system and describes how to install and configure plugins.
-- :ref:`writing_plugins` describes how to author plugins, from simple one-off plugins to packaged plugins that can be published to PyPI. It also describes how to start a plugin using the new `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template.
+- :ref:`writing_plugins` describes how to author plugins, from  one-off single file plugins to packaged plugins that can be published to PyPI. It also describes how to start a plugin using the new `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template.
 - :ref:`plugin_hooks` is a full list of detailed documentation for every Datasette plugin hook.
 - :ref:`testing_plugins` describes how to write tests for Datasette plugins, using `pytest <https://docs.pytest.org/>`__ and `HTTPX <https://www.python-httpx.org/>`__.
 
@@ -277,7 +277,7 @@ Authentication
 
 Prior to this release the Datasette ecosystem has treated authentication as exclusively the realm of plugins, most notably through `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__.
 
-0.44 introduces :ref:`authentication` as core Datasette concepts (`#699 <https://github.com/simonw/datasette/issues/699>`__). This makes it easier for different plugins can share responsibility for authenticating requests - you might have one plugin that handles user accounts and another one that allows automated access via API keys, for example.
+0.44 introduces :ref:`authentication` as core Datasette concepts (`#699 <https://github.com/simonw/datasette/issues/699>`__). This enables different plugins to share responsibility for authenticating requests - you might have one plugin that handles user accounts and another one that allows automated access via API keys, for example.
 
 You'll need to install plugins if you want full user accounts, but default Datasette can now authenticate a single root user with the new ``--root`` command-line option, which outputs a one-time use URL to :ref:`authenticate as a root actor <authentication_root>` (`#784 <https://github.com/simonw/datasette/issues/784>`__)::
 
@@ -572,7 +572,7 @@ Also in this release:
 0.32 (2019-11-14)
 -----------------
 
-Datasette now renders templates using `Jinja async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__. This makes it easy for plugins to provide custom template functions that perform asynchronous actions, for example the new `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`__ plugin which allows custom templates to directly execute SQL queries and render their results. (`#628 <https://github.com/simonw/datasette/issues/628>`__)
+Datasette now renders templates using `Jinja async mode <https://jinja.palletsprojects.com/en/2.10.x/api/#async-support>`__. This means plugins can provide custom template functions that perform asynchronous actions, for example the new `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`__ plugin which allows custom templates to directly execute SQL queries and render their results. (`#628 <https://github.com/simonw/datasette/issues/628>`__)
 
 .. _v0_31_2:
 
@@ -1881,7 +1881,7 @@ as a more powerful alternative to SQL views.
   This will write those values into the metadata.json that is packaged with the
   app. If you also pass ``--metadata=metadata.json`` that file will be updated with the extra
   values before being written into the Docker image.
-- Added simple production-ready Dockerfile (`#94`_) [Andrew
+- Added production-ready Dockerfile (`#94`_) [Andrew
   Cutler]
 - New ``?_sql_time_limit_ms=10`` argument to database and table page (`#95`_)
 - SQL syntax highlighting with Codemirror (`#89`_) [Tom Dyson]

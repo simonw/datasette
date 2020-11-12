@@ -10,7 +10,7 @@ You can write one-off plugins that apply to just one Datasette instance, or you 
 Writing one-off plugins
 -----------------------
 
-The easiest way to write a plugin is to create a ``my_plugin.py`` file and drop it into your ``plugins/`` directory. Here is an example plugin, which adds a new custom SQL function called ``hello_world()`` which takes no arguments and returns the string ``Hello world!``.
+The quickest way to start writing a plugin is to create a ``my_plugin.py`` file and drop it into your ``plugins/`` directory. Here is an example plugin, which adds a new custom SQL function called ``hello_world()`` which takes no arguments and returns the string ``Hello world!``.
 
 .. code-block:: python
 
@@ -37,7 +37,7 @@ Starting an installable plugin using cookiecutter
 
 Plugins that can be installed should be written as Python packages using a ``setup.py`` file.
 
-The easiest way to start writing one an installable plugin is to use the `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template. This creates a new plugin structure for you complete with an example test and GitHub Actions workflows for testing and publishing your plugin.
+The quickest way to start writing one an installable plugin is to use the `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template. This creates a new plugin structure for you complete with an example test and GitHub Actions workflows for testing and publishing your plugin.
 
 `Install cookiecutter <https://cookiecutter.readthedocs.io/en/1.7.2/installation.html>`__ and then run this command to start building a plugin using the template::
 

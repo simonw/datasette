@@ -64,7 +64,7 @@ If you want to bundle some pre-written SQL queries with your Datasette-hosted
 database you can do so in two ways. The first is to include SQL views in your
 database - Datasette will then list those views on your database index page.
 
-The easiest way to create views is with the SQLite command-line interface::
+The quickest way to create views is with the SQLite command-line interface::
 
     $ sqlite3 sf-trees.db
     SQLite version 3.19.3 2017-06-27 16:48:08

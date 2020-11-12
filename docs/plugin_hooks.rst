@@ -471,7 +471,7 @@ It can also return a dictionary with the following keys. This format is **deprec
 ``headers`` - dictionary, optional
     Extra HTTP headers to be returned in the response.
 
-A simple example of an output renderer callback function:
+An example of an output renderer callback function:
 
 .. code-block:: python
 

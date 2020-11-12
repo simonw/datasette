@@ -19,7 +19,6 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
     path_with_replaced_args,
-    sqlite3,
     to_css_class,
     urlsafe_components,
     value_as_boolean,
@@ -1040,7 +1039,7 @@ class RowView(RowTableShared):
         )
         try:
             rows = list(await db.execute(sql, {"id": pk_values[0]}))
-        except sqlite3.OperationalError:
+        except QueryInterrupted:
             # Almost certainly hit the timeout
             return []
 

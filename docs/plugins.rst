@@ -135,7 +135,7 @@ Here is an example of some plugin configuration for a specific table:
 .. code-block:: json
 
     {
-        "databases: {
+        "databases": {
             "sf-trees": {
                 "tables": {
                     "Street_Tree_List": {

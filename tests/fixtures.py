@@ -247,7 +247,7 @@ def generate_compound_rows(num):
     for a, b, c in itertools.islice(
         itertools.product(string.ascii_lowercase, repeat=3), num
     ):
-        yield a, b, c, "{}-{}-{}".format(a, b, c)
+        yield a, b, c, f"{a}-{b}-{c}"
 
 
 def generate_sortable_rows(num):
@@ -258,7 +258,7 @@ def generate_sortable_rows(num):
         yield {
             "pk1": a,
             "pk2": b,
-            "content": "{}-{}".format(a, b),
+            "content": f"{a}-{b}",
             "sortable": rand.randint(-100, 100),
             "sortable_with_nulls": rand.choice([None, rand.random(), rand.random()]),
             "sortable_with_nulls_2": rand.choice([None, rand.random(), rand.random()]),
@@ -742,7 +742,7 @@ def cli(db_filename, metadata, plugins_path, recreate):
     if pathlib.Path(db_filename).exists():
         if not recreate:
             raise click.ClickException(
-                "{} already exists, use --recreate to reset it".format(db_filename)
+                f"{db_filename} already exists, use --recreate to reset it"
             )
         else:
             pathlib.Path(db_filename).unlink()
@@ -751,10 +751,10 @@ def cli(db_filename, metadata, plugins_path, recreate):
     for sql, params in TABLE_PARAMETERIZED_SQL:
         with conn:
             conn.execute(sql, params)
-    print("Test tables written to {}".format(db_filename))
+    print(f"Test tables written to {db_filename}")
     if metadata:
         open(metadata, "w").write(json.dumps(METADATA, indent=4))
-        print("- metadata written to {}".format(metadata))
+        print(f"- metadata written to {metadata}")
     if plugins_path:
         path = pathlib.Path(plugins_path)
         if not path.exists():
@@ -763,7 +763,7 @@ def cli(db_filename, metadata, plugins_path, recreate):
         for filepath in test_plugins.glob("*.py"):
             newpath = path / filepath.name
             newpath.write_text(filepath.open().read())
-            print("  Wrote plugin: {}".format(newpath))
+            print(f"  Wrote plugin: {newpath}")
 
 
 if __name__ == "__main__":

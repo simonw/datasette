@@ -100,9 +100,7 @@ def publish_subcommand(publish):
             extra_metadata["plugins"] = {}
             for plugin_name, plugin_setting, setting_value in plugin_secret:
                 environment_variable = (
-                    "{}_{}".format(plugin_name, plugin_setting)
-                    .upper()
-                    .replace("-", "_")
+                    f"{plugin_name}_{plugin_setting}".upper().replace("-", "_")
                 )
                 environment_variables[environment_variable] = setting_value
                 extra_metadata["plugins"].setdefault(plugin_name, {})[
@@ -133,8 +131,8 @@ def publish_subcommand(publish):
                 print(open("Dockerfile").read())
                 print("\n====================\n")
 
-            image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
-            check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
+            image_id = f"gcr.io/{project}/{name}"
+            check_call(f"gcloud builds submit --tag {image_id}", shell=True)
         check_call(
             "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}".format(
                 image_id, service, " --memory {}".format(memory) if memory else ""

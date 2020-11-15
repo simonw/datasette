@@ -82,7 +82,7 @@ def json_renderer(args, data, view_name):
         status_code = 400
         data = {
             "ok": False,
-            "error": "Invalid _shape: {}".format(shape),
+            "error": f"Invalid _shape: {shape}",
             "status": 400,
             "title": None,
         }
@@ -96,7 +96,7 @@ def json_renderer(args, data, view_name):
         content_type = "application/json; charset=utf-8"
     headers = {}
     if next_url:
-        headers["link"] = '<{}>; rel="next"'.format(next_url)
+        headers["link"] = f'<{next_url}>; rel="next"'
     return Response(
         body, status=status_code, headers=headers, content_type=content_type
     )

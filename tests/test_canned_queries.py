@@ -82,7 +82,7 @@ def test_insert(canned_write_client):
 def test_canned_query_form_csrf_hidden_field(
     canned_write_client, query_name, expect_csrf_hidden_field
 ):
-    response = canned_write_client.get("/data/{}".format(query_name))
+    response = canned_write_client.get(f"/data/{query_name}")
     html = response.text
     fragment = '<input type="hidden" name="csrftoken" value="'
     if expect_csrf_hidden_field:
@@ -284,10 +284,10 @@ def magic_parameters_client():
 def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re):
     magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme_post"][
         "sql"
-    ] = "insert into logs (line) values (:{})".format(magic_parameter)
+    ] = f"insert into logs (line) values (:{magic_parameter})"
     magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme_get"][
         "sql"
-    ] = "select :{} as result".format(magic_parameter)
+    ] = f"select :{magic_parameter} as result"
     cookies = {
         "ds_actor": magic_parameters_client.actor_cookie({"id": "root"}),
         "foo": "bar",
@@ -328,7 +328,7 @@ def test_magic_parameters_csrf_json(magic_parameters_client, use_csrf, return_js
     if return_json:
         qs = "?_json=1"
     response = magic_parameters_client.post(
-        "/data/runme_post{}".format(qs),
+        f"/data/runme_post{qs}",
         {},
         csrftoken_from=use_csrf or None,
         allow_redirects=False,

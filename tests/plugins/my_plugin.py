@@ -130,7 +130,7 @@ def extra_template_vars(
 
 @hookimpl
 def prepare_jinja2_environment(env):
-    env.filters["format_numeric"] = lambda s: "{:,.0f}".format(float(s))
+    env.filters["format_numeric"] = lambda s: f"{float(s):,.0f}"
 
 
 @hookimpl
@@ -207,7 +207,7 @@ def register_routes():
     async def two(request):
         name = request.url_vars["name"]
         greeting = request.args.get("greeting")
-        return Response.text("{} {}".format(greeting, name))
+        return Response.text(f"{greeting} {name}")
 
     async def three(scope, send):
         await asgi_send_json(
@@ -281,11 +281,7 @@ def startup(datasette):
 
 @hookimpl
 def canned_queries(datasette, database, actor):
-    return {
-        "from_hook": "select 1, '{}' as actor_id".format(
-            actor["id"] if actor else "null"
-        )
-    }
+    return {"from_hook": f"select 1, '{actor['id'] if actor else 'null'}' as actor_id"}
 
 
 @hookimpl
@@ -329,9 +325,9 @@ def table_actions(datasette, database, table, actor):
         return [
             {
                 "href": datasette.urls.instance(),
-                "label": "Database: {}".format(database),
+                "label": f"Database: {database}",
             },
-            {"href": datasette.urls.instance(), "label": "Table: {}".format(table)},
+            {"href": datasette.urls.instance(), "label": f"Table: {table}"},
         ]
 
 
@@ -341,6 +337,6 @@ def database_actions(datasette, database, actor):
         return [
             {
                 "href": datasette.urls.instance(),
-                "label": "Database: {}".format(database),
+                "label": f"Database: {database}",
             }
         ]

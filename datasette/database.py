@@ -57,7 +57,7 @@ class Database:
         if write:
             qs = ""
         return sqlite3.connect(
-            "file:{}{}".format(self.path, qs), uri=True, check_same_thread=False
+            f"file:{self.path}{qs}", uri=True, check_same_thread=False
         )
 
     async def execute_write(self, sql, params=None, block=False):
@@ -191,7 +191,7 @@ class Database:
             try:
                 table_count = (
                     await self.execute(
-                        "select count(*) from [{}]".format(table),
+                        f"select count(*) from [{table}]",
                         custom_time_limit=limit,
                     )
                 ).rows[0][0]
@@ -362,13 +362,13 @@ class Database:
         if self.is_memory:
             tags.append("memory")
         if self.hash:
-            tags.append("hash={}".format(self.hash))
+            tags.append(f"hash={self.hash}")
         if self.size is not None:
-            tags.append("size={}".format(self.size))
+            tags.append(f"size={self.size}")
         tags_str = ""
         if tags:
-            tags_str = " ({})".format(", ".join(tags))
-        return "<Database: {}{}>".format(self.name, tags_str)
+            tags_str = f" ({', '.join(tags)})"
+        return f"<Database: {self.name}{tags_str}>"
 
 
 class WriteTask:

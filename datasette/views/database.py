@@ -140,7 +140,7 @@ class DatabaseView(DataView):
                 and not db.is_mutable
                 and database != ":memory:",
             },
-            ("database-{}.html".format(to_css_class(database)), "database.html"),
+            (f"database-{to_css_class(database)}.html", "database.html"),
         )
 
 
@@ -233,7 +233,7 @@ class QueryView(DataView):
         if _size:
             extra_args["page_size"] = _size
 
-        templates = ["query-{}.html".format(to_css_class(database)), "query.html"]
+        templates = [f"query-{to_css_class(database)}.html", "query.html"]
 
         # Execute query - as write or as read
         if write:
@@ -324,9 +324,7 @@ class QueryView(DataView):
         if canned_query:
             templates.insert(
                 0,
-                "query-{}-{}.html".format(
-                    to_css_class(database), to_css_class(canned_query)
-                ),
+                f"query-{to_css_class(database)}-{to_css_class(canned_query)}.html",
             )
 
         allow_execute_sql = await self.ds.permission_allowed(

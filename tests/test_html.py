@@ -592,9 +592,7 @@ def test_css_classes_on_body(app_client, path, expected_classes):
 def test_templates_considered(app_client, path, expected_considered):
     response = app_client.get(path)
     assert response.status == 200
-    assert (
-        "<!-- Templates considered: {} -->".format(expected_considered) in response.text
-    )
+    assert f"<!-- Templates considered: {expected_considered} -->" in response.text
 
 
 def test_table_html_simple_primary_key(app_client):
@@ -607,9 +605,7 @@ def test_table_html_simple_primary_key(app_client):
     for expected_col, th in zip(("content",), ths[1:]):
         a = th.find("a")
         assert expected_col == a.string
-        assert a["href"].endswith(
-            "/simple_primary_key?_size=3&_sort={}".format(expected_col)
-        )
+        assert a["href"].endswith(f"/simple_primary_key?_size=3&_sort={expected_col}")
         assert ["nofollow"] == a["rel"]
     assert [
         [
@@ -730,11 +726,11 @@ def test_table_html_no_primary_key(app_client):
             '<td class="col-Link type-pk"><a href="/fixtures/no_primary_key/{}">{}</a></td>'.format(
                 i, i
             ),
-            '<td class="col-rowid type-int">{}</td>'.format(i),
-            '<td class="col-content type-str">{}</td>'.format(i),
-            '<td class="col-a type-str">a{}</td>'.format(i),
-            '<td class="col-b type-str">b{}</td>'.format(i),
-            '<td class="col-c type-str">c{}</td>'.format(i),
+            f'<td class="col-rowid type-int">{i}</td>',
+            f'<td class="col-content type-str">{i}</td>',
+            f'<td class="col-a type-str">a{i}</td>',
+            f'<td class="col-b type-str">b{i}</td>',
+            f'<td class="col-c type-str">c{i}</td>',
         ]
         for i in range(1, 51)
     ]
@@ -782,8 +778,8 @@ def test_table_html_compound_primary_key(app_client):
     for expected_col, th in zip(("pk1", "pk2", "content"), ths[1:]):
         a = th.find("a")
         assert expected_col == a.string
-        assert th["class"] == ["col-{}".format(expected_col)]
-        assert a["href"].endswith("/compound_primary_key?_sort={}".format(expected_col))
+        assert th["class"] == [f"col-{expected_col}"]
+        assert a["href"].endswith(f"/compound_primary_key?_sort={expected_col}")
     expected = [
         [
             '<td class="col-Link type-pk"><a href="/fixtures/compound_primary_key/a,b">a,b</a></td>',
@@ -1100,9 +1096,7 @@ def test_404(app_client, path):
     response = app_client.get(path)
     assert 404 == response.status
     assert (
-        '<link rel="stylesheet" href="/-/static/app.css?{}'.format(
-            app_client.ds.app_css_hash()
-        )
+        f'<link rel="stylesheet" href="/-/static/app.css?{app_client.ds.app_css_hash()}'
         in response.text
     )
 
@@ -1293,9 +1287,10 @@ def test_blob_download(app_client, path, expected_filename):
     assert response.status == 200
     assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
     assert response.headers["x-content-type-options"] == "nosniff"
-    assert response.headers[
-        "content-disposition"
-    ] == 'attachment; filename="{}"'.format(expected_filename)
+    assert (
+        response.headers["content-disposition"]
+        == f'attachment; filename="{expected_filename}"'
+    )
     assert response.headers["content-type"] == "application/binary"
 
 
@@ -1502,9 +1497,7 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
 )
 def test_edit_sql_link_on_canned_queries(app_client, path, expected):
     response = app_client.get(path)
-    expected_link = '<a href="{}" class="canned-query-edit-sql">Edit SQL</a>'.format(
-        expected
-    )
+    expected_link = f'<a href="{expected}" class="canned-query-edit-sql">Edit SQL</a>'
     if expected:
         assert expected_link in response.text
     else:
@@ -1555,10 +1548,10 @@ def test_navigation_menu_links(
         for link in should_have_links:
             assert (
                 details.find("a", {"href": link}) is not None
-            ), "{} expected but missing from nav menu".format(link)
+            ), f"{link} expected but missing from nav menu"
 
     if should_not_have_links:
         for link in should_not_have_links:
             assert (
                 details.find("a", {"href": link}) is None
-            ), "{} found but should not have been in nav menu".format(link)
+            ), f"{link} found but should not have been in nav menu"

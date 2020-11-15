@@ -231,7 +231,7 @@ class Datasette:
             is_mutable = path not in self.immutables
             db = Database(self, path, is_mutable=is_mutable, is_memory=is_memory)
             if db.name in self.databases:
-                raise Exception("Multiple files with same stem: {}".format(db.name))
+                raise Exception(f"Multiple files with same stem: {db.name}")
             self.add_database(db.name, db)
         self.cache_headers = cache_headers
         self.cors = cors
@@ -455,9 +455,9 @@ class Datasette:
         if self.sqlite_extensions:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
-                conn.execute("SELECT load_extension('{}')".format(extension))
+                conn.execute(f"SELECT load_extension('{extension}')")
         if self.config("cache_size_kb"):
-            conn.execute("PRAGMA cache_size=-{}".format(self.config("cache_size_kb")))
+            conn.execute(f"PRAGMA cache_size=-{self.config('cache_size_kb')}")
         # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
 
@@ -860,7 +860,7 @@ class Datasette:
             if plugin["static_path"]:
                 add_route(
                     asgi_static(plugin["static_path"]),
-                    "/-/static-plugins/{}/(?P<path>.*)$".format(plugin["name"]),
+                    f"/-/static-plugins/{plugin['name']}/(?P<path>.*)$",
                 )
                 # Support underscores in name in addition to hyphens, see https://github.com/simonw/datasette/issues/611
                 add_route(
@@ -1156,7 +1156,7 @@ class DatasetteRouter:
             info = {}
             message = str(exception)
             traceback.print_exc()
-        templates = ["{}.html".format(status), "error.html"]
+        templates = [f"{status}.html", "error.html"]
         info.update(
             {
                 "ok": False,
@@ -1234,7 +1234,7 @@ def route_pattern_from_filepath(filepath):
     re_bits = ["/"]
     for bit in _curly_re.split(filepath):
         if _curly_re.match(bit):
-            re_bits.append("(?P<{}>[^/]*)".format(bit[1:-1]))
+            re_bits.append(f"(?P<{bit[1:-1]}>[^/]*)")
         else:
             re_bits.append(re.escape(bit))
     return re.compile("^" + "".join(re_bits) + "$")
@@ -1253,7 +1253,7 @@ class DatasetteClient:
         if not isinstance(path, PrefixedUrlString):
             path = self.ds.urls.path(path)
         if path.startswith("/"):
-            path = "http://localhost{}".format(path)
+            path = f"http://localhost{path}"
         return path
 
     async def get(self, path, **kwargs):

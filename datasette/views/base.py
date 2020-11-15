@@ -125,9 +125,7 @@ class BaseView:
             **{
                 "database_color": self.database_color,
                 "select_templates": [
-                    "{}{}".format(
-                        "*" if template_name == template.name else "", template_name
-                    )
+                    f"{'*' if template_name == template.name else ''}{template_name}"
                     for template_name in templates
                 ],
             },
@@ -165,11 +163,11 @@ class DataView(BaseView):
 
     def redirect(self, request, path, forward_querystring=True, remove_args=None):
         if request.query_string and "?" not in path and forward_querystring:
-            path = "{}?{}".format(path, request.query_string)
+            path = f"{path}?{request.query_string}"
         if remove_args:
             path = path_with_removed_args(request, remove_args, path=path)
         r = Response.redirect(path)
-        r.headers["Link"] = "<{}>; rel=preload".format(path)
+        r.headers["Link"] = f"<{path}>; rel=preload"
         if self.ds.cors:
             r.headers["Access-Control-Allow-Origin"] = "*"
         return r
@@ -184,7 +182,7 @@ class DataView(BaseView):
             # No matching DB found, maybe it's a name-hash?
             name_bit, hash_bit = db_name.rsplit("-", 1)
             if name_bit not in self.ds.databases:
-                raise NotFound("Database not found: {}".format(name))
+                raise NotFound(f"Database not found: {name}")
             else:
                 name = name_bit
                 hash = hash_bit
@@ -194,7 +192,7 @@ class DataView(BaseView):
         try:
             db = self.ds.databases[name]
         except KeyError:
-            raise NotFound("Database not found: {}".format(name))
+            raise NotFound(f"Database not found: {name}")
 
         # Verify the hash
         expected = "000"
@@ -217,11 +215,11 @@ class DataView(BaseView):
                 )
                 kwargs["table"] = table
                 if _format:
-                    kwargs["as_format"] = ".{}".format(_format)
+                    kwargs["as_format"] = f".{_format}"
             elif kwargs.get("table"):
                 kwargs["table"] = urllib.parse.unquote_plus(kwargs["table"])
 
-            should_redirect = self.ds.urls.path("{}-{}".format(name, expected))
+            should_redirect = self.ds.urls.path(f"{name}-{expected}")
             if kwargs.get("table"):
                 should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
             if kwargs.get("pk_path"):
@@ -294,7 +292,7 @@ class DataView(BaseView):
             for column in data["columns"]:
                 headings.append(column)
                 if column in expanded_columns:
-                    headings.append("{}_label".format(column))
+                    headings.append(f"{column}_label")
 
         async def stream_fn(r):
             nonlocal data
@@ -505,7 +503,7 @@ class DataView(BaseView):
             elif isinstance(result, Response):
                 r = result
             else:
-                assert False, "{} should be dict or Response".format(result)
+                assert False, f"{result} should be dict or Response"
         else:
             extras = {}
             if callable(extra_template_data):
@@ -581,7 +579,7 @@ class DataView(BaseView):
             if ttl == 0:
                 ttl_header = "no-cache"
             else:
-                ttl_header = "max-age={}".format(ttl)
+                ttl_header = f"max-age={ttl}"
             response.headers["Cache-Control"] = ttl_header
         response.headers["Referrer-Policy"] = "no-referrer"
         if self.ds.cors:

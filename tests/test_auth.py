@@ -7,7 +7,7 @@ import time
 def test_auth_token(app_client):
     "The /-/auth-token endpoint sets the correct cookie"
     assert app_client.ds._root_token is not None
-    path = "/-/auth-token?token={}".format(app_client.ds._root_token)
+    path = f"/-/auth-token?token={app_client.ds._root_token}"
     response = app_client.get(
         path,
         allow_redirects=False,

@@ -11,7 +11,7 @@ import pytest
     ],
 )
 def test_add_message_sets_cookie(app_client, qs, expected):
-    response = app_client.get("/fixtures.message?{}".format(qs))
+    response = app_client.get(f"/fixtures.message?{qs}")
     signed = response.cookies["ds_messages"]
     decoded = app_client.ds.unsign(signed, "messages")
     assert expected == decoded

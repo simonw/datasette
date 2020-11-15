@@ -33,12 +33,12 @@ class Config(click.ParamType):
 
     def convert(self, config, param, ctx):
         if ":" not in config:
-            self.fail('"{}" should be name:value'.format(config), param, ctx)
+            self.fail(f'"{config}" should be name:value', param, ctx)
             return
         name, value = config.split(":", 1)
         if name not in DEFAULT_CONFIG:
             self.fail(
-                "{} is not a valid option (--help-config to see all)".format(name),
+                f"{name} is not a valid option (--help-config to see all)",
                 param,
                 ctx,
             )
@@ -49,13 +49,11 @@ class Config(click.ParamType):
             try:
                 return name, value_as_boolean(value)
             except ValueAsBooleanError:
-                self.fail(
-                    '"{}" should be on/off/true/false/1/0'.format(name), param, ctx
-                )
+                self.fail(f'"{name}" should be on/off/true/false/1/0', param, ctx)
                 return
         elif isinstance(default, int):
             if not value.isdigit():
-                self.fail('"{}" should be an integer'.format(name), param, ctx)
+                self.fail(f'"{name}" should be an integer', param, ctx)
                 return
             return name, int(value)
         elif isinstance(default, str):
@@ -203,7 +201,7 @@ def package(
     version_note,
     secret,
     port,
-    **extra_metadata
+    **extra_metadata,
 ):
     "Package specified SQLite files into a new datasette Docker container"
     if not shutil.which("docker"):
@@ -389,7 +387,7 @@ def serve(
         with formatter.section("Config options"):
             formatter.write_dl(
                 [
-                    (option.name, "{} (default={})".format(option.help, option.default))
+                    (option.name, f"{option.help} (default={option.default})")
                     for option in CONFIG_OPTIONS
                 ]
             )
@@ -470,7 +468,7 @@ def serve(
             path = asyncio.get_event_loop().run_until_complete(
                 initial_path_for_datasette(ds)
             )
-            url = "http://{}:{}{}".format(host, port, path)
+            url = f"http://{host}:{port}{path}"
         webbrowser.open(url)
     uvicorn.run(
         ds.app(), host=host, port=port, log_level="info", lifespan="on", workers=1
@@ -491,7 +489,5 @@ async def check_databases(ds):
             )
         except ConnectionProblem as e:
             raise click.UsageError(
-                "Connection to {} failed check: {}".format(
-                    database.path, str(e.args[0])
-                )
+                f"Connection to {database.path} failed check: {str(e.args[0])}"
             )

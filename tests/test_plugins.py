@@ -34,7 +34,7 @@ def test_plugin_hooks_have_tests(plugin_hook):
     for test in tests_in_this_module:
         if plugin_hook in test:
             ok = True
-    assert ok, "Plugin hook is missing tests: {}".format(plugin_hook)
+    assert ok, f"Plugin hook is missing tests: {plugin_hook}"
 
 
 def test_hook_plugins_dir_plugin_prepare_connection(app_client):
@@ -398,7 +398,7 @@ def view_names_client(tmp_path_factory):
 def test_view_names(view_names_client, path, view_name):
     response = view_names_client.get(path)
     assert response.status == 200
-    assert "view_name:{}".format(view_name) == response.text
+    assert f"view_name:{view_name}" == response.text
 
 
 def test_hook_register_output_renderer_no_parameters(app_client):
@@ -659,7 +659,7 @@ def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factor
     with make_app_client(template_dir=templates) as client:
         response = client.get("/csrftoken-form/")
         expected_token = client.ds._last_request.scope["csrftoken"]()
-        assert "CSRFTOKEN: {}".format(expected_token) == response.text
+        assert f"CSRFTOKEN: {expected_token}" == response.text
 
 
 def test_hook_register_routes_asgi(app_client):
@@ -793,14 +793,14 @@ def test_hook_table_actions(app_client, table_or_view):
             return []
         return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
 
-    response = app_client.get("/fixtures/{}".format(table_or_view))
+    response = app_client.get(f"/fixtures/{table_or_view}")
     assert get_table_actions_links(response.text) == []
 
-    response_2 = app_client.get("/fixtures/{}?_bot=1".format(table_or_view))
+    response_2 = app_client.get(f"/fixtures/{table_or_view}?_bot=1")
     assert get_table_actions_links(response_2.text) == [
         {"label": "From async", "href": "/"},
         {"label": "Database: fixtures", "href": "/"},
-        {"label": "Table: {}".format(table_or_view), "href": "/"},
+        {"label": f"Table: {table_or_view}", "href": "/"},
     ]
 
 

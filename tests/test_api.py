@@ -918,7 +918,7 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
     ],
 )
 def test_sortable(app_client, query_string, sort_key, human_description_en):
-    path = "/fixtures/sortable.json?_shape=objects&{}".format(query_string)
+    path = f"/fixtures/sortable.json?_shape=objects&{query_string}"
     fetched = []
     page = 0
     while path:
@@ -969,8 +969,8 @@ def test_sortable_columns_metadata(app_client):
     assert "Cannot sort table by content" == response.json["error"]
     # no_primary_key has ALL sort options disabled
     for column in ("content", "a", "b", "c"):
-        response = app_client.get("/fixtures/sortable.json?_sort={}".format(column))
-        assert "Cannot sort table by {}".format(column) == response.json["error"]
+        response = app_client.get(f"/fixtures/sortable.json?_sort={column}")
+        assert f"Cannot sort table by {column}" == response.json["error"]
 
 
 @pytest.mark.parametrize(
@@ -1877,7 +1877,7 @@ def test_binary_data_in_json(app_client, path, expected_json, expected_text):
     ],
 )
 def test_paginate_using_link_header(app_client, qs):
-    path = "/fixtures/compound_three_primary_keys.json{}".format(qs)
+    path = f"/fixtures/compound_three_primary_keys.json{qs}"
     num_pages = 0
     while path:
         response = app_client.get(path)

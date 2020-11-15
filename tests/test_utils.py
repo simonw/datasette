@@ -457,7 +457,7 @@ def test_check_connection_passes():
 
 def test_call_with_supported_arguments():
     def foo(a, b):
-        return "{}+{}".format(a, b)
+        return f"{a}+{b}"
 
     assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2)
     assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2, c=3)

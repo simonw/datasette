@@ -123,7 +123,6 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
 
 You can add the ``--plugins-dir=`` option to include any plugins found in that directory.
 
-
 .. _plugins_configuration:
 
 Plugin configuration
@@ -131,7 +130,9 @@ Plugin configuration
 
 Plugins can have their own configuration, embedded in a :ref:`metadata` file. Configuration options for plugins live within a ``"plugins"`` key in that file, which can be included at the root, database or table level.
 
-Here is an example of some plugin configuration for a specific table::
+Here is an example of some plugin configuration for a specific table:
+
+.. code-block:: json
 
     {
         "databases: {
@@ -159,7 +160,9 @@ Secret configuration values
 
 Any values embedded in ``metadata.json`` will be visible to anyone who views the ``/-/metadata`` page of your Datasette instance. Some plugins may need configuration that should stay secret - API keys for example. There are two ways in which you can store secret configuration values.
 
-**As environment variables**. If your secret lives in an environment variable that is available to the Datasette process, you can indicate that the configuration value should be read from that environment variable like so::
+**As environment variables**. If your secret lives in an environment variable that is available to the Datasette process, you can indicate that the configuration value should be read from that environment variable like so:
+
+.. code-block:: json
 
     {
         "plugins": {
@@ -171,7 +174,9 @@ Any values embedded in ``metadata.json`` will be visible to anyone who views the
         }
     }
 
-**As values in separate files**. Your secrets can also live in files on disk. To specify a secret should be read from a file, provide the full file path like this::
+**As values in separate files**. Your secrets can also live in files on disk. To specify a secret should be read from a file, provide the full file path like this:
+
+.. code-block:: json
 
     {
         "plugins": {
@@ -190,3 +195,20 @@ If you are publishing your data using the :ref:`datasette publish <cli_publish>`
         --install=datasette-auth-github \
         --plugin-secret datasette-auth-github client_id your_client_id \
         --plugin-secret datasette-auth-github client_secret your_client_secret
+
+This will set the necessary environment variables and add the following to the deployed ``metadata.json``:
+
+.. code-block:: json
+
+    {
+        "plugins": {
+            "datasette-auth-github": {
+                "client_id": {
+                    "$env": "DATASETTE_AUTH_GITHUB_CLIENT_ID"
+                },
+                "client_secret": {
+                    "$env": "DATASETTE_AUTH_GITHUB_CLIENT_SECRET"
+                }
+            }
+        }
+    }

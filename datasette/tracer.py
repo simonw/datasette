@@ -28,7 +28,7 @@ def get_task_id():
 def trace(type, **kwargs):
     assert not TRACE_RESERVED_KEYS.intersection(
         kwargs.keys()
-    ), ".trace() keyword parameters cannot include {}".format(TRACE_RESERVED_KEYS)
+    ), f".trace() keyword parameters cannot include {TRACE_RESERVED_KEYS}"
     task_id = get_task_id()
     if task_id is None:
         yield
@@ -124,7 +124,7 @@ class AsgiTracer:
                     content_type = ""
                 if "text/html" in content_type and b"</body>" in accumulated_body:
                     extra = json.dumps(trace_info, indent=2)
-                    extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
+                    extra_html = f"<pre>{extra}</pre></body>".encode("utf8")
                     accumulated_body = accumulated_body.replace(b"</body>", extra_html)
                 elif "json" in content_type and accumulated_body.startswith(b"{"):
                     data = json.loads(accumulated_body.decode("utf8"))

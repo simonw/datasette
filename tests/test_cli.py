@@ -162,4 +162,4 @@ def test_uninstall(run_module):
 def test_version():
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
-    assert result.output == "cli, version {}\n".format(__version__)
+    assert result.output == f"cli, version {__version__}\n"

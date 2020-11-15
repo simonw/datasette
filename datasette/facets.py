@@ -86,7 +86,7 @@ class Facet:
         self.database = database
         # For foreign key expansion. Can be None for e.g. canned SQL queries:
         self.table = table
-        self.sql = sql or "select * from [{}]".format(table)
+        self.sql = sql or f"select * from [{table}]"
         self.params = params or []
         self.metadata = metadata
         # row_count can be None, in which case we calculate it ourselves:
@@ -114,7 +114,7 @@ class Facet:
         # Detect column names using the "limit 0" trick
         return (
             await self.ds.execute(
-                self.database, "select * from ({}) limit 0".format(sql), params or []
+                self.database, f"select * from ({sql}) limit 0", params or []
             )
         ).columns
 
@@ -123,7 +123,7 @@ class Facet:
             self.row_count = (
                 await self.ds.execute(
                     self.database,
-                    "select count(*) from ({})".format(self.sql),
+                    f"select count(*) from ({self.sql})",
                     self.params,
                 )
             ).rows[0][0]
@@ -371,14 +371,14 @@ class ArrayFacet(Facet):
                 pairs = self.get_querystring_pairs()
                 for row in facet_rows:
                     value = str(row["value"])
-                    selected = ("{}__arraycontains".format(column), value) in pairs
+                    selected = (f"{column}__arraycontains", value) in pairs
                     if selected:
                         toggle_path = path_with_removed_args(
-                            self.request, {"{}__arraycontains".format(column): value}
+                            self.request, {f"{column}__arraycontains": value}
                         )
                     else:
                         toggle_path = path_with_added_args(
-                            self.request, {"{}__arraycontains".format(column): value}
+                            self.request, {f"{column}__arraycontains": value}
                         )
                     facet_results_values.append(
                         {
@@ -482,16 +482,14 @@ class DateFacet(Facet):
                 }
                 facet_rows = facet_rows_results.rows[:facet_size]
                 for row in facet_rows:
-                    selected = str(args.get("{}__date".format(column))) == str(
-                        row["value"]
-                    )
+                    selected = str(args.get(f"{column}__date")) == str(row["value"])
                     if selected:
                         toggle_path = path_with_removed_args(
-                            self.request, {"{}__date".format(column): str(row["value"])}
+                            self.request, {f"{column}__date": str(row["value"])}
                         )
                     else:
                         toggle_path = path_with_added_args(
-                            self.request, {"{}__date".format(column): row["value"]}
+                            self.request, {f"{column}__date": row["value"]}
                         )
                     facet_results_values.append(
                         {

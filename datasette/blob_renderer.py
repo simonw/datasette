@@ -9,10 +9,10 @@ _BLOB_HASH = "_blob_hash"
 
 async def render_blob(datasette, database, rows, columns, request, table, view_name):
     if _BLOB_COLUMN not in request.args:
-        raise BadRequest("?{}= is required".format(_BLOB_COLUMN))
+        raise BadRequest(f"?{_BLOB_COLUMN}= is required")
     blob_column = request.args[_BLOB_COLUMN]
     if blob_column not in columns:
-        raise BadRequest("{} is not a valid column".format(blob_column))
+        raise BadRequest(f"{blob_column} is not a valid column")
 
     # If ?_blob_hash= provided, use that to select the row - otherwise use first row
     blob_hash = None
@@ -42,7 +42,7 @@ async def render_blob(datasette, database, rows, columns, request, table, view_n
     filename = "-".join(filename_bits) + ".blob"
     headers = {
         "X-Content-Type-Options": "nosniff",
-        "Content-Disposition": 'attachment; filename="{}"'.format(filename),
+        "Content-Disposition": f'attachment; filename="{filename}"',
     }
     return Response(
         body=value or b"",

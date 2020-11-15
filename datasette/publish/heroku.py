@@ -83,9 +83,7 @@ def publish_subcommand(publish):
             extra_metadata["plugins"] = {}
             for plugin_name, plugin_setting, setting_value in plugin_secret:
                 environment_variable = (
-                    "{}_{}".format(plugin_name, plugin_setting)
-                    .upper()
-                    .replace("-", "_")
+                    f"{plugin_name}_{plugin_setting}".upper().replace("-", "_")
                 )
                 environment_variables[environment_variable] = setting_value
                 extra_metadata["plugins"].setdefault(plugin_name, {})[
@@ -129,9 +127,7 @@ def publish_subcommand(publish):
                 app_name = json.loads(create_output)["name"]
 
             for key, value in environment_variables.items():
-                call(
-                    ["heroku", "config:set", "-a", app_name, "{}={}".format(key, value)]
-                )
+                call(["heroku", "config:set", "-a", app_name, f"{key}={value}"])
             tar_option = []
             if tar:
                 tar_option = ["--tar", tar]
@@ -181,9 +177,7 @@ def temporary_heroku_directory(
 
         if branch:
             install = [
-                "https://github.com/simonw/datasette/archive/{branch}.zip".format(
-                    branch=branch
-                )
+                f"https://github.com/simonw/datasette/archive/{branch}.zip"
             ] + list(install)
         else:
             install = ["datasette"] + list(install)
@@ -216,7 +210,7 @@ def temporary_heroku_directory(
             link_or_copy_directory(
                 os.path.join(saved_cwd, path), os.path.join(tmp.name, mount_point)
             )
-            extras.extend(["--static", "{}:{}".format(mount_point, mount_point)])
+            extras.extend(["--static", f"{mount_point}:{mount_point}"])
 
         quoted_files = " ".join(
             ["-i {}".format(shlex.quote(file_name)) for file_name in file_names]

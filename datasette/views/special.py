@@ -111,13 +111,13 @@ class AllowDebugView(BaseView):
             actor = json.loads(actor_input)
             actor_input = json.dumps(actor, indent=4)
         except json.decoder.JSONDecodeError as ex:
-            errors.append("Actor JSON error: {}".format(ex))
+            errors.append(f"Actor JSON error: {ex}")
         allow_input = request.args.get("allow") or '{"id": "*"}'
         try:
             allow = json.loads(allow_input)
             allow_input = json.dumps(allow, indent=4)
         except json.decoder.JSONDecodeError as ex:
-            errors.append("Allow JSON error: {}".format(ex))
+            errors.append(f"Allow JSON error: {ex}")
 
         result = None
         if not errors:

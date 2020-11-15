@@ -32,7 +32,7 @@ class TestResponse:
         return any(
             h
             for h in self.httpx_response.headers.get_list("set-cookie")
-            if h.startswith('{}="";'.format(cookie))
+            if h.startswith(f'{cookie}="";')
         )
 
     @property
@@ -125,9 +125,7 @@ class TestClient:
         if allow_redirects and response.status in (301, 302):
             assert (
                 redirect_count < self.max_redirects
-            ), "Redirected {} times, max_redirects={}".format(
-                redirect_count, self.max_redirects
-            )
+            ), f"Redirected {redirect_count} times, max_redirects={self.max_redirects}"
             location = response.headers["Location"]
             return await self._request(
                 location, allow_redirects=True, redirect_count=redirect_count + 1

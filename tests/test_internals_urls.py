@@ -157,7 +157,7 @@ def test_database_hashed(app_client_with_hash, base_url):
         ds._config["base_url"] = base_url
         db_hash = ds.get_database("fixtures").hash
         assert len(db_hash) == 64
-        expected = "{}fixtures-{}".format(base_url, db_hash[:7])
+        expected = f"{base_url}fixtures-{db_hash[:7]}"
         assert ds.urls.database("fixtures") == expected
         assert ds.urls.table("fixtures", "name") == expected + "/name"
         assert ds.urls.query("fixtures", "name") == expected + "/name"

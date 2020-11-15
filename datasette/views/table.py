@@ -212,13 +212,11 @@ class RowTableShared(DataView):
                     # representation, which we have to round off to avoid ugliness. In the vast
                     # majority of cases this rounding will be inconsequential. I hope.
                     value = round(value.to_compact(), 6)
-                    display_value = jinja2.Markup(
-                        "{:~P}".format(value).replace(" ", "&nbsp;")
-                    )
+                    display_value = jinja2.Markup(f"{value:~P}".replace(" ", "&nbsp;"))
                 else:
                     display_value = str(value)
                     if truncate_cells and len(display_value) > truncate_cells:
-                        display_value = display_value[:truncate_cells] + u"\u2026"
+                        display_value = display_value[:truncate_cells] + "\u2026"
 
                 cells.append(
                     {
@@ -307,7 +305,7 @@ class TableView(RowTableShared):
         is_view = bool(await db.get_view_definition(table))
         table_exists = bool(await db.table_exists(table))
         if not is_view and not table_exists:
-            raise NotFound("Table not found: {}".format(table))
+            raise NotFound(f"Table not found: {table}")
 
         await self.check_permissions(
             request,
@@ -330,7 +328,7 @@ class TableView(RowTableShared):
 
         use_rowid = not pks and not is_view
         if use_rowid:
-            select = "rowid, {}".format(select_columns)
+            select = f"rowid, {select_columns}"
             order_by = "rowid"
             order_by_pks = "rowid"
         else:
@@ -424,7 +422,7 @@ class TableView(RowTableShared):
                     raise DatasetteError(
                         "Invalid _through - could not find corresponding foreign key"
                     )
-                param = "p{}".format(len(params))
+                param = f"p{len(params)}"
                 where_clauses.append(
                     "{our_pk} in (select {our_column} from {through_table} where {other_column} = :{param})".format(
                         through_table=escape_sqlite(through_table),
@@ -436,7 +434,7 @@ class TableView(RowTableShared):
                 )
                 params[param] = value
                 extra_human_descriptions.append(
-                    '{}.{} = "{}"'.format(through_table, other_column, value)
+                    f'{through_table}.{other_column} = "{value}"'
                 )
 
         # _search support:
@@ -462,7 +460,7 @@ class TableView(RowTableShared):
                         else "escape_fts(:search)",
                     )
                 )
-                extra_human_descriptions.append('search matches "{}"'.format(search))
+                extra_human_descriptions.append(f'search matches "{search}"')
                 params["search"] = search
             else:
                 # More complex: search against specific columns
@@ -481,11 +479,9 @@ class TableView(RowTableShared):
                         )
                     )
                     extra_human_descriptions.append(
-                        'search column "{}" matches "{}"'.format(
-                            search_col, search_text
-                        )
+                        f'search column "{search_col}" matches "{search_text}"'
                     )
-                    params["search_{}".format(i)] = search_text
+                    params[f"search_{i}"] = search_text
 
         sortable_columns = set()
 
@@ -506,15 +502,15 @@ class TableView(RowTableShared):
 
         if sort:
             if sort not in sortable_columns:
-                raise DatasetteError("Cannot sort table by {}".format(sort))
+                raise DatasetteError(f"Cannot sort table by {sort}")
 
             order_by = escape_sqlite(sort)
 
         if sort_desc:
             if sort_desc not in sortable_columns:
-                raise DatasetteError("Cannot sort table by {}".format(sort_desc))
+                raise DatasetteError(f"Cannot sort table by {sort_desc}")
 
-            order_by = "{} desc".format(escape_sqlite(sort_desc))
+            order_by = f"{escape_sqlite(sort_desc)} desc"
 
         from_sql = "from {table_name} {where}".format(
             table_name=escape_sqlite(table),
@@ -525,14 +521,14 @@ class TableView(RowTableShared):
         # Copy of params so we can mutate them later:
         from_sql_params = dict(**params)
 
-        count_sql = "select count(*) {}".format(from_sql)
+        count_sql = f"select count(*) {from_sql}"
 
         _next = _next or special_args.get("_next")
         offset = ""
         if _next:
             if is_view:
                 # _next is an offset
-                offset = " offset {}".format(int(_next))
+                offset = f" offset {int(_next)}"
             else:
                 components = urlsafe_components(_next)
                 # If a sort order is applied, the first of these is the sort value
@@ -546,8 +542,8 @@ class TableView(RowTableShared):
                 # Figure out the SQL for next-based-on-primary-key first
                 next_by_pk_clauses = []
                 if use_rowid:
-                    next_by_pk_clauses.append("rowid > :p{}".format(len(params)))
-                    params["p{}".format(len(params))] = components[0]
+                    next_by_pk_clauses.append(f"rowid > :p{len(params)}")
+                    params[f"p{len(params)}"] = components[0]
                 else:
                     # Apply the tie-breaker based on primary keys
                     if len(components) == len(pks):
@@ -556,7 +552,7 @@ class TableView(RowTableShared):
                             compound_keys_after_sql(pks, param_len)
                         )
                         for i, pk_value in enumerate(components):
-                            params["p{}".format(param_len + i)] = pk_value
+                            params[f"p{param_len + i}"] = pk_value
 
                 # Now add the sort SQL, which may incorporate next_by_pk_clauses
                 if sort or sort_desc:
@@ -590,17 +586,17 @@ class TableView(RowTableShared):
                                 next_clauses=" and ".join(next_by_pk_clauses),
                             )
                         )
-                        params["p{}".format(len(params))] = sort_value
-                    order_by = "{}, {}".format(order_by, order_by_pks)
+                        params[f"p{len(params)}"] = sort_value
+                    order_by = f"{order_by}, {order_by_pks}"
                 else:
                     where_clauses.extend(next_by_pk_clauses)
 
         where_clause = ""
         if where_clauses:
-            where_clause = "where {} ".format(" and ".join(where_clauses))
+            where_clause = f"where {' and '.join(where_clauses)} "
 
         if order_by:
-            order_by = "order by {} ".format(order_by)
+            order_by = f"order by {order_by} "
 
         extra_args = {}
         # Handle ?_size=500
@@ -617,9 +613,7 @@ class TableView(RowTableShared):
                 raise BadRequest("_size must be a positive integer")
 
             if page_size > self.ds.max_returned_rows:
-                raise BadRequest(
-                    "_size must be <= {}".format(self.ds.max_returned_rows)
-                )
+                raise BadRequest(f"_size must be <= {self.ds.max_returned_rows}")
 
             extra_args["page_size"] = page_size
         else:
@@ -631,9 +625,7 @@ class TableView(RowTableShared):
             where=where_clause,
             order_by=order_by,
         )
-        sql = "{sql_no_limit} limit {limit}{offset}".format(
-            sql_no_limit=sql_no_limit.rstrip(), limit=page_size + 1, offset=offset
-        )
+        sql = f"{sql_no_limit.rstrip()} limit {page_size + 1}{offset}"
 
         if request.args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
@@ -645,7 +637,7 @@ class TableView(RowTableShared):
         if (
             not db.is_mutable
             and self.ds.inspect_data
-            and count_sql == "select count(*) from {} ".format(table)
+            and count_sql == f"select count(*) from {table} "
         ):
             try:
                 filtered_table_rows_count = self.ds.inspect_data[database]["tables"][
@@ -763,7 +755,7 @@ class TableView(RowTableShared):
                     prefix = "$null"
                 else:
                     prefix = urllib.parse.quote_plus(str(prefix))
-                next_value = "{},{}".format(prefix, next_value)
+                next_value = f"{prefix},{next_value}"
                 added_args = {"_next": next_value}
                 if sort:
                     added_args["_sort"] = sort
@@ -879,12 +871,8 @@ class TableView(RowTableShared):
                 "sort_desc": sort_desc,
                 "disable_sort": is_view,
                 "custom_table_templates": [
-                    "_table-{}-{}.html".format(
-                        to_css_class(database), to_css_class(table)
-                    ),
-                    "_table-table-{}-{}.html".format(
-                        to_css_class(database), to_css_class(table)
-                    ),
+                    f"_table-{to_css_class(database)}-{to_css_class(table)}.html",
+                    f"_table-table-{to_css_class(database)}-{to_css_class(table)}.html",
                     "_table.html",
                 ],
                 "metadata": metadata,
@@ -918,7 +906,7 @@ class TableView(RowTableShared):
             },
             extra_template,
             (
-                "table-{}-{}.html".format(to_css_class(database), to_css_class(table)),
+                f"table-{to_css_class(database)}-{to_css_class(table)}.html",
                 "table.html",
             ),
         )
@@ -931,13 +919,11 @@ async def _sql_params_pks(db, table, pk_values):
     if use_rowid:
         select = "rowid, *"
         pks = ["rowid"]
-    wheres = ['"{}"=:p{}'.format(pk, i) for i, pk in enumerate(pks)]
-    sql = "select {} from {} where {}".format(
-        select, escape_sqlite(table), " AND ".join(wheres)
-    )
+    wheres = [f'"{pk}"=:p{i}' for i, pk in enumerate(pks)]
+    sql = f"select {select} from {escape_sqlite(table)} where {' AND '.join(wheres)}"
     params = {}
     for i, pk_value in enumerate(pk_values):
-        params["p{}".format(i)] = pk_value
+        params[f"p{i}"] = pk_value
     return sql, params, pks
 
 
@@ -960,7 +946,7 @@ class RowView(RowTableShared):
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
-            raise NotFound("Record not found: {}".format(pk_values))
+            raise NotFound(f"Record not found: {pk_values}")
 
         async def template_data():
             display_columns, display_rows = await self.display_columns_and_rows(
@@ -981,12 +967,8 @@ class RowView(RowTableShared):
                 "display_columns": display_columns,
                 "display_rows": display_rows,
                 "custom_table_templates": [
-                    "_table-{}-{}.html".format(
-                        to_css_class(database), to_css_class(table)
-                    ),
-                    "_table-row-{}-{}.html".format(
-                        to_css_class(database), to_css_class(table)
-                    ),
+                    f"_table-{to_css_class(database)}-{to_css_class(table)}.html",
+                    f"_table-row-{to_css_class(database)}-{to_css_class(table)}.html",
                     "_table.html",
                 ],
                 "metadata": (self.ds.metadata("databases") or {})
@@ -1014,7 +996,7 @@ class RowView(RowTableShared):
             data,
             template_data,
             (
-                "row-{}-{}.html".format(to_css_class(database), to_css_class(table)),
+                f"row-{to_css_class(database)}-{to_css_class(table)}.html",
                 "row.html",
             ),
         )

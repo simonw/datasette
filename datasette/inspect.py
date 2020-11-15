@@ -47,7 +47,7 @@ def inspect_tables(conn, database_metadata):
 
         try:
             count = conn.execute(
-                "select count(*) from {}".format(escape_sqlite(table))
+                f"select count(*) from {escape_sqlite(table)}"
             ).fetchone()[0]
         except sqlite3.OperationalError:
             # This can happen when running against a FTS virtual table

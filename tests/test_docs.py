@@ -46,7 +46,7 @@ def test_help_includes(name, filename):
     expected = open(str(docs_path / filename)).read()
     runner = CliRunner()
     result = runner.invoke(cli, name.split() + ["--help"], terminal_width=88)
-    actual = "$ datasette {} --help\n\n{}".format(name, result.output)
+    actual = f"$ datasette {name} --help\n\n{result.output}"
     # actual has "Usage: cli package [OPTIONS] FILES"
     # because it doesn't know that cli will be aliased to datasette
     expected = expected.replace("Usage: datasette", "Usage: cli")
@@ -67,10 +67,10 @@ def test_plugin_hooks_are_documented(plugin, plugin_hooks_content):
     hook_caller = getattr(app.pm.hook, plugin)
     arg_names = [a for a in hook_caller.spec.argnames if a != "__multicall__"]
     # Check for plugin_name(arg1, arg2, arg3)
-    expected = "{}({})".format(plugin, ", ".join(arg_names))
+    expected = f"{plugin}({', '.join(arg_names)})"
     assert (
         expected in plugin_hooks_content
-    ), "Missing from plugin hook documentation: {}".format(expected)
+    ), f"Missing from plugin hook documentation: {expected}"
 
 
 @pytest.fixture(scope="session")

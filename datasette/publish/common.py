@@ -85,9 +85,7 @@ def fail_if_publish_binary_not_installed(binary, publish_target, install_link):
             err=True,
         )
         click.echo(
-            "Follow the instructions at {install_link}".format(
-                install_link=install_link
-            ),
+            f"Follow the instructions at {install_link}",
             err=True,
         )
         sys.exit(1)

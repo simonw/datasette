@@ -361,13 +361,13 @@ details .nav-menu-inner {
 }
 
 /* Table/database actions menu */
-.actions-menu-links {
+.page-header {
     position: relative;
 }
 .actions-menu-links .dropdown-menu {
     position: absolute;
-    top: 2rem;
-    right: 0;
+    top: calc(100% + 10px);
+    left: -10px;
 }
 
 /* Components ============================================================== */

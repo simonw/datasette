@@ -230,7 +230,7 @@ class DataView(BaseView):
                 should_redirect += kwargs["as_db"]
 
             if (
-                (self.ds.config("hash_urls") or "_hash" in request.args)
+                (self.ds.setting("hash_urls") or "_hash" in request.args)
                 and
                 # Redirect only if database is immutable
                 not self.ds.databases[name].is_mutable
@@ -260,7 +260,7 @@ class DataView(BaseView):
         stream = request.args.get("_stream")
         if stream:
             # Some quick sanity checks
-            if not self.ds.config("allow_csv_stream"):
+            if not self.ds.setting("allow_csv_stream"):
                 raise BadRequest("CSV streaming is disabled")
             if request.args.get("_next"):
                 raise BadRequest("_next not allowed for CSV streaming")
@@ -296,7 +296,7 @@ class DataView(BaseView):
 
         async def stream_fn(r):
             nonlocal data
-            writer = csv.writer(LimitedWriter(r, self.ds.config("max_csv_mb")))
+            writer = csv.writer(LimitedWriter(r, self.ds.setting("max_csv_mb")))
             first = True
             next = None
             while first or (next and stream):
@@ -566,9 +566,9 @@ class DataView(BaseView):
         ttl = request.args.get("_ttl", None)
         if ttl is None or not ttl.isdigit():
             if correct_hash_provided:
-                ttl = self.ds.config("default_cache_ttl_hashed")
+                ttl = self.ds.setting("default_cache_ttl_hashed")
             else:
-                ttl = self.ds.config("default_cache_ttl")
+                ttl = self.ds.setting("default_cache_ttl")
 
         return self.set_response_headers(r, ttl)
 

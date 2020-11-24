@@ -121,7 +121,7 @@ class RowTableShared(DataView):
         }
 
         cell_rows = []
-        base_url = self.ds.config("base_url")
+        base_url = self.ds.setting("base_url")
         for row in rows:
             cells = []
             # Unless we are a view, the first column is a link - either to the rowid
@@ -654,7 +654,7 @@ class TableView(RowTableShared):
                 pass
 
         # facets support
-        if not self.ds.config("allow_facet") and any(
+        if not self.ds.setting("allow_facet") and any(
             arg.startswith("_facet") for arg in request.args
         ):
             raise BadRequest("_facet= is not allowed")
@@ -772,8 +772,8 @@ class TableView(RowTableShared):
         suggested_facets = []
 
         if (
-            self.ds.config("suggest_facets")
-            and self.ds.config("allow_facet")
+            self.ds.setting("suggest_facets")
+            and self.ds.setting("allow_facet")
             and not _next
         ):
             for facet in facet_instances:
@@ -801,7 +801,7 @@ class TableView(RowTableShared):
                 results.description,
                 rows,
                 link_column=not is_view,
-                truncate_cells=self.ds.config("truncate_cells_html"),
+                truncate_cells=self.ds.setting("truncate_cells_html"),
             )
             metadata = (
                 (self.ds.metadata("databases") or {})

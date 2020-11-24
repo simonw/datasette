@@ -264,15 +264,15 @@ class Datasette:
             raise StartupError("config.json should be renamed to settings.json")
         if config_dir and (config_dir / "settings.json").exists() and not config:
             config = json.load((config_dir / "settings.json").open())
-        self._config = dict(DEFAULT_SETTINGS, **(config or {}))
+        self._settings = dict(DEFAULT_SETTINGS, **(config or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
-            max_workers=self.config("num_sql_threads")
+            max_workers=self.setting("num_sql_threads")
         )
-        self.max_returned_rows = self.config("max_returned_rows")
-        self.sql_time_limit_ms = self.config("sql_time_limit_ms")
-        self.page_size = self.config("default_page_size")
+        self.max_returned_rows = self.setting("max_returned_rows")
+        self.sql_time_limit_ms = self.setting("sql_time_limit_ms")
+        self.page_size = self.setting("default_page_size")
         # Execute plugins in constructor, to ensure they are available
         # when the rest of `datasette inspect` executes
         if self.plugins_dir:
@@ -347,12 +347,12 @@ class Datasette:
     def remove_database(self, name):
         self.databases.pop(name)
 
-    def config(self, key):
-        return self._config.get(key, None)
+    def setting(self, key):
+        return self._settings.get(key, None)
 
     def config_dict(self):
         # Returns a fully resolved config dictionary, useful for templates
-        return {option.name: self.config(option.name) for option in SETTINGS}
+        return {option.name: self.setting(option.name) for option in SETTINGS}
 
     def metadata(self, key=None, database=None, table=None, fallback=True):
         """
@@ -454,8 +454,8 @@ class Datasette:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
                 conn.execute(f"SELECT load_extension('{extension}')")
-        if self.config("cache_size_kb"):
-            conn.execute(f"PRAGMA cache_size=-{self.config('cache_size_kb')}")
+        if self.setting("cache_size_kb"):
+            conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
         # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
 
@@ -567,7 +567,7 @@ class Datasette:
 
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
-        if url.startswith("http://") and self.config("force_https_urls"):
+        if url.startswith("http://") and self.setting("force_https_urls"):
             url = "https://" + url[len("http://") :]
         return url
 
@@ -781,12 +781,12 @@ class Datasette:
                 "extra_js_urls": await self._asset_urls(
                     "extra_js_urls", template, context, request, view_name
                 ),
-                "base_url": self.config("base_url"),
+                "base_url": self.setting("base_url"),
                 "csrftoken": request.scope["csrftoken"] if request else lambda: "",
             },
             **extra_template_vars,
         }
-        if request and request.args.get("_context") and self.config("template_debug"):
+        if request and request.args.get("_context") and self.setting("template_debug"):
             return "<pre>{}</pre>".format(
                 jinja2.escape(json.dumps(template_context, default=repr, indent=4))
             )
@@ -882,7 +882,7 @@ class Datasette:
             r"/-/plugins(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_view(self, "settings.json", lambda: self._config),
+            JsonDataView.as_view(self, "settings.json", lambda: self._settings),
             r"/-/settings(?P<as_format>(\.json)?)$",
         )
         add_route(
@@ -1001,7 +1001,7 @@ class DatasetteRouter:
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing
-        base_url = self.ds.config("base_url")
+        base_url = self.ds.setting("base_url")
         if base_url != "/" and path.startswith(base_url):
             path = "/" + path[len(base_url) :]
         request = Request(scope, receive)
@@ -1016,7 +1016,7 @@ class DatasetteRouter:
         scope_modifications = {}
         # Apply force_https_urls, if set
         if (
-            self.ds.config("force_https_urls")
+            self.ds.setting("force_https_urls")
             and scope["type"] == "http"
             and scope.get("scheme") != "https"
         ):

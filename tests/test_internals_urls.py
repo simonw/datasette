@@ -20,14 +20,14 @@ def ds():
     ],
 )
 def test_path(ds, base_url, path, expected):
-    ds._config["base_url"] = base_url
+    ds._settings["base_url"] = base_url
     actual = ds.urls.path(path)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
 
 
 def test_path_applied_twice_does_not_double_prefix(ds):
-    ds._config["base_url"] = "/prefix/"
+    ds._settings["base_url"] = "/prefix/"
     path = ds.urls.path("/")
     assert path == "/prefix/"
     path = ds.urls.path(path)
@@ -42,7 +42,7 @@ def test_path_applied_twice_does_not_double_prefix(ds):
     ],
 )
 def test_instance(ds, base_url, expected):
-    ds._config["base_url"] = base_url
+    ds._settings["base_url"] = base_url
     actual = ds.urls.instance()
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
@@ -56,7 +56,7 @@ def test_instance(ds, base_url, expected):
     ],
 )
 def test_static(ds, base_url, file, expected):
-    ds._config["base_url"] = base_url
+    ds._settings["base_url"] = base_url
     actual = ds.urls.static(file)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
@@ -80,7 +80,7 @@ def test_static(ds, base_url, file, expected):
     ],
 )
 def test_static_plugins(ds, base_url, plugin, file, expected):
-    ds._config["base_url"] = base_url
+    ds._settings["base_url"] = base_url
     actual = ds.urls.static_plugins(plugin, file)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
@@ -94,7 +94,7 @@ def test_static_plugins(ds, base_url, plugin, file, expected):
     ],
 )
 def test_logout(ds, base_url, expected):
-    ds._config["base_url"] = base_url
+    ds._settings["base_url"] = base_url
     actual = ds.urls.logout()
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
@@ -109,7 +109,7 @@ def test_logout(ds, base_url, expected):
     ],
 )
 def test_database(ds, base_url, format, expected):
-    ds._config["base_url"] = base_url
+    ds._settings["base_url"] = base_url
     actual = ds.urls.database(":memory:", format=format)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
@@ -125,7 +125,7 @@ def test_database(ds, base_url, format, expected):
     ],
 )
 def test_table_and_query(ds, base_url, name, format, expected):
-    ds._config["base_url"] = base_url
+    ds._settings["base_url"] = base_url
     actual1 = ds.urls.table(":memory:", name, format=format)
     assert actual1 == expected
     assert isinstance(actual1, PrefixedUrlString)
@@ -143,7 +143,7 @@ def test_table_and_query(ds, base_url, name, format, expected):
     ],
 )
 def test_row(ds, base_url, format, expected):
-    ds._config["base_url"] = base_url
+    ds._settings["base_url"] = base_url
     actual = ds.urls.row(":memory:", "facetable", "1", format=format)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
@@ -152,9 +152,9 @@ def test_row(ds, base_url, format, expected):
 @pytest.mark.parametrize("base_url", ["/", "/prefix/"])
 def test_database_hashed(app_client_with_hash, base_url):
     ds = app_client_with_hash.ds
-    original_base_url = ds._config["base_url"]
+    original_base_url = ds._settings["base_url"]
     try:
-        ds._config["base_url"] = base_url
+        ds._settings["base_url"] = base_url
         db_hash = ds.get_database("fixtures").hash
         assert len(db_hash) == 64
         expected = f"{base_url}fixtures-{db_hash[:7]}"
@@ -163,4 +163,4 @@ def test_database_hashed(app_client_with_hash, base_url):
         assert ds.urls.query("fixtures", "name") == expected + "/name"
     finally:
         # Reset this since fixture is shared with other tests
-        ds._config["base_url"] = original_base_url
+        ds._settings["base_url"] = original_base_url

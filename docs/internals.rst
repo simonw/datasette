@@ -350,7 +350,21 @@ Returns the absolute URL for the given path, including the protocol and host. Fo
     absolute_url = datasette.absolute_url(request, "/dbname/table.json")
     # Would return "http://localhost:8001/dbname/table.json"
 
-The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`settings_force_https_urls` configuration setting is taken into account.
+The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`setting_force_https_urls` configuration setting is taken into account.
+
+.setting(key)
+-------------
+
+``key`` - string
+    The name of the setting, e.g. ``base_url``.
+
+Returns the configured value for the specified :ref:`setting <settings>`. This can be a string, boolean or integer depending on the requested setting.
+
+For example:
+
+.. code-block:: python
+
+    downloads_are_allowed = datasette.setting("allow_download")
 
 .. _internals_datasette_client:
 

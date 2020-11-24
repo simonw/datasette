@@ -10,7 +10,7 @@ class Urls:
         if not isinstance(path, PrefixedUrlString):
             if path.startswith("/"):
                 path = path[1:]
-            path = self.ds.config("base_url") + path
+            path = self.ds.setting("base_url") + path
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)
@@ -29,7 +29,7 @@ class Urls:
 
     def database(self, database, format=None):
         db = self.ds.databases[database]
-        if self.ds.config("hash_urls") and db.hash:
+        if self.ds.setting("hash_urls") and db.hash:
             path = self.path(f"{database}-{db.hash[:HASH_LENGTH]}", format=format)
         else:
             path = self.path(database, format=format)

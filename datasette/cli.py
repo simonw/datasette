@@ -14,6 +14,7 @@ from runpy import run_module
 import webbrowser
 from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
 from .utils import (
+    StartupError,
     check_connection,
     parse_metadata,
     ConnectionProblem,
@@ -488,6 +489,8 @@ def serve(
         ds = Datasette(files, **kwargs)
     except SpatialiteNotFound:
         raise click.ClickException("Could not find SpatiaLite extension")
+    except StartupError as e:
+        raise click.ClickException(e.args[0])
 
     if return_instance:
         # Private utility mechanism for writing unit tests

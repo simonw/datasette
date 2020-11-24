@@ -45,6 +45,7 @@ from .database import Database, QueryInterrupted
 
 from .utils import (
     PrefixedUrlString,
+    StartupError,
     async_call_with_supported_arguments,
     await_me_maybe,
     call_with_supported_arguments,
@@ -265,8 +266,10 @@ class Datasette:
         if config_dir and (config_dir / "static").is_dir() and not static_mounts:
             static_mounts = [("static", str((config_dir / "static").resolve()))]
         self.static_mounts = static_mounts or []
-        if config_dir and (config_dir / "config.json").exists() and not config:
-            config = json.load((config_dir / "config.json").open())
+        if config_dir and (config_dir / "config.json").exists():
+            raise StartupError("config.json should be renamed to settings.json")
+        if config_dir and (config_dir / "settings.json").exists() and not config:
+            config = json.load((config_dir / "settings.json").open())
         self._config = dict(DEFAULT_CONFIG, **(config or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note

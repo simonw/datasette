@@ -50,15 +50,15 @@ The files that can be included in this directory are as follows. All are optiona
 * ``*.db`` - SQLite database files that will be served by Datasette
 * ``metadata.json`` - :ref:`metadata` for those databases - ``metadata.yaml`` or ``metadata.yml`` can be used as well
 * ``inspect-data.json`` - the result of running ``datasette inspect`` - any database files listed here will be treated as immutable, so they should not be changed while Datasette is running
-* ``config.json`` - settings that would normally be passed using ``--config`` - here they should be stored as a JSON object of key/value pairs
+* ``settings.json`` - settings that would normally be passed using ``--setting`` - here they should be stored as a JSON object of key/value pairs
 * ``templates/`` - a directory containing :ref:`customization_custom_templates`
 * ``plugins/`` - a directory containing plugins, see :ref:`writing_plugins_one_off`
 * ``static/`` - a directory containing static files - these will be served from ``/static/filename.txt``, see :ref:`customization_static_files`
 
-Configuration options
----------------------
+Settings
+--------
 
-The followig options can be set using ``--config name:value``, or by storing them in the ``config.json`` file for use with :ref:`config_dir`.
+The following options can be set using ``--setting name value``, or by storing them in the ``settings.json`` file for use with :ref:`config_dir`.
 
 default_page_size
 ~~~~~~~~~~~~~~~~~

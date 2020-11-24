@@ -1027,3 +1027,7 @@ class PrefixedUrlString(str):
             return method.__get__(self)
         else:
             return super().__getattribute__(name)
+
+
+class StartupError(Exception):
+    pass

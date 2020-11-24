@@ -1324,8 +1324,8 @@ def test_versions_json(app_client):
     assert "compile_options" in response.json["sqlite"]
 
 
-def test_config_json(app_client):
-    response = app_client.get("/-/config.json")
+def test_settings_json(app_client):
+    response = app_client.get("/-/settings.json")
     assert {
         "default_page_size": 50,
         "default_facet_size": 30,
@@ -1348,6 +1348,19 @@ def test_config_json(app_client):
         "template_debug": False,
         "base_url": "/",
     } == response.json
+
+
+@pytest.mark.parametrize(
+    "path,expected_redirect",
+    (
+        ("/-/config.json", "/-/settings.json"),
+        ("/-/config", "/-/settings"),
+    ),
+)
+def test_config_redirects_to_settings(app_client, path, expected_redirect):
+    response = app_client.get(path, allow_redirects=False)
+    assert response.status == 301
+    assert response.headers["Location"] == expected_redirect
 
 
 def test_page_size_matching_max_returned_rows(

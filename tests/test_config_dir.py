@@ -86,7 +86,7 @@ def test_metadata(config_dir_client):
 
 
 def test_config(config_dir_client):
-    response = config_dir_client.get("/-/config.json")
+    response = config_dir_client.get("/-/settings.json")
     assert 200 == response.status
     assert 60 == response.json["default_cache_ttl"]
 

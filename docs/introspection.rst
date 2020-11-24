@@ -89,10 +89,10 @@ Add ``?all=1`` to include details of the default plugins baked into Datasette.
 
 .. _JsonDataView_config:
 
-/-/config
----------
+/-/settings
+-----------
 
-Shows the :ref:`config` options for this instance of Datasette. `Config example <https://fivethirtyeight.datasettes.com/-/config>`_:
+Shows the :ref:`config` options for this instance of Datasette. `Settings example <https://fivethirtyeight.datasettes.com/-/settings>`_:
 
 .. code-block:: json
 
@@ -110,7 +110,7 @@ Shows the :ref:`config` options for this instance of Datasette. `Config example 
 /-/databases
 ------------
 
-Shows currently attached databases. `Databases example <https://latest.datasette.io/-/config>`_:
+Shows currently attached databases. `Databases example <https://latest.datasette.io/-/databases>`_:
 
 .. code-block:: json
 

@@ -177,7 +177,7 @@ def test_version():
 def test_setting(ensure_eventloop):
     runner = CliRunner()
     result = runner.invoke(
-        cli, ["--setting", "default_page_size", "5", "--get", "/-/config.json"]
+        cli, ["--setting", "default_page_size", "5", "--get", "/-/settings.json"]
     )
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["default_page_size"] == 5
@@ -194,7 +194,7 @@ def test_config_deprecated(ensure_eventloop):
     # The --config option should show a deprecation message
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(
-        cli, ["--config", "allow_download:off", "--get", "/-/config.json"]
+        cli, ["--config", "allow_download:off", "--get", "/-/settings.json"]
     )
     assert result.exit_code == 0
     assert not json.loads(result.output)["allow_download"]

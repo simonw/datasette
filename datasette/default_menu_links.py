@@ -22,8 +22,8 @@ def menu_links(datasette, actor):
                 "label": "Metadata",
             },
             {
-                "href": datasette.urls.path("/-/config"),
-                "label": "Config",
+                "href": datasette.urls.path("/-/settings"),
+                "label": "Settings",
             },
             {
                 "href": datasette.urls.path("/-/permissions"),

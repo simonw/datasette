@@ -66,6 +66,7 @@ from .utils.asgi import (
     Forbidden,
     NotFound,
     Request,
+    Response,
     asgi_static,
     asgi_send,
     asgi_send_html,
@@ -884,8 +885,16 @@ class Datasette:
             r"/-/plugins(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_view(self, "config.json", lambda: self._config),
-            r"/-/config(?P<as_format>(\.json)?)$",
+            JsonDataView.as_view(self, "settings.json", lambda: self._config),
+            r"/-/settings(?P<as_format>(\.json)?)$",
+        )
+        add_route(
+            permanent_redirect("/-/settings.json"),
+            r"/-/config.json",
+        )
+        add_route(
+            permanent_redirect("/-/settings"),
+            r"/-/config",
         )
         add_route(
             JsonDataView.as_view(self, "threads.json", self._threads),
@@ -1222,6 +1231,13 @@ def wrap_view(view_fn, datasette):
             return response
 
     return async_view_fn
+
+
+def permanent_redirect(path):
+    return wrap_view(
+        lambda request, send: Response.redirect(path, status=301),
+        datasette=None,
+    )
 
 
 _curly_re = re.compile(r"(\{.*?\})")

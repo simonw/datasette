@@ -378,7 +378,7 @@ def view_instance_client():
         "/-/metadata",
         "/-/versions",
         "/-/plugins",
-        "/-/config",
+        "/-/settings",
         "/-/threads",
         "/-/databases",
         "/-/actor",

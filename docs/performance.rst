@@ -56,7 +56,7 @@ Using a caching proxy in this way could enable a Datasette-backed visualization 
 
 Datasette's integration with HTTP caches can be enabled using a combination of configuration options and querystring arguments.
 
-The :ref:`config_default_cache_ttl` setting sets the default HTTP cache TTL for all Datasette pages. This is 5 seconds unless you change it - you can set it to 0 if you wish to disable HTTP caching entirely.
+The :ref:`settings_default_cache_ttl` setting sets the default HTTP cache TTL for all Datasette pages. This is 5 seconds unless you change it - you can set it to 0 if you wish to disable HTTP caching entirely.
 
 You can also change the cache timeout on a per-request basis using the ``?_ttl=10`` querystring parameter. This can be useful when you are working with the Datasette JSON API - you may decide that a specific query can be cached for a longer time, or maybe you need to set ``?_ttl=0`` for some requests for example if you are running a SQL ``order by random()`` query.
 
@@ -65,9 +65,9 @@ Hashed URL mode
 
 When you open a database file in immutable mode using the ``-i`` option, Datasette calculates a SHA-256 hash of the contents of that file on startup. This content hash can then optionally be used to create URLs that are guaranteed to change if the contents of the file changes in the future. This results in URLs that can then be cached indefinitely by both browsers and caching proxies - an enormous potential performance optimization.
 
-You can enable these hashed URLs in two ways: using the :ref:`config_hash_urls` configuration setting (which affects all requests to Datasette) or via the ``?_hash=1`` querystring parameter (which only applies to the current request).
+You can enable these hashed URLs in two ways: using the :ref:`settings_hash_urls` configuration setting (which affects all requests to Datasette) or via the ``?_hash=1`` querystring parameter (which only applies to the current request).
 
-With hashed URLs enabled, any request to e.g. ``/mydatabase/mytable`` will 302 redirect to ``mydatabase-455fe3a/mytable``. The URL containing the hash will be served with a very long cache expire header - configured using :ref:`config_default_cache_ttl_hashed` which defaults to 365 days.
+With hashed URLs enabled, any request to e.g. ``/mydatabase/mytable`` will 302 redirect to ``mydatabase-455fe3a/mytable``. The URL containing the hash will be served with a very long cache expire header - configured using :ref:`settings_default_cache_ttl_hashed` which defaults to 365 days.
 
 Since these responses are cached for a long time, you may wish to build API clients against the non-hashed version of these URLs. These 302 redirects are served extremely quickly, so this should still be a performant way to work against the Datasette API.
 

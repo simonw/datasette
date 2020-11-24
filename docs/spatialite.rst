@@ -164,7 +164,7 @@ To see a more interesting example, try ordering the records with the longest geo
 
     datasette rivers-database.db \
         --load-extension=/usr/local/lib/mod_spatialite.dylib \
-        --config sql_time_limit_ms:10000
+        --setting sql_time_limit_ms 10000
 
 Now try the following query:
 

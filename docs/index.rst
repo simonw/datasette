@@ -51,7 +51,7 @@ Contents
    full_text_search
    spatialite
    metadata
-   config
+   settings
    introspection
    custom_templates
    plugins

@@ -240,7 +240,7 @@ Building URLs within plugins
 
 Plugins that define their own custom user interface elements may need to link to other pages within Datasette.
 
-This can be a bit tricky if the Datasette instance is using the :ref:`config_base_url` configuration setting to run behind a proxy, since that can cause Datasette's URLs to include an additional prefix.
+This can be a bit tricky if the Datasette instance is using the :ref:`setting_base_url` configuration setting to run behind a proxy, since that can cause Datasette's URLs to include an additional prefix.
 
 The ``datasette.urls`` object provides internal methods for correctly generating URLs to different pages within Datasette, taking any ``base_url`` configuration into account.
 

@@ -82,91 +82,85 @@ app_root = Path(__file__).parent.parent
 
 MEMORY = object()
 
-ConfigOption = collections.namedtuple("ConfigOption", ("name", "default", "help"))
-CONFIG_OPTIONS = (
-    ConfigOption("default_page_size", 100, "Default page size for the table view"),
-    ConfigOption(
+Setting = collections.namedtuple("Setting", ("name", "default", "help"))
+SETTINGS = (
+    Setting("default_page_size", 100, "Default page size for the table view"),
+    Setting(
         "max_returned_rows",
         1000,
         "Maximum rows that can be returned from a table or custom query",
     ),
-    ConfigOption(
+    Setting(
         "num_sql_threads",
         3,
         "Number of threads in the thread pool for executing SQLite queries",
     ),
-    ConfigOption(
-        "sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"
-    ),
-    ConfigOption(
+    Setting("sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"),
+    Setting(
         "default_facet_size", 30, "Number of values to return for requested facets"
     ),
-    ConfigOption(
-        "facet_time_limit_ms", 200, "Time limit for calculating a requested facet"
-    ),
-    ConfigOption(
+    Setting("facet_time_limit_ms", 200, "Time limit for calculating a requested facet"),
+    Setting(
         "facet_suggest_time_limit_ms",
         50,
         "Time limit for calculating a suggested facet",
     ),
-    ConfigOption(
+    Setting(
         "hash_urls",
         False,
         "Include DB file contents hash in URLs, for far-future caching",
     ),
-    ConfigOption(
+    Setting(
         "allow_facet",
         True,
         "Allow users to specify columns to facet using ?_facet= parameter",
     ),
-    ConfigOption(
+    Setting(
         "allow_download",
         True,
         "Allow users to download the original SQLite database files",
     ),
-    ConfigOption("suggest_facets", True, "Calculate and display suggested facets"),
-    ConfigOption(
+    Setting("suggest_facets", True, "Calculate and display suggested facets"),
+    Setting(
         "default_cache_ttl",
         5,
         "Default HTTP cache TTL (used in Cache-Control: max-age= header)",
     ),
-    ConfigOption(
+    Setting(
         "default_cache_ttl_hashed",
         365 * 24 * 60 * 60,
         "Default HTTP cache TTL for hashed URL pages",
     ),
-    ConfigOption(
-        "cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"
-    ),
-    ConfigOption(
+    Setting("cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"),
+    Setting(
         "allow_csv_stream",
         True,
         "Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)",
     ),
-    ConfigOption(
+    Setting(
         "max_csv_mb",
         100,
         "Maximum size allowed for CSV export in MB - set 0 to disable this limit",
     ),
-    ConfigOption(
+    Setting(
         "truncate_cells_html",
         2048,
         "Truncate cells longer than this in HTML table view - set 0 to disable",
     ),
-    ConfigOption(
+    Setting(
         "force_https_urls",
         False,
         "Force URLs in API output to always use https:// protocol",
     ),
-    ConfigOption(
+    Setting(
         "template_debug",
         False,
         "Allow display of template debug information with ?_context=1",
     ),
-    ConfigOption("base_url", "/", "Datasette URLs should use this base path"),
+    Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
 
-DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
+DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 
 
 async def favicon(request, send):
@@ -270,7 +264,7 @@ class Datasette:
             raise StartupError("config.json should be renamed to settings.json")
         if config_dir and (config_dir / "settings.json").exists() and not config:
             config = json.load((config_dir / "settings.json").open())
-        self._config = dict(DEFAULT_CONFIG, **(config or {}))
+        self._config = dict(DEFAULT_SETTINGS, **(config or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
@@ -358,7 +352,7 @@ class Datasette:
 
     def config_dict(self):
         # Returns a fully resolved config dictionary, useful for templates
-        return {option.name: self.config(option.name) for option in CONFIG_OPTIONS}
+        return {option.name: self.config(option.name) for option in SETTINGS}
 
     def metadata(self, key=None, database=None, table=None, fallback=True):
         """

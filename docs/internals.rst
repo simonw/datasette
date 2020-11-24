@@ -350,7 +350,7 @@ Returns the absolute URL for the given path, including the protocol and host. Fo
     absolute_url = datasette.absolute_url(request, "/dbname/table.json")
     # Would return "http://localhost:8001/dbname/table.json"
 
-The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`config_force_https_urls` configuration setting is taken into account.
+The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`settings_force_https_urls` configuration setting is taken into account.
 
 .. _internals_datasette_client:
 
@@ -397,7 +397,7 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
         )
     ).json()
 
-``datasette.client`` methods automatically take the current :ref:`config_base_url` setting into account, whether or not you use the ``datasette.urls`` family of methods to construct the path.
+``datasette.client`` methods automatically take the current :ref:`setting_base_url` setting into account, whether or not you use the ``datasette.urls`` family of methods to construct the path.
 
 For documentation on available ``**kwargs`` options and the shape of the HTTPX Response object refer to the `HTTPX Async documentation <https://www.python-httpx.org/async/>`__.
 
@@ -406,7 +406,7 @@ For documentation on available ``**kwargs`` options and the shape of the HTTPX R
 datasette.urls
 --------------
 
-The ``datasette.urls`` object contains methods for building URLs to pages within Datasette. Plugins should use this to link to pages, since these methods take into account any :ref:`config_base_url` configuration setting that might be in effect.
+The ``datasette.urls`` object contains methods for building URLs to pages within Datasette. Plugins should use this to link to pages, since these methods take into account any :ref:`setting_base_url` configuration setting that might be in effect.
 
 ``datasette.urls.instance(format=None)``
     Returns the URL to the Datasette instance root page. This is usually ``"/"``.

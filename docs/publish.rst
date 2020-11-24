@@ -135,7 +135,7 @@ If you have docker installed (e.g. using `Docker for Mac <https://www.docker.com
 
 Here's example output for the package command::
 
-    $ datasette package parlgov.db --extra-options="--config sql_time_limit_ms:2500"
+    $ datasette package parlgov.db --extra-options="--setting sql_time_limit_ms 2500"
     Sending build context to Docker daemon  4.459MB
     Step 1/7 : FROM python:3
      ---> 79e1dc9af1c1
@@ -154,7 +154,7 @@ Here's example output for the package command::
     Step 6/7 : EXPOSE 8001
      ---> Using cache
      ---> 8e83844b0fed
-    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --config sql_time_limit_ms:2500
+    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --setting sql_time_limit_ms 2500
      ---> Using cache
      ---> 1bd380ea8af3
     Successfully built 1bd380ea8af3

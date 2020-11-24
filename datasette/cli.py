@@ -12,7 +12,7 @@ from subprocess import call
 import sys
 from runpy import run_module
 import webbrowser
-from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
+from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, pm
 from .utils import (
     StartupError,
     check_connection,
@@ -39,7 +39,7 @@ class Config(click.ParamType):
             self.fail(f'"{config}" should be name:value', param, ctx)
             return
         name, value = config.split(":", 1)
-        if name not in DEFAULT_CONFIG:
+        if name not in DEFAULT_SETTINGS:
             self.fail(
                 f"{name} is not a valid option (--help-config to see all)",
                 param,
@@ -47,7 +47,7 @@ class Config(click.ParamType):
             )
             return
         # Type checking
-        default = DEFAULT_CONFIG[name]
+        default = DEFAULT_SETTINGS[name]
         if isinstance(default, bool):
             try:
                 return name, value_as_boolean(value)
@@ -72,7 +72,7 @@ class Setting(CompositeParamType):
 
     def convert(self, config, param, ctx):
         name, value = config
-        if name not in DEFAULT_CONFIG:
+        if name not in DEFAULT_SETTINGS:
             self.fail(
                 f"{name} is not a valid option (--help-config to see all)",
                 param,
@@ -80,7 +80,7 @@ class Setting(CompositeParamType):
             )
             return
         # Type checking
-        default = DEFAULT_CONFIG[name]
+        default = DEFAULT_SETTINGS[name]
         if isinstance(default, bool):
             try:
                 return name, value_as_boolean(value)
@@ -432,7 +432,7 @@ def serve(
             formatter.write_dl(
                 [
                     (option.name, f"{option.help} (default={option.default})")
-                    for option in CONFIG_OPTIONS
+                    for option in SETTINGS
                 ]
             )
         click.echo(formatter.getvalue())

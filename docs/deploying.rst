@@ -58,7 +58,7 @@ Add a random value for the ``DATASETTE_SECRET`` - this will be used to sign Data
 
     $ python3 -c 'import secrets; print(secrets.token_hex(32))'
 
-This configuration will run Datasette against all database files contained in the ``/home/ubunt/datasette-root`` directory. If that directory contains a ``metadata.yml`` (or ``.json``) file or a ``templates/`` or ``plugins/`` sub-directory those will automatically be loaded by Datasette - see :ref:`config_dir` for details.
+This configuration will run Datasette against all database files contained in the ``/home/ubunt/datasette-root`` directory. If that directory contains a ``metadata.yml`` (or ``.json``) file or a ``templates/`` or ``plugins/`` sub-directory those will automatically be loaded by Datasette - see :ref:`settings_dir` for details.
 
 You can start the Datasette process running using the following::
 
@@ -101,7 +101,7 @@ The ``Procfile`` lets the hosting platform know how to run the command that serv
 
     web: datasette . -h 0.0.0.0 -p $PORT --cors
 
-The ``$PORT`` environment variable is provided by the hosting platform. ``--cors`` enables CORS requests from JavaScript running on other websites to your domain - omit this if you don't want to allow CORS. You can add additional Datasette :ref:`config` options here too.
+The ``$PORT`` environment variable is provided by the hosting platform. ``--cors`` enables CORS requests from JavaScript running on other websites to your domain - omit this if you don't want to allow CORS. You can add additional Datasette :ref:`settings` options here too.
 
 These two files should be enough to deploy Datasette on any host that supports buildpacks. Datasette will serve any SQLite files that are included in the root directory of the application.
 
@@ -118,9 +118,9 @@ Running Datasette behind a proxy
 
 You may wish to run Datasette behind an Apache or nginx proxy, using a path within your existing site.
 
-You can use the :ref:`config_base_url` configuration setting to tell Datasette to serve traffic with a specific URL prefix. For example, you could run Datasette like this::
+You can use the :ref:`setting_base_url` configuration setting to tell Datasette to serve traffic with a specific URL prefix. For example, you could run Datasette like this::
 
-    datasette my-database.db --config base_url:/my-datasette/ -p 8009
+    datasette my-database.db --setting base_url /my-datasette/ -p 8009
 
 This will run Datasette with the following URLs:
 

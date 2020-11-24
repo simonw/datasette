@@ -24,13 +24,13 @@ def get_labels(filename):
 
 
 @pytest.fixture(scope="session")
-def config_headings():
-    return get_headings((docs_path / "config.rst").open().read(), "~")
+def settings_headings():
+    return get_headings((docs_path / "settings.rst").open().read(), "~")
 
 
-@pytest.mark.parametrize("config", app.CONFIG_OPTIONS)
-def test_config_options_are_documented(config_headings, config):
-    assert config.name in config_headings
+@pytest.mark.parametrize("setting", app.SETTINGS)
+def test_settings_are_documented(settings_headings, setting):
+    assert setting.name in settings_headings
 
 
 @pytest.mark.parametrize(

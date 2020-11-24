@@ -1020,7 +1020,7 @@ This example adds a new menu item but only if the signed in user is ``"root"``:
                 {"href": datasette.urls.path("/-/edit-schema"), "label": "Edit schema"},
             ]
 
-Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`config_base_url` setting into account.
+Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`setting_base_url` setting into account.
 
 
 .. _plugin_hook_table_actions:

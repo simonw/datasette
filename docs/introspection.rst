@@ -92,7 +92,7 @@ Add ``?all=1`` to include details of the default plugins baked into Datasette.
 /-/settings
 -----------
 
-Shows the :ref:`config` options for this instance of Datasette. `Settings example <https://fivethirtyeight.datasettes.com/-/settings>`_:
+Shows the :ref:`settings` for this instance of Datasette. `Settings example <https://fivethirtyeight.datasettes.com/-/settings>`_:
 
 .. code-block:: json
 

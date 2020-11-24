@@ -23,7 +23,7 @@ file, which looks like this and has the following options:
   the ``city_id`` column is accompanied by a ``city_id_label`` column.
 
 * **stream all rows** - by default CSV files only contain the first
-  :ref:`config_max_returned_rows` records. This option will cause Datasette to
+  :ref:`settings_max_returned_rows` records. This option will cause Datasette to
   loop through every matching record and return them as a single CSV file.
 
 You can try that out on https://latest.datasette.io/fixtures/facetable?_size=4
@@ -40,9 +40,9 @@ Since databases can get pretty large, by default this option is capped at 100MB 
 if a table returns more than 100MB of data the last line of the CSV will be a
 truncation error message.
 
-You can increase or remove this limit using the :ref:`config_max_csv_mb` config
+You can increase or remove this limit using the :ref:`settings_max_csv_mb` config
 setting. You can also disable the CSV export feature entirely using
-:ref:`config_allow_csv_stream`.
+:ref:`settings_allow_csv_stream`.
 
 A note on URLs
 --------------

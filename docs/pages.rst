@@ -66,7 +66,7 @@ Row
 
 Every row in every Datasette table has its own URL. This means individual records can be linked to directly.
 
-Table cells with extremely long text contents are truncated on the table view according to the :ref:`config_truncate_cells_html` setting. If a cell has been truncated the full length version of that cell will be available on the row page.
+Table cells with extremely long text contents are truncated on the table view according to the :ref:`settings_truncate_cells_html` setting. If a cell has been truncated the full length version of that cell will be available on the row page.
 
 Rows which are the targets of foreign key references from other tables will show a link to a filtered search for all records that reference that row. Here's an example from the Registers of Members Interests database:
 

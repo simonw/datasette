@@ -49,7 +49,7 @@ The new :ref:`internals_datasette_urls` family of methods can be used to generat
 Running Datasette behind a proxy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`config_base_url` configuration option is designed to help run Datasette on a specific path behind a proxy - for example if you want to run an instance of Datasette at ``/my-datasette/`` within your existing site's URL hierarchy, proxied behind nginx or Apache.
+The :ref:`setting_base_url` configuration option is designed to help run Datasette on a specific path behind a proxy - for example if you want to run an instance of Datasette at ``/my-datasette/`` within your existing site's URL hierarchy, proxied behind nginx or Apache.
 
 Support for this configuration option has been greatly improved (`#1023 <https://github.com/simonw/datasette/issues/1023>`__), and guidelines for using it are now available in a new documentation section on :ref:`deploying_proxy`. (`#1027 <https://github.com/simonw/datasette/issues/1027>`__)
 
@@ -353,9 +353,9 @@ Signed values and secrets
 
 Both flash messages and user authentication needed a way to sign values and set signed cookies. Two new methods are now available for plugins to take advantage of this mechanism: :ref:`datasette_sign` and :ref:`datasette_unsign`.
 
-Datasette will generate a secret automatically when it starts up, but to avoid resetting the secret (and hence invalidating any cookies) every time the server restarts you should set your own secret. You can pass a secret to Datasette using the new ``--secret`` option or with a ``DATASETTE_SECRET`` environment variable. See :ref:`config_secret` for more details.
+Datasette will generate a secret automatically when it starts up, but to avoid resetting the secret (and hence invalidating any cookies) every time the server restarts you should set your own secret. You can pass a secret to Datasette using the new ``--secret`` option or with a ``DATASETTE_SECRET`` environment variable. See :ref:`settings_secret` for more details.
 
-You can also set a secret when you deploy Datasette using ``datasette publish`` or ``datasette package`` - see :ref:`config_publish_secrets`.
+You can also set a secret when you deploy Datasette using ``datasette publish`` or ``datasette package`` - see :ref:`settings_publish_secrets`.
 
 Plugins can now sign values and verify their signatures using the :ref:`datasette.sign() <datasette_sign>` and :ref:`datasette.unsign() <datasette_unsign>` methods.
 
@@ -450,7 +450,7 @@ A small release which provides improved internal methods for use in plugins, alo
 
 You can now create :ref:`custom pages <custom_pages>` within your Datasette instance using a custom template file. For example, adding a template file called ``templates/pages/about.html`` will result in a new page being served at ``/about`` on your instance. See the :ref:`custom pages documentation <custom_pages>` for full details, including how to return custom HTTP headers, redirects and status codes. (`#648 <https://github.com/simonw/datasette/issues/648>`__)
 
-:ref:`config_dir` (`#731 <https://github.com/simonw/datasette/issues/731>`__) allows you to define a custom Datasette instance as a directory. So instead of running the following::
+:ref:`settings_dir` (`#731 <https://github.com/simonw/datasette/issues/731>`__) allows you to define a custom Datasette instance as a directory. So instead of running the following::
 
     $ datasette one.db two.db \
       --metadata.json \
@@ -480,7 +480,7 @@ Also in this release:
 * Datasette :ref:`metadata` can now be provided as a YAML file as an optional alternative to JSON. See :ref:`metadata_yaml`. (`#713 <https://github.com/simonw/datasette/issues/713>`__)
 * Removed support for ``datasette publish now``, which used the the now-retired Zeit Now v1 hosting platform. A new plugin, `datasette-publish-now <https://github.com/simonw/datasette-publish-now>`__, can be installed to publish data to Zeit (`now Vercel <https://vercel.com/blog/zeit-is-now-vercel>`__) Now v2. (`#710 <https://github.com/simonw/datasette/issues/710>`__)
 * Fixed a bug where the ``extra_template_vars(request, view_name)`` plugin hook was not receiving the correct ``view_name``. (`#716 <https://github.com/simonw/datasette/issues/716>`__)
-* Variables added to the template context by the ``extra_template_vars()`` plugin hook are now shown in the ``?_context=1`` debugging mode (see :ref:`config_template_debug`). (`#693 <https://github.com/simonw/datasette/issues/693>`__)
+* Variables added to the template context by the ``extra_template_vars()`` plugin hook are now shown in the ``?_context=1`` debugging mode (see :ref:`settings_template_debug`). (`#693 <https://github.com/simonw/datasette/issues/693>`__)
 * Fixed a bug where the "templates considered" HTML comment was no longer being displayed. (`#689 <https://github.com/simonw/datasette/issues/689>`__)
 * Fixed a ``datasette publish`` bug where ``--plugin-secret`` would over-ride plugin configuration in the provided ``metadata.json`` file. (`#724 <https://github.com/simonw/datasette/issues/724>`__)
 * Added a new CSS class for customizing the canned query page. (`#727 <https://github.com/simonw/datasette/issues/727>`__)
@@ -490,7 +490,7 @@ Also in this release:
 0.39 (2020-03-24)
 -----------------
 
-* New :ref:`config_base_url` configuration setting for serving up the correct links while running Datasette under a different URL prefix. (`#394 <https://github.com/simonw/datasette/issues/394>`__)
+* New :ref:`setting_base_url` configuration setting for serving up the correct links while running Datasette under a different URL prefix. (`#394 <https://github.com/simonw/datasette/issues/394>`__)
 * New metadata settings ``"sort"`` and ``"sort_desc"`` for setting the default sort order for a table. See :ref:`metadata_default_sort`. (`#702 <https://github.com/simonw/datasette/issues/702>`__)
 * Sort direction arrow now displays by default on the primary key. This means you only have to click once (not twice) to sort in reverse order. (`#677 <https://github.com/simonw/datasette/issues/677>`__)
 * New ``await Request(scope, receive).post_vars()`` method for accessing POST form variables. (`#700 <https://github.com/simonw/datasette/issues/700>`__)
@@ -565,7 +565,7 @@ Also in this release:
 * asyncio task information is now included on the ``/-/threads`` debug page
 * Bumped Uvicorn dependency 0.11
 * You can now use ``--port 0`` to listen on an available port
-* New :ref:`config_template_debug` setting for debugging templates, e.g. https://latest.datasette.io/fixtures/roadside_attractions?_context=1 (`#654 <https://github.com/simonw/datasette/issues/654>`__)
+* New :ref:`settings_template_debug` setting for debugging templates, e.g. https://latest.datasette.io/fixtures/roadside_attractions?_context=1 (`#654 <https://github.com/simonw/datasette/issues/654>`__)
 
 .. _v0_32:
 
@@ -1000,7 +1000,7 @@ Check out the :ref:`CSV export documentation <csv_export>` for more details, or
 try the feature out on
 https://fivethirtyeight.datasettes.com/fivethirtyeight/bechdel%2Fmovies
 
-If your table has more than :ref:`config_max_returned_rows` (default 1,000)
+If your table has more than :ref:`settings_max_returned_rows` (default 1,000)
 Datasette provides the option to *stream all rows*. This option takes advantage
 of async Python and Datasette's efficient :ref:`pagination <pagination>` to
 iterate through the entire matching result set and stream it back as a
@@ -1020,7 +1020,7 @@ table, using the new ``_labels=on`` querystring option. See
 New configuration settings
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Datasette's :ref:`config` now also supports boolean settings. A number of new
+Datasette's :ref:`settings` now also supports boolean settings. A number of new
 configuration options have been added:
 
 * ``num_sql_threads`` - the number of threads used to execute SQLite queries. Defaults to 3.

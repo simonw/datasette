@@ -4,6 +4,7 @@ from .fixtures import (
     TestClient as _TestClient,
     EXPECTED_PLUGINS,
 )
+import asyncio
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.cli import cli, serve
 from datasette.version import __version__
@@ -15,6 +16,13 @@ import pytest
 import sys
 import textwrap
 from unittest import mock
+
+
+@pytest.fixture
+def ensure_eventloop():
+    # Workaround for "Event loop is closed" error
+    if asyncio.get_event_loop().is_closed():
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
 
 def test_inspect_cli(app_client):
@@ -115,6 +123,7 @@ def test_metadata_yaml():
         static=[],
         memory=False,
         config=[],
+        settings=[],
         secret=None,
         root=False,
         version_note=None,
@@ -163,3 +172,30 @@ def test_version():
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.output == f"cli, version {__version__}\n"
+
+
+def test_setting(ensure_eventloop):
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["--setting", "default_page_size", "5", "--get", "/-/config.json"]
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["default_page_size"] == 5
+
+
+def test_setting_type_validation(ensure_eventloop):
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(cli, ["--setting", "default_page_size", "dog"])
+    assert result.exit_code == 2
+    assert '"default_page_size" should be an integer' in result.stderr
+
+
+def test_config_deprecated(ensure_eventloop):
+    # The --config option should show a deprecation message
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        cli, ["--config", "allow_download:off", "--get", "/-/config.json"]
+    )
+    assert result.exit_code == 0
+    assert not json.loads(result.output)["allow_download"]
+    assert "will be deprecated in" in result.stderr

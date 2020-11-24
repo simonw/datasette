@@ -25,9 +25,10 @@ Options:
   --plugins-dir DIRECTORY   Path to directory containing custom plugins
   --static MOUNT:DIRECTORY  Serve static files from this directory at /MOUNT/...
   --memory                  Make :memory: database available
-  --config CONFIG           Set config option using configname:value
-                            docs.datasette.io/en/stable/config.html
+  --config CONFIG           Deprecated: set config option using configname:value. Use
+                            --setting instead.
 
+  --setting SETTING...      Setting, see docs.datasette.io/en/stable/config.html
   --secret TEXT             Secret used for signing secure values, such as signed
                             cookies
 

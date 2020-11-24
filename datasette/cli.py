@@ -2,6 +2,7 @@ import asyncio
 import uvicorn
 import click
 from click import formatting
+from click.types import CompositeParamType
 from click_default_group import DefaultGroup
 import json
 import os
@@ -29,6 +30,7 @@ from .version import __version__
 
 
 class Config(click.ParamType):
+    # This will be removed in Datasette 1.0 in favour of class Setting
     name = "config"
 
     def convert(self, config, param, ctx):
@@ -36,6 +38,39 @@ class Config(click.ParamType):
             self.fail(f'"{config}" should be name:value', param, ctx)
             return
         name, value = config.split(":", 1)
+        if name not in DEFAULT_CONFIG:
+            self.fail(
+                f"{name} is not a valid option (--help-config to see all)",
+                param,
+                ctx,
+            )
+            return
+        # Type checking
+        default = DEFAULT_CONFIG[name]
+        if isinstance(default, bool):
+            try:
+                return name, value_as_boolean(value)
+            except ValueAsBooleanError:
+                self.fail(f'"{name}" should be on/off/true/false/1/0', param, ctx)
+                return
+        elif isinstance(default, int):
+            if not value.isdigit():
+                self.fail(f'"{name}" should be an integer', param, ctx)
+                return
+            return name, int(value)
+        elif isinstance(default, str):
+            return name, value
+        else:
+            # Should never happen:
+            self.fail("Invalid option")
+
+
+class Setting(CompositeParamType):
+    name = "setting"
+    arity = 2
+
+    def convert(self, config, param, ctx):
+        name, value = config
         if name not in DEFAULT_CONFIG:
             self.fail(
                 f"{name} is not a valid option (--help-config to see all)",
@@ -330,7 +365,14 @@ def uninstall(packages, yes):
 @click.option(
     "--config",
     type=Config(),
-    help="Set config option using configname:value docs.datasette.io/en/stable/config.html",
+    help="Deprecated: set config option using configname:value. Use --setting instead.",
+    multiple=True,
+)
+@click.option(
+    "--setting",
+    "settings",
+    type=Setting(),
+    help="Setting, see docs.datasette.io/en/stable/config.html",
     multiple=True,
 )
 @click.option(
@@ -372,6 +414,7 @@ def serve(
     static,
     memory,
     config,
+    settings,
     secret,
     root,
     get,
@@ -410,6 +453,15 @@ def serve(
     if metadata:
         metadata_data = parse_metadata(metadata.read())
 
+    combined_config = {}
+    if config:
+        click.echo(
+            "--config name:value will be deprecated in Datasette 1.0, use --setting name value instead",
+            err=True,
+        )
+        combined_config.update(config)
+    combined_config.update(settings)
+
     kwargs = dict(
         immutables=immutable,
         cache_headers=not reload,
@@ -420,7 +472,7 @@ def serve(
         template_dir=template_dir,
         plugins_dir=plugins_dir,
         static_mounts=static,
-        config=dict(config),
+        config=combined_config,
         memory=memory,
         secret=secret,
         version_note=version_note,

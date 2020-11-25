@@ -47,11 +47,10 @@ reserved_words = set(
     ).split()
 )
 
-SPATIALITE_DOCKERFILE_EXTRAS = r"""
+APT_GET_DOCKERFILE_EXTRAS = r"""
 RUN apt-get update && \
-    apt-get install -y python3-dev gcc libsqlite3-mod-spatialite && \
+    apt-get install -y {} && \
     rm -rf /var/lib/apt/lists/*
-ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
 """
 
 # Can replace with sqlite-utils when I add that dependency
@@ -308,10 +307,12 @@ def make_dockerfile(
     secret,
     environment_variables=None,
     port=8001,
+    apt_get_extras=None,
 ):
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
     environment_variables = environment_variables or {}
     environment_variables["DATASETTE_SECRET"] = secret
+    apt_get_extras = apt_get_extras or []
     for filename in files:
         cmd.extend(["-i", filename])
     cmd.extend(["--cors", "--inspect-file", "inspect-data.json"])
@@ -340,28 +341,38 @@ def make_dockerfile(
     else:
         install = ["datasette"] + list(install)
 
+    apt_get_extras_ = []
+    apt_get_extras_.extend(apt_get_extras)
+    apt_get_extras = apt_get_extras_
+    if spatialite:
+        apt_get_extras.extend(["python3-dev", "gcc", "libsqlite3-mod-spatialite"])
+        environment_variables[
+            "SQLITE_EXTENSIONS"
+        ] = "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
     return """
 FROM python:3.8
 COPY . /app
 WORKDIR /app
-{spatialite_extras}
+{apt_get_extras}
 {environment_variables}
 RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
 ENV PORT {port}
 EXPOSE {port}
 CMD {cmd}""".format(
+        apt_get_extras=APT_GET_DOCKERFILE_EXTRAS.format(" ".join(apt_get_extras))
+        if apt_get_extras
+        else "",
         environment_variables="\n".join(
             [
                 "ENV {} '{}'".format(key, value)
                 for key, value in environment_variables.items()
             ]
         ),
-        files=" ".join(files),
-        cmd=cmd,
         install_from=" ".join(install),
-        spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else "",
+        files=" ".join(files),
         port=port,
+        cmd=cmd,
     ).strip()
 
 
@@ -382,6 +393,7 @@ def temporary_docker_directory(
     extra_metadata=None,
     environment_variables=None,
     port=8001,
+    apt_get_extras=None,
 ):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
@@ -415,6 +427,7 @@ def temporary_docker_directory(
             secret,
             environment_variables,
             port=port,
+            apt_get_extras=apt_get_extras,
         )
         os.chdir(datasette_dir)
         if metadata_content:

@@ -36,6 +36,12 @@ def publish_subcommand(publish):
         callback=_validate_memory,
         help="Memory to allocate in Cloud Run, e.g. 1Gi",
     )
+    @click.option(
+        "--apt-get-install",
+        "apt_get_extras",
+        multiple=True,
+        help="Additional packages to apt-get install",
+    )
     def cloudrun(
         files,
         metadata,
@@ -60,6 +66,7 @@ def publish_subcommand(publish):
         spatialite,
         show_files,
         memory,
+        apt_get_extras,
     ):
         fail_if_publish_binary_not_installed(
             "gcloud", "Google Cloud", "https://cloud.google.com/sdk/"
@@ -122,6 +129,7 @@ def publish_subcommand(publish):
             secret,
             extra_metadata,
             environment_variables,
+            apt_get_extras=apt_get_extras,
         ):
             if show_files:
                 if os.path.exists("metadata.json"):

@@ -23,7 +23,7 @@ Configuration directory mode
 Normally you configure Datasette using command-line options. For a Datasette instance with custom templates, custom plugins, a static directory and several databases this can get quite verbose::
 
     $ datasette one.db two.db \
-        --metadata.json \
+        --metadata=metadata.json \
         --template-dir=templates/ \
         --plugins-dir=plugins \
         --static css:css

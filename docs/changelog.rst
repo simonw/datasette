@@ -453,7 +453,7 @@ You can now create :ref:`custom pages <custom_pages>` within your Datasette inst
 :ref:`settings_dir` (`#731 <https://github.com/simonw/datasette/issues/731>`__) allows you to define a custom Datasette instance as a directory. So instead of running the following::
 
     $ datasette one.db two.db \
-      --metadata.json \
+      --metadata=metadata.json \
       --template-dir=templates/ \
       --plugins-dir=plugins \
       --static css:css
@@ -770,7 +770,7 @@ Small changes
 0.28 (2019-05-19)
 -----------------
 
-A `salmagundi <https://adamj.eu/tech/2019/01/18/a-salmagundi-of-django-alpha-announcements/>`__ of new features! 
+A `salmagundi <https://adamj.eu/tech/2019/01/18/a-salmagundi-of-django-alpha-announcements/>`__ of new features!
 
 .. _v0_28_databases_that_change:
 

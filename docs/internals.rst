@@ -352,6 +352,8 @@ Returns the absolute URL for the given path, including the protocol and host. Fo
 
 The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`setting_force_https_urls` configuration setting is taken into account.
 
+.. _datasette_setting:
+
 .setting(key)
 -------------
 

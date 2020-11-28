@@ -25,6 +25,7 @@ Want to stay up-to-date with the project? Subscribe to the [Datasette Weekly new
 
 ## News
 
+ * 28th November 2020: [Datasette 0.52](https://docs.datasette.io/en/stable/changelog.html#v0-52) - `--config` is now `--setting`, new `database_actions` plugin hook, `datasette publish cloudrun --apt-get-install` option and several bug fixes.
  * 31st October 2020: [Datasette 0.51](https://docs.datasette.io/en/stable/changelog.html#v0-51) - A new visual design, plugin hooks for adding navigation options, better handling of binary data, URL building utility methods and better support for running Datasette behind a proxy. [Annotated release notes](https://simonwillison.net/2020/Nov/1/datasette-0-51/).
  * 9th October 2020: [Datasette 0.50](https://docs.datasette.io/en/stable/changelog.html#v0-50) - New column actions menu. `datasette.client` object for plugins to make internal API requests. Improved documentation on deploying Datasette. [Annotated release notes](https://simonwillison.net/2020/Oct/9/datasette-0-50/).
  * 14th September 2020: [Datasette 0.49](https://docs.datasette.io/en/stable/changelog.html#v0-49) - JSON API for writable canned queries, path parameters for custom pages. See also [Datasette 0.49: The annotated release notes](https://simonwillison.net/2020/Sep/15/datasette-0-49/).

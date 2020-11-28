@@ -4,6 +4,30 @@
 Changelog
 =========
 
+.. _v0_52:
+
+0.52 (2020-11-28)
+-----------------
+
+This release includes a number of changes relating to an internal rebranding effort: Datasette's **configuration** mechanism (things like ``datasette --config default_page_size:10``) has been renamed to **settings**.
+
+- New ``--setting default_page_size 10`` option as a replacement for ``--config default_page_size:10`` (note the lack of a colon). The ``--config`` option is deprecated but will continue working until Datasette 1.0. (`#992 <https://github.com/simonw/datasette/issues/992>`__)
+- The ``/-/config`` introspection page is now ``/-/settings``, and the previous page redirects to the new one. (`#1103 <https://github.com/simonw/datasette/issues/1103>`__)
+- The ``config.json`` file in :ref:`config_dir` is now called ``settings.json``. (`#1104 <https://github.com/simonw/datasette/issues/1104>`__)
+- The undocumented ``datasette.config()`` internal method has been replaced by a documented :ref:`datasette_setting` method. (`#1107 <https://github.com/simonw/datasette/issues/1107>`__)
+
+Also in this release:
+
+- New plugin hook: :ref:`plugin_hook_database_actions`, which adds menu items to a new cog menu shown at the top of the database page. (`#1077 <https://github.com/simonw/datasette/issues/1077>`__)
+- ``datasette publish cloudrun`` has a new ``--apt-get-install`` option that can be used to install additional Ubuntu packages as part of the deployment. This is useful for deploying the new `datasette-ripgrep plugin <https://github.com/simonw/datasette-ripgrep>`__. (`#1110 <https://github.com/simonw/datasette/issues/1110>`__)
+- Swept the documentation to remove words that minimize involved difficulty. (`#1089 <https://github.com/simonw/datasette/issues/1089>`__)
+
+And some bug fixes:
+
+- Foreign keys linking to rows with blank label columns now display as a hyphen, allowing those links to be clicked. (`#1086 <https://github.com/simonw/datasette/issues/1086>`__)
+- Fixed bug where row pages could sometimes 500 if the underlying queries exceeded a time limit. (`#1088 <https://github.com/simonw/datasette/issues/1088>`__)
+- Fixed a bug where the table action menu could appear partially obscured by the edge of the page. (`#1084 <https://github.com/simonw/datasette/issues/1084>`__)
+
 .. _v0_51_1:
 
 0.51.1 (2020-10-31)

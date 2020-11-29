@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_52_1:
+
+0.52.1 (2020-11-29)
+-------------------
+
+- Documentation on :ref:`testing_plugins` now recommends using :ref:`internals_datasette_client`. (`#1102 <https://github.com/simonw/datasette/issues/1102>`__)
+- Fix bug where compound foreign keys produced broken links. (`#1098 <https://github.com/simonw/datasette/issues/1098>`__)
+- ``datasette --load-module=spatialite`` now also checks for ``/usr/local/lib/mod_spatialite.so``. Thanks, Dan Peterson. (`#1114 <https://github.com/simonw/datasette/issues/1114>`__)
+
 .. _v0_52:
 
 0.52 (2020-11-28)

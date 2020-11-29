@@ -59,13 +59,28 @@ def test_serve_with_inspect_file_prepopulates_table_counts_cache():
         assert {"hithere": 44} == db.cached_table_counts
 
 
-def test_spatialite_error_if_attempt_to_open_spatialite():
-    runner = CliRunner()
-    result = runner.invoke(
-        cli, ["serve", str(pathlib.Path(__file__).parent / "spatialite.db")]
-    )
-    assert result.exit_code != 0
-    assert "trying to load a SpatiaLite database" in result.output
+@pytest.mark.parametrize(
+    "spatialite_paths,should_suggest_load_extension",
+    (
+        ([], False),
+        (["/tmp"], True),
+    ),
+)
+def test_spatialite_error_if_attempt_to_open_spatialite(
+    spatialite_paths, should_suggest_load_extension
+):
+    with mock.patch("datasette.utils.SPATIALITE_PATHS", spatialite_paths):
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["serve", str(pathlib.Path(__file__).parent / "spatialite.db")]
+        )
+        assert result.exit_code != 0
+        assert "It looks like you're trying to load a SpatiaLite" in result.output
+        suggestion = "--load-extension=spatialite"
+        if should_suggest_load_extension:
+            assert suggestion in result.output
+        else:
+            assert suggestion not in result.output
 
 
 @mock.patch("datasette.utils.SPATIALITE_PATHS", ["/does/not/exist"])

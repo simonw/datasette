@@ -16,6 +16,7 @@ from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, pm
 from .utils import (
     StartupError,
     check_connection,
+    find_spatialite,
     parse_metadata,
     ConnectionProblem,
     SpatialiteConnectionProblem,
@@ -537,10 +538,17 @@ async def check_databases(ds):
         try:
             await database.execute_fn(check_connection)
         except SpatialiteConnectionProblem:
+            suggestion = ""
+            try:
+                find_spatialite()
+                suggestion = "\n\nTry adding the --load-extension=spatialite option."
+            except SpatialiteNotFound:
+                pass
             raise click.UsageError(
                 "It looks like you're trying to load a SpatiaLite"
-                " database without first loading the SpatiaLite module."
-                "\n\nRead more: https://docs.datasette.io/en/stable/spatialite.html"
+                + " database without first loading the SpatiaLite module."
+                + suggestion
+                + "\n\nRead more: https://docs.datasette.io/en/stable/spatialite.html"
             )
         except ConnectionProblem as e:
             raise click.UsageError(

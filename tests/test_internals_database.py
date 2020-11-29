@@ -267,7 +267,7 @@ async def test_table_column_details(db, table, expected):
 @pytest.mark.asyncio
 async def test_get_all_foreign_keys(db):
     all_foreign_keys = await db.get_all_foreign_keys()
-    assert {
+    assert all_foreign_keys["roadside_attraction_characteristics"] == {
         "incoming": [],
         "outgoing": [
             {
@@ -281,8 +281,8 @@ async def test_get_all_foreign_keys(db):
                 "other_column": "pk",
             },
         ],
-    } == all_foreign_keys["roadside_attraction_characteristics"]
-    assert {
+    }
+    assert all_foreign_keys["attraction_characteristic"] == {
         "incoming": [
             {
                 "other_table": "roadside_attraction_characteristics",
@@ -291,7 +291,32 @@ async def test_get_all_foreign_keys(db):
             }
         ],
         "outgoing": [],
-    } == all_foreign_keys["attraction_characteristic"]
+    }
+    assert all_foreign_keys["compound_primary_key"] == {
+        # No incoming because these are compound foreign keys, which we currently ignore
+        "incoming": [],
+        "outgoing": [],
+    }
+    assert all_foreign_keys["foreign_key_references"] == {
+        "incoming": [],
+        "outgoing": [
+            {
+                "other_table": "primary_key_multiple_columns",
+                "column": "foreign_key_with_no_label",
+                "other_column": "id",
+            },
+            {
+                "other_table": "simple_primary_key",
+                "column": "foreign_key_with_blank_label",
+                "other_column": "id",
+            },
+            {
+                "other_table": "simple_primary_key",
+                "column": "foreign_key_with_label",
+                "other_column": "id",
+            },
+        ],
+    }
 
 
 @pytest.mark.asyncio

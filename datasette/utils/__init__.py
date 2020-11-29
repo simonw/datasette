@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import contextmanager
 import click
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, namedtuple, Counter
 import base64
 import hashlib
 import inspect
@@ -474,9 +474,25 @@ def get_outbound_foreign_keys(conn, table):
         if info is not None:
             id, seq, table_name, from_, to_, on_update, on_delete, match = info
             fks.append(
-                {"column": from_, "other_table": table_name, "other_column": to_}
+                {
+                    "column": from_,
+                    "other_table": table_name,
+                    "other_column": to_,
+                    "id": id,
+                    "seq": seq,
+                }
             )
-    return fks
+    # Filter out compound foreign keys by removing any where "id" is not unique
+    id_counts = Counter(fk["id"] for fk in fks)
+    return [
+        {
+            "column": fk["column"],
+            "other_table": fk["other_table"],
+            "other_column": fk["other_column"],
+        }
+        for fk in fks
+        if id_counts[fk["id"]] == 1
+    ]
 
 
 def get_all_foreign_keys(conn):
@@ -487,20 +503,21 @@ def get_all_foreign_keys(conn):
     for table in tables:
         table_to_foreign_keys[table] = {"incoming": [], "outgoing": []}
     for table in tables:
-        infos = conn.execute(f"PRAGMA foreign_key_list([{table}])").fetchall()
-        for info in infos:
-            if info is not None:
-                id, seq, table_name, from_, to_, on_update, on_delete, match = info
-                if table_name not in table_to_foreign_keys:
-                    # Weird edge case where something refers to a table that does
-                    # not actually exist
-                    continue
-                table_to_foreign_keys[table_name]["incoming"].append(
-                    {"other_table": table, "column": to_, "other_column": from_}
-                )
-                table_to_foreign_keys[table]["outgoing"].append(
-                    {"other_table": table_name, "column": from_, "other_column": to_}
-                )
+        fks = get_outbound_foreign_keys(conn, table)
+        for fk in fks:
+            table_name = fk["other_table"]
+            from_ = fk["column"]
+            to_ = fk["other_column"]
+            if table_name not in table_to_foreign_keys:
+                # Weird edge case where something refers to a table that does
+                # not actually exist
+                continue
+            table_to_foreign_keys[table_name]["incoming"].append(
+                {"other_table": table, "column": to_, "other_column": from_}
+            )
+            table_to_foreign_keys[table]["outgoing"].append(
+                {"other_table": table_name, "column": from_, "other_column": to_}
+            )
 
     return table_to_foreign_keys
 

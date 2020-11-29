@@ -388,9 +388,12 @@ CREATE TABLE foreign_key_references (
   foreign_key_with_label varchar(30),
   foreign_key_with_blank_label varchar(30),
   foreign_key_with_no_label varchar(30),
+  foreign_key_compound_pk1 varchar(30),
+  foreign_key_compound_pk2 varchar(30),
   FOREIGN KEY (foreign_key_with_label) REFERENCES simple_primary_key(id),
   FOREIGN KEY (foreign_key_with_blank_label) REFERENCES simple_primary_key(id),
   FOREIGN KEY (foreign_key_with_no_label) REFERENCES primary_key_multiple_columns(id)
+  FOREIGN KEY (foreign_key_compound_pk1, foreign_key_compound_pk2) REFERENCES compound_primary_key(pk1, pk2)
 );
 
 CREATE TABLE sortable (
@@ -624,8 +627,8 @@ INSERT INTO simple_primary_key VALUES (4, 'RENDER_CELL_DEMO');
 INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
 INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');
 
-INSERT INTO foreign_key_references VALUES (1, 1, 3, 1);
-INSERT INTO foreign_key_references VALUES (2, null, null, null);
+INSERT INTO foreign_key_references VALUES (1, 1, 3, 1, 'a', 'b');
+INSERT INTO foreign_key_references VALUES (2, null, null, null, null, null);
 
 INSERT INTO complex_foreign_keys VALUES (1, 1, 2, 1);
 INSERT INTO custom_foreign_key_label VALUES (1, 1);

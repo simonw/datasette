@@ -67,7 +67,7 @@ def test_serve_with_inspect_file_prepopulates_table_counts_cache():
     ),
 )
 def test_spatialite_error_if_attempt_to_open_spatialite(
-    spatialite_paths, should_suggest_load_extension
+    ensure_eventloop, spatialite_paths, should_suggest_load_extension
 ):
     with mock.patch("datasette.utils.SPATIALITE_PATHS", spatialite_paths):
         runner = CliRunner()

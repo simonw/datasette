@@ -57,6 +57,7 @@ RUN apt-get update && \
 SPATIALITE_PATHS = (
     "/usr/lib/x86_64-linux-gnu/mod_spatialite.so",
     "/usr/local/lib/mod_spatialite.dylib",
+    "/usr/local/lib/mod_spatialite.so",
 )
 # Length of hash subset used in hashed URLs:
 HASH_LENGTH = 7

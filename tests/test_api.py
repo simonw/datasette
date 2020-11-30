@@ -520,10 +520,16 @@ def test_database_page(app_client):
                 "text1",
                 "text2",
                 "name with . and spaces",
-                "searchable_fts",
-                "docid",
-                "__langid",
-            ],
+            ]
+            + (
+                [
+                    "searchable_fts",
+                    "docid",
+                    "__langid",
+                ]
+                if sqlite_version() >= (3, 26, 0)
+                else []
+            ),
             "primary_keys": [],
             "count": 2,
             "hidden": True,

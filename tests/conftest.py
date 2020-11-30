@@ -3,6 +3,12 @@ import pathlib
 import pytest
 import re
 
+try:
+    import pysqlite3 as sqlite3
+except ImportError:
+    import sqlite3
+
+
 UNDOCUMENTED_PERMISSIONS = {
     "this_is_allowed",
     "this_is_denied",
@@ -10,6 +16,12 @@ UNDOCUMENTED_PERMISSIONS = {
     "this_is_denied_async",
     "no_match",
 }
+
+
+def pytest_report_header(config):
+    return "SQLite: {}".format(
+        sqlite3.connect(":memory:").execute("select sqlite_version()").fetchone()[0]
+    )
 
 
 def pytest_configure(config):

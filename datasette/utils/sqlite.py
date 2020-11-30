@@ -6,8 +6,17 @@ except ImportError:
 if hasattr(sqlite3, "enable_callback_tracebacks"):
     sqlite3.enable_callback_tracebacks(True)
 
+_cached_sqlite_version = None
+
 
 def sqlite_version():
+    global _cached_sqlite_version
+    if _cached_sqlite_version is None:
+        _cached_sqlite_version = _sqlite_version()
+    return _cached_sqlite_version
+
+
+def _sqlite_version():
     return tuple(
         map(
             int,

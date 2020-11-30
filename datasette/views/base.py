@@ -42,13 +42,13 @@ class DatasetteError(Exception):
         error_dict=None,
         status=500,
         template=None,
-        messagge_is_html=False,
+        message_is_html=False,
     ):
         self.message = message
         self.title = title
         self.error_dict = error_dict or {}
         self.status = status
-        self.messagge_is_html = messagge_is_html
+        self.message_is_html = message_is_html
 
 
 class BaseView:
@@ -441,7 +441,7 @@ class DataView(BaseView):
             """,
                 title="SQL Interrupted",
                 status=400,
-                messagge_is_html=True,
+                message_is_html=True,
             )
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)

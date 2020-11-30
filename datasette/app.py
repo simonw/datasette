@@ -1154,7 +1154,7 @@ class DatasetteRouter:
             status = exception.status
             info = exception.error_dict
             message = exception.message
-            if exception.messagge_is_html:
+            if exception.message_is_html:
                 message = Markup(message)
             title = exception.title
         else:

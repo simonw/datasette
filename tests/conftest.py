@@ -8,7 +8,6 @@ try:
 except ImportError:
     import sqlite3
 
-
 UNDOCUMENTED_PERMISSIONS = {
     "this_is_allowed",
     "this_is_denied",

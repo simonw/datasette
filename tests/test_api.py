@@ -1,6 +1,7 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
-from datasette.utils import detect_json1, sqlite3
+from datasette.utils import detect_json1
+from datasette.utils.sqlite import sqlite3, sqlite_version
 from datasette.version import __version__
 from .fixtures import (  # noqa
     app_client,
@@ -1924,16 +1925,7 @@ def test_paginate_using_link_header(app_client, qs):
 
 
 @pytest.mark.skipif(
-    tuple(
-        map(
-            int,
-            sqlite3.connect(":memory:")
-            .execute("select sqlite_version()")
-            .fetchone()[0]
-            .split("."),
-        )
-    )
-    < (3, 31, 0),
+    sqlite_version() < (3, 31, 0),
     reason="generated columns were added in SQLite 3.31.0",
 )
 @pytest.mark.asyncio

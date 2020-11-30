@@ -1,9 +1,9 @@
 import json
 import pytest
-import sqlite3
 
 from datasette.app import Datasette
 from datasette.cli import cli
+from datasette.utils.sqlite import sqlite3
 from .fixtures import TestClient as _TestClient
 from click.testing import CliRunner
 

@@ -9,14 +9,14 @@ from .fixtures import (
 from datasette.app import Datasette
 from datasette import cli
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
-from datasette.utils import sqlite3, CustomRow
+from datasette.utils.sqlite import sqlite3
+from datasette.utils import CustomRow
 from jinja2.environment import Template
 import base64
 import json
 import os
 import pathlib
 import re
-import sqlite3
 import textwrap
 import pytest
 import urllib

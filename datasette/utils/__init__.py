@@ -64,7 +64,7 @@ HASH_LENGTH = 7
 
 # Can replace this with Column from sqlite_utils when I add that dependency
 Column = namedtuple(
-    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk")
+    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
 )
 
 
@@ -460,11 +460,11 @@ def detect_primary_keys(conn, table):
     " Figure out primary keys for a table. "
     table_info_rows = [
         row
-        for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()
-        if row[-1]
+        for row in conn.execute(f'PRAGMA table_xinfo("{table}")').fetchall()
+        if row["pk"]
     ]
-    table_info_rows.sort(key=lambda row: row[-1])
-    return [str(r[1]) for r in table_info_rows]
+    table_info_rows.sort(key=lambda row: row["pk"])
+    return [str(r["name"]) for r in table_info_rows]
 
 
 def get_outbound_foreign_keys(conn, table):
@@ -572,7 +572,7 @@ def table_columns(conn, table):
 def table_column_details(conn, table):
     return [
         Column(*r)
-        for r in conn.execute(f"PRAGMA table_info({escape_sqlite(table)});").fetchall()
+        for r in conn.execute(f"PRAGMA table_xinfo({escape_sqlite(table)});").fetchall()
     ]
 
 

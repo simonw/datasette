@@ -120,6 +120,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=1,
+                    hidden=0,
                 ),
                 Column(
                     cid=1,
@@ -128,6 +129,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=2,
@@ -136,6 +138,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=3,
@@ -144,6 +147,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=4,
@@ -152,6 +156,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=5,
@@ -160,6 +165,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=6,
@@ -168,6 +174,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=7,
@@ -176,6 +183,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=8,
@@ -184,6 +192,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=9,
@@ -192,6 +201,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
             ],
         ),
@@ -205,6 +215,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=1,
+                    hidden=0,
                 ),
                 Column(
                     cid=1,
@@ -213,6 +224,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=2,
+                    hidden=0,
                 ),
                 Column(
                     cid=2,
@@ -221,6 +233,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=3,
@@ -229,6 +242,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=4,
@@ -237,6 +251,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=5,
@@ -245,6 +260,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
                 Column(
                     cid=6,
@@ -253,6 +269,7 @@ async def test_table_columns(db, table, expected):
                     notnull=0,
                     default_value=None,
                     is_pk=0,
+                    hidden=0,
                 ),
             ],
         ),

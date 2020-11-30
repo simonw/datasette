@@ -1,5 +1,7 @@
+from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.utils import detect_json1
+from datasette.utils.sqlite import sqlite3, sqlite_version
 from datasette.version import __version__
 from .fixtures import (  # noqa
     app_client,
@@ -514,7 +516,20 @@ def test_database_page(app_client):
         },
         {
             "name": "searchable_fts",
-            "columns": ["text1", "text2", "name with . and spaces"],
+            "columns": [
+                "text1",
+                "text2",
+                "name with . and spaces",
+            ]
+            + (
+                [
+                    "searchable_fts",
+                    "docid",
+                    "__langid",
+                ]
+                if sqlite_version() >= (3, 26, 0)
+                else []
+            ),
             "primary_keys": [],
             "count": 2,
             "hidden": True,
@@ -1913,3 +1928,37 @@ def test_paginate_using_link_header(app_client, qs):
         else:
             path = None
     assert num_pages == 21
+
+
+@pytest.mark.skipif(
+    sqlite_version() < (3, 31, 0),
+    reason="generated columns were added in SQLite 3.31.0",
+)
+@pytest.mark.asyncio
+async def test_generated_columns_are_visible_in_datasette(tmp_path_factory):
+    db_directory = tmp_path_factory.mktemp("dbs")
+    db_path = db_directory / "test.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.executescript(
+        """
+    CREATE TABLE deeds (
+        body TEXT,
+        id INT GENERATED ALWAYS AS (json_extract(body, '$.id')) STORED,
+        consideration INT GENERATED ALWAYS AS (json_extract(body, '$.consideration')) STORED
+    );
+    INSERT INTO deeds (body) VALUES ('{
+        "id": 1,
+        "consideration": "This is the consideration"
+    }');
+    """
+    )
+    datasette = Datasette([db_path])
+    response = await datasette.client.get("/test/deeds.json?_shape=array")
+    assert response.json() == [
+        {
+            "rowid": 1,
+            "body": '{\n        "id": 1,\n        "consideration": "This is the consideration"\n    }',
+            "id": 1,
+            "consideration": "This is the consideration",
+        }
+    ]

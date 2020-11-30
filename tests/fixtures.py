@@ -1,5 +1,5 @@
 from datasette.app import Datasette
-from datasette.utils import sqlite3
+from datasette.utils.sqlite import sqlite3
 from datasette.utils.testing import TestClient
 import click
 import contextlib

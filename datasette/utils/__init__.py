@@ -19,15 +19,9 @@ import urllib
 import numbers
 import yaml
 from .shutil_backport import copytree
+from .sqlite import sqlite3, sqlite_version
 from ..plugins import pm
 
-try:
-    import pysqlite3 as sqlite3
-except ImportError:
-    import sqlite3
-
-if hasattr(sqlite3, "enable_callback_tracebacks"):
-    sqlite3.enable_callback_tracebacks(True)
 
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set(
@@ -64,7 +58,7 @@ HASH_LENGTH = 7
 
 # Can replace this with Column from sqlite_utils when I add that dependency
 Column = namedtuple(
-    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk")
+    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
 )
 
 
@@ -458,13 +452,10 @@ def temporary_docker_directory(
 
 def detect_primary_keys(conn, table):
     " Figure out primary keys for a table. "
-    table_info_rows = [
-        row
-        for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()
-        if row[-1]
-    ]
-    table_info_rows.sort(key=lambda row: row[-1])
-    return [str(r[1]) for r in table_info_rows]
+    columns = table_column_details(conn, table)
+    pks = [column for column in columns if column.is_pk]
+    pks.sort(key=lambda column: column.is_pk)
+    return [column.name for column in pks]
 
 
 def get_outbound_foreign_keys(conn, table):
@@ -570,10 +561,22 @@ def table_columns(conn, table):
 
 
 def table_column_details(conn, table):
-    return [
-        Column(*r)
-        for r in conn.execute(f"PRAGMA table_info({escape_sqlite(table)});").fetchall()
-    ]
+    if sqlite_version() >= (3, 26, 0):
+        # table_xinfo was added in 3.26.0
+        return [
+            Column(*r)
+            for r in conn.execute(
+                f"PRAGMA table_xinfo({escape_sqlite(table)});"
+            ).fetchall()
+        ]
+    else:
+        # Treat hidden as 0 for all columns
+        return [
+            Column(*(list(r) + [0]))
+            for r in conn.execute(
+                f"PRAGMA table_info({escape_sqlite(table)});"
+            ).fetchall()
+        ]
 
 
 filter_column_re = re.compile(r"^_filter_column_\d+$")

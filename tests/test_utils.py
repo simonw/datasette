@@ -4,11 +4,11 @@ Tests for various datasette helper functions.
 from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request
+from datasette.utils.sqlite import sqlite3
 import json
 import os
 import pathlib
 import pytest
-import sqlite3
 import tempfile
 from unittest.mock import patch
 

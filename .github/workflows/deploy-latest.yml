@@ -54,6 +54,7 @@ jobs:
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \
             --extra-options="--setting template_debug 1" \
+            --install=pysqlite3-binary \
             --service=datasette-latest
         # Deploy docs.db to a different service
         datasette publish cloudrun docs.db \

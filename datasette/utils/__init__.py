@@ -19,7 +19,7 @@ import urllib
 import numbers
 import yaml
 from .shutil_backport import copytree
-from .sqlite import sqlite3, sqlite_version
+from .sqlite import sqlite3, sqlite_version, supports_table_xinfo
 from ..plugins import pm
 
 
@@ -561,7 +561,7 @@ def table_columns(conn, table):
 
 
 def table_column_details(conn, table):
-    if sqlite_version() >= (3, 26, 0):
+    if supports_table_xinfo():
         # table_xinfo was added in 3.26.0
         return [
             Column(*r)

@@ -26,3 +26,11 @@ def _sqlite_version():
             .split("."),
         )
     )
+
+
+def supports_table_xinfo():
+    return sqlite_version() >= (3, 26, 0)
+
+
+def supports_generated_columns():
+    return sqlite_version() >= (3, 31, 0)

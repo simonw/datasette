@@ -163,6 +163,8 @@ h6,
 }
 
 .page-header {
+  display: flex;
+  align-items: center;
   padding-left: 10px;
   border-left: 10px solid #666;
   margin-bottom: 0.75rem;
@@ -175,11 +177,11 @@ h6,
     padding-right: 0.2em;
 }
 .page-header details {
-    display: inline;
+    display: inline-flex;
 }
 .page-header details > summary {
     list-style: none;
-    display: inline;
+    display: inline-flex;
     cursor: pointer;
 }
 .page-header details > summary::-webkit-details-marker {

@@ -413,8 +413,7 @@ def test_hook_register_output_renderer_all_parameters(app_client):
     # Lots of 'at 0x103a4a690' in here - replace those so we can do
     # an easy comparison
     body = at_memory_re.sub(" at 0xXXX", response.text)
-    assert {
-        "1+1": 2,
+    assert json.loads(body) == {
         "datasette": "<datasette.app.Datasette object at 0xXXX>",
         "columns": [
             "pk",
@@ -451,7 +450,8 @@ def test_hook_register_output_renderer_all_parameters(app_client):
         "table": "facetable",
         "request": "<datasette.utils.asgi.Request object at 0xXXX>",
         "view_name": "table",
-    } == json.loads(body)
+        "1+1": 2,
+    }
     # Test that query_name is set correctly
     query_response = app_client.get("/fixtures/pragma_cache_size.testall")
     assert "pragma_cache_size" == json.loads(query_response.body)["query_name"]

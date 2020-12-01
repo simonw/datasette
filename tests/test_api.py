@@ -1,7 +1,7 @@
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.utils import detect_json1
-from datasette.utils.sqlite import sqlite3, sqlite_version
+from datasette.utils.sqlite import sqlite3, sqlite_version, supports_table_xinfo
 from datasette.version import __version__
 from .fixtures import (  # noqa
     app_client,
@@ -19,6 +19,7 @@ from .fixtures import (  # noqa
     generate_compound_rows,
     generate_sortable_rows,
     make_app_client,
+    supports_generated_columns,
     EXPECTED_PLUGINS,
     METADATA,
 )
@@ -35,7 +36,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {"fixtures": 0}.keys()
     d = response.json["fixtures"]
     assert d["name"] == "fixtures"
-    assert d["tables_count"] == 24
+    assert d["tables_count"] == 25 if supports_generated_columns() else 24
     assert len(d["tables_and_views_truncated"]) == 5
     assert d["tables_and_views_more"] is True
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
@@ -268,6 +269,22 @@ def test_database_page(app_client):
             },
             "private": False,
         },
+    ] + (
+        [
+            {
+                "columns": ["body", "id", "consideration"],
+                "count": 1,
+                "foreign_keys": {"incoming": [], "outgoing": []},
+                "fts_table": None,
+                "hidden": False,
+                "name": "generated_columns",
+                "primary_keys": [],
+                "private": False,
+            }
+        ]
+        if supports_generated_columns()
+        else []
+    ) + [
         {
             "name": "infinity",
             "columns": ["value"],
@@ -527,7 +544,7 @@ def test_database_page(app_client):
                     "docid",
                     "__langid",
                 ]
-                if sqlite_version() >= (3, 26, 0)
+                if supports_table_xinfo()
                 else []
             ),
             "primary_keys": [],
@@ -1934,31 +1951,13 @@ def test_paginate_using_link_header(app_client, qs):
     sqlite_version() < (3, 31, 0),
     reason="generated columns were added in SQLite 3.31.0",
 )
-@pytest.mark.asyncio
-async def test_generated_columns_are_visible_in_datasette(tmp_path_factory):
-    db_directory = tmp_path_factory.mktemp("dbs")
-    db_path = db_directory / "test.db"
-    conn = sqlite3.connect(str(db_path))
-    conn.executescript(
-        """
-    CREATE TABLE deeds (
-        body TEXT,
-        id INT GENERATED ALWAYS AS (json_extract(body, '$.id')) STORED,
-        consideration INT GENERATED ALWAYS AS (json_extract(body, '$.consideration')) STORED
-    );
-    INSERT INTO deeds (body) VALUES ('{
-        "id": 1,
-        "consideration": "This is the consideration"
-    }');
-    """
-    )
-    datasette = Datasette([db_path])
-    response = await datasette.client.get("/test/deeds.json?_shape=array")
+async def test_generated_columns_are_visible_in_datasette(app_client):
+    response = app_client.get("/test/generated_columns.json?_shape=array")
     assert response.json() == [
         {
             "rowid": 1,
-            "body": '{\n        "id": 1,\n        "consideration": "This is the consideration"\n    }',
-            "id": 1,
-            "consideration": "This is the consideration",
+            "body": '{\n        "number": 1,\n        "string": "This is a string"\n    }',
+            "number": 1,
+            "string": "This is a string",
         }
     ]

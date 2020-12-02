@@ -169,6 +169,7 @@ class DatabaseDownload(DataView):
         headers = {}
         if self.ds.cors:
             headers["Access-Control-Allow-Origin"] = "*"
+        headers["Transfer-Encoding"] = "chunked"
         return AsgiFileDownload(
             filepath,
             filename=os.path.basename(filepath),

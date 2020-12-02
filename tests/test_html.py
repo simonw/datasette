@@ -1028,6 +1028,7 @@ def test_database_download_for_immutable():
             download_response.headers["content-disposition"]
             == 'attachment; filename="fixtures.db"'
         )
+        assert download_response.headers["transfer-encoding"] == "chunked"
 
 
 def test_database_download_disallowed_for_mutable(app_client):

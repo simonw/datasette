@@ -289,7 +289,7 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
         try:
             full_path = (root_path / path).resolve().absolute()
         except FileNotFoundError:
-            await asgi_send_html(send, "404", 404)
+            await asgi_send_html(send, "404: Directory not found", 404)
             return
         if full_path.is_dir():
             await asgi_send_html(send, "403: Directory listing is not allowed", 403)
@@ -298,12 +298,12 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
         try:
             full_path.relative_to(root_path.resolve())
         except ValueError:
-            await asgi_send_html(send, "404", 404)
+            await asgi_send_html(send, "404: Path not inside root path", 404)
             return
         try:
             await asgi_send_file(send, full_path, chunk_size=chunk_size)
         except FileNotFoundError:
-            await asgi_send_html(send, "404", 404)
+            await asgi_send_html(send, "404: File not found", 404)
             return
 
     return inner_static

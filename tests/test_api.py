@@ -1961,3 +1961,9 @@ async def test_generated_columns_are_visible_in_datasette(app_client):
             "string": "This is a string",
         }
     ]
+
+
+def test_http_options_request(app_client):
+    response = app_client.request("/fixtures", method="OPTIONS")
+    assert response.status == 200
+    assert response.text == "ok"

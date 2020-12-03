@@ -99,6 +99,29 @@ class TestClient:
             content_type=content_type,
         )
 
+    @async_to_sync
+    async def request(
+        self,
+        path,
+        allow_redirects=True,
+        redirect_count=0,
+        method="GET",
+        cookies=None,
+        headers=None,
+        post_body=None,
+        content_type=None,
+    ):
+        return await self._request(
+            path,
+            allow_redirects=allow_redirects,
+            redirect_count=redirect_count,
+            method=method,
+            cookies=cookies,
+            headers=headers,
+            post_body=post_body,
+            content_type=content_type,
+        )
+
     async def _request(
         self,
         path,

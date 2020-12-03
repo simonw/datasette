@@ -4,6 +4,17 @@
 Changelog
 =========
 
+.. _v0_52_2:
+
+0.52.2 (2020-12-02)
+-------------------
+
+- Generated columns from SQLite 3.31.0 or higher are now correctly displayed. (`#1116 <https://github.com/simonw/datasette/issues/1116>`__)
+- Error message if you attempt to open a SpatiaLite database now suggests using ``--load-extension=spatialite`` if it detects that the extension is available in a common location. (`#1115 <https://github.com/simonw/datasette/issues/1115>`__)
+- ``OPTIONS`` requests against the ``/database`` page no longer raise a 500 error. (`#1100 <https://github.com/simonw/datasette/issues/1100>`__)
+- Databases larger than 32MB that are published to Cloud Run can now be downloaded. (`#749 <https://github.com/simonw/datasette/issues/749>`__)
+- Fix for misaligned cog icon on table and database pages. Thanks, Abdussamet Koçak. (`#1121 <https://github.com/simonw/datasette/issues/1121>`__)
+
 .. _v0_52_1:
 
 0.52.1 (2020-11-29)

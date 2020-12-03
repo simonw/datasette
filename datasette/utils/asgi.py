@@ -294,7 +294,7 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
             return
         # Ensure full_path is within root_path to avoid weird "../" tricks
         try:
-            full_path.relative_to(root_path)
+            full_path.relative_to(root_path.resolve())
         except ValueError:
             await asgi_send_html(send, "404", 404)
             return

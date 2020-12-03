@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_52_3:
+
+0.52.3 (2020-12-03)
+-------------------
+
+- Fixed bug where static assets would 404 for Datasette installed on ARM Amazon Linux. (`#1124 <https://github.com/simonw/datasette/issues/1124>`__)
+
 .. _v0_52_2:
 
 0.52.2 (2020-12-02)

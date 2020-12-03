@@ -9,6 +9,7 @@ import inspect
 from itsdangerous import BadSignature
 import json
 import os
+import pkg_resources
 import re
 import secrets
 import sys
@@ -57,7 +58,6 @@ from .utils import (
     module_from_path,
     parse_metadata,
     resolve_env_secrets,
-    sqlite3,
     to_css_class,
     HASH_LENGTH,
 )
@@ -73,6 +73,10 @@ from .utils.asgi import (
     asgi_send_html,
     asgi_send_json,
     asgi_send_redirect,
+)
+from .utils.sqlite import (
+    sqlite3,
+    using_pysqlite3,
 )
 from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
@@ -619,7 +623,7 @@ class Datasette:
         datasette_version = {"version": __version__}
         if self.version_note:
             datasette_version["note"] = self.version_note
-        return {
+        info = {
             "python": {
                 "version": ".".join(map(str, sys.version_info[:3])),
                 "full": sys.version,
@@ -636,6 +640,12 @@ class Datasette:
                 ],
             },
         }
+        if using_pysqlite3:
+            try:
+                info["pysqlite3"] = pkg_resources.get_distribution("pysqlite3").version
+            except pkg_resources.DistributionNotFound:
+                pass
+        return info
 
     def _plugins(self, request=None, all=False):
         ps = list(get_plugins())

@@ -1,5 +1,8 @@
+using_pysqlite3 = False
 try:
     import pysqlite3 as sqlite3
+
+    using_pysqlite3 = True
 except ImportError:
     import sqlite3
 

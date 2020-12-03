@@ -797,9 +797,11 @@ def test_hook_table_actions(app_client, table_or_view):
     assert get_table_actions_links(response.text) == []
 
     response_2 = app_client.get(f"/fixtures/{table_or_view}?_bot=1")
-    assert get_table_actions_links(response_2.text) == [
-        {"label": "From async", "href": "/"},
+    assert sorted(
+        get_table_actions_links(response_2.text), key=lambda l: l["label"]
+    ) == [
         {"label": "Database: fixtures", "href": "/"},
+        {"label": "From async", "href": "/"},
         {"label": f"Table: {table_or_view}", "href": "/"},
     ]
 

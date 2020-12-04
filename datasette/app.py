@@ -641,10 +641,12 @@ class Datasette:
             },
         }
         if using_pysqlite3:
-            try:
-                info["pysqlite3"] = pkg_resources.get_distribution("pysqlite3").version
-            except pkg_resources.DistributionNotFound:
-                pass
+            for package in ("pysqlite3", "pysqlite3-binary"):
+                try:
+                    info["pysqlite3"] = pkg_resources.get_distribution(package).version
+                    break
+                except pkg_resources.DistributionNotFound:
+                    pass
         return info
 
     def _plugins(self, request=None, all=False):

@@ -1,5 +1,4 @@
 import json
-from os import EX_CANTCREAT
 from datasette.utils import MultiParams
 from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl

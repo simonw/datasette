@@ -1951,14 +1951,14 @@ def test_paginate_using_link_header(app_client, qs):
     sqlite_version() < (3, 31, 0),
     reason="generated columns were added in SQLite 3.31.0",
 )
-async def test_generated_columns_are_visible_in_datasette(app_client):
-    response = app_client.get("/test/generated_columns.json?_shape=array")
-    assert response.json() == [
+def test_generated_columns_are_visible_in_datasette(app_client):
+    response = app_client.get("/fixtures/generated_columns.json?_shape=array")
+    assert response.json == [
         {
             "rowid": 1,
-            "body": '{\n        "number": 1,\n        "string": "This is a string"\n    }',
-            "number": 1,
-            "string": "This is a string",
+            "body": '{\n    "number": 1,\n    "string": "This is a string"\n}',
+            "id": 1,
+            "consideration": "This is a string",
         }
     ]
 

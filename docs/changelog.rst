@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_52_4:
+
+0.52.4 (2020-12-05)
+-------------------
+
+- Show `pysqlite3 <https://github.com/coleifer/pysqlite3>`__ version on ``/-/versions``, if installed. (`#1125 <https://github.com/simonw/datasette/issues/1125>`__)
+- Errors output by Datasette (e.g. for invalid SQL queries) now go to ``stderr``, not ``stdout``. (`#1131 <https://github.com/simonw/datasette/issues/1131>`__)
+- Fix for a startup error on windows caused by unneccessary ``from os import EX_CANTCREAT`` - thanks, Abdussamet Koçak.  (`#1094 <https://github.com/simonw/datasette/issues/1094>`__)
+
 .. _v0_52_3:
 
 0.52.3 (2020-12-03)

@@ -2,6 +2,7 @@ import asyncio
 import csv
 import hashlib
 import re
+import sys
 import time
 import urllib
 
@@ -362,7 +363,8 @@ class DataView(BaseView):
                                     new_row.append(cell)
                             await writer.writerow(new_row)
                 except Exception as e:
-                    print("caught this", e)
+                    sys.stderr.write("Caught this error: {}\n".format(e))
+                    sys.stderr.flush()
                     await r.write(str(e))
                     return
 

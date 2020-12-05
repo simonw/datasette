@@ -1,8 +1,8 @@
 import asyncio
-import contextlib
 from pathlib import Path
 import janus
 import queue
+import sys
 import threading
 import uuid
 
@@ -104,7 +104,8 @@ class Database:
                 try:
                     result = task.fn(conn)
                 except Exception as e:
-                    print(e)
+                    sys.stderr.write("{}\n".format(e))
+                    sys.stderr.flush()
                     result = e
             task.reply_queue.sync_q.put(result)
 
@@ -156,11 +157,12 @@ class Database:
                     if e.args == ("interrupted",):
                         raise QueryInterrupted(e, sql, params)
                     if log_sql_errors:
-                        print(
-                            "ERROR: conn={}, sql = {}, params = {}: {}".format(
+                        sys.stderr.write(
+                            "ERROR: conn={}, sql = {}, params = {}: {}\n".format(
                                 conn, repr(sql), params, e
                             )
                         )
+                        sys.stderr.flush()
                     raise
 
             if truncate:

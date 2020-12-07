@@ -69,7 +69,7 @@ Want to stay up-to-date with the project? Subscribe to the [Datasette Weekly new
    * Read more about this release here: [Datasette 0.28—and why master should always be releasable](https://simonwillison.net/2019/May/19/datasette-0-28/)
 * 24th February 2019: [
 sqlite-utils: a Python library and CLI tool for building SQLite databases](https://simonwillison.net/2019/Feb/25/sqlite-utils/) - a partner tool for easily creating SQLite databases for use with Datasette.
-* 31st Janary 2019: [Datasette 0.27](https://docs.datasette.io/en/stable/changelog.html#v0-27) - `datasette plugins` command, newline-delimited JSON export option, new documentation on [The Datasette Ecosystem](https://docs.datasette.io/en/stable/ecosystem.html).
+* 31st January 2019: [Datasette 0.27](https://docs.datasette.io/en/stable/changelog.html#v0-27) - `datasette plugins` command, newline-delimited JSON export option, new documentation on [The Datasette Ecosystem](https://docs.datasette.io/en/stable/ecosystem.html).
 * 10th January 2019: [Datasette 0.26.1](https://docs.datasette.io/en/stable/changelog.html#v0-26-1) - SQLite upgrade in Docker image, `/-/versions` now shows SQLite compile options.
 * 2nd January 2019: [Datasette 0.26](https://docs.datasette.io/en/stable/changelog.html#v0-26) - minor bug fixes, `datasette publish now --alias` argument.
 * 18th December 2018: [Fast Autocomplete Search for Your Website](https://24ways.org/2018/fast-autocomplete-search-for-your-website/) - a new tutorial on using Datasette to build a JavaScript autocomplete search engine.

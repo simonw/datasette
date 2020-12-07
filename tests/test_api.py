@@ -1121,7 +1121,7 @@ def test_table_filter_queries_multiple_of_same_type(app_client):
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 def test_table_filter_json_arraycontains(app_client):
     response = app_client.get("/fixtures/facetable.json?tags__arraycontains=tag1")
-    assert [
+    assert response.json["rows"] == [
         [
             1,
             "2019-01-14 08:00:00",
@@ -1146,7 +1146,28 @@ def test_table_filter_json_arraycontains(app_client):
             "[]",
             "two",
         ],
-    ] == response.json["rows"]
+    ]
+
+
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+def test_table_filter_json_arraynotcontains(app_client):
+    response = app_client.get(
+        "/fixtures/facetable.json?tags__arraynotcontains=tag3&tags__not=[]"
+    )
+    assert response.json["rows"] == [
+        [
+            1,
+            "2019-01-14 08:00:00",
+            1,
+            1,
+            "CA",
+            1,
+            "Mission",
+            '["tag1", "tag2"]',
+            '[{"foo": "bar"}]',
+            "one",
+        ]
+    ]
 
 
 def test_table_filter_extra_where(app_client):

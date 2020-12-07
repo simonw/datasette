@@ -267,7 +267,12 @@ You can filter the data returned by the table based on column values using a que
     Rows where column does not match any of the provided values. The inverse of ``__in=``. Also supports JSON arrays.
 
 ``?column__arraycontains=value``
-    Works against columns that contain JSON arrays - matches if any of the values in that array match.
+    Works against columns that contain JSON arrays - matches if any of the values in that array match the provided value.
+
+    This is only available if the ``json1`` SQLite extension is enabled.
+
+``?column__arraynotcontains=value``
+    Works against columns that contain JSON arrays - matches if none of the values in that array match the provided value.
 
     This is only available if the ``json1`` SQLite extension is enabled.
 

@@ -154,7 +154,16 @@ class Filters:
             where j.value = :{p}
         )""",
                     '{c} contains "{v}"',
-                )
+                ),
+                TemplatedFilter(
+                    "arraynotcontains",
+                    "array does not contain",
+                    """rowid not in (
+            select {t}.rowid from {t}, json_each({t}.{c}) j
+            where j.value = :{p}
+        )""",
+                    '{c} does not contain "{v}"',
+                ),
             ]
             if detect_json1()
             else []

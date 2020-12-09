@@ -443,7 +443,9 @@ class TableView(RowTableShared):
         fts_table = fts_table or await db.fts_table(table)
         fts_pk = special_args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
         search_args = dict(
-            pair for pair in special_args.items() if pair[0].startswith("_search")
+            pair
+            for pair in special_args.items()
+            if pair[0].startswith("_search") and pair[0] != "_searchmode"
         )
         search = ""
         search_mode_raw = special_args.get("_searchmode") == "raw"

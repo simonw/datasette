@@ -146,6 +146,7 @@ def test_metadata_yaml():
         help_config=False,
         pdb=False,
         open_browser=False,
+        create=False,
         return_instance=True,
     )
     client = _TestClient(ds)
@@ -221,3 +222,21 @@ def test_sql_errors_logged_to_stderr(ensure_eventloop):
     result = runner.invoke(cli, ["--get", "/:memory:.json?sql=select+blah"])
     assert result.exit_code == 1
     assert "sql = 'select blah', params = {}: no such column: blah\n" in result.stderr
+
+
+def test_serve_create(ensure_eventloop, tmpdir):
+    runner = CliRunner()
+    db_path = tmpdir / "does_not_exist_yet.db"
+    assert not db_path.exists()
+    result = runner.invoke(
+        cli, [str(db_path), "--create", "--get", "/-/databases.json"]
+    )
+    assert result.exit_code == 0, result.output
+    databases = json.loads(result.output)
+    assert {
+        "name": "does_not_exist_yet",
+        "is_mutable": True,
+        "is_memory": False,
+        "hash": None,
+    }.items() <= databases[0].items()
+    assert db_path.exists()

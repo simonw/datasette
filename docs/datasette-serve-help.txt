@@ -40,4 +40,5 @@ Options:
   --help-config             Show available config options
   --pdb                     Launch debugger on any errors
   -o, --open                Open Datasette in your web browser
+  --create                  Create database files if they do not exist
   --help                    Show this message and exit.

@@ -27,6 +27,7 @@ from .utils import (
     StaticMount,
     ValueAsBooleanError,
 )
+from .utils.sqlite import sqlite3
 from .utils.testing import TestClient
 from .version import __version__
 
@@ -299,7 +300,7 @@ def uninstall(packages, yes):
 
 
 @cli.command()
-@click.argument("files", type=click.Path(exists=True), nargs=-1)
+@click.argument("files", type=click.Path(), nargs=-1)
 @click.option(
     "-i",
     "--immutable",
@@ -401,6 +402,11 @@ def uninstall(packages, yes):
     is_flag=True,
     help="Open Datasette in your web browser",
 )
+@click.option(
+    "--create",
+    is_flag=True,
+    help="Create database files if they do not exist",
+)
 def serve(
     files,
     immutable,
@@ -424,6 +430,7 @@ def serve(
     help_config,
     pdb,
     open_browser,
+    create,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -485,6 +492,18 @@ def serve(
     if 1 == len(files) and os.path.isdir(files[0]):
         kwargs["config_dir"] = pathlib.Path(files[0])
         files = []
+
+    # Verify list of files, create if needed (and --create)
+    for file in files:
+        if not pathlib.Path(file).exists():
+            if create:
+                sqlite3.connect(file).execute("vacuum")
+            else:
+                raise click.ClickException(
+                    "Invalid value for '[FILES]...': Path '{}' does not exist.".format(
+                        file
+                    )
+                )
 
     try:
         ds = Datasette(files, **kwargs)

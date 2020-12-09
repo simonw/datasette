@@ -204,6 +204,34 @@ You are welcome to try these out, but please be aware that details may change be
 
 Please join `discussions on the issue tracker <https://github.com/simonw/datasette/issues>`__ to share your thoughts and experiences with on alpha and beta features that you try out.
 
+.. _contributing_bug_fix_branch:
+
+Releasing bug fixes from a branch
+---------------------------------
+
+If it's necessary to publish a bug fix release without shipping new features that have landed on ``main`` a release branch can be used.
+
+Create it from the relevant last tagged release like so::
+
+    git branch 0.52.x 0.52.4
+    git checkout 0.52.x
+
+Next cherry-pick the commits containing the bug fixes::
+
+    git cherry-pick COMMIT
+
+Write the release notes in the branch, and update the version number in ``version.py``. Then push the branch::
+
+    git push -u origin 0.52.x
+
+Once the tests have completed, publish the release from that branch target using the GitHub `Draft a new release <https://github.com/simonw/datasette/releases/new>`__ form.
+
+Finally, cherry-pick the commit with the release notes and version number bump across to ``main``::
+
+    git checkout main
+    git cherry-pick COMMIT
+    git push
+
 .. _contributing_upgrading_codemirror:
 
 Upgrading CodeMirror

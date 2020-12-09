@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_52_5:
+
+0.52.5 (2020-12-09)
+-------------------
+
+- Fix for error caused by combining the ``_searchmode=raw`` and ``?_search_COLUMN`` parameters. (`#1134 <https://github.com/simonw/datasette/issues/1134>`__)
+
 .. _v0_52_4:
 
 0.52.4 (2020-12-05)

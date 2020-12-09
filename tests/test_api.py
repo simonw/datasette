@@ -1036,6 +1036,13 @@ def test_sortable_columns_metadata(app_client):
             ],
         ),
         (
+            # _searchmode=raw combined with _search_COLUMN
+            "/fixtures/searchable.json?_search_text2=te*&_searchmode=raw",
+            [
+                [1, "barry cat", "terry dog", "panther"],
+            ],
+        ),
+        (
             "/fixtures/searchable.json?_search=weasel",
             [[2, "terry dog", "sara weasel", "puma"]],
         ),

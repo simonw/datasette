@@ -29,7 +29,7 @@ setup(
     long_description_content_type="text/markdown",
     author="Simon Willison",
     license="Apache License, Version 2.0",
-    url="https://github.com/simonw/datasette",
+    url="https://datasette.io/",
     project_urls={
         "Documentation": "https://docs.datasette.io/en/stable/",
         "Changelog": "https://docs.datasette.io/en/stable/changelog.html",

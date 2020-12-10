@@ -28,6 +28,22 @@ file, which looks like this and has the following options:
 
 You can try that out on https://latest.datasette.io/fixtures/facetable?_size=4
 
+.. _csv_export_url_parameters:
+
+URL parameters
+--------------
+
+The following options can be used to customize the CSVs returned by Datasette.
+
+``?_header=off``
+    This removes the first row of the CSV file specifying the headings - only the row data will be returned.
+
+``?_stream=on``
+    Stream all matching records, not just the first page of results. See below.
+
+``?_dl=on``
+    Causes Datasette to return a ``content-disposition: attachment; filename="filename.csv"`` header.
+
 Streaming all records
 ---------------------
 

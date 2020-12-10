@@ -307,7 +307,8 @@ class DataView(BaseView):
                     if not first:
                         data, _, _ = await self.data(request, database, hash, **kwargs)
                     if first:
-                        await writer.writerow(headings)
+                        if request.args.get("_header") != "off":
+                            await writer.writerow(headings)
                         first = False
                     next = data.get("next")
                     for row in data["rows"]:

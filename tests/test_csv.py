@@ -64,6 +64,14 @@ def test_table_csv_cors_headers(app_client_with_cors):
     assert "*" == response.headers["Access-Control-Allow-Origin"]
 
 
+def test_table_csv_no_header(app_client):
+    response = app_client.get("/fixtures/simple_primary_key.csv?_header=off")
+    assert response.status == 200
+    assert not response.headers.get("Access-Control-Allow-Origin")
+    assert "text/plain; charset=utf-8" == response.headers["content-type"]
+    assert EXPECTED_TABLE_CSV.split("\r\n", 1)[1] == response.text
+
+
 def test_table_csv_with_labels(app_client):
     response = app_client.get("/fixtures/facetable.csv?_labels=1")
     assert response.status == 200

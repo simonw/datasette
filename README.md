@@ -17,7 +17,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 [Explore a demo](https://fivethirtyeight.datasettes.com/fivethirtyeight), watch [a video about the project](https://www.youtube.com/watch?v=pTr1uLQTJNE) or try it out by [uploading and publishing your own CSV data](https://simonwillison.net/2019/Apr/23/datasette-glitch/).
 
 * Comprehensive documentation: https://docs.datasette.io/
-* Examples: https://github.com/simonw/datasette/wiki/Datasettes
+* Examples: https://datasette.io/examples
 * Live demo of current main: https://latest.datasette.io/
 * Support questions, feedback? Join our [GitHub Discussions forum](https://github.com/simonw/datasette/discussions)
 

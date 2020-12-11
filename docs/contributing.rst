@@ -181,17 +181,9 @@ You can generate the list of issue references for a specific release by pasting 
         ),
     ].sort().join(", ");
 
-For non-bugfix releases you may want to update the news section of ``README.md`` as part of the same commit.
+To create the tag for the release, create `a new release <https://github.com/simonw/datasette/releases/new>`__ on GitHub matching the new version number. You can convert the release notes to Markdown by copying and pasting the rendered HTML into this `Paste to Markdown tool <https://euangoddard.github.io/clipboard2markdown/>`__.
 
-To tag and push the releaes, run the following::
-
-    git tag 0.25.2
-    git push --tags
-
-Final steps once the release has deployed to https://pypi.org/project/datasette/
-
-* Manually post the new release to GitHub releases: https://github.com/simonw/datasette/releases - you can convert the release notes to Markdown by copying and pasting the rendered HTML into this tool: https://euangoddard.github.io/clipboard2markdown/
-* Manually kick off a build of the `stable` branch on Read The Docs: https://readthedocs.org/projects/datasette/builds/
+Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository.
 
 .. _contributing_alpha_beta:
 

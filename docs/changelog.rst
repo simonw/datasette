@@ -4,6 +4,20 @@
 Changelog
 =========
 
+.. _v0_53:
+
+0.53 (2020-12-10)
+-----------------
+
+Datasette has an official project website now, at https://datasette.io/. This release mainly updates the documentation to reflect the new site.
+
+- New ``?column__arraynotcontains=`` table filter. (`#1132 <https://github.com/simonw/datasette/issues/1132>`__)
+- ``datasette serve`` has a new ``--create`` option, which will create blank database files if they do not already exist rather than exiting with an error. (`#1135 <https://github.com/simonw/datasette/issues/1135>`__)
+-  New ``?_header=off`` option for CSV export which omits the CSV header row, :ref:`documented here <csv_export_url_parameters>`. (`#1133 <https://github.com/simonw/datasette/issues/1133>`__)
+- "Powered by Datasette" link in the footer now links to https://datasette.io/. (`#1138 <https://github.com/simonw/datasette/issues/1138>`__)
+- Project news no longer lives in the README - it can now be found at https://datasette.io/news. (`#1137 <https://github.com/simonw/datasette/issues/1137>`__)
+
+
 .. _v0_52_5:
 
 0.52.5 (2020-12-09)

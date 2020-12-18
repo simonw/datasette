@@ -464,3 +464,33 @@ def test_mtime_ns_is_none_for_memory(app_client):
 def test_is_mutable(app_client):
     assert Database(app_client.ds, is_memory=True, is_mutable=True).is_mutable is True
     assert Database(app_client.ds, is_memory=True, is_mutable=False).is_mutable is False
+
+
+@pytest.mark.asyncio
+async def test_database_memory_name(app_client):
+    ds = app_client.ds
+    foo1 = Database(ds, memory_name="foo")
+    foo2 = Database(ds, memory_name="foo")
+    bar1 = Database(ds, memory_name="bar")
+    bar2 = Database(ds, memory_name="bar")
+    for db in (foo1, foo2, bar1, bar2):
+        table_names = await db.table_names()
+        assert table_names == []
+    # Now create a table in foo
+    await foo1.execute_write("create table foo (t text)", block=True)
+    assert await foo1.table_names() == ["foo"]
+    assert await foo2.table_names() == ["foo"]
+    assert await bar1.table_names() == []
+    assert await bar2.table_names() == []
+
+
+@pytest.mark.asyncio
+async def test_in_memory_databases_forbid_writes(app_client):
+    ds = app_client.ds
+    db = Database(ds, memory_name="test")
+    with pytest.raises(sqlite3.OperationalError):
+        await db.execute("create table foo (t text)")
+    assert await db.table_names() == []
+    # Using db.execute_write() should work:
+    await db.execute_write("create table foo (t text)", block=True)
+    assert await db.table_names() == ["foo"]

@@ -270,11 +270,16 @@ The ``db`` parameter should be an instance of the ``datasette.database.Database`
 
 This will add a mutable database from the provided file path.
 
-The ``Database()`` constructor takes four arguments: the first is the ``datasette`` instance you are attaching to, the second is a ``path=``, then ``is_mutable`` and ``is_memory`` are both optional arguments.
+To create a shared in-memory database named ``statistics``, use the following:
 
-Use ``is_mutable`` if it is possible that updates will be made to that database - otherwise Datasette will open it in immutable mode and any changes could cause undesired behavior.
+.. code-block:: python
 
-Use ``is_memory`` if the connection is to an in-memory SQLite database.
+    from datasette.database import Database
+
+    datasette.add_database("statistics", Database(
+        datasette,
+        memory_name="statistics"
+    ))
 
 .. _datasette_remove_database:
 
@@ -479,6 +484,32 @@ Database class
 ==============
 
 Instances of the ``Database`` class can be used to execute queries against attached SQLite databases, and to run introspection against their schemas.
+
+.. _database_constructor:
+
+Database(ds, path=None, is_mutable=False, is_memory=False, memory_name=None)
+----------------------------------------------------------------------------
+
+The ``Database()`` constructor can be used by plugins, in conjunction with :ref:`datasette_add_database`, to create and register new databases.
+
+The arguments are as follows:
+
+``ds`` - :ref:`internals_datasette` (required)
+    The Datasette instance you are attaching this database to.
+
+``path`` - string
+    Path to a SQLite database file on disk.
+
+``is_mutable`` - boolean
+    Set this to ``True`` if it is possible that updates will be made to that database - otherwise Datasette will open it in immutable mode and any changes could cause undesired behavior.
+
+``is_memory`` - boolean
+    Use this to create non-shared memory connections.
+
+``memory_name`` - string or ``None``
+    Use this to create a named in-memory database. Unlike regular memory databases these can be accessed by multiple threads and will persist an changes made to them for the lifetime of the Datasette server process.
+
+The first argument is the ``datasette`` instance you are attaching to, the second is a ``path=``, then ``is_mutable`` and ``is_memory`` are both optional arguments.
 
 .. _database_execute:
 

@@ -24,11 +24,18 @@ connections = threading.local()
 
 
 class Database:
-    def __init__(self, ds, path=None, is_mutable=False, is_memory=False):
+    def __init__(
+        self, ds, path=None, is_mutable=False, is_memory=False, memory_name=None
+    ):
         self.ds = ds
         self.path = path
         self.is_mutable = is_mutable
         self.is_memory = is_memory
+        self.memory_name = memory_name
+        if memory_name is not None:
+            self.path = memory_name
+            self.is_memory = True
+            self.is_mutable = True
         self.hash = None
         self.cached_size = None
         self.cached_table_counts = None
@@ -46,6 +53,16 @@ class Database:
                 }
 
     def connect(self, write=False):
+        if self.memory_name:
+            uri = "file:{}?mode=memory&cache=shared".format(self.memory_name)
+            conn = sqlite3.connect(
+                uri,
+                uri=True,
+                check_same_thread=False,
+            )
+            if not write:
+                conn.execute("PRAGMA query_only=1")
+            return conn
         if self.is_memory:
             return sqlite3.connect(":memory:")
         # mode=ro or immutable=1?
@@ -215,7 +232,10 @@ class Database:
     @property
     def name(self):
         if self.is_memory:
-            return ":memory:"
+            if self.memory_name:
+                return ":memory:{}".format(self.memory_name)
+            else:
+                return ":memory:"
         else:
             return Path(self.path).stem
 

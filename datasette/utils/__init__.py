@@ -1024,11 +1024,12 @@ def find_spatialite():
 
 async def initial_path_for_datasette(datasette):
     "Return suggested path for opening this Datasette, based on number of DBs and tables"
-    if len(datasette.databases) == 1:
-        db_name = next(iter(datasette.databases.keys()))
+    databases = dict([p for p in datasette.databases.items() if p[0] != "_schemas"])
+    if len(databases) == 1:
+        db_name = next(iter(databases.keys()))
         path = datasette.urls.database(db_name)
         # Does this DB only have one table?
-        db = next(iter(datasette.databases.values()))
+        db = next(iter(databases.values()))
         tables = await db.table_names()
         if len(tables) == 1:
             path = datasette.urls.table(db_name, tables[0])

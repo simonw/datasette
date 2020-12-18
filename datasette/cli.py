@@ -134,6 +134,9 @@ async def inspect_(files, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     data = {}
     for name, database in app.databases.items():
+        if name == "_schemas":
+            # Don't include the in-memory _schemas database
+            continue
         counts = await database.table_counts(limit=3600 * 1000)
         data[name] = {
             "hash": database.hash,

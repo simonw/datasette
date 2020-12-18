@@ -115,6 +115,8 @@ class BaseView:
         return Response.text("Method not allowed", status=405)
 
     async def dispatch_request(self, request, *args, **kwargs):
+        if self.ds:
+            await self.ds.refresh_schemas()
         handler = getattr(self, request.method.lower(), None)
         return await handler(request, *args, **kwargs)
 

@@ -1,0 +1,162 @@
+async def init_schemas(db):
+    await db.execute_write(
+        """
+    CREATE TABLE databases (
+        "database_name" TEXT PRIMARY KEY,
+        "path" TEXT,
+        "is_memory" INTEGER,
+        "schema_version" INTEGER
+    )
+    """,
+        block=True,
+    )
+    await db.execute_write(
+        """
+    CREATE TABLE tables (
+        "database_name" TEXT,
+        "table_name" TEXT,
+        "rootpage" INTEGER,
+        "sql" TEXT,
+        PRIMARY KEY (database_name, table_name)
+    )
+    """,
+        block=True,
+    )
+    await db.execute_write(
+        """
+    CREATE TABLE columns (
+        "database_name" TEXT,
+        "table_name" TEXT,
+        "cid" INTEGER,
+        "name" TEXT,
+        "type" TEXT,
+        "notnull" INTEGER,
+        "default_value" TEXT, -- renamed from dflt_value
+        "is_pk" INTEGER, -- renamed from pk
+        "hidden" INTEGER,
+        PRIMARY KEY (database_name, table_name, name)
+    )
+    """,
+        block=True,
+    )
+    await db.execute_write(
+        """
+    CREATE TABLE indexes (
+        "database_name" TEXT,
+        "table_name" TEXT,
+        "seq" INTEGER,
+        "name" TEXT,
+        "unique" INTEGER,
+        "origin" TEXT,
+        "partial" INTEGER,
+        PRIMARY KEY (database_name, table_name, name)
+    )
+    """,
+        block=True,
+    )
+    await db.execute_write(
+        """
+    CREATE TABLE foreign_keys (
+        "database_name" TEXT,
+        "table_name" TEXT,
+        "id" INTEGER,
+        "seq" INTEGER,
+        "table" TEXT,
+        "from" TEXT,
+        "to" TEXT,
+        "on_update" TEXT,
+        "on_delete" TEXT,
+        "match" TEXT
+    )
+    """,
+        block=True,
+    )
+
+
+async def populate_schema_tables(schema_db, db):
+    database_name = db.name
+    await schema_db.execute_write(
+        "delete from tables where database_name = ?", [database_name], block=True
+    )
+    tables = (await db.execute("select * from sqlite_master where type = 'table'")).rows
+    for table in tables:
+        table_name = table["name"]
+        await schema_db.execute_write(
+            """
+            insert into tables (database_name, table_name, rootpage, sql)
+            values (?, ?, ?, ?)
+        """,
+            [database_name, table_name, table["rootpage"], table["sql"]],
+            block=True,
+        )
+        # And the columns
+        await schema_db.execute_write(
+            "delete from columns where database_name = ? and table_name = ?",
+            [database_name, table_name],
+            block=True,
+        )
+        columns = await db.table_column_details(table_name)
+        for column in columns:
+            params = {
+                **{"database_name": database_name, "table_name": table_name},
+                **column._asdict(),
+            }
+            await schema_db.execute_write(
+                """
+                insert into columns (
+                    database_name, table_name, cid, name, type, "notnull", default_value, is_pk, hidden
+                ) VALUES (
+                    :database_name, :table_name, :cid, :name, :type, :notnull, :default_value, :is_pk, :hidden
+                )
+            """,
+                params,
+                block=True,
+            )
+        # And the foreign_keys
+        await schema_db.execute_write(
+            "delete from foreign_keys where database_name = ? and table_name = ?",
+            [database_name, table_name],
+            block=True,
+        )
+        foreign_keys = (
+            await db.execute(f"PRAGMA foreign_key_list([{table_name}])")
+        ).rows
+        for foreign_key in foreign_keys:
+            params = {
+                **{"database_name": database_name, "table_name": table_name},
+                **dict(foreign_key),
+            }
+            await schema_db.execute_write(
+                """
+                insert into foreign_keys (
+                    database_name, table_name, "id", seq, "table", "from", "to", on_update, on_delete, match
+                ) VALUES (
+                    :database_name, :table_name, :id, :seq, :table, :from, :to, :on_update, :on_delete, :match
+                )
+            """,
+                params,
+                block=True,
+            )
+        # And the indexes
+        await schema_db.execute_write(
+            "delete from indexes where database_name = ? and table_name = ?",
+            [database_name, table_name],
+            block=True,
+        )
+        indexes = (await db.execute(f"PRAGMA index_list([{table_name}])")).rows
+        for index in indexes:
+            params = {
+                **{"database_name": database_name, "table_name": table_name},
+                **dict(index),
+            }
+            await schema_db.execute_write(
+                """
+                insert into indexes (
+                    database_name, table_name, seq, name, "unique", origin, partial
+                ) VALUES (
+                    :database_name, :table_name, :seq, :name, :unique, :origin, :partial
+                )
+            """,
+                params,
+                block=True,
+            )

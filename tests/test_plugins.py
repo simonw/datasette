@@ -293,7 +293,7 @@ def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
 
 def test_hook_asgi_wrapper(app_client):
     response = app_client.get("/fixtures")
-    assert "_schemas, fixtures" == response.headers["x-databases"]
+    assert "_internal, fixtures" == response.headers["x-databases"]
 
 
 def test_hook_extra_template_vars(restore_working_directory):

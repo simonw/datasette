@@ -1024,7 +1024,7 @@ def find_spatialite():
 
 async def initial_path_for_datasette(datasette):
     "Return suggested path for opening this Datasette, based on number of DBs and tables"
-    databases = dict([p for p in datasette.databases.items() if p[0] != "_schemas"])
+    databases = dict([p for p in datasette.databases.items() if p[0] != "_internal"])
     if len(databases) == 1:
         db_name = next(iter(databases.keys()))
         path = datasette.urls.database(db_name)

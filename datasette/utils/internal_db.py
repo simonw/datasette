@@ -1,4 +1,4 @@
-async def init_schemas(db):
+async def init_internal_db(db):
     await db.execute_write(
         """
     CREATE TABLE databases (
@@ -73,15 +73,15 @@ async def init_schemas(db):
     )
 
 
-async def populate_schema_tables(schema_db, db):
+async def populate_schema_tables(internal_db, db):
     database_name = db.name
-    await schema_db.execute_write(
+    await internal_db.execute_write(
         "delete from tables where database_name = ?", [database_name], block=True
     )
     tables = (await db.execute("select * from sqlite_master where type = 'table'")).rows
     for table in tables:
         table_name = table["name"]
-        await schema_db.execute_write(
+        await internal_db.execute_write(
             """
             insert into tables (database_name, table_name, rootpage, sql)
             values (?, ?, ?, ?)
@@ -90,7 +90,7 @@ async def populate_schema_tables(schema_db, db):
             block=True,
         )
         # And the columns
-        await schema_db.execute_write(
+        await internal_db.execute_write(
             "delete from columns where database_name = ? and table_name = ?",
             [database_name, table_name],
             block=True,
@@ -101,7 +101,7 @@ async def populate_schema_tables(schema_db, db):
                 **{"database_name": database_name, "table_name": table_name},
                 **column._asdict(),
             }
-            await schema_db.execute_write(
+            await internal_db.execute_write(
                 """
                 insert into columns (
                     database_name, table_name, cid, name, type, "notnull", default_value, is_pk, hidden
@@ -113,7 +113,7 @@ async def populate_schema_tables(schema_db, db):
                 block=True,
             )
         # And the foreign_keys
-        await schema_db.execute_write(
+        await internal_db.execute_write(
             "delete from foreign_keys where database_name = ? and table_name = ?",
             [database_name, table_name],
             block=True,
@@ -126,7 +126,7 @@ async def populate_schema_tables(schema_db, db):
                 **{"database_name": database_name, "table_name": table_name},
                 **dict(foreign_key),
             }
-            await schema_db.execute_write(
+            await internal_db.execute_write(
                 """
                 insert into foreign_keys (
                     database_name, table_name, "id", seq, "table", "from", "to", on_update, on_delete, match
@@ -138,7 +138,7 @@ async def populate_schema_tables(schema_db, db):
                 block=True,
             )
         # And the indexes
-        await schema_db.execute_write(
+        await internal_db.execute_write(
             "delete from indexes where database_name = ? and table_name = ?",
             [database_name, table_name],
             block=True,
@@ -149,7 +149,7 @@ async def populate_schema_tables(schema_db, db):
                 **{"database_name": database_name, "table_name": table_name},
                 **dict(index),
             }
-            await schema_db.execute_write(
+            await internal_db.execute_write(
                 """
                 insert into indexes (
                     database_name, table_name, seq, name, "unique", origin, partial

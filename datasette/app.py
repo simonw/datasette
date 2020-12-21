@@ -74,7 +74,7 @@ from .utils.asgi import (
     asgi_send_json,
     asgi_send_redirect,
 )
-from .utils.schemas import init_schemas, populate_schema_tables
+from .utils.internal_db import init_internal_db, populate_schema_tables
 from .utils.sqlite import (
     sqlite3,
     using_pysqlite3,
@@ -84,8 +84,6 @@ from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
-
-MEMORY = object()
 
 Setting = collections.namedtuple("Setting", ("name", "default", "help"))
 SETTINGS = (
@@ -218,24 +216,17 @@ class Datasette:
                 ]
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
-        if not self.files:
-            self.files = [MEMORY]
-        elif memory:
-            self.files = (MEMORY,) + self.files
         self.databases = collections.OrderedDict()
+        if memory or not self.files:
+            self.add_database(":memory:", Database(self, ":memory:", is_memory=True))
         # memory_name is a random string so that each Datasette instance gets its own
         # unique in-memory named database - otherwise unit tests can fail with weird
         # errors when different instances accidentally share an in-memory database
-        self.add_database("_schemas", Database(self, memory_name=secrets.token_hex()))
-        self._schemas_created = False
+        self.add_database("_internal", Database(self, memory_name=secrets.token_hex()))
+        self._interna_db_created = False
         for file in self.files:
             path = file
-            is_memory = False
-            if file is MEMORY:
-                path = None
-                is_memory = True
-            is_mutable = path not in self.immutables
-            db = Database(self, path, is_mutable=is_mutable, is_memory=is_memory)
+            db = Database(self, path, is_mutable=path not in self.immutables)
             if db.name in self.databases:
                 raise Exception(f"Multiple files with same stem: {db.name}")
             self.add_database(db.name, db)
@@ -333,14 +324,14 @@ class Datasette:
         self.client = DatasetteClient(self)
 
     async def refresh_schemas(self):
-        schema_db = self.databases["_schemas"]
-        if not self._schemas_created:
-            await init_schemas(schema_db)
-            self._schemas_created = True
+        internal_db = self.databases["_internal"]
+        if not self._interna_db_created:
+            await init_internal_db(internal_db)
+            self._interna_db_created = True
 
         current_schema_versions = {
             row["database_name"]: row["schema_version"]
-            for row in await schema_db.execute(
+            for row in await internal_db.execute(
                 "select database_name, schema_version from databases"
             )
         }
@@ -349,7 +340,7 @@ class Datasette:
             # Compare schema versions to see if we should skip it
             if schema_version == current_schema_versions.get(database_name):
                 continue
-            await schema_db.execute_write(
+            await internal_db.execute_write(
                 """
                 INSERT OR REPLACE INTO databases (database_name, path, is_memory, schema_version)
                 VALUES (?, ?, ?, ?)
@@ -357,7 +348,7 @@ class Datasette:
                 [database_name, db.path, db.is_memory, schema_version],
                 block=True,
             )
-            await populate_schema_tables(schema_db, db)
+            await populate_schema_tables(internal_db, db)
 
     @property
     def urls(self):
@@ -376,7 +367,7 @@ class Datasette:
     def get_database(self, name=None):
         if name is None:
             # Return first no-_schemas database
-            name = [key for key in self.databases.keys() if key != "_schemas"][0]
+            name = [key for key in self.databases.keys() if key != "_internal"][0]
         return self.databases[name]
 
     def add_database(self, name, db):
@@ -625,7 +616,7 @@ class Datasette:
                 "hash": d.hash,
             }
             for name, d in sorted(self.databases.items(), key=lambda p: p[1].name)
-            if name != "_schemas"
+            if name != "_internal"
         ]
 
     def _versions(self):

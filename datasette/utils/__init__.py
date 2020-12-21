@@ -138,7 +138,7 @@ class CustomJSONEncoder(json.JSONEncoder):
 
 @contextmanager
 def sqlite_timelimit(conn, ms):
-    deadline = time.time() + (ms / 1000)
+    deadline = time.perf_counter() + (ms / 1000)
     # n is the number of SQLite virtual machine instructions that will be
     # executed between each check. It's hard to know what to pick here.
     # After some experimentation, I've decided to go with 1000 by default and
@@ -148,7 +148,7 @@ def sqlite_timelimit(conn, ms):
         n = 1
 
     def handler():
-        if time.time() >= deadline:
+        if time.perf_counter() >= deadline:
             return 1
 
     conn.set_progress_handler(handler, n)

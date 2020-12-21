@@ -37,9 +37,9 @@ def trace(type, **kwargs):
     if tracer is None:
         yield
         return
-    start = time.time()
+    start = time.perf_counter()
     yield
-    end = time.time()
+    end = time.perf_counter()
     trace_info = {
         "type": type,
         "start": start,
@@ -74,7 +74,7 @@ class AsgiTracer:
         if b"_trace=1" not in scope.get("query_string", b"").split(b"&"):
             await self.app(scope, receive, send)
             return
-        trace_start = time.time()
+        trace_start = time.perf_counter()
         traces = []
 
         accumulated_body = b""
@@ -109,7 +109,7 @@ class AsgiTracer:
                 # We have all the body - modify it and send the result
                 # TODO: What to do about Content-Type or other cases?
                 trace_info = {
-                    "request_duration_ms": 1000 * (time.time() - trace_start),
+                    "request_duration_ms": 1000 * (time.perf_counter() - trace_start),
                     "sum_trace_duration_ms": sum(t["duration_ms"] for t in traces),
                     "num_traces": len(traces),
                     "traces": traces,

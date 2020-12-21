@@ -425,7 +425,7 @@ class DataView(BaseView):
             kwargs["default_labels"] = True
 
         extra_template_data = {}
-        start = time.time()
+        start = time.perf_counter()
         status_code = 200
         templates = []
         try:
@@ -457,7 +457,7 @@ class DataView(BaseView):
         except DatasetteError:
             raise
 
-        end = time.time()
+        end = time.perf_counter()
         data["query_ms"] = (end - start) * 1000
         for key in ("source", "source_url", "license", "license_url"):
             value = self.ds.metadata(key)

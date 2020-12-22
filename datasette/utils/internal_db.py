@@ -17,7 +17,8 @@ async def init_internal_db(db):
         "table_name" TEXT,
         "rootpage" INTEGER,
         "sql" TEXT,
-        PRIMARY KEY (database_name, table_name)
+        PRIMARY KEY (database_name, table_name),
+        FOREIGN KEY (database_name) REFERENCES databases(database_name)
     )
     """,
         block=True,
@@ -34,7 +35,9 @@ async def init_internal_db(db):
         "default_value" TEXT, -- renamed from dflt_value
         "is_pk" INTEGER, -- renamed from pk
         "hidden" INTEGER,
-        PRIMARY KEY (database_name, table_name, name)
+        PRIMARY KEY (database_name, table_name, name),
+        FOREIGN KEY (database_name) REFERENCES databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
     )
     """,
         block=True,
@@ -49,7 +52,9 @@ async def init_internal_db(db):
         "unique" INTEGER,
         "origin" TEXT,
         "partial" INTEGER,
-        PRIMARY KEY (database_name, table_name, name)
+        PRIMARY KEY (database_name, table_name, name),
+        FOREIGN KEY (database_name) REFERENCES databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
     )
     """,
         block=True,
@@ -67,7 +72,9 @@ async def init_internal_db(db):
         "on_update" TEXT,
         "on_delete" TEXT,
         "match" TEXT,
-        PRIMARY KEY (database_name, table_name, id, seq)
+        PRIMARY KEY (database_name, table_name, id, seq),
+        FOREIGN KEY (database_name) REFERENCES databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
     )
     """,
         block=True,

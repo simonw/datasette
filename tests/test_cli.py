@@ -8,6 +8,7 @@ import asyncio
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.cli import cli, serve
 from datasette.version import __version__
+from datasette.utils.sqlite import sqlite3
 from click.testing import CliRunner
 import io
 import json
@@ -240,3 +241,17 @@ def test_serve_create(ensure_eventloop, tmpdir):
         "hash": None,
     }.items() <= databases[0].items()
     assert db_path.exists()
+
+
+def test_serve_duplicate_database_names(ensure_eventloop, tmpdir):
+    runner = CliRunner()
+    db_1_path = str(tmpdir / "db.db")
+    nested = tmpdir / "nested"
+    nested.mkdir()
+    db_2_path = str(tmpdir / "nested" / "db.db")
+    for path in (db_1_path, db_2_path):
+        sqlite3.connect(path).execute("vacuum")
+    result = runner.invoke(cli, [db_1_path, db_2_path, "--get", "/-/databases.json"])
+    assert result.exit_code == 0, result.output
+    databases = json.loads(result.output)
+    assert {db["name"] for db in databases} == {"db", "db_2"}

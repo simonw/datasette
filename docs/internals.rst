@@ -245,16 +245,16 @@ Returns the specified database object. Raises a ``KeyError`` if the database doe
 
 .. _datasette_add_database:
 
-.add_database(name, db)
------------------------
-
-``name`` - string
-    The unique name to use for this database. Also used in the URL.
+.add_database(db, name=None)
+----------------------------
 
 ``db`` - datasette.database.Database instance
     The database to be attached.
 
-The ``datasette.add_database(name, db)`` method lets you add a new database to the current Datasette instance. This database will then be served at URL path that matches the ``name`` parameter, e.g. ``/mynewdb/``.
+``name`` - string, optional
+    The name to be used for this database - this will be used in the URL path, e.g. ``/dbname``. If not specified Datasette will pick one based on the filename or memory name.
+
+The ``datasette.add_database(db)`` method lets you add a new database to the current Datasette instance.
 
 The ``db`` parameter should be an instance of the ``datasette.database.Database`` class. For example:
 
@@ -262,13 +262,13 @@ The ``db`` parameter should be an instance of the ``datasette.database.Database`
 
     from datasette.database import Database
 
-    datasette.add_database("my-new-database", Database(
+    datasette.add_database(Database(
         datasette,
         path="path/to/my-new-database.db",
         is_mutable=True
     ))
 
-This will add a mutable database from the provided file path.
+This will add a mutable database and serve it at ``/my-new-database``.
 
 To create a shared in-memory database named ``statistics``, use the following:
 
@@ -276,10 +276,19 @@ To create a shared in-memory database named ``statistics``, use the following:
 
     from datasette.database import Database
 
-    datasette.add_database("statistics", Database(
+    datasette.add_database(Database(
         datasette,
         memory_name="statistics"
     ))
+
+This database will be served at ``/statistics``.
+
+``.add_database()`` returns the Database instance, with its name set as the ``database.name`` attribute. Any time you are working with a newly added database you should use the return value of ``.add_database()``, for example:
+
+.. code-block:: python
+
+    db = datasette.add_database(Database(datasette, memory_name="statistics"))
+    await db.execute_write("CREATE TABLE foo(id integer primary key)", block=True)
 
 .. _datasette_remove_database:
 
@@ -289,7 +298,7 @@ To create a shared in-memory database named ``statistics``, use the following:
 ``name`` - string
     The name of the database to be removed.
 
-This removes a database that has been previously added. ``name=`` is the unique name of that database, also used in the URL for it.
+This removes a database that has been previously added. ``name=`` is the unique name of that database, used in its URL path.
 
 .. _datasette_sign:
 

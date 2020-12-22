@@ -27,30 +27,44 @@ class Database:
     def __init__(
         self, ds, path=None, is_mutable=False, is_memory=False, memory_name=None
     ):
+        self.name = None
         self.ds = ds
         self.path = path
         self.is_mutable = is_mutable
         self.is_memory = is_memory
         self.memory_name = memory_name
         if memory_name is not None:
-            self.path = memory_name
             self.is_memory = True
             self.is_mutable = True
         self.hash = None
         self.cached_size = None
-        self.cached_table_counts = None
+        self._cached_table_counts = None
         self._write_thread = None
         self._write_queue = None
         if not self.is_mutable and not self.is_memory:
             p = Path(path)
             self.hash = inspect_hash(p)
             self.cached_size = p.stat().st_size
-            # Maybe use self.ds.inspect_data to populate cached_table_counts
-            if self.ds.inspect_data and self.ds.inspect_data.get(self.name):
-                self.cached_table_counts = {
-                    key: value["count"]
-                    for key, value in self.ds.inspect_data[self.name]["tables"].items()
-                }
+
+    @property
+    def cached_table_counts(self):
+        if self._cached_table_counts is not None:
+            return self._cached_table_counts
+        # Maybe use self.ds.inspect_data to populate cached_table_counts
+        if self.ds.inspect_data and self.ds.inspect_data.get(self.name):
+            self._cached_table_counts = {
+                key: value["count"]
+                for key, value in self.ds.inspect_data[self.name]["tables"].items()
+            }
+        return self._cached_table_counts
+
+    def suggest_name(self):
+        if self.path:
+            return Path(self.path).stem
+        elif self.memory_name:
+            return self.memory_name
+        else:
+            return "db"
 
     def connect(self, write=False):
         if self.memory_name:
@@ -220,7 +234,7 @@ class Database:
             except (QueryInterrupted, sqlite3.OperationalError, sqlite3.DatabaseError):
                 counts[table] = None
         if not self.is_mutable:
-            self.cached_table_counts = counts
+            self._cached_table_counts = counts
         return counts
 
     @property
@@ -228,16 +242,6 @@ class Database:
         if self.is_memory:
             return None
         return Path(self.path).stat().st_mtime_ns
-
-    @property
-    def name(self):
-        if self.is_memory:
-            if self.memory_name:
-                return ":memory:{}".format(self.memory_name)
-            else:
-                return ":memory:"
-        else:
-            return Path(self.path).stem
 
     async def table_exists(self, table):
         results = await self.execute(

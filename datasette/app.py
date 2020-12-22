@@ -218,18 +218,18 @@ class Datasette:
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
         if memory or not self.files:
-            self.add_database(":memory:", Database(self, ":memory:", is_memory=True))
+            self.add_database(Database(self, is_memory=True), name=":memory:")
         # memory_name is a random string so that each Datasette instance gets its own
         # unique in-memory named database - otherwise unit tests can fail with weird
         # errors when different instances accidentally share an in-memory database
-        self.add_database("_internal", Database(self, memory_name=secrets.token_hex()))
-        self._interna_db_created = False
+        self.add_database(
+            Database(self, memory_name=secrets.token_hex()), name="_internal"
+        )
+        self.internal_db_created = False
         for file in self.files:
-            path = file
-            db = Database(self, path, is_mutable=path not in self.immutables)
-            if db.name in self.databases:
-                raise Exception(f"Multiple files with same stem: {db.name}")
-            self.add_database(db.name, db)
+            self.add_database(
+                Database(self, file, is_mutable=file not in self.immutables)
+            )
         self.cache_headers = cache_headers
         self.cors = cors
         metadata_files = []
@@ -325,9 +325,9 @@ class Datasette:
 
     async def refresh_schemas(self):
         internal_db = self.databases["_internal"]
-        if not self._interna_db_created:
+        if not self.internal_db_created:
             await init_internal_db(internal_db)
-            self._interna_db_created = True
+            self.internal_db_created = True
 
         current_schema_versions = {
             row["database_name"]: row["schema_version"]
@@ -370,8 +370,20 @@ class Datasette:
             name = [key for key in self.databases.keys() if key != "_internal"][0]
         return self.databases[name]
 
-    def add_database(self, name, db):
+    def add_database(self, db, name=None):
+        if name is None:
+            # Pick a unique name for this database
+            suggestion = db.suggest_name()
+            name = suggestion
+        else:
+            suggestion = name
+        i = 2
+        while name in self.databases:
+            name = "{}_{}".format(suggestion, i)
+            i += 1
+        db.name = name
         self.databases[name] = db
+        return db
 
     def remove_database(self, name):
         self.databases.pop(name)

@@ -66,7 +66,8 @@ async def init_internal_db(db):
         "to" TEXT,
         "on_update" TEXT,
         "on_delete" TEXT,
-        "match" TEXT
+        "match" TEXT,
+        PRIMARY KEY (database_name, table_name, id, seq)
     )
     """,
         block=True,

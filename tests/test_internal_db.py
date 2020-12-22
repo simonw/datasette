@@ -59,7 +59,6 @@ def test_internal_foreign_keys(app_client):
         "on_update",
         "on_delete",
         "to",
-        "rowid",
         "id",
         "match",
         "database_name",

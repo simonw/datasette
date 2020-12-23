@@ -789,7 +789,7 @@ def test_table_shape_object(app_client):
     } == response.json
 
 
-def test_table_shape_object_compound_primary_Key(app_client):
+def test_table_shape_object_compound_primary_key(app_client):
     response = app_client.get("/fixtures/compound_primary_key.json?_shape=object")
     assert {"a,b": {"pk1": "a", "pk2": "b", "content": "c"}} == response.json
 

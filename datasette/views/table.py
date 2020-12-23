@@ -87,7 +87,7 @@ class RowTableShared(DataView):
     async def display_columns_and_rows(
         self, database, table, description, rows, link_column=False, truncate_cells=0
     ):
-        "Returns columns, rows for specified table - including fancy foreign key treatment"
+        """Returns columns, rows for specified table - including fancy foreign key treatment"""
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
         column_details = {col.name: col for col in await db.table_column_details(table)}

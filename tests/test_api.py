@@ -871,7 +871,7 @@ def test_validate_page_size(app_client, path, expected_error):
 
 
 def test_page_size_zero(app_client):
-    "For _size=0 we return the counts, empty rows and no continuation token"
+    """For _size=0 we return the counts, empty rows and no continuation token"""
     response = app_client.get("/fixtures/no_primary_key.json?_size=0")
     assert 200 == response.status
     assert [] == response.json["rows"]

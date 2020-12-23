@@ -437,7 +437,7 @@ def cascade_app_client():
     ],
 )
 def test_permissions_cascade(cascade_app_client, path, permissions, expected_status):
-    "Test that e.g. having view-table but NOT view-database lets you view table page, etc"
+    """Test that e.g. having view-table but NOT view-database lets you view table page, etc"""
     allow = {"id": "*"}
     deny = {}
     previous_metadata = cascade_app_client.ds._metadata

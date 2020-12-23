@@ -152,7 +152,7 @@ async def inspect_(files, sqlite_extensions):
 
 @cli.group()
 def publish():
-    "Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"
+    """Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"""
     pass
 
 
@@ -168,7 +168,7 @@ pm.hook.publish_subcommand(publish=publish)
     help="Path to directory containing custom plugins",
 )
 def plugins(all, plugins_dir):
-    "List currently available plugins"
+    """List currently available plugins"""
     app = Datasette([], plugins_dir=plugins_dir)
     click.echo(json.dumps(app._plugins(all=all), indent=4))
 
@@ -244,7 +244,7 @@ def package(
     port,
     **extra_metadata,
 ):
-    "Package specified SQLite files into a new datasette Docker container"
+    """Package specified SQLite files into a new datasette Docker container"""
     if not shutil.which("docker"):
         click.secho(
             ' The package command requires "docker" to be installed and configured ',
@@ -284,7 +284,7 @@ def package(
     "-U", "--upgrade", is_flag=True, help="Upgrade packages to latest version"
 )
 def install(packages, upgrade):
-    "Install Python packages - e.g. Datasette plugins - into the same environment as Datasette"
+    """Install Python packages - e.g. Datasette plugins - into the same environment as Datasette"""
     args = ["pip", "install"]
     if upgrade:
         args += ["--upgrade"]
@@ -297,7 +297,7 @@ def install(packages, upgrade):
 @click.argument("packages", nargs=-1, required=True)
 @click.option("-y", "--yes", is_flag=True, help="Don't ask for confirmation")
 def uninstall(packages, yes):
-    "Uninstall Python packages (e.g. plugins) from the Datasette environment"
+    """Uninstall Python packages (e.g. plugins) from the Datasette environment"""
     sys.argv = ["pip", "uninstall"] + list(packages) + (["-y"] if yes else [])
     run_module("pip", run_name="__main__")
 

@@ -12,7 +12,7 @@ ureg = pint.UnitRegistry()
 @hookimpl
 def prepare_connection(conn, database, datasette):
     def convert_units(amount, from_, to_):
-        "select convert_units(100, 'm', 'ft');"
+        """select convert_units(100, 'm', 'ft');"""
         return (amount * ureg(from_)).to(to_).to_tuple()[0]
 
     conn.create_function("convert_units", 3, convert_units)

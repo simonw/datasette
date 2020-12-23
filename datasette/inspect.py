@@ -15,7 +15,7 @@ HASH_BLOCK_SIZE = 1024 * 1024
 
 
 def inspect_hash(path):
-    " Calculate the hash of a database, efficiently. "
+    """Calculate the hash of a database, efficiently."""
     m = hashlib.sha256()
     with path.open("rb") as fp:
         while True:
@@ -28,14 +28,14 @@ def inspect_hash(path):
 
 
 def inspect_views(conn):
-    " List views in a database. "
+    """List views in a database."""
     return [
         v[0] for v in conn.execute('select name from sqlite_master where type = "view"')
     ]
 
 
 def inspect_tables(conn, database_metadata):
-    " List tables and their row counts, excluding uninteresting tables. "
+    """List tables and their row counts, excluding uninteresting tables."""
     tables = {}
     table_names = [
         r["name"]

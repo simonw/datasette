@@ -113,7 +113,7 @@ class Request:
 
     @classmethod
     def fake(cls, path_with_query_string, method="GET", scheme="http"):
-        "Useful for constructing Request objects for tests"
+        """Useful for constructing Request objects for tests"""
         path, _, query_string = path_with_query_string.partition("?")
         scope = {
             "http_version": "1.1",

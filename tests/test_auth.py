@@ -5,7 +5,7 @@ import time
 
 
 def test_auth_token(app_client):
-    "The /-/auth-token endpoint sets the correct cookie"
+    """The /-/auth-token endpoint sets the correct cookie"""
     assert app_client.ds._root_token is not None
     path = f"/-/auth-token?token={app_client.ds._root_token}"
     response = app_client.get(
@@ -29,7 +29,7 @@ def test_auth_token(app_client):
 
 
 def test_actor_cookie(app_client):
-    "A valid actor cookie sets request.scope['actor']"
+    """A valid actor cookie sets request.scope['actor']"""
     cookie = app_client.actor_cookie({"id": "test"})
     response = app_client.get("/", cookies={"ds_actor": cookie})
     assert {"id": "test"} == app_client.ds._last_request.scope["actor"]

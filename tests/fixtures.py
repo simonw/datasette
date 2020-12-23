@@ -751,7 +751,7 @@ def assert_permissions_checked(datasette, actions):
     help="Delete and recreate database if it exists",
 )
 def cli(db_filename, metadata, plugins_path, recreate):
-    "Write out the fixtures database used by Datasette's test suite"
+    """Write out the fixtures database used by Datasette's test suite"""
     if metadata and not metadata.endswith(".json"):
         raise click.ClickException("Metadata should end with .json")
     if not db_filename.endswith(".db"):

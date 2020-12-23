@@ -28,7 +28,7 @@ at_memory_re = re.compile(r" at 0x\w+")
     "plugin_hook", [name for name in dir(pm.hook) if not name.startswith("_")]
 )
 def test_plugin_hooks_have_tests(plugin_hook):
-    "Every plugin hook should be referenced in this test module"
+    """Every plugin hook should be referenced in this test module"""
     tests_in_this_module = [t for t in globals().keys() if t.startswith("test_hook_")]
     ok = False
     for test in tests_in_this_module:

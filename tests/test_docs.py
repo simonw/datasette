@@ -15,7 +15,7 @@ label_re = re.compile(r"\.\. _([^\s:]+):")
 
 def get_headings(content, underline="-"):
     heading_re = re.compile(r"(\w+)(\([^)]*\))?\n\{}+\n".format(underline))
-    return set(h[0] for h in heading_re.findall(content))
+    return {h[0] for h in heading_re.findall(content)}
 
 
 def get_labels(filename):
@@ -96,11 +96,11 @@ def documented_table_filters():
     json_api_rst = (docs_path / "json_api.rst").read_text()
     section = json_api_rst.split(".. _table_arguments:")[-1]
     # Lines starting with ``?column__exact= are docs for filters
-    return set(
+    return {
         line.split("__")[1].split("=")[0]
         for line in section.split("\n")
         if line.startswith("``?column__")
-    )
+    }
 
 
 @pytest.mark.parametrize("filter", [f.key for f in Filters._filters])

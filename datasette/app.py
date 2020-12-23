@@ -429,7 +429,7 @@ class Datasette:
             return m
 
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
-        "Return config for plugin, falling back from specified database/table"
+        """Return config for plugin, falling back from specified database/table"""
         plugins = self.metadata(
             "plugins", database=database, table=table, fallback=fallback
         )
@@ -523,7 +523,7 @@ class Datasette:
             return []
 
     async def permission_allowed(self, actor, action, resource=None, default=False):
-        "Check permissions using the permissions_allowed plugin hook"
+        """Check permissions using the permissions_allowed plugin hook"""
         result = None
         for check in pm.hook.permission_allowed(
             datasette=self,
@@ -570,7 +570,7 @@ class Datasette:
         )
 
     async def expand_foreign_keys(self, database, table, column, values):
-        "Returns dict mapping (column, value) -> label"
+        """Returns dict mapping (column, value) -> label"""
         labeled_fks = {}
         db = self.databases[database]
         foreign_keys = await db.foreign_keys_for_table(table)
@@ -613,7 +613,7 @@ class Datasette:
         return url
 
     def _register_custom_units(self):
-        "Register any custom units defined in the metadata.json with Pint"
+        """Register any custom units defined in the metadata.json with Pint"""
         for unit in self.metadata("custom_units") or []:
             ureg.define(unit)
 
@@ -730,7 +730,7 @@ class Datasette:
         return {"actor": request.actor}
 
     def table_metadata(self, database, table):
-        "Fetch table-specific metadata."
+        """Fetch table-specific metadata."""
         return (
             (self.metadata("databases") or {})
             .get(database, {})
@@ -739,7 +739,7 @@ class Datasette:
         )
 
     def _register_renderers(self):
-        """ Register output renderers which output data in custom formats. """
+        """Register output renderers which output data in custom formats."""
         # Built-in renderers
         self.renderers["json"] = (json_renderer, lambda: True)
 
@@ -880,7 +880,7 @@ class Datasette:
         return output
 
     def app(self):
-        "Returns an ASGI app function that serves the whole of Datasette"
+        """Returns an ASGI app function that serves the whole of Datasette"""
         routes = []
 
         for routes_to_add in pm.hook.register_routes():
@@ -1287,7 +1287,7 @@ def permanent_redirect(path):
     )
 
 
-_curly_re = re.compile(r"(\{.*?\})")
+_curly_re = re.compile(r"({.*?})")
 
 
 def route_pattern_from_filepath(filepath):

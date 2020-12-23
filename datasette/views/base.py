@@ -74,7 +74,7 @@ class BaseView:
             raise Forbidden(action)
 
     async def check_permissions(self, request, permissions):
-        "permissions is a list of (action, resource) tuples or 'action' strings"
+        """permissions is a list of (action, resource) tuples or 'action' strings"""
         for permission in permissions:
             if isinstance(permission, str):
                 action = permission
@@ -280,7 +280,7 @@ class DataView(BaseView):
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-        except (sqlite3.OperationalError) as e:
+        except sqlite3.OperationalError as e:
             raise DatasetteError(str(e))
 
         except DatasetteError:
@@ -451,7 +451,7 @@ class DataView(BaseView):
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-        except (sqlite3.OperationalError) as e:
+        except sqlite3.OperationalError as e:
             raise DatasetteError(str(e))
 
         except DatasetteError:

@@ -110,7 +110,7 @@ def test_plugins_cli(app_client):
     result2 = runner.invoke(cli, ["plugins", "--all"])
     names = [p["name"] for p in json.loads(result2.output)]
     # Should have all the EXPECTED_PLUGINS
-    assert set(names).issuperset(set(p["name"] for p in EXPECTED_PLUGINS))
+    assert set(names).issuperset({p["name"] for p in EXPECTED_PLUGINS})
     # And the following too:
     assert set(names).issuperset(DEFAULT_PLUGINS)
 

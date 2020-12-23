@@ -208,7 +208,7 @@ class Filters:
         self.ureg = ureg
 
     def lookups(self):
-        "Yields (lookup, display, no_argument) pairs"
+        """Yields (lookup, display, no_argument) pairs"""
         for filter in self._filters:
             yield filter.key, filter.display, filter.no_argument
 
@@ -233,7 +233,7 @@ class Filters:
         return f"where {s}"
 
     def selections(self):
-        "Yields (column, lookup, value) tuples"
+        """Yields (column, lookup, value) tuples"""
         for key, value in self.pairs:
             if "__" in key:
                 column, lookup = key.rsplit("__", 1)
@@ -246,7 +246,7 @@ class Filters:
         return bool(self.pairs)
 
     def convert_unit(self, column, value):
-        "If the user has provided a unit in the query, convert it into the column unit, if present."
+        """If the user has provided a unit in the query, convert it into the column unit, if present."""
         if column not in self.units:
             return value
 

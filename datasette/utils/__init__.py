@@ -71,7 +71,7 @@ async def await_me_maybe(value):
 
 
 def urlsafe_components(token):
-    "Splits token on commas and URL decodes each component"
+    """Splits token on commas and URL decodes each component"""
     return [urllib.parse.unquote_plus(b) for b in token.split(",")]
 
 
@@ -451,7 +451,7 @@ def temporary_docker_directory(
 
 
 def detect_primary_keys(conn, table):
-    " Figure out primary keys for a table. "
+    """Figure out primary keys for a table."""
     columns = table_column_details(conn, table)
     pks = [column for column in columns if column.is_pk]
     pks.sort(key=lambda column: column.is_pk)
@@ -521,7 +521,7 @@ def detect_spatialite(conn):
 
 
 def detect_fts(conn, table):
-    "Detect if table has a corresponding FTS virtual table and return it"
+    """Detect if table has a corresponding FTS virtual table and return it"""
     rows = conn.execute(detect_fts_sql(table)).fetchall()
     if len(rows) == 0:
         return None
@@ -620,7 +620,7 @@ whitespace_re = re.compile(r"\s")
 
 
 def is_url(value):
-    "Must start with http:// or https:// and contain JUST a URL"
+    """Must start with http:// or https:// and contain JUST a URL"""
     if not isinstance(value, str):
         return False
     if not value.startswith("http://") and not value.startswith("https://"):
@@ -863,14 +863,14 @@ class MultiParams:
         return len(self._data)
 
     def get(self, name, default=None):
-        "Return first value in the list, if available"
+        """Return first value in the list, if available"""
         try:
             return self._data.get(name)[0]
         except (KeyError, TypeError):
             return default
 
     def getlist(self, name):
-        "Return full list"
+        """Return full list"""
         return self._data.get(name) or []
 
 
@@ -967,7 +967,7 @@ def actor_matches_allow(actor, allow):
 
 
 async def check_visibility(datasette, actor, action, resource, default=True):
-    "Returns (visible, private) - visible = can you see it, private = can others see it too"
+    """Returns (visible, private) - visible = can you see it, private = can others see it too"""
     visible = await datasette.permission_allowed(
         actor,
         action,
@@ -975,7 +975,7 @@ async def check_visibility(datasette, actor, action, resource, default=True):
         default=default,
     )
     if not visible:
-        return (False, False)
+        return False, False
     private = not await datasette.permission_allowed(
         None,
         action,
@@ -986,7 +986,7 @@ async def check_visibility(datasette, actor, action, resource, default=True):
 
 
 def resolve_env_secrets(config, environ):
-    'Create copy that recursively replaces {"$env": "NAME"} with values from environ'
+    """Create copy that recursively replaces {"$env": "NAME"} with values from environ"""
     if isinstance(config, dict):
         if list(config.keys()) == ["$env"]:
             return environ.get(list(config.values())[0])
@@ -1023,7 +1023,7 @@ def find_spatialite():
 
 
 async def initial_path_for_datasette(datasette):
-    "Return suggested path for opening this Datasette, based on number of DBs and tables"
+    """Return suggested path for opening this Datasette, based on number of DBs and tables"""
     databases = dict([p for p in datasette.databases.items() if p[0] != "_internal"])
     if len(databases) == 1:
         db_name = next(iter(databases.keys()))

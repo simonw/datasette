@@ -743,7 +743,7 @@ class TableView(RowTableShared):
         # Pagination next link
         next_value = None
         next_url = None
-        if len(rows) > page_size and page_size > 0:
+        if 0 < page_size < len(rows):
             if is_view:
                 next_value = int(_next or 0) + page_size
             else:

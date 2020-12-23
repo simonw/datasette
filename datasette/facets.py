@@ -162,10 +162,8 @@ class ColumnFacet(Facet):
                 )
                 num_distinct_values = len(distinct_values)
                 if (
-                    num_distinct_values
-                    and num_distinct_values > 1
+                    1 < num_distinct_values < row_count
                     and num_distinct_values <= facet_size
-                    and num_distinct_values < row_count
                     # And at least one has n > 1
                     and any(r["n"] > 1 for r in distinct_values)
                 ):

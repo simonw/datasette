@@ -59,12 +59,10 @@ class Request:
 
     @property
     def headers(self):
-        return dict(
-            [
-                (k.decode("latin-1").lower(), v.decode("latin-1"))
-                for k, v in self.scope.get("headers") or []
-            ]
-        )
+        return {
+            k.decode("latin-1").lower(): v.decode("latin-1")
+            for k, v in self.scope.get("headers") or []
+        }
 
     @property
     def host(self):
@@ -167,9 +165,7 @@ class AsgiStream:
 
     async def asgi_send(self, send):
         # Remove any existing content-type header
-        headers = dict(
-            [(k, v) for k, v in self.headers.items() if k.lower() != "content-type"]
-        )
+        headers = {k: v for k, v in self.headers.items() if k.lower() != "content-type"}
         headers["content-type"] = self.content_type
         await send(
             {
@@ -240,7 +236,7 @@ async def asgi_send(send, content, status, headers=None, content_type="text/plai
 async def asgi_start(send, status, headers=None, content_type="text/plain"):
     headers = headers or {}
     # Remove any existing content-type header
-    headers = dict([(k, v) for k, v in headers.items() if k.lower() != "content-type"])
+    headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
     headers["content-type"] = content_type
     await send(
         {

@@ -975,7 +975,7 @@ async def check_visibility(datasette, actor, action, resource, default=True):
         default=default,
     )
     if not visible:
-        return (False, False)
+        return False, False
     private = not await datasette.permission_allowed(
         None,
         action,

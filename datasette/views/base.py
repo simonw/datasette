@@ -280,7 +280,7 @@ class DataView(BaseView):
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-        except (sqlite3.OperationalError) as e:
+        except sqlite3.OperationalError as e:
             raise DatasetteError(str(e))
 
         except DatasetteError:
@@ -451,7 +451,7 @@ class DataView(BaseView):
         except (sqlite3.OperationalError, InvalidSql) as e:
             raise DatasetteError(str(e), title="Invalid SQL", status=400)
 
-        except (sqlite3.OperationalError) as e:
+        except sqlite3.OperationalError as e:
             raise DatasetteError(str(e))
 
         except DatasetteError:

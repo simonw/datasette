@@ -204,14 +204,15 @@ a:link {
 	text-decoration: underline;
 }
 a:visited {
-	color: #54AC8E;
+	color: #041C8E;
 	text-decoration: underline;
 }
 a:hover,
 a:focus,
 a:active  {
-	color: #67C98D;
-	text-decoration: underline;
+    color: #07407B;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
 }
 
 button.button-as-link {

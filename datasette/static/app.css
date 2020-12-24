@@ -643,6 +643,9 @@ form button[type=button] {
 
 .facet-info li {
    border-bottom: 1px solid #8872;
+   display: flex;
+   justify-content: space-between;
+   gap: 1em;
 }
 
 .facet-info li:hover {

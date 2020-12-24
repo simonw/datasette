@@ -258,7 +258,6 @@ ul.bullets li {
 	list-style-type: circle;
 }
 ul.tight-bullets li {
-    list-style-type: disc;
     margin-bottom: 0;
 }
 a.not-underlined {
@@ -615,21 +614,41 @@ form button[type=button] {
 
 
 
+.facet-info-name {
+    text-align: center;
+    font-family: Helvetica, sans-serif;
+    font-size: 1.2em;
+    letter-spacing: 1px;
+}
 
 .facet-results {
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
+    justify-content: space-around;
 }
 .facet-info {
-    width: 250px;
+    width: auto;
     margin-right: 15px;
+    border: 0px solid #8872;
+    padding: 10px;
 }
 .facet-info li,
 .facet-info ul {
     margin: 0;
     padding: 0;
+    padding-bottom: 3px;
+    padding-top: 3px;
 }
+
+.facet-info li {
+   border-bottom: 1px solid #8872;
+}
+
+.facet-info li:hover {
+   background: #8872;
+}
+
 .facet-info ul {
     padding-left: 1.25em;
     margin-bottom: 1em;

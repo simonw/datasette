@@ -128,7 +128,7 @@ To set up full-text search for a table, you need to do two things:
 Configuring FTS using sqlite-utils
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`sqlite-utils <https://sqlite-utils.readthedocs.io/>`__ is a CLI utility and Python library for manipulating SQLite databases. You can use `it from Python code <https://sqlite-utils.readthedocs.io/en/latest/python-api.html#enabling-full-text-search>`__ to configure FTS search, or you can achieve the same goal `using the accompanying command-line tool <https://sqlite-utils.readthedocs.io/en/latest/cli.html#configuring-full-text-search>`__.
+`sqlite-utils <https://sqlite-utils.datasette.io/>`__ is a CLI utility and Python library for manipulating SQLite databases. You can use `it from Python code <https://sqlite-utils.datasette.io/en/latest/python-api.html#enabling-full-text-search>`__ to configure FTS search, or you can achieve the same goal `using the accompanying command-line tool <https://sqlite-utils.datasette.io/en/latest/cli.html#configuring-full-text-search>`__.
 
 Here's how to use ``sqlite-utils`` to enable full-text search for an ``items`` table across the ``name`` and ``description`` columns::
 
@@ -144,7 +144,7 @@ If your data starts out in CSV files, you can use Datasette's companion tool `cs
 Configuring FTS by hand
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-We recommend using `sqlite-utils <https://sqlite-utils.readthedocs.io/>`__, but if you want to hand-roll a SQLite full-text search table you can do so using the following SQL.
+We recommend using `sqlite-utils <https://sqlite-utils.datasette.io/>`__, but if you want to hand-roll a SQLite full-text search table you can do so using the following SQL.
 
 To enable full-text search for a table called ``items`` that works against the ``name`` and ``description`` columns, you would run this SQL to create a new ``items_fts`` FTS virtual table:
 

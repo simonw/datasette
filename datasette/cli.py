@@ -101,6 +101,16 @@ class Setting(CompositeParamType):
             self.fail("Invalid option")
 
 
+def sqlite_extensions(fn):
+    return click.option(
+        "sqlite_extensions",
+        "--load-extension",
+        envvar="SQLITE_EXTENSIONS",
+        multiple=True,
+        help="Path to a SQLite extension to load",
+    )(fn)
+
+
 @click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)
 @click.version_option(version=__version__)
 def cli():
@@ -112,13 +122,7 @@ def cli():
 @cli.command()
 @click.argument("files", type=click.Path(exists=True), nargs=-1)
 @click.option("--inspect-file", default="-")
-@click.option(
-    "sqlite_extensions",
-    "--load-extension",
-    envvar="SQLITE_EXTENSIONS",
-    multiple=True,
-    help="Path to a SQLite extension to load",
-)
+@sqlite_extensions
 def inspect(files, inspect_file, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     if inspect_file == "-":
@@ -335,13 +339,7 @@ def uninstall(packages, yes):
 @click.option(
     "--cors", is_flag=True, help="Enable CORS by serving Access-Control-Allow-Origin: *"
 )
-@click.option(
-    "sqlite_extensions",
-    "--load-extension",
-    envvar="SQLITE_EXTENSIONS",
-    multiple=True,
-    help="Path to a SQLite extension to load",
-)
+@sqlite_extensions
 @click.option(
     "--inspect-file", help='Path to JSON file created using "datasette inspect"'
 )

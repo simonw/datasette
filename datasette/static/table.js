@@ -20,7 +20,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     return;
   }
   function getParams() {
-      return new URLSearchParams(location.search);
+    return new URLSearchParams(location.search);
   }
   function paramsToUrl(params) {
     var s = params.toString();

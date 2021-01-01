@@ -2,7 +2,8 @@ name: Check JavaScript for conformance with Prettier
 
 on:
   push:
-  pull_request:
+    paths:
+    - 'datasette/static/*'
 
 jobs:
   prettier:

@@ -1,0 +1,7 @@
+{
+  "name": "datasette",
+  "private": true,
+  "devDependencies": {
+    "prettier": "^2.2.1"
+  }
+}

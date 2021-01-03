@@ -12,9 +12,11 @@ jobs:
       name: Configure npm caching
       with:
         path: ~/.npm
-        key: ${{ runner.os }}-npm-${{ hashFiles('**/workflows/prettier.yml') }}
+        key: ${{ runner.OS }}-npm-${{ hashFiles('**/package-lock.json') }}
         restore-keys: |
-          ${{ runner.os }}-npm-
+          ${{ runner.OS }}-npm-
+    - name: Install dependencies
+      run: npm ci
     - name: Run prettier
       run: |-
         npx --no-install prettier --check 'datasette/static/*[!.min].js'

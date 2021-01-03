@@ -1,6 +1,6 @@
 name: Check JavaScript for conformance with Prettier
 
-on: push
+on: [push]
 
 jobs:
   prettier:

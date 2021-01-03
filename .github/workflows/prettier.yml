@@ -20,4 +20,4 @@ jobs:
           ${{ runner.os }}-npm-
     - name: Run prettier
       run: |-
-        npx prettier --check 'datasette/static/*[!.min].js'
+        npx --no-install prettier --check 'datasette/static/*[!.min].js'

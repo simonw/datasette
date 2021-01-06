@@ -280,7 +280,10 @@ def test_publish_cloudrun_apt_get_install(mock_call, mock_output, mock_which):
     "extra_options,expected",
     [
         ("", "--setting force_https_urls on"),
-        ("--setting base_url /foo", "--setting base_url /foo --setting force_https_urls on"),
+        (
+            "--setting base_url /foo",
+            "--setting base_url /foo --setting force_https_urls on",
+        ),
         ("--setting force_https_urls off", "--setting force_https_urls off"),
     ],
 )
@@ -313,5 +316,9 @@ def test_publish_cloudrun_extra_options(
             .strip()
         )
         last_line = dockerfile.split("\n")[-1]
-        extra_options = last_line.split("--inspect-file inspect-data.json")[1].split("--port")[0].strip()
+        extra_options = (
+            last_line.split("--inspect-file inspect-data.json")[1]
+            .split("--port")[0]
+            .strip()
+        )
         assert extra_options == expected

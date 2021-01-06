@@ -271,3 +271,47 @@ def test_publish_cloudrun_apt_get_install(mock_call, mock_output, mock_which):
         """
         ).strip()
         assert expected == dockerfile
+
+
+@mock.patch("shutil.which")
+@mock.patch("datasette.publish.cloudrun.check_output")
+@mock.patch("datasette.publish.cloudrun.check_call")
+@pytest.mark.parametrize(
+    "extra_options,expected",
+    [
+        ("", "--setting force_https_urls on"),
+        ("--setting base_url /foo", "--setting base_url /foo --setting force_https_urls on"),
+        ("--setting force_https_urls off", "--setting force_https_urls off"),
+    ],
+)
+def test_publish_cloudrun_extra_options(
+    mock_call, mock_output, mock_which, extra_options, expected
+):
+    mock_which.return_value = True
+    mock_output.return_value = "myproject"
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        open("test.db", "w").write("data")
+        result = runner.invoke(
+            cli.cli,
+            [
+                "publish",
+                "cloudrun",
+                "test.db",
+                "--service",
+                "datasette",
+                "--show-files",
+                "--extra-options",
+                extra_options,
+            ],
+        )
+        assert result.exit_code == 0
+        dockerfile = (
+            result.output.split("==== Dockerfile ====\n")[1]
+            .split("\n====================\n")[0]
+            .strip()
+        )
+        last_line = dockerfile.split("\n")[-1]
+        extra_options = last_line.split("--inspect-file inspect-data.json")[1].split("--port")[0].strip()
+        assert extra_options == expected

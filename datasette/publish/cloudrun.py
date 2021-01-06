@@ -102,6 +102,13 @@ def publish_subcommand(publish):
             "about_url": about_url,
         }
 
+        if not extra_options:
+            extra_options = ""
+        if "force_https_urls" not in extra_options:
+            if extra_options:
+                extra_options += " "
+            extra_options += "--setting force_https_urls on"
+
         environment_variables = {}
         if plugin_secret:
             extra_metadata["plugins"] = {}

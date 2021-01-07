@@ -146,7 +146,7 @@ Here is an example of an `nginx <https://nginx.org/>`__ configuration file that 
         listen 80;
 
         location /my-datasette {
-          proxy_pass              http://127.0.0.1:8009;
+          proxy_pass              http://127.0.0.1:8009/my-datasette;
           proxy_set_header        X-Real-IP $remote_addr;
           proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
         }

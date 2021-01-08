@@ -200,7 +200,7 @@ def test_publish_cloudrun_plugin_secrets(mock_call, mock_output, mock_which):
         RUN datasette inspect test.db --inspect-file inspect-data.json
         ENV PORT 8001
         EXPOSE 8001
-        CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --metadata metadata.json --port $PORT"""
+        CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --metadata metadata.json --setting force_https_urls on --port $PORT"""
         ).strip()
         assert expected == dockerfile
         metadata = (
@@ -267,7 +267,7 @@ def test_publish_cloudrun_apt_get_install(mock_call, mock_output, mock_which):
         RUN datasette inspect test.db --inspect-file inspect-data.json
         ENV PORT 8001
         EXPOSE 8001
-        CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --port $PORT
+        CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --setting force_https_urls on --port $PORT
         """
         ).strip()
         assert expected == dockerfile

@@ -7,7 +7,7 @@ Datasette's plugin system allows additional features to be implemented as Python
 code (or front-end JavaScript) which can be wrapped up in a separate Python
 package. The underlying mechanism uses `pluggy <https://pluggy.readthedocs.io/>`_.
 
-See :ref:`ecosystem_plugins` for a list of existing plugins, or take a look at the
+See the `Datasette plugins directory <https://datasette.io/plugins>`__ for a list of existing plugins, or take a look at the
 `datasette-plugin <https://github.com/topics/datasette-plugin>`__ topic on GitHub.
 
 Things you can do with plugins include:

@@ -740,7 +740,7 @@ If you are still running Python 3.5 you should stick with ``0.30.2``, which you 
 0.29.2 (2019-07-13)
 -------------------
 
-- Bumped `Uvicorn <https://www.uvicorn.org/>`__ to 0.8.4, fixing a bug where the querystring was not included in the server logs. (`#559 <https://github.com/simonw/datasette/issues/559>`__)
+- Bumped `Uvicorn <https://www.uvicorn.org/>`__ to 0.8.4, fixing a bug where the query string was not included in the server logs. (`#559 <https://github.com/simonw/datasette/issues/559>`__)
 - Fixed bug where the navigation breadcrumbs were not displayed correctly on the page for a custom query. (`#558 <https://github.com/simonw/datasette/issues/558>`__)
 - Fixed bug where custom query names containing unicode characters caused errors.
 
@@ -910,7 +910,7 @@ Medium changes
    - ``?columnname__date=yyyy-mm-dd`` filter which returns rows where the spoecified datetime column falls on the specified date (`583b22a <https://github.com/simonw/datasette/commit/583b22aa28e26c318de0189312350ab2688c90b1>`__)
    - ``?tags__arraycontains=tag`` filter which acts against a JSON array contained in a column (`78e45ea <https://github.com/simonw/datasette/commit/78e45ead4d771007c57b307edf8fc920101f8733>`__)
    - ``?_where=sql-fragment`` filter for the table view  (`#429 <https://github.com/simonw/datasette/issues/429>`__)
-   - ``?_fts_table=mytable`` and ``?_fts_pk=mycolumn`` querystring options can be used to specify which FTS table to use for a search query - see :ref:`full_text_search_table_or_view` (`#428 <https://github.com/simonw/datasette/issues/428>`__)
+   - ``?_fts_table=mytable`` and ``?_fts_pk=mycolumn`` query string options can be used to specify which FTS table to use for a search query - see :ref:`full_text_search_table_or_view` (`#428 <https://github.com/simonw/datasette/issues/428>`__)
 - You can now pass the same table filter multiple times - for example, ``?content__not=world&content__not=hello`` will return all rows where the content column is neither ``hello`` or ``world`` (`#288 <https://github.com/simonw/datasette/issues/288>`__)
 - You can now specify ``about`` and ``about_url`` metadata (in addition to ``source`` and ``license``) linking to further information about a project - see :ref:`metadata_source_license_about`
 - New ``?_trace=1`` parameter now adds debug information showing every SQL query that was executed while constructing the page (`#435 <https://github.com/simonw/datasette/issues/435>`__)
@@ -955,7 +955,7 @@ Small changes
 -----------------
 
 - New command: ``datasette plugins`` (:ref:`documentation <plugins_installed>`) shows you the currently installed list of plugins.
-- Datasette can now output `newline-delimited JSON <http://ndjson.org/>`__ using the new ``?_shape=array&_nl=on`` querystring option.
+- Datasette can now output `newline-delimited JSON <http://ndjson.org/>`__ using the new ``?_shape=array&_nl=on`` query string option.
 - Added documentation on :ref:`ecosystem`.
 - Now using Python 3.7.2 as the base for the official `Datasette Docker image <https://hub.docker.com/r/datasetteproject/datasette/>`__.
 
@@ -1028,7 +1028,7 @@ A number of small new features:
 - ``datasette publish heroku`` now supports app names via the ``-n`` option, which can also be used to overwrite an existing application [Russ Garrett]
 - Title and description metadata can now be set for :ref:`canned SQL queries <canned_queries>`, closes `#342 <https://github.com/simonw/datasette/issues/342>`_
 - New ``force_https_on`` config option, fixes ``https://`` API URLs when deploying to Zeit Now - closes `#333 <https://github.com/simonw/datasette/issues/333>`_
-- ``?_json_infinity=1`` querystring argument for handling Infinity/-Infinity values in JSON, closes `#332 <https://github.com/simonw/datasette/issues/332>`_
+- ``?_json_infinity=1`` query string argument for handling Infinity/-Infinity values in JSON, closes `#332 <https://github.com/simonw/datasette/issues/332>`_
 - URLs displayed in the results of custom SQL queries are now URLified, closes `#298 <https://github.com/simonw/datasette/issues/298>`_
 
 .. _v0_23_2:
@@ -1095,7 +1095,7 @@ for that reference (automatically or using the :ref:`label_columns` metadata
 option) so it can display a link to the associated row.
 
 This expansion is now also available for JSON and CSV representations of the
-table, using the new ``_labels=on`` querystring option. See
+table, using the new ``_labels=on`` query string option. See
 :ref:`expand_foreign_keys` for more details.
 
 New configuration settings
@@ -1117,7 +1117,7 @@ configuration options have been added:
 Control HTTP caching with ?_ttl=
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can now customize the HTTP max-age header that is sent on a per-URL basis, using the new ``?_ttl=`` querystring parameter.
+You can now customize the HTTP max-age header that is sent on a per-URL basis, using the new ``?_ttl=`` query string parameter.
 
 You can set this to any value in seconds, or you can set it to 0 to disable HTTP caching entirely.
 
@@ -1280,7 +1280,7 @@ New JSON ``_shape=`` options, the ability to set table ``_size=`` and a mechanis
   * Updated docs
 
 - FTS tables now detected by ``inspect()``, closes `#240 <https://github.com/simonw/datasette/issues/240>`_
-- New ``?_size=XXX`` querystring parameter for table view, closes `#229 <https://github.com/simonw/datasette/issues/229>`_
+- New ``?_size=XXX`` query string parameter for table view, closes `#229 <https://github.com/simonw/datasette/issues/229>`_
 
   Also added documentation for all of the ``_special`` arguments.
 

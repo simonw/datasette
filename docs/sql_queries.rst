@@ -272,14 +272,14 @@ For example:
 
 You can use ``"params"`` to explicitly list the named parameters that should be displayed as form fields - otherwise they will be automatically detected.
 
-You can pre-populate form fields when the page first loads using a querystring, e.g. ``/mydatabase/add_name?name=Prepopulated``. The user will have to submit the form to execute the query.
+You can pre-populate form fields when the page first loads using a query string, e.g. ``/mydatabase/add_name?name=Prepopulated``. The user will have to submit the form to execute the query.
 
 .. _canned_queries_magic_parameters:
 
 Magic parameters
 ~~~~~~~~~~~~~~~~
 
-Named parameters that start with an underscore are special: they can be used to automatically add values created by Datasette that are not contained in the incoming form fields or querystring.
+Named parameters that start with an underscore are special: they can be used to automatically add values created by Datasette that are not contained in the incoming form fields or query string.
 
 Available magic parameters are:
 

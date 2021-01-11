@@ -47,9 +47,9 @@ Table
 
 The table page is the heart of Datasette: it allows users to interactively explore the contents of a database table, including sorting, filtering, :ref:`full_text_search` and applying :ref:`facets`.
 
-The HTML interface is worth spending some time exploring. As with other pages, you can return the JSON data by appending ``.json`` to the URL path, before any `?` querystring arguments.
+The HTML interface is worth spending some time exploring. As with other pages, you can return the JSON data by appending ``.json`` to the URL path, before any `?` query string arguments.
 
-The querystring arguments are described in more detail here: :ref:`table_arguments`
+The query string arguments are described in more detail here: :ref:`table_arguments`
 
 You can also use the table page to interactively construct a SQL query - by applying different filters and a sort order for example - and then click the "View and edit SQL" link to see the SQL query that was used for the page and edit and re-submit it.
 

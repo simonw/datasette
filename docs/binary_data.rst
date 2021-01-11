@@ -44,7 +44,7 @@ https://latest.datasette.io/fixtures/binary_data.json?_shape=array
 Linking to binary downloads
 ---------------------------
 
-The ``.blob`` output format is used to return binary data. It requires a ``_blob_column=`` querystring argument specifying which BLOB column should be downloaded, for example:
+The ``.blob`` output format is used to return binary data. It requires a ``_blob_column=`` query string argument specifying which BLOB column should be downloaded, for example:
 
 https://latest.datasette.io/fixtures/binary_data/1.blob?_blob_column=data
 

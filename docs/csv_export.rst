@@ -71,7 +71,7 @@ The default URL for the CSV representation of a table is that table with
 * https://latest.datasette.io/fixtures/facetable.json - JSON API
 
 This pattern doesn't work for tables with names that already end in ``.csv`` or
-``.json``. For those tables, you can instead use the ``_format=`` querystring
+``.json``. For those tables, you can instead use the ``_format=`` query string
 parameter:
 
 * https://latest.datasette.io/fixtures/table%2Fwith%2Fslashes.csv - HTML interface

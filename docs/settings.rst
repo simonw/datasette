@@ -64,7 +64,7 @@ The following options can be set using ``--setting name value``, or by storing t
 default_page_size
 ~~~~~~~~~~~~~~~~~
 
-The default number of rows returned by the table page. You can over-ride this on a per-page basis using the ``?_size=80`` querystring parameter, provided you do not specify a value higher than the ``max_returned_rows`` setting. You can set this default using ``--setting`` like so::
+The default number of rows returned by the table page. You can over-ride this on a per-page basis using the ``?_size=80`` query string parameter, provided you do not specify a value higher than the ``max_returned_rows`` setting. You can set this default using ``--setting`` like so::
 
     datasette mydatabase.db --setting default_page_size 50
 
@@ -79,7 +79,7 @@ If this time limit is too short for you, you can customize it using the ``sql_ti
 
     datasette mydatabase.db --setting sql_time_limit_ms 3500
 
-You can optionally set a lower time limit for an individual query using the ``?_timelimit=100`` querystring argument::
+You can optionally set a lower time limit for an individual query using the ``?_timelimit=100`` query string argument::
 
     /my-database/my-table?qSpecies=44&_timelimit=100
 
@@ -172,7 +172,7 @@ Should users be able to download the original SQLite database using a link on th
 default_cache_ttl
 ~~~~~~~~~~~~~~~~~
 
-Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-age=X``. Can be over-ridden on a per-request basis using the ``?_ttl=`` querystring parameter. Set this to ``0`` to disable HTTP caching entirely. Defaults to 5 seconds.
+Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-age=X``. Can be over-ridden on a per-request basis using the ``?_ttl=`` query string parameter. Set this to ``0`` to disable HTTP caching entirely. Defaults to 5 seconds.
 
 ::
 

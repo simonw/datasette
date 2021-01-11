@@ -233,7 +233,7 @@ def test_add_filter_redirects(app_client):
     assert response.status == 302
     assert response.headers["Location"].endswith("?content__startswith=x")
 
-    # Adding a redirect to an existing querystring:
+    # Adding a redirect to an existing query string:
     path = path_base + "?foo=bar&" + filter_args
     response = app_client.get(path, allow_redirects=False)
     assert response.status == 302

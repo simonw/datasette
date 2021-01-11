@@ -14,7 +14,7 @@ Datasette automatically detects which tables have been configured for full-text 
 The table page and table view API
 ---------------------------------
 
-Table views that support full-text search can be queried using the ``?_search=TERMS`` querystring parameter. This will run the search against content from all of the columns that have been included in the index.
+Table views that support full-text search can be queried using the ``?_search=TERMS`` query string parameter. This will run the search against content from all of the columns that have been included in the index.
 
 Try this example: `fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort <https://fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort>`__
 
@@ -45,7 +45,7 @@ Configuring full-text search for a table or view
 
 If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown above, Datasette will detect it automatically and add a search interface to the table page for that table.
 
-You can also manually configure which table should be used for full-text search using querystring parameters or :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
+You can also manually configure which table should be used for full-text search using query string parameters or :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
 
 Use ``?_fts_table=x`` to over-ride the FTS table for a specific page. If the primary key was something other than ``rowid`` you can use ``?_fts_pk=col`` to set that as well. This is particularly useful for views, for example:
 

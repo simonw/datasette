@@ -7,10 +7,10 @@ Datasette facets can be used to add a faceted browse interface to any database t
 
 .. image:: facets.png
 
-Facets can be specified in two ways: using querystring parameters, or in ``metadata.json`` configuration for the table.
+Facets can be specified in two ways: using query string parameters, or in ``metadata.json`` configuration for the table.
 
-Facets in querystrings
-----------------------
+Facets in query strings
+-----------------------
 
 To turn on faceting for specific columns on a Datasette table view, add one or more ``_facet=COLUMN`` parameters to the URL. For example, if you want to turn on facets for the ``city_id`` and ``state`` columns, construct a URL that looks like this::
 

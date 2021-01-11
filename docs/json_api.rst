@@ -174,7 +174,7 @@ Special JSON arguments
 ----------------------
 
 Every Datasette endpoint that can return JSON also accepts the following
-querystring arguments:
+query string arguments:
 
 ``?_shape=SHAPE``
     The shape of the JSON to return, documented above.
@@ -211,12 +211,12 @@ querystring arguments:
 Table arguments
 ---------------
 
-The Datasette table view takes a number of special querystring arguments.
+The Datasette table view takes a number of special query string arguments.
 
 Column filter arguments
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-You can filter the data returned by the table based on column values using a querystring argument.
+You can filter the data returned by the table based on column values using a query string argument.
 
 ``?column__exact=value`` or ``?_column=value``
     Returns rows where the specified column exactly matches the value.
@@ -389,7 +389,7 @@ labels. The HTML interface does this by default for every detected foreign key
 column - you can turn that off using ``?_labels=off``.
 
 You can request foreign keys be expanded in JSON using the ``_labels=on`` or
-``_label=COLUMN`` special querystring parameters. Here's what an expanded row
+``_label=COLUMN`` special query string parameters. Here's what an expanded row
 looks like::
 
     [

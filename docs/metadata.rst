@@ -177,7 +177,7 @@ Datasette defaults to displaing 100 rows per page, for both tables and views. Yo
         }
     }
 
-This size can still be over-ridden by passing e.g. ``?_size=50`` in the querystring.
+This size can still be over-ridden by passing e.g. ``?_size=50`` in the query string.
 
 .. _metadata_sortable_columns:
 

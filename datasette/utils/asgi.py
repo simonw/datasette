@@ -92,10 +92,7 @@ class Request:
     @property
     def full_path(self):
         qs = self.query_string
-        return "{}{}".format(
-            self.path,
-            ('?' + qs) if qs else ''
-        )
+        return "{}{}".format(self.path, ("?" + qs) if qs else "")
 
     @property
     def args(self):

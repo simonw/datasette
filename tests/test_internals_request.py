@@ -92,12 +92,10 @@ def test_request_url_vars():
     ).url_vars
 
 
-
-@pytest.mark.parametrize("path,query_string,expected_full_path", [
-    ("/", "", "/"),
-    ("/", "foo=bar", "/?foo=bar"),
-    ("/foo", "bar", "/foo?bar")
-])
+@pytest.mark.parametrize(
+    "path,query_string,expected_full_path",
+    [("/", "", "/"), ("/", "foo=bar", "/?foo=bar"), ("/foo", "bar", "/foo?bar")],
+)
 def test_request_properties(path, query_string, expected_full_path):
     scope = {
         "http_version": "1.1",

@@ -90,3 +90,25 @@ def test_request_url_vars():
     assert {"name": "cleo"} == Request(
         dict(scope, url_route={"kwargs": {"name": "cleo"}}), None
     ).url_vars
+
+
+
+@pytest.mark.parametrize("path,query_string,expected_full_path", [
+    ("/", "", "/"),
+    ("/", "foo=bar", "/?foo=bar"),
+    ("/foo", "bar", "/foo?bar")
+])
+def test_request_properties(path, query_string, expected_full_path):
+    scope = {
+        "http_version": "1.1",
+        "method": "POST",
+        "path": path,
+        "raw_path": path.encode("latin-1"),
+        "query_string": query_string.encode("latin-1"),
+        "scheme": "http",
+        "type": "http",
+    }
+    request = Request(scope, None)
+    assert request.path == path
+    assert request.query_string == query_string
+    assert request.full_path == expected_full_path

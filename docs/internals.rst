@@ -35,13 +35,16 @@ The request object is passed to various plugin hooks. It represents an incoming 
     The host header from the incoming request, e.g. ``latest.datasette.io`` or ``localhost``.
 
 ``.path`` - string
-    The path of the request, e.g. ``/fixtures``.
+    The path of the request excluding the query string, e.g. ``/fixtures``.
+
+``.full_path`` - string
+    The path of the request including the query string if one is present, e.g. ``/fixtures?sql=select+sqlite_version()``.
 
 ``.query_string`` - string
-    The querystring component of the request, without the ``?`` - e.g. ``name__contains=sam&age__gt=10``.
+    The query string component of the request, without the ``?`` - e.g. ``name__contains=sam&age__gt=10``.
 
 ``.args`` - MultiParams
-    An object representing the parsed querystring parameters, see below.
+    An object representing the parsed query string parameters, see below.
 
 ``.url_vars`` - dictionary (str -> str)
     Variables extracted from the URL path, if that path was defined using a regular expression. See :ref:`plugin_register_routes`.
@@ -62,9 +65,9 @@ The object also has two awaitable methods:
 The MultiParams class
 =====================
 
-``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to querystring parameters that may have multiple values.
+``request.args`` is a ``MultiParams`` object - a dictionary-like object which provides access to query string parameters that may have multiple values.
 
-Consider the querystring ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
+Consider the query string ``?foo=1&foo=2&bar=3`` - with two values for ``foo`` and one value for ``bar``.
 
 ``request.args[key]`` - string
     Returns the first value for that key, or raises a ``KeyError`` if the key is missing. For the above example ``request.args["foo"]`` would return ``"1"``.

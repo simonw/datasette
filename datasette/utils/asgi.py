@@ -90,6 +90,14 @@ class Request:
         return (self.scope.get("query_string") or b"").decode("latin-1")
 
     @property
+    def full_path(self):
+        qs = self.query_string
+        return "{}{}".format(
+            self.path,
+            ('?' + qs) if qs else ''
+        )
+
+    @property
     def args(self):
         return MultiParams(parse_qs(qs=self.query_string))
 

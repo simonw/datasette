@@ -50,10 +50,7 @@ SQLite string escaping rules will be applied to values passed using named
 parameters - they will be wrapped in quotes and their content will be correctly
 escaped.
 
-Datasette disallows custom SQL containing the string PRAGMA, as SQLite pragma
-statements can be used to change database settings at runtime. If you need to
-include the string "pragma" in a query you can do so safely using a named
-parameter.
+Datasette disallows custom SQL queries containing the string PRAGMA (with a small number `of exceptions <https://github.com/simonw/datasette/issues/761>`__) as SQLite pragma statements can be used to change database settings at runtime. If you need to include the string "pragma" in a query you can do so safely using a named parameter.
 
 .. _sql_views:
 

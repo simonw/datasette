@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup as Soup
+from datasette.utils import allowed_pragmas
 from .fixtures import (  # noqa
     app_client,
     app_client_base_url_prefix,
@@ -122,6 +123,20 @@ def test_invalid_custom_sql(app_client):
     response = app_client.get("/fixtures?sql=.schema")
     assert response.status == 400
     assert "Statement must be a SELECT" in response.text
+
+
+def test_disallowed_custom_sql_pragma(app_client):
+    response = app_client.get(
+        "/fixtures?sql=SELECT+*+FROM+pragma_not_on_allow_list('idx52')"
+    )
+    assert response.status == 400
+    pragmas = ", ".join("pragma_{}()".format(pragma) for pragma in allowed_pragmas)
+    assert (
+        "Statement contained a disallowed PRAGMA. Allowed pragma functions are {}".format(
+            pragmas
+        )
+        in response.text
+    )
 
 
 def test_sql_time_limit(app_client_shorter_time_limit):

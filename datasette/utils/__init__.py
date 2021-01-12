@@ -187,7 +187,9 @@ allowed_pragmas = (
 disallawed_sql_res = [
     (
         re.compile(f"pragma(?!_({'|'.join(allowed_pragmas)}))"),
-        "Statement may not contain PRAGMA",
+        "Statement contained a disallowed PRAGMA. Allowed pragma functions are {}".format(
+            ", ".join("pragma_{}()".format(pragma) for pragma in allowed_pragmas)
+        ),
     )
 ]
 

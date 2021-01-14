@@ -5,6 +5,8 @@ Custom pages and templates
 
 Datasette provides a number of ways of customizing the way data is displayed.
 
+.. _customization_css_and_javascript:
+
 Custom CSS and JavaScript
 -------------------------
 
@@ -25,7 +27,12 @@ Your ``metadata.json`` file can include links that look like this:
         ]
     }
 
-The extra CSS and JavaScript files will be linked in the ``<head>`` of every page.
+The extra CSS and JavaScript files will be linked in the ``<head>`` of every page:
+
+.. code-block:: html
+
+    <link rel="stylesheet" href="https://simonwillison.net/static/css/all.bf8cd891642c.css">
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"></script>
 
 You can also specify a SRI (subresource integrity hash) for these assets:
 
@@ -46,8 +53,38 @@ You can also specify a SRI (subresource integrity hash) for these assets:
         ]
     }
 
+This will produce:
+
+.. code-block:: html
+
+    <link rel="stylesheet" href="https://simonwillison.net/static/css/all.bf8cd891642c.css"
+        integrity="sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI" 
+        crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
+        integrity="sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
+        crossorigin="anonymous"></script>
+
 Modern browsers will only execute the stylesheet or JavaScript if the SRI hash
 matches the content served. You can generate hashes using `www.srihash.org <https://www.srihash.org/>`_
+
+Items in ``"extra_js_urls"`` can specify ``"module": true`` if they reference JavaScript that uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__. This configuration:
+
+.. code-block:: json
+
+    {
+        "extra_js_urls": [
+            {
+                "url": "https://example.datasette.io/module.js",
+                "module": true
+            }
+        ]
+    }
+
+Will produce this HTML:
+
+.. code-block:: html
+
+    <script type="module" src="https://example.datasette.io/module.js"></script>
 
 CSS classes on the <body>
 ~~~~~~~~~~~~~~~~~~~~~~~~~

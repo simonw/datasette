@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="{{ url.url }}"{% if url.sri %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}>
 {% endfor %}
 {% for url in extra_js_urls %}
-    <script src="{{ url.url }}"{% if url.sri %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}></script>
+    <script {% if url.module %}type="module" {% endif %}src="{{ url.url }}"{% if url.sri %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}></script>
 {% endfor %}
 {% block extra_head %}{% endblock %}
 </head>

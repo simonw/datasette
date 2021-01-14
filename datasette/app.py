@@ -864,19 +864,23 @@ class Datasette:
             if isinstance(url_or_dict, dict):
                 url = url_or_dict["url"]
                 sri = url_or_dict.get("sri")
+                module = bool(url_or_dict.get("module"))
             else:
                 url = url_or_dict
                 sri = None
+                module = False
             if url in seen_urls:
                 continue
             seen_urls.add(url)
             if url.startswith("/"):
                 # Take base_url into account:
                 url = self.urls.path(url)
+            script = {"url": url}
             if sri:
-                output.append({"url": url, "sri": sri})
-            else:
-                output.append({"url": url})
+                script["sri"] = sri
+            if module:
+                script["module"] = True
+            output.append(script)
         return output
 
     def app(self):

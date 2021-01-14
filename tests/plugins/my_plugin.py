@@ -61,6 +61,7 @@ def extra_js_urls():
             "sri": "SRIHASH",
         },
         "https://plugin-example.datasette.io/plugin1.js",
+        {"url": "https://plugin-example.datasette.io/plugin.module.js", "module": True},
     ]
 
 

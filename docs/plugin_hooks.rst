@@ -182,7 +182,7 @@ This can be a list of URLs:
     @hookimpl
     def extra_css_urls():
         return [
-            'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css'
+            "https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css"
         ]
 
 Or a list of dictionaries defining both a URL and an
@@ -190,20 +190,16 @@ Or a list of dictionaries defining both a URL and an
 
 .. code-block:: python
 
-    from datasette import hookimpl
-
     @hookimpl
     def extra_css_urls():
         return [{
-            'url': 'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css',
-            'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
+            "url": "https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css",
+            "sri": "sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4",
         }]
 
 This function can also return an awaitable function, useful if it needs to run any async code:
 
 .. code-block:: python
-
-    from datasette import hookimpl
 
     @hookimpl
     def extra_css_urls(datasette):
@@ -233,8 +229,8 @@ return a list of URLs, a list of dictionaries or an awaitable function that retu
     @hookimpl
     def extra_js_urls():
         return [{
-            'url': 'https://code.jquery.com/jquery-3.3.1.slim.min.js',
-            'sri': 'sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo',
+            "url": "https://code.jquery.com/jquery-3.3.1.slim.min.js",
+            "sri": "sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo",
         }]
 
 You can also return URLs to files from your plugin's ``static/`` directory, if
@@ -242,12 +238,21 @@ you have one:
 
 .. code-block:: python
 
-    from datasette import hookimpl
-
     @hookimpl
     def extra_js_urls():
         return [
-            '/-/static-plugins/your-plugin/app.js'
+            "/-/static-plugins/your-plugin/app.js"
+        ]
+
+If your code uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__ you should include the ``"module": True`` key. See :ref:`customization_css_and_javascript` for more details.
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_js_urls():
+        return [{
+            "url": "/-/static-plugins/your-plugin/app.js",
+            "module": True
         ]
 
 Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_

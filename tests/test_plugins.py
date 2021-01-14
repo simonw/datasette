@@ -118,16 +118,19 @@ def test_hook_extra_css_urls(app_client, path, expected_decoded_object):
 def test_hook_extra_js_urls(app_client):
     response = app_client.get("/")
     scripts = Soup(response.body, "html.parser").findAll("script")
-    assert [
-        s
-        for s in scripts
-        if s.attrs
-        == {
+    script_attrs = [s.attrs for s in scripts]
+    for attrs in [
+        {
             "integrity": "SRIHASH",
             "crossorigin": "anonymous",
             "src": "https://plugin-example.datasette.io/jquery.js",
-        }
-    ]
+        },
+        {
+            "src": "https://plugin-example.datasette.io/plugin.module.js",
+            "type": "module",
+        },
+    ]:
+        assert any(s == attrs for s in script_attrs), "Expected: {}".format(attrs)
 
 
 def test_plugins_with_duplicate_js_urls(app_client):

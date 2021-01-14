@@ -70,7 +70,7 @@ def extra_body_script(
     template, database, table, view_name, columns, request, datasette
 ):
     async def inner():
-        return "var extra_body_script = {};".format(
+        script = "var extra_body_script = {};".format(
             json.dumps(
                 {
                     "template": template,
@@ -90,6 +90,7 @@ def extra_body_script(
                 }
             )
         )
+        return {"script": script, "module": True}
 
     return inner
 

@@ -288,7 +288,7 @@ def test_plugin_config_file(app_client):
     ],
 )
 def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
-    r = re.compile(r"<script>var extra_body_script = (.*?);</script>")
+    r = re.compile(r"<script type=\"module\">var extra_body_script = (.*?);</script>")
     json_data = r.search(app_client.get(path).text).group(1)
     actual_data = json.loads(json_data)
     assert expected_extra_body_script == actual_data

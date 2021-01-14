@@ -62,7 +62,7 @@
 {% include "_close_open_menus.html" %}
 
 {% for body_script in body_scripts %}
-    <script>{{ body_script }}</script>
+    <script{% if body_script.module %} type="module"{% endif %}>{{ body_script.script }}</script>
 {% endfor %}
 
 {% if select_templates %}<!-- Templates considered: {{ select_templates|join(", ") }} -->{% endif %}

@@ -781,7 +781,13 @@ class Datasette:
             datasette=self,
         ):
             extra_script = await await_me_maybe(extra_script)
-            body_scripts.append(Markup(extra_script))
+            if isinstance(extra_script, dict):
+                script = extra_script["script"]
+                module = bool(extra_script.get("module"))
+            else:
+                script = extra_script
+                module = False
+            body_scripts.append({"script": Markup(script), "module": module})
 
         extra_template_vars = {}
         # pylint: disable=no-member

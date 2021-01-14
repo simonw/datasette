@@ -168,7 +168,7 @@ Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>
 extra_css_urls(template, database, table, columns, view_name, request, datasette)
 ---------------------------------------------------------------------------------
 
-Same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
 
 Return a list of extra CSS URLs that should be included on the page. These can
 take advantage of the CSS class hooks described in :ref:`customization`.
@@ -217,7 +217,7 @@ Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-ma
 extra_js_urls(template, database, table, columns, view_name, request, datasette)
 --------------------------------------------------------------------------------
 
-Same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
 
 This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
 return a list of URLs, a list of dictionaries or an awaitable function that returns those things:
@@ -264,15 +264,30 @@ extra_body_script(template, database, table, columns, view_name, request, datase
 
 Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
 
-Same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
 
 The ``template``, ``database``, ``table`` and ``view_name`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
 
 The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
 
-The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
+This function can return a string containing JavaScript, or a dictionary as described below, or a function or awaitable function that returns a string or dictionary.
 
-You can also return an awaitable function that returns a string.
+Use a dictionary if you want to specify that the code should be placed in a ``<script type="module">...</script>`` element:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_body_script():
+        return {
+            "module": True,
+            "script": "console.log('Your JavaScript goes here...')"
+        }
+
+This will add the following to the end of your page:
+
+.. code-block:: html
+
+    <script type="module">console.log('Your JavaScript goes here...')</script>
 
 Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
 

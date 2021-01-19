@@ -169,17 +169,7 @@ To release a new version, first create a commit that updates the version number 
 
 Referencing the issues that are part of the release in the commit message ensures the name of the release shows up on those issue pages, e.g. `here <https://github.com/simonw/datasette/issues/581#ref-commit-d56f402>`__.
 
-You can generate the list of issue references for a specific release by pasting the following into the browser devtools while looking at the :ref:`changelog` page (replace ``v0-44`` with the most recent version):
-
-.. code-block:: javascript
-
-    [
-        ...new Set(
-            Array.from(
-                document.getElementById("v0-44").querySelectorAll("a[href*=issues]")
-            ).map((a) => "#" + a.href.split("/issues/")[1])
-        ),
-    ].sort().join(", ");
+You can generate the list of issue references for a specific release by copying and pasting text from the release notes or GitHub changes-since-last-release view into this `Extract issue numbers from pasted text <https://observablehq.com/@simonw/extract-issue-numbers-from-pasted-text>`__ tool.
 
 To create the tag for the release, create `a new release <https://github.com/simonw/datasette/releases/new>`__ on GitHub matching the new version number. You can convert the release notes to Markdown by copying and pasting the rendered HTML into this `Paste to Markdown tool <https://euangoddard.github.io/clipboard2markdown/>`__.
 

@@ -118,3 +118,74 @@ If you want to create that test database repeatedly for every individual test fu
     @pytest.fixture
     def datasette(tmp_path_factory):
         # This fixture will be executed repeatedly for every test
+
+.. _testing_plugins_pytest_httpx:
+
+Testing outbound HTTP calls with pytest-httpx
+---------------------------------------------
+
+If your plugin makes outbound HTTP calls - for example datasette-auth-github or datasette-import-table - you may need to mock those HTTP requests in your tests.
+
+The `pytest-httpx <https://pypi.org/project/pytest-httpx/>`__ package is a useful library for mocking calls. It can be tricky to use with Datasette though since it mocks all HTTPX requests, and Datasette's own testing mechanism uses HTTPX internally.
+
+To avoid breaking your tests, you can return ``["localhost"]`` from the ``non_mocked_hosts()`` fixture.
+
+As an example, here's a very simple plugin which executes an HTTP response and returns the resulting content:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.utils.asgi import Response
+    import httpx
+
+
+    @hookimpl
+    def register_routes():
+        return [
+            (r"^/-/fetch-url$", fetch_url),
+        ]
+
+
+    async def fetch_url(datasette, request):
+        if request.method == "GET":
+            return Response.html(
+                """
+                <form action="/-/fetch-url" method="post">
+                <input type="hidden" name="csrftoken" value="{}">
+                <input name="url"><input type="submit">
+            </form>""".format(
+                    request.scope["csrftoken"]()
+                )
+            )
+        vars = await request.post_vars()
+        url = vars["url"]
+        return Response.text(httpx.get(url).text)
+
+Here's a test for that plugin that mocks the HTTPX outbound request:
+
+.. code-block:: python
+
+    from datasette.app import Datasette
+    import pytest
+
+
+    @pytest.fixture
+    def non_mocked_hosts():
+        # This ensures httpx-mock will not affect Datasette's own
+        # httpx calls made in the tests by datasette.client:
+        return ["localhost"]
+
+
+    async def test_outbound_http_call(httpx_mock):
+        httpx_mock.add_response(
+            url='https://www.example.com/',
+            data='Hello world',
+        )
+        datasette = Datasette([], memory=True)
+        response = await datasette.client.post("/-/fetch-url", data={
+            "url": "https://www.example.com/"
+        })
+        asert response.text == "Hello world"
+
+        outbound_request = httpx_mock.get_request()
+        assert outbound_request.url == "https://www.example.com/"

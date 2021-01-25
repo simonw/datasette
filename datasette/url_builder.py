@@ -30,9 +30,11 @@ class Urls:
     def database(self, database, format=None):
         db = self.ds.databases[database]
         if self.ds.setting("hash_urls") and db.hash:
-            path = self.path(f"{database}-{db.hash[:HASH_LENGTH]}", format=format)
+            path = self.path(
+                f"{urllib.parse.quote(database)}-{db.hash[:HASH_LENGTH]}", format=format
+            )
         else:
-            path = self.path(database, format=format)
+            path = self.path(urllib.parse.quote(database), format=format)
         return path
 
     def table(self, database, table, format=None):

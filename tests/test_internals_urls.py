@@ -103,9 +103,9 @@ def test_logout(ds, base_url, expected):
 @pytest.mark.parametrize(
     "base_url,format,expected",
     [
-        ("/", None, "/:memory:"),
-        ("/prefix/", None, "/prefix/:memory:"),
-        ("/", "json", "/:memory:.json"),
+        ("/", None, "/%3Amemory%3A"),
+        ("/prefix/", None, "/prefix/%3Amemory%3A"),
+        ("/", "json", "/%3Amemory%3A.json"),
     ],
 )
 def test_database(ds, base_url, format, expected):
@@ -118,10 +118,10 @@ def test_database(ds, base_url, format, expected):
 @pytest.mark.parametrize(
     "base_url,name,format,expected",
     [
-        ("/", "name", None, "/:memory:/name"),
-        ("/prefix/", "name", None, "/prefix/:memory:/name"),
-        ("/", "name", "json", "/:memory:/name.json"),
-        ("/", "name.json", "json", "/:memory:/name.json?_format=json"),
+        ("/", "name", None, "/%3Amemory%3A/name"),
+        ("/prefix/", "name", None, "/prefix/%3Amemory%3A/name"),
+        ("/", "name", "json", "/%3Amemory%3A/name.json"),
+        ("/", "name.json", "json", "/%3Amemory%3A/name.json?_format=json"),
     ],
 )
 def test_table_and_query(ds, base_url, name, format, expected):
@@ -137,9 +137,9 @@ def test_table_and_query(ds, base_url, name, format, expected):
 @pytest.mark.parametrize(
     "base_url,format,expected",
     [
-        ("/", None, "/:memory:/facetable/1"),
-        ("/prefix/", None, "/prefix/:memory:/facetable/1"),
-        ("/", "json", "/:memory:/facetable/1.json"),
+        ("/", None, "/%3Amemory%3A/facetable/1"),
+        ("/prefix/", None, "/prefix/%3Amemory%3A/facetable/1"),
+        ("/", "json", "/%3Amemory%3A/facetable/1.json"),
     ],
 )
 def test_row(ds, base_url, format, expected):

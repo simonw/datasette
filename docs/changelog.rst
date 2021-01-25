@@ -4,12 +4,14 @@
 Changelog
 =========
 
-.. _v0_54_a0:
+.. _v0_54:
 
-0.54a0 (2020-12-19)
--------------------
+0.54 (2021-01-24)
+-----------------
 
-**Alpha release**. Release notes in progress.
+
+
+
 
 - Improved support for named in-memory databases. (`#1151 <https://github.com/simonw/datasette/issues/1151>`__)
 - New ``_internal`` in-memory database tracking attached databases, tables and columns. (`#1150 <https://github.com/simonw/datasette/issues/1150>`__)

@@ -609,17 +609,17 @@ def test_no_files_uses_memory_database(app_client_no_files):
     assert response.status == 200
     assert {
         ":memory:": {
+            "name": ":memory:",
             "hash": None,
             "color": "f7935d",
+            "path": "/%3Amemory%3A",
+            "tables_and_views_truncated": [],
+            "tables_and_views_more": False,
+            "tables_count": 0,
+            "table_rows_sum": 0,
+            "show_table_row_counts": False,
             "hidden_table_rows_sum": 0,
             "hidden_tables_count": 0,
-            "name": ":memory:",
-            "show_table_row_counts": False,
-            "path": "/:memory:",
-            "table_rows_sum": 0,
-            "tables_count": 0,
-            "tables_and_views_more": False,
-            "tables_and_views_truncated": [],
             "views_count": 0,
             "private": False,
         }

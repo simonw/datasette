@@ -181,6 +181,7 @@ class DataView(BaseView):
     async def resolve_db_name(self, request, db_name, **kwargs):
         hash = None
         name = None
+        db_name = urllib.parse.unquote_plus(db_name)
         if db_name not in self.ds.databases and "-" in db_name:
             # No matching DB found, maybe it's a name-hash?
             name_bit, hash_bit = db_name.rsplit("-", 1)
@@ -191,7 +192,7 @@ class DataView(BaseView):
                 hash = hash_bit
         else:
             name = db_name
-        name = urllib.parse.unquote_plus(name)
+
         try:
             db = self.ds.databases[name]
         except KeyError:

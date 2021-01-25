@@ -17,6 +17,7 @@ import pytest
 import sys
 import textwrap
 from unittest import mock
+import urllib
 
 
 @pytest.fixture
@@ -255,3 +256,25 @@ def test_serve_duplicate_database_names(ensure_eventloop, tmpdir):
     assert result.exit_code == 0, result.output
     databases = json.loads(result.output)
     assert {db["name"] for db in databases} == {"db", "db_2"}
+
+
+@pytest.mark.parametrize(
+    "filename", ["test-database (1).sqlite", "database (1).sqlite"]
+)
+def test_weird_database_names(ensure_eventloop, tmpdir, filename):
+    # https://github.com/simonw/datasette/issues/1181
+    runner = CliRunner()
+    db_path = str(tmpdir / filename)
+    sqlite3.connect(db_path).execute("vacuum")
+    result1 = runner.invoke(cli, [db_path, "--get", "/"])
+    assert result1.exit_code == 0, result1.output
+    filename_no_stem = filename.rsplit(".", 1)[0]
+    expected_link = '<a href="/{}">{}</a>'.format(
+        urllib.parse.quote(filename_no_stem), filename_no_stem
+    )
+    assert expected_link in result1.output
+    # Now try hitting that database page
+    result2 = runner.invoke(
+        cli, [db_path, "--get", "/{}".format(urllib.parse.quote(filename_no_stem))]
+    )
+    assert result2.exit_code == 0, result2.output

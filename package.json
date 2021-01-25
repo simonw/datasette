@@ -3,5 +3,9 @@
   "private": true,
   "devDependencies": {
     "prettier": "^2.2.1"
+  },
+  "scripts": {
+    "fix": "npm run prettier -- --write",
+    "prettier": "prettier 'datasette/static/*[!.min].js'"
   }
 }

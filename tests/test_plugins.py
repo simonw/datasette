@@ -411,7 +411,7 @@ def test_hook_register_output_renderer_no_parameters(app_client):
 
 
 def test_hook_register_output_renderer_all_parameters(app_client):
-    response = app_client.get("/fixtures/facetable.testall")
+    response = app_client.get("/fixtures/facetable.testall?_ignore=1")
     assert 200 == response.status
     # Lots of 'at 0x103a4a690' in here - replace those so we can do
     # an easy comparison
@@ -454,6 +454,7 @@ def test_hook_register_output_renderer_all_parameters(app_client):
         "request": "<datasette.utils.asgi.Request object at 0xXXX>",
         "view_name": "table",
         "1+1": 2,
+        "full_path": "/fixtures/facetable?_ignore=1",
     }
     # Test that query_name is set correctly
     query_response = app_client.get("/fixtures/pragma_cache_size.testall")

@@ -24,7 +24,17 @@ async def can_render(
 
 
 async def render_test_all_parameters(
-    datasette, columns, rows, sql, query_name, database, table, request, view_name, data
+    datasette,
+    columns,
+    rows,
+    sql,
+    query_name,
+    database,
+    table,
+    request,
+    view_name,
+    data,
+    full_path,
 ):
     headers = {}
     for custom_header in request.args.getlist("header"):
@@ -44,6 +54,7 @@ async def render_test_all_parameters(
                 "request": request,
                 "view_name": view_name,
                 "1+1": result.first()[0],
+                "full_path": full_path,
             },
             default=repr,
         ),

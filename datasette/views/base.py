@@ -490,6 +490,7 @@ class DataView(BaseView):
                 table=data.get("table"),
                 request=request,
                 view_name=self.name,
+                full_path=path_with_format(request=request, format="", replace_format=_format),
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
                 data=data,
@@ -534,6 +535,8 @@ class DataView(BaseView):
                     table=data.get("table"),
                     request=request,
                     view_name=self.name,
+                    path=request.path,
+                    full_path=request.full_path,
                 )
                 it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:

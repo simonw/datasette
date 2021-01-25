@@ -6,16 +6,59 @@ Changelog
 
 .. _v0_54:
 
-0.54 (2021-01-24)
+0.54 (2021-01-25)
 -----------------
 
+The two big new features in this release are the ``_internal`` SQLite in-memory database storing details of all connected databases and tables, and support for JavaScript modules in plugins and additional scripts.
 
+The _internal database
+~~~~~~~~~~~~~~~~~~~~~~
 
+As part of ongoing work to help Datasette handle much larger numbers of connected databases and tables (see `Datasette Library <https://github.com/simonw/datasette/issues/417>`__) Datasette now maintains an in-memory SQLite database with details of all of the attached databases, tables, columns, indexes and foreign keys. (`#1150 <https://github.com/simonw/datasette/issues/1150>`__)
 
+This will support future improvements such as a searchable, paginated homepage of all available tables.
 
-- Improved support for named in-memory databases. (`#1151 <https://github.com/simonw/datasette/issues/1151>`__)
-- New ``_internal`` in-memory database tracking attached databases, tables and columns. (`#1150 <https://github.com/simonw/datasette/issues/1150>`__)
-- Support for JavaScript modules. (`#1186 <https://github.com/simonw/datasette/issues/1186>`__, `#1187 <https://github.com/simonw/datasette/issues/1187>`__)
+You can explore an example of this database by `signing in as root <https://latest.datasette.io/login-as-root>`__ to the ``latest.datasette.io`` demo instance and then navigating to `latest.datasette.io/_internal <https://latest.datasette.io/_internal>`__.
+
+Plugins can use these tables to introspect attached data in an efficient way. Plugin authors should note that this is not yet considered a stable interface, so any plugins that use this may need to make changes prior to Datasette 1.0 if the ``_internal`` table schemas change.
+
+Named in-memory database support
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+As part of the work building the ``_internal`` database, Datasette now supports named in-memory databases that can be shared across multiple connections. This allows plugins to create in-memory databases which will persist data for the lifetime of the Datasette server process. (`#1151 <https://github.com/simonw/datasette/issues/1151>`__)
+
+The new ``memory_name=`` parameter to the :ref:`internals_database` can be used to create named, shared in-memory databases.
+
+JavaScript modules
+~~~~~~~~~~~~~~~~~~
+
+`JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__ were introduced in ECMAScript 2015 and provide native browser support for the ``import`` and ``export`` keywords.
+
+To use modules, JavaScript needs to be included in ``<script>`` tags with a ``type="module"`` attribute.
+
+Datasette now has the ability to output ``<script type="module">`` in places where you may wish to take advantage of modules. The ``extra_js_urls`` option described in :ref:`customization_css_and_javascript` can now be used with modules, and module support is also available for the :ref:`extra_body_script() <plugin_hook_extra_body_script>` plugin hook. (`#1186 <https://github.com/simonw/datasette/issues/1186>`__, `#1187 <https://github.com/simonw/datasette/issues/1187>`__)
+
+`datasette-leaflet-freedraw <https://datasette.io/plugins/datasette-leaflet-freedraw>`__ is the first example of a Datasette plugin that takes advantage of the new support for JavaScript modules. See `Drawing shapes on a map to query a SpatiaLite database <https://simonwillison.net/2021/Jan/24/drawing-shapes-spatialite/>`__ for more on this plugin.
+
+Code formatting with Black and Prettier
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Datasette adopted `Black <https://github.com/psf/black>`__ for opinionated Python code formatting in June 2019. Datasette now also embraces `Prettier <https://prettier.io/>`__ for JavaScript formatting, which like Black is enforced by tests in continuous integration. Instructions for using these two tools can be found in the new section on :ref:`contributing_formatting` in the contributors documentation. (`#1167 <https://github.com/simonw/datasette/issues/1167>`__)
+
+Other changes
+~~~~~~~~~~~~~
+
+- Datasette can now open multiple database files with the same name, e.g. if you run ``datasette path/to/one.db path/to/other/one.db``. (`#509 <https://github.com/simonw/datasette/issues/509>`__)
+- ``datasette publish cloudrun`` now sets ``force_https_urls`` for every deployment, fixing some incorrect ``http://`` links. (`#1178 <https://github.com/simonw/datasette/issues/1178>`__)
+- Fixed a bug in the example nginx configuration in :ref:`deploying_proxy`. (`#1091 <https://github.com/simonw/datasette/issues/1091>`__)
+- The :ref:`Datasette Ecosystem <ecosystem>` documentation page has been reduced in size in favour of the ``datasette.io`` `tools <https://datasette.io/tools>`__ and `plugins <https://datasette.io/plugins>`__ directories. (`#1182 <https://github.com/simonw/datasette/issues/1182>`__)
+- The request object now provides a ``request.full_path`` property, which returns the path including any query string. (`#1184 <https://github.com/simonw/datasette/issues/1184>`__)
+- Better error message for disallowed ``PRAGMA`` clauses in SQL queries. (`#1185 <https://github.com/simonw/datasette/issues/1185>`__)
+- ``datasette publish heroku`` now deploys using ``python-3.8.7``.
+- New plugin testing documentation on :ref:`testing_plugins_pytest_httpx`. (`#1198 <https://github.com/simonw/datasette/issues/1198>`__)
+- All ``?_*`` query string parameters passed to the table page are now persisted in hidden form fields, so parameters such as ``?_size=10`` will be correctly passed to the next page when query filters are changed. (`#1194 <https://github.com/simonw/datasette/issues/1194>`__)
+- Fixed a bug loading a database file called ``test-database (1).sqlite``. (`#1181. <https://github.com/simonw/datasette/issues/1181>`__)
+
 
 .. _v0_53:
 
@@ -29,7 +72,6 @@ Datasette has an official project website now, at https://datasette.io/. This re
 -  New ``?_header=off`` option for CSV export which omits the CSV header row, :ref:`documented here <csv_export_url_parameters>`. (`#1133 <https://github.com/simonw/datasette/issues/1133>`__)
 - "Powered by Datasette" link in the footer now links to https://datasette.io/. (`#1138 <https://github.com/simonw/datasette/issues/1138>`__)
 - Project news no longer lives in the README - it can now be found at https://datasette.io/news. (`#1137 <https://github.com/simonw/datasette/issues/1137>`__)
-
 
 .. _v0_52_5:
 

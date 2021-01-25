@@ -747,3 +747,19 @@ If your plugin implements a ``<form method="POST">`` anywhere you will need to i
 .. code-block:: html
 
     <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+
+.. _internals_internal:
+
+The _internal database
+======================
+
+.. warning::
+    This API should be considered unstable - the structure of these tables may change prior to the release of Datasette 1.0.
+
+Datasette maintains an in-memory SQLite database with details of the the databases, tables and columns for all of the attached databases.
+
+By default all actors are denied access to the ``view-database`` permission for the ``_internal`` database, so the database is not visible to anyone unless they :ref:`sign in as root <authentication_root>`.
+
+Plugins can access this database by calling ``db = datasette.get_database("_internal")`` and then executing queries using the :ref:`Database API <internals_database>`.
+
+You can explore an example of this database by `signing in as root <https://latest.datasette.io/login-as-root>`__ to the ``latest.datasette.io`` demo instance and then navigating to `latest.datasette.io/_internal <https://latest.datasette.io/_internal>`__.

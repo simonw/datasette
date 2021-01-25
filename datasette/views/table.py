@@ -812,19 +812,12 @@ class TableView(RowTableShared):
                 .get(table, {})
             )
             self.ds.update_with_inherited_metadata(metadata)
+
             form_hidden_args = []
-            # Add currently selected facets
-            for arg in special_args:
-                if arg == "_facet" or arg.startswith("_facet_"):
-                    form_hidden_args.extend(
-                        (arg, item) for item in request.args.getlist(arg)
-                    )
-            for arg in ("_fts_table", "_fts_pk"):
-                if arg in special_args:
-                    form_hidden_args.append((arg, special_args[arg]))
-            if request.args.get("_where"):
-                for where_text in request.args.getlist("_where"):
-                    form_hidden_args.append(("_where", where_text))
+            for key in request.args:
+                if key.startswith("_"):
+                    for value in request.args.getlist(key):
+                        form_hidden_args.append((key, value))
 
             # if no sort specified AND table has a single primary key,
             # set sort to that so arrow is displayed

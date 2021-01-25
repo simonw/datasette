@@ -1250,6 +1250,28 @@ def test_extra_where_clauses(app_client):
     ]
 
 
+@pytest.mark.parametrize(
+    "path,expected_hidden",
+    [
+        ("/fixtures/facetable?_size=10", [("_size", "10")]),
+        (
+            "/fixtures/facetable?_size=10&_ignore=1&_ignore=2",
+            [
+                ("_size", "10"),
+                ("_ignore", "1"),
+                ("_ignore", "2"),
+            ],
+        ),
+    ],
+)
+def test_other_hidden_form_fields(app_client, path, expected_hidden):
+    response = app_client.get(path)
+    soup = Soup(response.body, "html.parser")
+    inputs = soup.find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
+
+
 def test_binary_data_display_in_table(app_client):
     response = app_client.get("/fixtures/binary_data")
     assert response.status == 200

@@ -11,6 +11,8 @@ Changelog
 
 The two big new features in this release are the ``_internal`` SQLite in-memory database storing details of all connected databases and tables, and support for JavaScript modules in plugins and additional scripts.
 
+For additional commentary on this release, see `Datasette 0.54, the annotated release notes <https://simonwillison.net/2021/Jan/25/datasette/>`__.
+
 The _internal database
 ~~~~~~~~~~~~~~~~~~~~~~
 

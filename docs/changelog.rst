@@ -59,7 +59,7 @@ Other changes
 - ``datasette publish heroku`` now deploys using ``python-3.8.7``.
 - New plugin testing documentation on :ref:`testing_plugins_pytest_httpx`. (`#1198 <https://github.com/simonw/datasette/issues/1198>`__)
 - All ``?_*`` query string parameters passed to the table page are now persisted in hidden form fields, so parameters such as ``?_size=10`` will be correctly passed to the next page when query filters are changed. (`#1194 <https://github.com/simonw/datasette/issues/1194>`__)
-- Fixed a bug loading a database file called ``test-database (1).sqlite``. (`#1181. <https://github.com/simonw/datasette/issues/1181>`__)
+- Fixed a bug loading a database file called ``test-database (1).sqlite``. (`#1181 <https://github.com/simonw/datasette/issues/1181>`__)
 
 
 .. _v0_53:

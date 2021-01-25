@@ -97,6 +97,58 @@ You can tell Datasette to open an interactive ``pdb`` debugger session if an err
 
     datasette --pdb fixtures.db
 
+.. _contributing_formatting:
+
+Code formatting
+---------------
+
+Datasette uses opinionated code formatters: `Black <https://github.com/psf/black>`__ for Python and `Prettier <https://prettier.io/>`__ for JavaScript.
+
+These formatters are enforced by Datasette's continuous integration: if a commit includes Python or JavaScript code that does not match the style enforced by those tools, the tests will fail.
+
+When developing locally, you can verify and correct the formatting of your code using these tools.
+
+.. _contributing_formatting_black:
+
+Running Black
+~~~~~~~~~~~~~
+
+Black will be installed when you run ``pip install -e '.[test]'``. To test that your code complies with Black, run the following in your root ``datasette`` repository checkout::
+
+    $ black . --check
+    All done! ✨ 🍰 ✨
+    95 files would be left unchanged.
+
+If any of your code does not conform to Black you can run this to automatically fix those problems::
+
+    $ black .
+    reformatted ../datasette/setup.py
+    All done! ✨ 🍰 ✨
+    1 file reformatted, 94 files left unchanged.
+
+.. _contributing_formatting_prettier:
+
+Prettier
+~~~~~~~~
+
+To install Prettier, `install Node.js <https://nodejs.org/en/download/package-manager/>`__ and then run the following in the root of your ``datasette`` repository checkout::
+
+    $ npm install
+
+This will install Prettier in a ``node_modules`` directory. You can then check that your code matches the coding style like so::
+
+    $ npm run prettier -- --check
+    > prettier
+    > prettier 'datasette/static/*[!.min].js' "--check"
+
+    Checking formatting...
+    [warn] datasette/static/plugins.js
+    [warn] Code style issues found in the above file(s). Forgot to run Prettier?
+
+You can fix any problems by running::
+
+    $ npm run fix
+
 .. _contributing_documentation:
 
 Editing and building the documentation

@@ -608,11 +608,11 @@ def test_no_files_uses_memory_database(app_client_no_files):
     response = app_client_no_files.get("/.json")
     assert response.status == 200
     assert {
-        ":memory:": {
-            "name": ":memory:",
+        "_memory": {
+            "name": "_memory",
             "hash": None,
-            "color": "f7935d",
-            "path": "/%3Amemory%3A",
+            "color": "a6c7b9",
+            "path": "/_memory",
             "tables_and_views_truncated": [],
             "tables_and_views_more": False,
             "tables_count": 0,
@@ -626,10 +626,26 @@ def test_no_files_uses_memory_database(app_client_no_files):
     } == response.json
     # Try that SQL query
     response = app_client_no_files.get(
-        "/:memory:.json?sql=select+sqlite_version()&_shape=array"
+        "/_memory.json?sql=select+sqlite_version()&_shape=array"
     )
     assert 1 == len(response.json)
     assert ["sqlite_version()"] == list(response.json[0].keys())
+
+
+@pytest.mark.parametrize(
+    "path,expected_redirect",
+    (
+        ("/:memory:", "/_memory"),
+        ("/:memory:.json", "/_memory.json"),
+        ("/:memory:?sql=select+1", "/_memory?sql=select+1"),
+        ("/:memory:.json?sql=select+1", "/_memory.json?sql=select+1"),
+        ("/:memory:.csv?sql=select+1", "/_memory.csv?sql=select+1"),
+    ),
+)
+def test_old_memory_urls_redirect(app_client_no_files, path, expected_redirect):
+    response = app_client_no_files.get(path, allow_redirects=False)
+    assert response.status == 301
+    assert response.headers["location"] == expected_redirect
 
 
 def test_database_page_for_database_with_dot_in_name(app_client_with_dot):

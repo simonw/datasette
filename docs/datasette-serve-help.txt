@@ -24,7 +24,7 @@ Options:
   --template-dir DIRECTORY  Path to directory containing custom templates
   --plugins-dir DIRECTORY   Path to directory containing custom plugins
   --static MOUNT:DIRECTORY  Serve static files from this directory at /MOUNT/...
-  --memory                  Make :memory: database available
+  --memory                  Make /_memory database available
   --config CONFIG           Deprecated: set config option using configname:value. Use
                             --setting instead.
 

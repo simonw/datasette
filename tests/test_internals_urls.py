@@ -103,14 +103,14 @@ def test_logout(ds, base_url, expected):
 @pytest.mark.parametrize(
     "base_url,format,expected",
     [
-        ("/", None, "/%3Amemory%3A"),
-        ("/prefix/", None, "/prefix/%3Amemory%3A"),
-        ("/", "json", "/%3Amemory%3A.json"),
+        ("/", None, "/_memory"),
+        ("/prefix/", None, "/prefix/_memory"),
+        ("/", "json", "/_memory.json"),
     ],
 )
 def test_database(ds, base_url, format, expected):
     ds._settings["base_url"] = base_url
-    actual = ds.urls.database(":memory:", format=format)
+    actual = ds.urls.database("_memory", format=format)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
 
@@ -118,18 +118,18 @@ def test_database(ds, base_url, format, expected):
 @pytest.mark.parametrize(
     "base_url,name,format,expected",
     [
-        ("/", "name", None, "/%3Amemory%3A/name"),
-        ("/prefix/", "name", None, "/prefix/%3Amemory%3A/name"),
-        ("/", "name", "json", "/%3Amemory%3A/name.json"),
-        ("/", "name.json", "json", "/%3Amemory%3A/name.json?_format=json"),
+        ("/", "name", None, "/_memory/name"),
+        ("/prefix/", "name", None, "/prefix/_memory/name"),
+        ("/", "name", "json", "/_memory/name.json"),
+        ("/", "name.json", "json", "/_memory/name.json?_format=json"),
     ],
 )
 def test_table_and_query(ds, base_url, name, format, expected):
     ds._settings["base_url"] = base_url
-    actual1 = ds.urls.table(":memory:", name, format=format)
+    actual1 = ds.urls.table("_memory", name, format=format)
     assert actual1 == expected
     assert isinstance(actual1, PrefixedUrlString)
-    actual2 = ds.urls.query(":memory:", name, format=format)
+    actual2 = ds.urls.query("_memory", name, format=format)
     assert actual2 == expected
     assert isinstance(actual2, PrefixedUrlString)
 
@@ -137,14 +137,14 @@ def test_table_and_query(ds, base_url, name, format, expected):
 @pytest.mark.parametrize(
     "base_url,format,expected",
     [
-        ("/", None, "/%3Amemory%3A/facetable/1"),
-        ("/prefix/", None, "/prefix/%3Amemory%3A/facetable/1"),
-        ("/", "json", "/%3Amemory%3A/facetable/1.json"),
+        ("/", None, "/_memory/facetable/1"),
+        ("/prefix/", None, "/prefix/_memory/facetable/1"),
+        ("/", "json", "/_memory/facetable/1.json"),
     ],
 )
 def test_row(ds, base_url, format, expected):
     ds._settings["base_url"] = base_url
-    actual = ds.urls.row(":memory:", "facetable", "1", format=format)
+    actual = ds.urls.row("_memory", "facetable", "1", format=format)
     assert actual == expected
     assert isinstance(actual, PrefixedUrlString)
 

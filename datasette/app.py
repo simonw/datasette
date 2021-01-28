@@ -218,7 +218,7 @@ class Datasette:
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
         if memory or not self.files:
-            self.add_database(Database(self, is_memory=True), name=":memory:")
+            self.add_database(Database(self, is_memory=True), name="_memory")
         # memory_name is a random string so that each Datasette instance gets its own
         # unique in-memory named database - otherwise unit tests can fail with weird
         # errors when different instances accidentally share an in-memory database
@@ -633,7 +633,7 @@ class Datasette:
 
     def _versions(self):
         conn = sqlite3.connect(":memory:")
-        self._prepare_connection(conn, ":memory:")
+        self._prepare_connection(conn, "_memory")
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {}
         for extension, testsql, hasversion in (
@@ -927,6 +927,12 @@ class Datasette:
                         plugin["name"].replace("-", "_")
                     ),
                 )
+        add_route(
+            permanent_redirect(
+                "/_memory", forward_query_string=True, forward_rest=True
+            ),
+            r"/:memory:(?P<rest>.*)$",
+        )
         add_route(
             JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
             r"/-/metadata(?P<as_format>(\.json)?)$",
@@ -1290,9 +1296,18 @@ def wrap_view(view_fn, datasette):
     return async_view_fn
 
 
-def permanent_redirect(path):
+def permanent_redirect(path, forward_query_string=False, forward_rest=False):
     return wrap_view(
-        lambda request, send: Response.redirect(path, status=301),
+        lambda request, send: Response.redirect(
+            path
+            + (request.url_vars["rest"] if forward_rest else "")
+            + (
+                ("?" + request.query_string)
+                if forward_query_string and request.query_string
+                else ""
+            ),
+            status=301,
+        ),
         datasette=None,
     )
 

@@ -221,7 +221,7 @@ def test_config_deprecated(ensure_eventloop):
 
 def test_sql_errors_logged_to_stderr(ensure_eventloop):
     runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(cli, ["--get", "/:memory:.json?sql=select+blah"])
+    result = runner.invoke(cli, ["--get", "/_memory.json?sql=select+blah"])
     assert result.exit_code == 1
     assert "sql = 'select blah', params = {}: no such column: blah\n" in result.stderr
 

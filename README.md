@@ -78,7 +78,7 @@ Now visiting http://localhost:8001/History/downloads will show you a web interfa
       --plugins-dir DIRECTORY   Path to directory containing custom plugins
       --static STATIC MOUNT     mountpoint:path-to-directory for serving static
                                 files
-      --memory                  Make :memory: database available
+      --memory                  Make /_memory database available
       --config CONFIG           Set config option using configname:value
                                 docs.datasette.io/en/stable/config.html
       --version-note TEXT       Additional note to show on /-/versions

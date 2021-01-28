@@ -30,12 +30,12 @@ def test_serve_with_get(tmp_path_factory):
             "--plugins-dir",
             str(plugins_dir),
             "--get",
-            "/:memory:.json?sql=select+sqlite_version()",
+            "/_memory.json?sql=select+sqlite_version()",
         ],
     )
     assert 0 == result.exit_code, result.output
     assert {
-        "database": ":memory:",
+        "database": "_memory",
         "truncated": False,
         "columns": ["sqlite_version()"],
     }.items() <= json.loads(result.output).items()

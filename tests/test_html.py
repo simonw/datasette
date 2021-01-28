@@ -88,7 +88,7 @@ def test_static_mounts():
 
 def test_memory_database_page():
     with make_app_client(memory=True) as client:
-        response = client.get("/:memory:")
+        response = client.get("/_memory")
         assert response.status == 200
 
 
@@ -1056,10 +1056,10 @@ def test_database_download_disallowed_for_mutable(app_client):
 def test_database_download_disallowed_for_memory():
     with make_app_client(memory=True) as client:
         # Memory page should NOT have a download link
-        response = client.get("/:memory:")
+        response = client.get("/_memory")
         soup = Soup(response.body, "html.parser")
         assert 0 == len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
-        assert 404 == client.get("/:memory:.db").status
+        assert 404 == client.get("/_memory.db").status
 
 
 def test_allow_download_off():

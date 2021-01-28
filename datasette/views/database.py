@@ -138,7 +138,7 @@ class DatabaseView(DataView):
                 "metadata": metadata,
                 "allow_download": self.ds.setting("allow_download")
                 and not db.is_mutable
-                and database != ":memory:",
+                and not db.is_memory,
             },
             (f"database-{to_css_class(database)}.html", "database.html"),
         )
@@ -160,7 +160,7 @@ class DatabaseDownload(DataView):
             raise DatasetteError("Invalid database", status=404)
         db = self.ds.databases[database]
         if db.is_memory:
-            raise DatasetteError("Cannot download :memory: database", status=404)
+            raise DatasetteError("Cannot download in-memory databases", status=404)
         if not self.ds.setting("allow_download") or db.is_mutable:
             raise Forbidden("Database download is forbidden")
         if not db.path:

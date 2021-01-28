@@ -365,7 +365,7 @@ def uninstall(packages, yes):
     help="Serve static files from this directory at /MOUNT/...",
     multiple=True,
 )
-@click.option("--memory", is_flag=True, help="Make :memory: database available")
+@click.option("--memory", is_flag=True, help="Make /_memory database available")
 @click.option(
     "--config",
     type=Config(),

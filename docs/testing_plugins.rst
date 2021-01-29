@@ -51,6 +51,25 @@ Then run the tests using pytest like so::
 
     pytest
 
+.. _testing_plugins_pdb:
+
+Using pdb for errors thrown inside Datasette
+--------------------------------------------
+
+If an exception occurs within Datasette itself during a test, the response returned to your plugin will have a ``response.status_code`` value of 500.
+
+You can add ``pdb=True`` to the ``Datasette`` constructor to drop into a Python debugger session inside your test run instead of getting back a 500 response code. This is equivalent to running the ``datasette`` command-line tool with the ``--pdb`` option.
+
+Here's what that looks like in a test function:
+
+.. code-block:: python
+
+    def test_that_opens_the_debugger_or_errors():
+        ds = Datasette([db_path], pdb=True)
+        response = await ds.client.get("/")
+
+If you use this pattern you will need to run ``pytest`` with the ``-s`` option to avoid capturing stdin/stdout in order to interact with the debugger prompt.
+
 .. _testing_plugins_fixtures:
 
 Using pytest fixtures

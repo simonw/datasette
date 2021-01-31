@@ -185,7 +185,7 @@ Here's a test for that plugin that mocks the HTTPX outbound request:
         response = await datasette.client.post("/-/fetch-url", data={
             "url": "https://www.example.com/"
         })
-        asert response.text == "Hello world"
+        assert response.text == "Hello world"
 
         outbound_request = httpx_mock.get_request()
         assert outbound_request.url == "https://www.example.com/"

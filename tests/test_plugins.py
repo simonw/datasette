@@ -225,7 +225,8 @@ def test_plugin_config_env_from_list(app_client):
 
 
 def test_plugin_config_file(app_client):
-    open(TEMP_PLUGIN_SECRET_FILE, "w").write("FROM_FILE")
+    with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:
+        fp.write("FROM_FILE")
     assert {"foo": "FROM_FILE"} == app_client.ds.plugin_config("file-plugin")
     # Ensure secrets aren't visible in /-/metadata.json
     metadata = app_client.get("/-/metadata.json")

@@ -125,13 +125,13 @@ def cli():
 @sqlite_extensions
 def inspect(files, inspect_file, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
-    if inspect_file == "-":
-        out = sys.stdout
-    else:
-        out = open(inspect_file, "w")
     loop = asyncio.get_event_loop()
     inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))
-    out.write(json.dumps(inspect_data, indent=2))
+    if inspect_file == "-":
+        sys.stdout.write(json.dumps(inspect_data, indent=2))
+    else:
+        with open(inspect_file, "w") as fp:
+            fp.write(json.dumps(inspect_data, indent=2))
 
 
 async def inspect_(files, sqlite_extensions):
@@ -457,7 +457,8 @@ def serve(
 
     inspect_data = None
     if inspect_file:
-        inspect_data = json.load(open(inspect_file))
+        with open(inspect_file) as fp:
+            inspect_data = json.load(fp)
 
     metadata_data = None
     if metadata:

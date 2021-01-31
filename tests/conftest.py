@@ -70,10 +70,8 @@ def check_permission_actions_are_documented():
     from datasette.plugins import pm
 
     content = (
-        (pathlib.Path(__file__).parent.parent / "docs" / "authentication.rst")
-        .open()
-        .read()
-    )
+        pathlib.Path(__file__).parent.parent / "docs" / "authentication.rst"
+    ).read_text()
     permissions_re = re.compile(r"\.\. _permissions_([^\s:]+):")
     documented_permission_actions = set(permissions_re.findall(content)).union(
         UNDOCUMENTED_PERMISSIONS

@@ -32,7 +32,8 @@ def test_package(mock_call, mock_which):
     capture = CaptureDockerfile()
     mock_call.side_effect = capture
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(cli.cli, ["package", "test.db", "--secret", "sekrit"])
         assert 0 == result.exit_code
         mock_call.assert_has_calls([mock.call(["docker", "build", "."])])
@@ -47,7 +48,8 @@ def test_package_with_port(mock_call, mock_which):
     mock_call.side_effect = capture
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(
             cli.cli, ["package", "test.db", "-p", "8080", "--secret", "sekrit"]
         )

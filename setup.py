@@ -17,7 +17,8 @@ def get_version():
         os.path.dirname(os.path.abspath(__file__)), "datasette", "version.py"
     )
     g = {}
-    exec(open(path).read(), g)
+    with open(path) as fp:
+        exec(fp.read(), g)
     return g["__version__"]
 
 

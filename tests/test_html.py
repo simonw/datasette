@@ -1272,6 +1272,23 @@ def test_other_hidden_form_fields(app_client, path, expected_hidden):
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
 
 
+@pytest.mark.parametrize(
+    "path,expected_hidden",
+    [
+        ("/fixtures/searchable?_search=terry", []),
+        ("/fixtures/searchable?_sort=text2", []),
+        ("/fixtures/searchable?_sort=text2&_where=1", [("_where", "1")]),
+    ],
+)
+def test_search_and_sort_fields_not_duplicated(app_client, path, expected_hidden):
+    # https://github.com/simonw/datasette/issues/1214
+    response = app_client.get(path)
+    soup = Soup(response.body, "html.parser")
+    inputs = soup.find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
+
+
 def test_binary_data_display_in_table(app_client):
     response = app_client.get("/fixtures/binary_data")
     assert response.status == 200

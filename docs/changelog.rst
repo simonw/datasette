@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_54_1:
+
+0.54.1 (2021-02-02)
+-------------------
+
+- Fixed a bug where ``?_search=`` and ``?_sort=`` parameters were incorrectly duplicated when the filter form on the table page was re-submitted. (`#1214 <https://github.com/simonw/datasette/issues/1214>`__)
+
 .. _v0_54:
 
 0.54 (2021-01-25)

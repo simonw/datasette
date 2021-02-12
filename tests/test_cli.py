@@ -149,6 +149,8 @@ def test_metadata_yaml():
         pdb=False,
         open_browser=False,
         create=False,
+        ssl_keyfile=None,
+        ssl_certfile=None,
         return_instance=True,
     )
     client = _TestClient(ds)

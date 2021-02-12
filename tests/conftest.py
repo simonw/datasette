@@ -2,6 +2,11 @@ import os
 import pathlib
 import pytest
 import re
+import subprocess
+import tempfile
+import time
+import trustme
+
 
 try:
     import pysqlite3 as sqlite3
@@ -91,3 +96,58 @@ def check_permission_actions_are_documented():
     pm.add_hookcall_monitoring(
         before=before, after=lambda outcome, hook_name, hook_impls, kwargs: None
     )
+
+
+@pytest.fixture(scope="session")
+def ds_localhost_http_server():
+    ds_proc = subprocess.Popen(
+        ["datasette", "--memory", "-p", "8041"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        # Avoid FileNotFoundError: [Errno 2] No such file or directory:
+        cwd=tempfile.gettempdir(),
+    )
+    # Give the server time to start
+    time.sleep(1.5)
+    # Check it started successfully
+    assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
+    yield ds_proc
+    # Shut it down at the end of the pytest session
+    ds_proc.terminate()
+
+
+@pytest.fixture(scope="session")
+def ds_localhost_https_server(tmp_path_factory):
+    cert_directory = tmp_path_factory.mktemp("certs")
+    ca = trustme.CA()
+    server_cert = ca.issue_cert("localhost")
+    keyfile = str(cert_directory / "server.key")
+    certfile = str(cert_directory / "server.pem")
+    client_cert = str(cert_directory / "client.pem")
+    server_cert.private_key_pem.write_to_path(path=keyfile)
+    for blob in server_cert.cert_chain_pems:
+        blob.write_to_path(path=certfile, append=True)
+    ca.cert_pem.write_to_path(path=client_cert)
+
+    ds_proc = subprocess.Popen(
+        [
+            "datasette",
+            "--memory",
+            "-p",
+            "8042",
+            "--ssl-keyfile",
+            keyfile,
+            "--ssl-certfile",
+            certfile,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        cwd=tempfile.gettempdir(),
+    )
+    # Give the server time to start
+    time.sleep(1.5)
+    # Check it started successfully
+    assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
+    yield ds_proc, client_cert
+    # Shut it down at the end of the pytest session
+    ds_proc.terminate()

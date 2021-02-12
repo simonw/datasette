@@ -408,6 +408,14 @@ def uninstall(packages, yes):
     is_flag=True,
     help="Create database files if they do not exist",
 )
+@click.option(
+    "--ssl-keyfile",
+    help="SSL key file",
+)
+@click.option(
+    "--ssl-certfile",
+    help="SSL certificate file",
+)
 def serve(
     files,
     immutable,
@@ -432,6 +440,8 @@ def serve(
     pdb,
     open_browser,
     create,
+    ssl_keyfile,
+    ssl_certfile,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -546,9 +556,14 @@ def serve(
             )
             url = f"http://{host}:{port}{path}"
         webbrowser.open(url)
-    uvicorn.run(
-        ds.app(), host=host, port=port, log_level="info", lifespan="on", workers=1
+    uvicorn_kwargs = dict(
+        host=host, port=port, log_level="info", lifespan="on", workers=1
     )
+    if ssl_keyfile:
+        uvicorn_kwargs["ssl_keyfile"] = ssl_keyfile
+    if ssl_certfile:
+        uvicorn_kwargs["ssl_certfile"] = ssl_certfile
+    uvicorn.run(ds.app(), **uvicorn_kwargs)
 
 
 async def check_databases(ds):

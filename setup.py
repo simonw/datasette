@@ -73,6 +73,7 @@ setup(
             "beautifulsoup4>=4.8.1,<4.10.0",
             "black==20.8b1",
             "pytest-timeout>=1.4.2,<1.5",
+            "trustme>=0.7,<0.8",
         ],
     },
     tests_require=["datasette[test]"],

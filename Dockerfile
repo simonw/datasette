@@ -7,7 +7,7 @@ RUN apt update \
 
 
 RUN wget "https://www.sqlite.org/2020/sqlite-autoconf-3310100.tar.gz" && tar xzf sqlite-autoconf-3310100.tar.gz \
-    && cd sqlite-autoconf-3310100 && ./configure --disable-static --enable-fts5 --enable-json1 CFLAGS="-g -O2 -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS4=1 -DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_JSON1" \
+    && cd sqlite-autoconf-3310100 && ./configure --disable-static --enable-fts5 --enable-json1 CFLAGS="-g -O2 -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_FTS4=1 -DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_JSON1" \
     && make && make install
 
 RUN wget "http://www.gaia-gis.it/gaia-sins/freexl-sources/freexl-1.0.5.tar.gz" && tar zxf freexl-1.0.5.tar.gz \

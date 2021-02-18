@@ -1,4 +1,7 @@
+from datasette.cli import cli
+from click.testing import CliRunner
 import urllib
+import sqlite3
 from .fixtures import app_client_two_attached_databases_crossdb_enabled
 
 
@@ -31,3 +34,29 @@ def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
         {"db": "fixtures", "pk": 1, "text1": "barry cat", "text2": "terry dog"},
         {"db": "fixtures", "pk": 2, "text1": "terry dog", "text2": "sara weasel"},
     ]
+
+
+def test_crossdb_warning_if_too_many_databases(tmp_path_factory):
+    db_dir = tmp_path_factory.mktemp("dbs")
+    dbs = []
+    for i in range(11):
+        path = str(db_dir / "db_{}.db".format(i))
+        conn = sqlite3.connect(path)
+        conn.execute("vacuum")
+        dbs.append(path)
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(
+        cli,
+        [
+            "serve",
+            "--crossdb",
+            "--get",
+            "/",
+        ]
+        + dbs,
+        catch_exceptions=False,
+    )
+    assert (
+        "Warning: --crossdb only works with the first 10 attached databases"
+        in result.stderr
+    )

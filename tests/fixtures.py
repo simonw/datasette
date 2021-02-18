@@ -761,7 +761,12 @@ def assert_permissions_checked(datasette, actions):
     default=False,
     help="Delete and recreate database if it exists",
 )
-def cli(db_filename, metadata, plugins_path, recreate):
+@click.option(
+    "--extra-db-filename",
+    type=click.Path(file_okay=True, dir_okay=False),
+    help="Write out second test DB to this file",
+)
+def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
     """Write out the fixtures database used by Datasette's test suite"""
     if metadata and not metadata.endswith(".json"):
         raise click.ClickException("Metadata should end with .json")
@@ -795,6 +800,17 @@ def cli(db_filename, metadata, plugins_path, recreate):
             newpath = path / filepath.name
             newpath.write_text(filepath.open().read())
             print(f"  Wrote plugin: {newpath}")
+    if extra_db_filename:
+        if pathlib.Path(extra_db_filename).exists():
+            if not recreate:
+                raise click.ClickException(
+                    f"{extra_db_filename} already exists, use --recreate to reset it"
+                )
+            else:
+                pathlib.Path(extra_db_filename).unlink()
+        conn = sqlite3.connect(extra_db_filename)
+        conn.executescript(EXTRA_DATABASE_SQL)
+        print(f"Test tables written to {extra_db_filename}")
 
 
 if __name__ == "__main__":

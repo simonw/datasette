@@ -115,6 +115,8 @@ class DatabaseView(DataView):
                     links.extend(extra_links)
             return links
 
+        attached_databases = [d.name for d in await db.attached_databases()]
+
         return (
             {
                 "database": database,
@@ -139,6 +141,7 @@ class DatabaseView(DataView):
                 "allow_download": self.ds.setting("allow_download")
                 and not db.is_mutable
                 and not db.is_memory,
+                "attached_databases": attached_databases,
             },
             (f"database-{to_css_class(database)}.html", "database.html"),
         )

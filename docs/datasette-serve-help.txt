@@ -41,6 +41,7 @@ Options:
   --pdb                     Launch debugger on any errors
   -o, --open                Open Datasette in your web browser
   --create                  Create database files if they do not exist
+  --crossdb                 Enable cross-database joins using the /_memory database
   --ssl-keyfile TEXT        SSL key file
   --ssl-certfile TEXT       SSL certificate file
   --help                    Show this message and exit.

@@ -56,6 +56,17 @@
     </form>
 {% endif %}
 
+{% if attached_databases %}
+    <div class="message-info">
+        <p>The following databases are attached to this connection, and can be used for cross-database joins:</p>
+        <ul class="bullets">
+            {% for db_name in attached_databases %}
+                <li><strong>{{ db_name }}</strong> - <a href="?sql=select+*+from+[{{ db_name }}].sqlite_master+where+type='table'">tables</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
 {% for table in tables %}
 {% if show_hidden or not table.hidden %}
 <div class="db-table">

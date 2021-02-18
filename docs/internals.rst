@@ -677,6 +677,9 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``db.is_memory`` - boolean
     Is this database an in-memory database?
 
+``await db.attached_databases()`` - list of named tuples
+    Returns a list of additional databases that have been connected to this database using the SQLite ATTACH command. Each named tuple has fields ``seq``, ``name`` and ``file``.
+
 ``await db.table_exists(table)`` - boolean
     Check if a table called ``table`` exists.
 

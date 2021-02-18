@@ -12,7 +12,7 @@ from subprocess import call
 import sys
 from runpy import run_module
 import webbrowser
-from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, pm
+from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, SQLITE_LIMIT_ATTACHED, pm
 from .utils import (
     StartupError,
     check_connection,
@@ -411,6 +411,11 @@ def uninstall(packages, yes):
     help="Create database files if they do not exist",
 )
 @click.option(
+    "--crossdb",
+    is_flag=True,
+    help="Enable cross-database joins using the /_memory database",
+)
+@click.option(
     "--ssl-keyfile",
     help="SSL key file",
 )
@@ -442,6 +447,7 @@ def serve(
     pdb,
     open_browser,
     create,
+    crossdb,
     ssl_keyfile,
     ssl_certfile,
     return_instance=False,
@@ -499,6 +505,7 @@ def serve(
         secret=secret,
         version_note=version_note,
         pdb=pdb,
+        crossdb=crossdb,
     )
 
     # if files is a single directory, use that as config_dir=
@@ -591,3 +598,15 @@ async def check_databases(ds):
             raise click.UsageError(
                 f"Connection to {database.path} failed check: {str(e.args[0])}"
             )
+    # If --crossdb and more than SQLITE_LIMIT_ATTACHED show warning
+    if (
+        ds.crossdb
+        and len([db for db in ds.databases.values() if not db.is_memory])
+        > SQLITE_LIMIT_ATTACHED
+    ):
+        msg = (
+            "Warning: --crossdb only works with the first {} attached databases".format(
+                SQLITE_LIMIT_ATTACHED
+            )
+        )
+        click.echo(click.style(msg, bold=True, fg="yellow"), err=True)

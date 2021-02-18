@@ -31,7 +31,7 @@ jobs:
     - name: Run tests
       run: pytest
     - name: Build fixtures.db
-      run: python tests/fixtures.py fixtures.db fixtures.json plugins
+      run: python tests/fixtures.py fixtures.db fixtures.json plugins --extra-db-filename extra_database.db
     - name: Build docs.db
       run: |-
         cd docs
@@ -48,12 +48,12 @@ jobs:
       run: |-
         gcloud config set run/region us-central1
         gcloud config set project datasette-222320
-        datasette publish cloudrun fixtures.db \
+        datasette publish cloudrun fixtures.db extra_database.db \
             -m fixtures.json \
             --plugins-dir=plugins \
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \
-            --extra-options="--setting template_debug 1" \
+            --extra-options="--setting template_debug 1 --crossdb" \
             --install=pysqlite3-binary \
             --service=datasette-latest
         # Deploy docs.db to a different service

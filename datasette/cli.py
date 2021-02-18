@@ -223,6 +223,7 @@ def plugins(all, plugins_dir):
     "-p",
     "--port",
     default=8001,
+    type=click.IntRange(1, 65535),
     help="Port to run the server on, defaults to 8001",
 )
 @click.option("--title", help="Title for metadata")
@@ -329,6 +330,7 @@ def uninstall(packages, yes):
     "-p",
     "--port",
     default=8001,
+    type=click.IntRange(0, 65535),
     help="Port for server, defaults to 8001. Use -p 0 to automatically assign an available port.",
 )
 @click.option(

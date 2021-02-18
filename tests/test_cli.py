@@ -194,6 +194,14 @@ def test_version():
     assert result.output == f"cli, version {__version__}\n"
 
 
+@pytest.mark.parametrize("invalid_port", ["-1", "0.5", "dog", "65536"])
+def test_serve_invalid_ports(ensure_eventloop, invalid_port):
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(cli, ["--port", invalid_port])
+    assert result.exit_code == 2
+    assert "Invalid value for '-p'" in result.stderr
+
+
 def test_setting(ensure_eventloop):
     runner = CliRunner()
     result = runner.invoke(

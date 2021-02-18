@@ -78,7 +78,7 @@ class Database:
                 conn.execute("PRAGMA query_only=1")
             return conn
         if self.is_memory:
-            return sqlite3.connect(":memory:")
+            return sqlite3.connect(":memory:", uri=True)
         # mode=ro or immutable=1?
         if self.is_mutable:
             qs = "?mode=ro"

@@ -411,6 +411,11 @@ def uninstall(packages, yes):
     help="Create database files if they do not exist",
 )
 @click.option(
+    "--crossdb",
+    is_flag=True,
+    help="Enable cross-database joins using the /_memory database",
+)
+@click.option(
     "--ssl-keyfile",
     help="SSL key file",
 )
@@ -442,6 +447,7 @@ def serve(
     pdb,
     open_browser,
     create,
+    crossdb,
     ssl_keyfile,
     ssl_certfile,
     return_instance=False,
@@ -499,6 +505,7 @@ def serve(
         secret=secret,
         version_note=version_note,
         pdb=pdb,
+        crossdb=crossdb,
     )
 
     # if files is a single directory, use that as config_dir=

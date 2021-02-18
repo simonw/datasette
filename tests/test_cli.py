@@ -147,6 +147,7 @@ def test_metadata_yaml():
         get=None,
         help_config=False,
         pdb=False,
+        crossdb=False,
         open_browser=False,
         create=False,
         ssl_keyfile=None,

@@ -60,3 +60,16 @@ def test_crossdb_warning_if_too_many_databases(tmp_path_factory):
         "Warning: --crossdb only works with the first 10 attached databases"
         in result.stderr
     )
+
+
+def test_crossdb_attached_database_list_display(
+    app_client_two_attached_databases_crossdb_enabled,
+):
+    app_client = app_client_two_attached_databases_crossdb_enabled
+    response = app_client.get("/_memory")
+    for fragment in (
+        "databases are attached to this connection",
+        "<li><strong>fixtures</strong> - ",
+        "<li><strong>extra database</strong> - ",
+    ):
+        assert fragment in response.text

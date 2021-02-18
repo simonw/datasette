@@ -4,7 +4,7 @@ Tests for the datasette.database.Database class
 from datasette.database import Database, Results, MultipleValues
 from datasette.utils.sqlite import sqlite3, supports_generated_columns
 from datasette.utils import Column
-from .fixtures import app_client
+from .fixtures import app_client, app_client_two_attached_databases_crossdb_enabled
 import pytest
 import time
 import uuid
@@ -464,6 +464,15 @@ def test_mtime_ns_is_none_for_memory(app_client):
 def test_is_mutable(app_client):
     assert Database(app_client.ds, is_memory=True, is_mutable=True).is_mutable is True
     assert Database(app_client.ds, is_memory=True, is_mutable=False).is_mutable is False
+
+
+@pytest.mark.asyncio
+async def test_attached_databases(app_client_two_attached_databases_crossdb_enabled):
+    database = app_client_two_attached_databases_crossdb_enabled.ds.get_database(
+        "_memory"
+    )
+    attached = await database.attached_databases()
+    assert {a.name for a in attached} == {"extra database", "fixtures"}
 
 
 @pytest.mark.asyncio

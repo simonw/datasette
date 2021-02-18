@@ -1,4 +1,5 @@
 import asyncio
+from collections import namedtuple
 from pathlib import Path
 import janus
 import queue
@@ -21,6 +22,10 @@ from .utils import (
 from .inspect import inspect_hash
 
 connections = threading.local()
+
+AttachedDatabase = namedtuple(
+    "AttachedDatabase", ("seq", "name", "file")
+)
 
 
 class Database:
@@ -242,6 +247,12 @@ class Database:
         if self.is_memory:
             return None
         return Path(self.path).stat().st_mtime_ns
+
+    async def attached_databases(self):
+        results = await self.execute(
+            "select seq, name, file from pragma_database_list() where seq > 0"
+        )
+        return [AttachedDatabase(*row) for row in results.rows]
 
     async def table_exists(self, table):
         results = await self.execute(

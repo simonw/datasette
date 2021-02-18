@@ -458,15 +458,10 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 ``datasette.urls.static_plugins(plugin_name, path)``
     Returns the URL of one of the static assets belonging to a plugin.
 
-    ``datasette.url.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
+    ``datasette.urls.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
 ``datasette.urls.static(path)``
     Returns the URL of one of Datasette's default static assets, for example ``"/-/static/app.css"``
-
-``datasette.urls.static_plugins(plugin_name, path)``
-    Returns the URL of one of the static assets belonging to a plugin.
-
-    ``datasette.url.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
 ``datasette.urls.database(database_name, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``

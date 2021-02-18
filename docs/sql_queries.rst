@@ -389,3 +389,34 @@ detect if there should be another page.
 Since the where clause acts against the index on the primary key, the query is
 extremely fast even for records that are a long way into the overall pagination
 set.
+
+.. _cross_database_quereies:
+
+Cross-database queries
+----------------------
+
+SQLite has the ability to run queries that join across multiple databases. Up to ten databases can be attached to a single SQLite connection and queried together.
+
+Datasette can execute joins across multiple databases if it is started with the ``--crossdb`` option::
+
+    datasette fixtures.db extra_database.db --crossdb
+
+If it is started in this way, the ``/_memory`` page can be used to execute queries that join across multiple databases.
+
+References to tables in attached databases should be preceeded by the database name and a period.
+
+For example, this query will show a list of tables across both of the above databases:
+
+.. code-block:: sql
+
+    select
+      'fixtures' as database, *
+    from
+      [fixtures].sqlite_master
+    union
+    select
+      'extra_database' as database, *
+    from
+      [extra_database].sqlite_master
+
+`Try that out here <https://latest.datasette.io/_memory?sql=select%0D%0A++%27fixtures%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bfixtures%5D.sqlite_master%0D%0Aunion%0D%0Aselect%0D%0A++%27extra_database%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bextra_database%5D.sqlite_master>`__.

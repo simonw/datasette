@@ -105,6 +105,7 @@ def make_app_client(
     static_mounts=None,
     template_dir=None,
     metadata=None,
+    crossdb=False,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -149,6 +150,7 @@ def make_app_client(
             inspect_data=inspect_data,
             static_mounts=static_mounts,
             template_dir=template_dir,
+            crossdb=crossdb,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         yield TestClient(ds)
@@ -176,6 +178,15 @@ def app_client_base_url_prefix():
 def app_client_two_attached_databases():
     with make_app_client(
         extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
+    ) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def app_client_two_attached_databases_crossdb_enabled():
+    with make_app_client(
+        extra_databases={"extra database.db": EXTRA_DATABASE_SQL},
+        crossdb=True,
     ) as client:
         yield client
 

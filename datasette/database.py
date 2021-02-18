@@ -23,9 +23,7 @@ from .inspect import inspect_hash
 
 connections = threading.local()
 
-AttachedDatabase = namedtuple(
-    "AttachedDatabase", ("seq", "name", "file")
-)
+AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
 
 class Database:

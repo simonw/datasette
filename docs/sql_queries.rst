@@ -390,7 +390,7 @@ Since the where clause acts against the index on the primary key, the query is
 extremely fast even for records that are a long way into the overall pagination
 set.
 
-.. _cross_database_quereies:
+.. _cross_database_queries:
 
 Cross-database queries
 ----------------------

@@ -4,6 +4,19 @@
 Changelog
 =========
 
+.. _v0_55:
+
+0.55 (2021-02-18)
+-----------------
+
+Support for cross-database SQL queries and built-in support for serving via HTTPS.
+
+- The new ``--crossdb`` command-line option causes Datasette to attach up to ten database files to the same ``/_memory`` database connection. This enables cross-database SQL queries, including the ability to use joins and unions to combine data from tables that exist in different database files. See :ref:`cross_database_queries` for details. (:issue:`283`)
+- ``--ssl-keyfile`` and ``--ssl-certfile`` options can be used to specify a TLS certificate, allowing Datasette to serve traffic over ``https://`` without needing to run it behind a separate proxy. (:issue:`1221`)
+- The ``/:memory:`` page has been renamed (and redirected) to ``/_memory`` for consistency with the new ``/_internal`` database introduced in Datasette 0.54. (:issue:`1205`)
+- Added plugin testing documentation on :ref:`testing_plugins_pdb`. (:issue:`1207`)
+- The `official Datasette Docker image <https://hub.docker.com/r/datasetteproject/datasette>`__ now uses Python 3.7.10, applying `the latest security fix <https://www.python.org/downloads/release/python-3710/>`__ for that Python version. (:issue:`1235`)
+
 .. _v0_54_1:
 
 0.54.1 (2021-02-02)

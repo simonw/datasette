@@ -79,7 +79,7 @@ Using pytest fixtures
 
 A common pattern for Datasette plugins is to create a fixture which sets up a temporary test database and wraps it in a Datasette instance.
 
-Here's an example that uses the `sqlite-utils library <https://sqlite-utils.datasette.io/en/stable/python-api.html>`__ to populate a temporary test database. It also sets the title of that table using a simulated ``metadata.json`` congiguration:
+Here's an example that uses the `sqlite-utils library <https://sqlite-utils.datasette.io/en/stable/python-api.html>`__ to populate a temporary test database. It also sets the title of that table using a simulated ``metadata.json`` configuration:
 
 .. code-block:: python
 

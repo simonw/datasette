@@ -150,7 +150,7 @@ class Filters:
                     "arraycontains",
                     "array contains",
                     """rowid in (
-            select {t}.rowid from {t}, json_each({t}.{c}) j
+            select {t}.rowid from {t}, json_each([{t}].[{c}]) j
             where j.value = :{p}
         )""",
                     '{c} contains "{v}"',
@@ -159,7 +159,7 @@ class Filters:
                     "arraynotcontains",
                     "array does not contain",
                     """rowid not in (
-            select {t}.rowid from {t}, json_each({t}.{c}) j
+            select {t}.rowid from {t}, json_each([{t}].[{c}]) j
             where j.value = :{p}
         )""",
                     '{c} does not contain "{v}"',

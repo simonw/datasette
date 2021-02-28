@@ -158,7 +158,6 @@ def test_row_redirects_with_url_hash(app_client_with_hash):
     assert response.status == 200
 
 
-@pytest.mark.xfail
 def test_row_strange_table_name_with_url_hash(app_client_with_hash):
     response = app_client_with_hash.get(
         "/fixtures/table%2Fwith%2Fslashes.csv/3", allow_redirects=False
@@ -552,7 +551,6 @@ def test_facets_persist_through_filter_form(app_client):
     ]
 
 
-@pytest.mark.xfail
 @pytest.mark.parametrize(
     "path,expected_classes",
     [
@@ -584,7 +582,6 @@ def test_css_classes_on_body(app_client, path, expected_classes):
     assert classes == expected_classes
 
 
-@pytest.mark.xfail
 @pytest.mark.parametrize(
     "path,expected_considered",
     [

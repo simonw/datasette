@@ -1,3 +1,5 @@
+from datasette.app import Datasette
+from datasette.database import Database
 from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
 from datasette.utils.asgi import Request
 from datasette.utils import detect_json1
@@ -325,3 +327,23 @@ async def test_date_facet_results(app_client):
             "truncated": False,
         }
     } == buckets
+
+
+@pytest.mark.asyncio
+async def test_json_array_with_blanks_and_nulls():
+    ds = Datasette([], memory=True)
+    db = ds.add_database(Database(ds, memory_name="test_json_array"))
+    await db.execute_write("create table foo(json_column text)", block=True)
+    for value in ('["a", "b", "c"]', '["a", "b"]', "", None):
+        await db.execute_write(
+            "insert into foo (json_column) values (?)", [value], block=True
+        )
+    response = await ds.client.get("/test_json_array/foo.json")
+    data = response.json()
+    assert data["suggested_facets"] == [
+        {
+            "name": "json_column",
+            "type": "array",
+            "toggle_url": "http://localhost/test_json_array/foo.json?_facet_array=json_column",
+        }
+    ]

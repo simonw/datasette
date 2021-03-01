@@ -273,7 +273,25 @@ The ``db`` parameter should be an instance of the ``datasette.database.Database`
 
 This will add a mutable database and serve it at ``/my-new-database``.
 
-To create a shared in-memory database named ``statistics``, use the following:
+``.add_database()`` returns the Database instance, with its name set as the ``database.name`` attribute. Any time you are working with a newly added database you should use the return value of ``.add_database()``, for example:
+
+.. code-block:: python
+
+    db = datasette.add_database(Database(datasette, memory_name="statistics"))
+    await db.execute_write("CREATE TABLE foo(id integer primary key)", block=True)
+
+.. _datasette_add_memory_database:
+
+.add_memory_database(name)
+--------------------------
+
+Adds a shared in-memory database with the specified name:
+
+.. code-block:: python
+
+    datasette.add_memory_database("statistics")
+
+This is a shortcut for the following:
 
 .. code-block:: python
 
@@ -284,14 +302,7 @@ To create a shared in-memory database named ``statistics``, use the following:
         memory_name="statistics"
     ))
 
-This database will be served at ``/statistics``.
-
-``.add_database()`` returns the Database instance, with its name set as the ``database.name`` attribute. Any time you are working with a newly added database you should use the return value of ``.add_database()``, for example:
-
-.. code-block:: python
-
-    db = datasette.add_database(Database(datasette, memory_name="statistics"))
-    await db.execute_write("CREATE TABLE foo(id integer primary key)", block=True)
+Using either of these pattern will result in the in-memory database being served at ``/statistics``.
 
 .. _datasette_remove_database:
 

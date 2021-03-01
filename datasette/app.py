@@ -390,6 +390,9 @@ class Datasette:
         self.databases[name] = db
         return db
 
+    def add_memory_database(self, memory_name):
+        return self.add_database(Database(self, memory_name=memory_name))
+
     def remove_database(self, name):
         self.databases.pop(name)
 

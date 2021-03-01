@@ -479,9 +479,9 @@ async def test_attached_databases(app_client_two_attached_databases_crossdb_enab
 async def test_database_memory_name(app_client):
     ds = app_client.ds
     foo1 = ds.add_database(Database(ds, memory_name="foo"))
-    foo2 = ds.add_database(Database(ds, memory_name="foo"))
+    foo2 = ds.add_memory_database("foo")
     bar1 = ds.add_database(Database(ds, memory_name="bar"))
-    bar2 = ds.add_database(Database(ds, memory_name="bar"))
+    bar2 = ds.add_memory_database("bar")
     for db in (foo1, foo2, bar1, bar2):
         table_names = await db.table_names()
         assert table_names == []

@@ -452,6 +452,10 @@ table a:link {
     margin-left: -10%;
     font-size: 0.8em;
 }
+.rows-and-columns td ol,ul {
+    list-style: initial;
+    list-style-position: inside;
+}
 a.blob-download {
     display: inline-block;
 }

@@ -15,7 +15,7 @@ RUN wget "http://www.gaia-gis.it/gaia-sins/freexl-sources/freexl-1.0.5.tar.gz" &
 
 RUN git clone "https://git.osgeo.org/gitea/rttopo/librttopo.git" && cd librttopo && ./autogen.sh && ./configure && make && make install
 
-RUN wget http://www.gaia-gis.it/gaia-sins/libspatialite-5.0.1.tar.gz && tar -zxvf libspatialite-5.0.1.tar.gz && cd libspatialite-5.0.1 && ./configure --disable-dependency-tracking --enable-rttopo=yes --enable-proj=yes --enable-geos=yes --disable-minizip && make && make install
+RUN wget http://www.gaia-gis.it/gaia-sins/libspatialite-5.0.1.tar.gz && tar -zxvf libspatialite-5.0.1.tar.gz && cd libspatialite-5.0.1 && ./configure --disable-dependency-tracking --disable-minizip && make && make install
 
 RUN wget "http://www.gaia-gis.it/gaia-sins/readosm-sources/readosm-1.1.0.tar.gz" && tar zxf readosm-1.1.0.tar.gz && cd readosm-1.1.0 && ./configure && make && make install
 

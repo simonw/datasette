@@ -53,7 +53,7 @@ If you are unsure of the location of the module, try running ``locate mod_spatia
 Building SpatiaLite from source
 -------------------------------
 
-The packaged versions of SpatiaLite usually provide SpatiaLite 4.3.0a. For an example of how to build the most recent unstable version, 4.4.0-RC0 (which includes the powerful `VirtualKNN module <https://www.gaia-gis.it/fossil/libspatialite/wiki?name=KNN>`_), take a look at the `Datasette Dockerfile <https://github.com/simonw/datasette/blob/master/Dockerfile>`_.
+The packaged versions of SpatiaLite usually provide SpatiaLite 4.3.0a. For an example of how to build the most recent version, 5.0.1 (which includes the powerful `VirtualKNN module <https://www.gaia-gis.it/fossil/libspatialite/wiki?name=KNN>`_), take a look at the `Datasette Dockerfile <https://github.com/simonw/datasette/blob/master/Dockerfile>`_.
 
 Spatial indexing latitude/longitude columns
 ===========================================

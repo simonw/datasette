@@ -1,4 +1,4 @@
-FROM python:3.7.10-slim-buster as build
+FROM python:3.9.2-slim-buster as build
 
 # Setup build dependencies
 RUN apt update \
@@ -10,12 +10,12 @@ RUN wget "https://www.sqlite.org/2020/sqlite-autoconf-3310100.tar.gz" && tar xzf
     && cd sqlite-autoconf-3310100 && ./configure --disable-static --enable-fts5 --enable-json1 CFLAGS="-g -O2 -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_FTS4=1 -DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_JSON1" \
     && make && make install
 
-RUN wget "http://www.gaia-gis.it/gaia-sins/freexl-sources/freexl-1.0.5.tar.gz" && tar zxf freexl-1.0.5.tar.gz \
+RUN wget "http://www.gaia-gis.it/gaia-sins/freexl-sources/freexl-1.0.6.tar.gz" && tar zxf freexl-1.0.6.tar.gz \
     && cd freexl-1.0.5 && ./configure && make && make install
 
-RUN git clone "https://git.osgeo.org/gitea/rttopo/librttopo.git" && cd librttopo && ./autogen.sh && ./configure && make && make install
+RUN wget "https://git.osgeo.org/gitea/rttopo/librttopo/archive/librttopo-1.1.0.tar.gz" && tar zxf librttopo-1.1.0.tar.gz && cd librttopo && ./autogen.sh && ./configure && make && make install
 
-RUN wget http://www.gaia-gis.it/gaia-sins/libspatialite-5.0.1.tar.gz && tar -zxvf libspatialite-5.0.1.tar.gz && cd libspatialite-5.0.1 && ./configure --disable-dependency-tracking --disable-minizip && make && make install
+RUN wget http://www.gaia-gis.it/gaia-sins/libspatialite-5.0.1.tar.gz && tar zxf libspatialite-5.0.1.tar.gz && cd libspatialite-5.0.1 && ./configure --disable-dependency-tracking --disable-minizip && make && make install
 
 RUN wget "http://www.gaia-gis.it/gaia-sins/readosm-sources/readosm-1.1.0.tar.gz" && tar zxf readosm-1.1.0.tar.gz && cd readosm-1.1.0 && ./configure && make && make install
 
@@ -28,7 +28,7 @@ COPY . /datasette
 
 RUN pip install /datasette
 
-FROM python:3.7.10-slim-stretch
+FROM python:3.9.2-slim-buster
 
 # Copy python dependencies and spatialite libraries
 COPY --from=build /usr/local/lib/ /usr/local/lib/

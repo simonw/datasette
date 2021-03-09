@@ -1,8 +1,8 @@
-FROM python:3.7.10-slim-stretch as build
+FROM python:3.7.10-slim-buster as build
 
 # Setup build dependencies
 RUN apt update \
-&& apt install -y python3-dev build-essential wget libxml2-dev libproj-dev libgeos-dev libsqlite3-dev zlib1g-dev pkg-config git \
+&& apt install -y python3-dev build-essential wget libxml2-dev libproj-dev libgeos-dev libsqlite3-dev zlib1g-dev pkg-config git autoconf libtool \
  && apt clean
 
 
@@ -13,13 +13,14 @@ RUN wget "https://www.sqlite.org/2020/sqlite-autoconf-3310100.tar.gz" && tar xzf
 RUN wget "http://www.gaia-gis.it/gaia-sins/freexl-sources/freexl-1.0.5.tar.gz" && tar zxf freexl-1.0.5.tar.gz \
     && cd freexl-1.0.5 && ./configure && make && make install
 
-RUN wget "http://www.gaia-gis.it/gaia-sins/libspatialite-sources/libspatialite-4.4.0-RC0.tar.gz" && tar zxf libspatialite-4.4.0-RC0.tar.gz \
-    && cd libspatialite-4.4.0-RC0 && ./configure && make && make install
+RUN git clone "https://git.osgeo.org/gitea/rttopo/librttopo.git" && cd librttopo && ./autogen.sh && ./configure && make && make install
+
+RUN wget http://www.gaia-gis.it/gaia-sins/libspatialite-5.0.1.tar.gz && tar -zxvf libspatialite-5.0.1.tar.gz && cd libspatialite-5.0.1 && ./configure --disable-dependency-tracking --enable-rttopo=yes --enable-proj=yes --enable-geos=yes --disable-minizip && make && make install
 
 RUN wget "http://www.gaia-gis.it/gaia-sins/readosm-sources/readosm-1.1.0.tar.gz" && tar zxf readosm-1.1.0.tar.gz && cd readosm-1.1.0 && ./configure && make && make install
 
-RUN wget "http://www.gaia-gis.it/gaia-sins/spatialite-tools-sources/spatialite-tools-4.4.0-RC0.tar.gz" && tar zxf spatialite-tools-4.4.0-RC0.tar.gz \
-    && cd spatialite-tools-4.4.0-RC0 && ./configure && make && make install
+RUN wget "http://www.gaia-gis.it/gaia-sins/spatialite-tools-sources/spatialite-tools-5.0.1.tar.gz" && tar zxf spatialite-tools-5.0.1.tar.gz \
+    && cd spatialite-tools-5.0.1 && ./configure && make && make install
 
 
 # Add local code to the image instead of fetching from pypi.

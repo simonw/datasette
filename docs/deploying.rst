@@ -67,7 +67,7 @@ You can start the Datasette process running using the following::
 
 You can confirm that Datasette is running on port 8000 like so::
 
-    curl 127.0.01:8000/-/versions.json
+    curl 127.0.0.1:8000/-/versions.json
     # Should output JSON showing the installed version
 
 Datasette will not be accessible from outside the server because it is listening on ``127.0.0.1``. You can expose it by instead listening on ``0.0.0.0``, but a better way is to set up a proxy such as ``nginx``.

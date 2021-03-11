@@ -49,7 +49,8 @@ def test_inspect_cli_writes_to_file(app_client):
         cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"]
     )
     assert 0 == result.exit_code, result.output
-    data = json.load(open("foo.json"))
+    with open("foo.json") as fp:
+        data = json.load(fp)
     assert ["fixtures"] == list(data.keys())
 
 

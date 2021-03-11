@@ -232,7 +232,8 @@ def test_to_css_class(s, expected):
 def test_temporary_docker_directory_uses_hard_link():
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
-        open("hello", "w").write("world")
+        with open("hello", "w") as fp:
+            fp.write("world")
         # Default usage of this should use symlink
         with utils.temporary_docker_directory(
             files=["hello"],
@@ -249,7 +250,8 @@ def test_temporary_docker_directory_uses_hard_link():
             secret="secret",
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
-            assert "world" == open(hello).read()
+            with open(hello) as fp:
+                assert "world" == fp.read()
             # It should be a hard link
             assert 2 == os.stat(hello).st_nlink
 
@@ -260,7 +262,8 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
     mock_link.side_effect = OSError
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
-        open("hello", "w").write("world")
+        with open("hello", "w") as fp:
+            fp.write("world")
         # Default usage of this should use symlink
         with utils.temporary_docker_directory(
             files=["hello"],
@@ -277,7 +280,8 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             secret=None,
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
-            assert "world" == open(hello).read()
+            with open(hello) as fp:
+                assert "world" == fp.read()
             # It should be a copy, not a hard link
             assert 1 == os.stat(hello).st_nlink
 
@@ -285,7 +289,8 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
 def test_temporary_docker_directory_quotes_args():
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
-        open("hello", "w").write("world")
+        with open("hello", "w") as fp:
+            fp.write("world")
         with utils.temporary_docker_directory(
             files=["hello"],
             name="t",
@@ -301,7 +306,8 @@ def test_temporary_docker_directory_quotes_args():
             secret="secret",
         ) as temp_docker:
             df = os.path.join(temp_docker, "Dockerfile")
-            df_contents = open(df).read()
+            with open(df) as fp:
+                df_contents = fp.read()
             assert "'$PWD'" in df_contents
             assert "'--$HOME'" in df_contents
             assert "ENV DATASETTE_SECRET 'secret'" in df_contents

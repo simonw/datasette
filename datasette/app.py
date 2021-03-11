@@ -212,7 +212,7 @@ class Datasette:
             and (config_dir / "inspect-data.json").exists()
             and not inspect_data
         ):
-            inspect_data = json.load((config_dir / "inspect-data.json").open())
+            inspect_data = json.loads((config_dir / "inspect-data.json").read_text())
             if immutables is None:
                 immutable_filenames = [i["file"] for i in inspect_data.values()]
                 immutables = [
@@ -269,7 +269,7 @@ class Datasette:
         if config_dir and (config_dir / "config.json").exists():
             raise StartupError("config.json should be renamed to settings.json")
         if config_dir and (config_dir / "settings.json").exists() and not config:
-            config = json.load((config_dir / "settings.json").open())
+            config = json.loads((config_dir / "settings.json").read_text())
         self._settings = dict(DEFAULT_SETTINGS, **(config or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
@@ -450,11 +450,10 @@ class Datasette:
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):
-            self._app_css_hash = hashlib.sha1(
-                open(os.path.join(str(app_root), "datasette/static/app.css"))
-                .read()
-                .encode("utf8")
-            ).hexdigest()[:6]
+            with open(os.path.join(str(app_root), "datasette/static/app.css")) as fp:
+                self._app_css_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[
+                    :6
+                ]
         return self._app_css_hash
 
     async def get_canned_queries(self, database_name, actor):

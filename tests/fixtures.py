@@ -789,7 +789,8 @@ def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
             conn.executescript(GENERATED_COLUMNS_SQL)
     print(f"Test tables written to {db_filename}")
     if metadata:
-        open(metadata, "w").write(json.dumps(METADATA, indent=4))
+        with open(metadata, "w") as fp:
+            fp.write(json.dumps(METADATA, indent=4))
         print(f"- metadata written to {metadata}")
     if plugins_path:
         path = pathlib.Path(plugins_path)
@@ -798,7 +799,7 @@ def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
         test_plugins = pathlib.Path(__file__).parent / "plugins"
         for filepath in test_plugins.glob("*.py"):
             newpath = path / filepath.name
-            newpath.write_text(filepath.open().read())
+            newpath.write_text(filepath.read_text())
             print(f"  Wrote plugin: {newpath}")
     if extra_db_filename:
         if pathlib.Path(extra_db_filename).exists():

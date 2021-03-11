@@ -141,9 +141,11 @@ def publish_subcommand(publish):
             if show_files:
                 if os.path.exists("metadata.json"):
                     print("=== metadata.json ===\n")
-                    print(open("metadata.json").read())
+                    with open("metadata.json") as fp:
+                        print(fp.read())
                 print("\n==== Dockerfile ====\n")
-                print(open("Dockerfile").read())
+                with open("Dockerfile") as fp:
+                    print(fp.read())
                 print("\n====================\n")
 
             image_id = f"gcr.io/{project}/{name}"

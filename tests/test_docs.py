@@ -19,13 +19,13 @@ def get_headings(content, underline="-"):
 
 
 def get_labels(filename):
-    content = (docs_path / filename).open().read()
+    content = (docs_path / filename).read_text()
     return set(label_re.findall(content))
 
 
 @pytest.fixture(scope="session")
 def settings_headings():
-    return get_headings((docs_path / "settings.rst").open().read(), "~")
+    return get_headings((docs_path / "settings.rst").read_text(), "~")
 
 
 @pytest.mark.parametrize("setting", app.SETTINGS)
@@ -43,7 +43,7 @@ def test_settings_are_documented(settings_headings, setting):
     ),
 )
 def test_help_includes(name, filename):
-    expected = open(str(docs_path / filename)).read()
+    expected = (docs_path / filename).read_text()
     runner = CliRunner()
     result = runner.invoke(cli, name.split() + ["--help"], terminal_width=88)
     actual = f"$ datasette {name} --help\n\n{result.output}"
@@ -55,7 +55,7 @@ def test_help_includes(name, filename):
 
 @pytest.fixture(scope="session")
 def plugin_hooks_content():
-    return (docs_path / "plugin_hooks.rst").open().read()
+    return (docs_path / "plugin_hooks.rst").read_text()
 
 
 @pytest.mark.parametrize(

@@ -14,7 +14,8 @@ def test_serve_with_get(tmp_path_factory):
 
         @hookimpl
         def startup(datasette):
-            open("{}", "w").write("hello")
+            with open("{}", "w") as fp:
+                fp.write("hello")
     """.format(
                 str(plugins_dir / "hello.txt")
             ),

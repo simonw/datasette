@@ -279,6 +279,7 @@ class ArrayFacet(Facet):
             suggested_facet_sql = """
                 select distinct json_type({column})
                 from ({sql})
+                where {column} is not null and {column} != ''
             """.format(
                 column=escape_sqlite(column), sql=self.sql
             )
@@ -298,9 +299,13 @@ class ArrayFacet(Facet):
                         v[0]
                         for v in await self.ds.execute(
                             self.database,
-                            "select {column} from ({sql}) where {column} is not null and json_array_length({column}) > 0 limit 100".format(
-                                column=escape_sqlite(column), sql=self.sql
-                            ),
+                            (
+                                "select {column} from ({sql}) "
+                                "where {column} is not null "
+                                "and {column} != '' "
+                                "and json_array_length({column}) > 0 "
+                                "limit 100"
+                            ).format(column=escape_sqlite(column), sql=self.sql),
                             self.params,
                             truncate=False,
                             custom_time_limit=self.ds.setting(

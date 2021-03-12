@@ -171,9 +171,11 @@ def temporary_heroku_directory(
         os.chdir(tmp.name)
 
         if metadata_content:
-            open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
+            with open("metadata.json", "w") as fp:
+                fp.write(json.dumps(metadata_content, indent=2))
 
-        open("runtime.txt", "w").write("python-3.8.7")
+        with open("runtime.txt", "w") as fp:
+            fp.write("python-3.8.7")
 
         if branch:
             install = [
@@ -182,11 +184,11 @@ def temporary_heroku_directory(
         else:
             install = ["datasette"] + list(install)
 
-        open("requirements.txt", "w").write("\n".join(install))
+        with open("requirements.txt", "w") as fp:
+            fp.write("\n".join(install))
         os.mkdir("bin")
-        open("bin/post_compile", "w").write(
-            "datasette inspect --inspect-file inspect-data.json"
-        )
+        with open("bin/post_compile", "w") as fp:
+            fp.write("datasette inspect --inspect-file inspect-data.json")
 
         extras = []
         if template_dir:
@@ -218,7 +220,8 @@ def temporary_heroku_directory(
         procfile_cmd = "web: datasette serve --host 0.0.0.0 {quoted_files} --cors --port $PORT --inspect-file inspect-data.json {extras}".format(
             quoted_files=quoted_files, extras=" ".join(extras)
         )
-        open("Procfile", "w").write(procfile_cmd)
+        with open("Procfile", "w") as fp:
+            fp.write(procfile_cmd)
 
         for path, filename in zip(file_paths, file_names):
             link_or_copy(path, os.path.join(tmp.name, filename))

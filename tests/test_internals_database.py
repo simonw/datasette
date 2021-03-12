@@ -4,7 +4,7 @@ Tests for the datasette.database.Database class
 from datasette.database import Database, Results, MultipleValues
 from datasette.utils.sqlite import sqlite3, supports_generated_columns
 from datasette.utils import Column
-from .fixtures import app_client
+from .fixtures import app_client, app_client_two_attached_databases_crossdb_enabled
 import pytest
 import time
 import uuid
@@ -467,12 +467,21 @@ def test_is_mutable(app_client):
 
 
 @pytest.mark.asyncio
+async def test_attached_databases(app_client_two_attached_databases_crossdb_enabled):
+    database = app_client_two_attached_databases_crossdb_enabled.ds.get_database(
+        "_memory"
+    )
+    attached = await database.attached_databases()
+    assert {a.name for a in attached} == {"extra database", "fixtures"}
+
+
+@pytest.mark.asyncio
 async def test_database_memory_name(app_client):
     ds = app_client.ds
     foo1 = ds.add_database(Database(ds, memory_name="foo"))
-    foo2 = ds.add_database(Database(ds, memory_name="foo"))
+    foo2 = ds.add_memory_database("foo")
     bar1 = ds.add_database(Database(ds, memory_name="bar"))
-    bar2 = ds.add_database(Database(ds, memory_name="bar"))
+    bar2 = ds.add_memory_database("bar")
     for db in (foo1, foo2, bar1, bar2):
         table_names = await db.table_names()
         assert table_names == []

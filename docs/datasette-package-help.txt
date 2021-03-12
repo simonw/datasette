@@ -20,7 +20,7 @@ Options:
   --secret TEXT             Secret used for signing secure values, such as signed
                             cookies
 
-  -p, --port INTEGER        Port to run the server on, defaults to 8001
+  -p, --port INTEGER RANGE  Port to run the server on, defaults to 8001
   --title TEXT              Title for metadata
   --license TEXT            License label for metadata
   --license_url TEXT        License URL for metadata

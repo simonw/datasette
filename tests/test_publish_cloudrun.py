@@ -11,7 +11,8 @@ def test_publish_cloudrun_requires_gcloud(mock_which):
     mock_which.return_value = False
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(cli.cli, ["publish", "cloudrun", "test.db"])
         assert result.exit_code == 1
         assert "Publishing to Google Cloud requires gcloud" in result.output
@@ -40,7 +41,8 @@ def test_publish_cloudrun_prompts_for_service(
     mock_which.return_value = True
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(
             cli.cli, ["publish", "cloudrun", "test.db"], input="input-service"
         )
@@ -81,7 +83,8 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which):
     mock_which.return_value = True
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(
             cli.cli, ["publish", "cloudrun", "test.db", "--service", "test"]
         )
@@ -120,7 +123,8 @@ def test_publish_cloudrun_memory(
     mock_which.return_value = True
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(
             cli.cli,
             ["publish", "cloudrun", "test.db", "--service", "test", "--memory", memory],
@@ -152,17 +156,19 @@ def test_publish_cloudrun_plugin_secrets(mock_call, mock_output, mock_which):
 
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
-        open("metadata.yml", "w").write(
-            textwrap.dedent(
-                """
+        with open("test.db", "w") as fp:
+            fp.write("data")
+        with open("metadata.yml", "w") as fp:
+            fp.write(
+                textwrap.dedent(
+                    """
                 title: Hello from metadata YAML
                 plugins:
                   datasette-auth-github:
                     foo: bar
                 """
-            ).strip()
-        )
+                ).strip()
+            )
         result = runner.invoke(
             cli.cli,
             [
@@ -228,7 +234,8 @@ def test_publish_cloudrun_apt_get_install(mock_call, mock_output, mock_which):
 
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(
             cli.cli,
             [
@@ -295,7 +302,8 @@ def test_publish_cloudrun_extra_options(
 
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(
             cli.cli,
             [

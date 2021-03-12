@@ -428,8 +428,10 @@ def temporary_docker_directory(
         )
         os.chdir(datasette_dir)
         if metadata_content:
-            open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
-        open("Dockerfile", "w").write(dockerfile)
+            with open("metadata.json", "w") as fp:
+                fp.write(json.dumps(metadata_content, indent=2))
+        with open("Dockerfile", "w") as fp:
+            fp.write(dockerfile)
         for path, filename in zip(file_paths, file_names):
             link_or_copy(path, os.path.join(datasette_dir, filename))
         if template_dir:

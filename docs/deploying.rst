@@ -58,7 +58,7 @@ Add a random value for the ``DATASETTE_SECRET`` - this will be used to sign Data
 
     $ python3 -c 'import secrets; print(secrets.token_hex(32))'
 
-This configuration will run Datasette against all database files contained in the ``/home/ubunt/datasette-root`` directory. If that directory contains a ``metadata.yml`` (or ``.json``) file or a ``templates/`` or ``plugins/`` sub-directory those will automatically be loaded by Datasette - see :ref:`config_dir` for details.
+This configuration will run Datasette against all database files contained in the ``/home/ubuntu/datasette-root`` directory. If that directory contains a ``metadata.yml`` (or ``.json``) file or a ``templates/`` or ``plugins/`` sub-directory those will automatically be loaded by Datasette - see :ref:`config_dir` for details.
 
 You can start the Datasette process running using the following::
 
@@ -67,7 +67,7 @@ You can start the Datasette process running using the following::
 
 You can confirm that Datasette is running on port 8000 like so::
 
-    curl 127.0.01:8000/-/versions.json
+    curl 127.0.0.1:8000/-/versions.json
     # Should output JSON showing the installed version
 
 Datasette will not be accessible from outside the server because it is listening on ``127.0.0.1``. You can expose it by instead listening on ``0.0.0.0``, but a better way is to set up a proxy such as ``nginx``.

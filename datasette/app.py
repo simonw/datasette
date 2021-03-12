@@ -85,6 +85,9 @@ from .version import __version__
 
 app_root = Path(__file__).parent.parent
 
+# https://github.com/simonw/datasette/issues/283#issuecomment-781591015
+SQLITE_LIMIT_ATTACHED = 10
+
 Setting = collections.namedtuple("Setting", ("name", "default", "help"))
 SETTINGS = (
     Setting("default_page_size", 100, "Default page size for the table view"),
@@ -194,6 +197,7 @@ class Datasette:
         version_note=None,
         config_dir=None,
         pdb=False,
+        crossdb=False,
     ):
         assert config_dir is None or isinstance(
             config_dir, Path
@@ -208,8 +212,8 @@ class Datasette:
             and (config_dir / "inspect-data.json").exists()
             and not inspect_data
         ):
-            inspect_data = json.load((config_dir / "inspect-data.json").open())
-            if not immutables:
+            inspect_data = json.loads((config_dir / "inspect-data.json").read_text())
+            if not immutables:            
                 immutable_filenames = [i["file"] for i in inspect_data.values()]
                 immutables = [
                     f for f in self.files if Path(f).name in immutable_filenames
@@ -217,7 +221,8 @@ class Datasette:
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
-        if memory or not self.files:
+        self.crossdb = crossdb
+        if memory or crossdb or not self.files:
             self.add_database(Database(self, is_memory=True), name="_memory")
         # memory_name is a random string so that each Datasette instance gets its own
         # unique in-memory named database - otherwise unit tests can fail with weird
@@ -264,7 +269,7 @@ class Datasette:
         if config_dir and (config_dir / "config.json").exists():
             raise StartupError("config.json should be renamed to settings.json")
         if config_dir and (config_dir / "settings.json").exists() and not config:
-            config = json.load((config_dir / "settings.json").open())
+            config = json.loads((config_dir / "settings.json").read_text())
         self._settings = dict(DEFAULT_SETTINGS, **(config or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
@@ -385,6 +390,9 @@ class Datasette:
         self.databases[name] = db
         return db
 
+    def add_memory_database(self, memory_name):
+        return self.add_database(Database(self, memory_name=memory_name))
+
     def remove_database(self, name):
         self.databases.pop(name)
 
@@ -442,11 +450,10 @@ class Datasette:
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):
-            self._app_css_hash = hashlib.sha1(
-                open(os.path.join(str(app_root), "datasette/static/app.css"))
-                .read()
-                .encode("utf8")
-            ).hexdigest()[:6]
+            with open(os.path.join(str(app_root), "datasette/static/app.css")) as fp:
+                self._app_css_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[
+                    :6
+                ]
         return self._app_css_hash
 
     async def get_canned_queries(self, database_name, actor):
@@ -499,6 +506,19 @@ class Datasette:
             conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
         # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
+        # If self.crossdb and this is _memory, connect the first SQLITE_LIMIT_ATTACHED databases
+        if self.crossdb and database == "_memory":
+            count = 0
+            for db_name, db in self.databases.items():
+                if count >= SQLITE_LIMIT_ATTACHED or db.is_memory:
+                    continue
+                sql = 'ATTACH DATABASE "file:{path}?{qs}" AS [{name}];'.format(
+                    path=db.path,
+                    qs="mode=ro" if db.is_mutable else "immutable=1",
+                    name=db_name,
+                )
+                conn.execute(sql)
+                count += 1
 
     def add_message(self, request, message, type=INFO):
         if not hasattr(request, "_messages"):

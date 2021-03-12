@@ -105,6 +105,7 @@ def make_app_client(
     static_mounts=None,
     template_dir=None,
     metadata=None,
+    crossdb=False,
 ):
     with tempfile.TemporaryDirectory() as tmpdir:
         filepath = os.path.join(tmpdir, filename)
@@ -149,6 +150,7 @@ def make_app_client(
             inspect_data=inspect_data,
             static_mounts=static_mounts,
             template_dir=template_dir,
+            crossdb=crossdb,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         yield TestClient(ds)
@@ -176,6 +178,15 @@ def app_client_base_url_prefix():
 def app_client_two_attached_databases():
     with make_app_client(
         extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
+    ) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def app_client_two_attached_databases_crossdb_enabled():
+    with make_app_client(
+        extra_databases={"extra database.db": EXTRA_DATABASE_SQL},
+        crossdb=True,
     ) as client:
         yield client
 
@@ -750,7 +761,12 @@ def assert_permissions_checked(datasette, actions):
     default=False,
     help="Delete and recreate database if it exists",
 )
-def cli(db_filename, metadata, plugins_path, recreate):
+@click.option(
+    "--extra-db-filename",
+    type=click.Path(file_okay=True, dir_okay=False),
+    help="Write out second test DB to this file",
+)
+def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
     """Write out the fixtures database used by Datasette's test suite"""
     if metadata and not metadata.endswith(".json"):
         raise click.ClickException("Metadata should end with .json")
@@ -773,7 +789,8 @@ def cli(db_filename, metadata, plugins_path, recreate):
             conn.executescript(GENERATED_COLUMNS_SQL)
     print(f"Test tables written to {db_filename}")
     if metadata:
-        open(metadata, "w").write(json.dumps(METADATA, indent=4))
+        with open(metadata, "w") as fp:
+            fp.write(json.dumps(METADATA, indent=4))
         print(f"- metadata written to {metadata}")
     if plugins_path:
         path = pathlib.Path(plugins_path)
@@ -782,8 +799,19 @@ def cli(db_filename, metadata, plugins_path, recreate):
         test_plugins = pathlib.Path(__file__).parent / "plugins"
         for filepath in test_plugins.glob("*.py"):
             newpath = path / filepath.name
-            newpath.write_text(filepath.open().read())
+            newpath.write_text(filepath.read_text())
             print(f"  Wrote plugin: {newpath}")
+    if extra_db_filename:
+        if pathlib.Path(extra_db_filename).exists():
+            if not recreate:
+                raise click.ClickException(
+                    f"{extra_db_filename} already exists, use --recreate to reset it"
+                )
+            else:
+                pathlib.Path(extra_db_filename).unlink()
+        conn = sqlite3.connect(extra_db_filename)
+        conn.executescript(EXTRA_DATABASE_SQL)
+        print(f"Test tables written to {extra_db_filename}")
 
 
 if __name__ == "__main__":

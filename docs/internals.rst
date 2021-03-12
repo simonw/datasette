@@ -273,7 +273,25 @@ The ``db`` parameter should be an instance of the ``datasette.database.Database`
 
 This will add a mutable database and serve it at ``/my-new-database``.
 
-To create a shared in-memory database named ``statistics``, use the following:
+``.add_database()`` returns the Database instance, with its name set as the ``database.name`` attribute. Any time you are working with a newly added database you should use the return value of ``.add_database()``, for example:
+
+.. code-block:: python
+
+    db = datasette.add_database(Database(datasette, memory_name="statistics"))
+    await db.execute_write("CREATE TABLE foo(id integer primary key)", block=True)
+
+.. _datasette_add_memory_database:
+
+.add_memory_database(name)
+--------------------------
+
+Adds a shared in-memory database with the specified name:
+
+.. code-block:: python
+
+    datasette.add_memory_database("statistics")
+
+This is a shortcut for the following:
 
 .. code-block:: python
 
@@ -284,14 +302,7 @@ To create a shared in-memory database named ``statistics``, use the following:
         memory_name="statistics"
     ))
 
-This database will be served at ``/statistics``.
-
-``.add_database()`` returns the Database instance, with its name set as the ``database.name`` attribute. Any time you are working with a newly added database you should use the return value of ``.add_database()``, for example:
-
-.. code-block:: python
-
-    db = datasette.add_database(Database(datasette, memory_name="statistics"))
-    await db.execute_write("CREATE TABLE foo(id integer primary key)", block=True)
+Using either of these pattern will result in the in-memory database being served at ``/statistics``.
 
 .. _datasette_remove_database:
 
@@ -458,15 +469,10 @@ The ``datasette.urls`` object contains methods for building URLs to pages within
 ``datasette.urls.static_plugins(plugin_name, path)``
     Returns the URL of one of the static assets belonging to a plugin.
 
-    ``datasette.url.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
+    ``datasette.urls.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
 ``datasette.urls.static(path)``
     Returns the URL of one of Datasette's default static assets, for example ``"/-/static/app.css"``
-
-``datasette.urls.static_plugins(plugin_name, path)``
-    Returns the URL of one of the static assets belonging to a plugin.
-
-    ``datasette.url.static_plugins("datasette_cluster_map", "datasette-cluster-map.js")`` would return ``"/-/static-plugins/datasette_cluster_map/datasette-cluster-map.js"``
 
 ``datasette.urls.database(database_name, format=None)``
     Returns the URL to a database page, for example ``"/fixtures"``
@@ -676,6 +682,9 @@ The ``Database`` class also provides properties and methods for introspecting th
 
 ``db.is_memory`` - boolean
     Is this database an in-memory database?
+
+``await db.attached_databases()`` - list of named tuples
+    Returns a list of additional databases that have been connected to this database using the SQLite ATTACH command. Each named tuple has fields ``seq``, ``name`` and ``file``.
 
 ``await db.table_exists(table)`` - boolean
     Check if a table called ``table`` exists.

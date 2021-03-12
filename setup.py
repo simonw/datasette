@@ -17,7 +17,8 @@ def get_version():
         os.path.dirname(os.path.abspath(__file__)), "datasette", "version.py"
     )
     g = {}
-    exec(open(path).read(), g)
+    with open(path) as fp:
+        exec(fp.read(), g)
     return g["__version__"]
 
 
@@ -48,7 +49,7 @@ setup(
         "click-default-group~=1.2.2",
         "Jinja2>=2.10.3,<2.12.0",
         "hupper~=1.9",
-        "httpx>=0.15",
+        "httpx>=0.17",
         "pint~=0.9",
         "pluggy~=0.13.0",
         "uvicorn~=0.11",

@@ -49,7 +49,8 @@ def test_inspect_cli_writes_to_file(app_client):
         cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"]
     )
     assert 0 == result.exit_code, result.output
-    data = json.load(open("foo.json"))
+    with open("foo.json") as fp:
+        data = json.load(fp)
     assert ["fixtures"] == list(data.keys())
 
 
@@ -147,6 +148,7 @@ def test_metadata_yaml():
         get=None,
         help_config=False,
         pdb=False,
+        crossdb=False,
         open_browser=False,
         create=False,
         ssl_keyfile=None,
@@ -192,6 +194,14 @@ def test_version():
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.output == f"cli, version {__version__}\n"
+
+
+@pytest.mark.parametrize("invalid_port", ["-1", "0.5", "dog", "65536"])
+def test_serve_invalid_ports(ensure_eventloop, invalid_port):
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(cli, ["--port", invalid_port])
+    assert result.exit_code == 2
+    assert "Invalid value for '-p'" in result.stderr
 
 
 def test_setting(ensure_eventloop):

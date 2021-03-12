@@ -810,7 +810,6 @@ def test_table_shape_object_compound_primary_key(app_client):
     assert {"a,b": {"pk1": "a", "pk2": "b", "content": "c"}} == response.json
 
 
-@pytest.mark.xfail
 def test_table_with_slashes_in_name(app_client):
     response = app_client.get(
         "/fixtures/table%2Fwith%2Fslashes.csv?_shape=objects&_format=json"
@@ -1286,7 +1285,6 @@ def test_row_format_in_querystring(app_client):
     assert [{"id": "1", "content": "hello"}] == response.json["rows"]
 
 
-@pytest.mark.xfail
 def test_row_strange_table_name(app_client):
     response = app_client.get(
         "/fixtures/table%2Fwith%2Fslashes.csv/3.json?_shape=objects"

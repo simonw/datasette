@@ -12,7 +12,7 @@ from subprocess import call
 import sys
 from runpy import run_module
 import webbrowser
-from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, pm
+from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, SQLITE_LIMIT_ATTACHED, pm
 from .utils import (
     StartupError,
     check_connection,
@@ -125,13 +125,13 @@ def cli():
 @sqlite_extensions
 def inspect(files, inspect_file, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
-    if inspect_file == "-":
-        out = sys.stdout
-    else:
-        out = open(inspect_file, "w")
     loop = asyncio.get_event_loop()
     inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))
-    out.write(json.dumps(inspect_data, indent=2))
+    if inspect_file == "-":
+        sys.stdout.write(json.dumps(inspect_data, indent=2))
+    else:
+        with open(inspect_file, "w") as fp:
+            fp.write(json.dumps(inspect_data, indent=2))
 
 
 async def inspect_(files, sqlite_extensions):
@@ -223,6 +223,7 @@ def plugins(all, plugins_dir):
     "-p",
     "--port",
     default=8001,
+    type=click.IntRange(1, 65535),
     help="Port to run the server on, defaults to 8001",
 )
 @click.option("--title", help="Title for metadata")
@@ -329,6 +330,7 @@ def uninstall(packages, yes):
     "-p",
     "--port",
     default=8001,
+    type=click.IntRange(0, 65535),
     help="Port for server, defaults to 8001. Use -p 0 to automatically assign an available port.",
 )
 @click.option(
@@ -409,6 +411,11 @@ def uninstall(packages, yes):
     help="Create database files if they do not exist",
 )
 @click.option(
+    "--crossdb",
+    is_flag=True,
+    help="Enable cross-database joins using the /_memory database",
+)
+@click.option(
     "--ssl-keyfile",
     help="SSL key file",
 )
@@ -440,6 +447,7 @@ def serve(
     pdb,
     open_browser,
     create,
+    crossdb,
     ssl_keyfile,
     ssl_certfile,
     return_instance=False,
@@ -467,7 +475,8 @@ def serve(
 
     inspect_data = None
     if inspect_file:
-        inspect_data = json.load(open(inspect_file))
+        with open(inspect_file) as fp:
+            inspect_data = json.load(fp)
 
     metadata_data = None
     if metadata:
@@ -497,6 +506,7 @@ def serve(
         secret=secret,
         version_note=version_note,
         pdb=pdb,
+        crossdb=crossdb,
     )
 
     # if files is a single directory, use that as config_dir=
@@ -589,3 +599,15 @@ async def check_databases(ds):
             raise click.UsageError(
                 f"Connection to {database.path} failed check: {str(e.args[0])}"
             )
+    # If --crossdb and more than SQLITE_LIMIT_ATTACHED show warning
+    if (
+        ds.crossdb
+        and len([db for db in ds.databases.values() if not db.is_memory])
+        > SQLITE_LIMIT_ATTACHED
+    ):
+        msg = (
+            "Warning: --crossdb only works with the first {} attached databases".format(
+                SQLITE_LIMIT_ATTACHED
+            )
+        )
+        click.echo(click.style(msg, bold=True, fg="yellow"), err=True)

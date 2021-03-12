@@ -18,7 +18,7 @@ def update_help_includes():
         result = runner.invoke(cli, name.split() + ["--help"], terminal_width=88)
         actual = f"$ datasette {name} --help\n\n{result.output}"
         actual = actual.replace("Usage: cli ", "Usage: datasette ")
-        open(docs_path / filename, "w").write(actual)
+        (docs_path / filename).write_text(actual)
 
 
 if __name__ == "__main__":

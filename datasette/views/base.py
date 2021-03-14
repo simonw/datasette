@@ -187,9 +187,8 @@ class DataView(BaseView):
             name_bit, hash_bit = db_name.rsplit("-", 1)
             if name_bit not in self.ds.databases:
                 raise NotFound(f"Database not found: {name}")
-            else:
-                name = name_bit
-                hash = hash_bit
+            name = name_bit
+            hash = hash_bit
         else:
             name = db_name
 

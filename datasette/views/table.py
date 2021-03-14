@@ -395,15 +395,14 @@ class TableView(RowTableShared):
                 default=True,
             ):
                 raise DatasetteError("_where= is not allowed", status=403)
-            else:
-                where_clauses.extend(request.args.getlist("_where"))
-                extra_wheres_for_ui = [
-                    {
-                        "text": text,
-                        "remove_url": path_with_removed_args(request, {"_where": text}),
-                    }
-                    for text in request.args.getlist("_where")
-                ]
+            where_clauses.extend(request.args.getlist("_where"))
+            extra_wheres_for_ui = [
+                {
+                    "text": text,
+                    "remove_url": path_with_removed_args(request, {"_where": text}),
+                }
+                for text in request.args.getlist("_where")
+            ]
 
         # Support for ?_through={table, column, value}
         extra_human_descriptions = []

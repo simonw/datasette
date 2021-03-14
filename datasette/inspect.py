@@ -104,7 +104,7 @@ def inspect_tables(conn, database_metadata):
             )
         ]
 
-    for t in tables.keys():
+    for t in tables:
         for hidden_table in hidden_tables:
             if t == hidden_table or t.startswith(hidden_table):
                 tables[t]["hidden"] = True

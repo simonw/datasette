@@ -921,7 +921,7 @@ class Datasette:
             routes.append((regex, view))
 
         # Generate a regex snippet to match all registered renderer file extensions
-        renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
+        renderer_regex = "|".join(r"\." + key for key in self.renderers)
 
         add_route(IndexView.as_view(self), r"/(?P<as_format>(\.jsono?)?$)")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires

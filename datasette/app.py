@@ -397,7 +397,7 @@ class Datasette:
         self.databases.pop(name)
 
     def setting(self, key):
-        return self._settings.get(key, None)
+        return self._settings.get(key)
 
     def config_dict(self):
         # Returns a fully resolved config dictionary, useful for templates

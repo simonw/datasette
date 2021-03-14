@@ -767,7 +767,7 @@ class Datasette:
         hook_renderers = []
         # pylint: disable=no-member
         for hook in pm.hook.register_output_renderer(datasette=self):
-            if type(hook) == list:
+            if type(hook) is list:
                 hook_renderers += hook
             else:
                 hook_renderers.append(hook)

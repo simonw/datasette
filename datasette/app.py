@@ -429,12 +429,11 @@ class Datasette:
                 if key in item:
                     return item[key]
             return None
-        else:
-            # Return the merged list
-            m = {}
-            for item in search_list:
-                m.update(item)
-            return m
+        # Return the merged list
+        m = {}
+        for item in search_list:
+            m.update(item)
+        return m
 
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
@@ -539,8 +538,7 @@ class Datasette:
             messages = request._messages
             request._messages = []
             return messages
-        else:
-            return []
+        return []
 
     async def permission_allowed(self, actor, action, resource=None, default=False):
         """Check permissions using the permissions_allowed plugin hook"""

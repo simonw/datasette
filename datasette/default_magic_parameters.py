@@ -24,12 +24,11 @@ def cookie(key, request):
 def now(key, request):
     if key == "epoch":
         return int(time.time())
-    elif key == "date_utc":
+    if key == "date_utc":
         return datetime.datetime.utcnow().date().isoformat()
-    elif key == "datetime_utc":
+    if key == "datetime_utc":
         return datetime.datetime.utcnow().strftime(r"%Y-%m-%dT%H:%M:%S") + "Z"
-    else:
-        raise KeyError
+    raise KeyError
 
 
 def random(key, request):
@@ -40,8 +39,7 @@ def random(key, request):
         else:
             urandom_len = num_chars / 2
         return os.urandom(int(urandom_len)).hex()[:num_chars]
-    else:
-        raise KeyError
+    raise KeyError
 
 
 @hookimpl

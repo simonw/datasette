@@ -138,6 +138,28 @@ Each of these responses will use the correct corresponding content-type - ``text
 
 Each of the helper methods take optional ``status=`` and ``headers=`` arguments, documented above.
 
+.. _internals_response_asgi_send:
+
+Returning a response with .asgi_send(send)
+------------------------------------------
+
+
+In most cases you will return ``Response`` objects from your own view functions. You can also use a ``Response`` instance to respond at a lower level via ASGI, for example if you are writing code that uses the :ref:`plugin_asgi_wrapper` hook.
+
+Create a ``Response`` object and then use ``await response.asgi_send(send)``, passing the ASGI ``send`` function. For example:
+
+.. code-block:: python
+
+    async def require_authorization(scope, recieve, send):
+        response = Response.text(
+            "401 Authorization Required",
+            headers={
+                "www-authenticate": 'Basic realm="Datasette", charset="UTF-8"'
+            },
+            status=401,
+        )
+        await response.asgi_send(send)
+
 .. _internals_response_set_cookie:
 
 Setting cookies with response.set_cookie()

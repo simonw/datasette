@@ -78,7 +78,7 @@ Publishing to Vercel
     pip install datasette-publish-vercel
     datasette publish vercel mydatabase.db --project my-database-project
 
-Not every feature is supported: consult the `datasette-publish-vercel README <https://github.com/simonw/datasette-publish-vercel/blob/master/README.md>`__ for more details.
+Not every feature is supported: consult the `datasette-publish-vercel README <https://github.com/simonw/datasette-publish-vercel/blob/main/README.md>`__ for more details.
 
 .. _publish_fly:
 
@@ -92,7 +92,7 @@ Publishing to Fly
     pip install datasette-publish-fly
     datasette publish fly mydatabase.db
 
-Consult the `datasette-publish-fly README <https://github.com/simonw/datasette-publish-fly/blob/master/README.md>`__ for more details.
+Consult the `datasette-publish-fly README <https://github.com/simonw/datasette-publish-fly/blob/main/README.md>`__ for more details.
 
 .. _publish_custom_metadata_and_plugins:
 

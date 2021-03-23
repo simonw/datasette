@@ -191,7 +191,7 @@ def plugins(all, plugins_dir):
     help="Path to JSON/YAML file containing metadata to publish",
 )
 @click.option("--extra-options", help="Extra options to pass to datasette serve")
-@click.option("--branch", help="Install datasette from a GitHub branch e.g. master")
+@click.option("--branch", help="Install datasette from a GitHub branch e.g. main")
 @click.option(
     "--template-dir",
     type=click.Path(exists=True, file_okay=False, dir_okay=True),

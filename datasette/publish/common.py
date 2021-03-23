@@ -19,7 +19,7 @@ def add_common_publish_arguments_and_options(subcommand):
                 "--extra-options", help="Extra options to pass to datasette serve"
             ),
             click.option(
-                "--branch", help="Install datasette from a GitHub branch e.g. master"
+                "--branch", help="Install datasette from a GitHub branch e.g. main"
             ),
             click.option(
                 "--template-dir",

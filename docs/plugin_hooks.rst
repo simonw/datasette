@@ -304,7 +304,7 @@ publish_subcommand(publish)
 This hook allows you to create new providers for the ``datasette publish``
 command. Datasette uses this hook internally to implement the default ``now``
 and ``heroku`` subcommands, so you can read
-`their source <https://github.com/simonw/datasette/tree/master/datasette/publish>`_
+`their source <https://github.com/simonw/datasette/tree/main/datasette/publish>`_
 to see examples of this hook in action.
 
 Let's say you want to build a plugin that adds a ``datasette publish my_hosting_provider --api_key=xxx mydatabase.db`` publish command. Your implementation would start like this:
@@ -641,7 +641,7 @@ Each Facet subclass implements a new type of facet operation. The class should l
 
             return facet_results, facets_timed_out
 
-See `datasette/facets.py <https://github.com/simonw/datasette/blob/master/datasette/facets.py>`__ for examples of how these classes can work.
+See `datasette/facets.py <https://github.com/simonw/datasette/blob/main/datasette/facets.py>`__ for examples of how these classes can work.
 
 The plugin hook can then be used to register the new facet class like this:
 

@@ -303,7 +303,7 @@ from the default template.
 
 The ``_table.html`` template is included by both the row and the table pages,
 and a list of rows. The default ``_table.html`` template renders them as an
-HTML template and `can be seen here <https://github.com/simonw/datasette/blob/master/datasette/templates/_table.html>`_.
+HTML template and `can be seen here <https://github.com/simonw/datasette/blob/main/datasette/templates/_table.html>`_.
 
 You can provide a custom template that applies to all of your databases and
 tables, or you can provide custom templates for specific tables using the

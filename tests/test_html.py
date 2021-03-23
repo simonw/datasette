@@ -1093,12 +1093,11 @@ def assert_footer_links(soup):
     assert "About Datasette" == about_link.text.strip()
     assert "https://datasette.io/" == datasette_link["href"]
     assert (
-        "https://github.com/simonw/datasette/blob/master/tests/fixtures.py"
+        "https://github.com/simonw/datasette/blob/main/tests/fixtures.py"
         == source_link["href"]
     )
     assert (
-        "https://github.com/simonw/datasette/blob/master/LICENSE"
-        == license_link["href"]
+        "https://github.com/simonw/datasette/blob/main/LICENSE" == license_link["href"]
     )
     assert "https://github.com/simonw/datasette" == about_link["href"]
 
@@ -1513,8 +1512,8 @@ def test_base_url_config(app_client_base_url_prefix, path):
             and href
             not in {
                 "https://datasette.io/",
-                "https://github.com/simonw/datasette/blob/master/LICENSE",
-                "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
+                "https://github.com/simonw/datasette/blob/main/LICENSE",
+                "https://github.com/simonw/datasette/blob/main/tests/fixtures.py",
                 "/login-as-root",  # Only used for the latest.datasette.io demo
             }
             and not href.startswith("https://plugin-example.datasette.io/")

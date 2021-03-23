@@ -10,7 +10,7 @@ This document describes how to contribute to Datasette core. You can also contri
 General guidelines
 ------------------
 
-* **master should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
+* **main should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
 * **The ideal commit** should bundle together the implementation, unit tests and associated documentation updates. The commit message should link to an associated issue.
 * **New plugin hooks** should only be shipped if accompanied by a separate release of a non-demo plugin that uses them.
 

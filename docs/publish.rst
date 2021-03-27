@@ -90,7 +90,7 @@ Publishing to Fly
 ::
 
     pip install datasette-publish-fly
-    datasette publish fly mydatabase.db
+    datasette publish fly mydatabase.db --app="my-app"
 
 Consult the `datasette-publish-fly README <https://github.com/simonw/datasette-publish-fly/blob/main/README.md>`__ for more details.
 

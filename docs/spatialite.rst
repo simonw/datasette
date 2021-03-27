@@ -88,7 +88,7 @@ In the above example, the resulting index will be called ``idx_museums_point_geo
 
     select * from idx_museums_point_geom limit 10;
 
-Here's a live example: `timezones-api.now.sh/timezones/idx_timezones_Geometry <https://timezones-api.now.sh/timezones/idx_timezones_Geometry>`_
+Here's a live example: `timezones-api.datasette.io/timezones/idx_timezones_Geometry <https://timezones-api.datasette.io/timezones/idx_timezones_Geometry>`_
 
 +--------+----------------------+----------------------+---------------------+---------------------+
 |  pkid  |  xmin                |  xmax                |  ymin               |  ymax               |

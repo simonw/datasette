@@ -1,42 +1,25 @@
-FROM python:3.7.10-slim-stretch as build
+FROM python:3.9.2-slim-buster as build
 
-# Setup build dependencies
-RUN apt update \
-&& apt install -y python3-dev build-essential wget libxml2-dev libproj-dev libgeos-dev libsqlite3-dev zlib1g-dev pkg-config git \
- && apt clean
+# Version of Datasette to install, e.g. 0.55
+#   docker build . -t datasette --build-arg VERSION=0.55
+ARG VERSION
 
+# software-properties-common provides add-apt-repository
+# which we need in order to install a more recent release
+# of libsqlite3-mod-spatialite from the sid distribution
+RUN apt-get update && \
+    apt-get -y --no-install-recommends install software-properties-common && \
+    add-apt-repository "deb http://httpredir.debian.org/debian sid main" && \
+    apt-get update && \
+    apt-get -t sid install -y --no-install-recommends libsqlite3-mod-spatialite && \
+    apt-get remove -y software-properties-common && \
+    apt clean && \
+    rm -rf /var/lib/apt && \
+    rm -rf /var/lib/dpkg
 
-RUN wget "https://www.sqlite.org/2020/sqlite-autoconf-3310100.tar.gz" && tar xzf sqlite-autoconf-3310100.tar.gz \
-    && cd sqlite-autoconf-3310100 && ./configure --disable-static --enable-fts5 --enable-json1 CFLAGS="-g -O2 -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_FTS4=1 -DSQLITE_ENABLE_RTREE=1 -DSQLITE_ENABLE_JSON1" \
-    && make && make install
-
-RUN wget "http://www.gaia-gis.it/gaia-sins/freexl-sources/freexl-1.0.5.tar.gz" && tar zxf freexl-1.0.5.tar.gz \
-    && cd freexl-1.0.5 && ./configure && make && make install
-
-RUN wget "http://www.gaia-gis.it/gaia-sins/libspatialite-sources/libspatialite-4.4.0-RC0.tar.gz" && tar zxf libspatialite-4.4.0-RC0.tar.gz \
-    && cd libspatialite-4.4.0-RC0 && ./configure && make && make install
-
-RUN wget "http://www.gaia-gis.it/gaia-sins/readosm-sources/readosm-1.1.0.tar.gz" && tar zxf readosm-1.1.0.tar.gz && cd readosm-1.1.0 && ./configure && make && make install
-
-RUN wget "http://www.gaia-gis.it/gaia-sins/spatialite-tools-sources/spatialite-tools-4.4.0-RC0.tar.gz" && tar zxf spatialite-tools-4.4.0-RC0.tar.gz \
-    && cd spatialite-tools-4.4.0-RC0 && ./configure && make && make install
-
-
-# Add local code to the image instead of fetching from pypi.
-COPY . /datasette
-
-RUN pip install /datasette
-
-FROM python:3.7.10-slim-stretch
-
-# Copy python dependencies and spatialite libraries
-COPY --from=build /usr/local/lib/ /usr/local/lib/
-# Copy executables
-COPY --from=build /usr/local/bin /usr/local/bin
-# Copy spatial extensions
-COPY --from=build /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
-
-ENV LD_LIBRARY_PATH=/usr/local/lib
+RUN pip install https://github.com/simonw/datasette/archive/refs/tags/${VERSION}.zip && \
+    find /usr/local/lib -name '__pycache__' | xargs rm -r && \
+    rm -rf /root/.cache/pip
 
 EXPOSE 8001
 CMD ["datasette"]

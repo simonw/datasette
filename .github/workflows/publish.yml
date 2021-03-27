@@ -66,8 +66,11 @@ jobs:
         DOCKER_USER: ${{ secrets.DOCKER_USER }}
         DOCKER_PASS: ${{ secrets.DOCKER_PASS }}
       run: |-
-         docker login -u $DOCKER_USER -p $DOCKER_PASS 
-         export REPO=datasetteproject/datasette 
-         docker build -f Dockerfile -t $REPO:${GITHUB_REF#refs/tags/} . 
-         docker tag $REPO:${GITHUB_REF#refs/tags/} $REPO:latest
-         docker push $REPO 
+        sleep 60 # Give PyPI time to make the new release available
+        docker login -u $DOCKER_USER -p $DOCKER_PASS
+        export REPO=datasetteproject/datasette
+        docker build -f Dockerfile \
+          -t $REPO:${GITHUB_REF#refs/tags/} \
+          --build-arg VERSION=${GITHUB_REF#refs/tags/} .
+        docker tag $REPO:${GITHUB_REF#refs/tags/} $REPO:latest
+        docker push $REPO

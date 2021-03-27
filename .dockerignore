@@ -9,3 +9,5 @@ build
 dist
 scratchpad
 venv
+*.db
+*.sqlite

@@ -97,7 +97,7 @@ p {
   margin-bottom: 0.75rem;
 }
 .context-text {
-	/* for accessibility and hiden from sight */
+	/* for accessibility and hidden from sight */
 	text-indent: -999em;
 	display: block;
 	width:0;

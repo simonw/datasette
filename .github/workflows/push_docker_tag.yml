@@ -22,5 +22,4 @@ jobs:
         docker build -f Dockerfile \
           -t $REPO:${VERSION_TAG} \
           --build-arg VERSION=${VERSION_TAG} .
-        docker tag $REPO:${VERSION_TAG}
-        docker push $REPO
+        docker push $REPO:${VERSION_TAG}

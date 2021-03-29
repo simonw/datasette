@@ -196,7 +196,7 @@ def permission_allowed(actor, action):
     elif action == "this_is_denied":
         return False
     elif action == "view-database-download":
-        return (actor and actor.get("can_download")) or None
+        return actor.get("can_download") if actor else None
 
 
 @hookimpl

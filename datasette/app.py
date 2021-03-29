@@ -317,7 +317,7 @@ class Datasette:
             loader=template_loader, autoescape=True, enable_async=True
         )
         self.jinja_env.filters["escape_css_string"] = escape_css_string
-        self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
+        self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
         # pylint: disable=no-member
@@ -767,7 +767,7 @@ class Datasette:
         hook_renderers = []
         # pylint: disable=no-member
         for hook in pm.hook.register_output_renderer(datasette=self):
-            if type(hook) == list:
+            if type(hook) is list:
                 hook_renderers += hook
             else:
                 hook_renderers.append(hook)

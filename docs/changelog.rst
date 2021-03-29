@@ -4,6 +4,24 @@
 Changelog
 =========
 
+.. _v0_56:
+
+0.56 (2021-03-28)
+-----------------
+
+Documentation improvements, bug fixes and support for SpatiaLite 5.
+
+- The SQL editor can now be resized by dragging a handle. (:issue:`1236`)
+- Fixed a bug with JSON faceting and the ``__arraycontains`` filter caused by tables with spaces in their names. (:issue:`1239`)
+- Upgraded ``httpx`` dependency. (:issue:`1005`)
+- JSON faceting is now suggested even if a column contains blank strings. (:issue:`1246`)
+- New :ref:`datasette.add_memory_database() <datasette_add_memory_database>` method. (:issue:`1247`)
+- The :ref:`Response.asgi_send() <internals_response_asgi_send>` method is now documented. (:issue:`1266`)
+- The official Datasette Docker image now bundles SpatiaLite version 5. (:issue:`1278`)
+- Fixed a ``no such table: pragma_database_list`` bug when running Datasette against SQLite versions prior to SQLite 3.16.0. (:issue:`1276`)
+- HTML lists displayed in table cells are now styled correctly. Thanks, Bob Whitelock. (:issue:`1141`, `#1252 <https://github.com/simonw/datasette/pull/1252>`__)
+- Configuration directory mode now correctly serves immutable databases that are listed in ``inspect-data.json``. Thanks Campbell Allen and Frankie Robertson. (`#1031 <https://github.com/simonw/datasette/pull/1031>`__, `#1229 <https://github.com/simonw/datasette/pull/1229>`__)
+
 .. _v0_55:
 
 0.55 (2021-02-18)

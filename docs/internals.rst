@@ -143,7 +143,6 @@ Each of the helper methods take optional ``status=`` and ``headers=`` arguments,
 Returning a response with .asgi_send(send)
 ------------------------------------------
 
-
 In most cases you will return ``Response`` objects from your own view functions. You can also use a ``Response`` instance to respond at a lower level via ASGI, for example if you are writing code that uses the :ref:`plugin_asgi_wrapper` hook.
 
 Create a ``Response`` object and then use ``await response.asgi_send(send)``, passing the ASGI ``send`` function. For example:

@@ -66,7 +66,7 @@ Now visiting http://localhost:8001/History/downloads will show you a web interfa
                                 allowed. Use 0.0.0.0 to listen to all IPs and
                                 allow access from other machines.
       -p, --port INTEGER        Port for server, defaults to 8001
-      --reload                  Automatically reload if database or code change
+      --reload                  Automatically reload if code or metadata change
                                 detected - useful for development
       --cors                    Enable CORS by serving Access-Control-Allow-
                                 Origin: *

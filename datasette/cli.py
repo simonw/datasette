@@ -336,7 +336,7 @@ def uninstall(packages, yes):
 @click.option(
     "--reload",
     is_flag=True,
-    help="Automatically reload if database or code change detected - useful for development",
+    help="Automatically reload if code or metadata change detected - useful for development",
 )
 @click.option(
     "--cors", is_flag=True, help="Enable CORS by serving Access-Control-Allow-Origin: *"

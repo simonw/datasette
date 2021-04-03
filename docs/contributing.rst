@@ -43,9 +43,27 @@ The next step is to create a virtual environment for your project and use it to 
 
 That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "use the setup.py in this directory and install the optional testing dependencies as well".
 
+.. _contributing_running_tests:
+
+Running the tests
+-----------------
+
 Once you have done this, you can run the Datasette unit tests from inside your ``datasette/`` directory using `pytest <https://docs.pytest.org/>`__ like so::
 
     pytest
+
+You can run the tests faster by using multiple CPU cores with `pytest-xdist` like this::
+
+    pytest -n auto -m "not serial"
+
+``-n auto`` detects the number of available cores automatically. The ``-m "not serial"`` skips tests that don't work well in a parallel test environment. You can run those tests separately like so::
+
+    pytest -m "serial"
+
+.. _contributing_using_fixtures:
+
+Using fixtures
+--------------
 
 To run Datasette itself, type ``datasette``.
 

@@ -26,4 +26,5 @@ jobs:
         pip install -e '.[test]'
     - name: Run tests
       run: |
-        pytest
+        pytest -n auto -m "not serial"
+        pytest -m "serial"

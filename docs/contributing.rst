@@ -52,7 +52,7 @@ Once you have done this, you can run the Datasette unit tests from inside your `
 
     pytest
 
-You can run the tests faster by using multiple CPU cores with `pytest-xdist` like this::
+You can run the tests faster using multiple CPU cores with `pytest-xdist <https://pypi.org/project/pytest-xdist/>`__ like this::
 
     pytest -n auto -m "not serial"
 

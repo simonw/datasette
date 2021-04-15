@@ -251,7 +251,7 @@ class Datasette:
         if config_dir and metadata_files and not metadata:
             with metadata_files[0].open() as fp:
                 metadata = parse_metadata(fp.read())
-        self._metadata = metadata or {}
+        self._metadata_local = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = []
         for extension in sqlite_extensions or []:
@@ -407,6 +407,19 @@ class Datasette:
         # Returns a fully resolved config dictionary, useful for templates
         return {option.name: self.setting(option.name) for option in SETTINGS}
 
+    def _metadata_recursive_update(self, orig, updated):
+        if not isinstance(orig, dict) or not isinstance(updated, dict):
+            return orig
+
+        for key, upd_value in updated.items():
+            if isinstance(upd_value, dict) and isinstance(orig.get(key), dict):
+                orig[key] = self._metadata_recursive_update(
+                    orig[key], upd_value
+                )
+            else:
+                orig[key] = upd_value
+        return orig
+
     def metadata(self, key=None, database=None, table=None, fallback=True):
         """
         Looks up metadata, cascading backwards from specified level.
@@ -415,7 +428,24 @@ class Datasette:
         assert not (
             database is None and table is not None
         ), "Cannot call metadata() with table= specified but not database="
-        databases = self._metadata.get("databases") or {}
+        metadata = {}
+
+        # TODO: change this to update_metadata, pass meta back allow the
+        # plugins to mutate it?
+        for hook_dbs in pm.hook.get_metadata(
+            datasette=self, key=key, database=database, table=table,
+            fallback=fallback
+        ):
+            metadata = self._metadata_recursive_update(metadata, hook_dbs)
+
+        # security precaution!! don't allow anything in the local config
+        # to be overwritten. this is a temporary measure, not sure if this
+        # is a good idea long term or maybe if it should just be a concern
+        # of the plugin's implemtnation
+        metadata = self._metadata_recursive_update(metadata, self._metadata_local)
+
+        databases = metadata.get("databases") or {}
+
         search_list = []
         if database is not None:
             search_list.append(databases.get(database) or {})
@@ -424,7 +454,10 @@ class Datasette:
                 table
             ) or {}
             search_list.insert(0, table_metadata)
-        search_list.append(self._metadata)
+
+        # TODO: get full data for here, we need to work down to tables from that
+        # as opposed to simply returning table data above?
+        search_list.append(metadata)
         if not fallback:
             # No fallback allowed, so just use the first one in the list
             search_list = search_list[:1]
@@ -439,6 +472,10 @@ class Datasette:
             for item in search_list:
                 m.update(item)
             return m
+
+    @property
+    def _metadata(self):
+        return self.metadata()
 
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""

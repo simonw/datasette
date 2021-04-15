@@ -21,7 +21,6 @@ import numbers
 import yaml
 from .shutil_backport import copytree
 from .sqlite import sqlite3, sqlite_version, supports_table_xinfo
-from ..plugins import pm
 
 
 # From https://www.sqlite.org/lang_keywords.html

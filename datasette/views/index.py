@@ -78,8 +78,9 @@ class IndexView(BaseView):
                 # We will be sorting by number of relationships, so populate that field
                 all_foreign_keys = await db.get_all_foreign_keys()
                 for table, foreign_keys in all_foreign_keys.items():
-                    count = len(foreign_keys["incoming"] + foreign_keys["outgoing"])
-                    tables[table]["num_relationships_for_sorting"] = count
+                    if table in tables.keys():
+                        count = len(foreign_keys["incoming"] + foreign_keys["outgoing"])
+                        tables[table]["num_relationships_for_sorting"] = count
 
             hidden_tables = [t for t in tables.values() if t["hidden"]]
             visible_tables = [t for t in tables.values() if not t["hidden"]]

@@ -432,7 +432,7 @@ td {
     vertical-align: top;
     white-space: pre-wrap;
 }
-td.col-link {
+td.type-pk {
     font-weight: bold;
 }
 td em {

@@ -11,15 +11,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
+
+    - name: Set up Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Available platforms
+      run: echo ${{ steps.buildx.outputs.platforms }}
+
+    - name: Login to DockerHub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_USER }}
+        password: ${{ secrets.DOCKER_PASS }}
+
     - name: Build and push to Docker Hub
+      run: |
+        docker buildx build \
+          --file Dockerfile . \
+          --tag $REPO:${VERSION_TAG} \
+          --build-arg VERSION=${VERSION_TAG} \
+          --platform linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64,linux/ppc64le,linux/s390x \
+          --push
       env:
-        DOCKER_USER: ${{ secrets.DOCKER_USER }}
-        DOCKER_PASS: ${{ secrets.DOCKER_PASS }}
+        REPO: datasetteproject/datasette
         VERSION_TAG: ${{ github.event.inputs.version_tag }}
-      run: |-
-        docker login -u $DOCKER_USER -p $DOCKER_PASS
-        export REPO=datasetteproject/datasette
-        docker build -f Dockerfile \
-          -t $REPO:${VERSION_TAG} \
-          --build-arg VERSION=${VERSION_TAG} .
-        docker push $REPO:${VERSION_TAG}

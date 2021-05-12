@@ -58,7 +58,7 @@ setup(
         "asgi-csrf>=0.6",
         "PyYAML~=5.3",
         "mergedeep>=1.1.1,<1.4.0",
-        "itsdangerous~=1.1",
+        "itsdangerous>=1.1,<3.0",
         "python-baseconv==1.2.2",
     ],
     entry_points="""

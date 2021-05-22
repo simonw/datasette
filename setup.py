@@ -73,7 +73,7 @@ setup(
             "pytest-xdist>=2.2.1,<2.3",
             "pytest-asyncio>=0.10,<0.16",
             "beautifulsoup4>=4.8.1,<4.10.0",
-            "black==21.4b2",
+            "black==21.5b1",
             "pytest-timeout>=1.4.2,<1.5",
             "trustme>=0.7,<0.8",
         ],

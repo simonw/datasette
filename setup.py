@@ -45,7 +45,7 @@ setup(
     python_requires=">=3.6",
     install_requires=[
         "asgiref>=3.2.10,<3.4.0",
-        "click~=7.1.1",
+        "click>=7.1.1,<8.1.0",
         "click-default-group~=1.2.2",
         "Jinja2>=2.10.3,<3.1.0",
         "hupper~=1.9",

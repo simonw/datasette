@@ -261,7 +261,7 @@ database file to the URL path for every table and query within that database.
 
 When combined with far-future expire headers this ensures that queries can be
 cached forever, safe in the knowledge that any modifications to the database
-itself will result in new, uncachcacheed URL paths.
+itself will result in new, uncached URL paths.
 
 ::
 

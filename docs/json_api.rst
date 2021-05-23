@@ -371,6 +371,12 @@ Special table arguments
     Pagination by continuation token - pass the token that was returned in the
     ``"next"`` property by the previous page.
 
+``?_facet=column``
+    Facet by column. Can be applied multiple times, see :ref:`facets`. Only works on the default JSON output, not on any of the custom shapes.
+
+``?_facet_size=100``
+    Increase the number of facet results returned for each facet.
+
 ``?_trace=1``
     Turns on tracing for this page: SQL queries executed during the request will
     be gathered and included in the response, either in a new ``"_traces"`` key

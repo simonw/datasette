@@ -619,6 +619,7 @@ Each Facet subclass implements a new type of facet operation. The class should l
             # using self.sql and self.params as the starting point
             facet_results = {}
             facets_timed_out = []
+            facet_size = self.get_facet_size()
             # Do some calculations here...
             for column in columns_selected_for_facet:
                 try:

@@ -347,3 +347,55 @@ async def test_json_array_with_blanks_and_nulls():
             "toggle_url": "http://localhost/test_json_array/foo.json?_facet_array=json_column",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_facet_size():
+    ds = Datasette([], memory=True, config={"max_returned_rows": 50})
+    db = ds.add_database(Database(ds, memory_name="test_facet_size"))
+    await db.execute_write(
+        "create table neighbourhoods(city text, neighbourhood text)", block=True
+    )
+    for i in range(1, 51):
+        for j in range(1, 4):
+            await db.execute_write(
+                "insert into neighbourhoods (city, neighbourhood) values (?, ?)",
+                ["City {}".format(i), "Neighbourhood {}".format(j)],
+                block=True,
+            )
+    response = await ds.client.get("/test_facet_size/neighbourhoods.json")
+    data = response.json()
+    assert data["suggested_facets"] == [
+        {
+            "name": "neighbourhood",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet=neighbourhood",
+        }
+    ]
+    # Bump up _facet_size= to suggest city too
+    response2 = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_facet_size=50"
+    )
+    data2 = response2.json()
+    assert sorted(data2["suggested_facets"], key=lambda f: f["name"]) == [
+        {
+            "name": "city",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city",
+        },
+        {
+            "name": "neighbourhood",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=neighbourhood",
+        },
+    ]
+    # Facet by city should return expected number of results
+    response3 = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
+    )
+    data3 = response3.json()
+    assert len(data3["facet_results"]["city"]["results"]) == 50
+    # Reduce max_returned_rows and check that it's respected
+    ds._settings["max_returned_rows"] = 20
+    response4 = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
+    )
+    data4 = response4.json()
+    assert len(data4["facet_results"]["city"]["results"]) == 20

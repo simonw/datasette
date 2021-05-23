@@ -4,6 +4,7 @@ var DROPDOWN_HTML = `<div class="dropdown-menu">
   <li><a class="dropdown-sort-asc" href="#">Sort ascending</a></li>
   <li><a class="dropdown-sort-desc" href="#">Sort descending</a></li>
   <li><a class="dropdown-facet" href="#">Facet by this</a></li>
+  <li><a class="dropdown-hide-column" href="#">Hide this column</a></li>
   <li><a class="dropdown-not-blank" href="#">Show not-blank rows</a></li>
 </ul>
 <p class="dropdown-column-type"></p>
@@ -43,6 +44,11 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   function facetUrl(column) {
     var params = getParams();
     params.append("_facet", column);
+    return paramsToUrl(params);
+  }
+  function hideColumnUrl(column) {
+    var params = getParams();
+    params.append("_nocol", column);
     return paramsToUrl(params);
   }
   function notBlankUrl(column) {
@@ -87,6 +93,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     var sortDesc = menu.querySelector("a.dropdown-sort-desc");
     var facetItem = menu.querySelector("a.dropdown-facet");
     var notBlank = menu.querySelector("a.dropdown-not-blank");
+    var hideColumn = menu.querySelector("a.dropdown-hide-column");
     if (params.get("_sort") == column) {
       sort.style.display = "none";
     } else {
@@ -99,6 +106,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       sortDesc.style.display = "block";
       sortDesc.setAttribute("href", sortDescUrl(column));
     }
+    hideColumn.setAttribute("href", hideColumnUrl(column));
     /* Only show facet if it's not the first column, not selected, not a single PK */
     var isFirstColumn =
       th.parentElement.querySelector("th:first-of-type") == th;

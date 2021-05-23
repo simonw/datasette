@@ -4,6 +4,17 @@
 Changelog
 =========
 
+.. _v0_57_a0:
+
+0.57a0 (2021-05-22)
+-------------------
+
+Mainly dependency bumps, plus a new ``?_facet_size=`` argument.
+
+- Updated dependencies: pytest-asyncio, Black, jinja2, aiofiles, itsdangerous
+- Fixed bug where columns called "Link" were incorrectly displayed in bold. (:issue:`1308`)
+- New ``?_facet_size=`` argument for customizing the number of facet results returned on a page. (:issue:`1332`)
+
 .. _v0_56:
 
 0.56 (2021-03-28)

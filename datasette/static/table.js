@@ -5,6 +5,7 @@ var DROPDOWN_HTML = `<div class="dropdown-menu">
   <li><a class="dropdown-sort-desc" href="#">Sort descending</a></li>
   <li><a class="dropdown-facet" href="#">Facet by this</a></li>
   <li><a class="dropdown-hide-column" href="#">Hide this column</a></li>
+  <li><a class="dropdown-show-all-columns" href="#">Show all columns</a></li>
   <li><a class="dropdown-not-blank" href="#">Show not-blank rows</a></li>
 </ul>
 <p class="dropdown-column-type"></p>
@@ -25,7 +26,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   }
   function paramsToUrl(params) {
     var s = params.toString();
-    return s ? "?" + s : "";
+    return s ? "?" + s : location.pathname;
   }
   function sortDescUrl(column) {
     var params = getParams();
@@ -49,6 +50,11 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   function hideColumnUrl(column) {
     var params = getParams();
     params.append("_nocol", column);
+    return paramsToUrl(params);
+  }
+  function showAllColumnsUrl() {
+    var params = getParams();
+    params.delete("_nocol");
     return paramsToUrl(params);
   }
   function notBlankUrl(column) {
@@ -94,17 +100,25 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     var facetItem = menu.querySelector("a.dropdown-facet");
     var notBlank = menu.querySelector("a.dropdown-not-blank");
     var hideColumn = menu.querySelector("a.dropdown-hide-column");
+    var showAllColumns = menu.querySelector("a.dropdown-show-all-columns");
     if (params.get("_sort") == column) {
-      sort.style.display = "none";
+      sort.parentNode.style.display = "none";
     } else {
-      sort.style.display = "block";
+      sort.parentNode.style.display = "block";
       sort.setAttribute("href", sortAscUrl(column));
     }
     if (params.get("_sort_desc") == column) {
-      sortDesc.style.display = "none";
+      sortDesc.parentNode.style.display = "none";
     } else {
-      sortDesc.style.display = "block";
+      sortDesc.parentNode.style.display = "block";
       sortDesc.setAttribute("href", sortDescUrl(column));
+    }
+    /* Show hide columns options */
+    if (params.get("_nocol")) {
+      showAllColumns.parentNode.style.display = "block";
+      showAllColumns.setAttribute("href", showAllColumnsUrl());
+    } else {
+      showAllColumns.parentNode.style.display = "none";
     }
     hideColumn.setAttribute("href", hideColumnUrl(column));
     /* Only show facet if it's not the first column, not selected, not a single PK */
@@ -118,9 +132,9 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       params.getAll("_facet").includes(column) ||
       isSinglePk
     ) {
-      facetItem.style.display = "none";
+      facetItem.parentNode.style.display = "none";
     } else {
-      facetItem.style.display = "block";
+      facetItem.parentNode.style.display = "block";
       facetItem.setAttribute("href", facetUrl(column));
     }
     /* Show notBlank option if not selected AND at least one visible blank value */
@@ -131,10 +145,10 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       params.get(`${column}__notblank`) != "1" &&
       tdsForThisColumn.filter((el) => el.innerText.trim() == "").length
     ) {
-      notBlank.style.display = "block";
+      notBlank.parentNode.style.display = "block";
       notBlank.setAttribute("href", notBlankUrl(column));
     } else {
-      notBlank.style.display = "none";
+      notBlank.parentNode.style.display = "none";
     }
     var columnTypeP = menu.querySelector(".dropdown-column-type");
     var columnType = th.dataset.columnType;

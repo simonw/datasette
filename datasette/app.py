@@ -21,7 +21,7 @@ from pathlib import Path
 
 from markupsafe import Markup, escape
 from itsdangerous import URLSafeSerializer
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 import uvicorn

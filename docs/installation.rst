@@ -196,7 +196,7 @@ You can now run the new custom image like so::
 You can confirm that the plugins are installed by visiting
 http://127.0.0.1:8001/-/plugins
 
-Some plugins such as `datasette-ripgrep <https://datasette.io/plugins/datasette-ripgrep>`__ may need additional system packages. You can install these by running `apt-get install` inside the container:
+Some plugins such as `datasette-ripgrep <https://datasette.io/plugins/datasette-ripgrep>`__ may need additional system packages. You can install these by running `apt-get install` inside the container::
 
     docker run datasette-057a0 bash -c '
         apt-get update && 

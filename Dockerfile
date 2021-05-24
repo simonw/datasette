@@ -15,7 +15,7 @@ RUN apt-get update && \
     apt-get remove -y software-properties-common && \
     apt clean && \
     rm -rf /var/lib/apt && \
-    rm -rf /var/lib/dpkg
+    rm -rf /var/lib/dpkg/info/*
 
 RUN pip install https://github.com/simonw/datasette/archive/refs/tags/${VERSION}.zip && \
     find /usr/local/lib -name '__pycache__' | xargs rm -r && \

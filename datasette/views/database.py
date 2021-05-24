@@ -1,8 +1,8 @@
 import os
 import hashlib
 import itertools
-import jinja2
 import json
+from markupsafe import Markup, escape
 from urllib.parse import parse_qsl, urlencode
 
 from datasette.utils import (
@@ -354,11 +354,11 @@ class QueryView(DataView):
                         display_value = plugin_value
                     else:
                         if value in ("", None):
-                            display_value = jinja2.Markup("&nbsp;")
+                            display_value = Markup("&nbsp;")
                         elif is_url(str(display_value).strip()):
-                            display_value = jinja2.Markup(
+                            display_value = Markup(
                                 '<a href="{url}">{url}</a>'.format(
-                                    url=jinja2.escape(value.strip())
+                                    url=escape(value.strip())
                                 )
                             )
                         elif isinstance(display_value, bytes):
@@ -372,7 +372,7 @@ class QueryView(DataView):
                                     ).hexdigest(),
                                 },
                             )
-                            display_value = jinja2.Markup(
+                            display_value = Markup(
                                 '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
                                     blob_url,
                                     len(display_value),

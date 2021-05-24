@@ -19,9 +19,8 @@ import urllib.parse
 from concurrent import futures
 from pathlib import Path
 
-from markupsafe import Markup
+from markupsafe import Markup, escape
 from itsdangerous import URLSafeSerializer
-import jinja2
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
@@ -864,7 +863,7 @@ class Datasette:
         }
         if request and request.args.get("_context") and self.setting("template_debug"):
             return "<pre>{}</pre>".format(
-                jinja2.escape(json.dumps(template_context, default=repr, indent=4))
+                escape(json.dumps(template_context, default=repr, indent=4))
             )
 
         return await template.render_async(template_context)

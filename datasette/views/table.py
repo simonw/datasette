@@ -2,7 +2,7 @@ import urllib
 import itertools
 import json
 
-import jinja2
+import markupsafe
 
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
@@ -135,12 +135,12 @@ class RowTableShared(DataView):
                         "value_type": "pk",
                         "is_special_link_column": is_special_link_column,
                         "raw": pk_path,
-                        "value": jinja2.Markup(
+                        "value": markupsafe.Markup(
                             '<a href="{base_url}{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                                 base_url=base_url,
                                 database=database,
                                 table=urllib.parse.quote_plus(table),
-                                flat_pks=str(jinja2.escape(pk_path)),
+                                flat_pks=str(markupsafe.escape(pk_path)),
                                 flat_pks_quoted=path_from_row_pks(row, pks, not pks),
                             )
                         ),
@@ -166,7 +166,7 @@ class RowTableShared(DataView):
                 if plugin_display_value is not None:
                     display_value = plugin_display_value
                 elif isinstance(value, bytes):
-                    display_value = jinja2.Markup(
+                    display_value = markupsafe.Markup(
                         '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
                             self.ds.urls.row_blob(
                                 database,
@@ -187,22 +187,22 @@ class RowTableShared(DataView):
                     link_template = (
                         LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
                     )
-                    display_value = jinja2.Markup(
+                    display_value = markupsafe.Markup(
                         link_template.format(
                             database=database,
                             base_url=base_url,
                             table=urllib.parse.quote_plus(other_table),
                             link_id=urllib.parse.quote_plus(str(value)),
-                            id=str(jinja2.escape(value)),
-                            label=str(jinja2.escape(label)) or "-",
+                            id=str(markupsafe.escape(value)),
+                            label=str(markupsafe.escape(label)) or "-",
                         )
                     )
                 elif value in ("", None):
-                    display_value = jinja2.Markup("&nbsp;")
+                    display_value = markupsafe.Markup("&nbsp;")
                 elif is_url(str(value).strip()):
-                    display_value = jinja2.Markup(
+                    display_value = markupsafe.Markup(
                         '<a href="{url}">{url}</a>'.format(
-                            url=jinja2.escape(value.strip())
+                            url=markupsafe.escape(value.strip())
                         )
                     )
                 elif column in table_metadata.get("units", {}) and value != "":
@@ -212,7 +212,9 @@ class RowTableShared(DataView):
                     # representation, which we have to round off to avoid ugliness. In the vast
                     # majority of cases this rounding will be inconsequential. I hope.
                     value = round(value.to_compact(), 6)
-                    display_value = jinja2.Markup(f"{value:~P}".replace(" ", "&nbsp;"))
+                    display_value = markupsafe.Markup(
+                        f"{value:~P}".replace(" ", "&nbsp;")
+                    )
                 else:
                     display_value = str(value)
                     if truncate_cells and len(display_value) > truncate_cells:

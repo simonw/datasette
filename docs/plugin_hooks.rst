@@ -389,7 +389,7 @@ If the value matches that pattern, the plugin returns an HTML link element:
 .. code-block:: python
 
     from datasette import hookimpl
-    import jinja2
+    import markupsafe
     import json
 
 
@@ -415,9 +415,9 @@ If the value matches that pattern, the plugin returns an HTML link element:
             or href.startswith("https://")
         ):
             return None
-        return jinja2.Markup('<a href="{href}">{label}</a>'.format(
-            href=jinja2.escape(data["href"]),
-            label=jinja2.escape(data["label"] or "") or "&nbsp;"
+        return markupsafe.Markup('<a href="{href}">{label}</a>'.format(
+            href=markupsafe.escape(data["href"]),
+            label=markupsafe.escape(data["label"] or "") or "&nbsp;"
         ))
 
 Examples: `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`_, `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`__, `datasette-json-html <https://github.com/simonw/datasette-json-html>`__

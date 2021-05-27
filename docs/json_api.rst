@@ -381,7 +381,7 @@ Special table arguments
     Facet by column. Can be applied multiple times, see :ref:`facets`. Only works on the default JSON output, not on any of the custom shapes.
 
 ``?_facet_size=100``
-    Increase the number of facet results returned for each facet.
+    Increase the number of facet results returned for each facet. Use ``?_facet_size=max`` for the maximum available size, determined by :ref:`setting_max_returned_rows`.
 
 ``?_trace=1``
     Turns on tracing for this page: SQL queries executed during the request will

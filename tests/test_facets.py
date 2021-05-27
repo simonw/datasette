@@ -399,3 +399,9 @@ async def test_facet_size():
     )
     data4 = response4.json()
     assert len(data4["facet_results"]["city"]["results"]) == 20
+    # Test _facet_size=max
+    response5 = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_facet_size=max&_facet=city"
+    )
+    data5 = response5.json()
+    assert len(data5["facet_results"]["city"]["results"]) == 20

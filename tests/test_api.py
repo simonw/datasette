@@ -2009,3 +2009,62 @@ def test_http_options_request(app_client):
     response = app_client.request("/fixtures", method="OPTIONS")
     assert response.status == 200
     assert response.text == "ok"
+
+
+@pytest.mark.parametrize(
+    "path,expected_columns",
+    (
+        ("/fixtures/facetable.json?_col=created", ["pk", "created"]),
+        (
+            "/fixtures/facetable.json?_nocol=created",
+            [
+                "pk",
+                "planet_int",
+                "on_earth",
+                "state",
+                "city_id",
+                "neighborhood",
+                "tags",
+                "complex_array",
+                "distinct_some_null",
+            ],
+        ),
+        (
+            "/fixtures/facetable.json?_col=state&_col=created",
+            ["pk", "state", "created"],
+        ),
+        (
+            "/fixtures/facetable.json?_col=state&_col=state",
+            ["pk", "state"],
+        ),
+        (
+            "/fixtures/facetable.json?_col=state&_col=created&_nocol=created",
+            ["pk", "state"],
+        ),
+        (
+            "/fixtures/simple_view.json?_nocol=content",
+            ["upper_content"],
+        ),
+        ("/fixtures/simple_view.json?_col=content", ["content"]),
+    ),
+)
+def test_col_nocol(app_client, path, expected_columns):
+    response = app_client.get(path)
+    assert response.status == 200
+    columns = response.json["columns"]
+    assert columns == expected_columns
+
+
+@pytest.mark.parametrize(
+    "path,expected_error",
+    (
+        ("/fixtures/facetable.json?_col=bad", "_col=bad - invalid columns"),
+        ("/fixtures/facetable.json?_nocol=bad", "_nocol=bad - invalid columns"),
+        ("/fixtures/facetable.json?_nocol=pk", "_nocol=pk - invalid columns"),
+        ("/fixtures/simple_view.json?_col=bad", "_col=bad - invalid columns"),
+    ),
+)
+def test_col_nocol_errors(app_client, path, expected_error):
+    response = app_client.get(path)
+    assert response.status == 400
+    assert response.json["error"] == expected_error

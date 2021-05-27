@@ -296,6 +296,12 @@ You can filter the data returned by the table based on column values using a que
 Special table arguments
 ~~~~~~~~~~~~~~~~~~~~~~~
 
+``?_col=COLUMN1&_col=COLUMN2``
+    List specific columns to display. These will be shown along with any primary keys.
+
+``?_nocol=COLUMN1&_nocol=COLUMN2``
+    List specific columns to hide - any column not listed will be displayed. Primary keys cannot be hidden.
+
 ``?_labels=on/off``
     Expand foreign key references for every possible column. See below.
 

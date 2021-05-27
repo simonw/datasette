@@ -1612,3 +1612,65 @@ def test_navigation_menu_links(
             assert (
                 details.find("a", {"href": link}) is None
             ), f"{link} found but should not have been in nav menu"
+
+
+@pytest.mark.parametrize(
+    "max_returned_rows,path,expected_num_facets,expected_ellipses,expected_ellipses_url",
+    (
+        (
+            5,
+            # Default should show 2 facets
+            "/fixtures/facetable?_facet=neighborhood",
+            2,
+            True,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+        ),
+        # _facet_size above max_returned_rows should show max_returned_rows (5)
+        (
+            5,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=50",
+            5,
+            True,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+        ),
+        # If max_returned_rows is high enough, should return all
+        (
+            20,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+            14,
+            False,
+            None,
+        ),
+        # If num facets > max_returned_rows, show ... without a link
+        # _facet_size above max_returned_rows should show max_returned_rows (5)
+        (
+            5,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+            5,
+            True,
+            None,
+        ),
+    ),
+)
+def test_facet_more_links(
+    max_returned_rows,
+    path,
+    expected_num_facets,
+    expected_ellipses,
+    expected_ellipses_url,
+):
+    with make_app_client(
+        config={"max_returned_rows": max_returned_rows, "default_facet_size": 2}
+    ) as client:
+        response = client.get(path)
+        soup = Soup(response.body, "html.parser")
+        lis = soup.select("#facet-neighborhood ul li:not(.facet-truncated)")
+        facet_truncated = soup.select_one(".facet-truncated")
+        assert len(lis) == expected_num_facets
+        if not expected_ellipses:
+            assert facet_truncated is None
+        else:
+            if expected_ellipses_url:
+                assert facet_truncated.find("a")["href"] == expected_ellipses_url
+            else:
+                assert facet_truncated.find("a") is None

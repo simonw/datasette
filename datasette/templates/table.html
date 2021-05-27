@@ -162,7 +162,9 @@
                         {% endif %}
                     {% endfor %}
                     {% if facet_info.truncated %}
-                        <li>...</li>
+                        <li class="facet-truncated">{% if request.args._facet_size != "max" -%}
+                            <a href="{{ path_with_replaced_args(request, {"_facet_size": "max"}) }}">…</a>{% else -%}…{% endif %}
+                        </li>
                     {% endif %}
                 </ul>
             </div>

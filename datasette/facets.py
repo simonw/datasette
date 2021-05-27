@@ -105,7 +105,9 @@ class Facet:
         facet_size = self.ds.setting("default_facet_size")
         max_returned_rows = self.ds.setting("max_returned_rows")
         custom_facet_size = self.request.args.get("_facet_size")
-        if custom_facet_size and custom_facet_size.isdigit():
+        if custom_facet_size == "max":
+            facet_size = max_returned_rows
+        elif custom_facet_size and custom_facet_size.isdigit():
             facet_size = int(custom_facet_size)
         return min(facet_size, max_returned_rows)
 

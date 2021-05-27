@@ -55,6 +55,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   function showAllColumnsUrl() {
     var params = getParams();
     params.delete("_nocol");
+    params.delete("_col");
     return paramsToUrl(params);
   }
   function notBlankUrl(column) {
@@ -114,7 +115,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       sortDesc.setAttribute("href", sortDescUrl(column));
     }
     /* Show hide columns options */
-    if (params.get("_nocol")) {
+    if (params.get("_nocol") || params.get("_col")) {
       showAllColumns.parentNode.style.display = "block";
       showAllColumns.setAttribute("href", showAllColumnsUrl());
     } else {

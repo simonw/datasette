@@ -2041,6 +2041,11 @@ def test_http_options_request(app_client):
             "/fixtures/facetable.json?_col=state&_col=created&_nocol=created",
             ["pk", "state"],
         ),
+        (
+            "/fixtures/simple_view.json?_nocol=content",
+            ["upper_content"],
+        ),
+        ("/fixtures/simple_view.json?_col=content", ["content"]),
     ),
 )
 def test_col_nocol(app_client, path, expected_columns):
@@ -2056,6 +2061,7 @@ def test_col_nocol(app_client, path, expected_columns):
         ("/fixtures/facetable.json?_col=bad", "_col=bad - invalid columns"),
         ("/fixtures/facetable.json?_nocol=bad", "_nocol=bad - invalid columns"),
         ("/fixtures/facetable.json?_nocol=pk", "_nocol=pk - invalid columns"),
+        ("/fixtures/simple_view.json?_col=bad", "_col=bad - invalid columns"),
     ),
 )
 def test_col_nocol_errors(app_client, path, expected_error):

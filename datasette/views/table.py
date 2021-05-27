@@ -66,33 +66,38 @@ class Row:
 class RowTableShared(DataView):
     async def columns_to_select(self, db, table, request):
         table_columns = await db.table_columns(table)
-        if "_col" in request.args and "_nocol" in request.args:
-            raise DatasetteError("Cannot use _col and _nocol at the same time")
+        pks = await db.primary_keys(table)
+        columns = list(table_columns)
         if "_col" in request.args:
-            new_columns = []
-            for column in request.args.getlist("_col"):
-                if column not in table_columns:
-                    raise DatasetteError("_col={} is an invalid column".format(column))
-                new_columns.append(column)
-            return new_columns
-        elif "_nocol" in request.args:
+            columns = list(pks)
+            _cols = request.args.getlist("_col")
+            bad_columns = [column for column in _cols if column not in table_columns]
+            if bad_columns:
+                raise DatasetteError(
+                    "_col={} - invalid columns".format(", ".join(bad_columns)),
+                    status=400,
+                )
+            # De-duplicate maintaining order:
+            columns.extend(dict.fromkeys(_cols))
+        if "_nocol" in request.args:
             # Return all columns EXCEPT these
             bad_columns = [
                 column
                 for column in request.args.getlist("_nocol")
-                if column not in table_columns
+                if (column not in table_columns) or (column in pks)
             ]
             if bad_columns:
                 raise DatasetteError(
-                    "_nocol={} - invalid columns".format(", ".join(bad_columns))
+                    "_nocol={} - invalid columns".format(", ".join(bad_columns)),
+                    status=400,
                 )
-            return [
+            tmp_columns = [
                 column
-                for column in table_columns
+                for column in columns
                 if column not in request.args.getlist("_nocol")
             ]
-        else:
-            return table_columns
+            columns = tmp_columns
+        return columns
 
     async def sortable_columns_for_table(self, database, table, use_rowid):
         db = self.ds.databases[database]

@@ -17,7 +17,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt && \
     rm -rf /var/lib/dpkg/info/*
 
-RUN pip install git+git://github.com/simonw/datasette.git@${VERSION} && \
+RUN pip install git+git://github.com/blairdrummond/datasette.git@${VERSION} && \
     find /usr/local/lib -name '__pycache__' | xargs rm -r && \
     rm -rf /root/.cache/pip
 

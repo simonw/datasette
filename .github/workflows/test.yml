@@ -74,6 +74,7 @@ jobs:
       run: |
         docker run -v `pwd`:/mnt --platform ${{ matrix.platform }} \
             ${{ steps.build-image.outputs.image_name }} bash -c '
+              apt-get update --yes && apt-get install --yes gcc && \
               pip install "pytest>=5.2.2,<6.3.0" \
               "pytest-xdist>=2.2.1,<2.3" \
               "pytest-asyncio>=0.10,<0.16" \

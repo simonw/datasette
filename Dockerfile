@@ -8,7 +8,7 @@ ARG VERSION
 # which we need in order to install a more recent release
 # of libsqlite3-mod-spatialite from the sid distribution
 RUN apt-get update && \
-    apt-get -y --no-install-recommends install software-properties-common && \
+    apt-get -y --no-install-recommends install git software-properties-common && \
     add-apt-repository "deb http://httpredir.debian.org/debian sid main" && \
     apt-get update && \
     apt-get -t sid install -y --no-install-recommends libsqlite3-mod-spatialite && \
@@ -17,7 +17,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt && \
     rm -rf /var/lib/dpkg/info/*
 
-RUN pip install https://github.com/simonw/datasette/archive/refs/tags/${VERSION}.zip && \
+RUN pip install git+git://github.com/simonw/datasette.git@${VERSION} && \
     find /usr/local/lib -name '__pycache__' | xargs rm -r && \
     rm -rf /root/.cache/pip
 

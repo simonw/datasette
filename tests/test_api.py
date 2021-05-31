@@ -2042,6 +2042,21 @@ def test_http_options_request(app_client):
             ["pk", "state"],
         ),
         (
+            # Ensure faceting doesn't break, https://github.com/simonw/datasette/issues/1345
+            "/fixtures/facetable.json?_nocol=state&_facet=state",
+            [
+                "pk",
+                "created",
+                "planet_int",
+                "on_earth",
+                "city_id",
+                "neighborhood",
+                "tags",
+                "complex_array",
+                "distinct_some_null",
+            ],
+        ),
+        (
             "/fixtures/simple_view.json?_nocol=content",
             ["upper_content"],
         ),

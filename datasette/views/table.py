@@ -358,16 +358,21 @@ class TableView(RowTableShared):
         )
 
         pks = await db.primary_keys(table)
-        table_columns = await self.columns_to_select(db, table, request)
-        select_clause = ", ".join(escape_sqlite(t) for t in table_columns)
+        table_columns = await db.table_columns(table)
+
+        specified_columns = await self.columns_to_select(db, table, request)
+        select_specified_columns = ", ".join(
+            escape_sqlite(t) for t in specified_columns
+        )
+        select_all_columns = ", ".join(escape_sqlite(t) for t in table_columns)
 
         use_rowid = not pks and not is_view
         if use_rowid:
-            select = f"rowid, {select_clause}"
+            select_specified_columns = f"rowid, {select_specified_columns}"
+            select_all_columns = f"rowid, {select_all_columns}"
             order_by = "rowid"
             order_by_pks = "rowid"
         else:
-            select = select_clause
             order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
             order_by = order_by_pks
 
@@ -633,7 +638,7 @@ class TableView(RowTableShared):
             where_clause = f"where {' and '.join(where_clauses)} "
 
         if order_by:
-            order_by = f"order by {order_by} "
+            order_by = f"order by {order_by}"
 
         extra_args = {}
         # Handle ?_size=500
@@ -656,13 +661,22 @@ class TableView(RowTableShared):
         else:
             page_size = self.ds.page_size
 
-        sql_no_limit = "select {select} from {table_name} {where}{order_by}".format(
-            select=select,
+        sql_no_limit = (
+            "select {select_all_columns} from {table_name} {where}{order_by}".format(
+                select_all_columns=select_all_columns,
+                table_name=escape_sqlite(table),
+                where=where_clause,
+                order_by=order_by,
+            )
+        )
+        sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(
+            select_specified_columns=select_specified_columns,
             table_name=escape_sqlite(table),
             where=where_clause,
             order_by=order_by,
+            page_size=page_size + 1,
+            offset=offset,
         )
-        sql = f"{sql_no_limit.rstrip()} limit {page_size + 1}{offset}"
 
         if request.args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))

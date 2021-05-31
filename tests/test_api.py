@@ -1669,6 +1669,20 @@ def test_suggest_facets_off():
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
 
+@pytest.mark.parametrize("nofacets", (True, False))
+def test_nofacets(app_client, nofacets):
+    path = "/fixtures/facetable.json?_facet=state"
+    if nofacets:
+        path += "&_nofacets=1"
+    response = app_client.get(path)
+    if nofacets:
+        assert response.json["suggested_facets"] == []
+        assert response.json["facet_results"] == {}
+    else:
+        assert response.json["suggested_facets"] != []
+        assert response.json["facet_results"] != {}
+
+
 def test_expand_labels(app_client):
     response = app_client.get(
         "/fixtures/facetable.json?_shape=object&_labels=1&_size=2"

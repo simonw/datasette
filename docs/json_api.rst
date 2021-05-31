@@ -383,6 +383,9 @@ Special table arguments
 ``?_facet_size=100``
     Increase the number of facet results returned for each facet. Use ``?_facet_size=max`` for the maximum available size, determined by :ref:`setting_max_returned_rows`.
 
+``?_nofacets=1``
+    Disable all facets and facet suggestions for this page, including any defined by :ref:`facets_metadata`.
+
 ``?_trace=1``
     Turns on tracing for this page: SQL queries executed during the request will
     be gathered and included in the response, either in a new ``"_traces"`` key

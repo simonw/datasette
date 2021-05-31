@@ -86,6 +86,8 @@ If Datasette detects that a column is a foreign key, the ``"label"`` property wi
 
 The default number of facet results returned is 30, controlled by the :ref:`setting_default_facet_size` setting. You can increase this on an individual page by adding ``?_facet_size=100`` to the query string, up to a maximum of :ref:`setting_max_returned_rows` (which defaults to 1000).
 
+.. _facets_metadata:
+
 Facets in metadata.json
 -----------------------
 

@@ -731,13 +731,14 @@ class TableView(RowTableShared):
                 )
             )
 
-        for facet in facet_instances:
-            (
-                instance_facet_results,
-                instance_facets_timed_out,
-            ) = await facet.facet_results()
-            facet_results.update(instance_facet_results)
-            facets_timed_out.extend(instance_facets_timed_out)
+        if not request.args.get("_nofacets"):
+            for facet in facet_instances:
+                (
+                    instance_facet_results,
+                    instance_facets_timed_out,
+                ) = await facet.facet_results()
+                facet_results.update(instance_facet_results)
+                facets_timed_out.extend(instance_facets_timed_out)
 
         # Figure out columns and rows for the query
         columns = [r[0] for r in results.description]
@@ -828,6 +829,7 @@ class TableView(RowTableShared):
             self.ds.setting("suggest_facets")
             and self.ds.setting("allow_facet")
             and not _next
+            and not request.args.get("_nofacets")
         ):
             for facet in facet_instances:
                 suggested_facets.extend(await facet.suggest())

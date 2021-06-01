@@ -13,6 +13,7 @@ from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette.utils import (
     await_me_maybe,
+    EscapeHtmlWriter,
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
@@ -262,6 +263,16 @@ class DataView(BaseView):
 
     async def as_csv(self, request, database, hash, **kwargs):
         stream = request.args.get("_stream")
+        # Do not calculate facets:
+        if not request.args.get("_nofacets"):
+            if not request.query_string:
+                new_query_string = "_nofacets=1"
+            else:
+                new_query_string = request.query_string + "&_nofacets=1"
+            new_scope = dict(
+                request.scope, query_string=new_query_string.encode("latin-1")
+            )
+            request.scope = new_scope
         if stream:
             # Some quick sanity checks
             if not self.ds.setting("allow_csv_stream"):
@@ -300,9 +311,27 @@ class DataView(BaseView):
                 if column in expanded_columns:
                     headings.append(f"{column}_label")
 
+        content_type = "text/plain; charset=utf-8"
+        preamble = ""
+        postamble = ""
+
+        trace = request.args.get("_trace")
+        if trace:
+            content_type = "text/html; charset=utf-8"
+            preamble = (
+                "<html><head><title>CSV debug</title></head>"
+                '<body><textarea style="width: 90%; height: 70vh">'
+            )
+            postamble = "</textarea></body></html>"
+
         async def stream_fn(r):
-            nonlocal data
-            writer = csv.writer(LimitedWriter(r, self.ds.setting("max_csv_mb")))
+            nonlocal data, trace
+            limited_writer = LimitedWriter(r, self.ds.setting("max_csv_mb"))
+            if trace:
+                await limited_writer.write(preamble)
+                writer = csv.writer(EscapeHtmlWriter(limited_writer))
+            else:
+                writer = csv.writer(limited_writer)
             first = True
             next = None
             while first or (next and stream):
@@ -373,13 +402,14 @@ class DataView(BaseView):
                     sys.stderr.flush()
                     await r.write(str(e))
                     return
+            await limited_writer.write(postamble)
 
-        content_type = "text/plain; charset=utf-8"
         headers = {}
         if self.ds.cors:
             headers["Access-Control-Allow-Origin"] = "*"
         if request.args.get("_dl", None):
-            content_type = "text/csv; charset=utf-8"
+            if not trace:
+                content_type = "text/csv; charset=utf-8"
             disposition = 'attachment; filename="{}.csv"'.format(
                 kwargs.get("table", database)
             )

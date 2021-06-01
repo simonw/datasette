@@ -7,6 +7,7 @@ import hashlib
 import inspect
 import itertools
 import json
+import markupsafe
 import mergedeep
 import os
 import re
@@ -775,6 +776,14 @@ class LimitedWriter:
         if self.limit_bytes and (self.bytes_count > self.limit_bytes):
             raise WriteLimitExceeded(f"CSV contains more than {self.limit_bytes} bytes")
         await self.writer.write(bytes)
+
+
+class EscapeHtmlWriter:
+    def __init__(self, writer):
+        self.writer = writer
+
+    async def write(self, content):
+        await self.writer.write(markupsafe.escape(content))
 
 
 _infinities = {float("inf"), float("-inf")}

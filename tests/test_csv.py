@@ -175,3 +175,9 @@ def test_table_csv_stream_does_not_calculate_facets(app_client):
     response = app_client.get("/fixtures/simple_primary_key.csv?_trace=1")
     soup = Soup(response.text, "html.parser")
     assert "select content, count(*) as n" not in soup.find("pre").text
+
+
+def test_table_csv_stream_does_not_calculate_counts(app_client):
+    response = app_client.get("/fixtures/simple_primary_key.csv?_trace=1")
+    soup = Soup(response.text, "html.parser")
+    assert "select count(*)" not in soup.find("pre").text

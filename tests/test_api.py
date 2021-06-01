@@ -1669,13 +1669,13 @@ def test_suggest_facets_off():
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
 
-@pytest.mark.parametrize("nofacets", (True, False))
-def test_nofacets(app_client, nofacets):
+@pytest.mark.parametrize("nofacet", (True, False))
+def test_nofacet(app_client, nofacet):
     path = "/fixtures/facetable.json?_facet=state"
-    if nofacets:
-        path += "&_nofacets=1"
+    if nofacet:
+        path += "&_nofacet=1"
     response = app_client.get(path)
-    if nofacets:
+    if nofacet:
         assert response.json["suggested_facets"] == []
         assert response.json["facet_results"] == {}
     else:

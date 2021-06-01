@@ -731,7 +731,7 @@ class TableView(RowTableShared):
                 )
             )
 
-        if not request.args.get("_nofacets"):
+        if not request.args.get("_nofacet"):
             for facet in facet_instances:
                 (
                     instance_facet_results,
@@ -829,7 +829,7 @@ class TableView(RowTableShared):
             self.ds.setting("suggest_facets")
             and self.ds.setting("allow_facet")
             and not _next
-            and not request.args.get("_nofacets")
+            and not request.args.get("_nofacet")
         ):
             for facet in facet_instances:
                 suggested_facets.extend(await facet.suggest())

@@ -105,8 +105,8 @@ def test_custom_sql_csv_blob_columns(app_client):
     assert "text/plain; charset=utf-8" == response.headers["content-type"]
     assert response.text == (
         "rowid,data\r\n"
-        '1,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_nofacet=1&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d"\r\n'
-        '2,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_nofacet=1&_blob_column=data&_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724"\r\n'
+        '1,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d"\r\n'
+        '2,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724"\r\n'
         "3,\r\n"
     )
 

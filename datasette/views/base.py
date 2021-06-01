@@ -369,7 +369,7 @@ class DataView(BaseView):
                                         )
                                     else:
                                         # Otherwise generate URL for this query
-                                        cell = self.ds.absolute_url(
+                                        url = self.ds.absolute_url(
                                             request,
                                             path_with_format(
                                                 request=request,
@@ -382,6 +382,9 @@ class DataView(BaseView):
                                                 },
                                                 replace_format="csv",
                                             ),
+                                        )
+                                        cell = url.replace("&_nocount=1", "").replace(
+                                            "&_nofacet=1", ""
                                         )
                                 new_row.append(cell)
                             row = new_row

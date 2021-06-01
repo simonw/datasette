@@ -13,11 +13,9 @@ Options:
   --plugin-secret <TEXT TEXT TEXT>...
                                   Secrets to pass to plugins, e.g. --plugin-secret
                                   datasette-auth-github client_id xxx
-
   --version-note TEXT             Additional note to show on /-/versions
   --secret TEXT                   Secret used for signing secure values, such as signed
                                   cookies
-
   --title TEXT                    Title for metadata
   --license TEXT                  License label for metadata
   --license_url TEXT              License URL for metadata
@@ -28,5 +26,4 @@ Options:
   -n, --name TEXT                 Application name to use when deploying
   --tar TEXT                      --tar option to pass to Heroku, e.g.
                                   --tar=/usr/local/bin/gtar
-
   --help                          Show this message and exit.

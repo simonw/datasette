@@ -7,7 +7,6 @@ Usage: datasette package [OPTIONS] FILES...
 Options:
   -t, --tag TEXT            Name for the resulting Docker container, can optionally use
                             name:tag format
-
   -m, --metadata FILENAME   Path to JSON/YAML file containing metadata to publish
   --extra-options TEXT      Extra options to pass to datasette serve
   --branch TEXT             Install datasette from a GitHub branch e.g. main
@@ -19,8 +18,7 @@ Options:
   --version-note TEXT       Additional note to show on /-/versions
   --secret TEXT             Secret used for signing secure values, such as signed
                             cookies
-
-  -p, --port INTEGER RANGE  Port to run the server on, defaults to 8001
+  -p, --port INTEGER RANGE  Port to run the server on, defaults to 8001  [1<=x<=65535]
   --title TEXT              Title for metadata
   --license TEXT            License label for metadata
   --license_url TEXT        License URL for metadata

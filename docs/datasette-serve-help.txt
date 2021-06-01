@@ -10,13 +10,10 @@ Options:
                             connections from the local machine will be allowed. Use
                             0.0.0.0 to listen to all IPs and allow access from other
                             machines.
-
   -p, --port INTEGER RANGE  Port for server, defaults to 8001. Use -p 0 to automatically
-                            assign an available port.
-
+                            assign an available port.  [0<=x<=65535]
   --reload                  Automatically reload if code or metadata change detected -
                             useful for development
-
   --cors                    Enable CORS by serving Access-Control-Allow-Origin: *
   --load-extension TEXT     Path to a SQLite extension to load
   --inspect-file TEXT       Path to JSON file created using "datasette inspect"
@@ -27,15 +24,12 @@ Options:
   --memory                  Make /_memory database available
   --config CONFIG           Deprecated: set config option using configname:value. Use
                             --setting instead.
-
   --setting SETTING...      Setting, see docs.datasette.io/en/stable/config.html
   --secret TEXT             Secret used for signing secure values, such as signed
                             cookies
-
   --root                    Output URL that sets a cookie authenticating the root user
   --get TEXT                Run an HTTP GET request against this path, print results and
                             exit
-
   --version-note TEXT       Additional note to show on /-/versions
   --help-config             Show available config options
   --pdb                     Launch debugger on any errors

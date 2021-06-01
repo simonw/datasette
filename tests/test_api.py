@@ -1683,6 +1683,15 @@ def test_nofacet(app_client, nofacet):
         assert response.json["facet_results"] != {}
 
 
+@pytest.mark.parametrize("nocount,expected_count", ((True, None), (False, 15)))
+def test_nocount(app_client, nocount, expected_count):
+    path = "/fixtures/facetable.json"
+    if nocount:
+        path += "?_nocount=1"
+    response = app_client.get(path)
+    assert response.json["filtered_table_rows_count"] == expected_count
+
+
 def test_expand_labels(app_client):
     response = app_client.get(
         "/fixtures/facetable.json?_shape=object&_labels=1&_size=2"

@@ -386,6 +386,9 @@ Special table arguments
 ``?_nofacet=1``
     Disable all facets and facet suggestions for this page, including any defined by :ref:`facets_metadata`.
 
+``?_nocount=1``
+    Disable the ``select count(*)`` query used on this page - a count of ``None`` will be returned instead.
+
 ``?_trace=1``
     Turns on tracing for this page: SQL queries executed during the request will
     be gathered and included in the response, either in a new ``"_traces"`` key

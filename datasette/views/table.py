@@ -697,7 +697,11 @@ class TableView(RowTableShared):
             except KeyError:
                 pass
 
-        if count_sql and filtered_table_rows_count is None:
+        if (
+            count_sql
+            and filtered_table_rows_count is None
+            and not request.args.get("_nocount")
+        ):
             try:
                 count_rows = list(await db.execute(count_sql, from_sql_params))
                 filtered_table_rows_count = count_rows[0][0]

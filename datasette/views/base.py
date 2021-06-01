@@ -263,12 +263,19 @@ class DataView(BaseView):
 
     async def as_csv(self, request, database, hash, **kwargs):
         stream = request.args.get("_stream")
-        # Do not calculate facets:
-        if not request.args.get("_nofacet"):
+        # Do not calculate facets or counts:
+        extra_parameters = [
+            "{}=1".format(key)
+            for key in ("_nofacet", "_nocount")
+            if not request.args.get(key)
+        ]
+        if extra_parameters:
             if not request.query_string:
-                new_query_string = "_nofacet=1"
+                new_query_string = "&".join(extra_parameters)
             else:
-                new_query_string = request.query_string + "&_nofacet=1"
+                new_query_string = (
+                    request.query_string + "&" + "&".join(extra_parameters)
+                )
             new_scope = dict(
                 request.scope, query_string=new_query_string.encode("latin-1")
             )

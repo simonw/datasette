@@ -1692,13 +1692,7 @@ def test_unavailable_table_does_not_break_sort_relationships():
     with make_app_client(
         metadata={
             "databases": {
-                "fixtures": {
-                    "tables": {
-                        "foreign_key_references": {
-                            "allow": False
-                        }
-                    }
-                }
+                "fixtures": {"tables": {"foreign_key_references": {"allow": False}}}
             }
         }
     ) as client:

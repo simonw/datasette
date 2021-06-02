@@ -200,6 +200,22 @@ def test_detect_fts(open_quote, close_quote):
     assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
 
 
+@pytest.mark.parametrize("table", ("regular", "has'single quote"))
+def test_detect_fts_different_table_names(table):
+    sql = """
+    CREATE TABLE [{table}] (
+      "TreeID" INTEGER,
+      "qSpecies" TEXT
+    );
+    CREATE VIRTUAL TABLE [{table}_fts] USING FTS4 ("qSpecies", content="{table}");
+    """.format(
+        table=table
+    )
+    conn = utils.sqlite3.connect(":memory:")
+    conn.executescript(sql)
+    assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [

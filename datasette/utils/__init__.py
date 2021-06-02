@@ -547,7 +547,7 @@ def detect_fts_sql(table):
                 )
             )
     """.format(
-        table=table
+        table=table.replace("'", "''")
     )
 
 

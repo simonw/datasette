@@ -1402,6 +1402,16 @@ def test_zero_results(app_client, path):
     assert 1 == len(soup.select("p.zero-results"))
 
 
+def test_query_error(app_client):
+    response = app_client.get("/fixtures?sql=select+*+from+notatable")
+    html = response.text
+    assert '<p class="message-error">no such table: notatable</p>' in html
+    assert (
+        '<textarea id="sql-editor" name="sql">select * from notatable</textarea>'
+        in html
+    )
+
+
 def test_config_template_debug_on():
     with make_app_client(config={"template_debug": True}) as client:
         response = client.get("/fixtures/facetable?_context=1")

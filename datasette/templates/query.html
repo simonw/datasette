@@ -34,8 +34,8 @@
 
 <form class="sql" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_write %}post{% else %}get{% endif %}">
     <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}{% if not query_error %} <span class="show-hide-sql">{% if hide_sql %}(<a href="{{ path_with_removed_args(request, {'_hide_sql': '1'}) }}">show</a>){% else %}(<a href="{{ path_with_added_args(request, {'_hide_sql': '1'}) }}">hide</a>){% endif %}</span>{% endif %}</h3>
-    {% if query_error %}
-        <p class="message-error">{{ query_error }}</p>
+    {% if error %}
+        <p class="message-error">{{ error }}</p>
     {% endif %}
     {% if not hide_sql %}
         {% if editable and allow_execute_sql %}

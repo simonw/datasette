@@ -646,7 +646,7 @@ class Datasette:
                 "is_memory": d.is_memory,
                 "hash": d.hash,
             }
-            for name, d in sorted(self.databases.items(), key=lambda p: p[1].name)
+            for name, d in self.databases.items()
             if name != "_internal"
         ]
 

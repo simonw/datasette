@@ -1918,7 +1918,7 @@ def test_database_with_space_in_name(app_client_two_attached_databases, path):
 
 def test_common_prefix_database_names(app_client_conflicting_database_names):
     # https://github.com/simonw/datasette/issues/597
-    assert ["fixtures", "foo", "foo-bar"] == [
+    assert ["foo-bar", "foo", "fixtures"] == [
         d["name"]
         for d in app_client_conflicting_database_names.get("/-/databases.json").json
     ]

@@ -379,6 +379,13 @@ class TableView(RowTableShared):
         if is_view:
             order_by = ""
 
+        nocount = request.args.get("_nocount")
+        nofacet = request.args.get("_nofacet")
+
+        if request.args.get("_shape") in ("array", "object"):
+            nocount = True
+            nofacet = True
+
         # Ensure we don't drop anything with an empty value e.g. ?name__exact=
         args = MultiParams(
             urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
@@ -697,11 +704,7 @@ class TableView(RowTableShared):
             except KeyError:
                 pass
 
-        if (
-            count_sql
-            and filtered_table_rows_count is None
-            and not request.args.get("_nocount")
-        ):
+        if count_sql and filtered_table_rows_count is None and not nocount:
             try:
                 count_rows = list(await db.execute(count_sql, from_sql_params))
                 filtered_table_rows_count = count_rows[0][0]
@@ -735,7 +738,7 @@ class TableView(RowTableShared):
                 )
             )
 
-        if not request.args.get("_nofacet"):
+        if not nofacet:
             for facet in facet_instances:
                 (
                     instance_facet_results,
@@ -833,7 +836,7 @@ class TableView(RowTableShared):
             self.ds.setting("suggest_facets")
             and self.ds.setting("allow_facet")
             and not _next
-            and not request.args.get("_nofacet")
+            and not nofacet
         ):
             for facet in facet_instances:
                 suggested_facets.extend(await facet.suggest())

@@ -1692,6 +1692,11 @@ def test_nocount(app_client, nocount, expected_count):
     assert response.json["filtered_table_rows_count"] == expected_count
 
 
+def test_nocount_nofacet_if_shape_is_object(app_client):
+    response = app_client.get("/fixtures/facetable.json?_trace=1&_shape=object")
+    assert "count(*)" not in response.text
+
+
 def test_expand_labels(app_client):
     response = app_client.get(
         "/fixtures/facetable.json?_shape=object&_labels=1&_size=2"

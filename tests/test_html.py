@@ -1685,3 +1685,22 @@ def test_facet_more_links(
                 assert facet_truncated.find("a")["href"] == expected_ellipses_url
             else:
                 assert facet_truncated.find("a") is None
+
+
+def test_unavailable_table_does_not_break_sort_relationships():
+    # https://github.com/simonw/datasette/issues/1305
+    with make_app_client(
+        metadata={
+            "databases": {
+                "fixtures": {
+                    "tables": {
+                        "foreign_key_references": {
+                            "allow": False
+                        }
+                    }
+                }
+            }
+        }
+    ) as client:
+        response = client.get("/?_sort=relationships")
+        assert response.status == 200

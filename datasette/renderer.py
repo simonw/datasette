@@ -29,6 +29,7 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
 def json_renderer(args, data, view_name):
     """Render a response as JSON"""
     status_code = 200
+
     # Handle the _json= parameter which may modify data["rows"]
     json_cols = []
     if "_json" in args:
@@ -44,6 +45,9 @@ def json_renderer(args, data, view_name):
 
     # Deal with the _shape option
     shape = args.get("_shape", "arrays")
+    # if there's an error, ignore the shape entirely
+    if data.get("error"):
+        shape = "arrays"
 
     next_url = data.get("next_url")
 

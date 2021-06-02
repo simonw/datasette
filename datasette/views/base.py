@@ -294,6 +294,8 @@ class DataView(BaseView):
             )
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
+            elif len(response_or_template_contexts) == 4:
+                data, _, _, _ = response_or_template_contexts
             else:
                 data, _, _ = response_or_template_contexts
         except (sqlite3.OperationalError, InvalidSql) as e:
@@ -467,7 +469,7 @@ class DataView(BaseView):
 
         extra_template_data = {}
         start = time.perf_counter()
-        status_code = 200
+        status_code = None
         templates = []
         try:
             response_or_template_contexts = await self.data(
@@ -475,7 +477,14 @@ class DataView(BaseView):
             )
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
-
+            # If it has four items, it includes an HTTP status code
+            if len(response_or_template_contexts) == 4:
+                (
+                    data,
+                    extra_template_data,
+                    templates,
+                    status_code,
+                ) = response_or_template_contexts
             else:
                 data, extra_template_data, templates = response_or_template_contexts
         except QueryInterrupted:
@@ -542,12 +551,15 @@ class DataView(BaseView):
             if isinstance(result, dict):
                 r = Response(
                     body=result.get("body"),
-                    status=result.get("status_code", 200),
+                    status=result.get("status_code", status_code or 200),
                     content_type=result.get("content_type", "text/plain"),
                     headers=result.get("headers"),
                 )
             elif isinstance(result, Response):
                 r = result
+                if status_code is not None:
+                    # Over-ride the status code
+                    r.status = status_code
             else:
                 assert False, f"{result} should be dict or Response"
         else:
@@ -607,7 +619,8 @@ class DataView(BaseView):
             if "metadata" not in context:
                 context["metadata"] = self.ds.metadata
             r = await self.render(templates, request=request, context=context)
-            r.status = status_code
+            if status_code is not None:
+                r.status = status_code
 
         ttl = request.args.get("_ttl", None)
         if ttl is None or not ttl.isdigit():

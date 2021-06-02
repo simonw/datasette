@@ -80,7 +80,7 @@
     </tbody>
 </table></div>
 {% else %}
-    {% if not canned_write %}
+    {% if not canned_write and not error %}
         <p class="zero-results">0 results</p>
     {% endif %}
 {% endif %}

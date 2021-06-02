@@ -1410,6 +1410,7 @@ def test_query_error(app_client):
         '<textarea id="sql-editor" name="sql">select * from notatable</textarea>'
         in html
     )
+    assert "0 results" not in html
 
 
 def test_config_template_debug_on():

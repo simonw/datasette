@@ -281,7 +281,7 @@ class DataView(BaseView):
             )
             request.scope = new_scope
         if stream:
-            # Some quick sanity checks
+            # Some quick soundness checks
             if not self.ds.setting("allow_csv_stream"):
                 raise BadRequest("CSV streaming is disabled")
             if request.args.get("_next"):

@@ -304,7 +304,7 @@ class ArrayFacet(Facet):
                 )
                 types = tuple(r[0] for r in results.rows)
                 if types in (("array",), ("array", None)):
-                    # Now sanity check that first 100 arrays contain only strings
+                    # Now check that first 100 arrays contain only strings
                     first_100 = [
                         v[0]
                         for v in await self.ds.execute(

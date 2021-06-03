@@ -540,7 +540,7 @@ def serve(
     # Run the "startup" plugin hooks
     asyncio.get_event_loop().run_until_complete(ds.invoke_startup())
 
-    # Run async sanity checks - but only if we're not under pytest
+    # Run async soundness checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
 
     if get:

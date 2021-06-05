@@ -4,16 +4,45 @@
 Changelog
 =========
 
-.. _v0_57_a0:
+.. _v0_57:
 
-0.57a0 (2021-05-22)
+0.57 (2021-06-05)
+-----------------
+
+.. warning::
+    This release fixes a `reflected cross-site scripting <https://owasp.org/www-community/attacks/xss/#reflected-xss-attacks>`__ security hole with the ``?_trace=1`` feature. You should upgrade to this version, or to Datasette 0.56.1, as soon as possible. (:issue:`1360`)
+
+In addition to the security fix, this release includes ``?_col=`` and ``?_nocol=`` options for controlling which columns are displayed for a table, ``?_facet_size=`` for increasing the number of facet results returned, re-display of your SQL query should an error occur and numerous bug fixes.
+
+New features
+~~~~~~~~~~~~
+
+- If an error occurs while executing a user-provided SQL query, that query is now re-displayed in an editable form along with the error message. (:issue:`619`)
+-  New ``?_col=`` and ``?_nocol=`` parameters to show and hide columns in a table, plus an interface for hiding and showing columns in the column cog menu. (:issue:`615`)
+- A new ``?_facet_size=`` parameter for customizing the number of facet results returned on a table or view page. (:issue:`1332`)
+- ``?_facet_size=max`` sets that to the maximum, which defaults to 1,000 and is controlled by the the :ref:`setting_max_returned_rows` setting. If facet results are truncated the … at the bottom of the facet list now links to this parameter. (:issue:`1337`)
+- ``?_nofacet=1`` option to disable all facet calculations on a page, used as a performance optimization for CSV exports and ``?_shape=array/object``. (:issue:`1349`, :issue:`263`)
+- ``?_nocount=1`` option to disable full query result counts. (:issue:`1353`)
+- ``?_trace=1`` debugging option is now controlled by the new :ref:`setting_trace_debug` setting, which is turned off by default. (:issue:`1359`)
+
+Bug fixes and other improvements
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- :ref:`custom_pages` now work correctly when combined with the :ref:`setting_base_url` setting. (:issue:`1238`)
+- Fixed intermittent error displaying the index page when the user did not have permission to access one of the tables. Thanks, Guy Freeman. (:issue:`1305`)
+- Columns with the name "Link" are no longer incorrectly displayed in bold. (:issue:`1308`)
+- Fixed error caused by tables with a single quote in their names. (:issue:`1257`)
+- Updated dependencies: ``pytest-asyncio``, ``Black``, ``jinja2``, ``aiofiles``, ``click``, and ``itsdangerous``.
+- The official Datasette Docker image now supports ``apt-get install``. (:issue:`1320`)
+- The Heroku runtime used by ``datasette publish heroku`` is now ``python-3.8.10``.
+
+.. _v0_56_1:
+
+0.56.1 (2021-06-05)
 -------------------
 
-Mainly dependency bumps, plus a new ``?_facet_size=`` argument.
-
-- Updated dependencies: pytest-asyncio, Black, jinja2, aiofiles, itsdangerous
-- Fixed bug where columns called "Link" were incorrectly displayed in bold. (:issue:`1308`)
-- New ``?_facet_size=`` argument for customizing the number of facet results returned on a page. (:issue:`1332`)
+.. warning::
+    This release fixes a `reflected cross-site scripting <https://owasp.org/www-community/attacks/xss/#reflected-xss-attacks>`__ security hole with the ``?_trace=1`` feature. You should upgrade to this version, or to Datasette 0.57, as soon as possible. (:issue:`1360`)
 
 .. _v0_56:
 

@@ -1523,6 +1523,7 @@ def test_base_url_config(app_client_base_url_prefix, path):
             and href
             not in {
                 "https://datasette.io/",
+                "https://github.com/simonw/datasette",
                 "https://github.com/simonw/datasette/blob/main/LICENSE",
                 "https://github.com/simonw/datasette/blob/main/tests/fixtures.py",
                 "/login-as-root",  # Only used for the latest.datasette.io demo

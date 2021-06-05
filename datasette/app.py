@@ -1089,6 +1089,7 @@ class DatasetteRouter:
         base_url = self.ds.setting("base_url")
         if base_url != "/" and path.startswith(base_url):
             path = "/" + path[len(base_url) :]
+            scope = dict(scope, route_path=path)
         request = Request(scope, receive)
         # Populate request_messages if ds_messages cookie is present
         try:
@@ -1143,9 +1144,8 @@ class DatasetteRouter:
             await asgi_send_redirect(send, path.decode("latin1"))
         else:
             # Is there a pages/* template matching this path?
-            template_path = (
-                os.path.join("pages", *request.scope["path"].split("/")) + ".html"
-            )
+            route_path = request.scope.get("route_path", request.scope["path"])
+            template_path = os.path.join("pages", *route_path.split("/")) + ".html"
             try:
                 template = self.ds.jinja_env.select_template([template_path])
             except TemplateNotFound:
@@ -1153,7 +1153,7 @@ class DatasetteRouter:
             if template is None:
                 # Try for a pages/blah/{name}.html template match
                 for regex, wildcard_template in self.page_routes:
-                    match = regex.match(request.scope["path"])
+                    match = regex.match(route_path)
                     if match is not None:
                         context.update(match.groupdict())
                         template = wildcard_template
@@ -1356,8 +1356,8 @@ class DatasetteClient:
         self.ds = ds
         self.app = ds.app()
 
-    def _fix(self, path):
-        if not isinstance(path, PrefixedUrlString):
+    def _fix(self, path, avoid_path_rewrites=False):
+        if not isinstance(path, PrefixedUrlString) and not avoid_path_rewrites:
             path = self.ds.urls.path(path)
         if path.startswith("/"):
             path = f"http://localhost{path}"
@@ -1392,5 +1392,8 @@ class DatasetteClient:
             return await client.delete(self._fix(path), **kwargs)
 
     async def request(self, method, path, **kwargs):
+        avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
         async with httpx.AsyncClient(app=self.app) as client:
-            return await client.request(method, self._fix(path), **kwargs)
+            return await client.request(
+                method, self._fix(path, avoid_path_rewrites), **kwargs
+            )

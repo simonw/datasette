@@ -140,6 +140,7 @@ class TestClient:
             method,
             path,
             allow_redirects=allow_redirects,
+            avoid_path_rewrites=True,
             cookies=cookies,
             headers=headers,
             content=post_body,

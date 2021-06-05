@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_56_1:
+
+0.56.1 (2021-06-05)
+-------------------
+
+.. warning::
+    This release fixes a `reflected cross-site scripting <https://owasp.org/www-community/attacks/xss/#reflected-xss-attacks>`__ security hole with the ``?_trace=1`` feature. You should upgrade to this version, or to Datasette 0.57, as soon as possible. (:issue:`1360`)
+
 .. _v0_56:
 
 0.56 (2021-03-28)

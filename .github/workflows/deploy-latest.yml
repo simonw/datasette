@@ -53,7 +53,7 @@ jobs:
             --plugins-dir=plugins \
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \
-            --extra-options="--setting template_debug 1 --crossdb" \
+            --extra-options="--setting template_debug 1 --setting trace_debug 1 --crossdb" \
             --install=pysqlite3-binary \
             --service=datasette-latest
         # Deploy docs.db to a different service

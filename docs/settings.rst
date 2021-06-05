@@ -286,6 +286,22 @@ Some examples:
 * https://latest.datasette.io/fixtures?_context=1
 * https://latest.datasette.io/fixtures/roadside_attractions?_context=1
 
+.. _setting_trace_debug:
+
+trace_debug
+~~~~~~~~~~~
+
+This setting enables appending ``?_trace=1`` to any page in order to see the SQL queries and other trace information that was used to generate that page.
+
+Enable it like this::
+
+    datasette mydatabase.db --setting trace_debug 1
+
+Some examples:
+
+* https://latest.datasette.io/?_trace=1
+* https://latest.datasette.io/fixtures/roadside_attractions?_trace=1
+
 .. _setting_base_url:
 
 base_url

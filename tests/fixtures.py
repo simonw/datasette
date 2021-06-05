@@ -215,6 +215,12 @@ def app_client_with_hash():
 
 
 @pytest.fixture(scope="session")
+def app_client_with_trace():
+    with make_app_client(config={"trace_debug": True}, is_immutable=True) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
 def app_client_shorter_time_limit():
     with make_app_client(20) as client:
         yield client

@@ -162,6 +162,11 @@ SETTINGS = (
         False,
         "Allow display of template debug information with ?_context=1",
     ),
+    Setting(
+        "trace_debug",
+        False,
+        "Allow display of SQL trace debug information with ?_trace=1",
+    ),
     Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
 
@@ -1041,14 +1046,15 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
+        asgi = asgi_csrf.asgi_csrf(
+            DatasetteRouter(self, routes),
+            signing_secret=self._secret,
+            cookie_name="ds_csrftoken",
+        )
+        if self.setting("trace_debug"):
+            asgi = AsgiTracer(asgi)
         asgi = AsgiLifespan(
-            AsgiTracer(
-                asgi_csrf.asgi_csrf(
-                    DatasetteRouter(self, routes),
-                    signing_secret=self._secret,
-                    cookie_name="ds_csrftoken",
-                )
-            ),
+            asgi,
             on_startup=setup_db,
         )
         for wrapper in pm.hook.asgi_wrapper(datasette=self):

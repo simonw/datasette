@@ -15,6 +15,7 @@ from .fixtures import (  # noqa
     app_client_conflicting_database_names,
     app_client_with_cors,
     app_client_with_dot,
+    app_client_with_trace,
     app_client_immutable_and_inspect_file,
     generate_compound_rows,
     generate_sortable_rows,
@@ -1422,6 +1423,7 @@ def test_settings_json(app_client):
         "force_https_urls": False,
         "hash_urls": False,
         "template_debug": False,
+        "trace_debug": False,
         "base_url": "/",
     } == response.json
 
@@ -1692,8 +1694,10 @@ def test_nocount(app_client, nocount, expected_count):
     assert response.json["filtered_table_rows_count"] == expected_count
 
 
-def test_nocount_nofacet_if_shape_is_object(app_client):
-    response = app_client.get("/fixtures/facetable.json?_trace=1&_shape=object")
+def test_nocount_nofacet_if_shape_is_object(app_client_with_trace):
+    response = app_client_with_trace.get(
+        "/fixtures/facetable.json?_trace=1&_shape=object"
+    )
     assert "count(*)" not in response.text
 
 
@@ -1863,9 +1867,17 @@ def test_custom_query_with_unicode_characters(app_client):
     assert [{"id": 1, "name": "San Francisco"}] == response.json
 
 
-def test_trace(app_client):
-    response = app_client.get("/fixtures/simple_primary_key.json?_trace=1")
+@pytest.mark.parametrize("trace_debug", (True, False))
+def test_trace(trace_debug):
+    with make_app_client(config={"trace_debug": trace_debug}) as client:
+        response = client.get("/fixtures/simple_primary_key.json?_trace=1")
+        assert response.status == 200
+
     data = response.json
+    if not trace_debug:
+        assert "_trace" not in data
+        return
+
     assert "_trace" in data
     trace_info = data["_trace"]
     assert isinstance(trace_info["request_duration_ms"], float)

@@ -61,13 +61,18 @@ def move_to_front(items, test_name):
 
 @pytest.fixture
 def restore_working_directory(tmpdir, request):
-    previous_cwd = os.getcwd()
+    try:
+        previous_cwd = os.getcwd()
+    except OSError:
+        # https://github.com/simonw/datasette/issues/1361
+        previous_cwd = None
     tmpdir.chdir()
 
     def return_to_previous():
         os.chdir(previous_cwd)
 
-    request.addfinalizer(return_to_previous)
+    if previous_cwd is not None:
+        request.addfinalizer(return_to_previous)
 
 
 @pytest.fixture(scope="session", autouse=True)

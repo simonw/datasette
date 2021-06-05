@@ -163,7 +163,7 @@ Should Datasette calculate suggested facets? On by default, turn this off like s
 allow_download
 ~~~~~~~~~~~~~~
 
-Should users be able to download the original SQLite database using a link on the database index page? This is turned on by default - to disable database downloads, use the following::
+Should users be able to download the original SQLite database using a link on the database index page? This is turned on by default. However, databases can only be downloaded if they are served in immutable mode and not in-memory. If downloading is unavailable for either of these reasons, the download link is hidden even if ``allow_download`` is on. To disable database downloads, use the following::
 
     datasette mydatabase.db --setting allow_download off
 

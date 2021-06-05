@@ -2,11 +2,19 @@ import pathlib
 import pytest
 from .fixtures import make_app_client
 
+TEST_TEMPLATE_DIRS = str(pathlib.Path(__file__).parent / "test_templates")
+
 
 @pytest.fixture(scope="session")
 def custom_pages_client():
+    with make_app_client(template_dir=TEST_TEMPLATE_DIRS) as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
+def custom_pages_client_with_base_url():
     with make_app_client(
-        template_dir=str(pathlib.Path(__file__).parent / "test_templates")
+        template_dir=TEST_TEMPLATE_DIRS, config={"base_url": "/prefix/"}
     ) as client:
         yield client
 
@@ -21,6 +29,12 @@ def test_request_is_available(custom_pages_client):
     response = custom_pages_client.get("/request")
     assert 200 == response.status
     assert "path:/request" == response.text
+
+
+def test_custom_pages_with_base_url(custom_pages_client_with_base_url):
+    response = custom_pages_client_with_base_url.get("/prefix/request")
+    assert 200 == response.status
+    assert "path:/prefix/request" == response.text
 
 
 def test_custom_pages_nested(custom_pages_client):

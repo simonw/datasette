@@ -1612,3 +1612,9 @@ def test_navigation_menu_links(
             assert (
                 details.find("a", {"href": link}) is None
             ), f"{link} found but should not have been in nav menu"
+
+
+def test_trace_correctly_escaped(app_client):
+    response = app_client.get("/fixtures?sql=select+'<h1>Hello'&_trace=1")
+    assert "select '<h1>Hello" not in response.text
+    assert "select &#39;&lt;h1&gt;Hello" in response.text

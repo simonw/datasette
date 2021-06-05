@@ -1,6 +1,5 @@
 from asgiref.sync import async_to_sync
 from urllib.parse import urlencode
-from datasette.utils import PrefixedUrlString
 import json
 
 # These wrapper classes pre-date the introduction of
@@ -141,7 +140,6 @@ class TestClient:
             method,
             path,
             allow_redirects=allow_redirects,
-            avoid_path_rewrites=True,
             cookies=cookies,
             headers=headers,
             content=post_body,

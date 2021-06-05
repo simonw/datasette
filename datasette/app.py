@@ -1088,10 +1088,7 @@ class DatasetteRouter:
         # Strip off base_url if present before routing
         base_url = self.ds.setting("base_url")
         if base_url != "/" and path.startswith(base_url):
-            # print("Before path:", path)
             path = "/" + path[len(base_url) :]
-            scope = dict(scope, path=path, raw_path=path.encode("utf-8"))
-            # print(f"{path=}\n{base_url=}\n{scope=}")
         request = Request(scope, receive)
         # Populate request_messages if ds_messages cookie is present
         try:
@@ -1359,8 +1356,8 @@ class DatasetteClient:
         self.ds = ds
         self.app = ds.app()
 
-    def _fix(self, path, avoid_path_rewrites=False):
-        if not isinstance(path, PrefixedUrlString) and not avoid_path_rewrites:
+    def _fix(self, path):
+        if not isinstance(path, PrefixedUrlString):
             path = self.ds.urls.path(path)
         if path.startswith("/"):
             path = f"http://localhost{path}"
@@ -1396,5 +1393,4 @@ class DatasetteClient:
 
     async def request(self, method, path, **kwargs):
         async with httpx.AsyncClient(app=self.app) as client:
-            avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
-            return await client.request(method, self._fix(path, avoid_path_rewrites), **kwargs)
+            return await client.request(method, self._fix(path), **kwargs)

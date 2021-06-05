@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import contextmanager
+from markupsafe import escape
 import time
 import json
 import traceback
@@ -123,7 +124,7 @@ class AsgiTracer:
                 except IndexError:
                     content_type = ""
                 if "text/html" in content_type and b"</body>" in accumulated_body:
-                    extra = json.dumps(trace_info, indent=2)
+                    extra = escape(json.dumps(trace_info, indent=2))
                     extra_html = f"<pre>{extra}</pre></body>".encode("utf8")
                     accumulated_body = accumulated_body.replace(b"</body>", extra_html)
                 elif "json" in content_type and accumulated_body.startswith(b"{"):

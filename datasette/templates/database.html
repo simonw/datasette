@@ -71,7 +71,7 @@
 {% if show_hidden or not table.hidden %}
 <div class="db-table">
     <h2><a href="{{ urls.table(database, table.name) }}">{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
-    <p><em>{% for column in table.columns[:9] %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}{% if table.columns|length > 9 %}...{% endif %}</em></p>
+    <p><em>{% for column in table.columns %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}</em></p>
     <p>{% if table.count is none %}Many rows{% else %}{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}{% endif %}</p>
 </div>
 {% endif %}

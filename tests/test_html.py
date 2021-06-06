@@ -101,6 +101,11 @@ def test_database_page_redirects_with_url_hash(app_client_with_hash):
 
 def test_database_page(app_client):
     response = app_client.get("/fixtures")
+    assert (
+        b"<p><em>pk, foreign_key_with_label, foreign_key_with_blank_label, "
+        b"foreign_key_with_no_label, foreign_key_compound_pk1, "
+        b"foreign_key_compound_pk2</em></p>"
+    ) in response.body
     soup = Soup(response.body, "html.parser")
     queries_ul = soup.find("h2", text="Queries").find_next_sibling("ul")
     assert queries_ul is not None

@@ -452,7 +452,8 @@ table a:link {
     margin-left: -10%;
     font-size: 0.8em;
 }
-.rows-and-columns td ol,ul {
+.rows-and-columns td ol,
+.rows-and-columns td ul {
     list-style: initial;
     list-style-position: inside;
 }

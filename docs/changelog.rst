@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_57_1:
+
+0.57.1 (2021-06-08)
+-------------------
+
+- Fixed visual display glitch with global navigation menu. (:issue:`1367`)
+- No longer truncates the list of table columns displayed on the ``/database`` page. (:issue:`1364`)
+
 .. _v0_57:
 
 0.57 (2021-06-05)

@@ -25,6 +25,7 @@ from .fixtures import (  # noqa
     METADATA,
 )
 import json
+import pathlib
 import pytest
 import sys
 import urllib
@@ -2123,3 +2124,16 @@ def test_col_nocol_errors(app_client, path, expected_error):
     response = app_client.get(path)
     assert response.status == 400
     assert response.json["error"] == expected_error
+
+
+@pytest.mark.asyncio
+async def test_db_path(app_client):
+    db = app_client.ds.get_database()
+    path = pathlib.Path(db.path)
+
+    assert path.exists()
+
+    datasette = Datasette([path])
+
+    # this will break with a path
+    await datasette.refresh_schemas()

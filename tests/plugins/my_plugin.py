@@ -316,9 +316,12 @@ def forbidden(datasette, request, message):
 
 
 @hookimpl
-def menu_links(datasette, actor):
+def menu_links(datasette, actor, request):
     if actor:
-        return [{"href": datasette.urls.instance(), "label": "Hello"}]
+        label = "Hello"
+        if request.args.get("_hello"):
+            label += ", " + request.args["_hello"]
+        return [{"href": datasette.urls.instance(), "label": label}]
 
 
 @hookimpl
@@ -334,11 +337,14 @@ def table_actions(datasette, database, table, actor):
 
 
 @hookimpl
-def database_actions(datasette, database, actor):
+def database_actions(datasette, database, actor, request):
     if actor:
+        label = f"Database: {database}"
+        if request.args.get("_hello"):
+            label += " - " + request.args["_hello"]
         return [
             {
                 "href": datasette.urls.instance(),
-                "label": f"Database: {database}",
+                "label": label,
             }
         ]

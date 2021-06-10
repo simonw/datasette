@@ -110,6 +110,7 @@ class DatabaseView(DataView):
                 datasette=self.ds,
                 database=database,
                 actor=request.actor,
+                request=request,
             ):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:

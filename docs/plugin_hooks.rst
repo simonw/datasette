@@ -1015,14 +1015,17 @@ The function can alternatively return an awaitable function if it needs to make 
 
 .. _plugin_hook_menu_links:
 
-menu_links(datasette, actor)
-----------------------------
+menu_links(datasette, actor, request)
+-------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
 
 ``actor`` - dictionary or None
     The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - object or None
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
 
 This hook allows additional items to be included in the menu displayed by Datasette's top right menu icon.
 
@@ -1045,11 +1048,10 @@ This example adds a new menu item but only if the signed in user is ``"root"``:
 
 Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`setting_base_url` setting into account.
 
-
 .. _plugin_hook_table_actions:
 
-table_actions(datasette, actor, database, table)
-------------------------------------------------
+table_actions(datasette, actor, database, table, request)
+---------------------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
@@ -1062,6 +1064,9 @@ table_actions(datasette, actor, database, table)
 
 ``table`` - string
     The name of the table.
+
+``request`` - object
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
 
 This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items.
 
@@ -1083,8 +1088,8 @@ This example adds a new table action if the signed in user is ``"root"``:
 
 .. _plugin_hook_database_actions:
 
-database_actions(datasette, actor, database)
---------------------------------------------
+database_actions(datasette, actor, database, request)
+-----------------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
@@ -1094,5 +1099,8 @@ database_actions(datasette, actor, database)
 
 ``database`` - string
     The name of the database.
+
+``request`` - object
+    The current HTTP :ref:`internals_request`.
 
 This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.

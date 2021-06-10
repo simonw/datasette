@@ -100,15 +100,15 @@ def forbidden(datasette, request, message):
 
 
 @hookspec
-def menu_links(datasette, actor):
+def menu_links(datasette, actor, request):
     """Links for the navigation menu"""
 
 
 @hookspec
-def table_actions(datasette, actor, database, table):
+def table_actions(datasette, actor, database, table, request):
     """Links for the table actions menu"""
 
 
 @hookspec
-def database_actions(datasette, actor, database):
+def database_actions(datasette, actor, database, request):
     """Links for the database actions menu"""

@@ -833,7 +833,9 @@ class Datasette:
         async def menu_links():
             links = []
             for hook in pm.hook.menu_links(
-                datasette=self, actor=request.actor if request else None
+                datasette=self,
+                actor=request.actor if request else None,
+                request=request or None,
             ):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:

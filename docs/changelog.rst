@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_58a0:
+
+0.58a0 (2021-06-09)
+-------------------
+
+- The :ref:`menu_links() <plugin_hook_menu_links>`, :ref:`table_actions() <plugin_hook_table_actions>` and :ref:`database_actions() <plugin_hook_database_actions>` plugin hooks all gained a new optional ``request`` argument providing access to the current request. (:issue:`1371`)
+
 .. _v0_57_1:
 
 0.57.1 (2021-06-08)

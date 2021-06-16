@@ -380,6 +380,7 @@ class Datasette:
         return self.databases[name]
 
     def add_database(self, db, name=None):
+        new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
             suggestion = db.suggest_name()
@@ -391,14 +392,18 @@ class Datasette:
             name = "{}_{}".format(suggestion, i)
             i += 1
         db.name = name
-        self.databases[name] = db
+        new_databases[name] = db
+        # don't mutate! that causes race conditions with live import
+        self.databases = new_databases
         return db
 
     def add_memory_database(self, memory_name):
         return self.add_database(Database(self, memory_name=memory_name))
 
     def remove_database(self, name):
-        self.databases.pop(name)
+        new_databases = self.databases.copy()
+        new_databases.pop(name)
+        self.databases = new_databases
 
     def setting(self, key):
         return self._settings.get(key, None)

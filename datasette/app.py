@@ -354,7 +354,7 @@ class Datasette:
                 INSERT OR REPLACE INTO databases (database_name, path, is_memory, schema_version)
                 VALUES (?, ?, ?, ?)
             """,
-                [database_name, db.path, db.is_memory, schema_version],
+                [database_name, str(db.path), db.is_memory, schema_version],
                 block=True,
             )
             await populate_schema_tables(internal_db, db)

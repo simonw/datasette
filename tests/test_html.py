@@ -92,6 +92,13 @@ def test_memory_database_page():
         assert response.status == 200
 
 
+def test_not_allowed_methods():
+    with make_app_client(memory=True) as client:
+        for method in ("post", "put", "patch", "delete"):
+            response = client.request(path="/_memory", method=method.upper())
+            assert response.status == 405
+
+
 def test_database_page_redirects_with_url_hash(app_client_with_hash):
     response = app_client_with_hash.get("/fixtures", allow_redirects=False)
     assert response.status == 302

@@ -106,6 +106,9 @@ class BaseView:
     async def options(self, request, *args, **kwargs):
         return Response.text("Method not allowed", status=405)
 
+    async def post(self, request, *args, **kwargs):
+        return Response.text("Method not allowed", status=405)
+
     async def put(self, request, *args, **kwargs):
         return Response.text("Method not allowed", status=405)
 

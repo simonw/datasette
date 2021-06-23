@@ -348,7 +348,7 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
         ):
             # Your implementation goes here
 
-Examples: `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`_, `datasette-publish-now <https://github.com/simonw/datasette-publish-now>`_
+Examples: `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`_, `datasette-publish-vercel <https://github.com/simonw/datasette-publish-vercel>`_
 
 .. _plugin_hook_render_cell:
 

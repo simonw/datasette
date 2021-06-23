@@ -302,7 +302,7 @@ publish_subcommand(publish)
     The Click command group for the ``datasette publish`` subcommand
 
 This hook allows you to create new providers for the ``datasette publish``
-command. Datasette uses this hook internally to implement the default ``now``
+command. Datasette uses this hook internally to implement the default ``cloudrun``
 and ``heroku`` subcommands, so you can read
 `their source <https://github.com/simonw/datasette/tree/main/datasette/publish>`_
 to see examples of this hook in action.

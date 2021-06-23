@@ -778,6 +778,8 @@ If your plugin implements a ``<form method="POST">`` anywhere you will need to i
 
     <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
 
+You can selectively disable CSRF protection using the :ref:`plugin_hook_skip_csrf` hook.
+
 .. _internals_internal:
 
 The _internal database

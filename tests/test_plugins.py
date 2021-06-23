@@ -825,3 +825,28 @@ def test_hook_database_actions(app_client):
     assert get_table_actions_links(response_2.text) == [
         {"label": "Database: fixtures - BOB", "href": "/"},
     ]
+
+
+def test_hook_skip_csrf(app_client):
+    cookie = app_client.actor_cookie({"id": "test"})
+    csrf_response = app_client.post(
+        "/post/",
+        post_data={"this is": "post data"},
+        csrftoken_from=True,
+        cookies={"ds_actor": cookie},
+    )
+    assert csrf_response.status == 200
+    missing_csrf_response = app_client.post(
+        "/post/", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
+    )
+    assert missing_csrf_response.status == 403
+    # But "/skip-csrf" should allow
+    allow_csrf_response = app_client.post(
+        "/skip-csrf", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
+    )
+    assert allow_csrf_response.status == 405  # Method not allowed
+    # /skip-csrf-2 should not
+    second_missing_csrf_response = app_client.post(
+        "/skip-csrf-2", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
+    )
+    assert second_missing_csrf_response.status == 403

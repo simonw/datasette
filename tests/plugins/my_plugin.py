@@ -348,3 +348,8 @@ def database_actions(datasette, database, actor, request):
                 "label": label,
             }
         ]
+
+
+@hookimpl
+def skip_csrf(scope):
+    return scope["path"] == "/skip-csrf"

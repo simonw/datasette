@@ -1104,3 +1104,28 @@ database_actions(datasette, actor, database, request)
     The current HTTP :ref:`internals_request`.
 
 This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.
+
+.. _plugin_hook_skip_csrf:
+
+skip_csrf(datasette, scope)
+---------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``scope`` - dictionary
+    The `ASGI scope <https://asgi.readthedocs.io/en/latest/specs/www.html#http-connection-scope>`__ for the incoming HTTP request.
+
+This hook can be used to skip :ref:`internals_csrf` for a specific incoming request. For example, you might have a custom path at ``/submit-comment`` which is designed to accept comments from anywhere, whether or not the incoming request originated on the site and has an accompanying CSRF token.
+
+This example will disable CSRF protection for that specific URL path:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def skip_csrf(scope):
+        return scope["path"] == "/submit-comment"
+
+If any of the currently active ``skip_csrf()`` plugin hooks return ``True``, CSRF protection will be skipped for the request.

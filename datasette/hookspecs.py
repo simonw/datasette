@@ -112,3 +112,8 @@ def table_actions(datasette, actor, database, table, request):
 @hookspec
 def database_actions(datasette, actor, database, request):
     """Links for the database actions menu"""
+
+
+@hookspec
+def skip_csrf(datasette, scope):
+    """Mechanism for skipping CSRF checks for certain requests"""

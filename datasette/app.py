@@ -1052,6 +1052,9 @@ class Datasette:
             DatasetteRouter(self, routes),
             signing_secret=self._secret,
             cookie_name="ds_csrftoken",
+            skip_if_scope=lambda scope: any(
+                pm.hook.skip_csrf(datasette=self, scope=scope)
+            ),
         )
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)

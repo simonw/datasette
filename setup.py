@@ -55,7 +55,7 @@ setup(
         "uvicorn~=0.11",
         "aiofiles>=0.4,<0.8",
         "janus>=0.4,<0.7",
-        "asgi-csrf>=0.6",
+        "asgi-csrf>=0.9",
         "PyYAML~=5.3",
         "mergedeep>=1.1.1,<1.4.0",
         "itsdangerous>=1.1,<3.0",

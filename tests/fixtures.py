@@ -153,7 +153,6 @@ def make_app_client(
             static_mounts=static_mounts,
             template_dir=template_dir,
             crossdb=crossdb,
-            pdb=True,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
         yield TestClient(ds)

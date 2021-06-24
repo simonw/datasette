@@ -60,7 +60,7 @@ jobs:
   deploy_static_docs:
     runs-on: ubuntu-latest
     needs: [deploy]
-    # if: "!github.event.release.prerelease"
+    if: "!github.event.release.prerelease"
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python

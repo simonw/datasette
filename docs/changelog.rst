@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_58a1:
+
+0.58a1 (2021-06-24)
+-------------------
+
+- New plugin hook: :ref:`plugin_hook_skip_csrf`, for opting out of CSRF protection based on the incoming request. (:issue:`1377`)
+- ``POST`` requests to endpoints that do not support that HTTP verb now return a 405 error.
+- ``db.path`` can now be provided as a ``pathlib.Path`` object, useful when writing unit tests for plugins. Thanks, Chris Amico. (:issue:`1365`)
+
 .. _v0_58a0:
 
 0.58a0 (2021-06-09)

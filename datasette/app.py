@@ -418,9 +418,7 @@ class Datasette:
 
         for key, upd_value in updated.items():
             if isinstance(upd_value, dict) and isinstance(orig.get(key), dict):
-                orig[key] = self._metadata_recursive_update(
-                    orig[key], upd_value
-                )
+                orig[key] = self._metadata_recursive_update(orig[key], upd_value)
             else:
                 orig[key] = upd_value
         return orig
@@ -435,11 +433,8 @@ class Datasette:
         ), "Cannot call metadata() with table= specified but not database="
         metadata = {}
 
-        # TODO: change this to update_metadata, pass meta back allow the
-        # plugins to mutate it?
         for hook_dbs in pm.hook.get_metadata(
-            datasette=self, key=key, database=database, table=table,
-            fallback=fallback
+            datasette=self, key=key, database=database, table=table, fallback=fallback
         ):
             metadata = self._metadata_recursive_update(metadata, hook_dbs)
 
@@ -460,8 +455,6 @@ class Datasette:
             ) or {}
             search_list.insert(0, table_metadata)
 
-        # TODO: get full data for here, we need to work down to tables from that
-        # as opposed to simply returning table data above?
         search_list.append(metadata)
         if not fallback:
             # No fallback allowed, so just use the first one in the list
@@ -1002,7 +995,7 @@ class Datasette:
             r"/:memory:(?P<rest>.*)$",
         )
         add_route(
-            JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
+            JsonDataView.as_view(self, "metadata.json", lambda: self.metadata()),
             r"/-/metadata(?P<as_format>(\.json)?)$",
         )
         add_route(

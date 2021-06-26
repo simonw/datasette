@@ -1148,7 +1148,7 @@ get_metadata(datasette, key, database, table, fallback)
 ``key`` - string or None
     The name of the key for which data is being asked for.
 
-This hook is responsible for returning a dictionary corresponding to Datasette :ref:`metadata`. This function is passed the `database`, `table` and `key` which were passed to the upstream internal request for metadata. Regardless, it is important to return a global metadata object, where `"databases": []` would be a top-level key. The dictionary returned here, will be merged with, and overwritten by, the contents of the physical `metadata.yaml` if one is present.
+This hook is responsible for returning a dictionary corresponding to Datasette :ref:`metadata`. This function is passed the ``database``, ``table`` and ``key`` which were passed to the upstream internal request for metadata. Regardless, it is important to return a global metadata object, where ``"databases": []`` would be a top-level key. The dictionary returned here, will be merged with, and overwritten by, the contents of the physical ``metadata.yaml`` if one is present.
 
 .. code-block:: python
 

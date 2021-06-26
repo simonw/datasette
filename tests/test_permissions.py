@@ -440,7 +440,7 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
     """Test that e.g. having view-table but NOT view-database lets you view table page, etc"""
     allow = {"id": "*"}
     deny = {}
-    previous_metadata = cascade_app_client.ds._metadata
+    previous_metadata = cascade_app_client.ds.metadata()
     updated_metadata = copy.deepcopy(previous_metadata)
     actor = {"id": "test"}
     if "download" in permissions:
@@ -457,11 +457,11 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
         updated_metadata["databases"]["fixtures"]["queries"]["magic_parameters"][
             "allow"
         ] = (allow if "query" in permissions else deny)
-        cascade_app_client.ds._metadata = updated_metadata
+        cascade_app_client.ds._metadata_local = updated_metadata
         response = cascade_app_client.get(
             path,
             cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
         )
         assert expected_status == response.status
     finally:
-        cascade_app_client.ds._metadata = previous_metadata
+        cascade_app_client.ds._metadata_local = previous_metadata

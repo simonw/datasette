@@ -11,6 +11,11 @@ def startup(datasette):
 
 
 @hookspec
+def get_metadata(datasette, key, database, table, fallback):
+    """Get configuration"""
+
+
+@hookspec
 def asgi_wrapper(datasette):
     """Returns an ASGI middleware callable to wrap our ASGI application with"""
 

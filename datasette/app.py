@@ -251,7 +251,7 @@ class Datasette:
         if config_dir and metadata_files and not metadata:
             with metadata_files[0].open() as fp:
                 metadata = parse_metadata(fp.read())
-        self._metadata = metadata or {}
+        self._metadata_local = metadata or {}
         self.sqlite_functions = []
         self.sqlite_extensions = []
         for extension in sqlite_extensions or []:
@@ -380,6 +380,7 @@ class Datasette:
         return self.databases[name]
 
     def add_database(self, db, name=None):
+        new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
             suggestion = db.suggest_name()
@@ -391,14 +392,18 @@ class Datasette:
             name = "{}_{}".format(suggestion, i)
             i += 1
         db.name = name
-        self.databases[name] = db
+        new_databases[name] = db
+        # don't mutate! that causes race conditions with live import
+        self.databases = new_databases
         return db
 
     def add_memory_database(self, memory_name):
         return self.add_database(Database(self, memory_name=memory_name))
 
     def remove_database(self, name):
-        self.databases.pop(name)
+        new_databases = self.databases.copy()
+        new_databases.pop(name)
+        self.databases = new_databases
 
     def setting(self, key):
         return self._settings.get(key, None)
@@ -406,6 +411,17 @@ class Datasette:
     def config_dict(self):
         # Returns a fully resolved config dictionary, useful for templates
         return {option.name: self.setting(option.name) for option in SETTINGS}
+
+    def _metadata_recursive_update(self, orig, updated):
+        if not isinstance(orig, dict) or not isinstance(updated, dict):
+            return orig
+
+        for key, upd_value in updated.items():
+            if isinstance(upd_value, dict) and isinstance(orig.get(key), dict):
+                orig[key] = self._metadata_recursive_update(orig[key], upd_value)
+            else:
+                orig[key] = upd_value
+        return orig
 
     def metadata(self, key=None, database=None, table=None, fallback=True):
         """
@@ -415,7 +431,21 @@ class Datasette:
         assert not (
             database is None and table is not None
         ), "Cannot call metadata() with table= specified but not database="
-        databases = self._metadata.get("databases") or {}
+        metadata = {}
+
+        for hook_dbs in pm.hook.get_metadata(
+            datasette=self, key=key, database=database, table=table, fallback=fallback
+        ):
+            metadata = self._metadata_recursive_update(metadata, hook_dbs)
+
+        # security precaution!! don't allow anything in the local config
+        # to be overwritten. this is a temporary measure, not sure if this
+        # is a good idea long term or maybe if it should just be a concern
+        # of the plugin's implemtnation
+        metadata = self._metadata_recursive_update(metadata, self._metadata_local)
+
+        databases = metadata.get("databases") or {}
+
         search_list = []
         if database is not None:
             search_list.append(databases.get(database) or {})
@@ -424,7 +454,8 @@ class Datasette:
                 table
             ) or {}
             search_list.insert(0, table_metadata)
-        search_list.append(self._metadata)
+
+        search_list.append(metadata)
         if not fallback:
             # No fallback allowed, so just use the first one in the list
             search_list = search_list[:1]
@@ -439,6 +470,10 @@ class Datasette:
             for item in search_list:
                 m.update(item)
             return m
+
+    @property
+    def _metadata(self):
+        return self.metadata()
 
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
@@ -960,7 +995,7 @@ class Datasette:
             r"/:memory:(?P<rest>.*)$",
         )
         add_route(
-            JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
+            JsonDataView.as_view(self, "metadata.json", lambda: self.metadata()),
             r"/-/metadata(?P<as_format>(\.json)?)$",
         )
         add_route(

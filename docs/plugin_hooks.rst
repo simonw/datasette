@@ -1134,7 +1134,7 @@ get_metadata(datasette, key, database, table, fallback)
 -------------------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
 
 ``actor`` - dictionary or None
     The currently authenticated :ref:`actor <authentication_actor>`.

@@ -855,24 +855,20 @@ def test_hook_skip_csrf(app_client):
 def test_hook_get_metadata(app_client):
     app_client.ds._metadata_local = {
         "title": "Testing get_metadata hook!",
-        "databases": {
-            "from-local": {
-                "title": "Hello from local metadata"
-            }
-        }
+        "databases": {"from-local": {"title": "Hello from local metadata"}},
     }
     og_pm_hook_get_metadata = pm.hook.get_metadata
+
     def get_metadata_mock(*args, **kwargs):
-        return [{
-            "databases": {
-                "from-hook": {
-                    "title": "Hello from the plugin hook"
-                },
-                "from-local": {
-                    "title": "This will be overwritten!"
+        return [
+            {
+                "databases": {
+                    "from-hook": {"title": "Hello from the plugin hook"},
+                    "from-local": {"title": "This will be overwritten!"},
                 }
             }
-        }]
+        ]
+
     pm.hook.get_metadata = get_metadata_mock
     meta = app_client.ds.metadata()
     assert "Testing get_metadata hook!" == meta["title"]

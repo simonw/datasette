@@ -1130,8 +1130,8 @@ This example will disable CSRF protection for that specific URL path:
 
 If any of the currently active ``skip_csrf()`` plugin hooks return ``True``, CSRF protection will be skipped for the request.
 
-get_metadata(datasette, key, database, table, fallback)
--------------------------------------------------------
+get_metadata(datasette, key, database, table)
+---------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
@@ -1153,7 +1153,7 @@ This hook is responsible for returning a dictionary corresponding to Datasette :
 .. code-block:: python
 
     @hookimpl
-    def get_metadata(datasette, key, database, table, fallback):
+    def get_metadata(datasette, key, database, table):
         metadata = {
             "title": "This will be the Datasette landing page title!",
             "description": get_instance_description(datasette),

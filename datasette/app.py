@@ -434,7 +434,7 @@ class Datasette:
         metadata = {}
 
         for hook_dbs in pm.hook.get_metadata(
-            datasette=self, key=key, database=database, table=table, fallback=fallback
+            datasette=self, key=key, database=database, table=table
         ):
             metadata = self._metadata_recursive_update(metadata, hook_dbs)
 

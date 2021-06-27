@@ -11,8 +11,8 @@ def startup(datasette):
 
 
 @hookspec
-def get_metadata(datasette, key, database, table, fallback):
-    """Get configuration"""
+def get_metadata(datasette, key, database, table):
+    """Return metadata to be merged into Datasette's metadata dictionary"""
 
 
 @hookspec

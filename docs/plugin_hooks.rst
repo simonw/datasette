@@ -1134,10 +1134,7 @@ get_metadata(datasette, key, database, table)
 ---------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
+    The current Datasette instance. Contains useful things like :ref:`actor <authentication_actor>` and the list of databases. Note that you can't use Datasette's asynchronous methods here (e.g., ``db.execute(...)``).
 
 ``database`` - string or None
     The name of the database metadata is being asked for.
@@ -1149,6 +1146,8 @@ get_metadata(datasette, key, database, table)
     The name of the key for which data is being asked for.
 
 This hook is responsible for returning a dictionary corresponding to Datasette :ref:`metadata`. This function is passed the ``database``, ``table`` and ``key`` which were passed to the upstream internal request for metadata. Regardless, it is important to return a global metadata object, where ``"databases": []`` would be a top-level key. The dictionary returned here, will be merged with, and overwritten by, the contents of the physical ``metadata.yaml`` if one is present.
+
+WARNING: ``get_metadata`` is currently synchronous, but this may change in a future, pre-1.0 Datasette version.
 
 .. code-block:: python
 

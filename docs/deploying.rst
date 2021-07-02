@@ -161,6 +161,9 @@ For `Apache <https://httpd.apache.org/>`__, you can use the ``ProxyPass`` direct
     LoadModule proxy_module lib/httpd/modules/mod_proxy.so
     LoadModule proxy_http_module lib/httpd/modules/mod_proxy_http.so
 
-Then add this directive to proxy traffic::
+Then add these directives to proxy traffic::
 
-    ProxyPass          /datasette-prefix/    http://127.0.0.1:8009/datasette-prefix/
+    ProxyPass /datasette-prefix/ http://127.0.0.1:8009/datasette-prefix/
+    ProxyPreserveHost On
+
+The `ProxyPreserveHost On <https://httpd.apache.org/docs/2.4/mod/mod_proxy.html#proxypreservehost>`__ directive ensures that the original ``Host:`` header from the incoming request is passed through to Datasette. Datasette needs this to correctly assemble links to other pages using the :ref:`datasette_absolute_url` method.

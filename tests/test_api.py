@@ -2067,17 +2067,16 @@ def test_generated_columns_are_visible_in_datasette():
                     id INT GENERATED ALWAYS AS (json_extract(body, '$.number')) STORED,
                     consideration INT GENERATED ALWAYS AS (json_extract(body, '$.string')) STORED
                 );
-                INSERT INTO generated_columns (body) VALUES ('{
-                    "number": 1,
-                    "string": "This is a string"
-                }');"""
+                INSERT INTO generated_columns (body) VALUES (
+                    '{"number": 1, "string": "This is a string"}'
+                );"""
         }
     ) as client:
-        response = app_client.get("/generated/generated_columns.json?_shape=array")
+        response = client.get("/generated/generated_columns.json?_shape=array")
         assert response.json == [
             {
                 "rowid": 1,
-                "body": '{\n    "number": 1,\n    "string": "This is a string"\n}',
+                "body": '{"number": 1, "string": "This is a string"}',
                 "id": 1,
                 "consideration": "This is a string",
             }

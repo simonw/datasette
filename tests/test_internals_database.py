@@ -2,7 +2,7 @@
 Tests for the datasette.database.Database class
 """
 from datasette.database import Database, Results, MultipleValues
-from datasette.utils.sqlite import sqlite3, supports_generated_columns
+from datasette.utils.sqlite import sqlite3
 from datasette.utils import Column
 from .fixtures import app_client, app_client_two_attached_databases_crossdb_enabled
 import pytest
@@ -340,42 +340,38 @@ async def test_get_all_foreign_keys(db):
 @pytest.mark.asyncio
 async def test_table_names(db):
     table_names = await db.table_names()
-    assert (
-        table_names
-        == [
-            "simple_primary_key",
-            "primary_key_multiple_columns",
-            "primary_key_multiple_columns_explicit_label",
-            "compound_primary_key",
-            "compound_three_primary_keys",
-            "foreign_key_references",
-            "sortable",
-            "no_primary_key",
-            "123_starts_with_digits",
-            "Table With Space In Name",
-            "table/with/slashes.csv",
-            "complex_foreign_keys",
-            "custom_foreign_key_label",
-            "units",
-            "tags",
-            "searchable",
-            "searchable_tags",
-            "searchable_fts",
-            "searchable_fts_segments",
-            "searchable_fts_segdir",
-            "searchable_fts_docsize",
-            "searchable_fts_stat",
-            "select",
-            "infinity",
-            "facet_cities",
-            "facetable",
-            "binary_data",
-            "roadside_attractions",
-            "attraction_characteristic",
-            "roadside_attraction_characteristics",
-        ]
-        + (["generated_columns"] if supports_generated_columns() else [])
-    )
+    assert table_names == [
+        "simple_primary_key",
+        "primary_key_multiple_columns",
+        "primary_key_multiple_columns_explicit_label",
+        "compound_primary_key",
+        "compound_three_primary_keys",
+        "foreign_key_references",
+        "sortable",
+        "no_primary_key",
+        "123_starts_with_digits",
+        "Table With Space In Name",
+        "table/with/slashes.csv",
+        "complex_foreign_keys",
+        "custom_foreign_key_label",
+        "units",
+        "tags",
+        "searchable",
+        "searchable_tags",
+        "searchable_fts",
+        "searchable_fts_segments",
+        "searchable_fts_segdir",
+        "searchable_fts_docsize",
+        "searchable_fts_stat",
+        "select",
+        "infinity",
+        "facet_cities",
+        "facetable",
+        "binary_data",
+        "roadside_attractions",
+        "attraction_characteristic",
+        "roadside_attraction_characteristics",
+    ]
 
 
 @pytest.mark.asyncio

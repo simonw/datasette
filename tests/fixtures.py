@@ -1,5 +1,5 @@
 from datasette.app import Datasette
-from datasette.utils.sqlite import sqlite3, sqlite_version, supports_generated_columns
+from datasette.utils.sqlite import sqlite3, sqlite_version
 from datasette.utils.testing import TestClient
 import click
 import contextlib
@@ -118,8 +118,6 @@ def make_app_client(
             immutables = []
         conn = sqlite3.connect(filepath)
         conn.executescript(TABLES)
-        if supports_generated_columns():
-            conn.executescript(GENERATED_COLUMNS_SQL)
         for sql, params in TABLE_PARAMETERIZED_SQL:
             with conn:
                 conn.execute(sql, params)
@@ -720,18 +718,6 @@ INSERT INTO "searchable_fts" (rowid, text1, text2)
     SELECT rowid, text1, text2 FROM searchable;
 """
 
-GENERATED_COLUMNS_SQL = """
-CREATE TABLE generated_columns (
-    body TEXT,
-    id INT GENERATED ALWAYS AS (json_extract(body, '$.number')) STORED,
-    consideration INT GENERATED ALWAYS AS (json_extract(body, '$.string')) STORED
-);
-INSERT INTO generated_columns (body) VALUES ('{
-    "number": 1,
-    "string": "This is a string"
-}');
-"""
-
 
 def assert_permissions_checked(datasette, actions):
     # actions is a list of "action" or (action, resource) tuples
@@ -792,9 +778,6 @@ def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
     for sql, params in TABLE_PARAMETERIZED_SQL:
         with conn:
             conn.execute(sql, params)
-    if supports_generated_columns():
-        with conn:
-            conn.executescript(GENERATED_COLUMNS_SQL)
     print(f"Test tables written to {db_filename}")
     if metadata:
         with open(metadata, "w") as fp:

@@ -20,7 +20,6 @@ from .fixtures import (  # noqa
     generate_compound_rows,
     generate_sortable_rows,
     make_app_client,
-    supports_generated_columns,
     EXPECTED_PLUGINS,
     METADATA,
 )
@@ -38,7 +37,7 @@ def test_homepage(app_client):
     assert response.json.keys() == {"fixtures": 0}.keys()
     d = response.json["fixtures"]
     assert d["name"] == "fixtures"
-    assert d["tables_count"] == 25 if supports_generated_columns() else 24
+    assert d["tables_count"] == 24
     assert len(d["tables_and_views_truncated"]) == 5
     assert d["tables_and_views_more"] is True
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
@@ -271,22 +270,7 @@ def test_database_page(app_client):
             },
             "private": False,
         },
-    ] + (
-        [
-            {
-                "columns": ["body", "id", "consideration"],
-                "count": 1,
-                "foreign_keys": {"incoming": [], "outgoing": []},
-                "fts_table": None,
-                "hidden": False,
-                "name": "generated_columns",
-                "primary_keys": [],
-                "private": False,
-            }
-        ]
-        if supports_generated_columns()
-        else []
-    ) + [
+    ] + [
         {
             "name": "infinity",
             "columns": ["value"],
@@ -2074,16 +2058,30 @@ def test_paginate_using_link_header(app_client, qs):
     sqlite_version() < (3, 31, 0),
     reason="generated columns were added in SQLite 3.31.0",
 )
-def test_generated_columns_are_visible_in_datasette(app_client):
-    response = app_client.get("/fixtures/generated_columns.json?_shape=array")
-    assert response.json == [
-        {
-            "rowid": 1,
-            "body": '{\n    "number": 1,\n    "string": "This is a string"\n}',
-            "id": 1,
-            "consideration": "This is a string",
+def test_generated_columns_are_visible_in_datasette():
+    with make_app_client(
+        extra_databases={
+            "generated.db": """
+                CREATE TABLE generated_columns (
+                    body TEXT,
+                    id INT GENERATED ALWAYS AS (json_extract(body, '$.number')) STORED,
+                    consideration INT GENERATED ALWAYS AS (json_extract(body, '$.string')) STORED
+                );
+                INSERT INTO generated_columns (body) VALUES ('{
+                    "number": 1,
+                    "string": "This is a string"
+                }');"""
         }
-    ]
+    ) as client:
+        response = app_client.get("/generated/generated_columns.json?_shape=array")
+        assert response.json == [
+            {
+                "rowid": 1,
+                "body": '{\n    "number": 1,\n    "string": "This is a string"\n}',
+                "id": 1,
+                "consideration": "This is a string",
+            }
+        ]
 
 
 def test_http_options_request(app_client):

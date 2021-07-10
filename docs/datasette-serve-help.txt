@@ -12,6 +12,7 @@ Options:
                             machines.
   -p, --port INTEGER RANGE  Port for server, defaults to 8001. Use -p 0 to automatically
                             assign an available port.  [0<=x<=65535]
+  --uds TEXT                Bind to a Unix domain socket
   --reload                  Automatically reload if code or metadata change detected -
                             useful for development
   --cors                    Enable CORS by serving Access-Control-Allow-Origin: *

@@ -148,7 +148,6 @@ Here is an example of an `nginx <https://nginx.org/>`__ configuration file that 
     http {
       server {
         listen 80;
-
         location /my-datasette {
           proxy_pass              http://127.0.0.1:8009/my-datasette;
           proxy_set_header        X-Real-IP $remote_addr;
@@ -156,6 +155,28 @@ Here is an example of an `nginx <https://nginx.org/>`__ configuration file that 
         }
       }
     }
+
+You can also use the ``--uds`` option to Datasette to listen on a Unix domain socket instead of a port, configuring the nginx upstream proxy like this::
+
+    daemon off;
+    events {
+      worker_connections  1024;
+    }
+    http {
+      server {
+        listen 80;
+        location / {
+          proxy_pass              http://datasette;
+          proxy_set_header        X-Real-IP $remote_addr;
+          proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+      }
+      upstream datasette {
+        server unix:/tmp/datasette.sock;
+      }
+    }
+
+Then run Datasette with ``datasette --uds /tmp/datasette.sock path/to/database.db``.
 
 Apache proxy configuration
 --------------------------

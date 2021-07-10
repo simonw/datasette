@@ -131,7 +131,6 @@ def ds_localhost_https_server(tmp_path_factory):
     for blob in server_cert.cert_chain_pems:
         blob.write_to_path(path=certfile, append=True)
     ca.cert_pem.write_to_path(path=client_cert)
-
     ds_proc = subprocess.Popen(
         [
             "datasette",
@@ -152,5 +151,24 @@ def ds_localhost_https_server(tmp_path_factory):
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
     yield ds_proc, client_cert
+    # Shut it down at the end of the pytest session
+    ds_proc.terminate()
+
+
+@pytest.fixture(scope="session")
+def ds_unix_domain_socket_server(tmp_path_factory):
+    socket_folder = tmp_path_factory.mktemp("uds")
+    uds = str(socket_folder / "datasette.sock")
+    ds_proc = subprocess.Popen(
+        ["datasette", "--memory", "--uds", uds],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        cwd=tempfile.gettempdir(),
+    )
+    # Give the server time to start
+    time.sleep(1.5)
+    # Check it started successfully
+    assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
+    yield ds_proc, uds
     # Shut it down at the end of the pytest session
     ds_proc.terminate()

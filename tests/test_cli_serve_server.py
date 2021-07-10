@@ -25,7 +25,9 @@ def test_serve_localhost_https(ds_localhost_https_server):
 
 
 @pytest.mark.serial
-@pytest.mark.skipif(not hasattr(socket, "AF_UNIX"), reason="Requires socket.AF_UNIX support")
+@pytest.mark.skipif(
+    not hasattr(socket, "AF_UNIX"), reason="Requires socket.AF_UNIX support"
+)
 def test_serve_unix_domain_socket(ds_unix_domain_socket_server):
     _, uds = ds_unix_domain_socket_server
     transport = httpx.HTTPTransport(uds=uds)

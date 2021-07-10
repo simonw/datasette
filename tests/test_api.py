@@ -1078,6 +1078,46 @@ def test_searchable(app_client, path, expected_rows):
     assert expected_rows == response.json["rows"]
 
 
+_SEARCHMODE_RAW_RESULTS = [
+    [1, "barry cat", "terry dog", "panther"],
+    [2, "terry dog", "sara weasel", "puma"],
+]
+
+
+@pytest.mark.parametrize(
+    "table_metadata,querystring,expected_rows",
+    [
+        (
+            {},
+            "_search=te*+AND+do*",
+            [],
+        ),
+        (
+            {"searchmode": "raw"},
+            "_search=te*+AND+do*",
+            _SEARCHMODE_RAW_RESULTS,
+        ),
+        (
+            {},
+            "_search=te*+AND+do*&_searchmode=raw",
+            _SEARCHMODE_RAW_RESULTS,
+        ),
+        # Can be over-ridden with _searchmode=escaped
+        (
+            {"searchmode": "raw"},
+            "_search=te*+AND+do*&_searchmode=escaped",
+            [],
+        ),
+    ],
+)
+def test_searchmode(table_metadata, querystring, expected_rows):
+    with make_app_client(
+        metadata={"databases": {"fixtures": {"tables": {"searchable": table_metadata}}}}
+    ) as client:
+        response = client.get("/fixtures/searchable.json?" + querystring)
+        assert expected_rows == response.json["rows"]
+
+
 @pytest.mark.parametrize(
     "path,expected_rows",
     [

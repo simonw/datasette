@@ -36,7 +36,11 @@ Advanced SQLite search queries
 
 SQLite full-text search includes support for `a variety of advanced queries <https://www.sqlite.org/fts5.html#full_text_query_syntax>`__, including ``AND``, ``OR``, ``NOT`` and ``NEAR``.
 
-By default Datasette disables these features to ensure they do not cause any confusion for users who are not aware of them. You can disable this escaping and use the advanced queries by adding ``?_searchmode=raw`` to the table page query string.
+By default Datasette disables these features to ensure they do not cause errors or confusion for users who are not aware of them. You can disable this escaping and use the advanced queries by adding ``&_searchmode=raw`` to the table page query string.
+
+If you want to enable these operators by default for a specific table, you can do so by adding ``"searchmode": "raw"`` to the metadata configuration for that table, see :ref:`full_text_search_table_or_view`.
+
+If that option has been specified in the table metadata but you want to over-ride it and return to the default behavior you can append ``&_searchmode=escaped`` to the query string.
 
 .. _full_text_search_table_or_view:
 
@@ -53,19 +57,24 @@ https://latest.datasette.io/fixtures/searchable_view?_fts_table=searchable_fts&_
 
 The ``fts_table`` metadata property can be used to specify an associated FTS table. If the primary key column in your table which was used to populate the FTS table is something other than ``rowid``, you can specify the column to use with the ``fts_pk`` property.
 
-Here is an example which enables full-text search for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key::
+The ``"searchmode": "raw"`` property can be used to default the table to accepting SQLite advanced search operators, as described in :ref:`full_text_search_advanced_queries`.
+
+Here is an example which enables full-text search (with SQLite advanced search operators) for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key:
+
+.. code-block:: json
 
     {
-      "databases": {
-        "russian-ads": {
-          "tables": {
-            "display_ads": {
-              "fts_table": "ads_fts",
-              "fts_pk": "id"
+        "databases": {
+            "russian-ads": {
+                "tables": {
+                    "display_ads": {
+                        "fts_table": "ads_fts",
+                        "fts_pk": "id",
+                        "search_mode": "raw"
+                    }
+                }
             }
-          }
         }
-      }
     }
 
 .. _full_text_search_custom_sql:

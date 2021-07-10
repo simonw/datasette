@@ -495,7 +495,13 @@ class TableView(RowTableShared):
             if pair[0].startswith("_search") and pair[0] != "_searchmode"
         )
         search = ""
-        search_mode_raw = special_args.get("_searchmode") == "raw"
+        search_mode_raw = table_metadata.get("searchmode") == "raw"
+        # Or set it from the querystring
+        qs_searchmode = special_args.get("_searchmode")
+        if qs_searchmode == "escaped":
+            search_mode_raw = False
+        if qs_searchmode == "raw":
+            search_mode_raw = True
         if fts_table and search_args:
             if "_search" in search_args:
                 # Simple ?_search=xxx

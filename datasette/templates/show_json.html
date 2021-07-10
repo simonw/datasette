@@ -4,6 +4,13 @@
 
 {% block body_class %}show-json{% endblock %}
 
+{% block nav %}
+    <p class="crumbs">
+        <a href="{{ urls.instance() }}">home</a>
+    </p>
+    {{ super() }}
+{% endblock %}
+
 {% block content %}
 <h1>{{ filename }}</h1>
 

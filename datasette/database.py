@@ -1,8 +1,9 @@
 import asyncio
-import contextlib
+from collections import namedtuple
 from pathlib import Path
 import janus
 import queue
+import sys
 import threading
 import uuid
 
@@ -16,37 +17,71 @@ from .utils import (
     sqlite_timelimit,
     sqlite3,
     table_columns,
+    table_column_details,
 )
 from .inspect import inspect_hash
 
 connections = threading.local()
 
+AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
+
 
 class Database:
-    def __init__(self, ds, path=None, is_mutable=False, is_memory=False):
+    def __init__(
+        self, ds, path=None, is_mutable=False, is_memory=False, memory_name=None
+    ):
+        self.name = None
         self.ds = ds
         self.path = path
         self.is_mutable = is_mutable
         self.is_memory = is_memory
+        self.memory_name = memory_name
+        if memory_name is not None:
+            self.is_memory = True
+            self.is_mutable = True
         self.hash = None
         self.cached_size = None
-        self.cached_table_counts = None
+        self._cached_table_counts = None
         self._write_thread = None
         self._write_queue = None
         if not self.is_mutable and not self.is_memory:
             p = Path(path)
             self.hash = inspect_hash(p)
             self.cached_size = p.stat().st_size
-            # Maybe use self.ds.inspect_data to populate cached_table_counts
-            if self.ds.inspect_data and self.ds.inspect_data.get(self.name):
-                self.cached_table_counts = {
-                    key: value["count"]
-                    for key, value in self.ds.inspect_data[self.name]["tables"].items()
-                }
+
+    @property
+    def cached_table_counts(self):
+        if self._cached_table_counts is not None:
+            return self._cached_table_counts
+        # Maybe use self.ds.inspect_data to populate cached_table_counts
+        if self.ds.inspect_data and self.ds.inspect_data.get(self.name):
+            self._cached_table_counts = {
+                key: value["count"]
+                for key, value in self.ds.inspect_data[self.name]["tables"].items()
+            }
+        return self._cached_table_counts
+
+    def suggest_name(self):
+        if self.path:
+            return Path(self.path).stem
+        elif self.memory_name:
+            return self.memory_name
+        else:
+            return "db"
 
     def connect(self, write=False):
+        if self.memory_name:
+            uri = "file:{}?mode=memory&cache=shared".format(self.memory_name)
+            conn = sqlite3.connect(
+                uri,
+                uri=True,
+                check_same_thread=False,
+            )
+            if not write:
+                conn.execute("PRAGMA query_only=1")
+            return conn
         if self.is_memory:
-            return sqlite3.connect(":memory:")
+            return sqlite3.connect(":memory:", uri=True)
         # mode=ro or immutable=1?
         if self.is_mutable:
             qs = "?mode=ro"
@@ -56,7 +91,7 @@ class Database:
         if write:
             qs = ""
         return sqlite3.connect(
-            "file:{}{}".format(self.path, qs), uri=True, check_same_thread=False
+            f"file:{self.path}{qs}", uri=True, check_same_thread=False
         )
 
     async def execute_write(self, sql, params=None, block=False):
@@ -89,14 +124,23 @@ class Database:
     def _execute_writes(self):
         # Infinite looping thread that protects the single write connection
         # to this database
-        conn = self.connect(write=True)
+        conn_exception = None
+        conn = None
+        try:
+            conn = self.connect(write=True)
+        except Exception as e:
+            conn_exception = e
         while True:
             task = self._write_queue.get()
-            try:
-                result = task.fn(conn)
-            except Exception as e:
-                print(e)
-                result = e
+            if conn_exception is not None:
+                result = conn_exception
+            else:
+                try:
+                    result = task.fn(conn)
+                except Exception as e:
+                    sys.stderr.write("{}\n".format(e))
+                    sys.stderr.flush()
+                    result = e
             task.reply_queue.sync_q.put(result)
 
     async def execute_fn(self, fn):
@@ -147,11 +191,12 @@ class Database:
                     if e.args == ("interrupted",):
                         raise QueryInterrupted(e, sql, params)
                     if log_sql_errors:
-                        print(
-                            "ERROR: conn={}, sql = {}, params = {}: {}".format(
+                        sys.stderr.write(
+                            "ERROR: conn={}, sql = {}, params = {}: {}\n".format(
                                 conn, repr(sql), params, e
                             )
                         )
+                        sys.stderr.flush()
                     raise
 
             if truncate:
@@ -182,7 +227,7 @@ class Database:
             try:
                 table_count = (
                     await self.execute(
-                        "select count(*) from [{}]".format(table),
+                        f"select count(*) from [{table}]",
                         custom_time_limit=limit,
                     )
                 ).rows[0][0]
@@ -192,7 +237,7 @@ class Database:
             except (QueryInterrupted, sqlite3.OperationalError, sqlite3.DatabaseError):
                 counts[table] = None
         if not self.is_mutable:
-            self.cached_table_counts = counts
+            self._cached_table_counts = counts
         return counts
 
     @property
@@ -201,12 +246,13 @@ class Database:
             return None
         return Path(self.path).stat().st_mtime_ns
 
-    @property
-    def name(self):
-        if self.is_memory:
-            return ":memory:"
-        else:
-            return Path(self.path).stem
+    async def attached_databases(self):
+        # This used to be:
+        #   select seq, name, file from pragma_database_list() where seq > 0
+        # But SQLite prior to 3.16.0 doesn't support pragma functions
+        results = await self.execute("PRAGMA database_list;")
+        # {'seq': 0, 'name': 'main', 'file': ''}
+        return [AttachedDatabase(*row) for row in results.rows if row["seq"] > 0]
 
     async def table_exists(self, table):
         results = await self.execute(
@@ -223,6 +269,9 @@ class Database:
     async def table_columns(self, table):
         return await self.execute_fn(lambda conn: table_columns(conn, table))
 
+    async def table_column_details(self, table):
+        return await self.execute_fn(lambda conn: table_column_details(conn, table))
+
     async def primary_keys(self, table):
         return await self.execute_fn(lambda conn: detect_primary_keys(conn, table))
 
@@ -235,12 +284,12 @@ class Database:
         )
         if explicit_label_column:
             return explicit_label_column
-        # If a table has two columns, one of which is ID, then label_column is the other one
         column_names = await self.execute_fn(lambda conn: table_columns(conn, table))
         # Is there a name or title column?
         name_or_title = [c for c in column_names if c in ("name", "title")]
         if name_or_title:
             return name_or_title[0]
+        # If a table has two columns, one of which is ID, then label_column is the other one
         if (
             column_names
             and len(column_names) == 2
@@ -350,13 +399,13 @@ class Database:
         if self.is_memory:
             tags.append("memory")
         if self.hash:
-            tags.append("hash={}".format(self.hash))
+            tags.append(f"hash={self.hash}")
         if self.size is not None:
-            tags.append("size={}".format(self.size))
+            tags.append(f"size={self.size}")
         tags_str = ""
         if tags:
-            tags_str = " ({})".format(", ".join(tags))
-        return "<Database: {}{}>".format(self.name, tags_str)
+            tags_str = f" ({', '.join(tags)})"
+        return f"<Database: {self.name}{tags_str}>"
 
 
 class WriteTask:

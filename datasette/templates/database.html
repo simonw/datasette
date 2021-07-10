@@ -11,19 +11,42 @@
 
 {% block nav %}
     <p class="crumbs">
-        <a href="{{ base_url }}">home</a>
+        <a href="{{ urls.instance() }}">home</a>
     </p>
     {{ super() }}
 {% endblock %}
 
 {% block content %}
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>
+
+<div class="page-header" style="border-color: #{{ database_color(database) }}">
+    <h1>{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>
+    {% set links = database_actions() %}{% if links %}
+    <details class="actions-menu-links">
+        <summary><svg aria-labelledby="actions-menu-links-title" role="img"
+                style="color: #666" xmlns="http://www.w3.org/2000/svg"
+                width="28" height="28" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <title id="actions-menu-links-title">Table actions</title>
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg></summary>
+        <div class="dropdown-menu">
+            {% if links %}
+            <ul>
+                {% for link in links %}
+                <li><a href="{{ link.href }}">{{ link.label }}</a></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </details>{% endif %}
+</div> 
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% if allow_execute_sql %}
-    <form class="sql" action="{{ database_url(database) }}" method="get">
+    <form class="sql" action="{{ urls.database(database) }}" method="get">
         <h3>Custom SQL query</h3>
         <p><textarea id="sql-editor" name="sql">{% if tables %}select * from {{ tables[0].name|escape_sqlite }}{% else %}select sqlite_version(){% endif %}</textarea></p>
         <p>
@@ -33,40 +56,51 @@
     </form>
 {% endif %}
 
+{% if attached_databases %}
+    <div class="message-info">
+        <p>The following databases are attached to this connection, and can be used for cross-database joins:</p>
+        <ul class="bullets">
+            {% for db_name in attached_databases %}
+                <li><strong>{{ db_name }}</strong> - <a href="?sql=select+*+from+[{{ db_name }}].sqlite_master+where+type='table'">tables</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
 {% for table in tables %}
 {% if show_hidden or not table.hidden %}
 <div class="db-table">
-    <h2><a href="{{ database_url(database) }}/{{ table.name|quote_plus }}">{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
-    <p><em>{% for column in table.columns[:9] %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}{% if table.columns|length > 9 %}...{% endif %}</em></p>
+    <h2><a href="{{ urls.table(database, table.name) }}">{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
+    <p><em>{% for column in table.columns %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}</em></p>
     <p>{% if table.count is none %}Many rows{% else %}{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}{% endif %}</p>
 </div>
 {% endif %}
 {% endfor %}
 
 {% if hidden_count and not show_hidden %}
-    <p>... and <a href="{{ database_url(database) }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
+    <p>... and <a href="{{ urls.database(database) }}?_show_hidden=1">{{ "{:,}".format(hidden_count) }} hidden table{% if hidden_count == 1 %}{% else %}s{% endif %}</a></p>
 {% endif %}
 
 {% if views %}
     <h2 id="views">Views</h2>
-    <ul>
+    <ul class="bullets">
         {% for view in views %}
-            <li><a href="{{ database_url(database) }}/{{ view.name|urlencode }}">{{ view.name }}</a>{% if view.private %} 🔒{% endif %}</li>
+            <li><a href="{{ urls.database(database) }}/{{ view.name|urlencode }}">{{ view.name }}</a>{% if view.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
 {% endif %}
 
 {% if queries %}
     <h2 id="queries">Queries</h2>
-    <ul>
+    <ul class="bullets">
         {% for query in queries %}
-            <li><a href="{{ database_url(database) }}/{{ query.name|urlencode }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
+            <li><a href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
 {% endif %}
 
 {% if allow_download %}
-    <p class="download-sqlite">Download SQLite DB: <a href="{{ database_url(database) }}.db">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
+    <p class="download-sqlite">Download SQLite DB: <a href="{{ urls.database(database) }}.db">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
 {% endif %}
 
 {% include "_codemirror_foot.html" %}

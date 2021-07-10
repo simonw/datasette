@@ -1,5 +1,8 @@
+from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.utils import detect_json1
+from datasette.utils.sqlite import sqlite3, sqlite_version, supports_table_xinfo
+from datasette.version import __version__
 from .fixtures import (  # noqa
     app_client,
     app_client_no_files,
@@ -12,6 +15,7 @@ from .fixtures import (  # noqa
     app_client_conflicting_database_names,
     app_client_with_cors,
     app_client_with_dot,
+    app_client_with_trace,
     app_client_immutable_and_inspect_file,
     generate_compound_rows,
     generate_sortable_rows,
@@ -20,6 +24,7 @@ from .fixtures import (  # noqa
     METADATA,
 )
 import json
+import pathlib
 import pytest
 import sys
 import urllib
@@ -36,9 +41,9 @@ def test_homepage(app_client):
     assert len(d["tables_and_views_truncated"]) == 5
     assert d["tables_and_views_more"] is True
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
-    assert d["hidden_tables_count"] == 5
-    # 201 in no_primary_key, plus 5 in other hidden tables:
-    assert d["hidden_table_rows_sum"] == 206
+    assert d["hidden_tables_count"] == 6
+    # 201 in no_primary_key, plus 6 in other hidden tables:
+    assert d["hidden_table_rows_sum"] == 207
     assert d["views_count"] == 4
 
 
@@ -48,20 +53,21 @@ def test_homepage_sort_by_relationships(app_client):
     tables = [
         t["name"] for t in response.json["fixtures"]["tables_and_views_truncated"]
     ]
-    assert [
+    assert tables == [
         "simple_primary_key",
+        "foreign_key_references",
         "complex_foreign_keys",
         "roadside_attraction_characteristics",
         "searchable_tags",
-        "foreign_key_references",
-    ] == tables
+    ]
 
 
 def test_database_page(app_client):
     response = app_client.get("/fixtures.json")
+    assert response.status == 200
     data = response.json
-    assert "fixtures" == data["database"]
-    assert [
+    assert data["database"] == "fixtures"
+    assert data["tables"] == [
         {
             "name": "123_starts_with_digits",
             "columns": ["content"],
@@ -105,7 +111,7 @@ def test_database_page(app_client):
             "name": "binary_data",
             "columns": ["data"],
             "primary_keys": [],
-            "count": 1,
+            "count": 3,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
@@ -230,7 +236,14 @@ def test_database_page(app_client):
         },
         {
             "name": "foreign_key_references",
-            "columns": ["pk", "foreign_key_with_label", "foreign_key_with_no_label"],
+            "columns": [
+                "pk",
+                "foreign_key_with_label",
+                "foreign_key_with_blank_label",
+                "foreign_key_with_no_label",
+                "foreign_key_compound_pk1",
+                "foreign_key_compound_pk2",
+            ],
             "primary_keys": ["pk"],
             "count": 2,
             "hidden": False,
@@ -245,6 +258,11 @@ def test_database_page(app_client):
                     },
                     {
                         "other_table": "simple_primary_key",
+                        "column": "foreign_key_with_blank_label",
+                        "other_column": "id",
+                    },
+                    {
+                        "other_table": "simple_primary_key",
                         "column": "foreign_key_with_label",
                         "other_column": "id",
                     },
@@ -252,6 +270,7 @@ def test_database_page(app_client):
             },
             "private": False,
         },
+    ] + [
         {
             "name": "infinity",
             "columns": ["value"],
@@ -404,6 +423,11 @@ def test_database_page(app_client):
                     {
                         "other_table": "foreign_key_references",
                         "column": "id",
+                        "other_column": "foreign_key_with_blank_label",
+                    },
+                    {
+                        "other_table": "foreign_key_references",
+                        "column": "id",
                         "other_column": "foreign_key_with_label",
                     },
                     {
@@ -495,7 +519,20 @@ def test_database_page(app_client):
         },
         {
             "name": "searchable_fts",
-            "columns": ["text1", "text2", "name with . and spaces", "content"],
+            "columns": [
+                "text1",
+                "text2",
+                "name with . and spaces",
+            ]
+            + (
+                [
+                    "searchable_fts",
+                    "docid",
+                    "__langid",
+                ]
+                if supports_table_xinfo()
+                else []
+            ),
             "primary_keys": [],
             "count": 2,
             "hidden": True,
@@ -504,14 +541,8 @@ def test_database_page(app_client):
             "private": False,
         },
         {
-            "name": "searchable_fts_content",
-            "columns": [
-                "docid",
-                "c0text1",
-                "c1text2",
-                "c2name with . and spaces",
-                "c3content",
-            ],
+            "name": "searchable_fts_docsize",
+            "columns": ["docid", "size"],
             "primary_keys": ["docid"],
             "count": 2,
             "hidden": True,
@@ -546,35 +577,61 @@ def test_database_page(app_client):
             "foreign_keys": {"incoming": [], "outgoing": []},
             "private": False,
         },
-    ] == data["tables"]
+        {
+            "name": "searchable_fts_stat",
+            "columns": ["id", "value"],
+            "primary_keys": ["id"],
+            "count": 1,
+            "hidden": True,
+            "fts_table": None,
+            "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
+        },
+    ]
 
 
 def test_no_files_uses_memory_database(app_client_no_files):
     response = app_client_no_files.get("/.json")
     assert response.status == 200
     assert {
-        ":memory:": {
+        "_memory": {
+            "name": "_memory",
             "hash": None,
-            "color": "f7935d",
+            "color": "a6c7b9",
+            "path": "/_memory",
+            "tables_and_views_truncated": [],
+            "tables_and_views_more": False,
+            "tables_count": 0,
+            "table_rows_sum": 0,
+            "show_table_row_counts": False,
             "hidden_table_rows_sum": 0,
             "hidden_tables_count": 0,
-            "name": ":memory:",
-            "show_table_row_counts": False,
-            "path": "/:memory:",
-            "table_rows_sum": 0,
-            "tables_count": 0,
-            "tables_and_views_more": False,
-            "tables_and_views_truncated": [],
             "views_count": 0,
             "private": False,
         }
     } == response.json
     # Try that SQL query
     response = app_client_no_files.get(
-        "/:memory:.json?sql=select+sqlite_version()&_shape=array"
+        "/_memory.json?sql=select+sqlite_version()&_shape=array"
     )
     assert 1 == len(response.json)
     assert ["sqlite_version()"] == list(response.json[0].keys())
+
+
+@pytest.mark.parametrize(
+    "path,expected_redirect",
+    (
+        ("/:memory:", "/_memory"),
+        ("/:memory:.json", "/_memory.json"),
+        ("/:memory:?sql=select+1", "/_memory?sql=select+1"),
+        ("/:memory:.json?sql=select+1", "/_memory.json?sql=select+1"),
+        ("/:memory:.csv?sql=select+1", "/_memory.csv?sql=select+1"),
+    ),
+)
+def test_old_memory_urls_redirect(app_client_no_files, path, expected_redirect):
+    response = app_client_no_files.get(path, allow_redirects=False)
+    assert response.status == 301
+    assert response.headers["location"] == expected_redirect
 
 
 def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
@@ -734,7 +791,7 @@ def test_table_shape_object(app_client):
     } == response.json
 
 
-def test_table_shape_object_compound_primary_Key(app_client):
+def test_table_shape_object_compound_primary_key(app_client):
     response = app_client.get("/fixtures/compound_primary_key.json?_shape=object")
     assert {"a,b": {"pk1": "a", "pk2": "b", "content": "c"}} == response.json
 
@@ -815,7 +872,7 @@ def test_validate_page_size(app_client, path, expected_error):
 
 
 def test_page_size_zero(app_client):
-    "For _size=0 we return the counts, empty rows and no continuation token"
+    """For _size=0 we return the counts, empty rows and no continuation token"""
     response = app_client.get("/fixtures/no_primary_key.json?_size=0")
     assert 200 == response.status
     assert [] == response.json["rows"]
@@ -896,7 +953,7 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
     ],
 )
 def test_sortable(app_client, query_string, sort_key, human_description_en):
-    path = "/fixtures/sortable.json?_shape=objects&{}".format(query_string)
+    path = f"/fixtures/sortable.json?_shape=objects&{query_string}"
     fetched = []
     page = 0
     while path:
@@ -947,8 +1004,8 @@ def test_sortable_columns_metadata(app_client):
     assert "Cannot sort table by content" == response.json["error"]
     # no_primary_key has ALL sort options disabled
     for column in ("content", "a", "b", "c"):
-        response = app_client.get("/fixtures/sortable.json?_sort={}".format(column))
-        assert "Cannot sort table by {}".format(column) == response.json["error"]
+        response = app_client.get(f"/fixtures/sortable.json?_sort={column}")
+        assert f"Cannot sort table by {column}" == response.json["error"]
 
 
 @pytest.mark.parametrize(
@@ -980,6 +1037,13 @@ def test_sortable_columns_metadata(app_client):
             ],
         ),
         (
+            # _searchmode=raw combined with _search_COLUMN
+            "/fixtures/searchable.json?_search_text2=te*&_searchmode=raw",
+            [
+                [1, "barry cat", "terry dog", "panther"],
+            ],
+        ),
+        (
             "/fixtures/searchable.json?_search=weasel",
             [[2, "terry dog", "sara weasel", "puma"]],
         ),
@@ -996,6 +1060,46 @@ def test_sortable_columns_metadata(app_client):
 def test_searchable(app_client, path, expected_rows):
     response = app_client.get(path)
     assert expected_rows == response.json["rows"]
+
+
+_SEARCHMODE_RAW_RESULTS = [
+    [1, "barry cat", "terry dog", "panther"],
+    [2, "terry dog", "sara weasel", "puma"],
+]
+
+
+@pytest.mark.parametrize(
+    "table_metadata,querystring,expected_rows",
+    [
+        (
+            {},
+            "_search=te*+AND+do*",
+            [],
+        ),
+        (
+            {"searchmode": "raw"},
+            "_search=te*+AND+do*",
+            _SEARCHMODE_RAW_RESULTS,
+        ),
+        (
+            {},
+            "_search=te*+AND+do*&_searchmode=raw",
+            _SEARCHMODE_RAW_RESULTS,
+        ),
+        # Can be over-ridden with _searchmode=escaped
+        (
+            {"searchmode": "raw"},
+            "_search=te*+AND+do*&_searchmode=escaped",
+            [],
+        ),
+    ],
+)
+def test_searchmode(table_metadata, querystring, expected_rows):
+    with make_app_client(
+        metadata={"databases": {"fixtures": {"tables": {"searchable": table_metadata}}}}
+    ) as client:
+        response = client.get("/fixtures/searchable.json?" + querystring)
+        assert expected_rows == response.json["rows"]
 
 
 @pytest.mark.parametrize(
@@ -1065,7 +1169,7 @@ def test_table_filter_queries_multiple_of_same_type(app_client):
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 def test_table_filter_json_arraycontains(app_client):
     response = app_client.get("/fixtures/facetable.json?tags__arraycontains=tag1")
-    assert [
+    assert response.json["rows"] == [
         [
             1,
             "2019-01-14 08:00:00",
@@ -1090,7 +1194,28 @@ def test_table_filter_json_arraycontains(app_client):
             "[]",
             "two",
         ],
-    ] == response.json["rows"]
+    ]
+
+
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+def test_table_filter_json_arraynotcontains(app_client):
+    response = app_client.get(
+        "/fixtures/facetable.json?tags__arraynotcontains=tag3&tags__not=[]"
+    )
+    assert response.json["rows"] == [
+        [
+            1,
+            "2019-01-14 08:00:00",
+            1,
+            1,
+            "CA",
+            1,
+            "Mission",
+            '["tag1", "tag2"]',
+            '[{"foo": "bar"}]',
+            "one",
+        ]
+    ]
 
 
 def test_table_filter_extra_where(app_client):
@@ -1199,32 +1324,38 @@ def test_row_foreign_key_tables(app_client):
         "/fixtures/simple_primary_key/1.json?_extras=foreign_key_tables"
     )
     assert response.status == 200
-    assert [
+    assert response.json["foreign_key_tables"] == [
         {
-            "column": "id",
-            "count": 1,
-            "other_column": "foreign_key_with_label",
             "other_table": "foreign_key_references",
-        },
-        {
             "column": "id",
-            "count": 1,
-            "other_column": "f3",
-            "other_table": "complex_foreign_keys",
-        },
-        {
-            "column": "id",
+            "other_column": "foreign_key_with_blank_label",
             "count": 0,
-            "other_column": "f2",
-            "other_table": "complex_foreign_keys",
         },
         {
+            "other_table": "foreign_key_references",
             "column": "id",
+            "other_column": "foreign_key_with_label",
             "count": 1,
-            "other_column": "f1",
-            "other_table": "complex_foreign_keys",
         },
-    ] == response.json["foreign_key_tables"]
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f3",
+            "count": 1,
+        },
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f2",
+            "count": 0,
+        },
+        {
+            "other_table": "complex_foreign_keys",
+            "column": "id",
+            "other_column": "f1",
+            "count": 1,
+        },
+    ]
 
 
 def test_unit_filters(app_client):
@@ -1288,14 +1419,15 @@ def test_versions_json(app_client):
     assert "full" in response.json["python"]
     assert "datasette" in response.json
     assert "version" in response.json["datasette"]
+    assert response.json["datasette"]["version"] == __version__
     assert "sqlite" in response.json
     assert "version" in response.json["sqlite"]
     assert "fts_versions" in response.json["sqlite"]
     assert "compile_options" in response.json["sqlite"]
 
 
-def test_config_json(app_client):
-    response = app_client.get("/-/config.json")
+def test_settings_json(app_client):
+    response = app_client.get("/-/settings.json")
     assert {
         "default_page_size": 50,
         "default_facet_size": 30,
@@ -1316,8 +1448,22 @@ def test_config_json(app_client):
         "force_https_urls": False,
         "hash_urls": False,
         "template_debug": False,
+        "trace_debug": False,
         "base_url": "/",
     } == response.json
+
+
+@pytest.mark.parametrize(
+    "path,expected_redirect",
+    (
+        ("/-/config.json", "/-/settings.json"),
+        ("/-/config", "/-/settings"),
+    ),
+)
+def test_config_redirects_to_settings(app_client, path, expected_redirect):
+    response = app_client.get(path, allow_redirects=False)
+    assert response.status == 301
+    assert response.headers["Location"] == expected_redirect
 
 
 def test_page_size_matching_max_returned_rows(
@@ -1550,6 +1696,36 @@ def test_suggest_facets_off():
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
 
+@pytest.mark.parametrize("nofacet", (True, False))
+def test_nofacet(app_client, nofacet):
+    path = "/fixtures/facetable.json?_facet=state"
+    if nofacet:
+        path += "&_nofacet=1"
+    response = app_client.get(path)
+    if nofacet:
+        assert response.json["suggested_facets"] == []
+        assert response.json["facet_results"] == {}
+    else:
+        assert response.json["suggested_facets"] != []
+        assert response.json["facet_results"] != {}
+
+
+@pytest.mark.parametrize("nocount,expected_count", ((True, None), (False, 15)))
+def test_nocount(app_client, nocount, expected_count):
+    path = "/fixtures/facetable.json"
+    if nocount:
+        path += "?_nocount=1"
+    response = app_client.get(path)
+    assert response.json["filtered_table_rows_count"] == expected_count
+
+
+def test_nocount_nofacet_if_shape_is_object(app_client_with_trace):
+    response = app_client_with_trace.get(
+        "/fixtures/facetable.json?_trace=1&_shape=object"
+    )
+    assert "count(*)" not in response.text
+
+
 def test_expand_labels(app_client):
     response = app_client.get(
         "/fixtures/facetable.json?_shape=object&_labels=1&_size=2"
@@ -1588,13 +1764,16 @@ def test_expand_label(app_client):
         "/fixtures/foreign_key_references.json?_shape=object"
         "&_label=foreign_key_with_label&_size=1"
     )
-    assert {
+    assert response.json == {
         "1": {
             "pk": "1",
             "foreign_key_with_label": {"value": "1", "label": "hello"},
+            "foreign_key_with_blank_label": "3",
             "foreign_key_with_no_label": "1",
+            "foreign_key_compound_pk1": "a",
+            "foreign_key_compound_pk2": "b",
         }
-    } == response.json
+    }
 
 
 @pytest.mark.parametrize(
@@ -1713,9 +1892,17 @@ def test_custom_query_with_unicode_characters(app_client):
     assert [{"id": 1, "name": "San Francisco"}] == response.json
 
 
-def test_trace(app_client):
-    response = app_client.get("/fixtures/simple_primary_key.json?_trace=1")
+@pytest.mark.parametrize("trace_debug", (True, False))
+def test_trace(trace_debug):
+    with make_app_client(config={"trace_debug": trace_debug}) as client:
+        response = client.get("/fixtures/simple_primary_key.json?_trace=1")
+        assert response.status == 200
+
     data = response.json
+    if not trace_debug:
+        assert "_trace" not in data
+        return
+
     assert "_trace" in data
     trace_info = data["_trace"]
     assert isinstance(trace_info["request_duration_ms"], float)
@@ -1737,6 +1924,7 @@ def test_trace(app_client):
 @pytest.mark.parametrize(
     "path,status_code",
     [
+        ("/fixtures.db", 200),
         ("/fixtures.json", 200),
         ("/fixtures/no_primary_key.json", 200),
         # A 400 invalid SQL query should still have the header:
@@ -1767,7 +1955,7 @@ def test_database_with_space_in_name(app_client_two_attached_databases, path):
 
 def test_common_prefix_database_names(app_client_conflicting_database_names):
     # https://github.com/simonw/datasette/issues/597
-    assert ["fixtures", "foo", "foo-bar"] == [
+    assert ["foo-bar", "foo", "fixtures"] == [
         d["name"]
         for d in app_client_conflicting_database_names.get("/-/databases.json").json
     ]
@@ -1776,20 +1964,213 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
         assert db_name == data["database"]
 
 
-def test_null_foreign_keys_are_not_expanded(app_client):
+def test_null_and_compound_foreign_keys_are_not_expanded(app_client):
     response = app_client.get(
         "/fixtures/foreign_key_references.json?_shape=array&_labels=on"
     )
-    assert [
+    assert response.json == [
         {
             "pk": "1",
             "foreign_key_with_label": {"value": "1", "label": "hello"},
+            "foreign_key_with_blank_label": {"value": "3", "label": ""},
             "foreign_key_with_no_label": {"value": "1", "label": "1"},
+            "foreign_key_compound_pk1": "a",
+            "foreign_key_compound_pk2": "b",
         },
-        {"pk": "2", "foreign_key_with_label": None, "foreign_key_with_no_label": None,},
-    ] == response.json
+        {
+            "pk": "2",
+            "foreign_key_with_label": None,
+            "foreign_key_with_blank_label": None,
+            "foreign_key_with_no_label": None,
+            "foreign_key_compound_pk1": None,
+            "foreign_key_compound_pk2": None,
+        },
+    ]
 
 
 def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
     response = app_client_immutable_and_inspect_file.get("/fixtures/sortable.json")
     assert response.json["filtered_table_rows_count"] == 100
+
+
+@pytest.mark.parametrize(
+    "path,expected_json,expected_text",
+    [
+        (
+            "/fixtures/binary_data.json?_shape=array",
+            [
+                {"rowid": 1, "data": {"$base64": True, "encoded": "FRwCx60F/g=="}},
+                {"rowid": 2, "data": {"$base64": True, "encoded": "FRwDx60F/g=="}},
+                {"rowid": 3, "data": None},
+            ],
+            None,
+        ),
+        (
+            "/fixtures/binary_data.json?_shape=array&_nl=on",
+            None,
+            (
+                '{"rowid": 1, "data": {"$base64": true, "encoded": "FRwCx60F/g=="}}\n'
+                '{"rowid": 2, "data": {"$base64": true, "encoded": "FRwDx60F/g=="}}\n'
+                '{"rowid": 3, "data": null}'
+            ),
+        ),
+    ],
+)
+def test_binary_data_in_json(app_client, path, expected_json, expected_text):
+    response = app_client.get(path)
+    if expected_json:
+        assert response.json == expected_json
+    else:
+        assert response.text == expected_text
+
+
+@pytest.mark.parametrize(
+    "qs",
+    [
+        "",
+        "?_shape=arrays",
+        "?_shape=arrayfirst",
+        "?_shape=object",
+        "?_shape=objects",
+        "?_shape=array",
+        "?_shape=array&_nl=on",
+    ],
+)
+def test_paginate_using_link_header(app_client, qs):
+    path = f"/fixtures/compound_three_primary_keys.json{qs}"
+    num_pages = 0
+    while path:
+        response = app_client.get(path)
+        assert response.status == 200
+        num_pages += 1
+        link = response.headers.get("link")
+        if link:
+            assert link.startswith("<")
+            assert link.endswith('>; rel="next"')
+            path = link[1:].split(">")[0]
+            path = path.replace("http://localhost", "")
+        else:
+            path = None
+    assert num_pages == 21
+
+
+@pytest.mark.skipif(
+    sqlite_version() < (3, 31, 0),
+    reason="generated columns were added in SQLite 3.31.0",
+)
+def test_generated_columns_are_visible_in_datasette():
+    with make_app_client(
+        extra_databases={
+            "generated.db": """
+                CREATE TABLE generated_columns (
+                    body TEXT,
+                    id INT GENERATED ALWAYS AS (json_extract(body, '$.number')) STORED,
+                    consideration INT GENERATED ALWAYS AS (json_extract(body, '$.string')) STORED
+                );
+                INSERT INTO generated_columns (body) VALUES (
+                    '{"number": 1, "string": "This is a string"}'
+                );"""
+        }
+    ) as client:
+        response = client.get("/generated/generated_columns.json?_shape=array")
+        assert response.json == [
+            {
+                "rowid": 1,
+                "body": '{"number": 1, "string": "This is a string"}',
+                "id": 1,
+                "consideration": "This is a string",
+            }
+        ]
+
+
+def test_http_options_request(app_client):
+    response = app_client.request("/fixtures", method="OPTIONS")
+    assert response.status == 200
+    assert response.text == "ok"
+
+
+@pytest.mark.parametrize(
+    "path,expected_columns",
+    (
+        ("/fixtures/facetable.json?_col=created", ["pk", "created"]),
+        (
+            "/fixtures/facetable.json?_nocol=created",
+            [
+                "pk",
+                "planet_int",
+                "on_earth",
+                "state",
+                "city_id",
+                "neighborhood",
+                "tags",
+                "complex_array",
+                "distinct_some_null",
+            ],
+        ),
+        (
+            "/fixtures/facetable.json?_col=state&_col=created",
+            ["pk", "state", "created"],
+        ),
+        (
+            "/fixtures/facetable.json?_col=state&_col=state",
+            ["pk", "state"],
+        ),
+        (
+            "/fixtures/facetable.json?_col=state&_col=created&_nocol=created",
+            ["pk", "state"],
+        ),
+        (
+            # Ensure faceting doesn't break, https://github.com/simonw/datasette/issues/1345
+            "/fixtures/facetable.json?_nocol=state&_facet=state",
+            [
+                "pk",
+                "created",
+                "planet_int",
+                "on_earth",
+                "city_id",
+                "neighborhood",
+                "tags",
+                "complex_array",
+                "distinct_some_null",
+            ],
+        ),
+        (
+            "/fixtures/simple_view.json?_nocol=content",
+            ["upper_content"],
+        ),
+        ("/fixtures/simple_view.json?_col=content", ["content"]),
+    ),
+)
+def test_col_nocol(app_client, path, expected_columns):
+    response = app_client.get(path)
+    assert response.status == 200
+    columns = response.json["columns"]
+    assert columns == expected_columns
+
+
+@pytest.mark.parametrize(
+    "path,expected_error",
+    (
+        ("/fixtures/facetable.json?_col=bad", "_col=bad - invalid columns"),
+        ("/fixtures/facetable.json?_nocol=bad", "_nocol=bad - invalid columns"),
+        ("/fixtures/facetable.json?_nocol=pk", "_nocol=pk - invalid columns"),
+        ("/fixtures/simple_view.json?_col=bad", "_col=bad - invalid columns"),
+    ),
+)
+def test_col_nocol_errors(app_client, path, expected_error):
+    response = app_client.get(path)
+    assert response.status == 400
+    assert response.json["error"] == expected_error
+
+
+@pytest.mark.asyncio
+async def test_db_path(app_client):
+    db = app_client.ds.get_database()
+    path = pathlib.Path(db.path)
+
+    assert path.exists()
+
+    datasette = Datasette([path])
+
+    # this will break with a path
+    await datasette.refresh_schemas()

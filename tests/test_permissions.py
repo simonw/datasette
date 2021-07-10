@@ -1,11 +1,17 @@
 from .fixtures import app_client, assert_permissions_checked, make_app_client
 from bs4 import BeautifulSoup as Soup
+import copy
 import pytest
+import urllib
 
 
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
-    [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
+    [
+        (None, 200, 200),
+        ({}, 403, 403),
+        ({"id": "root"}, 403, 200),
+    ],
 )
 def test_view_instance(allow, expected_anon, expected_auth):
     with make_app_client(metadata={"allow": allow}) as client:
@@ -21,7 +27,8 @@ def test_view_instance(allow, expected_anon, expected_auth):
                 # Should be no padlock
                 assert "<h1>Datasette 🔒</h1>" not in anon_response.text
             auth_response = client.get(
-                path, cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+                path,
+                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
             )
             assert expected_auth == auth_response.status
             # Check for the padlock
@@ -31,7 +38,11 @@ def test_view_instance(allow, expected_anon, expected_auth):
 
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
-    [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
+    [
+        (None, 200, 200),
+        ({}, 403, 403),
+        ({"id": "root"}, 403, 200),
+    ],
 )
 def test_view_database(allow, expected_anon, expected_auth):
     with make_app_client(
@@ -43,12 +54,13 @@ def test_view_database(allow, expected_anon, expected_auth):
             "/fixtures/compound_three_primary_keys/a,a,a",
         ):
             anon_response = client.get(path)
-            assert expected_anon == anon_response.status
+            assert expected_anon == anon_response.status, path
             if allow and path == "/fixtures" and anon_response.status == 200:
                 # Should be no padlock
                 assert ">fixtures 🔒</h1>" not in anon_response.text
             auth_response = client.get(
-                path, cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+                path,
+                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
             )
             assert expected_auth == auth_response.status
             if (
@@ -69,7 +81,8 @@ def test_database_list_respects_view_database():
         assert '<a href="/data">data</a></h2>' in anon_response.text
         assert '<a href="/fixtures">fixtures</a>' not in anon_response.text
         auth_response = client.get(
-            "/", cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+            "/",
+            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         )
         assert '<a href="/data">data</a></h2>' in auth_response.text
         assert '<a href="/fixtures">fixtures</a> 🔒</h2>' in auth_response.text
@@ -100,7 +113,8 @@ def test_database_list_respects_view_table():
         for html_fragment in html_fragments:
             assert html_fragment not in anon_response_text
         auth_response_text = client.get(
-            "/", cookies={"ds_actor": client.actor_cookie({"id": "root"})},
+            "/",
+            cookies={"ds_actor": client.actor_cookie({"id": "root"})},
         ).text
         for html_fragment in html_fragments:
             assert html_fragment in auth_response_text
@@ -108,7 +122,11 @@ def test_database_list_respects_view_table():
 
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
-    [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
+    [
+        (None, 200, 200),
+        ({}, 403, 403),
+        ({"id": "root"}, 403, 200),
+    ],
 )
 def test_view_table(allow, expected_anon, expected_auth):
     with make_app_client(
@@ -164,7 +182,11 @@ def test_table_list_respects_view_table():
 
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
-    [(None, 200, 200), ({}, 403, 403), ({"id": "root"}, 403, 200),],
+    [
+        (None, 200, 200),
+        ({}, 403, 403),
+        ({"id": "root"}, 403, 200),
+    ],
 )
 def test_view_query(allow, expected_anon, expected_auth):
     with make_app_client(
@@ -178,13 +200,13 @@ def test_view_query(allow, expected_anon, expected_auth):
         assert expected_anon == anon_response.status
         if allow and anon_response.status == 200:
             # Should be no padlock
-            assert ">fixtures 🔒</h1>" not in anon_response.text
+            assert "🔒</h1>" not in anon_response.text
         auth_response = client.get(
             "/fixtures/q", cookies={"ds_actor": client.actor_cookie({"id": "root"})}
         )
         assert expected_auth == auth_response.status
         if allow and expected_anon == 403 and expected_auth == 200:
-            assert ">fixtures 🔒</h1>" in auth_response.text
+            assert ">fixtures: q 🔒</h1>" in auth_response.text
 
 
 @pytest.mark.parametrize(
@@ -288,10 +310,11 @@ def test_permissions_checked(app_client, path, permissions):
 
 def test_permissions_debug(app_client):
     app_client.ds._permission_checks.clear()
-    assert 403 == app_client.get("/-/permissions").status
+    assert app_client.get("/-/permissions").status == 403
     # With the cookie it should work
     cookie = app_client.actor_cookie({"id": "root"})
     response = app_client.get("/-/permissions", cookies={"ds_actor": cookie})
+    assert response.status == 200
     # Should show one failure and one success
     soup = Soup(response.body, "html.parser")
     check_divs = soup.findAll("div", {"class": "check"})
@@ -312,8 +335,28 @@ def test_permissions_debug(app_client):
 
 
 @pytest.mark.parametrize(
+    "actor,allow,expected_fragment",
+    [
+        ('{"id":"root"}', "{}", "Result: deny"),
+        ('{"id":"root"}', '{"id": "*"}', "Result: allow"),
+        ('{"', '{"id": "*"}', "Actor JSON error"),
+        ('{"id":"root"}', '"*"}', "Allow JSON error"),
+    ],
+)
+def test_allow_debug(app_client, actor, allow, expected_fragment):
+    response = app_client.get(
+        "/-/allow-debug?" + urllib.parse.urlencode({"actor": actor, "allow": allow})
+    )
+    assert 200 == response.status
+    assert expected_fragment in response.text
+
+
+@pytest.mark.parametrize(
     "allow,expected",
-    [({"id": "root"}, 403), ({"id": "root", "unauthenticated": True}, 200),],
+    [
+        ({"id": "root"}, 403),
+        ({"id": "root", "unauthenticated": True}, 200),
+    ],
 )
 def test_allow_unauthenticated(allow, expected):
     with make_app_client(metadata={"allow": allow}) as client:
@@ -335,7 +378,7 @@ def view_instance_client():
         "/-/metadata",
         "/-/versions",
         "/-/plugins",
-        "/-/config",
+        "/-/settings",
         "/-/threads",
         "/-/databases",
         "/-/actor",
@@ -348,3 +391,77 @@ def test_view_instance(path, view_instance_client):
     assert 403 == view_instance_client.get(path).status
     if path not in ("/-/permissions", "/-/messages", "/-/patterns"):
         assert 403 == view_instance_client.get(path + ".json").status
+
+
+@pytest.fixture(scope="session")
+def cascade_app_client():
+    with make_app_client(is_immutable=True) as client:
+        yield client
+
+
+@pytest.mark.parametrize(
+    "path,permissions,expected_status",
+    [
+        ("/", [], 403),
+        ("/", ["instance"], 200),
+        # Can view table even if not allowed database or instance
+        ("/fixtures/binary_data", [], 403),
+        ("/fixtures/binary_data", ["database"], 403),
+        ("/fixtures/binary_data", ["instance"], 403),
+        ("/fixtures/binary_data", ["table"], 200),
+        ("/fixtures/binary_data", ["table", "database"], 200),
+        ("/fixtures/binary_data", ["table", "database", "instance"], 200),
+        # ... same for row
+        ("/fixtures/binary_data/1", [], 403),
+        ("/fixtures/binary_data/1", ["database"], 403),
+        ("/fixtures/binary_data/1", ["instance"], 403),
+        ("/fixtures/binary_data/1", ["table"], 200),
+        ("/fixtures/binary_data/1", ["table", "database"], 200),
+        ("/fixtures/binary_data/1", ["table", "database", "instance"], 200),
+        # Can view query even if not allowed database or instance
+        ("/fixtures/magic_parameters", [], 403),
+        ("/fixtures/magic_parameters", ["database"], 403),
+        ("/fixtures/magic_parameters", ["instance"], 403),
+        ("/fixtures/magic_parameters", ["query"], 200),
+        ("/fixtures/magic_parameters", ["query", "database"], 200),
+        ("/fixtures/magic_parameters", ["query", "database", "instance"], 200),
+        # Can view database even if not allowed instance
+        ("/fixtures", [], 403),
+        ("/fixtures", ["instance"], 403),
+        ("/fixtures", ["database"], 200),
+        # Downloading the fixtures.db file
+        ("/fixtures.db", [], 403),
+        ("/fixtures.db", ["instance"], 403),
+        ("/fixtures.db", ["database"], 200),
+        ("/fixtures.db", ["download"], 200),
+    ],
+)
+def test_permissions_cascade(cascade_app_client, path, permissions, expected_status):
+    """Test that e.g. having view-table but NOT view-database lets you view table page, etc"""
+    allow = {"id": "*"}
+    deny = {}
+    previous_metadata = cascade_app_client.ds.metadata()
+    updated_metadata = copy.deepcopy(previous_metadata)
+    actor = {"id": "test"}
+    if "download" in permissions:
+        actor["can_download"] = 1
+    try:
+        # Set up the different allow blocks
+        updated_metadata["allow"] = allow if "instance" in permissions else deny
+        updated_metadata["databases"]["fixtures"]["allow"] = (
+            allow if "database" in permissions else deny
+        )
+        updated_metadata["databases"]["fixtures"]["tables"]["binary_data"] = {
+            "allow": (allow if "table" in permissions else deny)
+        }
+        updated_metadata["databases"]["fixtures"]["queries"]["magic_parameters"][
+            "allow"
+        ] = (allow if "query" in permissions else deny)
+        cascade_app_client.ds._metadata_local = updated_metadata
+        response = cascade_app_client.get(
+            path,
+            cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
+        )
+        assert expected_status == response.status
+    finally:
+        cascade_app_client.ds._metadata_local = previous_metadata

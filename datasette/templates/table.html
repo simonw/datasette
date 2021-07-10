@@ -5,12 +5,12 @@
 
 {% block extra_head %}
 {{ super() }}
+<script src="{{ urls.static('table.js') }}" defer></script>
 <style>
 @media only screen and (max-width: 576px) {
-{% for column in display_columns %}
+{% for column in display_columns -%}
     .rows-and-columns td:nth-of-type({{ loop.index }}):before { content: "{{ column.name|escape_css_string }}"; }
-{% endfor %}
-}
+{% endfor %}}
 </style>
 {% endblock %}
 
@@ -18,15 +18,36 @@
 
 {% block nav %}
     <p class="crumbs">
-        <a href="{{ base_url }}">home</a> /
-        <a href="{{ database_url(database) }}">{{ database }}</a>
+        <a href="{{ urls.instance() }}">home</a> /
+        <a href="{{ urls.database(database) }}">{{ database }}</a>
     </p>
     {{ super() }}
 {% endblock %}
 
 {% block content %}
-
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or table }}{% if is_view %} (view){% endif %}{% if private %} 🔒{% endif %}</h1>
+<div class="page-header" style="border-color: #{{ database_color(database) }}">
+    <h1>{{ metadata.title or table }}{% if is_view %} (view){% endif %}{% if private %} 🔒{% endif %}</h1>
+    {% set links = table_actions() %}{% if links %}
+    <details class="actions-menu-links">
+        <summary><svg aria-labelledby="actions-menu-links-title" role="img"
+                style="color: #666" xmlns="http://www.w3.org/2000/svg"
+                width="28" height="28" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <title id="actions-menu-links-title">Table actions</title>
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg></summary>
+        <div class="dropdown-menu">
+            {% if links %}
+            <ul>
+                {% for link in links %}
+                <li><a href="{{ link.href }}">{{ link.label }}</a></li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </div>
+    </details>{% endif %}
+</div>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
@@ -36,7 +57,7 @@
     </h3>
 {% endif %}
 
-<form class="filters" action="{{ database_url(database) }}/{{ table|quote_plus }}" method="get">
+<form class="filters" action="{{ urls.table(database, table) }}" method="get">
     {% if supports_search %}
         <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
     {% endif %}
@@ -88,9 +109,6 @@
             </div>
             <label class="sort_by_desc small-screen-only"><input type="checkbox" name="_sort_by_desc"{% if sort_desc %} checked{% endif %}> descending</label>
         {% endif %}
-        {% for facet in sorted_facet_results %}
-            <input type="hidden" name="_facet" value="{{ facet.name }}">
-        {% endfor %}
         {% for key, value in form_hidden_args %}
             <input type="hidden" name="{{ key }}" value="{{ value }}">
         {% endfor %}
@@ -110,7 +128,7 @@
 {% endif %}
 
 {% if query.sql and allow_execute_sql %}
-    <p><a class="not-underlined" title="{{ query.sql }}" href="{{ database_url(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
+    <p><a class="not-underlined" title="{{ query.sql }}" href="{{ urls.database(database) }}?{{ {'sql': query.sql}|urlencode|safe }}{% if query.params %}&amp;{{ query.params|urlencode|safe }}{% endif %}">&#x270e; <span class="underlined">View and edit SQL</span></a></p>
 {% endif %}
 
 <p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
@@ -135,16 +153,18 @@
                         <a href="{{ facet_info.toggle_url }}" class="cross">&#x2716;</a>
                     {% endif %}
                 </p>
-                <ul>
+                <ul class="tight-bullets">
                     {% for facet_value in facet_info.results %}
                         {% if not facet_value.selected %}
-                            <li><a href="{{ facet_value.toggle_url }}">{{ (facet_value.label if facet_value.label is not none else "_") }}</a> {{ "{:,}".format(facet_value.count) }}</li>
+                            <li><a href="{{ facet_value.toggle_url }}">{{ (facet_value.label | string()) or "-" }}</a> {{ "{:,}".format(facet_value.count) }}</li>
                         {% else %}
-                            <li>{{ facet_value.label }} &middot; {{ "{:,}".format(facet_value.count) }} <a href="{{ facet_value.toggle_url }}" class="cross">&#x2716;</a></li>
+                            <li>{{ facet_value.label or "-" }} &middot; {{ "{:,}".format(facet_value.count) }} <a href="{{ facet_value.toggle_url }}" class="cross">&#x2716;</a></li>
                         {% endif %}
                     {% endfor %}
                     {% if facet_info.truncated %}
-                        <li>...</li>
+                        <li class="facet-truncated">{% if request.args._facet_size != "max" -%}
+                            <a href="{{ path_with_replaced_args(request, {"_facet_size": "max"}) }}">…</a>{% else -%}…{% endif %}
+                        </li>
                     {% endif %}
                 </ul>
             </div>

@@ -8,6 +8,14 @@ The `SpatiaLite module <https://www.gaia-gis.it/fossil/libspatialite/index>`_ fo
 
 To use it with Datasette, you need to install the ``mod_spatialite`` dynamic library. This can then be loaded into Datasette using the ``--load-extension`` command-line option.
 
+Datasette can look for SpatiaLite in common installation locations if you run it like this::
+
+    datasette --load-extension=spatialite
+
+If SpatiaLite is in another location, use the full path to the extension instead::
+
+    datasette --load-extension=/usr/local/lib/mod_spatialite.dylib
+
 Installation
 ============
 
@@ -25,7 +33,7 @@ This will install the ``spatialite`` command-line tool and the ``mod_spatialite`
 
 You can now run Datasette like so::
 
-    datasette --load-extension=/usr/local/lib/mod_spatialite.dylib
+    datasette --load-extension=spatialite
 
 Installing SpatiaLite on Linux
 ------------------------------
@@ -41,11 +49,6 @@ Depending on your distribution, you should be able to run Datasette something li
     datasette --load-extension=/usr/lib/x86_64-linux-gnu/mod_spatialite.so
 
 If you are unsure of the location of the module, try running ``locate mod_spatialite`` and see what comes back.
-
-Building SpatiaLite from source
--------------------------------
-
-The packaged versions of SpatiaLite usually provide SpatiaLite 4.3.0a. For an example of how to build the most recent unstable version, 4.4.0-RC0 (which includes the powerful `VirtualKNN module <https://www.gaia-gis.it/fossil/libspatialite/wiki?name=KNN>`_), take a look at the `Datasette Dockerfile <https://github.com/simonw/datasette/blob/master/Dockerfile>`_.
 
 Spatial indexing latitude/longitude columns
 ===========================================
@@ -65,7 +68,7 @@ Here's a recipe for taking a table with existing latitude and longitude columns,
     conn.execute("SELECT AddGeometryColumn('museums', 'point_geom', 4326, 'POINT', 2);")
     # Now update that geometry column with the lat/lon points
     conn.execute('''
-        UPDATE events SET
+        UPDATE museums SET
         point_geom = GeomFromText('POINT('||"longitude"||' '||"latitude"||')',4326);
     ''')
     # Now add a spatial index to that column
@@ -85,7 +88,7 @@ In the above example, the resulting index will be called ``idx_museums_point_geo
 
     select * from idx_museums_point_geom limit 10;
 
-Here's a live example: `timezones-api.now.sh/timezones/idx_timezones_Geometry <https://timezones-api.now.sh/timezones/idx_timezones_Geometry>`_
+Here's a live example: `timezones-api.datasette.io/timezones/idx_timezones_Geometry <https://timezones-api.datasette.io/timezones/idx_timezones_Geometry>`_
 
 +--------+----------------------+----------------------+---------------------+---------------------+
 |  pkid  |  xmin                |  xmax                |  ymin               |  ymax               |
@@ -156,7 +159,7 @@ To see a more interesting example, try ordering the records with the longest geo
 
     datasette rivers-database.db \
         --load-extension=/usr/local/lib/mod_spatialite.dylib \
-        --config sql_time_limit_ms:10000
+        --setting sql_time_limit_ms 10000
 
 Now try the following query:
 

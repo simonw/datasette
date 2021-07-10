@@ -1,5 +1,6 @@
 import json
-from datasette.utils.asgi import Response
+from datasette.utils.asgi import Response, Forbidden
+from datasette.utils import actor_matches_allow
 from .base import BaseView
 import secrets
 
@@ -43,9 +44,6 @@ class JsonDataView(BaseView):
 class PatternPortfolioView(BaseView):
     name = "patterns"
 
-    def __init__(self, datasette):
-        self.ds = datasette
-
     async def get(self, request):
         await self.check_permission(request, "view-instance")
         return await self.render(["patterns.html"], request=request)
@@ -54,46 +52,91 @@ class PatternPortfolioView(BaseView):
 class AuthTokenView(BaseView):
     name = "auth_token"
 
-    def __init__(self, datasette):
-        self.ds = datasette
-
     async def get(self, request):
         token = request.args.get("token") or ""
         if not self.ds._root_token:
-            return Response("Root token has already been used", status=403)
+            raise Forbidden("Root token has already been used")
         if secrets.compare_digest(token, self.ds._root_token):
             self.ds._root_token = None
-            response = Response.redirect("/")
+            response = Response.redirect(self.ds.urls.instance())
             response.set_cookie(
                 "ds_actor", self.ds.sign({"a": {"id": "root"}}, "actor")
             )
             return response
         else:
-            return Response("Invalid token", status=403)
+            raise Forbidden("Invalid token")
+
+
+class LogoutView(BaseView):
+    name = "logout"
+
+    async def get(self, request):
+        if not request.actor:
+            return Response.redirect(self.ds.urls.instance())
+        return await self.render(
+            ["logout.html"],
+            request,
+            {"actor": request.actor},
+        )
+
+    async def post(self, request):
+        response = Response.redirect(self.ds.urls.instance())
+        response.set_cookie("ds_actor", "", expires=0, max_age=0)
+        self.ds.add_message(request, "You are now logged out", self.ds.WARNING)
+        return response
 
 
 class PermissionsDebugView(BaseView):
     name = "permissions_debug"
 
-    def __init__(self, datasette):
-        self.ds = datasette
-
     async def get(self, request):
         await self.check_permission(request, "view-instance")
         if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
-            return Response("Permission denied", status=403)
+            raise Forbidden("Permission denied")
         return await self.render(
             ["permissions_debug.html"],
             request,
-            {"permission_checks": reversed(self.ds._permission_checks)},
+            # list() avoids error if check is performed during template render:
+            {"permission_checks": list(reversed(self.ds._permission_checks))},
+        )
+
+
+class AllowDebugView(BaseView):
+    name = "allow_debug"
+
+    async def get(self, request):
+        errors = []
+        actor_input = request.args.get("actor") or '{"id": "root"}'
+        try:
+            actor = json.loads(actor_input)
+            actor_input = json.dumps(actor, indent=4)
+        except json.decoder.JSONDecodeError as ex:
+            errors.append(f"Actor JSON error: {ex}")
+        allow_input = request.args.get("allow") or '{"id": "*"}'
+        try:
+            allow = json.loads(allow_input)
+            allow_input = json.dumps(allow, indent=4)
+        except json.decoder.JSONDecodeError as ex:
+            errors.append(f"Allow JSON error: {ex}")
+
+        result = None
+        if not errors:
+            result = str(actor_matches_allow(actor, allow))
+
+        return await self.render(
+            ["allow_debug.html"],
+            request,
+            {
+                "result": result,
+                "error": "\n\n".join(errors) if errors else "",
+                "actor_input": actor_input,
+                "allow_input": allow_input,
+            },
         )
 
 
 class MessagesDebugView(BaseView):
     name = "messages_debug"
-
-    def __init__(self, datasette):
-        self.ds = datasette
 
     async def get(self, request):
         await self.check_permission(request, "view-instance")
@@ -112,4 +155,4 @@ class MessagesDebugView(BaseView):
             datasette.add_message(request, message, datasette.ERROR)
         else:
             datasette.add_message(request, message, getattr(datasette, message_type))
-        return Response.redirect("/")
+        return Response.redirect(self.ds.urls.instance())

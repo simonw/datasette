@@ -1,16 +1,23 @@
 import os
+import hashlib
 import itertools
-import jinja2
+import json
+from markupsafe import Markup, escape
+from urllib.parse import parse_qsl, urlencode
 
 from datasette.utils import (
+    await_me_maybe,
     check_visibility,
     to_css_class,
     validate_sql_select,
     is_url,
     path_with_added_args,
+    path_with_format,
     path_with_removed_args,
+    sqlite3,
+    InvalidSql,
 )
-from datasette.utils.asgi import AsgiFileDownload, Response
+from datasette.utils.asgi import AsgiFileDownload, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import DatasetteError, DataView
@@ -20,8 +27,13 @@ class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, database, hash, default_labels=False, _size=None):
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
+        await self.check_permissions(
+            request,
+            [
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)
 
@@ -41,17 +53,26 @@ class DatabaseView(DataView):
         views = []
         for view_name in await db.view_names():
             visible, private = await check_visibility(
-                self.ds, request.actor, "view-table", (database, view_name),
+                self.ds,
+                request.actor,
+                "view-table",
+                (database, view_name),
             )
             if visible:
                 views.append(
-                    {"name": view_name, "private": private,}
+                    {
+                        "name": view_name,
+                        "private": private,
+                    }
                 )
 
         tables = []
         for table in table_counts:
             visible, private = await check_visibility(
-                self.ds, request.actor, "view-table", (database, table),
+                self.ds,
+                request.actor,
+                "view-table",
+                (database, table),
             )
             if not visible:
                 continue
@@ -75,34 +96,56 @@ class DatabaseView(DataView):
             await self.ds.get_canned_queries(database, request.actor)
         ).values():
             visible, private = await check_visibility(
-                self.ds, request.actor, "view-query", (database, query["name"]),
+                self.ds,
+                request.actor,
+                "view-query",
+                (database, query["name"]),
             )
             if visible:
                 canned_queries.append(dict(query, private=private))
+
+        async def database_actions():
+            links = []
+            for hook in pm.hook.database_actions(
+                datasette=self.ds,
+                database=database,
+                actor=request.actor,
+                request=request,
+            ):
+                extra_links = await await_me_maybe(hook)
+                if extra_links:
+                    links.extend(extra_links)
+            return links
+
+        attached_databases = [d.name for d in await db.attached_databases()]
+
         return (
             {
                 "database": database,
+                "path": self.ds.urls.database(database),
                 "size": db.size,
                 "tables": tables,
                 "hidden_count": len([t for t in tables if t["hidden"]]),
                 "views": views,
                 "queries": canned_queries,
                 "private": not await self.ds.permission_allowed(
-                    None, "view-database", database
+                    None, "view-database", database, default=True
                 ),
                 "allow_execute_sql": await self.ds.permission_allowed(
                     request.actor, "execute-sql", database, default=True
                 ),
             },
             {
+                "database_actions": database_actions,
                 "show_hidden": request.args.get("_show_hidden"),
                 "editable": True,
                 "metadata": metadata,
-                "allow_download": self.ds.config("allow_download")
+                "allow_download": self.ds.setting("allow_download")
                 and not db.is_mutable
-                and database != ":memory:",
+                and not db.is_memory,
+                "attached_databases": attached_databases,
             },
-            ("database-{}.html".format(to_css_class(database)), "database.html"),
+            (f"database-{to_css_class(database)}.html", "database.html"),
         )
 
 
@@ -110,23 +153,33 @@ class DatabaseDownload(DataView):
     name = "database_download"
 
     async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
-        await self.check_permission(request, "view-database-download", database)
+        await self.check_permissions(
+            request,
+            [
+                ("view-database-download", database),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
         if database not in self.ds.databases:
             raise DatasetteError("Invalid database", status=404)
         db = self.ds.databases[database]
         if db.is_memory:
-            raise DatasetteError("Cannot download :memory: database", status=404)
-        if not self.ds.config("allow_download") or db.is_mutable:
-            raise DatasetteError("Database download is forbidden", status=403)
+            raise DatasetteError("Cannot download in-memory databases", status=404)
+        if not self.ds.setting("allow_download") or db.is_mutable:
+            raise Forbidden("Database download is forbidden")
         if not db.path:
             raise DatasetteError("Cannot download database", status=404)
         filepath = db.path
+        headers = {}
+        if self.ds.cors:
+            headers["Access-Control-Allow-Origin"] = "*"
+        headers["Transfer-Encoding"] = "chunked"
         return AsgiFileDownload(
             filepath,
             filename=os.path.basename(filepath),
             content_type="application/octet-stream",
+            headers=headers,
         )
 
 
@@ -150,17 +203,23 @@ class QueryView(DataView):
         if "_shape" in params:
             params.pop("_shape")
 
-        # Respect canned query permissions
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
         private = False
         if canned_query:
-            await self.check_permission(request, "view-query", (database, canned_query))
+            # Respect canned query permissions
+            await self.check_permissions(
+                request,
+                [
+                    ("view-query", (database, canned_query)),
+                    ("view-database", database),
+                    "view-instance",
+                ],
+            )
             private = not await self.ds.permission_allowed(
                 None, "view-query", (database, canned_query), default=True
             )
         else:
             await self.check_permission(request, "execute-sql", database)
+
         # Extract any :named parameters
         named_parameters = named_parameters or self.re_named_parameter.findall(sql)
         named_parameter_values = {
@@ -180,16 +239,33 @@ class QueryView(DataView):
         if _size:
             extra_args["page_size"] = _size
 
-        templates = ["query-{}.html".format(to_css_class(database)), "query.html"]
+        templates = [f"query-{to_css_class(database)}.html", "query.html"]
+
+        query_error = None
 
         # Execute query - as write or as read
         if write:
             if request.method == "POST":
-                params = await request.post_vars()
+                body = await request.post_body()
+                body = body.decode("utf-8").strip()
+                if body.startswith("{") and body.endswith("}"):
+                    params = json.loads(body)
+                    # But we want key=value strings
+                    for key, value in params.items():
+                        params[key] = str(value)
+                else:
+                    params = dict(parse_qsl(body, keep_blank_values=True))
+                # Should we return JSON?
+                should_return_json = (
+                    request.headers.get("accept") == "application/json"
+                    or request.args.get("_json")
+                    or params.get("_json")
+                )
                 if canned_query:
                     params_for_query = MagicParameters(params, request, self.ds)
                 else:
                     params_for_query = params
+                ok = None
                 try:
                     cursor = await self.ds.databases[database].execute_write(
                         sql, params_for_query, block=True
@@ -201,12 +277,23 @@ class QueryView(DataView):
                     )
                     message_type = self.ds.INFO
                     redirect_url = metadata.get("on_success_redirect")
+                    ok = True
                 except Exception as e:
                     message = metadata.get("on_error_message") or str(e)
                     message_type = self.ds.ERROR
                     redirect_url = metadata.get("on_error_redirect")
-                self.ds.add_message(request, message, message_type)
-                return self.redirect(request, redirect_url or request.path)
+                    ok = False
+                if should_return_json:
+                    return Response.json(
+                        {
+                            "ok": ok,
+                            "message": message,
+                            "redirect": redirect_url,
+                        }
+                    )
+                else:
+                    self.ds.add_message(request, message, message_type)
+                    return self.redirect(request, redirect_url or request.path)
             else:
 
                 async def extra_template():
@@ -237,22 +324,29 @@ class QueryView(DataView):
                 params_for_query = MagicParameters(params, request, self.ds)
             else:
                 params_for_query = params
-            results = await self.ds.execute(
-                database, sql, params_for_query, truncate=True, **extra_args
-            )
-            columns = [r[0] for r in results.description]
+            try:
+                results = await self.ds.execute(
+                    database, sql, params_for_query, truncate=True, **extra_args
+                )
+                columns = [r[0] for r in results.description]
+            except sqlite3.DatabaseError as e:
+                query_error = e
+                results = None
+                columns = []
 
         if canned_query:
             templates.insert(
                 0,
-                "query-{}-{}.html".format(
-                    to_css_class(database), to_css_class(canned_query)
-                ),
+                f"query-{to_css_class(database)}-{to_css_class(canned_query)}.html",
             )
+
+        allow_execute_sql = await self.ds.permission_allowed(
+            request.actor, "execute-sql", database, default=True
+        )
 
         async def extra_template():
             display_rows = []
-            for row in results.rows:
+            for row in results.rows if results else []:
                 display_row = []
                 for column, value in zip(results.columns, row):
                     display_value = value
@@ -269,21 +363,65 @@ class QueryView(DataView):
                         display_value = plugin_value
                     else:
                         if value in ("", None):
-                            display_value = jinja2.Markup("&nbsp;")
+                            display_value = Markup("&nbsp;")
                         elif is_url(str(display_value).strip()):
-                            display_value = jinja2.Markup(
+                            display_value = Markup(
                                 '<a href="{url}">{url}</a>'.format(
-                                    url=jinja2.escape(value.strip())
+                                    url=escape(value.strip())
+                                )
+                            )
+                        elif isinstance(display_value, bytes):
+                            blob_url = path_with_format(
+                                request=request,
+                                format="blob",
+                                extra_qs={
+                                    "_blob_column": column,
+                                    "_blob_hash": hashlib.sha256(
+                                        display_value
+                                    ).hexdigest(),
+                                },
+                            )
+                            display_value = Markup(
+                                '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
+                                    blob_url,
+                                    len(display_value),
+                                    "" if len(value) == 1 else "s",
                                 )
                             )
                     display_row.append(display_value)
                 display_rows.append(display_row)
+
+            # Show 'Edit SQL' button only if:
+            # - User is allowed to execute SQL
+            # - SQL is an approved SELECT statement
+            # - No magic parameters, so no :_ in the SQL string
+            edit_sql_url = None
+            is_validated_sql = False
+            try:
+                validate_sql_select(sql)
+                is_validated_sql = True
+            except InvalidSql:
+                pass
+            if allow_execute_sql and is_validated_sql and ":_" not in sql:
+                edit_sql_url = (
+                    self.ds.urls.database(database)
+                    + "?"
+                    + urlencode(
+                        {
+                            **{
+                                "sql": sql,
+                            },
+                            **named_parameter_values,
+                        }
+                    )
+                )
             return {
                 "display_rows": display_rows,
                 "custom_sql": True,
                 "named_parameter_values": named_parameter_values,
                 "editable": editable,
                 "canned_query": canned_query,
+                "edit_sql_url": edit_sql_url,
                 "metadata": metadata,
                 "config": self.ds.config_dict(),
                 "request": request,
@@ -294,19 +432,20 @@ class QueryView(DataView):
 
         return (
             {
+                "ok": not query_error,
                 "database": database,
                 "query_name": canned_query,
-                "rows": results.rows,
-                "truncated": results.truncated,
+                "rows": results.rows if results else [],
+                "truncated": results.truncated if results else False,
                 "columns": columns,
                 "query": {"sql": sql, "params": params},
+                "error": str(query_error) if query_error else None,
                 "private": private,
-                "allow_execute_sql": await self.ds.permission_allowed(
-                    request.actor, "execute-sql", database, default=True
-                ),
+                "allow_execute_sql": allow_execute_sql,
             },
             extra_template,
             templates,
+            400 if query_error else 200,
         )
 
 
@@ -319,6 +458,11 @@ class MagicParameters(dict):
                 pm.hook.register_magic_parameters(datasette=datasette)
             )
         )
+
+    def __len__(self):
+        # Workaround for 'Incorrect number of bindings' error
+        # https://github.com/simonw/datasette/issues/967#issuecomment-692951144
+        return super().__len__() or 1
 
     def __getitem__(self, key):
         if key.startswith("_") and key.count("_") >= 2:

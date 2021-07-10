@@ -10,7 +10,7 @@
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% for database in databases %}
-    <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.color }}"><a href="{{ database.path }}">{{ database.name }}</a>{% if database.private %} 🔒{% endif %}</h2>
+    <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.color }}"><a href="{{ urls.database(database.name) }}">{{ database.name }}</a>{% if database.private %} 🔒{% endif %}</h2>
     <p>
         {% if database.show_table_row_counts %}{{ "{:,}".format(database.table_rows_sum) }} rows in {% endif %}{{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}{% if database.tables_count and database.hidden_tables_count %}, {% endif -%}
         {% if database.hidden_tables_count -%}
@@ -21,8 +21,7 @@
             {{ "{:,}".format(database.views_count) }} view{% if database.views_count != 1 %}s{% endif %}
         {% endif %}
     </p>
-    <p>{% for table in database.tables_and_views_truncated %}<a href="{{ database.path }}/{{ table.name|quote_plus 
-    }}"{% if table.count %} title="{{ table.count }} rows"{% endif %}>{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_and_views_more %}, <a href="{{ database.path }}">...</a>{% endif %}</p>
+    <p>{% for table in database.tables_and_views_truncated %}<a href="{{ urls.table(database.name, table.name) }}"{% if table.count %} title="{{ table.count }} rows"{% endif %}>{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}{% if database.tables_and_views_more %}, <a href="{{ urls.database(database.name) }}">...</a>{% endif %}</p>
 {% endfor %}
 
 {% endblock %}

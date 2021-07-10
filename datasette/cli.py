@@ -2,6 +2,7 @@ import asyncio
 import uvicorn
 import click
 from click import formatting
+from click.types import CompositeParamType
 from click_default_group import DefaultGroup
 import json
 import os
@@ -9,47 +10,55 @@ import pathlib
 import shutil
 from subprocess import call
 import sys
-from .app import Datasette, DEFAULT_CONFIG, CONFIG_OPTIONS, pm
+from runpy import run_module
+import webbrowser
+from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, SQLITE_LIMIT_ATTACHED, pm
 from .utils import (
+    StartupError,
     check_connection,
+    find_spatialite,
     parse_metadata,
     ConnectionProblem,
     SpatialiteConnectionProblem,
+    initial_path_for_datasette,
     temporary_docker_directory,
     value_as_boolean,
+    SpatialiteNotFound,
     StaticMount,
     ValueAsBooleanError,
 )
+from .utils.sqlite import sqlite3
+from .utils.testing import TestClient
+from .version import __version__
 
 
 class Config(click.ParamType):
+    # This will be removed in Datasette 1.0 in favour of class Setting
     name = "config"
 
     def convert(self, config, param, ctx):
         if ":" not in config:
-            self.fail('"{}" should be name:value'.format(config), param, ctx)
+            self.fail(f'"{config}" should be name:value', param, ctx)
             return
         name, value = config.split(":", 1)
-        if name not in DEFAULT_CONFIG:
+        if name not in DEFAULT_SETTINGS:
             self.fail(
-                "{} is not a valid option (--help-config to see all)".format(name),
+                f"{name} is not a valid option (--help-config to see all)",
                 param,
                 ctx,
             )
             return
         # Type checking
-        default = DEFAULT_CONFIG[name]
+        default = DEFAULT_SETTINGS[name]
         if isinstance(default, bool):
             try:
                 return name, value_as_boolean(value)
             except ValueAsBooleanError:
-                self.fail(
-                    '"{}" should be on/off/true/false/1/0'.format(name), param, ctx
-                )
+                self.fail(f'"{name}" should be on/off/true/false/1/0', param, ctx)
                 return
         elif isinstance(default, int):
             if not value.isdigit():
-                self.fail('"{}" should be an integer'.format(name), param, ctx)
+                self.fail(f'"{name}" should be an integer', param, ctx)
                 return
             return name, int(value)
         elif isinstance(default, str):
@@ -59,8 +68,51 @@ class Config(click.ParamType):
             self.fail("Invalid option")
 
 
+class Setting(CompositeParamType):
+    name = "setting"
+    arity = 2
+
+    def convert(self, config, param, ctx):
+        name, value = config
+        if name not in DEFAULT_SETTINGS:
+            self.fail(
+                f"{name} is not a valid option (--help-config to see all)",
+                param,
+                ctx,
+            )
+            return
+        # Type checking
+        default = DEFAULT_SETTINGS[name]
+        if isinstance(default, bool):
+            try:
+                return name, value_as_boolean(value)
+            except ValueAsBooleanError:
+                self.fail(f'"{name}" should be on/off/true/false/1/0', param, ctx)
+                return
+        elif isinstance(default, int):
+            if not value.isdigit():
+                self.fail(f'"{name}" should be an integer', param, ctx)
+                return
+            return name, int(value)
+        elif isinstance(default, str):
+            return name, value
+        else:
+            # Should never happen:
+            self.fail("Invalid option")
+
+
+def sqlite_extensions(fn):
+    return click.option(
+        "sqlite_extensions",
+        "--load-extension",
+        envvar="SQLITE_EXTENSIONS",
+        multiple=True,
+        help="Path to a SQLite extension to load",
+    )(fn)
+
+
 @click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)
-@click.version_option()
+@click.version_option(version=__version__)
 def cli():
     """
     Datasette!
@@ -70,29 +122,25 @@ def cli():
 @cli.command()
 @click.argument("files", type=click.Path(exists=True), nargs=-1)
 @click.option("--inspect-file", default="-")
-@click.option(
-    "sqlite_extensions",
-    "--load-extension",
-    envvar="SQLITE_EXTENSIONS",
-    multiple=True,
-    type=click.Path(exists=True, resolve_path=True),
-    help="Path to a SQLite extension to load",
-)
+@sqlite_extensions
 def inspect(files, inspect_file, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
-    if inspect_file == "-":
-        out = sys.stdout
-    else:
-        out = open(inspect_file, "w")
     loop = asyncio.get_event_loop()
     inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))
-    out.write(json.dumps(inspect_data, indent=2))
+    if inspect_file == "-":
+        sys.stdout.write(json.dumps(inspect_data, indent=2))
+    else:
+        with open(inspect_file, "w") as fp:
+            fp.write(json.dumps(inspect_data, indent=2))
 
 
 async def inspect_(files, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     data = {}
     for name, database in app.databases.items():
+        if name == "_internal":
+            # Don't include the in-memory _internal database
+            continue
         counts = await database.table_counts(limit=3600 * 1000)
         data[name] = {
             "hash": database.hash,
@@ -108,7 +156,7 @@ async def inspect_(files, sqlite_extensions):
 
 @cli.group()
 def publish():
-    "Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"
+    """Publish specified SQLite database files to the internet along with a Datasette-powered interface and API"""
     pass
 
 
@@ -124,7 +172,7 @@ pm.hook.publish_subcommand(publish=publish)
     help="Path to directory containing custom plugins",
 )
 def plugins(all, plugins_dir):
-    "List currently available plugins"
+    """List currently available plugins"""
     app = Datasette([], plugins_dir=plugins_dir)
     click.echo(json.dumps(app._plugins(all=all), indent=4))
 
@@ -143,7 +191,7 @@ def plugins(all, plugins_dir):
     help="Path to JSON/YAML file containing metadata to publish",
 )
 @click.option("--extra-options", help="Extra options to pass to datasette serve")
-@click.option("--branch", help="Install datasette from a GitHub branch e.g. master")
+@click.option("--branch", help="Install datasette from a GitHub branch e.g. main")
 @click.option(
     "--template-dir",
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
@@ -172,7 +220,11 @@ def plugins(all, plugins_dir):
     default=lambda: os.urandom(32).hex(),
 )
 @click.option(
-    "-p", "--port", default=8001, help="Port to run the server on, defaults to 8001",
+    "-p",
+    "--port",
+    default=8001,
+    type=click.IntRange(1, 65535),
+    help="Port to run the server on, defaults to 8001",
 )
 @click.option("--title", help="Title for metadata")
 @click.option("--license", help="License label for metadata")
@@ -195,9 +247,9 @@ def package(
     version_note,
     secret,
     port,
-    **extra_metadata
+    **extra_metadata,
 ):
-    "Package specified SQLite files into a new datasette Docker container"
+    """Package specified SQLite files into a new datasette Docker container"""
     if not shutil.which("docker"):
         click.secho(
             ' The package command requires "docker" to be installed and configured ',
@@ -232,7 +284,31 @@ def package(
 
 
 @cli.command()
-@click.argument("files", type=click.Path(exists=True), nargs=-1)
+@click.argument("packages", nargs=-1, required=True)
+@click.option(
+    "-U", "--upgrade", is_flag=True, help="Upgrade packages to latest version"
+)
+def install(packages, upgrade):
+    """Install Python packages - e.g. Datasette plugins - into the same environment as Datasette"""
+    args = ["pip", "install"]
+    if upgrade:
+        args += ["--upgrade"]
+    args += list(packages)
+    sys.argv = args
+    run_module("pip", run_name="__main__")
+
+
+@cli.command()
+@click.argument("packages", nargs=-1, required=True)
+@click.option("-y", "--yes", is_flag=True, help="Don't ask for confirmation")
+def uninstall(packages, yes):
+    """Uninstall Python packages (e.g. plugins) from the Datasette environment"""
+    sys.argv = ["pip", "uninstall"] + list(packages) + (["-y"] if yes else [])
+    run_module("pip", run_name="__main__")
+
+
+@cli.command()
+@click.argument("files", type=click.Path(), nargs=-1)
 @click.option(
     "-i",
     "--immutable",
@@ -254,27 +330,22 @@ def package(
     "-p",
     "--port",
     default=8001,
+    type=click.IntRange(0, 65535),
     help="Port for server, defaults to 8001. Use -p 0 to automatically assign an available port.",
 )
 @click.option(
-    "--debug", is_flag=True, help="Enable debug mode - useful for development"
+    "--uds",
+    help="Bind to a Unix domain socket",
 )
 @click.option(
     "--reload",
     is_flag=True,
-    help="Automatically reload if database or code change detected - useful for development",
+    help="Automatically reload if code or metadata change detected - useful for development",
 )
 @click.option(
     "--cors", is_flag=True, help="Enable CORS by serving Access-Control-Allow-Origin: *"
 )
-@click.option(
-    "sqlite_extensions",
-    "--load-extension",
-    envvar="SQLITE_EXTENSIONS",
-    multiple=True,
-    type=click.Path(exists=True, resolve_path=True),
-    help="Path to a SQLite extension to load",
-)
+@sqlite_extensions
 @click.option(
     "--inspect-file", help='Path to JSON file created using "datasette inspect"'
 )
@@ -300,11 +371,18 @@ def package(
     help="Serve static files from this directory at /MOUNT/...",
     multiple=True,
 )
-@click.option("--memory", is_flag=True, help="Make :memory: database available")
+@click.option("--memory", is_flag=True, help="Make /_memory database available")
 @click.option(
     "--config",
     type=Config(),
-    help="Set config option using configname:value datasette.readthedocs.io/en/latest/config.html",
+    help="Deprecated: set config option using configname:value. Use --setting instead.",
+    multiple=True,
+)
+@click.option(
+    "--setting",
+    "settings",
+    type=Setting(),
+    help="Setting, see docs.datasette.io/en/stable/config.html",
     multiple=True,
 )
 @click.option(
@@ -317,14 +395,44 @@ def package(
     help="Output URL that sets a cookie authenticating the root user",
     is_flag=True,
 )
+@click.option(
+    "--get",
+    help="Run an HTTP GET request against this path, print results and exit",
+)
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-config", is_flag=True, help="Show available config options")
+@click.option("--pdb", is_flag=True, help="Launch debugger on any errors")
+@click.option(
+    "-o",
+    "--open",
+    "open_browser",
+    is_flag=True,
+    help="Open Datasette in your web browser",
+)
+@click.option(
+    "--create",
+    is_flag=True,
+    help="Create database files if they do not exist",
+)
+@click.option(
+    "--crossdb",
+    is_flag=True,
+    help="Enable cross-database joins using the /_memory database",
+)
+@click.option(
+    "--ssl-keyfile",
+    help="SSL key file",
+)
+@click.option(
+    "--ssl-certfile",
+    help="SSL certificate file",
+)
 def serve(
     files,
     immutable,
     host,
     port,
-    debug,
+    uds,
     reload,
     cors,
     sqlite_extensions,
@@ -335,10 +443,18 @@ def serve(
     static,
     memory,
     config,
+    settings,
     secret,
     root,
+    get,
     version_note,
     help_config,
+    pdb,
+    open_browser,
+    create,
+    crossdb,
+    ssl_keyfile,
+    ssl_certfile,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -347,8 +463,8 @@ def serve(
         with formatter.section("Config options"):
             formatter.write_dl(
                 [
-                    (option.name, "{} (default={})".format(option.help, option.default))
-                    for option in CONFIG_OPTIONS
+                    (option.name, f"{option.help} (default={option.default})")
+                    for option in SETTINGS
                 ]
             )
         click.echo(formatter.getvalue())
@@ -364,15 +480,25 @@ def serve(
 
     inspect_data = None
     if inspect_file:
-        inspect_data = json.load(open(inspect_file))
+        with open(inspect_file) as fp:
+            inspect_data = json.load(fp)
 
     metadata_data = None
     if metadata:
         metadata_data = parse_metadata(metadata.read())
 
+    combined_config = {}
+    if config:
+        click.echo(
+            "--config name:value will be deprecated in Datasette 1.0, use --setting name value instead",
+            err=True,
+        )
+        combined_config.update(config)
+    combined_config.update(settings)
+
     kwargs = dict(
         immutables=immutable,
-        cache_headers=not debug and not reload,
+        cache_headers=not reload,
         cors=cors,
         inspect_data=inspect_data,
         metadata=metadata_data,
@@ -380,10 +506,12 @@ def serve(
         template_dir=template_dir,
         plugins_dir=plugins_dir,
         static_mounts=static,
-        config=dict(config),
+        config=combined_config,
         memory=memory,
         secret=secret,
         version_note=version_note,
+        pdb=pdb,
+        crossdb=crossdb,
     )
 
     # if files is a single directory, use that as config_dir=
@@ -391,7 +519,24 @@ def serve(
         kwargs["config_dir"] = pathlib.Path(files[0])
         files = []
 
-    ds = Datasette(files, **kwargs)
+    # Verify list of files, create if needed (and --create)
+    for file in files:
+        if not pathlib.Path(file).exists():
+            if create:
+                sqlite3.connect(file).execute("vacuum")
+            else:
+                raise click.ClickException(
+                    "Invalid value for '[FILES]...': Path '{}' does not exist.".format(
+                        file
+                    )
+                )
+
+    try:
+        ds = Datasette(files, **kwargs)
+    except SpatialiteNotFound:
+        raise click.ClickException("Could not find SpatiaLite extension")
+    except StartupError as e:
+        raise click.ClickException(e.args[0])
 
     if return_instance:
         # Private utility mechanism for writing unit tests
@@ -400,13 +545,42 @@ def serve(
     # Run the "startup" plugin hooks
     asyncio.get_event_loop().run_until_complete(ds.invoke_startup())
 
-    # Run async sanity checks - but only if we're not under pytest
+    # Run async soundness checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
 
+    if get:
+        client = TestClient(ds)
+        response = client.get(get)
+        click.echo(response.text)
+        exit_code = 0 if response.status == 200 else 1
+        sys.exit(exit_code)
+        return
+
     # Start the server
+    url = None
     if root:
-        print("http://{}:{}/-/auth-token?token={}".format(host, port, ds._root_token))
-    uvicorn.run(ds.app(), host=host, port=port, log_level="info")
+        url = "http://{}:{}{}?token={}".format(
+            host, port, ds.urls.path("-/auth-token"), ds._root_token
+        )
+        print(url)
+    if open_browser:
+        if url is None:
+            # Figure out most convenient URL - to table, database or homepage
+            path = asyncio.get_event_loop().run_until_complete(
+                initial_path_for_datasette(ds)
+            )
+            url = f"http://{host}:{port}{path}"
+        webbrowser.open(url)
+    uvicorn_kwargs = dict(
+        host=host, port=port, log_level="info", lifespan="on", workers=1
+    )
+    if uds:
+        uvicorn_kwargs["uds"] = uds
+    if ssl_keyfile:
+        uvicorn_kwargs["ssl_keyfile"] = ssl_keyfile
+    if ssl_certfile:
+        uvicorn_kwargs["ssl_certfile"] = ssl_certfile
+    uvicorn.run(ds.app(), **uvicorn_kwargs)
 
 
 async def check_databases(ds):
@@ -416,14 +590,31 @@ async def check_databases(ds):
         try:
             await database.execute_fn(check_connection)
         except SpatialiteConnectionProblem:
+            suggestion = ""
+            try:
+                find_spatialite()
+                suggestion = "\n\nTry adding the --load-extension=spatialite option."
+            except SpatialiteNotFound:
+                pass
             raise click.UsageError(
                 "It looks like you're trying to load a SpatiaLite"
-                " database without first loading the SpatiaLite module."
-                "\n\nRead more: https://datasette.readthedocs.io/en/latest/spatialite.html"
+                + " database without first loading the SpatiaLite module."
+                + suggestion
+                + "\n\nRead more: https://docs.datasette.io/en/stable/spatialite.html"
             )
         except ConnectionProblem as e:
             raise click.UsageError(
-                "Connection to {} failed check: {}".format(
-                    database.path, str(e.args[0])
-                )
+                f"Connection to {database.path} failed check: {str(e.args[0])}"
             )
+    # If --crossdb and more than SQLITE_LIMIT_ATTACHED show warning
+    if (
+        ds.crossdb
+        and len([db for db in ds.databases.values() if not db.is_memory])
+        > SQLITE_LIMIT_ATTACHED
+    ):
+        msg = (
+            "Warning: --crossdb only works with the first {} attached databases".format(
+                SQLITE_LIMIT_ATTACHED
+            )
+        )
+        click.echo(click.style(msg, bold=True, fg="yellow"), err=True)

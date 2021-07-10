@@ -1,6 +1,8 @@
 from bs4 import BeautifulSoup as Soup
+from datasette.utils import allowed_pragmas
 from .fixtures import (  # noqa
     app_client,
+    app_client_base_url_prefix,
     app_client_shorter_time_limit,
     app_client_two_attached_databases,
     app_client_with_hash,
@@ -22,16 +24,16 @@ def test_homepage(app_client_two_attached_databases):
     soup = Soup(response.body, "html.parser")
     assert "Datasette Fixtures" == soup.find("h1").text
     assert (
-        "An example SQLite database demonstrating Datasette"
+        "An example SQLite database demonstrating Datasette. Sign in as root user"
         == soup.select(".metadata-description")[0].text.strip()
     )
     # Should be two attached databases
     assert [
+        {"href": r"/extra%20database", "text": "extra database"},
         {"href": "/fixtures", "text": "fixtures"},
-        {"href": "/extra database", "text": "extra database"},
     ] == [{"href": a["href"], "text": a.text.strip()} for a in soup.select("h2 a")]
-    # The first attached database should show count text and attached tables
-    h2 = soup.select("h2")[1]
+    # Database should show count text and attached tables
+    h2 = soup.select("h2")[0]
     assert "extra database" == h2.text.strip()
     counts_p, links_p = h2.find_all_next("p")[:2]
     assert (
@@ -42,14 +44,26 @@ def test_homepage(app_client_two_attached_databases):
         {"href": a["href"], "text": a.text.strip()} for a in links_p.findAll("a")
     ]
     assert [
-        {"href": "/extra database/searchable", "text": "searchable"},
-        {"href": "/extra database/searchable_view", "text": "searchable_view"},
+        {"href": r"/extra%20database/searchable", "text": "searchable"},
+        {"href": r"/extra%20database/searchable_view", "text": "searchable_view"},
     ] == table_links
 
 
 def test_http_head(app_client):
     response = app_client.get("/", method="HEAD")
     assert response.status == 200
+
+
+def test_homepage_options(app_client):
+    response = app_client.get("/", method="OPTIONS")
+    assert response.status == 405
+    assert response.text == "Method not allowed"
+
+
+def test_favicon(app_client):
+    response = app_client.get("/favicon.ico")
+    assert response.status == 200
+    assert "" == response.text
 
 
 def test_static(app_client):
@@ -74,8 +88,15 @@ def test_static_mounts():
 
 def test_memory_database_page():
     with make_app_client(memory=True) as client:
-        response = client.get("/:memory:")
+        response = client.get("/_memory")
         assert response.status == 200
+
+
+def test_not_allowed_methods():
+    with make_app_client(memory=True) as client:
+        for method in ("post", "put", "patch", "delete"):
+            response = client.request(path="/_memory", method=method.upper())
+            assert response.status == 405
 
 
 def test_database_page_redirects_with_url_hash(app_client_with_hash):
@@ -87,6 +108,11 @@ def test_database_page_redirects_with_url_hash(app_client_with_hash):
 
 def test_database_page(app_client):
     response = app_client.get("/fixtures")
+    assert (
+        b"<p><em>pk, foreign_key_with_label, foreign_key_with_blank_label, "
+        b"foreign_key_with_no_label, foreign_key_compound_pk1, "
+        b"foreign_key_compound_pk2</em></p>"
+    ) in response.body
     soup = Soup(response.body, "html.parser")
     queries_ul = soup.find("h2", text="Queries").find_next_sibling("ul")
     assert queries_ul is not None
@@ -111,11 +137,25 @@ def test_invalid_custom_sql(app_client):
     assert "Statement must be a SELECT" in response.text
 
 
+def test_disallowed_custom_sql_pragma(app_client):
+    response = app_client.get(
+        "/fixtures?sql=SELECT+*+FROM+pragma_not_on_allow_list('idx52')"
+    )
+    assert response.status == 400
+    pragmas = ", ".join("pragma_{}()".format(pragma) for pragma in allowed_pragmas)
+    assert (
+        "Statement contained a disallowed PRAGMA. Allowed pragma functions are {}".format(
+            pragmas
+        )
+        in response.text
+    )
+
+
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get("/fixtures?sql=select+sleep(0.5)")
     assert 400 == response.status
     expected_html_fragment = """
-        <a href="https://datasette.readthedocs.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
+        <a href="https://docs.datasette.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
     """.strip()
     assert expected_html_fragment in response.text
 
@@ -219,7 +259,7 @@ def test_add_filter_redirects(app_client):
     assert response.status == 302
     assert response.headers["Location"].endswith("?content__startswith=x")
 
-    # Adding a redirect to an existing querystring:
+    # Adding a redirect to an existing query string:
     path = path_base + "?foo=bar&" + filter_args
     response = app_client.get(path, allow_redirects=False)
     assert response.status == 302
@@ -332,32 +372,100 @@ def test_sort_links(app_client):
     attrs_and_link_attrs = [
         {
             "attrs": th.attrs,
-            "a_href": (th.find("a")["href"].split("/")[-1] if th.find("a") else None),
+            "a_href": (th.find("a")["href"] if th.find("a") else None),
         }
         for th in ths
     ]
-    assert [
-        {"attrs": {"class": ["col-Link"], "scope": "col"}, "a_href": None},
-        {"attrs": {"class": ["col-pk1"], "scope": "col"}, "a_href": None},
-        {"attrs": {"class": ["col-pk2"], "scope": "col"}, "a_href": None},
-        {"attrs": {"class": ["col-content"], "scope": "col"}, "a_href": None},
+    assert attrs_and_link_attrs == [
         {
-            "attrs": {"class": ["col-sortable"], "scope": "col"},
-            "a_href": "sortable?_sort_desc=sortable",
+            "attrs": {
+                "class": ["col-Link"],
+                "scope": "col",
+                "data-column": "Link",
+                "data-column-type": "",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
+            },
+            "a_href": None,
         },
         {
-            "attrs": {"class": ["col-sortable_with_nulls"], "scope": "col"},
-            "a_href": "sortable?_sort=sortable_with_nulls",
+            "attrs": {
+                "class": ["col-pk1"],
+                "scope": "col",
+                "data-column": "pk1",
+                "data-column-type": "varchar(30)",
+                "data-column-not-null": "0",
+                "data-is-pk": "1",
+            },
+            "a_href": None,
         },
         {
-            "attrs": {"class": ["col-sortable_with_nulls_2"], "scope": "col"},
-            "a_href": "sortable?_sort=sortable_with_nulls_2",
+            "attrs": {
+                "class": ["col-pk2"],
+                "scope": "col",
+                "data-column": "pk2",
+                "data-column-type": "varchar(30)",
+                "data-column-not-null": "0",
+                "data-is-pk": "1",
+            },
+            "a_href": None,
         },
         {
-            "attrs": {"class": ["col-text"], "scope": "col"},
-            "a_href": "sortable?_sort=text",
+            "attrs": {
+                "class": ["col-content"],
+                "scope": "col",
+                "data-column": "content",
+                "data-column-type": "text",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
+            },
+            "a_href": None,
         },
-    ] == attrs_and_link_attrs
+        {
+            "attrs": {
+                "class": ["col-sortable"],
+                "scope": "col",
+                "data-column": "sortable",
+                "data-column-type": "integer",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
+            },
+            "a_href": "/fixtures/sortable?_sort_desc=sortable",
+        },
+        {
+            "attrs": {
+                "class": ["col-sortable_with_nulls"],
+                "scope": "col",
+                "data-column": "sortable_with_nulls",
+                "data-column-type": "real",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
+            },
+            "a_href": "/fixtures/sortable?_sort=sortable_with_nulls",
+        },
+        {
+            "attrs": {
+                "class": ["col-sortable_with_nulls_2"],
+                "scope": "col",
+                "data-column": "sortable_with_nulls_2",
+                "data-column-type": "real",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
+            },
+            "a_href": "/fixtures/sortable?_sort=sortable_with_nulls_2",
+        },
+        {
+            "attrs": {
+                "class": ["col-text"],
+                "scope": "col",
+                "data-column": "text",
+                "data-column-type": "text",
+                "data-column-not-null": "0",
+                "data-is-pk": "0",
+            },
+            "a_href": "/fixtures/sortable?_sort=text",
+        },
+    ]
 
 
 def test_facet_display(app_client):
@@ -382,7 +490,7 @@ def test_facet_display(app_client):
                 ],
             }
         )
-    assert [
+    assert actual == [
         {
             "name": "city_id",
             "items": [
@@ -438,16 +546,20 @@ def test_facet_display(app_client):
                 },
             ],
         },
-    ] == actual
+    ]
 
 
 def test_facets_persist_through_filter_form(app_client):
-    response = app_client.get("/fixtures/facetable?_facet=planet_int&_facet=city_id")
+    response = app_client.get(
+        "/fixtures/facetable?_facet=planet_int&_facet=city_id&_facet_array=tags"
+    )
     assert response.status == 200
     inputs = Soup(response.body, "html.parser").find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
-    assert [("_facet", "city_id"), ("_facet", "planet_int")] == [
-        (hidden["name"], hidden["value"]) for hidden in hiddens
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
+        ("_facet", "planet_int"),
+        ("_facet", "city_id"),
+        ("_facet_array", "tags"),
     ]
 
 
@@ -504,9 +616,7 @@ def test_css_classes_on_body(app_client, path, expected_classes):
 def test_templates_considered(app_client, path, expected_considered):
     response = app_client.get(path)
     assert response.status == 200
-    assert (
-        "<!-- Templates considered: {} -->".format(expected_considered) in response.text
-    )
+    assert f"<!-- Templates considered: {expected_considered} -->" in response.text
 
 
 def test_table_html_simple_primary_key(app_client):
@@ -519,9 +629,7 @@ def test_table_html_simple_primary_key(app_client):
     for expected_col, th in zip(("content",), ths[1:]):
         a = th.find("a")
         assert expected_col == a.string
-        assert a["href"].endswith(
-            "/simple_primary_key?_size=3&_sort={}".format(expected_col)
-        )
+        assert a["href"].endswith(f"/simple_primary_key?_size=3&_sort={expected_col}")
         assert ["nofollow"] == a["rel"]
     assert [
         [
@@ -548,23 +656,24 @@ def test_table_csv_json_export_interface(app_client):
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
-    actual = [l["href"].split("/")[-1] for l in links]
+    actual = [l["href"] for l in links]
     expected = [
-        "simple_primary_key.json?id__gt=2",
-        "simple_primary_key.testall?id__gt=2",
-        "simple_primary_key.testnone?id__gt=2",
-        "simple_primary_key.csv?id__gt=2&_size=max",
+        "/fixtures/simple_primary_key.json?id__gt=2",
+        "/fixtures/simple_primary_key.testall?id__gt=2",
+        "/fixtures/simple_primary_key.testnone?id__gt=2",
+        "/fixtures/simple_primary_key.testresponse?id__gt=2",
+        "/fixtures/simple_primary_key.csv?id__gt=2&_size=max",
         "#export",
     ]
     assert expected == actual
     # And the advaced export box at the bottom:
     div = Soup(response.body, "html.parser").find("div", {"class": "advanced-export"})
-    json_links = [a["href"].split("/")[-1] for a in div.find("p").findAll("a")]
+    json_links = [a["href"] for a in div.find("p").findAll("a")]
     assert [
-        "simple_primary_key.json?id__gt=2",
-        "simple_primary_key.json?id__gt=2&_shape=array",
-        "simple_primary_key.json?id__gt=2&_shape=array&_nl=on",
-        "simple_primary_key.json?id__gt=2&_shape=object",
+        "/fixtures/simple_primary_key.json?id__gt=2",
+        "/fixtures/simple_primary_key.json?id__gt=2&_shape=array",
+        "/fixtures/simple_primary_key.json?id__gt=2&_shape=array&_nl=on",
+        "/fixtures/simple_primary_key.json?id__gt=2&_shape=object",
     ] == json_links
     # And the CSV form
     form = div.find("form")
@@ -578,6 +687,19 @@ def test_table_csv_json_export_interface(app_client):
     ] == inputs
 
 
+def test_row_json_export_link(app_client):
+    response = app_client.get("/fixtures/simple_primary_key/1")
+    assert response.status == 200
+    assert '<a href="/fixtures/simple_primary_key/1.json">json</a>' in response.text
+
+
+def test_query_json_csv_export_links(app_client):
+    response = app_client.get("/fixtures?sql=select+1")
+    assert response.status == 200
+    assert '<a href="/fixtures.json?sql=select+1">json</a>' in response.text
+    assert '<a href="/fixtures.csv?sql=select+1&amp;_size=max">CSV</a>' in response.text
+
+
 def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
     response = app_client.get("/fixtures/facetable")
     assert response.status == 200
@@ -586,12 +708,13 @@ def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
-    actual = [l["href"].split("/")[-1] for l in links]
+    actual = [l["href"] for l in links]
     expected = [
-        "facetable.json?_labels=on",
-        "facetable.testall?_labels=on",
-        "facetable.testnone?_labels=on",
-        "facetable.csv?_labels=on&_size=max",
+        "/fixtures/facetable.json?_labels=on",
+        "/fixtures/facetable.testall?_labels=on",
+        "/fixtures/facetable.testnone?_labels=on",
+        "/fixtures/facetable.testresponse?_labels=on",
+        "/fixtures/facetable.csv?_labels=on&_size=max",
         "#export",
     ]
     assert expected == actual
@@ -627,11 +750,11 @@ def test_table_html_no_primary_key(app_client):
             '<td class="col-Link type-pk"><a href="/fixtures/no_primary_key/{}">{}</a></td>'.format(
                 i, i
             ),
-            '<td class="col-rowid type-int">{}</td>'.format(i),
-            '<td class="col-content type-str">{}</td>'.format(i),
-            '<td class="col-a type-str">a{}</td>'.format(i),
-            '<td class="col-b type-str">b{}</td>'.format(i),
-            '<td class="col-c type-str">c{}</td>'.format(i),
+            f'<td class="col-rowid type-int">{i}</td>',
+            f'<td class="col-content type-str">{i}</td>',
+            f'<td class="col-a type-str">a{i}</td>',
+            f'<td class="col-b type-str">b{i}</td>',
+            f'<td class="col-c type-str">c{i}</td>',
         ]
         for i in range(1, 51)
     ]
@@ -679,8 +802,8 @@ def test_table_html_compound_primary_key(app_client):
     for expected_col, th in zip(("pk1", "pk2", "content"), ths[1:]):
         a = th.find("a")
         assert expected_col == a.string
-        assert th["class"] == ["col-{}".format(expected_col)]
-        assert a["href"].endswith("/compound_primary_key?_sort={}".format(expected_col))
+        assert th["class"] == [f"col-{expected_col}"]
+        assert a["href"].endswith(f"/compound_primary_key?_sort={expected_col}")
     expected = [
         [
             '<td class="col-Link type-pk"><a href="/fixtures/compound_primary_key/a,b">a,b</a></td>',
@@ -698,36 +821,52 @@ def test_table_html_foreign_key_links(app_client):
     response = app_client.get("/fixtures/foreign_key_references")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
-    expected = [
+    actual = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert actual == [
         [
             '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label type-str"><a href="/fixtures/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_blank_label type-str"><a href="/fixtures/simple_primary_key/3">-</a>\xa0<em>3</em></td>',
             '<td class="col-foreign_key_with_no_label type-str"><a href="/fixtures/primary_key_multiple_columns/1">1</a></td>',
+            '<td class="col-foreign_key_compound_pk1 type-str">a</td>',
+            '<td class="col-foreign_key_compound_pk2 type-str">b</td>',
         ],
         [
             '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/2">2</a></td>',
             '<td class="col-foreign_key_with_label type-none">\xa0</td>',
+            '<td class="col-foreign_key_with_blank_label type-none">\xa0</td>',
             '<td class="col-foreign_key_with_no_label type-none">\xa0</td>',
+            '<td class="col-foreign_key_compound_pk1 type-none">\xa0</td>',
+            '<td class="col-foreign_key_compound_pk2 type-none">\xa0</td>',
         ],
     ]
-    assert expected == [
-        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+
+
+def test_table_html_foreign_key_facets(app_client):
+    response = app_client.get(
+        "/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label"
+    )
+    assert response.status == 200
+    assert (
+        '<li><a href="http://localhost/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label&amp;foreign_key_with_blank_label=3">'
+        "-</a> 1</li>"
+    ) in response.text
 
 
 def test_table_html_disable_foreign_key_links_with_labels(app_client):
     response = app_client.get("/fixtures/foreign_key_references?_labels=off&_size=1")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
-    expected = [
+    actual = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
+    assert actual == [
         [
             '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
             '<td class="col-foreign_key_with_label type-str">1</td>',
+            '<td class="col-foreign_key_with_blank_label type-str">3</td>',
             '<td class="col-foreign_key_with_no_label type-str">1</td>',
+            '<td class="col-foreign_key_compound_pk1 type-str">a</td>',
+            '<td class="col-foreign_key_compound_pk2 type-str">b</td>',
         ]
-    ]
-    assert expected == [
-        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ]
 
 
@@ -846,8 +985,9 @@ def test_index_metadata(app_client):
     assert response.status == 200
     soup = Soup(response.body, "html.parser")
     assert "Datasette Fixtures" == soup.find("h1").text
-    assert "An example SQLite database demonstrating Datasette" == inner_html(
-        soup.find("div", {"class": "metadata-description"})
+    assert (
+        'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>'
+        == inner_html(soup.find("div", {"class": "metadata-description"}))
     )
     assert_footer_links(soup)
 
@@ -892,7 +1032,7 @@ def test_table_metadata(app_client):
     assert_footer_links(soup)
 
 
-def test_database_download_allowed_for_immutable():
+def test_database_download_for_immutable():
     with make_app_client(is_immutable=True) as client:
         assert not client.ds.databases["fixtures"].is_mutable
         # Regular page should have a download link
@@ -900,7 +1040,19 @@ def test_database_download_allowed_for_immutable():
         soup = Soup(response.body, "html.parser")
         assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
         # Check we can actually download it
-        assert 200 == client.get("/fixtures.db").status
+        download_response = client.get("/fixtures.db")
+        assert 200 == download_response.status
+        # Check the content-length header exists
+        assert "content-length" in download_response.headers
+        content_length = download_response.headers["content-length"]
+        assert content_length.isdigit()
+        assert int(content_length) > 100
+        assert "content-disposition" in download_response.headers
+        assert (
+            download_response.headers["content-disposition"]
+            == 'attachment; filename="fixtures.db"'
+        )
+        assert download_response.headers["transfer-encoding"] == "chunked"
 
 
 def test_database_download_disallowed_for_mutable(app_client):
@@ -913,10 +1065,10 @@ def test_database_download_disallowed_for_mutable(app_client):
 def test_database_download_disallowed_for_memory():
     with make_app_client(memory=True) as client:
         # Memory page should NOT have a download link
-        response = client.get("/:memory:")
+        response = client.get("/_memory")
         soup = Soup(response.body, "html.parser")
         assert 0 == len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
-        assert 404 == client.get("/:memory:.db").status
+        assert 404 == client.get("/_memory.db").status
 
 
 def test_allow_download_off():
@@ -944,21 +1096,20 @@ def assert_querystring_equal(expected, actual):
 
 
 def assert_footer_links(soup):
-    footer_links = soup.find("div", {"class": "ft"}).findAll("a")
+    footer_links = soup.find("footer").findAll("a")
     assert 4 == len(footer_links)
     datasette_link, license_link, source_link, about_link = footer_links
     assert "Datasette" == datasette_link.text.strip()
     assert "tests/fixtures.py" == source_link.text.strip()
     assert "Apache License 2.0" == license_link.text.strip()
     assert "About Datasette" == about_link.text.strip()
-    assert "https://github.com/simonw/datasette" == datasette_link["href"]
+    assert "https://datasette.io/" == datasette_link["href"]
     assert (
-        "https://github.com/simonw/datasette/blob/master/tests/fixtures.py"
+        "https://github.com/simonw/datasette/blob/main/tests/fixtures.py"
         == source_link["href"]
     )
     assert (
-        "https://github.com/simonw/datasette/blob/master/LICENSE"
-        == license_link["href"]
+        "https://github.com/simonw/datasette/blob/main/LICENSE" == license_link["href"]
     )
     assert "https://github.com/simonw/datasette" == about_link["href"]
 
@@ -975,9 +1126,7 @@ def test_404(app_client, path):
     response = app_client.get(path)
     assert 404 == response.status
     assert (
-        '<link rel="stylesheet" href="/-/static/app.css?{}'.format(
-            app_client.ds.app_css_hash()
-        )
+        f'<link rel="stylesheet" href="/-/static/app.css?{app_client.ds.app_css_hash()}'
         in response.text
     )
 
@@ -996,6 +1145,13 @@ def test_404_content_type(app_client):
     response = app_client.get("/404")
     assert 404 == response.status
     assert "text/html; charset=utf-8" == response.headers["content-type"]
+
+
+def test_canned_query_default_title(app_client):
+    response = app_client.get("/fixtures/magic_parameters")
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    assert "fixtures: magic_parameters" == soup.find("h1").text
 
 
 def test_canned_query_with_custom_metadata(app_client):
@@ -1102,7 +1258,46 @@ def test_extra_where_clauses(app_client):
     ]
 
 
-def test_binary_data_display(app_client):
+@pytest.mark.parametrize(
+    "path,expected_hidden",
+    [
+        ("/fixtures/facetable?_size=10", [("_size", "10")]),
+        (
+            "/fixtures/facetable?_size=10&_ignore=1&_ignore=2",
+            [
+                ("_size", "10"),
+                ("_ignore", "1"),
+                ("_ignore", "2"),
+            ],
+        ),
+    ],
+)
+def test_other_hidden_form_fields(app_client, path, expected_hidden):
+    response = app_client.get(path)
+    soup = Soup(response.body, "html.parser")
+    inputs = soup.find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
+
+
+@pytest.mark.parametrize(
+    "path,expected_hidden",
+    [
+        ("/fixtures/searchable?_search=terry", []),
+        ("/fixtures/searchable?_sort=text2", []),
+        ("/fixtures/searchable?_sort=text2&_where=1", [("_where", "1")]),
+    ],
+)
+def test_search_and_sort_fields_not_duplicated(app_client, path, expected_hidden):
+    # https://github.com/simonw/datasette/issues/1214
+    response = app_client.get(path)
+    soup = Soup(response.body, "html.parser")
+    inputs = soup.find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
+
+
+def test_binary_data_display_in_table(app_client):
     response = app_client.get("/fixtures/binary_data")
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
@@ -1110,12 +1305,79 @@ def test_binary_data_display(app_client):
         [
             '<td class="col-Link type-pk"><a href="/fixtures/binary_data/1">1</a></td>',
             '<td class="col-rowid type-int">1</td>',
-            '<td class="col-data type-bytes">&lt;Binary\xa0data:\xa019\xa0bytes&gt;</td>',
-        ]
+            '<td class="col-data type-bytes"><a class="blob-download" href="/fixtures/binary_data/1.blob?_blob_column=data">&lt;Binary:\xa07\xa0bytes&gt;</a></td>',
+        ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/binary_data/2">2</a></td>',
+            '<td class="col-rowid type-int">2</td>',
+            '<td class="col-data type-bytes"><a class="blob-download" href="/fixtures/binary_data/2.blob?_blob_column=data">&lt;Binary:\xa07\xa0bytes&gt;</a></td>',
+        ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/binary_data/3">3</a></td>',
+            '<td class="col-rowid type-int">3</td>',
+            '<td class="col-data type-none">\xa0</td>',
+        ],
     ]
     assert expected_tds == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
     ]
+
+
+def test_binary_data_display_in_query(app_client):
+    response = app_client.get("/fixtures?sql=select+*+from+binary_data")
+    assert response.status == 200
+    table = Soup(response.body, "html.parser").find("table")
+    expected_tds = [
+        [
+            '<td class="col-data"><a class="blob-download" href="/fixtures.blob?sql=select+*+from+binary_data&amp;_blob_column=data&amp;_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d">&lt;Binary:\xa07\xa0bytes&gt;</a></td>'
+        ],
+        [
+            '<td class="col-data"><a class="blob-download" href="/fixtures.blob?sql=select+*+from+binary_data&amp;_blob_column=data&amp;_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724">&lt;Binary:\xa07\xa0bytes&gt;</a></td>'
+        ],
+        ['<td class="col-data">\xa0</td>'],
+    ]
+    assert expected_tds == [
+        [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
+    ]
+
+
+@pytest.mark.parametrize(
+    "path,expected_filename",
+    [
+        ("/fixtures/binary_data/1.blob?_blob_column=data", "binary_data-1-data.blob"),
+        (
+            "/fixtures.blob?sql=select+*+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d",
+            "data-f30889.blob",
+        ),
+    ],
+)
+def test_blob_download(app_client, path, expected_filename):
+    response = app_client.get(path)
+    assert response.status == 200
+    assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert (
+        response.headers["content-disposition"]
+        == f'attachment; filename="{expected_filename}"'
+    )
+    assert response.headers["content-type"] == "application/binary"
+
+
+@pytest.mark.parametrize(
+    "path,expected_message",
+    [
+        ("/fixtures/binary_data/1.blob", "?_blob_column= is required"),
+        ("/fixtures/binary_data/1.blob?_blob_column=foo", "foo is not a valid column"),
+        (
+            "/fixtures/binary_data/1.blob?_blob_column=data&_blob_hash=x",
+            "Link has expired - the requested binary content has changed or could not be found.",
+        ),
+    ],
+)
+def test_blob_download_invalid_messages(app_client, path, expected_message):
+    response = app_client.get(path)
+    assert response.status == 400
+    assert expected_message in response.text
 
 
 def test_metadata_json_html(app_client):
@@ -1150,6 +1412,17 @@ def test_zero_results(app_client, path):
     soup = Soup(response.text, "html.parser")
     assert 0 == len(soup.select("table"))
     assert 1 == len(soup.select("p.zero-results"))
+
+
+def test_query_error(app_client):
+    response = app_client.get("/fixtures?sql=select+*+from+notatable")
+    html = response.text
+    assert '<p class="message-error">no such table: notatable</p>' in html
+    assert (
+        '<textarea id="sql-editor" name="sql">select * from notatable</textarea>'
+        in html
+    )
+    assert "0 results" not in html
 
 
 def test_config_template_debug_on():
@@ -1235,7 +1508,6 @@ def test_metadata_sort_desc(app_client):
     assert list(reversed(expected)) == rows
 
 
-@pytest.mark.parametrize("base_url", ["/prefix/", "https://example.com/"])
 @pytest.mark.parametrize(
     "path",
     [
@@ -1247,33 +1519,201 @@ def test_metadata_sort_desc(app_client):
         "/fixtures/facetable",
     ],
 )
-def test_base_url_config(base_url, path):
-    with make_app_client(config={"base_url": base_url}) as client:
-        response = client.get(base_url + path.lstrip("/"))
+def test_base_url_config(app_client_base_url_prefix, path):
+    client = app_client_base_url_prefix
+    response = client.get("/prefix/" + path.lstrip("/"))
+    soup = Soup(response.body, "html.parser")
+    for el in soup.findAll(["a", "link", "script"]):
+        if "href" in el.attrs:
+            href = el["href"]
+        elif "src" in el.attrs:
+            href = el["src"]
+        else:
+            continue  # Could be a <script>...</script>
+        if (
+            not href.startswith("#")
+            and href
+            not in {
+                "https://datasette.io/",
+                "https://github.com/simonw/datasette",
+                "https://github.com/simonw/datasette/blob/main/LICENSE",
+                "https://github.com/simonw/datasette/blob/main/tests/fixtures.py",
+                "/login-as-root",  # Only used for the latest.datasette.io demo
+            }
+            and not href.startswith("https://plugin-example.datasette.io/")
+        ):
+            # If this has been made absolute it may start http://localhost/
+            if href.startswith("http://localhost/"):
+                href = href[len("http://localost/") :]
+            assert href.startswith("/prefix/"), {
+                "path": path,
+                "href_or_src": href,
+                "element_parent": str(el.parent),
+            }
+
+
+def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
+    html = app_client_base_url_prefix.get("/").text
+    assert '<link rel="stylesheet" href="/prefix/static/extra-css-urls.css">' in html
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        (
+            "/fixtures/neighborhood_search",
+            "/fixtures?sql=%0Aselect+neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+neighborhood%3B%0A&amp;text=",
+        ),
+        (
+            "/fixtures/neighborhood_search?text=ber",
+            "/fixtures?sql=%0Aselect+neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+neighborhood%3B%0A&amp;text=ber",
+        ),
+        ("/fixtures/pragma_cache_size", None),
+        (
+            "/fixtures/𝐜𝐢𝐭𝐢𝐞𝐬",
+            "/fixtures?sql=select+id%2C+name+from+facet_cities+order+by+id+limit+1%3B",
+        ),
+        ("/fixtures/magic_parameters", None),
+    ],
+)
+def test_edit_sql_link_on_canned_queries(app_client, path, expected):
+    response = app_client.get(path)
+    expected_link = f'<a href="{expected}" class="canned-query-edit-sql">Edit SQL</a>'
+    if expected:
+        assert expected_link in response.text
+    else:
+        assert "Edit SQL" not in response.text
+
+
+@pytest.mark.parametrize("permission_allowed", [True, False])
+def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
+    with make_app_client(
+        metadata={
+            "allow_sql": None if permission_allowed else {"id": "not-you"},
+            "databases": {"fixtures": {"queries": {"simple": "select 1 + 1"}}},
+        }
+    ) as client:
+        response = client.get("/fixtures/simple")
+        if permission_allowed:
+            assert "Edit SQL" in response.text
+        else:
+            assert "Edit SQL" not in response.text
+
+
+@pytest.mark.parametrize(
+    "actor_id,should_have_links,should_not_have_links",
+    [
+        (None, None, None),
+        ("test", None, ["/-/permissions"]),
+        ("root", ["/-/permissions", "/-/allow-debug", "/-/metadata"], None),
+    ],
+)
+def test_navigation_menu_links(
+    app_client, actor_id, should_have_links, should_not_have_links
+):
+    cookies = {}
+    if actor_id:
+        cookies = {"ds_actor": app_client.actor_cookie({"id": actor_id})}
+    html = app_client.get("/", cookies=cookies).text
+    soup = Soup(html, "html.parser")
+    details = soup.find("nav").find("details")
+    if not actor_id:
+        # Should not show a menu
+        assert details is None
+        return
+    # They are logged in: should show a menu
+    assert details is not None
+    # And a rogout form
+    assert details.find("form") is not None
+    if should_have_links:
+        for link in should_have_links:
+            assert (
+                details.find("a", {"href": link}) is not None
+            ), f"{link} expected but missing from nav menu"
+
+    if should_not_have_links:
+        for link in should_not_have_links:
+            assert (
+                details.find("a", {"href": link}) is None
+            ), f"{link} found but should not have been in nav menu"
+
+
+@pytest.mark.parametrize(
+    "max_returned_rows,path,expected_num_facets,expected_ellipses,expected_ellipses_url",
+    (
+        (
+            5,
+            # Default should show 2 facets
+            "/fixtures/facetable?_facet=neighborhood",
+            2,
+            True,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+        ),
+        # _facet_size above max_returned_rows should show max_returned_rows (5)
+        (
+            5,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=50",
+            5,
+            True,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+        ),
+        # If max_returned_rows is high enough, should return all
+        (
+            20,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+            14,
+            False,
+            None,
+        ),
+        # If num facets > max_returned_rows, show ... without a link
+        # _facet_size above max_returned_rows should show max_returned_rows (5)
+        (
+            5,
+            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+            5,
+            True,
+            None,
+        ),
+    ),
+)
+def test_facet_more_links(
+    max_returned_rows,
+    path,
+    expected_num_facets,
+    expected_ellipses,
+    expected_ellipses_url,
+):
+    with make_app_client(
+        config={"max_returned_rows": max_returned_rows, "default_facet_size": 2}
+    ) as client:
+        response = client.get(path)
         soup = Soup(response.body, "html.parser")
-        for el in soup.findAll(["a", "link", "script"]):
-            if "href" in el.attrs:
-                href = el["href"]
-            elif "src" in el.attrs:
-                href = el["src"]
+        lis = soup.select("#facet-neighborhood ul li:not(.facet-truncated)")
+        facet_truncated = soup.select_one(".facet-truncated")
+        assert len(lis) == expected_num_facets
+        if not expected_ellipses:
+            assert facet_truncated is None
+        else:
+            if expected_ellipses_url:
+                assert facet_truncated.find("a")["href"] == expected_ellipses_url
             else:
-                continue  # Could be a <script>...</script>
-            if (
-                not href.startswith("#")
-                and href
-                not in {
-                    "https://github.com/simonw/datasette",
-                    "https://github.com/simonw/datasette/blob/master/LICENSE",
-                    "https://github.com/simonw/datasette/blob/master/tests/fixtures.py",
-                }
-                and not href.startswith("https://plugin-example.com/")
-            ):
-                # If this has been made absolute it may start http://localhost/
-                if href.startswith("http://localhost/"):
-                    href = href[len("http://localost/") :]
-                assert href.startswith(base_url), {
-                    "base_url": base_url,
-                    "path": path,
-                    "href_or_src": href,
-                    "element_parent": str(el.parent),
-                }
+                assert facet_truncated.find("a") is None
+
+
+def test_unavailable_table_does_not_break_sort_relationships():
+    # https://github.com/simonw/datasette/issues/1305
+    with make_app_client(
+        metadata={
+            "databases": {
+                "fixtures": {"tables": {"foreign_key_references": {"allow": False}}}
+            }
+        }
+    ) as client:
+        response = client.get("/?_sort=relationships")
+        assert response.status == 200
+
+
+def test_trace_correctly_escaped(app_client):
+    response = app_client.get("/fixtures?sql=select+'<h1>Hello'&_trace=1")
+    assert "select '<h1>Hello" not in response.text
+    assert "select &#39;&lt;h1&gt;Hello" in response.text

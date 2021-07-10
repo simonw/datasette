@@ -33,7 +33,11 @@ import pytest
             ["2%2", "3%3"],
         ),
         # notlike:
-        ((("foo__notlike", "2%2"),), ['"foo" not like :p0'], ["2%2"],),
+        (
+            (("foo__notlike", "2%2"),),
+            ['"foo" not like :p0'],
+            ["2%2"],
+        ),
         (
             (("foo__isnull", "1"), ("baz__isnull", "1"), ("bar__gt", "10")),
             ['"bar" > :p0', '"baz" is null', '"foo" is null'],
@@ -52,12 +56,18 @@ import pytest
         # Not in, and JSON array not in
         ((("foo__notin", "1,2,3"),), ["foo not in (:p0, :p1, :p2)"], ["1", "2", "3"]),
         ((("foo__notin", "[1,2,3]"),), ["foo not in (:p0, :p1, :p2)"], [1, 2, 3]),
+        # JSON arraycontains
+        (
+            (("Availability+Info__arraycontains", "yes"),),
+            [
+                "rowid in (\n            select table.rowid from table, json_each([table].[Availability+Info]) j\n            where j.value = :p0\n        )"
+            ],
+            ["yes"],
+        ),
     ],
 )
 def test_build_where(args, expected_where, expected_params):
     f = Filters(sorted(args))
     sql_bits, actual_params = f.build_where_clauses("table")
     assert expected_where == sql_bits
-    assert {
-        "p{}".format(i): param for i, param in enumerate(expected_params)
-    } == actual_params
+    assert {f"p{i}": param for i, param in enumerate(expected_params)} == actual_params

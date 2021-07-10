@@ -1,8 +1,7 @@
+from re import VERBOSE
 from setuptools import setup, find_packages
 import os
 import sys
-
-import versioneer
 
 
 def get_long_description():
@@ -18,45 +17,48 @@ def get_version():
         os.path.dirname(os.path.abspath(__file__)), "datasette", "version.py"
     )
     g = {}
-    exec(open(path).read(), g)
+    with open(path) as fp:
+        exec(fp.read(), g)
     return g["__version__"]
 
 
 setup(
     name="datasette",
-    version=versioneer.get_version(),
-    cmdclass=versioneer.get_cmdclass(),
-    description="A tool for exploring and publishing data",
+    version=get_version(),
+    description="An open source multi-tool for exploring and publishing data",
     long_description=get_long_description(),
     long_description_content_type="text/markdown",
     author="Simon Willison",
     license="Apache License, Version 2.0",
-    url="https://github.com/simonw/datasette",
+    url="https://datasette.io/",
     project_urls={
-        "Documentation": "https://datasette.readthedocs.io/en/stable/",
-        "Changelog": "https://datasette.readthedocs.io/en/stable/changelog.html",
+        "Documentation": "https://docs.datasette.io/en/stable/",
+        "Changelog": "https://docs.datasette.io/en/stable/changelog.html",
         "Live demo": "https://latest.datasette.io/",
         "Source code": "https://github.com/simonw/datasette",
         "Issues": "https://github.com/simonw/datasette/issues",
-        "CI": "https://travis-ci.org/simonw/datasette",
+        "CI": "https://github.com/simonw/datasette/actions?query=workflow%3ATest",
     },
-    packages=find_packages(exclude="tests"),
+    packages=find_packages(exclude=("tests",)),
     package_data={"datasette": ["templates/*.html"]},
     include_package_data=True,
+    python_requires=">=3.6",
     install_requires=[
-        "click~=7.1.1",
+        "asgiref>=3.2.10,<3.4.0",
+        "click>=7.1.1,<8.1.0",
         "click-default-group~=1.2.2",
-        "Jinja2>=2.10.3,<2.12.0",
+        "Jinja2>=2.10.3,<3.1.0",
         "hupper~=1.9",
+        "httpx>=0.17",
         "pint~=0.9",
         "pluggy~=0.13.0",
         "uvicorn~=0.11",
-        "aiofiles>=0.4,<0.6",
-        "janus>=0.4,<0.6",
-        "asgi-csrf>=0.5.1",
+        "aiofiles>=0.4,<0.8",
+        "janus>=0.4,<0.7",
+        "asgi-csrf>=0.9",
         "PyYAML~=5.3",
         "mergedeep>=1.1.1,<1.4.0",
-        "itsdangerous~=1.1",
+        "itsdangerous>=1.1,<3.0",
         "python-baseconv==1.2.2",
     ],
     entry_points="""
@@ -67,12 +69,13 @@ setup(
     extras_require={
         "docs": ["sphinx_rtd_theme", "sphinx-autobuild"],
         "test": [
-            "pytest>=5.2.2,<5.5.0",
-            "pytest-asyncio>=0.10,<0.15",
-            "aiohttp~=3.6.2",
+            "pytest>=5.2.2,<6.3.0",
+            "pytest-xdist>=2.2.1,<2.4",
+            "pytest-asyncio>=0.10,<0.16",
             "beautifulsoup4>=4.8.1,<4.10.0",
-            "asgiref~=3.2.3",
-            "black~=19.10b0",
+            "black==21.6b0",
+            "pytest-timeout>=1.4.2,<1.5",
+            "trustme>=0.7,<0.9",
         ],
     },
     tests_require=["datasette[test]"],
@@ -83,6 +86,7 @@ setup(
         "Intended Audience :: End Users/Desktop",
         "Topic :: Database",
         "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.6",

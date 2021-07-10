@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Debug allow rules{% endblock %}
+
+{% block extra_head %}
+<style>
+textarea {
+    height: 10em;
+    width: 95%;
+    box-sizing: border-box;
+    padding: 0.5em;
+    border: 2px dotted black;
+}
+.two-col {
+    display: inline-block;
+    width: 48%;
+}
+.two-col label {
+    width: 48%;
+}
+p.message-warning {
+    white-space: pre-wrap;
+}
+@media only screen and (max-width: 576px) {
+    .two-col {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<h1>Debug allow rules</h1>
+
+<p>Use this tool to try out different actor and allow combinations. See <a href="https://docs.datasette.io/en/stable/authentication.html#defining-permissions-with-allow-blocks">Defining permissions with "allow" blocks</a> for documentation.</p>
+
+<form action="{{ urls.path('-/allow-debug') }}" method="get">
+    <div class="two-col">
+        <p><label>Allow block</label></p>
+        <textarea name="allow">{{ allow_input }}</textarea>
+    </div>
+    <div class="two-col">
+        <p><label>Actor</label></p>
+        <textarea name="actor">{{ actor_input }}</textarea>
+    </div>
+    <div style="margin-top: 1em;">
+        <input type="submit" value="Apply allow block to actor">
+    </div>
+</form>
+
+{% if error %}<p class="message-warning">{{ error }}</p>{% endif %}
+
+{% if result == "True" %}<p class="message-info">Result: allow</p>{% endif %}
+
+{% if result == "False" %}<p class="message-error">Result: deny</p>{% endif %}
+
+{% endblock %}

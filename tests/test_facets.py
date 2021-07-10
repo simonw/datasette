@@ -1,7 +1,9 @@
+from datasette.app import Datasette
+from datasette.database import Database
 from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
+from datasette.utils.asgi import Request
 from datasette.utils import detect_json1
 from .fixtures import app_client  # noqa
-from .utils import MockRequest
 import pytest
 
 
@@ -9,7 +11,7 @@ import pytest
 async def test_column_facet_suggest(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -34,7 +36,7 @@ async def test_column_facet_suggest(app_client):
 async def test_column_facet_suggest_skip_if_already_selected(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/?_facet=planet_int&_facet=on_earth"),
+        Request.fake("/?_facet=planet_int&_facet=on_earth"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -72,7 +74,7 @@ async def test_column_facet_suggest_skip_if_already_selected(app_client):
 async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -94,7 +96,7 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
 async def test_column_facet_results(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/?_facet=city_id"),
+        Request.fake("/?_facet=city_id"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -146,7 +148,7 @@ async def test_column_facet_results(app_client):
 async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -200,7 +202,7 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
 async def test_array_facet_suggest(app_client):
     facet = ArrayFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -220,7 +222,7 @@ async def test_array_facet_suggest(app_client):
 async def test_array_facet_suggest_not_if_all_empty_arrays(app_client):
     facet = ArrayFacet(
         app_client.ds,
-        MockRequest("http://localhost/"),
+        Request.fake("/"),
         database="fixtures",
         sql="select * from facetable where tags = '[]'",
         table="facetable",
@@ -234,7 +236,7 @@ async def test_array_facet_suggest_not_if_all_empty_arrays(app_client):
 async def test_array_facet_results(app_client):
     facet = ArrayFacet(
         app_client.ds,
-        MockRequest("http://localhost/?_facet_array=tags"),
+        Request.fake("/?_facet_array=tags"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -279,7 +281,7 @@ async def test_array_facet_results(app_client):
 async def test_date_facet_results(app_client):
     facet = DateFacet(
         app_client.ds,
-        MockRequest("http://localhost/?_facet_date=created"),
+        Request.fake("/?_facet_date=created"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -325,3 +327,81 @@ async def test_date_facet_results(app_client):
             "truncated": False,
         }
     } == buckets
+
+
+@pytest.mark.asyncio
+async def test_json_array_with_blanks_and_nulls():
+    ds = Datasette([], memory=True)
+    db = ds.add_database(Database(ds, memory_name="test_json_array"))
+    await db.execute_write("create table foo(json_column text)", block=True)
+    for value in ('["a", "b", "c"]', '["a", "b"]', "", None):
+        await db.execute_write(
+            "insert into foo (json_column) values (?)", [value], block=True
+        )
+    response = await ds.client.get("/test_json_array/foo.json")
+    data = response.json()
+    assert data["suggested_facets"] == [
+        {
+            "name": "json_column",
+            "type": "array",
+            "toggle_url": "http://localhost/test_json_array/foo.json?_facet_array=json_column",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_facet_size():
+    ds = Datasette([], memory=True, config={"max_returned_rows": 50})
+    db = ds.add_database(Database(ds, memory_name="test_facet_size"))
+    await db.execute_write(
+        "create table neighbourhoods(city text, neighbourhood text)", block=True
+    )
+    for i in range(1, 51):
+        for j in range(1, 4):
+            await db.execute_write(
+                "insert into neighbourhoods (city, neighbourhood) values (?, ?)",
+                ["City {}".format(i), "Neighbourhood {}".format(j)],
+                block=True,
+            )
+    response = await ds.client.get("/test_facet_size/neighbourhoods.json")
+    data = response.json()
+    assert data["suggested_facets"] == [
+        {
+            "name": "neighbourhood",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet=neighbourhood",
+        }
+    ]
+    # Bump up _facet_size= to suggest city too
+    response2 = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_facet_size=50"
+    )
+    data2 = response2.json()
+    assert sorted(data2["suggested_facets"], key=lambda f: f["name"]) == [
+        {
+            "name": "city",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city",
+        },
+        {
+            "name": "neighbourhood",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=neighbourhood",
+        },
+    ]
+    # Facet by city should return expected number of results
+    response3 = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
+    )
+    data3 = response3.json()
+    assert len(data3["facet_results"]["city"]["results"]) == 50
+    # Reduce max_returned_rows and check that it's respected
+    ds._settings["max_returned_rows"] = 20
+    response4 = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
+    )
+    data4 = response4.json()
+    assert len(data4["facet_results"]["city"]["results"]) == 20
+    # Test _facet_size=max
+    response5 = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_facet_size=max&_facet=city"
+    )
+    data5 = response5.json()
+    assert len(data5["facet_results"]["city"]["results"]) == 20

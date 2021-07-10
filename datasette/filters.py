@@ -43,7 +43,7 @@ class TemplatedFilter(Filter):
             kwargs = {"c": column}
             converted = None
         else:
-            kwargs = {"c": column, "p": "p{}".format(param_counter), "t": table}
+            kwargs = {"c": column, "p": f"p{param_counter}", "t": table}
         return self.sql_template.format(**kwargs), converted
 
     def human_clause(self, column, value):
@@ -69,12 +69,12 @@ class InFilter(Filter):
 
     def where_clause(self, table, column, value, param_counter):
         values = self.split_value(value)
-        params = [":p{}".format(param_counter + i) for i in range(len(values))]
-        sql = "{} in ({})".format(escape_sqlite(column), ", ".join(params))
+        params = [f":p{param_counter + i}" for i in range(len(values))]
+        sql = f"{escape_sqlite(column)} in ({', '.join(params)})"
         return sql, values
 
     def human_clause(self, column, value):
-        return "{} in {}".format(column, json.dumps(self.split_value(value)))
+        return f"{column} in {json.dumps(self.split_value(value))}"
 
 
 class NotInFilter(InFilter):
@@ -83,12 +83,12 @@ class NotInFilter(InFilter):
 
     def where_clause(self, table, column, value, param_counter):
         values = self.split_value(value)
-        params = [":p{}".format(param_counter + i) for i in range(len(values))]
-        sql = "{} not in ({})".format(escape_sqlite(column), ", ".join(params))
+        params = [f":p{param_counter + i}" for i in range(len(values))]
+        sql = f"{escape_sqlite(column)} not in ({', '.join(params)})"
         return sql, values
 
     def human_clause(self, column, value):
-        return "{} not in {}".format(column, json.dumps(self.split_value(value)))
+        return f"{column} not in {json.dumps(self.split_value(value))}"
 
 
 class Filters:
@@ -150,11 +150,20 @@ class Filters:
                     "arraycontains",
                     "array contains",
                     """rowid in (
-            select {t}.rowid from {t}, json_each({t}.{c}) j
+            select {t}.rowid from {t}, json_each([{t}].[{c}]) j
             where j.value = :{p}
         )""",
                     '{c} contains "{v}"',
-                )
+                ),
+                TemplatedFilter(
+                    "arraynotcontains",
+                    "array does not contain",
+                    """rowid not in (
+            select {t}.rowid from {t}, json_each([{t}].[{c}]) j
+            where j.value = :{p}
+        )""",
+                    '{c} does not contain "{v}"',
+                ),
             ]
             if detect_json1()
             else []
@@ -191,13 +200,15 @@ class Filters:
     )
     _filters_by_key = {f.key: f for f in _filters}
 
-    def __init__(self, pairs, units={}, ureg=None):
+    def __init__(self, pairs, units=None, ureg=None):
+        if units is None:
+            units = {}
         self.pairs = pairs
         self.units = units
         self.ureg = ureg
 
     def lookups(self):
-        "Yields (lookup, display, no_argument) pairs"
+        """Yields (lookup, display, no_argument) pairs"""
         for filter in self._filters:
             yield filter.key, filter.display, filter.no_argument
 
@@ -219,10 +230,10 @@ class Filters:
         s = " and ".join(and_bits)
         if not s:
             return ""
-        return "where {}".format(s)
+        return f"where {s}"
 
     def selections(self):
-        "Yields (column, lookup, value) tuples"
+        """Yields (column, lookup, value) tuples"""
         for key, value in self.pairs:
             if "__" in key:
                 column, lookup = key.rsplit("__", 1)
@@ -235,7 +246,7 @@ class Filters:
         return bool(self.pairs)
 
     def convert_unit(self, column, value):
-        "If the user has provided a unit in the query, convert it into the column unit, if present."
+        """If the user has provided a unit in the query, convert it into the column unit, if present."""
         if column not in self.units:
             return value
 
@@ -263,7 +274,7 @@ class Filters:
                     if not isinstance(param, list):
                         param = [param]
                     for individual_param in param:
-                        param_id = "p{}".format(i)
+                        param_id = f"p{i}"
                         params[param_id] = individual_param
                         i += 1
         return sql_bits, params

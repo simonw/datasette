@@ -36,6 +36,12 @@ def publish_subcommand(publish):
         callback=_validate_memory,
         help="Memory to allocate in Cloud Run, e.g. 1Gi",
     )
+    @click.option(
+        "--apt-get-install",
+        "apt_get_extras",
+        multiple=True,
+        help="Additional packages to apt-get install",
+    )
     def cloudrun(
         files,
         metadata,
@@ -60,6 +66,7 @@ def publish_subcommand(publish):
         spatialite,
         show_files,
         memory,
+        apt_get_extras,
     ):
         fail_if_publish_binary_not_installed(
             "gcloud", "Google Cloud", "https://cloud.google.com/sdk/"
@@ -95,14 +102,19 @@ def publish_subcommand(publish):
             "about_url": about_url,
         }
 
+        if not extra_options:
+            extra_options = ""
+        if "force_https_urls" not in extra_options:
+            if extra_options:
+                extra_options += " "
+            extra_options += "--setting force_https_urls on"
+
         environment_variables = {}
         if plugin_secret:
             extra_metadata["plugins"] = {}
             for plugin_name, plugin_setting, setting_value in plugin_secret:
                 environment_variable = (
-                    "{}_{}".format(plugin_name, plugin_setting)
-                    .upper()
-                    .replace("-", "_")
+                    f"{plugin_name}_{plugin_setting}".upper().replace("-", "_")
                 )
                 environment_variables[environment_variable] = setting_value
                 extra_metadata["plugins"].setdefault(plugin_name, {})[
@@ -124,17 +136,20 @@ def publish_subcommand(publish):
             secret,
             extra_metadata,
             environment_variables,
+            apt_get_extras=apt_get_extras,
         ):
             if show_files:
                 if os.path.exists("metadata.json"):
                     print("=== metadata.json ===\n")
-                    print(open("metadata.json").read())
+                    with open("metadata.json") as fp:
+                        print(fp.read())
                 print("\n==== Dockerfile ====\n")
-                print(open("Dockerfile").read())
+                with open("Dockerfile") as fp:
+                    print(fp.read())
                 print("\n====================\n")
 
-            image_id = "gcr.io/{project}/{name}".format(project=project, name=name)
-            check_call("gcloud builds submit --tag {}".format(image_id), shell=True)
+            image_id = f"gcr.io/{project}/{name}"
+            check_call(f"gcloud builds submit --tag {image_id}", shell=True)
         check_call(
             "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}".format(
                 image_id, service, " --memory {}".format(memory) if memory else ""

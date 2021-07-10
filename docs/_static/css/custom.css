@@ -1,3 +1,7 @@
 a.external {
     overflow-wrap: anywhere;
 }
+
+div .wy-side-nav-search > div.version {
+    color: rgba(0,0,0,0.75);
+}

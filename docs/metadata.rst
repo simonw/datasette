@@ -177,7 +177,7 @@ Datasette defaults to displaing 100 rows per page, for both tables and views. Yo
         }
     }
 
-This size can still be over-ridden by passing e.g. ``?_size=50`` in the querystring.
+This size can still be over-ridden by passing e.g. ``?_size=50`` in the query string.
 
 .. _metadata_sortable_columns:
 
@@ -310,7 +310,7 @@ Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`can
               where neighborhood like '%' || :text || '%' order by neighborhood;
             title: Search neighborhoods
             description_html: |-
-              <p>This demonstrates <em>simple</em> LIKE search
+              <p>This demonstrates <em>basic</em> LIKE search
 
 The ``metadata.yml`` file is passed to Datasette using the same ``--metadata`` option::
 

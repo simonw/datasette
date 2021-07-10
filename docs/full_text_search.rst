@@ -14,7 +14,7 @@ Datasette automatically detects which tables have been configured for full-text 
 The table page and table view API
 ---------------------------------
 
-Table views that support full-text search can be queried using the ``?_search=TERMS`` querystring parameter. This will run the search against content from all of the columns that have been included in the index.
+Table views that support full-text search can be queried using the ``?_search=TERMS`` query string parameter. This will run the search against content from all of the columns that have been included in the index.
 
 Try this example: `fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort <https://fara.datasettes.com/fara/FARA_All_ShortForms?_search=manafort>`__
 
@@ -36,7 +36,11 @@ Advanced SQLite search queries
 
 SQLite full-text search includes support for `a variety of advanced queries <https://www.sqlite.org/fts5.html#full_text_query_syntax>`__, including ``AND``, ``OR``, ``NOT`` and ``NEAR``.
 
-By default Datasette disables these features to ensure they do not cause any confusion for users who are not aware of them. You can disable this escaping and use the advanced queries by adding ``?_searchmode=raw`` to the table page query string.
+By default Datasette disables these features to ensure they do not cause errors or confusion for users who are not aware of them. You can disable this escaping and use the advanced queries by adding ``&_searchmode=raw`` to the table page query string.
+
+If you want to enable these operators by default for a specific table, you can do so by adding ``"searchmode": "raw"`` to the metadata configuration for that table, see :ref:`full_text_search_table_or_view`.
+
+If that option has been specified in the table metadata but you want to over-ride it and return to the default behavior you can append ``&_searchmode=escaped`` to the query string.
 
 .. _full_text_search_table_or_view:
 
@@ -45,7 +49,7 @@ Configuring full-text search for a table or view
 
 If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown above, Datasette will detect it automatically and add a search interface to the table page for that table.
 
-You can also manually configure which table should be used for full-text search using querystring parameters or :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
+You can also manually configure which table should be used for full-text search using query string parameters or :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
 
 Use ``?_fts_table=x`` to over-ride the FTS table for a specific page. If the primary key was something other than ``rowid`` you can use ``?_fts_pk=col`` to set that as well. This is particularly useful for views, for example:
 
@@ -53,19 +57,24 @@ https://latest.datasette.io/fixtures/searchable_view?_fts_table=searchable_fts&_
 
 The ``fts_table`` metadata property can be used to specify an associated FTS table. If the primary key column in your table which was used to populate the FTS table is something other than ``rowid``, you can specify the column to use with the ``fts_pk`` property.
 
-Here is an example which enables full-text search for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key::
+The ``"searchmode": "raw"`` property can be used to default the table to accepting SQLite advanced search operators, as described in :ref:`full_text_search_advanced_queries`.
+
+Here is an example which enables full-text search (with SQLite advanced search operators) for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key:
+
+.. code-block:: json
 
     {
-      "databases": {
-        "russian-ads": {
-          "tables": {
-            "display_ads": {
-              "fts_table": "ads_fts",
-              "fts_pk": "id"
+        "databases": {
+            "russian-ads": {
+                "tables": {
+                    "display_ads": {
+                        "fts_table": "ads_fts",
+                        "fts_pk": "id",
+                        "search_mode": "raw"
+                    }
+                }
             }
-          }
         }
-      }
     }
 
 .. _full_text_search_custom_sql:
@@ -128,7 +137,7 @@ To set up full-text search for a table, you need to do two things:
 Configuring FTS using sqlite-utils
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`sqlite-utils <https://sqlite-utils.readthedocs.io/>`__ is a CLI utility and Python library for manipulating SQLite databases. You can use `it from Python code <https://sqlite-utils.readthedocs.io/en/latest/python-api.html#enabling-full-text-search>`__ to configure FTS search, or you can achieve the same goal `using the accompanying command-line tool <https://sqlite-utils.readthedocs.io/en/latest/cli.html#configuring-full-text-search>`__.
+`sqlite-utils <https://sqlite-utils.datasette.io/>`__ is a CLI utility and Python library for manipulating SQLite databases. You can use `it from Python code <https://sqlite-utils.datasette.io/en/latest/python-api.html#enabling-full-text-search>`__ to configure FTS search, or you can achieve the same goal `using the accompanying command-line tool <https://sqlite-utils.datasette.io/en/latest/cli.html#configuring-full-text-search>`__.
 
 Here's how to use ``sqlite-utils`` to enable full-text search for an ``items`` table across the ``name`` and ``description`` columns::
 
@@ -144,7 +153,7 @@ If your data starts out in CSV files, you can use Datasette's companion tool `cs
 Configuring FTS by hand
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-We recommend using `sqlite-utils <https://sqlite-utils.readthedocs.io/>`__, but if you want to hand-roll a SQLite full-text search table you can do so using the following SQL.
+We recommend using `sqlite-utils <https://sqlite-utils.datasette.io/>`__, but if you want to hand-roll a SQLite full-text search table you can do so using the following SQL.
 
 To enable full-text search for a table called ``items`` that works against the ``name`` and ``description`` columns, you would run this SQL to create a new ``items_fts`` FTS virtual table:
 

@@ -7,10 +7,10 @@ Datasette facets can be used to add a faceted browse interface to any database t
 
 .. image:: facets.png
 
-Facets can be specified in two ways: using querystring parameters, or in ``metadata.json`` configuration for the table.
+Facets can be specified in two ways: using query string parameters, or in ``metadata.json`` configuration for the table.
 
-Facets in querystrings
-----------------------
+Facets in query strings
+-----------------------
 
 To turn on faceting for specific columns on a Datasette table view, add one or more ``_facet=COLUMN`` parameters to the URL. For example, if you want to turn on facets for the ``city_id`` and ``state`` columns, construct a URL that looks like this::
 
@@ -83,6 +83,10 @@ This works for both the HTML interface and the ``.json`` view. When enabled, fac
     }
 
 If Datasette detects that a column is a foreign key, the ``"label"`` property will be automatically derived from the detected label column on the referenced table.
+
+The default number of facet results returned is 30, controlled by the :ref:`setting_default_facet_size` setting. You can increase this on an individual page by adding ``?_facet_size=100`` to the query string, up to a maximum of :ref:`setting_max_returned_rows` (which defaults to 1000).
+
+.. _facets_metadata:
 
 Facets in metadata.json
 -----------------------

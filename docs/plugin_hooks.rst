@@ -80,253 +80,11 @@ You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
 
-.. _plugin_hook_extra_css_urls:
-
-extra_css_urls(template, database, table, datasette)
-----------------------------------------------------
-
-``template`` - string
-    The template that is being rendered, e.g. ``database.html``
-
-``database`` - string or None
-    The name of the database
-
-``table`` - string or None
-    The name of the table
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
-
-Return a list of extra CSS URLs that should be included on the page. These can
-take advantage of the CSS class hooks described in :ref:`customization`.
-
-This can be a list of URLs:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_css_urls():
-        return [
-            'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css'
-        ]
-
-Or a list of dictionaries defining both a URL and an
-`SRI hash <https://www.srihash.org/>`_:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_css_urls():
-        return [{
-            'url': 'https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css',
-            'sri': 'sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4',
-        }]
-
-Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
-
-.. _plugin_hook_extra_js_urls:
-
-extra_js_urls(template, database, table, datasette)
----------------------------------------------------
-
-Same arguments as ``extra_css_urls``.
-
-This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
-return either a list of URLs or a list of dictionaries:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_js_urls():
-        return [{
-            'url': 'https://code.jquery.com/jquery-3.3.1.slim.min.js',
-            'sri': 'sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo',
-        }]
-
-You can also return URLs to files from your plugin's ``static/`` directory, if
-you have one:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-    @hookimpl
-    def extra_js_urls():
-        return [
-            '/-/static-plugins/your-plugin/app.js'
-        ]
-
-Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
-
-.. _plugin_hook_publish_subcommand:
-
-publish_subcommand(publish)
----------------------------
-
-``publish`` - Click publish command group
-    The Click command group for the ``datasette publish`` subcommand
-
-This hook allows you to create new providers for the ``datasette publish``
-command. Datasette uses this hook internally to implement the default ``now``
-and ``heroku`` subcommands, so you can read
-`their source <https://github.com/simonw/datasette/tree/master/datasette/publish>`_
-to see examples of this hook in action.
-
-Let's say you want to build a plugin that adds a ``datasette publish my_hosting_provider --api_key=xxx mydatabase.db`` publish command. Your implementation would start like this:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-    from datasette.publish.common import add_common_publish_arguments_and_options
-    import click
-
-
-    @hookimpl
-    def publish_subcommand(publish):
-        @publish.command()
-        @add_common_publish_arguments_and_options
-        @click.option(
-            "-k",
-            "--api_key",
-            help="API key for talking to my hosting provider",
-        )
-        def my_hosting_provider(
-            files,
-            metadata,
-            extra_options,
-            branch,
-            template_dir,
-            plugins_dir,
-            static,
-            install,
-            plugin_secret,
-            version_note,
-            secret,
-            title,
-            license,
-            license_url,
-            source,
-            source_url,
-            about,
-            about_url,
-            api_key,
-        ):
-            # Your implementation goes here
-
-Examples: `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`_, `datasette-publish-now <https://github.com/simonw/datasette-publish-now>`_
-
-.. _plugin_hook_render_cell:
-
-render_cell(value, column, table, database, datasette)
-------------------------------------------------------
-
-Lets you customize the display of values within table cells in the HTML table view.
-
-``value`` - string, integer or None
-    The value that was loaded from the database
-
-``column`` - string
-    The name of the column being rendered
-
-``table`` - string or None
-    The name of the table - or ``None`` if this is a custom SQL query
-
-``database`` - string
-    The name of the database
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
-
-If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
-
-If the hook returns a string, that string will be rendered in the table cell.
-
-If you want to return HTML markup you can do so by returning a ``jinja2.Markup`` object.
-
-Datasette will loop through all available ``render_cell`` hooks and display the value returned by the first one that does not return ``None``.
-
-Here is an example of a custom ``render_cell()`` plugin which looks for values that are a JSON string matching the following format::
-
-    {"href": "https://www.example.com/", "label": "Name"}
-
-If the value matches that pattern, the plugin returns an HTML link element:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-    import jinja2
-    import json
-
-
-    @hookimpl
-    def render_cell(value):
-        # Render {"href": "...", "label": "..."} as link
-        if not isinstance(value, str):
-            return None
-        stripped = value.strip()
-        if not stripped.startswith("{") and stripped.endswith("}"):
-            return None
-        try:
-            data = json.loads(value)
-        except ValueError:
-            return None
-        if not isinstance(data, dict):
-            return None
-        if set(data.keys()) != {"href", "label"}:
-            return None
-        href = data["href"]
-        if not (
-            href.startswith("/") or href.startswith("http://")
-            or href.startswith("https://")
-        ):
-            return None
-        return jinja2.Markup('<a href="{href}">{label}</a>'.format(
-            href=jinja2.escape(data["href"]),
-            label=jinja2.escape(data["label"] or "") or "&nbsp;"
-        ))
-
-Examples: `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`_, `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`_
-
-.. _plugin_hook_extra_body_script:
-
-extra_body_script(template, database, table, view_name, datasette)
-------------------------------------------------------------------
-
-Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
-
-``template`` - string
-    The template that is being rendered, e.g. ``database.html``
-
-``database`` - string or None
-    The name of the database, or ``None`` if the page does not correspond to a database (e.g. the root page)
-
-``table`` - string or None
-    The name of the table, or ``None`` if the page does not correct to a table
-
-``view_name`` - string
-    The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
-
-The ``template``, ``database`` and ``table`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
-
-The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
-
-The string that you return from this function will be treated as "safe" for inclusion in a ``<script>`` block directly in the page, so it is up to you to apply any necessary escaping.
-
-Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
 
 .. _plugin_hook_extra_template_vars:
 
-extra_template_vars(template, database, table, view_name, request, datasette)
------------------------------------------------------------------------------
+extra_template_vars(template, database, table, columns, view_name, request, datasette)
+--------------------------------------------------------------------------------------
 
 Extra template variables that should be made available in the rendered template context.
 
@@ -339,11 +97,14 @@ Extra template variables that should be made available in the rendered template 
 ``table`` - string or None
     The name of the table, or ``None`` if the page does not correct to a table
 
-``view_name`` - string
-    The name of the view being displayed. (`index`, `database`, `table`, and `row` are the most important ones.)
+``columns`` - list of strings or None
+    The names of the database columns that will be displayed on this page. ``None`` if the page does not contain a table.
 
-``request`` - object
-    The current HTTP :ref:`internals_request`.
+``view_name`` - string
+    The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
+
+``request`` - object or None
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
@@ -402,6 +163,265 @@ You can then use the new function in a template like so::
 
 Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`_
 
+.. _plugin_hook_extra_css_urls:
+
+extra_css_urls(template, database, table, columns, view_name, request, datasette)
+---------------------------------------------------------------------------------
+
+This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+
+Return a list of extra CSS URLs that should be included on the page. These can
+take advantage of the CSS class hooks described in :ref:`customization`.
+
+This can be a list of URLs:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_css_urls():
+        return [
+            "https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css"
+        ]
+
+Or a list of dictionaries defining both a URL and an
+`SRI hash <https://www.srihash.org/>`_:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_css_urls():
+        return [{
+            "url": "https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/css/bootstrap.min.css",
+            "sri": "sha384-9gVQ4dYFwwWSjIDZnLEWnxCjeSWFphJiwGPXr1jddIhOegiu1FwO5qRGvFXOdJZ4",
+        }]
+
+This function can also return an awaitable function, useful if it needs to run any async code:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_css_urls(datasette):
+        async def inner():
+            db = datasette.get_database()
+            results = await db.execute("select url from css_files")
+            return [r[0] for r in results]
+
+        return inner
+
+Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
+
+.. _plugin_hook_extra_js_urls:
+
+extra_js_urls(template, database, table, columns, view_name, request, datasette)
+--------------------------------------------------------------------------------
+
+This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+
+This works in the same way as ``extra_css_urls()`` but for JavaScript. You can
+return a list of URLs, a list of dictionaries or an awaitable function that returns those things:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def extra_js_urls():
+        return [{
+            "url": "https://code.jquery.com/jquery-3.3.1.slim.min.js",
+            "sri": "sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo",
+        }]
+
+You can also return URLs to files from your plugin's ``static/`` directory, if
+you have one:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_js_urls():
+        return [
+            "/-/static-plugins/your-plugin/app.js"
+        ]
+
+Note that `your-plugin` here should be the hyphenated plugin name - the name that is displayed in the list on the `/-/plugins` debug page.
+
+If your code uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__ you should include the ``"module": True`` key. See :ref:`customization_css_and_javascript` for more details.
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_js_urls():
+        return [{
+            "url": "/-/static-plugins/your-plugin/app.js",
+            "module": True
+        ]
+
+Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
+
+.. _plugin_hook_extra_body_script:
+
+extra_body_script(template, database, table, columns, view_name, request, datasette)
+------------------------------------------------------------------------------------
+
+Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
+
+This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
+
+The ``template``, ``database``, ``table`` and ``view_name`` options can be used to return different code depending on which template is being rendered and which database or table are being processed.
+
+The ``datasette`` instance is provided primarily so that you can consult any plugin configuration options that may have been set, using the ``datasette.plugin_config(plugin_name)`` method documented above.
+
+This function can return a string containing JavaScript, or a dictionary as described below, or a function or awaitable function that returns a string or dictionary.
+
+Use a dictionary if you want to specify that the code should be placed in a ``<script type="module">...</script>`` element:
+
+.. code-block:: python
+
+    @hookimpl
+    def extra_body_script():
+        return {
+            "module": True,
+            "script": "console.log('Your JavaScript goes here...')"
+        }
+
+This will add the following to the end of your page:
+
+.. code-block:: html
+
+    <script type="module">console.log('Your JavaScript goes here...')</script>
+
+Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
+
+.. _plugin_hook_publish_subcommand:
+
+publish_subcommand(publish)
+---------------------------
+
+``publish`` - Click publish command group
+    The Click command group for the ``datasette publish`` subcommand
+
+This hook allows you to create new providers for the ``datasette publish``
+command. Datasette uses this hook internally to implement the default ``cloudrun``
+and ``heroku`` subcommands, so you can read
+`their source <https://github.com/simonw/datasette/tree/main/datasette/publish>`_
+to see examples of this hook in action.
+
+Let's say you want to build a plugin that adds a ``datasette publish my_hosting_provider --api_key=xxx mydatabase.db`` publish command. Your implementation would start like this:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.publish.common import add_common_publish_arguments_and_options
+    import click
+
+
+    @hookimpl
+    def publish_subcommand(publish):
+        @publish.command()
+        @add_common_publish_arguments_and_options
+        @click.option(
+            "-k",
+            "--api_key",
+            help="API key for talking to my hosting provider",
+        )
+        def my_hosting_provider(
+            files,
+            metadata,
+            extra_options,
+            branch,
+            template_dir,
+            plugins_dir,
+            static,
+            install,
+            plugin_secret,
+            version_note,
+            secret,
+            title,
+            license,
+            license_url,
+            source,
+            source_url,
+            about,
+            about_url,
+            api_key,
+        ):
+            # Your implementation goes here
+
+Examples: `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`_, `datasette-publish-vercel <https://github.com/simonw/datasette-publish-vercel>`_
+
+.. _plugin_hook_render_cell:
+
+render_cell(value, column, table, database, datasette)
+------------------------------------------------------
+
+Lets you customize the display of values within table cells in the HTML table view.
+
+``value`` - string, integer or None
+    The value that was loaded from the database
+
+``column`` - string
+    The name of the column being rendered
+
+``table`` - string or None
+    The name of the table - or ``None`` if this is a custom SQL query
+
+``database`` - string
+    The name of the database
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+
+If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
+
+If the hook returns a string, that string will be rendered in the table cell.
+
+If you want to return HTML markup you can do so by returning a ``jinja2.Markup`` object.
+
+Datasette will loop through all available ``render_cell`` hooks and display the value returned by the first one that does not return ``None``.
+
+Here is an example of a custom ``render_cell()`` plugin which looks for values that are a JSON string matching the following format::
+
+    {"href": "https://www.example.com/", "label": "Name"}
+
+If the value matches that pattern, the plugin returns an HTML link element:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import markupsafe
+    import json
+
+
+    @hookimpl
+    def render_cell(value):
+        # Render {"href": "...", "label": "..."} as link
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        if not stripped.startswith("{") and stripped.endswith("}"):
+            return None
+        try:
+            data = json.loads(value)
+        except ValueError:
+            return None
+        if not isinstance(data, dict):
+            return None
+        if set(data.keys()) != {"href", "label"}:
+            return None
+        href = data["href"]
+        if not (
+            href.startswith("/") or href.startswith("http://")
+            or href.startswith("https://")
+        ):
+            return None
+        return markupsafe.Markup('<a href="{href}">{label}</a>'.format(
+            href=markupsafe.escape(data["href"]),
+            label=markupsafe.escape(data["label"] or "") or "&nbsp;"
+        ))
+
+Examples: `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`_, `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`__, `datasette-json-html <https://github.com/simonw/datasette-json-html>`__
+
 .. _plugin_register_output_renderer:
 
 register_output_renderer(datasette)
@@ -457,7 +477,9 @@ When a request is received, the ``"render"`` callback function is called with ze
 ``view_name`` - string
     The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
 
-The callback function can return ``None``, if it is unable to render the data, or a dictionary with the following keys:
+The callback function can return ``None``, if it is unable to render the data, or a :ref:`internals_response` that will be returned to the caller.
+
+It can also return a dictionary with the following keys. This format is **deprecated** as-of Datasette 0.49 and will be removed by Datasette 1.0.
 
 ``body`` - string or bytes, optional
     The response body, default empty
@@ -471,14 +493,12 @@ The callback function can return ``None``, if it is unable to render the data, o
 ``headers`` - dictionary, optional
     Extra HTTP headers to be returned in the response.
 
-A simple example of an output renderer callback function:
+An example of an output renderer callback function:
 
 .. code-block:: python
 
     def render_demo():
-        return {
-            "body": "Hello World"
-        }
+        return Response.text("Hello World")
 
 Here is a more complex example:
 
@@ -492,11 +512,11 @@ Here is a more complex example:
         lines.append("=" * len(first_row))
         for row in rows:
             lines.append(" | ".join(row))
-        return {
-            "body": "\n".join(lines),
-            "content_type": "text/plain; charset=utf-8",
-            "headers": {"x-sqlite-version": result.first()[0]},
-        }
+        return Response(
+            "\n".join(lines),
+            content_type="text/plain; charset=utf-8",
+            headers={"x-sqlite-version": result.first()[0]}
+        )
 
 And here is an example ``can_render`` function which returns ``True`` only if the query results contain the columns ``atom_id``, ``atom_title`` and ``atom_updated``:
 
@@ -532,7 +552,7 @@ Return a list of ``(regex, view_function)`` pairs, something like this:
     @hookimpl
     def register_routes():
         return [
-            (r"^/hello-from/(?P<name>.*)$"), hello_from)
+            (r"^/hello-from/(?P<name>.*)$", hello_from)
         ]
 
 The view functions can take a number of different optional arguments. The corresponding argument will be passed to your function depending on its named parameters - a form of dependency injection.
@@ -557,6 +577,8 @@ The optional view function arguments are as follows:
 The view function can be a regular function or an ``async def`` function, depending on if it needs to use any ``await`` APIs.
 
 The function can either return a :ref:`internals_response` or it can return nothing and instead respond directly to the request using the ASGI ``send`` function (for advanced uses only).
+
+See :ref:`writing_plugins_designing_urls` for tips on designing the URL routes used by your plugin.
 
 Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__, `datasette-psutil <https://github.com/simonw/datasette-psutil>`__
 
@@ -597,6 +619,7 @@ Each Facet subclass implements a new type of facet operation. The class should l
             # using self.sql and self.params as the starting point
             facet_results = {}
             facets_timed_out = []
+            facet_size = self.get_facet_size()
             # Do some calculations here...
             for column in columns_selected_for_facet:
                 try:
@@ -619,7 +642,7 @@ Each Facet subclass implements a new type of facet operation. The class should l
 
             return facet_results, facets_timed_out
 
-See `datasette/facets.py <https://github.com/simonw/datasette/blob/master/datasette/facets.py>`__ for examples of how these classes can work.
+See `datasette/facets.py <https://github.com/simonw/datasette/blob/main/datasette/facets.py>`__ for examples of how these classes can work.
 
 The plugin hook can then be used to register the new facet class like this:
 
@@ -669,7 +692,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
             return add_x_databases_header
         return wrap_with_databases_header
 
-Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-media <https://github.com/simonw/datasette-media>`_
+Example: `datasette-cors <https://github.com/simonw/datasette-cors>`_
 
 .. _plugin_hook_startup:
 
@@ -946,3 +969,198 @@ This example registers two new magic parameters: ``:_request_http_version`` retu
             ("request", request),
             ("uuid", uuid),
         ]
+
+.. _plugin_hook_forbidden:
+
+forbidden(datasette, request, message)
+--------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``request`` - object
+    The current HTTP :ref:`internals_request`.
+
+``message`` - string
+    A message hinting at why the request was forbidden.
+
+Plugins can use this to customize how Datasette responds when a 403 Forbidden error occurs - usually because a page failed a permission check, see :ref:`authentication_permissions`.
+
+If a plugin hook wishes to react to the error, it should return a :ref:`Response object <internals_response>`.
+
+This example returns a redirect to a ``/-/login`` page:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from urllib.parse import urlencode
+
+    @hookimpl
+    def forbidden(request, message):
+        return Response.redirect("/-/login?=" + urlencode({"message": message}))
+
+The function can alternatively return an awaitable function if it needs to make any asynchronous method calls. This example renders a template:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.utils.asgi import Response
+
+    @hookimpl
+    def forbidden(datasette):
+        async def inner():
+            return Response.html(await datasette.render_template("forbidden.html"))
+
+        return inner
+
+.. _plugin_hook_menu_links:
+
+menu_links(datasette, actor, request)
+-------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - object or None
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
+
+This hook allows additional items to be included in the menu displayed by Datasette's top right menu icon.
+
+The hook should return a list of ``{"href": "...", "label": "..."}`` menu items. These will be added to the menu.
+
+It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
+
+This example adds a new menu item but only if the signed in user is ``"root"``:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def menu_links(datasette, actor):
+        if actor and actor.get("id") == "root":
+            return [
+                {"href": datasette.urls.path("/-/edit-schema"), "label": "Edit schema"},
+            ]
+
+Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`setting_base_url` setting into account.
+
+.. _plugin_hook_table_actions:
+
+table_actions(datasette, actor, database, table, request)
+---------------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``table`` - string
+    The name of the table.
+
+``request`` - object
+    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
+
+This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items.
+
+It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
+
+This example adds a new table action if the signed in user is ``"root"``:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def table_actions(datasette, actor):
+        if actor and actor.get("id") == "root":
+            return [{
+                "href": datasette.urls.path("/-/edit-schema/{}/{}".format(database, table)),
+                "label": "Edit schema for this table",
+            }]
+
+.. _plugin_hook_database_actions:
+
+database_actions(datasette, actor, database, request)
+-----------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``request`` - object
+    The current HTTP :ref:`internals_request`.
+
+This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.
+
+.. _plugin_hook_skip_csrf:
+
+skip_csrf(datasette, scope)
+---------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``scope`` - dictionary
+    The `ASGI scope <https://asgi.readthedocs.io/en/latest/specs/www.html#http-connection-scope>`__ for the incoming HTTP request.
+
+This hook can be used to skip :ref:`internals_csrf` for a specific incoming request. For example, you might have a custom path at ``/submit-comment`` which is designed to accept comments from anywhere, whether or not the incoming request originated on the site and has an accompanying CSRF token.
+
+This example will disable CSRF protection for that specific URL path:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+    @hookimpl
+    def skip_csrf(scope):
+        return scope["path"] == "/submit-comment"
+
+If any of the currently active ``skip_csrf()`` plugin hooks return ``True``, CSRF protection will be skipped for the request.
+
+get_metadata(datasette, key, database, table)
+---------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string or None
+    The name of the database metadata is being asked for.
+
+``table`` - string or None
+    The name of the table.
+
+``key`` - string or None
+    The name of the key for which data is being asked for.
+
+This hook is responsible for returning a dictionary corresponding to Datasette :ref:`metadata`. This function is passed the ``database``, ``table`` and ``key`` which were passed to the upstream internal request for metadata. Regardless, it is important to return a global metadata object, where ``"databases": []`` would be a top-level key. The dictionary returned here, will be merged with, and overwritten by, the contents of the physical ``metadata.yaml`` if one is present.
+
+.. code-block:: python
+
+    @hookimpl
+    def get_metadata(datasette, key, database, table):
+        metadata = {
+            "title": "This will be the Datasette landing page title!",
+            "description": get_instance_description(datasette),
+            "databases": [],
+        }
+        for db_name, db_data_dict in get_my_database_meta(datasette, database, table, key):
+            metadata["databases"][db_name] = db_data_dict
+        # whatever we return here will be merged with any other plugins using this hook and
+        # will be overwritten by a local metadata.yaml if one exists!
+        return metadata

@@ -5,6 +5,7 @@ from datasette.utils import (
     CustomJSONEncoder,
     path_from_row_pks,
 )
+from datasette.utils.asgi import Response
 
 
 def convert_specific_columns_to_json(rows, columns, json_cols):
@@ -19,7 +20,6 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
                 try:
                     value = json.loads(value)
                 except (TypeError, ValueError) as e:
-                    print(e)
                     pass
             new_row.append(value)
         new_rows.append(new_row)
@@ -27,8 +27,9 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
 
 
 def json_renderer(args, data, view_name):
-    """ Render a response as JSON """
+    """Render a response as JSON"""
     status_code = 200
+
     # Handle the _json= parameter which may modify data["rows"]
     json_cols = []
     if "_json" in args:
@@ -44,6 +45,12 @@ def json_renderer(args, data, view_name):
 
     # Deal with the _shape option
     shape = args.get("_shape", "arrays")
+    # if there's an error, ignore the shape entirely
+    if data.get("error"):
+        shape = "arrays"
+
+    next_url = data.get("next_url")
+
     if shape == "arrayfirst":
         data = [row[0] for row in data["rows"]]
     elif shape in ("objects", "object", "array"):
@@ -71,22 +78,28 @@ def json_renderer(args, data, view_name):
                 data = {"ok": False, "error": error}
         elif shape == "array":
             data = data["rows"]
+
     elif shape == "arrays":
         pass
     else:
         status_code = 400
         data = {
             "ok": False,
-            "error": "Invalid _shape: {}".format(shape),
+            "error": f"Invalid _shape: {shape}",
             "status": 400,
             "title": None,
         }
     # Handle _nl option for _shape=array
     nl = args.get("_nl", "")
     if nl and shape == "array":
-        body = "\n".join(json.dumps(item) for item in data)
+        body = "\n".join(json.dumps(item, cls=CustomJSONEncoder) for item in data)
         content_type = "text/plain"
     else:
         body = json.dumps(data, cls=CustomJSONEncoder)
         content_type = "application/json; charset=utf-8"
-    return {"body": body, "status_code": status_code, "content_type": content_type}
+    headers = {}
+    if next_url:
+        headers["link"] = f'<{next_url}>; rel="next"'
+    return Response(
+        body, status=status_code, headers=headers, content_type=content_type
+    )

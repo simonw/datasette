@@ -33,3 +33,15 @@ def test_sign_unsign(datasette, value, namespace):
     assert value == datasette.unsign(signed, *extra_args)
     with pytest.raises(BadSignature):
         datasette.unsign(signed[:-1] + ("!" if signed[-1] != "!" else ":"))
+
+
+@pytest.mark.parametrize(
+    "setting,expected",
+    (
+        ("base_url", "/"),
+        ("max_csv_mb", 100),
+        ("allow_csv_stream", True),
+    ),
+)
+def test_datasette_setting(datasette, setting, expected):
+    assert datasette.setting(setting) == expected

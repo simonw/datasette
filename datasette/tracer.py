@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import contextmanager
+from markupsafe import escape
 import time
 import json
 import traceback
@@ -28,7 +29,7 @@ def get_task_id():
 def trace(type, **kwargs):
     assert not TRACE_RESERVED_KEYS.intersection(
         kwargs.keys()
-    ), ".trace() keyword parameters cannot include {}".format(TRACE_RESERVED_KEYS)
+    ), f".trace() keyword parameters cannot include {TRACE_RESERVED_KEYS}"
     task_id = get_task_id()
     if task_id is None:
         yield
@@ -37,9 +38,9 @@ def trace(type, **kwargs):
     if tracer is None:
         yield
         return
-    start = time.time()
+    start = time.perf_counter()
     yield
-    end = time.time()
+    end = time.perf_counter()
     trace_info = {
         "type": type,
         "start": start,
@@ -74,7 +75,7 @@ class AsgiTracer:
         if b"_trace=1" not in scope.get("query_string", b"").split(b"&"):
             await self.app(scope, receive, send)
             return
-        trace_start = time.time()
+        trace_start = time.perf_counter()
         traces = []
 
         accumulated_body = b""
@@ -109,7 +110,7 @@ class AsgiTracer:
                 # We have all the body - modify it and send the result
                 # TODO: What to do about Content-Type or other cases?
                 trace_info = {
-                    "request_duration_ms": 1000 * (time.time() - trace_start),
+                    "request_duration_ms": 1000 * (time.perf_counter() - trace_start),
                     "sum_trace_duration_ms": sum(t["duration_ms"] for t in traces),
                     "num_traces": len(traces),
                     "traces": traces,
@@ -123,8 +124,8 @@ class AsgiTracer:
                 except IndexError:
                     content_type = ""
                 if "text/html" in content_type and b"</body>" in accumulated_body:
-                    extra = json.dumps(trace_info, indent=2)
-                    extra_html = "<pre>{}</pre></body>".format(extra).encode("utf8")
+                    extra = escape(json.dumps(trace_info, indent=2))
+                    extra_html = f"<pre>{extra}</pre></body>".encode("utf8")
                     accumulated_body = accumulated_body.replace(b"</body>", extra_html)
                 elif "json" in content_type and accumulated_body.startswith(b"{"):
                     data = json.loads(accumulated_body.decode("utf8"))

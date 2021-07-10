@@ -10,7 +10,7 @@ This document describes how to contribute to Datasette core. You can also contri
 General guidelines
 ------------------
 
-* **master should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
+* **main should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
 * **The ideal commit** should bundle together the implementation, unit tests and associated documentation updates. The commit message should link to an associated issue.
 * **New plugin hooks** should only be shipped if accompanied by a separate release of a non-demo plugin that uses them.
 
@@ -19,7 +19,7 @@ General guidelines
 Setting up a development environment
 ------------------------------------
 
-If you have Python 3.6 or higher installed on your computer (on OS X the easiest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
+If you have Python 3.6 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
 
 If you want to use GitHub to publish your changes, first `create a fork of datasette <https://github.com/simonw/datasette/fork>`__ under your own GitHub account.
 
@@ -27,7 +27,7 @@ Now clone that repository somewhere on your computer::
 
     git clone git@github.com:YOURNAME/datasette
 
-If you just want to get started without creating your own fork, you can do this instead::
+If you want to get started without creating your own fork, you can do this instead::
 
     git clone git@github.com:simonw/datasette
 
@@ -43,13 +43,31 @@ The next step is to create a virtual environment for your project and use it to 
 
 That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "use the setup.py in this directory and install the optional testing dependencies as well".
 
+.. _contributing_running_tests:
+
+Running the tests
+-----------------
+
 Once you have done this, you can run the Datasette unit tests from inside your ``datasette/`` directory using `pytest <https://docs.pytest.org/>`__ like so::
 
     pytest
 
-To run Datasette itself, just type ``datasette``.
+You can run the tests faster using multiple CPU cores with `pytest-xdist <https://pypi.org/project/pytest-xdist/>`__ like this::
 
-You're going to need at least one SQLite database. An easy way to get started is to use the fixtures database that Datasette uses for its own tests.
+    pytest -n auto -m "not serial"
+
+``-n auto`` detects the number of available cores automatically. The ``-m "not serial"`` skips tests that don't work well in a parallel test environment. You can run those tests separately like so::
+
+    pytest -m "serial"
+
+.. _contributing_using_fixtures:
+
+Using fixtures
+--------------
+
+To run Datasette itself, type ``datasette``.
+
+You're going to need at least one SQLite database. A quick way to get started is to use the fixtures database that Datasette uses for its own tests.
 
 You can create a copy of that database by running this command::
 
@@ -85,6 +103,69 @@ Or to output the plugins used by the tests, run this::
 Then run Datasette like this::
 
     datasette fixtures.db -m fixtures-metadata.json --plugins-dir=fixtures-plugins/
+
+.. _contributing_debugging:
+
+Debugging
+---------
+
+Any errors that occur while Datasette is running while display a stack trace on the console.
+
+You can tell Datasette to open an interactive ``pdb`` debugger session if an error occurs using the ``--pdb`` option::
+
+    datasette --pdb fixtures.db
+
+.. _contributing_formatting:
+
+Code formatting
+---------------
+
+Datasette uses opinionated code formatters: `Black <https://github.com/psf/black>`__ for Python and `Prettier <https://prettier.io/>`__ for JavaScript.
+
+These formatters are enforced by Datasette's continuous integration: if a commit includes Python or JavaScript code that does not match the style enforced by those tools, the tests will fail.
+
+When developing locally, you can verify and correct the formatting of your code using these tools.
+
+.. _contributing_formatting_black:
+
+Running Black
+~~~~~~~~~~~~~
+
+Black will be installed when you run ``pip install -e '.[test]'``. To test that your code complies with Black, run the following in your root ``datasette`` repository checkout::
+
+    $ black . --check
+    All done! ✨ 🍰 ✨
+    95 files would be left unchanged.
+
+If any of your code does not conform to Black you can run this to automatically fix those problems::
+
+    $ black .
+    reformatted ../datasette/setup.py
+    All done! ✨ 🍰 ✨
+    1 file reformatted, 94 files left unchanged.
+
+.. _contributing_formatting_prettier:
+
+Prettier
+~~~~~~~~
+
+To install Prettier, `install Node.js <https://nodejs.org/en/download/package-manager/>`__ and then run the following in the root of your ``datasette`` repository checkout::
+
+    $ npm install
+
+This will install Prettier in a ``node_modules`` directory. You can then check that your code matches the coding style like so::
+
+    $ npm run prettier -- --check
+    > prettier
+    > prettier 'datasette/static/*[!.min].js' "--check"
+
+    Checking formatting...
+    [warn] datasette/static/plugins.js
+    [warn] Code style issues found in the above file(s). Forgot to run Prettier?
+
+You can fix any problems by running::
+
+    $ npm run fix
 
 .. _contributing_documentation:
 
@@ -126,10 +207,9 @@ Now browse to ``http://localhost:8000/`` to view the documentation. Any edits yo
 Release process
 ---------------
 
-Datasette releases are performed using tags. When a new version tag is pushed to GitHub, a `Travis CI task <https://github.com/simonw/datasette/blob/master/.travis.yml>`__ will perform the following:
+Datasette releases are performed using tags. When a new release is published on GitHub, a `GitHub Action workflow <https://github.com/simonw/datasette/blob/main/.github/workflows/deploy-latest.yml>`__ will perform the following:
 
 * Run the unit tests against all supported Python versions. If the tests pass...
-* Set up https://v0-25-1.datasette.io/ (but with the new tag) to point to a live demo of this release
 * Build a Docker image of the release and push a tag to https://hub.docker.com/r/datasetteproject/datasette
 * Re-point the "latest" tag on Docker Hub to the new image
 * Build a wheel bundle of the underlying Python source code
@@ -149,39 +229,21 @@ We increment ``patch`` for bugfix releass.
 
 :ref:`contributing_alpha_beta` may have an additional ``a0`` or ``b0`` prefix - the integer component will be incremented with each subsequent alpha or beta.
 
-To release a new version, first create a commit that updates :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/d56f402822df102f9cf1a9a056449d01a15e3aae>`__::
+To release a new version, first create a commit that updates the version number in ``datasette/version.py`` and the :ref:`the changelog <changelog>` with highlights of the new version. An example `commit can be seen here <https://github.com/simonw/datasette/commit/0e1e89c6ba3d0fbdb0823272952cf356f3016def>`__::
 
     # Update changelog
-    git commit -m "Release notes for 0.43
-    
-    Refs #581, #770, #729, #706, #751, #706, #744, #771, #773" -a
+    git commit -m " Release 0.51a1
+
+    Refs #1056, #1039, #998, #1045, #1033, #1036, #1034, #976, #1057, #1058, #1053, #1064, #1066" -a
     git push
 
 Referencing the issues that are part of the release in the commit message ensures the name of the release shows up on those issue pages, e.g. `here <https://github.com/simonw/datasette/issues/581#ref-commit-d56f402>`__.
 
-You can generate the list of issue references for a specific release by pasting the following into the browser devtools while looking at the :ref:`changelog` page (replace ``v0-44`` with the most recent version):
+You can generate the list of issue references for a specific release by copying and pasting text from the release notes or GitHub changes-since-last-release view into this `Extract issue numbers from pasted text <https://observablehq.com/@simonw/extract-issue-numbers-from-pasted-text>`__ tool.
 
-.. code-block:: javascript
+To create the tag for the release, create `a new release <https://github.com/simonw/datasette/releases/new>`__ on GitHub matching the new version number. You can convert the release notes to Markdown by copying and pasting the rendered HTML into this `Paste to Markdown tool <https://euangoddard.github.io/clipboard2markdown/>`__.
 
-    [
-        ...new Set(
-            Array.from(
-                document.getElementById("v0-44").querySelectorAll("a[href*=issues]")
-            ).map((a) => "#" + a.href.split("/issues/")[1])
-        ),
-    ].sort().join(", ");
-
-For non-bugfix releases you may want to update the news section of ``README.md`` as part of the same commit.
-
-To tag and push the releaes, run the following::
-
-    git tag 0.25.2
-    git push --tags
-
-Final steps once the release has deployed to https://pypi.org/project/datasette/
-
-* Manually post the new release to GitHub releases: https://github.com/simonw/datasette/releases - you can convert the release notes to Markdown by copying and pasting the rendered HTML into this tool: https://euangoddard.github.io/clipboard2markdown/
-* Manually kick off a build of the `stable` branch on Read The Docs: https://readthedocs.org/projects/datasette/builds/
+Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository.
 
 .. _contributing_alpha_beta:
 
@@ -193,3 +255,56 @@ Alpha and beta releases are published to preview upcoming features that may not 
 You are welcome to try these out, but please be aware that details may change before the final release.
 
 Please join `discussions on the issue tracker <https://github.com/simonw/datasette/issues>`__ to share your thoughts and experiences with on alpha and beta features that you try out.
+
+.. _contributing_bug_fix_branch:
+
+Releasing bug fixes from a branch
+---------------------------------
+
+If it's necessary to publish a bug fix release without shipping new features that have landed on ``main`` a release branch can be used.
+
+Create it from the relevant last tagged release like so::
+
+    git branch 0.52.x 0.52.4
+    git checkout 0.52.x
+
+Next cherry-pick the commits containing the bug fixes::
+
+    git cherry-pick COMMIT
+
+Write the release notes in the branch, and update the version number in ``version.py``. Then push the branch::
+
+    git push -u origin 0.52.x
+
+Once the tests have completed, publish the release from that branch target using the GitHub `Draft a new release <https://github.com/simonw/datasette/releases/new>`__ form.
+
+Finally, cherry-pick the commit with the release notes and version number bump across to ``main``::
+
+    git checkout main
+    git cherry-pick COMMIT
+    git push
+
+.. _contributing_upgrading_codemirror:
+
+Upgrading CodeMirror
+--------------------
+
+Datasette bundles `CodeMirror <https://codemirror.net/>`__ for the SQL editing interface, e.g. on `this page <https://latest.datasette.io/fixtures>`__. Here are the steps for upgrading to a new version of CodeMirror:
+
+* Download and extract latest CodeMirror zip file from https://codemirror.net/codemirror.zip
+* Rename ``lib/codemirror.js`` to ``codemirror-5.57.0.js`` (using latest version number)
+* Rename ``lib/codemirror.css`` to ``codemirror-5.57.0.css``
+* Rename ``mode/sql/sql.js`` to ``codemirror-5.57.0-sql.js``
+* Edit both JavaScript files to make the top license comment a ``/* */`` block instead of multiple ``//`` lines
+* Minify the JavaScript files like this::
+
+       npx uglify-js codemirror-5.57.0.js -o codemirror-5.57.0.min.js --comments '/LICENSE/'
+       npx uglify-js codemirror-5.57.0-sql.js -o codemirror-5.57.0-sql.min.js --comments '/LICENSE/'
+
+* Check that the LICENSE comment did indeed survive minification
+* Minify the CSS file like this::
+
+       npx clean-css-cli codemirror-5.57.0.css -o codemirror-5.57.0.min.css
+
+* Edit the ``_codemirror.html`` template to reference the new files
+* ``git rm`` the old files, ``git add`` the new files

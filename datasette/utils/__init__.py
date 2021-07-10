@@ -1,11 +1,13 @@
+import asyncio
 from contextlib import contextmanager
-from collections import OrderedDict
-import base64
 import click
+from collections import OrderedDict, namedtuple, Counter
+import base64
 import hashlib
 import inspect
 import itertools
 import json
+import markupsafe
 import mergedeep
 import os
 import re
@@ -18,12 +20,8 @@ import urllib
 import numbers
 import yaml
 from .shutil_backport import copytree
-from ..plugins import pm
+from .sqlite import sqlite3, sqlite_version, supports_table_xinfo
 
-try:
-    import pysqlite3 as sqlite3
-except ImportError:
-    import sqlite3
 
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set(
@@ -43,22 +41,43 @@ reserved_words = set(
     ).split()
 )
 
-SPATIALITE_DOCKERFILE_EXTRAS = r"""
+APT_GET_DOCKERFILE_EXTRAS = r"""
 RUN apt-get update && \
-    apt-get install -y python3-dev gcc libsqlite3-mod-spatialite && \
+    apt-get install -y {} && \
     rm -rf /var/lib/apt/lists/*
-ENV SQLITE_EXTENSIONS /usr/lib/x86_64-linux-gnu/mod_spatialite.so
 """
+
+# Can replace with sqlite-utils when I add that dependency
+SPATIALITE_PATHS = (
+    "/usr/lib/x86_64-linux-gnu/mod_spatialite.so",
+    "/usr/local/lib/mod_spatialite.dylib",
+    "/usr/local/lib/mod_spatialite.so",
+)
+# Length of hash subset used in hashed URLs:
+HASH_LENGTH = 7
+
+# Can replace this with Column from sqlite_utils when I add that dependency
+Column = namedtuple(
+    "Column", ("cid", "name", "type", "notnull", "default_value", "is_pk", "hidden")
+)
+
+
+async def await_me_maybe(value):
+    if callable(value):
+        value = value()
+    if asyncio.iscoroutine(value):
+        value = await value
+    return value
 
 
 def urlsafe_components(token):
-    "Splits token on commas and URL decodes each component"
+    """Splits token on commas and URL decodes each component"""
     return [urllib.parse.unquote_plus(b) for b in token.split(",")]
 
 
 def path_from_row_pks(row, pks, use_rowid, quote=True):
-    """ Generate an optionally URL-quoted unique identifier
-        for a row from its primary keys."""
+    """Generate an optionally URL-quoted unique identifier
+    for a row from its primary keys."""
     if use_rowid:
         bits = [row["rowid"]]
     else:
@@ -90,13 +109,10 @@ def compound_keys_after_sql(pks, start_index=0):
         last = pks_left[-1]
         rest = pks_left[:-1]
         and_clauses = [
-            "{} = :p{}".format(escape_sqlite(pk), (i + start_index))
-            for i, pk in enumerate(rest)
+            f"{escape_sqlite(pk)} = :p{i + start_index}" for i, pk in enumerate(rest)
         ]
-        and_clauses.append(
-            "{} > :p{}".format(escape_sqlite(last), (len(rest) + start_index))
-        )
-        or_clauses.append("({})".format(" and ".join(and_clauses)))
+        and_clauses.append(f"{escape_sqlite(last)} > :p{len(rest) + start_index}")
+        or_clauses.append(f"({' and '.join(and_clauses)})")
         pks_left.pop()
     or_clauses.reverse()
     return "({})".format("\n  or\n".join(or_clauses))
@@ -122,7 +138,7 @@ class CustomJSONEncoder(json.JSONEncoder):
 
 @contextmanager
 def sqlite_timelimit(conn, ms):
-    deadline = time.time() + (ms / 1000)
+    deadline = time.perf_counter() + (ms / 1000)
     # n is the number of SQLite virtual machine instructions that will be
     # executed between each check. It's hard to know what to pick here.
     # After some experimentation, I've decided to go with 1000 by default and
@@ -132,7 +148,7 @@ def sqlite_timelimit(conn, ms):
         n = 1
 
     def handler():
-        if time.time() >= deadline:
+        if time.perf_counter() >= deadline:
             return 1
 
     conn.set_progress_handler(handler, n)
@@ -170,8 +186,10 @@ allowed_pragmas = (
 )
 disallawed_sql_res = [
     (
-        re.compile("pragma(?!_({}))".format("|".join(allowed_pragmas))),
-        "Statement may not contain PRAGMA",
+        re.compile(f"pragma(?!_({'|'.join(allowed_pragmas)}))"),
+        "Statement contained a disallowed PRAGMA. Allowed pragma functions are {}".format(
+            ", ".join("pragma_{}()".format(pragma) for pragma in allowed_pragmas)
+        ),
     )
 ]
 
@@ -190,7 +208,7 @@ def validate_sql_select(sql):
 
 def append_querystring(url, querystring):
     op = "&" if ("?" in url) else "?"
-    return "{}{}{}".format(url, op, querystring)
+    return f"{url}{op}{querystring}"
 
 
 def path_with_added_args(request, args, path=None):
@@ -205,7 +223,7 @@ def path_with_added_args(request, args, path=None):
     current.extend([(key, value) for key, value in args if value is not None])
     query_string = urllib.parse.urlencode(current)
     if query_string:
-        query_string = "?{}".format(query_string)
+        query_string = f"?{query_string}"
     return path + query_string
 
 
@@ -234,7 +252,7 @@ def path_with_removed_args(request, args, path=None):
             current.append((key, value))
     query_string = urllib.parse.urlencode(current)
     if query_string:
-        query_string = "?{}".format(query_string)
+        query_string = f"?{query_string}"
     return path + query_string
 
 
@@ -250,7 +268,7 @@ def path_with_replaced_args(request, args, path=None):
     current.extend([p for p in args if p[1] is not None])
     query_string = urllib.parse.urlencode(current)
     if query_string:
-        query_string = "?{}".format(query_string)
+        query_string = f"?{query_string}"
     return path + query_string
 
 
@@ -259,14 +277,17 @@ _boring_keyword_re = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 def escape_css_string(s):
-    return _css_re.sub(lambda m: "\\{:X}".format(ord(m.group())), s)
+    return _css_re.sub(
+        lambda m: "\\" + (f"{ord(m.group()):X}".zfill(6)),
+        s.replace("\r\n", "\n"),
+    )
 
 
 def escape_sqlite(s):
     if _boring_keyword_re.match(s) and (s.lower() not in reserved_words):
         return s
     else:
-        return "[{}]".format(s)
+        return f"[{s}]"
 
 
 def make_dockerfile(
@@ -283,60 +304,72 @@ def make_dockerfile(
     secret,
     environment_variables=None,
     port=8001,
+    apt_get_extras=None,
 ):
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
     environment_variables = environment_variables or {}
     environment_variables["DATASETTE_SECRET"] = secret
+    apt_get_extras = apt_get_extras or []
     for filename in files:
         cmd.extend(["-i", filename])
     cmd.extend(["--cors", "--inspect-file", "inspect-data.json"])
     if metadata_file:
-        cmd.extend(["--metadata", "{}".format(metadata_file)])
+        cmd.extend(["--metadata", f"{metadata_file}"])
     if template_dir:
         cmd.extend(["--template-dir", "templates/"])
     if plugins_dir:
         cmd.extend(["--plugins-dir", "plugins/"])
     if version_note:
-        cmd.extend(["--version-note", "{}".format(version_note)])
+        cmd.extend(["--version-note", f"{version_note}"])
     if static:
         for mount_point, _ in static:
-            cmd.extend(["--static", "{}:{}".format(mount_point, mount_point)])
+            cmd.extend(["--static", f"{mount_point}:{mount_point}"])
     if extra_options:
         for opt in extra_options.split():
-            cmd.append("{}".format(opt))
+            cmd.append(f"{opt}")
     cmd = [shlex.quote(part) for part in cmd]
     # port attribute is a (fixed) env variable and should not be quoted
     cmd.extend(["--port", "$PORT"])
     cmd = " ".join(cmd)
     if branch:
-        install = [
-            "https://github.com/simonw/datasette/archive/{}.zip".format(branch)
-        ] + list(install)
+        install = [f"https://github.com/simonw/datasette/archive/{branch}.zip"] + list(
+            install
+        )
     else:
         install = ["datasette"] + list(install)
 
+    apt_get_extras_ = []
+    apt_get_extras_.extend(apt_get_extras)
+    apt_get_extras = apt_get_extras_
+    if spatialite:
+        apt_get_extras.extend(["python3-dev", "gcc", "libsqlite3-mod-spatialite"])
+        environment_variables[
+            "SQLITE_EXTENSIONS"
+        ] = "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
     return """
 FROM python:3.8
 COPY . /app
 WORKDIR /app
-{spatialite_extras}
+{apt_get_extras}
 {environment_variables}
 RUN pip install -U {install_from}
 RUN datasette inspect {files} --inspect-file inspect-data.json
 ENV PORT {port}
 EXPOSE {port}
 CMD {cmd}""".format(
+        apt_get_extras=APT_GET_DOCKERFILE_EXTRAS.format(" ".join(apt_get_extras))
+        if apt_get_extras
+        else "",
         environment_variables="\n".join(
             [
                 "ENV {} '{}'".format(key, value)
                 for key, value in environment_variables.items()
             ]
         ),
-        files=" ".join(files),
-        cmd=cmd,
         install_from=" ".join(install),
-        spatialite_extras=SPATIALITE_DOCKERFILE_EXTRAS if spatialite else "",
+        files=" ".join(files),
         port=port,
+        cmd=cmd,
     ).strip()
 
 
@@ -357,6 +390,7 @@ def temporary_docker_directory(
     extra_metadata=None,
     environment_variables=None,
     port=8001,
+    apt_get_extras=None,
 ):
     extra_metadata = extra_metadata or {}
     tmp = tempfile.TemporaryDirectory()
@@ -390,11 +424,14 @@ def temporary_docker_directory(
             secret,
             environment_variables,
             port=port,
+            apt_get_extras=apt_get_extras,
         )
         os.chdir(datasette_dir)
         if metadata_content:
-            open("metadata.json", "w").write(json.dumps(metadata_content, indent=2))
-        open("Dockerfile", "w").write(dockerfile)
+            with open("metadata.json", "w") as fp:
+                fp.write(json.dumps(metadata_content, indent=2))
+        with open("Dockerfile", "w") as fp:
+            fp.write(dockerfile)
         for path, filename in zip(file_paths, file_names):
             link_or_copy(path, os.path.join(datasette_dir, filename))
         if template_dir:
@@ -418,26 +455,39 @@ def temporary_docker_directory(
 
 
 def detect_primary_keys(conn, table):
-    " Figure out primary keys for a table. "
-    table_info_rows = [
-        row
-        for row in conn.execute('PRAGMA table_info("{}")'.format(table)).fetchall()
-        if row[-1]
-    ]
-    table_info_rows.sort(key=lambda row: row[-1])
-    return [str(r[1]) for r in table_info_rows]
+    """Figure out primary keys for a table."""
+    columns = table_column_details(conn, table)
+    pks = [column for column in columns if column.is_pk]
+    pks.sort(key=lambda column: column.is_pk)
+    return [column.name for column in pks]
 
 
 def get_outbound_foreign_keys(conn, table):
-    infos = conn.execute("PRAGMA foreign_key_list([{}])".format(table)).fetchall()
+    infos = conn.execute(f"PRAGMA foreign_key_list([{table}])").fetchall()
     fks = []
     for info in infos:
         if info is not None:
             id, seq, table_name, from_, to_, on_update, on_delete, match = info
             fks.append(
-                {"column": from_, "other_table": table_name, "other_column": to_}
+                {
+                    "column": from_,
+                    "other_table": table_name,
+                    "other_column": to_,
+                    "id": id,
+                    "seq": seq,
+                }
             )
-    return fks
+    # Filter out compound foreign keys by removing any where "id" is not unique
+    id_counts = Counter(fk["id"] for fk in fks)
+    return [
+        {
+            "column": fk["column"],
+            "other_table": fk["other_table"],
+            "other_column": fk["other_column"],
+        }
+        for fk in fks
+        if id_counts[fk["id"]] == 1
+    ]
 
 
 def get_all_foreign_keys(conn):
@@ -448,20 +498,21 @@ def get_all_foreign_keys(conn):
     for table in tables:
         table_to_foreign_keys[table] = {"incoming": [], "outgoing": []}
     for table in tables:
-        infos = conn.execute("PRAGMA foreign_key_list([{}])".format(table)).fetchall()
-        for info in infos:
-            if info is not None:
-                id, seq, table_name, from_, to_, on_update, on_delete, match = info
-                if table_name not in table_to_foreign_keys:
-                    # Weird edge case where something refers to a table that does
-                    # not actually exist
-                    continue
-                table_to_foreign_keys[table_name]["incoming"].append(
-                    {"other_table": table, "column": to_, "other_column": from_}
-                )
-                table_to_foreign_keys[table]["outgoing"].append(
-                    {"other_table": table_name, "column": from_, "other_column": to_}
-                )
+        fks = get_outbound_foreign_keys(conn, table)
+        for fk in fks:
+            table_name = fk["other_table"]
+            from_ = fk["column"]
+            to_ = fk["other_column"]
+            if table_name not in table_to_foreign_keys:
+                # Weird edge case where something refers to a table that does
+                # not actually exist
+                continue
+            table_to_foreign_keys[table_name]["incoming"].append(
+                {"other_table": table, "column": to_, "other_column": from_}
+            )
+            table_to_foreign_keys[table]["outgoing"].append(
+                {"other_table": table_name, "column": from_, "other_column": to_}
+            )
 
     return table_to_foreign_keys
 
@@ -474,7 +525,7 @@ def detect_spatialite(conn):
 
 
 def detect_fts(conn, table):
-    "Detect if table has a corresponding FTS virtual table and return it"
+    """Detect if table has a corresponding FTS virtual table and return it"""
     rows = conn.execute(detect_fts_sql(table)).fetchall()
     if len(rows) == 0:
         return None
@@ -495,7 +546,7 @@ def detect_fts_sql(table):
                 )
             )
     """.format(
-        table=table
+        table=table.replace("'", "''")
     )
 
 
@@ -510,12 +561,26 @@ def detect_json1(conn=None):
 
 
 def table_columns(conn, table):
-    return [
-        r[1]
-        for r in conn.execute(
-            "PRAGMA table_info({});".format(escape_sqlite(table))
-        ).fetchall()
-    ]
+    return [column.name for column in table_column_details(conn, table)]
+
+
+def table_column_details(conn, table):
+    if supports_table_xinfo():
+        # table_xinfo was added in 3.26.0
+        return [
+            Column(*r)
+            for r in conn.execute(
+                f"PRAGMA table_xinfo({escape_sqlite(table)});"
+            ).fetchall()
+        ]
+    else:
+        # Treat hidden as 0 for all columns
+        return [
+            Column(*(list(r) + [0]))
+            for r in conn.execute(
+                f"PRAGMA table_info({escape_sqlite(table)});"
+            ).fetchall()
+        ]
 
 
 filter_column_re = re.compile(r"^_filter_column_\d+$")
@@ -530,9 +595,7 @@ def filters_should_redirect(special_args):
     if "__" in filter_op:
         filter_op, filter_value = filter_op.split("__", 1)
     if filter_column:
-        redirect_params.append(
-            ("{}__{}".format(filter_column, filter_op), filter_value)
-        )
+        redirect_params.append((f"{filter_column}__{filter_op}", filter_value))
     for key in ("_filter_column", "_filter_op", "_filter_value"):
         if key in special_args:
             redirect_params.append((key, None))
@@ -541,17 +604,17 @@ def filters_should_redirect(special_args):
     for column_key in column_keys:
         number = column_key.split("_")[-1]
         column = special_args[column_key]
-        op = special_args.get("_filter_op_{}".format(number)) or "exact"
-        value = special_args.get("_filter_value_{}".format(number)) or ""
+        op = special_args.get(f"_filter_op_{number}") or "exact"
+        value = special_args.get(f"_filter_value_{number}") or ""
         if "__" in op:
             op, value = op.split("__", 1)
         if column:
-            redirect_params.append(("{}__{}".format(column, op), value))
+            redirect_params.append((f"{column}__{op}", value))
         redirect_params.extend(
             [
-                ("_filter_column_{}".format(number), None),
-                ("_filter_op_{}".format(number), None),
-                ("_filter_value_{}".format(number), None),
+                (f"_filter_column_{number}", None),
+                (f"_filter_op_{number}", None),
+                (f"_filter_value_{number}", None),
             ]
         )
     return redirect_params
@@ -561,7 +624,7 @@ whitespace_re = re.compile(r"\s")
 
 
 def is_url(value):
-    "Must start with http:// or https:// and contain JUST a URL"
+    """Must start with http:// or https:// and contain JUST a URL"""
     if not isinstance(value, str):
         return False
     if not value.startswith("http://") and not value.startswith("https://"):
@@ -626,7 +689,11 @@ def module_from_path(path, name):
     return mod
 
 
-async def resolve_table_and_format(table_and_format, table_exists, allowed_formats=[]):
+async def resolve_table_and_format(
+    table_and_format, table_exists, allowed_formats=None
+):
+    if allowed_formats is None:
+        allowed_formats = []
     if "." in table_and_format:
         # Check if a table exists with this exact name
         it_exists = await table_exists(table_and_format)
@@ -636,27 +703,31 @@ async def resolve_table_and_format(table_and_format, table_exists, allowed_forma
     # Check if table ends with a known format
     formats = list(allowed_formats) + ["csv", "jsono"]
     for _format in formats:
-        if table_and_format.endswith(".{}".format(_format)):
+        if table_and_format.endswith(f".{_format}"):
             table = table_and_format[: -(len(_format) + 1)]
             return table, _format
     return table_and_format, None
 
 
-def path_with_format(request, format, extra_qs=None):
+def path_with_format(
+    *, request=None, path=None, format=None, extra_qs=None, replace_format=None
+):
     qs = extra_qs or {}
-    path = request.path
-    if "." in request.path:
+    path = request.path if request else path
+    if replace_format and path.endswith(f".{replace_format}"):
+        path = path[: -(1 + len(replace_format))]
+    if "." in path:
         qs["_format"] = format
     else:
-        path = "{}.{}".format(path, format)
+        path = f"{path}.{format}"
     if qs:
         extra = urllib.parse.urlencode(sorted(qs.items()))
-        if request.query_string:
-            path = "{}?{}&{}".format(path, request.query_string, extra)
+        if request and request.query_string:
+            path = f"{path}?{request.query_string}&{extra}"
         else:
-            path = "{}?{}".format(path, extra)
-    elif request.query_string:
-        path = "{}?{}".format(path, request.query_string)
+            path = f"{path}?{extra}"
+    elif request and request.query_string:
+        path = f"{path}?{request.query_string}"
     return path
 
 
@@ -702,10 +773,16 @@ class LimitedWriter:
     async def write(self, bytes):
         self.bytes_count += len(bytes)
         if self.limit_bytes and (self.bytes_count > self.limit_bytes):
-            raise WriteLimitExceeded(
-                "CSV contains more than {} bytes".format(self.limit_bytes)
-            )
+            raise WriteLimitExceeded(f"CSV contains more than {self.limit_bytes} bytes")
         await self.writer.write(bytes)
+
+
+class EscapeHtmlWriter:
+    def __init__(self, writer):
+        self.writer = writer
+
+    async def write(self, content):
+        await self.writer.write(markupsafe.escape(content))
 
 
 _infinities = {float("inf"), float("-inf")}
@@ -723,14 +800,14 @@ class StaticMount(click.ParamType):
     def convert(self, value, param, ctx):
         if ":" not in value:
             self.fail(
-                '"{}" should be of format mountpoint:directory'.format(value),
+                f'"{value}" should be of format mountpoint:directory',
                 param,
                 ctx,
             )
         path, dirpath = value.split(":", 1)
         dirpath = os.path.abspath(dirpath)
         if not os.path.exists(dirpath) or not os.path.isdir(dirpath):
-            self.fail("%s is not a valid directory path" % value, param, ctx)
+            self.fail(f"{value} is not a valid directory path", param, ctx)
         return path, dirpath
 
 
@@ -741,9 +818,9 @@ def format_bytes(bytes):
             break
         current = current / 1024
     if unit == "bytes":
-        return "{} {}".format(int(current), unit)
+        return f"{int(current)} {unit}"
     else:
-        return "{:.1f} {}".format(current, unit)
+        return f"{current:.1f} {unit}"
 
 
 _escape_fts_re = re.compile(r'\s+|(".*?")')
@@ -780,7 +857,7 @@ class MultiParams:
             self._data = new_data
 
     def __repr__(self):
-        return "<MultiParams: {}>".format(self._data)
+        return f"<MultiParams: {self._data}>"
 
     def __contains__(self, key):
         return key in self._data
@@ -798,14 +875,14 @@ class MultiParams:
         return len(self._data)
 
     def get(self, name, default=None):
-        "Return first value in the list, if available"
+        """Return first value in the list, if available"""
         try:
             return self._data.get(name)[0]
         except (KeyError, TypeError):
             return default
 
     def getlist(self, name):
-        "Return full list"
+        """Return full list"""
         return self._data.get(name) or []
 
 
@@ -826,7 +903,9 @@ def check_connection(conn):
     ]
     for table in tables:
         try:
-            conn.execute("PRAGMA table_info({});".format(escape_sqlite(table)),)
+            conn.execute(
+                f"PRAGMA table_info({escape_sqlite(table)});",
+            )
         except sqlite3.OperationalError as e:
             if e.args[0] == "no such module: VirtualSpatialIndex":
                 raise SpatialiteConnectionProblem(e)
@@ -874,6 +953,10 @@ async def async_call_with_supported_arguments(fn, **kwargs):
 
 
 def actor_matches_allow(actor, allow):
+    if allow is True:
+        return True
+    if allow is False:
+        return False
     if actor is None and allow and allow.get("unauthenticated") is True:
         return True
     if allow is None:
@@ -896,20 +979,26 @@ def actor_matches_allow(actor, allow):
 
 
 async def check_visibility(datasette, actor, action, resource, default=True):
-    "Returns (visible, private) - visible = can you see it, private = can others see it too"
+    """Returns (visible, private) - visible = can you see it, private = can others see it too"""
     visible = await datasette.permission_allowed(
-        actor, action, resource=resource, default=default,
+        actor,
+        action,
+        resource=resource,
+        default=default,
     )
     if not visible:
-        return (False, False)
+        return False, False
     private = not await datasette.permission_allowed(
-        None, action, resource=resource, default=default,
+        None,
+        action,
+        resource=resource,
+        default=default,
     )
     return visible, private
 
 
 def resolve_env_secrets(config, environ):
-    'Create copy that recursively replaces {"$env": "NAME"} with values from environ'
+    """Create copy that recursively replaces {"$env": "NAME"} with values from environ"""
     if isinstance(config, dict):
         if list(config.keys()) == ["$env"]:
             return environ.get(list(config.values())[0])
@@ -924,3 +1013,68 @@ def resolve_env_secrets(config, environ):
         return [resolve_env_secrets(value, environ) for value in config]
     else:
         return config
+
+
+def display_actor(actor):
+    for key in ("display", "name", "username", "login", "id"):
+        if actor.get(key):
+            return actor[key]
+    return str(actor)
+
+
+class SpatialiteNotFound(Exception):
+    pass
+
+
+# Can replace with sqlite-utils when I add that dependency
+def find_spatialite():
+    for path in SPATIALITE_PATHS:
+        if os.path.exists(path):
+            return path
+    raise SpatialiteNotFound
+
+
+async def initial_path_for_datasette(datasette):
+    """Return suggested path for opening this Datasette, based on number of DBs and tables"""
+    databases = dict([p for p in datasette.databases.items() if p[0] != "_internal"])
+    if len(databases) == 1:
+        db_name = next(iter(databases.keys()))
+        path = datasette.urls.database(db_name)
+        # Does this DB only have one table?
+        db = next(iter(databases.values()))
+        tables = await db.table_names()
+        if len(tables) == 1:
+            path = datasette.urls.table(db_name, tables[0])
+    else:
+        path = datasette.urls.instance()
+    return path
+
+
+class PrefixedUrlString(str):
+    def __add__(self, other):
+        return type(self)(super().__add__(other))
+
+    def __str__(self):
+        return super().__str__()
+
+    def __getattribute__(self, name):
+        if not name.startswith("__") and name in dir(str):
+
+            def method(self, *args, **kwargs):
+                value = getattr(super(), name)(*args, **kwargs)
+                if isinstance(value, str):
+                    return type(self)(value)
+                elif isinstance(value, list):
+                    return [type(self)(i) for i in value]
+                elif isinstance(value, tuple):
+                    return tuple(type(self)(i) for i in value)
+                else:
+                    return value
+
+            return method.__get__(self)
+        else:
+            return super().__getattribute__(name)
+
+
+class StartupError(Exception):
+    pass

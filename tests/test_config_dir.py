@@ -1,9 +1,11 @@
 import json
 import pytest
-import sqlite3
 
 from datasette.app import Datasette
+from datasette.cli import cli
+from datasette.utils.sqlite import sqlite3
 from .fixtures import TestClient as _TestClient
+from click.testing import CliRunner
 
 PLUGIN = """
 from datasette import hookimpl
@@ -15,7 +17,7 @@ def extra_template_vars():
     }
 """
 METADATA = {"title": "This is from metadata"}
-CONFIG = {
+SETTINGS = {
     "default_cache_ttl": 60,
 }
 CSS = """
@@ -30,6 +32,8 @@ def config_dir_client(tmp_path_factory):
     plugins_dir = config_dir / "plugins"
     plugins_dir.mkdir()
     (plugins_dir / "hooray.py").write_text(PLUGIN, "utf-8")
+    (plugins_dir / "non_py_file.txt").write_text(PLUGIN, "utf-8")
+    (plugins_dir / ".mypy_cache").mkdir()
 
     templates_dir = config_dir / "templates"
     templates_dir.mkdir()
@@ -42,7 +46,7 @@ def config_dir_client(tmp_path_factory):
     (static_dir / "hello.css").write_text(CSS, "utf-8")
 
     (config_dir / "metadata.json").write_text(json.dumps(METADATA), "utf-8")
-    (config_dir / "config.json").write_text(json.dumps(CONFIG), "utf-8")
+    (config_dir / "settings.json").write_text(json.dumps(SETTINGS), "utf-8")
 
     for dbname in ("demo.db", "immutable.db"):
         db = sqlite3.connect(str(config_dir / dbname))
@@ -74,9 +78,7 @@ def config_dir_client(tmp_path_factory):
     )
 
     ds = Datasette([], config_dir=config_dir)
-    client = _TestClient(ds.app())
-    client.ds = ds
-    yield client
+    yield _TestClient(ds)
 
 
 def test_metadata(config_dir_client):
@@ -85,16 +87,27 @@ def test_metadata(config_dir_client):
     assert METADATA == response.json
 
 
-def test_config(config_dir_client):
-    response = config_dir_client.get("/-/config.json")
+def test_settings(config_dir_client):
+    response = config_dir_client.get("/-/settings.json")
     assert 200 == response.status
     assert 60 == response.json["default_cache_ttl"]
+
+
+def test_error_on_config_json(tmp_path_factory):
+    config_dir = tmp_path_factory.mktemp("config-dir")
+    (config_dir / "config.json").write_text(json.dumps(SETTINGS), "utf-8")
+    runner = CliRunner(mix_stderr=False)
+    result = runner.invoke(cli, [str(config_dir), "--get", "/-/settings.json"])
+    assert result.exit_code == 1
+    assert "config.json should be renamed to settings.json" in result.stderr
 
 
 def test_plugins(config_dir_client):
     response = config_dir_client.get("/-/plugins.json")
     assert 200 == response.status
     assert "hooray.py" in {p["name"] for p in response.json}
+    assert "non_py_file.txt" not in {p["name"] for p in response.json}
+    assert "mypy_cache" not in {p["name"] for p in response.json}
 
 
 def test_templates_and_plugin(config_dir_client):
@@ -133,8 +146,7 @@ def test_metadata_yaml(tmp_path_factory, filename):
     config_dir = tmp_path_factory.mktemp("yaml-config-dir")
     (config_dir / filename).write_text("title: Title from metadata", "utf-8")
     ds = Datasette([], config_dir=config_dir)
-    client = _TestClient(ds.app())
-    client.ds = ds
+    client = _TestClient(ds)
     response = client.get("/-/metadata.json")
     assert 200 == response.status
     assert {"title": "Title from metadata"} == response.json

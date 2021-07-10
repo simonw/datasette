@@ -18,15 +18,15 @@ COUNT_DB_SIZE_LIMIT = 100 * 1024 * 1024
 class IndexView(BaseView):
     name = "index"
 
-    def __init__(self, datasette):
-        self.ds = datasette
-
     async def get(self, request, as_format):
         await self.check_permission(request, "view-instance")
         databases = []
         for name, db in self.ds.databases.items():
             visible, database_private = await check_visibility(
-                self.ds, request.actor, "view-database", name,
+                self.ds,
+                request.actor,
+                "view-database",
+                name,
             )
             if not visible:
                 continue
@@ -36,7 +36,10 @@ class IndexView(BaseView):
             views = []
             for view_name in await db.view_names():
                 visible, private = await check_visibility(
-                    self.ds, request.actor, "view-table", (name, view_name),
+                    self.ds,
+                    request.actor,
+                    "view-table",
+                    (name, view_name),
                 )
                 if visible:
                     views.append({"name": view_name, "private": private})
@@ -52,7 +55,10 @@ class IndexView(BaseView):
             tables = {}
             for table in table_names:
                 visible, private = await check_visibility(
-                    self.ds, request.actor, "view-table", (name, table),
+                    self.ds,
+                    request.actor,
+                    "view-table",
+                    (name, table),
                 )
                 if not visible:
                     continue
@@ -72,8 +78,9 @@ class IndexView(BaseView):
                 # We will be sorting by number of relationships, so populate that field
                 all_foreign_keys = await db.get_all_foreign_keys()
                 for table, foreign_keys in all_foreign_keys.items():
-                    count = len(foreign_keys["incoming"] + foreign_keys["outgoing"])
-                    tables[table]["num_relationships_for_sorting"] = count
+                    if table in tables.keys():
+                        count = len(foreign_keys["incoming"] + foreign_keys["outgoing"])
+                        tables[table]["num_relationships_for_sorting"] = count
 
             hidden_tables = [t for t in tables.values() if t["hidden"]]
             visible_tables = [t for t in tables.values() if not t["hidden"]]
@@ -103,7 +110,7 @@ class IndexView(BaseView):
                     "color": db.hash[:6]
                     if db.hash
                     else hashlib.md5(name.encode("utf8")).hexdigest()[:6],
-                    "path": self.database_url(name),
+                    "path": self.ds.urls.database(name),
                     "tables_and_views_truncated": tables_and_views_truncated,
                     "tables_and_views_more": (len(visible_tables) + len(views))
                     > TRUNCATE_AT,

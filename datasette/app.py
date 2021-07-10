@@ -2,12 +2,14 @@ import asyncio
 import asgi_csrf
 import collections
 import datetime
+import glob
 import hashlib
+import httpx
 import inspect
-import itertools
 from itsdangerous import BadSignature
 import json
 import os
+import pkg_resources
 import re
 import secrets
 import sys
@@ -17,11 +19,9 @@ import urllib.parse
 from concurrent import futures
 from pathlib import Path
 
-import click
-from markupsafe import Markup
+from markupsafe import Markup, escape
 from itsdangerous import URLSafeSerializer
-import jinja2
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader, escape
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 import uvicorn
@@ -33,27 +33,36 @@ from .views.special import (
     JsonDataView,
     PatternPortfolioView,
     AuthTokenView,
+    LogoutView,
+    AllowDebugView,
     PermissionsDebugView,
     MessagesDebugView,
 )
 from .views.table import RowView, TableView
 from .renderer import json_renderer
+from .url_builder import Urls
 from .database import Database, QueryInterrupted
 
 from .utils import (
+    PrefixedUrlString,
+    StartupError,
     async_call_with_supported_arguments,
+    await_me_maybe,
     call_with_supported_arguments,
+    display_actor,
     escape_css_string,
     escape_sqlite,
+    find_spatialite,
     format_bytes,
     module_from_path,
     parse_metadata,
     resolve_env_secrets,
-    sqlite3,
     to_css_class,
+    HASH_LENGTH,
 )
 from .utils.asgi import (
     AsgiLifespan,
+    Base400,
     Forbidden,
     NotFound,
     Request,
@@ -64,102 +73,107 @@ from .utils.asgi import (
     asgi_send_json,
     asgi_send_redirect,
 )
+from .utils.internal_db import init_internal_db, populate_schema_tables
+from .utils.sqlite import (
+    sqlite3,
+    using_pysqlite3,
+)
 from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
 app_root = Path(__file__).parent.parent
 
-MEMORY = object()
+# https://github.com/simonw/datasette/issues/283#issuecomment-781591015
+SQLITE_LIMIT_ATTACHED = 10
 
-ConfigOption = collections.namedtuple("ConfigOption", ("name", "default", "help"))
-CONFIG_OPTIONS = (
-    ConfigOption("default_page_size", 100, "Default page size for the table view"),
-    ConfigOption(
+Setting = collections.namedtuple("Setting", ("name", "default", "help"))
+SETTINGS = (
+    Setting("default_page_size", 100, "Default page size for the table view"),
+    Setting(
         "max_returned_rows",
         1000,
         "Maximum rows that can be returned from a table or custom query",
     ),
-    ConfigOption(
+    Setting(
         "num_sql_threads",
         3,
         "Number of threads in the thread pool for executing SQLite queries",
     ),
-    ConfigOption(
-        "sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"
-    ),
-    ConfigOption(
+    Setting("sql_time_limit_ms", 1000, "Time limit for a SQL query in milliseconds"),
+    Setting(
         "default_facet_size", 30, "Number of values to return for requested facets"
     ),
-    ConfigOption(
-        "facet_time_limit_ms", 200, "Time limit for calculating a requested facet"
-    ),
-    ConfigOption(
+    Setting("facet_time_limit_ms", 200, "Time limit for calculating a requested facet"),
+    Setting(
         "facet_suggest_time_limit_ms",
         50,
         "Time limit for calculating a suggested facet",
     ),
-    ConfigOption(
+    Setting(
         "hash_urls",
         False,
         "Include DB file contents hash in URLs, for far-future caching",
     ),
-    ConfigOption(
+    Setting(
         "allow_facet",
         True,
         "Allow users to specify columns to facet using ?_facet= parameter",
     ),
-    ConfigOption(
+    Setting(
         "allow_download",
         True,
         "Allow users to download the original SQLite database files",
     ),
-    ConfigOption("suggest_facets", True, "Calculate and display suggested facets"),
-    ConfigOption(
+    Setting("suggest_facets", True, "Calculate and display suggested facets"),
+    Setting(
         "default_cache_ttl",
         5,
         "Default HTTP cache TTL (used in Cache-Control: max-age= header)",
     ),
-    ConfigOption(
+    Setting(
         "default_cache_ttl_hashed",
         365 * 24 * 60 * 60,
         "Default HTTP cache TTL for hashed URL pages",
     ),
-    ConfigOption(
-        "cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"
-    ),
-    ConfigOption(
+    Setting("cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"),
+    Setting(
         "allow_csv_stream",
         True,
         "Allow .csv?_stream=1 to download all rows (ignoring max_returned_rows)",
     ),
-    ConfigOption(
+    Setting(
         "max_csv_mb",
         100,
         "Maximum size allowed for CSV export in MB - set 0 to disable this limit",
     ),
-    ConfigOption(
+    Setting(
         "truncate_cells_html",
         2048,
         "Truncate cells longer than this in HTML table view - set 0 to disable",
     ),
-    ConfigOption(
+    Setting(
         "force_https_urls",
         False,
         "Force URLs in API output to always use https:// protocol",
     ),
-    ConfigOption(
+    Setting(
         "template_debug",
         False,
         "Allow display of template debug information with ?_context=1",
     ),
-    ConfigOption("base_url", "/", "Datasette URLs should use this base"),
+    Setting(
+        "trace_debug",
+        False,
+        "Allow display of SQL trace debug information with ?_trace=1",
+    ),
+    Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
 
-DEFAULT_CONFIG = {option.name: option.default for option in CONFIG_OPTIONS}
+DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 
 
-async def favicon(scope, receive, send):
+async def favicon(request, send):
     await asgi_send(send, "", 200)
 
 
@@ -186,10 +200,13 @@ class Datasette:
         secret=None,
         version_note=None,
         config_dir=None,
+        pdb=False,
+        crossdb=False,
     ):
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
+        self.pdb = pdb
         self._secret = secret or secrets.token_hex(32)
         self.files = tuple(files) + tuple(immutables or [])
         if config_dir:
@@ -199,30 +216,29 @@ class Datasette:
             and (config_dir / "inspect-data.json").exists()
             and not inspect_data
         ):
-            inspect_data = json.load((config_dir / "inspect-data.json").open())
-            if immutables is None:
+            inspect_data = json.loads((config_dir / "inspect-data.json").read_text())
+            if not immutables:
                 immutable_filenames = [i["file"] for i in inspect_data.values()]
                 immutables = [
                     f for f in self.files if Path(f).name in immutable_filenames
                 ]
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
-        if not self.files:
-            self.files = [MEMORY]
-        elif memory:
-            self.files = (MEMORY,) + self.files
         self.databases = collections.OrderedDict()
+        self.crossdb = crossdb
+        if memory or crossdb or not self.files:
+            self.add_database(Database(self, is_memory=True), name="_memory")
+        # memory_name is a random string so that each Datasette instance gets its own
+        # unique in-memory named database - otherwise unit tests can fail with weird
+        # errors when different instances accidentally share an in-memory database
+        self.add_database(
+            Database(self, memory_name=secrets.token_hex()), name="_internal"
+        )
+        self.internal_db_created = False
         for file in self.files:
-            path = file
-            is_memory = False
-            if file is MEMORY:
-                path = None
-                is_memory = True
-            is_mutable = path not in self.immutables
-            db = Database(self, path, is_mutable=is_mutable, is_memory=is_memory)
-            if db.name in self.databases:
-                raise Exception("Multiple files with same stem: {}".format(db.name))
-            self.add_database(db.name, db)
+            self.add_database(
+                Database(self, file, is_mutable=file not in self.immutables)
+            )
         self.cache_headers = cache_headers
         self.cors = cors
         metadata_files = []
@@ -235,9 +251,16 @@ class Datasette:
         if config_dir and metadata_files and not metadata:
             with metadata_files[0].open() as fp:
                 metadata = parse_metadata(fp.read())
-        self._metadata = metadata or {}
+        self._metadata_local = metadata or {}
         self.sqlite_functions = []
-        self.sqlite_extensions = sqlite_extensions or []
+        self.sqlite_extensions = []
+        for extension in sqlite_extensions or []:
+            # Resolve spatialite, if requested
+            if extension == "spatialite":
+                # Could raise SpatialiteNotFound
+                self.sqlite_extensions.append(find_spatialite())
+            else:
+                self.sqlite_extensions.append(extension)
         if config_dir and (config_dir / "templates").is_dir() and not template_dir:
             template_dir = str((config_dir / "templates").resolve())
         self.template_dir = template_dir
@@ -247,23 +270,26 @@ class Datasette:
         if config_dir and (config_dir / "static").is_dir() and not static_mounts:
             static_mounts = [("static", str((config_dir / "static").resolve()))]
         self.static_mounts = static_mounts or []
-        if config_dir and (config_dir / "config.json").exists() and not config:
-            config = json.load((config_dir / "config.json").open())
-        self._config = dict(DEFAULT_CONFIG, **(config or {}))
+        if config_dir and (config_dir / "config.json").exists():
+            raise StartupError("config.json should be renamed to settings.json")
+        if config_dir and (config_dir / "settings.json").exists() and not config:
+            config = json.loads((config_dir / "settings.json").read_text())
+        self._settings = dict(DEFAULT_SETTINGS, **(config or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
-            max_workers=self.config("num_sql_threads")
+            max_workers=self.setting("num_sql_threads")
         )
-        self.max_returned_rows = self.config("max_returned_rows")
-        self.sql_time_limit_ms = self.config("sql_time_limit_ms")
-        self.page_size = self.config("default_page_size")
+        self.max_returned_rows = self.setting("max_returned_rows")
+        self.sql_time_limit_ms = self.setting("sql_time_limit_ms")
+        self.page_size = self.setting("default_page_size")
         # Execute plugins in constructor, to ensure they are available
         # when the rest of `datasette inspect` executes
         if self.plugins_dir:
-            for filename in os.listdir(self.plugins_dir):
-                filepath = os.path.join(self.plugins_dir, filename)
-                mod = module_from_path(filepath, name=filename)
+            for filepath in glob.glob(os.path.join(self.plugins_dir, "*.py")):
+                if not os.path.isfile(filepath):
+                    continue
+                mod = module_from_path(filepath, name=os.path.basename(filepath))
                 try:
                     pm.register(mod)
                 except ValueError:
@@ -295,7 +321,7 @@ class Datasette:
             loader=template_loader, autoescape=True, enable_async=True
         )
         self.jinja_env.filters["escape_css_string"] = escape_css_string
-        self.jinja_env.filters["quote_plus"] = lambda u: urllib.parse.quote_plus(u)
+        self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
         # pylint: disable=no-member
@@ -304,13 +330,42 @@ class Datasette:
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
+        self.client = DatasetteClient(self)
+
+    async def refresh_schemas(self):
+        internal_db = self.databases["_internal"]
+        if not self.internal_db_created:
+            await init_internal_db(internal_db)
+            self.internal_db_created = True
+
+        current_schema_versions = {
+            row["database_name"]: row["schema_version"]
+            for row in await internal_db.execute(
+                "select database_name, schema_version from databases"
+            )
+        }
+        for database_name, db in self.databases.items():
+            schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
+            # Compare schema versions to see if we should skip it
+            if schema_version == current_schema_versions.get(database_name):
+                continue
+            await internal_db.execute_write(
+                """
+                INSERT OR REPLACE INTO databases (database_name, path, is_memory, schema_version)
+                VALUES (?, ?, ?, ?)
+            """,
+                [database_name, str(db.path), db.is_memory, schema_version],
+                block=True,
+            )
+            await populate_schema_tables(internal_db, db)
+
+    @property
+    def urls(self):
+        return Urls(self)
 
     async def invoke_startup(self):
         for hook in pm.hook.startup(datasette=self):
-            if callable(hook):
-                hook = hook()
-            if asyncio.iscoroutine(hook):
-                hook = await hook
+            await await_me_maybe(hook)
 
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)
@@ -320,21 +375,53 @@ class Datasette:
 
     def get_database(self, name=None):
         if name is None:
-            return next(iter(self.databases.values()))
+            # Return first no-_schemas database
+            name = [key for key in self.databases.keys() if key != "_internal"][0]
         return self.databases[name]
 
-    def add_database(self, name, db):
-        self.databases[name] = db
+    def add_database(self, db, name=None):
+        new_databases = self.databases.copy()
+        if name is None:
+            # Pick a unique name for this database
+            suggestion = db.suggest_name()
+            name = suggestion
+        else:
+            suggestion = name
+        i = 2
+        while name in self.databases:
+            name = "{}_{}".format(suggestion, i)
+            i += 1
+        db.name = name
+        new_databases[name] = db
+        # don't mutate! that causes race conditions with live import
+        self.databases = new_databases
+        return db
+
+    def add_memory_database(self, memory_name):
+        return self.add_database(Database(self, memory_name=memory_name))
 
     def remove_database(self, name):
-        self.databases.pop(name)
+        new_databases = self.databases.copy()
+        new_databases.pop(name)
+        self.databases = new_databases
 
-    def config(self, key):
-        return self._config.get(key, None)
+    def setting(self, key):
+        return self._settings.get(key, None)
 
     def config_dict(self):
         # Returns a fully resolved config dictionary, useful for templates
-        return {option.name: self.config(option.name) for option in CONFIG_OPTIONS}
+        return {option.name: self.setting(option.name) for option in SETTINGS}
+
+    def _metadata_recursive_update(self, orig, updated):
+        if not isinstance(orig, dict) or not isinstance(updated, dict):
+            return orig
+
+        for key, upd_value in updated.items():
+            if isinstance(upd_value, dict) and isinstance(orig.get(key), dict):
+                orig[key] = self._metadata_recursive_update(orig[key], upd_value)
+            else:
+                orig[key] = upd_value
+        return orig
 
     def metadata(self, key=None, database=None, table=None, fallback=True):
         """
@@ -344,7 +431,21 @@ class Datasette:
         assert not (
             database is None and table is not None
         ), "Cannot call metadata() with table= specified but not database="
-        databases = self._metadata.get("databases") or {}
+        metadata = {}
+
+        for hook_dbs in pm.hook.get_metadata(
+            datasette=self, key=key, database=database, table=table
+        ):
+            metadata = self._metadata_recursive_update(metadata, hook_dbs)
+
+        # security precaution!! don't allow anything in the local config
+        # to be overwritten. this is a temporary measure, not sure if this
+        # is a good idea long term or maybe if it should just be a concern
+        # of the plugin's implemtnation
+        metadata = self._metadata_recursive_update(metadata, self._metadata_local)
+
+        databases = metadata.get("databases") or {}
+
         search_list = []
         if database is not None:
             search_list.append(databases.get(database) or {})
@@ -353,7 +454,8 @@ class Datasette:
                 table
             ) or {}
             search_list.insert(0, table_metadata)
-        search_list.append(self._metadata)
+
+        search_list.append(metadata)
         if not fallback:
             # No fallback allowed, so just use the first one in the list
             search_list = search_list[:1]
@@ -369,8 +471,12 @@ class Datasette:
                 m.update(item)
             return m
 
+    @property
+    def _metadata(self):
+        return self.metadata()
+
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
-        "Return config for plugin, falling back from specified database/table"
+        """Return config for plugin, falling back from specified database/table"""
         plugins = self.metadata(
             "plugins", database=database, table=table, fallback=fallback
         )
@@ -383,22 +489,20 @@ class Datasette:
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):
-            self._app_css_hash = hashlib.sha1(
-                open(os.path.join(str(app_root), "datasette/static/app.css"))
-                .read()
-                .encode("utf8")
-            ).hexdigest()[:6]
+            with open(os.path.join(str(app_root), "datasette/static/app.css")) as fp:
+                self._app_css_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[
+                    :6
+                ]
         return self._app_css_hash
 
     async def get_canned_queries(self, database_name, actor):
         queries = self.metadata("queries", database=database_name, fallback=False) or {}
         for more_queries in pm.hook.canned_queries(
-            datasette=self, database=database_name, actor=actor,
+            datasette=self,
+            database=database_name,
+            actor=actor,
         ):
-            if callable(more_queries):
-                more_queries = more_queries()
-            if asyncio.iscoroutine(more_queries):
-                more_queries = await more_queries
+            more_queries = await await_me_maybe(more_queries)
             queries.update(more_queries or {})
         # Fix any {"name": "select ..."} queries to be {"name": {"sql": "select ..."}}
         for key in queries:
@@ -436,11 +540,24 @@ class Datasette:
         if self.sqlite_extensions:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
-                conn.execute("SELECT load_extension('{}')".format(extension))
-        if self.config("cache_size_kb"):
-            conn.execute("PRAGMA cache_size=-{}".format(self.config("cache_size_kb")))
+                conn.execute(f"SELECT load_extension('{extension}')")
+        if self.setting("cache_size_kb"):
+            conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
         # pylint: disable=no-member
         pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
+        # If self.crossdb and this is _memory, connect the first SQLITE_LIMIT_ATTACHED databases
+        if self.crossdb and database == "_memory":
+            count = 0
+            for db_name, db in self.databases.items():
+                if count >= SQLITE_LIMIT_ATTACHED or db.is_memory:
+                    continue
+                sql = 'ATTACH DATABASE "file:{path}?{qs}" AS [{name}];'.format(
+                    path=db.path,
+                    qs="mode=ro" if db.is_mutable else "immutable=1",
+                    name=db_name,
+                )
+                conn.execute(sql)
+                count += 1
 
     def add_message(self, request, message, type=INFO):
         if not hasattr(request, "_messages"):
@@ -465,15 +582,15 @@ class Datasette:
             return []
 
     async def permission_allowed(self, actor, action, resource=None, default=False):
-        "Check permissions using the permissions_allowed plugin hook"
+        """Check permissions using the permissions_allowed plugin hook"""
         result = None
         for check in pm.hook.permission_allowed(
-            datasette=self, actor=actor, action=action, resource=resource,
+            datasette=self,
+            actor=actor,
+            action=action,
+            resource=resource,
         ):
-            if callable(check):
-                check = check()
-            if asyncio.iscoroutine(check):
-                check = await check
+            check = await await_me_maybe(check)
             if check is not None:
                 result = check
         used_default = False
@@ -512,7 +629,7 @@ class Datasette:
         )
 
     async def expand_foreign_keys(self, database, table, column, values):
-        "Returns dict mapping (column, value) -> label"
+        """Returns dict mapping (column, value) -> label"""
         labeled_fks = {}
         db = self.databases[database]
         foreign_keys = await db.foreign_keys_for_table(table)
@@ -550,12 +667,12 @@ class Datasette:
 
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
-        if url.startswith("http://") and self.config("force_https_urls"):
+        if url.startswith("http://") and self.setting("force_https_urls"):
             url = "https://" + url[len("http://") :]
         return url
 
     def _register_custom_units(self):
-        "Register any custom units defined in the metadata.json with Pint"
+        """Register any custom units defined in the metadata.json with Pint"""
         for unit in self.metadata("custom_units") or []:
             ureg.define(unit)
 
@@ -569,12 +686,13 @@ class Datasette:
                 "is_memory": d.is_memory,
                 "hash": d.hash,
             }
-            for d in sorted(self.databases.values(), key=lambda d: d.name)
+            for name, d in self.databases.items()
+            if name != "_internal"
         ]
 
     def _versions(self):
         conn = sqlite3.connect(":memory:")
-        self._prepare_connection(conn, ":memory:")
+        self._prepare_connection(conn, "_memory")
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {}
         for extension, testsql, hasversion in (
@@ -602,7 +720,7 @@ class Datasette:
         datasette_version = {"version": __version__}
         if self.version_note:
             datasette_version["note"] = self.version_note
-        return {
+        info = {
             "python": {
                 "version": ".".join(map(str, sys.version_info[:3])),
                 "full": sys.version,
@@ -619,6 +737,14 @@ class Datasette:
                 ],
             },
         }
+        if using_pysqlite3:
+            for package in ("pysqlite3", "pysqlite3-binary"):
+                try:
+                    info["pysqlite3"] = pkg_resources.get_distribution(package).version
+                    break
+                except pkg_resources.DistributionNotFound:
+                    pass
+        return info
 
     def _plugins(self, request=None, all=False):
         ps = list(get_plugins())
@@ -663,7 +789,7 @@ class Datasette:
         return {"actor": request.actor}
 
     def table_metadata(self, database, table):
-        "Fetch table-specific metadata."
+        """Fetch table-specific metadata."""
         return (
             (self.metadata("databases") or {})
             .get(database, {})
@@ -672,7 +798,7 @@ class Datasette:
         )
 
     def _register_renderers(self):
-        """ Register output renderers which output data in custom formats. """
+        """Register output renderers which output data in custom formats."""
         # Built-in renderers
         self.renderers["json"] = (json_renderer, lambda: True)
 
@@ -680,7 +806,7 @@ class Datasette:
         hook_renderers = []
         # pylint: disable=no-member
         for hook in pm.hook.register_output_renderer(datasette=self):
-            if type(hook) == list:
+            if type(hook) is list:
                 hook_renderers += hook
             else:
                 hook_renderers.append(hook)
@@ -704,14 +830,23 @@ class Datasette:
             template = self.jinja_env.select_template(templates)
         body_scripts = []
         # pylint: disable=no-member
-        for script in pm.hook.extra_body_script(
+        for extra_script in pm.hook.extra_body_script(
             template=template.name,
             database=context.get("database"),
             table=context.get("table"),
+            columns=context.get("columns"),
             view_name=view_name,
+            request=request,
             datasette=self,
         ):
-            body_scripts.append(Markup(script))
+            extra_script = await await_me_maybe(extra_script)
+            if isinstance(extra_script, dict):
+                script = extra_script["script"]
+                module = bool(extra_script.get("module"))
+            else:
+                script = extra_script
+                module = False
+            body_scripts.append({"script": Markup(script), "module": module})
 
         extra_template_vars = {}
         # pylint: disable=no-member
@@ -719,71 +854,104 @@ class Datasette:
             template=template.name,
             database=context.get("database"),
             table=context.get("table"),
+            columns=context.get("columns"),
             view_name=view_name,
             request=request,
             datasette=self,
         ):
-            if callable(extra_vars):
-                extra_vars = extra_vars()
-            if asyncio.iscoroutine(extra_vars):
-                extra_vars = await extra_vars
+            extra_vars = await await_me_maybe(extra_vars)
             assert isinstance(extra_vars, dict), "extra_vars is of type {}".format(
                 type(extra_vars)
             )
             extra_template_vars.update(extra_vars)
 
+        async def menu_links():
+            links = []
+            for hook in pm.hook.menu_links(
+                datasette=self,
+                actor=request.actor if request else None,
+                request=request or None,
+            ):
+                extra_links = await await_me_maybe(hook)
+                if extra_links:
+                    links.extend(extra_links)
+            return links
+
         template_context = {
             **context,
             **{
+                "urls": self.urls,
+                "actor": request.actor if request else None,
+                "menu_links": menu_links,
+                "display_actor": display_actor,
+                "show_logout": request is not None
+                and "ds_actor" in request.cookies
+                and request.actor,
                 "app_css_hash": self.app_css_hash(),
                 "zip": zip,
                 "body_scripts": body_scripts,
                 "format_bytes": format_bytes,
                 "show_messages": lambda: self._show_messages(request),
-                "extra_css_urls": self._asset_urls("extra_css_urls", template, context),
-                "extra_js_urls": self._asset_urls("extra_js_urls", template, context),
-                "base_url": self.config("base_url"),
+                "extra_css_urls": await self._asset_urls(
+                    "extra_css_urls", template, context, request, view_name
+                ),
+                "extra_js_urls": await self._asset_urls(
+                    "extra_js_urls", template, context, request, view_name
+                ),
+                "base_url": self.setting("base_url"),
                 "csrftoken": request.scope["csrftoken"] if request else lambda: "",
             },
             **extra_template_vars,
         }
-        if request and request.args.get("_context") and self.config("template_debug"):
+        if request and request.args.get("_context") and self.setting("template_debug"):
             return "<pre>{}</pre>".format(
-                jinja2.escape(json.dumps(template_context, default=repr, indent=4))
+                escape(json.dumps(template_context, default=repr, indent=4))
             )
 
         return await template.render_async(template_context)
 
-    def _asset_urls(self, key, template, context):
+    async def _asset_urls(self, key, template, context, request, view_name):
         # Flatten list-of-lists from plugins:
         seen_urls = set()
-        for url_or_dict in itertools.chain(
-            itertools.chain.from_iterable(
-                getattr(pm.hook, key)(
-                    template=template.name,
-                    database=context.get("database"),
-                    table=context.get("table"),
-                    datasette=self,
-                )
-            ),
-            (self.metadata(key) or []),
+        collected = []
+        for hook in getattr(pm.hook, key)(
+            template=template.name,
+            database=context.get("database"),
+            table=context.get("table"),
+            columns=context.get("columns"),
+            view_name=view_name,
+            request=request,
+            datasette=self,
         ):
+            hook = await await_me_maybe(hook)
+            collected.extend(hook)
+        collected.extend(self.metadata(key) or [])
+        output = []
+        for url_or_dict in collected:
             if isinstance(url_or_dict, dict):
                 url = url_or_dict["url"]
                 sri = url_or_dict.get("sri")
+                module = bool(url_or_dict.get("module"))
             else:
                 url = url_or_dict
                 sri = None
+                module = False
             if url in seen_urls:
                 continue
             seen_urls.add(url)
+            if url.startswith("/"):
+                # Take base_url into account:
+                url = self.urls.path(url)
+            script = {"url": url}
             if sri:
-                yield {"url": url, "sri": sri}
-            else:
-                yield {"url": url}
+                script["sri"] = sri
+            if module:
+                script["module"] = True
+            output.append(script)
+        return output
 
     def app(self):
-        "Returns an ASGI app function that serves the whole of Datasette"
+        """Returns an ASGI app function that serves the whole of Datasette"""
         routes = []
 
         for routes_to_add in pm.hook.register_routes():
@@ -811,7 +979,7 @@ class Datasette:
             if plugin["static_path"]:
                 add_route(
                     asgi_static(plugin["static_path"]),
-                    "/-/static-plugins/{}/(?P<path>.*)$".format(plugin["name"]),
+                    f"/-/static-plugins/{plugin['name']}/(?P<path>.*)$",
                 )
                 # Support underscores in name in addition to hyphens, see https://github.com/simonw/datasette/issues/611
                 add_route(
@@ -821,7 +989,13 @@ class Datasette:
                     ),
                 )
         add_route(
-            JsonDataView.as_view(self, "metadata.json", lambda: self._metadata),
+            permanent_redirect(
+                "/_memory", forward_query_string=True, forward_rest=True
+            ),
+            r"/:memory:(?P<rest>.*)$",
+        )
+        add_route(
+            JsonDataView.as_view(self, "metadata.json", lambda: self.metadata()),
             r"/-/metadata(?P<as_format>(\.json)?)$",
         )
         add_route(
@@ -835,8 +1009,16 @@ class Datasette:
             r"/-/plugins(?P<as_format>(\.json)?)$",
         )
         add_route(
-            JsonDataView.as_view(self, "config.json", lambda: self._config),
-            r"/-/config(?P<as_format>(\.json)?)$",
+            JsonDataView.as_view(self, "settings.json", lambda: self._settings),
+            r"/-/settings(?P<as_format>(\.json)?)$",
+        )
+        add_route(
+            permanent_redirect("/-/settings.json"),
+            r"/-/config.json",
+        )
+        add_route(
+            permanent_redirect("/-/settings"),
+            r"/-/config",
         )
         add_route(
             JsonDataView.as_view(self, "threads.json", self._threads),
@@ -851,16 +1033,28 @@ class Datasette:
             r"/-/actor(?P<as_format>(\.json)?)$",
         )
         add_route(
-            AuthTokenView.as_view(self), r"/-/auth-token$",
+            AuthTokenView.as_view(self),
+            r"/-/auth-token$",
         )
         add_route(
-            PermissionsDebugView.as_view(self), r"/-/permissions$",
+            LogoutView.as_view(self),
+            r"/-/logout$",
         )
         add_route(
-            MessagesDebugView.as_view(self), r"/-/messages$",
+            PermissionsDebugView.as_view(self),
+            r"/-/permissions$",
         )
         add_route(
-            PatternPortfolioView.as_view(self), r"/-/patterns$",
+            MessagesDebugView.as_view(self),
+            r"/-/messages$",
+        )
+        add_route(
+            AllowDebugView.as_view(self),
+            r"/-/allow-debug$",
+        )
+        add_route(
+            PatternPortfolioView.as_view(self),
+            r"/-/patterns$",
         )
         add_route(
             DatabaseDownload.as_view(self), r"/(?P<db_name>[^/]+?)(?P<as_db>\.db)$"
@@ -889,14 +1083,18 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
-        asgi = AsgiLifespan(
-            AsgiTracer(
-                asgi_csrf.asgi_csrf(
-                    DatasetteRouter(self, routes),
-                    signing_secret=self._secret,
-                    cookie_name="ds_csrftoken",
-                )
+        asgi = asgi_csrf.asgi_csrf(
+            DatasetteRouter(self, routes),
+            signing_secret=self._secret,
+            cookie_name="ds_csrftoken",
+            skip_if_scope=lambda scope: any(
+                pm.hook.skip_csrf(datasette=self, scope=scope)
             ),
+        )
+        if self.setting("trace_debug"):
+            asgi = AsgiTracer(asgi)
+        asgi = AsgiLifespan(
+            asgi,
             on_startup=setup_db,
         )
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
@@ -913,6 +1111,16 @@ class DatasetteRouter:
             ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
             for pattern, view in routes
         ]
+        # Build a list of pages/blah/{name}.html matching expressions
+        pattern_templates = [
+            filepath
+            for filepath in self.ds.jinja_env.list_templates()
+            if "{" in filepath and filepath.startswith("pages/")
+        ]
+        self.page_routes = [
+            (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
+            for filepath in pattern_templates
+        ]
 
     async def __call__(self, scope, receive, send):
         # Because we care about "foo/bar" v.s. "foo%2Fbar" we decode raw_path ourselves
@@ -924,9 +1132,10 @@ class DatasetteRouter:
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing
-        base_url = self.ds.config("base_url")
+        base_url = self.ds.setting("base_url")
         if base_url != "/" and path.startswith(base_url):
             path = "/" + path[len(base_url) :]
+            scope = dict(scope, route_path=path)
         request = Request(scope, receive)
         # Populate request_messages if ds_messages cookie is present
         try:
@@ -939,7 +1148,7 @@ class DatasetteRouter:
         scope_modifications = {}
         # Apply force_https_urls, if set
         if (
-            self.ds.config("force_https_urls")
+            self.ds.setting("force_https_urls")
             and scope["type"] == "http"
             and scope.get("scheme") != "https"
         ):
@@ -948,10 +1157,7 @@ class DatasetteRouter:
         default_actor = scope.get("actor") or None
         actor = None
         for actor in pm.hook.actor_from_request(datasette=self.ds, request=request):
-            if callable(actor):
-                actor = actor()
-            if asyncio.iscoroutine(actor):
-                actor = await actor
+            actor = await await_me_maybe(actor)
             if actor:
                 break
         scope_modifications["actor"] = actor or default_actor
@@ -968,26 +1174,37 @@ class DatasetteRouter:
                         await response.asgi_send(send)
                     return
                 except NotFound as exception:
-                    return await self.handle_404(scope, receive, send, exception)
+                    return await self.handle_404(request, send, exception)
                 except Exception as exception:
-                    return await self.handle_500(scope, receive, send, exception)
-        return await self.handle_404(scope, receive, send)
+                    return await self.handle_500(request, send, exception)
+        return await self.handle_404(request, send)
 
-    async def handle_404(self, scope, receive, send, exception=None):
+    async def handle_404(self, request, send, exception=None):
         # If URL has a trailing slash, redirect to URL without it
-        path = scope.get("raw_path", scope["path"].encode("utf8"))
+        path = request.scope.get("raw_path", request.scope["path"].encode("utf8"))
+        context = {}
         if path.endswith(b"/"):
             path = path.rstrip(b"/")
-            if scope["query_string"]:
-                path += b"?" + scope["query_string"]
+            if request.scope["query_string"]:
+                path += b"?" + request.scope["query_string"]
             await asgi_send_redirect(send, path.decode("latin1"))
         else:
             # Is there a pages/* template matching this path?
-            template_path = os.path.join("pages", *scope["path"].split("/")) + ".html"
+            route_path = request.scope.get("route_path", request.scope["path"])
+            template_path = os.path.join("pages", *route_path.split("/")) + ".html"
             try:
                 template = self.ds.jinja_env.select_template([template_path])
             except TemplateNotFound:
                 template = None
+            if template is None:
+                # Try for a pages/blah/{name}.html template match
+                for regex, wildcard_template in self.page_routes:
+                    match = regex.match(route_path)
+                    if match is not None:
+                        context.update(match.groupdict())
+                        template = wildcard_template
+                        break
+
             if template:
                 headers = {}
                 status = [200]
@@ -1005,16 +1222,27 @@ class DatasetteRouter:
                     headers["Location"] = location
                     return ""
 
-                body = await self.ds.render_template(
-                    template,
+                def raise_404(message=""):
+                    raise NotFoundExplicit(message)
+
+                context.update(
                     {
                         "custom_header": custom_header,
                         "custom_status": custom_status,
                         "custom_redirect": custom_redirect,
-                    },
-                    request=Request(scope, receive),
-                    view_name="page",
+                        "raise_404": raise_404,
+                    }
                 )
+                try:
+                    body = await self.ds.render_template(
+                        template,
+                        context,
+                        request=request,
+                        view_name="page",
+                    )
+                except NotFoundExplicit as e:
+                    await self.handle_500(request, send, e)
+                    return
                 # Pull content-type out into separate parameter
                 content_type = "text/html; charset=utf-8"
                 matches = [k for k in headers if k.lower() == "content-type"]
@@ -1028,25 +1256,36 @@ class DatasetteRouter:
                     content_type=content_type,
                 )
             else:
-                await self.handle_500(
-                    scope, receive, send, exception or NotFound("404")
-                )
+                await self.handle_500(request, send, exception or NotFound("404"))
 
-    async def handle_500(self, scope, receive, send, exception):
+    async def handle_500(self, request, send, exception):
+        if self.ds.pdb:
+            import pdb
+
+            pdb.post_mortem(exception.__traceback__)
+
         title = None
-        if isinstance(exception, NotFound):
-            status = 404
+        if isinstance(exception, Forbidden):
+            status = 403
             info = {}
             message = exception.args[0]
-        elif isinstance(exception, Forbidden):
-            status = 403
+            # Try the forbidden() plugin hook
+            for custom_response in pm.hook.forbidden(
+                datasette=self.ds, request=request, message=message
+            ):
+                custom_response = await await_me_maybe(custom_response)
+                if custom_response is not None:
+                    await custom_response.asgi_send(send)
+                    return
+        elif isinstance(exception, Base400):
+            status = exception.status
             info = {}
             message = exception.args[0]
         elif isinstance(exception, DatasetteError):
             status = exception.status
             info = exception.error_dict
             message = exception.message
-            if exception.messagge_is_html:
+            if exception.message_is_html:
                 message = Markup(message)
             title = exception.title
         else:
@@ -1054,16 +1293,19 @@ class DatasetteRouter:
             info = {}
             message = str(exception)
             traceback.print_exc()
-        templates = ["500.html"]
-        if status != 500:
-            templates = ["{}.html".format(status)] + templates
+        templates = [f"{status}.html", "error.html"]
         info.update(
-            {"ok": False, "error": message, "status": status, "title": title,}
+            {
+                "ok": False,
+                "error": message,
+                "status": status,
+                "title": title,
+            }
         )
         headers = {}
         if self.ds.cors:
             headers["Access-Control-Allow-Origin"] = "*"
-        if scope["path"].split("?")[0].endswith(".json"):
+        if request.path.split("?")[0].endswith(".json"):
             await asgi_send_json(send, info, status=status, headers=headers)
         else:
             template = self.ds.jinja_env.select_template(templates)
@@ -1072,8 +1314,9 @@ class DatasetteRouter:
                 await template.render_async(
                     dict(
                         info,
-                        base_url=self.ds.config("base_url"),
+                        urls=self.ds.urls,
                         app_css_hash=self.ds.app_css_hash(),
+                        menu_links=lambda: [],
                     )
                 ),
                 status=status,
@@ -1116,3 +1359,87 @@ def wrap_view(view_fn, datasette):
             return response
 
     return async_view_fn
+
+
+def permanent_redirect(path, forward_query_string=False, forward_rest=False):
+    return wrap_view(
+        lambda request, send: Response.redirect(
+            path
+            + (request.url_vars["rest"] if forward_rest else "")
+            + (
+                ("?" + request.query_string)
+                if forward_query_string and request.query_string
+                else ""
+            ),
+            status=301,
+        ),
+        datasette=None,
+    )
+
+
+_curly_re = re.compile(r"({.*?})")
+
+
+def route_pattern_from_filepath(filepath):
+    # Drop the ".html" suffix
+    if filepath.endswith(".html"):
+        filepath = filepath[: -len(".html")]
+    re_bits = ["/"]
+    for bit in _curly_re.split(filepath):
+        if _curly_re.match(bit):
+            re_bits.append(f"(?P<{bit[1:-1]}>[^/]*)")
+        else:
+            re_bits.append(re.escape(bit))
+    return re.compile("^" + "".join(re_bits) + "$")
+
+
+class NotFoundExplicit(NotFound):
+    pass
+
+
+class DatasetteClient:
+    def __init__(self, ds):
+        self.ds = ds
+        self.app = ds.app()
+
+    def _fix(self, path, avoid_path_rewrites=False):
+        if not isinstance(path, PrefixedUrlString) and not avoid_path_rewrites:
+            path = self.ds.urls.path(path)
+        if path.startswith("/"):
+            path = f"http://localhost{path}"
+        return path
+
+    async def get(self, path, **kwargs):
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.get(self._fix(path), **kwargs)
+
+    async def options(self, path, **kwargs):
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.options(self._fix(path), **kwargs)
+
+    async def head(self, path, **kwargs):
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.head(self._fix(path), **kwargs)
+
+    async def post(self, path, **kwargs):
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.post(self._fix(path), **kwargs)
+
+    async def put(self, path, **kwargs):
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.put(self._fix(path), **kwargs)
+
+    async def patch(self, path, **kwargs):
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.patch(self._fix(path), **kwargs)
+
+    async def delete(self, path, **kwargs):
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.delete(self._fix(path), **kwargs)
+
+    async def request(self, method, path, **kwargs):
+        avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
+        async with httpx.AsyncClient(app=self.app) as client:
+            return await client.request(
+                method, self._fix(path, avoid_path_rewrites), **kwargs
+            )

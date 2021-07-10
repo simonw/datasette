@@ -5,12 +5,14 @@ Writing plugins
 
 You can write one-off plugins that apply to just one Datasette instance, or you can write plugins which can be installed using ``pip`` and can be shipped to the Python Package Index (`PyPI <https://pypi.org/>`__) for other people to install.
 
+Want to start by looking at an example? The `Datasette plugins directory <https://datasette.io/plugins>`__ lists more than 50 open source plugins with code you can explore. The :ref:`plugin hooks <plugin_hooks>` page includes links to example plugins for each of the documented hooks.
+
 .. _writing_plugins_one_off:
 
 Writing one-off plugins
 -----------------------
 
-The easiest way to write a plugin is to create a ``my_plugin.py`` file and drop it into your ``plugins/`` directory. Here is an example plugin, which adds a new custom SQL function called ``hello_world()`` which takes no arguments and returns the string ``Hello world!``.
+The quickest way to start writing a plugin is to create a ``my_plugin.py`` file and drop it into your ``plugins/`` directory. Here is an example plugin, which adds a new custom SQL function called ``hello_world()`` which takes no arguments and returns the string ``Hello world!``.
 
 .. code-block:: python
 
@@ -37,7 +39,7 @@ Starting an installable plugin using cookiecutter
 
 Plugins that can be installed should be written as Python packages using a ``setup.py`` file.
 
-The easiest way to start writing one an installable plugin is to use the `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template. This creates a new plugin structure for you complete with an example test and GitHub Actions workflows for testing and publishing your plugin.
+The quickest way to start writing one an installable plugin is to use the `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template. This creates a new plugin structure for you complete with an example test and GitHub Actions workflows for testing and publishing your plugin.
 
 `Install cookiecutter <https://cookiecutter.readthedocs.io/en/1.7.2/installation.html>`__ and then run this command to start building a plugin using the template::
 
@@ -115,7 +117,21 @@ If your plugin has a ``static/`` directory, Datasette will automatically configu
 
     /-/static-plugins/NAME_OF_PLUGIN_PACKAGE/yourfile.js
 
-See `the datasette-plugin-demos repository <https://github.com/simonw/datasette-plugin-demos/tree/0ccf9e6189e923046047acd7878d1d19a2cccbb1>`_ for an example of how to create a package that includes a static folder.
+Use the ``datasette.urls.static_plugins(plugin_name, path)`` method to generate URLs to that asset that take the ``base_url`` setting into account, see :ref:`internals_datasette_urls`.
+
+To bundle the static assets for a plugin in the package that you publish to PyPI, add the following to the plugin's ``setup.py``:
+
+.. code-block:: python
+
+        package_data={
+            'datasette_plugin_name': [
+                'static/plugin.js',
+            ],
+        },
+
+Where ``datasette_plugin_name`` is the name of the plugin package (note that it uses underscores, not hyphens) and ``static/plugin.js`` is the path within that package to the static file.
+
+`datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ is a useful example of a plugin that includes packaged static assets in this way.
 
 .. _writing_plugins_custom_templates:
 
@@ -131,6 +147,18 @@ The priority order for template loading is:
 * default templates that ship with Datasette
 
 See :ref:`customization` for more details on how to write custom templates, including which filenames to use to customize which parts of the Datasette UI.
+
+Templates should be bundled for distribution using the same ``package_data`` mechanism in ``setup.py`` described for static assets above, for example:
+
+.. code-block:: python
+
+        package_data={
+            'datasette_plugin_name': [
+                'templates/my_template.html',
+            ],
+        },
+
+You can also use wildcards here such as ``templates/*.html``. See `datasette-edit-schema <https://github.com/simonw/datasette-edit-schema>`__ for an example of this pattern.
 
 .. _writing_plugins_configuration:
 
@@ -175,3 +203,53 @@ The plugin configuration could also be set at the top level of ``metadata.json``
     }
 
 Now that ``datasette-cluster-map`` plugin configuration will apply to every table in every database.
+
+.. _writing_plugins_designing_urls:
+
+Designing URLs for your plugin
+------------------------------
+
+You can register new URL routes within Datasette using the :ref:`plugin_register_routes` plugin hook.
+
+Datasette's default URLs include these:
+
+- ``/dbname`` - database page
+- ``/dbname/tablename`` - table page
+- ``/dbname/tablename/pk`` - row page
+
+See :ref:`pages` and :ref:`introspection` for more default URL routes.
+
+To avoid accidentally conflicting with a database file that may be loaded into Datasette, plugins should register URLs using a ``/-/`` prefix. For example, if your plugin adds a new interface for uploading Excel files you might register a URL route like this one:
+
+- ``/-/upload-excel``
+
+Try to avoid registering URLs that clash with other plugins that your users might have installed. There is no central repository of reserved URL paths (yet) but you can review existing plugins by browsing the `datasette-plugin topic <https://github.com/topics/datasette-plugin>`__ on GitHub.
+
+If your plugin includes functionality that relates to a specific database you could also register a URL route like this:
+
+- ``/dbname/-/upload-excel``
+
+Or for a specific table like this:
+
+- ``/dbname/tablename/-/modify-table-schema``
+
+Note that a row could have a primary key of ``-`` and this URL scheme will still work, because Datasette row pages do not ever have a trailing slash followed by additional path components.
+
+.. _writing_plugins_building_urls:
+
+Building URLs within plugins
+----------------------------
+
+Plugins that define their own custom user interface elements may need to link to other pages within Datasette.
+
+This can be a bit tricky if the Datasette instance is using the :ref:`setting_base_url` configuration setting to run behind a proxy, since that can cause Datasette's URLs to include an additional prefix.
+
+The ``datasette.urls`` object provides internal methods for correctly generating URLs to different pages within Datasette, taking any ``base_url`` configuration into account.
+
+This object is exposed in templates as the ``urls`` variable, which can be used like this:
+
+.. code-block:: jinja
+
+    Back to the <a href="{{ urls.instance() }}">Homepage</a>
+
+See :ref:`internals_datasette_urls` for full details on this object.

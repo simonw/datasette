@@ -8,7 +8,8 @@ def test_publish_heroku_requires_heroku(mock_which):
     mock_which.return_value = False
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
         assert result.exit_code == 1
         assert "Publishing to Heroku requires heroku" in result.output
@@ -22,7 +23,8 @@ def test_publish_heroku_installs_plugin(mock_call, mock_check_output, mock_which
     mock_check_output.side_effect = lambda s: {"['heroku', 'plugins']": b""}[repr(s)]
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("t.db", "w").write("data")
+        with open("t.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(cli.cli, ["publish", "heroku", "t.db"], input="y\n")
         assert 0 != result.exit_code
     mock_check_output.assert_has_calls(
@@ -54,14 +56,24 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
     }[repr(s)]
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
-        result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
+        with open("test.db", "w") as fp:
+            fp.write("data")
+        result = runner.invoke(
+            cli.cli, ["publish", "heroku", "test.db", "--tar", "gtar"]
+        )
         assert 0 == result.exit_code, result.output
         mock_call.assert_has_calls(
             [
-                mock.call(["heroku", "config:set", "-a", "f", "WEB_CONCURRENCY=1",]),
                 mock.call(
-                    ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
+                    [
+                        "heroku",
+                        "builds:create",
+                        "-a",
+                        "f",
+                        "--include-vcs-ignore",
+                        "--tar",
+                        "gtar",
+                    ]
                 ),
             ]
         )
@@ -79,7 +91,8 @@ def test_publish_heroku_plugin_secrets(mock_call, mock_check_output, mock_which)
     }[repr(s)]
     runner = CliRunner()
     with runner.isolated_filesystem():
-        open("test.db", "w").write("data")
+        with open("test.db", "w") as fp:
+            fp.write("data")
         result = runner.invoke(
             cli.cli,
             [

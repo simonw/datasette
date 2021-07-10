@@ -8,7 +8,7 @@
 
 <p>Set a message:</p>
 
-<form action="/-/messages" method="post">
+<form action="{{ urls.path('-/messages') }}" method="post">
     <div>
         <input type="text" name="message" style="width: 40%">
         <div class="select-wrapper">

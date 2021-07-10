@@ -3,10 +3,11 @@
 .eggs
 .gitignore
 .ipynb_checkpoints
-.travis.yml
 build
 *.spec
 *.egg-info
 dist
 scratchpad
 venv
+*.db
+*.sqlite

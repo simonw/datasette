@@ -1,15 +1,14 @@
 """
 Tests for various datasette helper functions.
 """
-
+from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request
-from datasette.filters import Filters
+from datasette.utils.sqlite import sqlite3
 import json
 import os
 import pathlib
 import pytest
-import sqlite3
 import tempfile
 from unittest.mock import patch
 
@@ -201,6 +200,22 @@ def test_detect_fts(open_quote, close_quote):
     assert "Street_Tree_List_fts" == utils.detect_fts(conn, "Street_Tree_List")
 
 
+@pytest.mark.parametrize("table", ("regular", "has'single quote"))
+def test_detect_fts_different_table_names(table):
+    sql = """
+    CREATE TABLE [{table}] (
+      "TreeID" INTEGER,
+      "qSpecies" TEXT
+    );
+    CREATE VIRTUAL TABLE [{table}_fts] USING FTS4 ("qSpecies", content="{table}");
+    """.format(
+        table=table
+    )
+    conn = utils.sqlite3.connect(":memory:")
+    conn.executescript(sql)
+    assert "{table}_fts".format(table=table) == utils.detect_fts(conn, table)
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [
@@ -233,7 +248,8 @@ def test_to_css_class(s, expected):
 def test_temporary_docker_directory_uses_hard_link():
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
-        open("hello", "w").write("world")
+        with open("hello", "w") as fp:
+            fp.write("world")
         # Default usage of this should use symlink
         with utils.temporary_docker_directory(
             files=["hello"],
@@ -250,7 +266,8 @@ def test_temporary_docker_directory_uses_hard_link():
             secret="secret",
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
-            assert "world" == open(hello).read()
+            with open(hello) as fp:
+                assert "world" == fp.read()
             # It should be a hard link
             assert 2 == os.stat(hello).st_nlink
 
@@ -261,7 +278,8 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
     mock_link.side_effect = OSError
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
-        open("hello", "w").write("world")
+        with open("hello", "w") as fp:
+            fp.write("world")
         # Default usage of this should use symlink
         with utils.temporary_docker_directory(
             files=["hello"],
@@ -278,7 +296,8 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             secret=None,
         ) as temp_docker:
             hello = os.path.join(temp_docker, "hello")
-            assert "world" == open(hello).read()
+            with open(hello) as fp:
+                assert "world" == fp.read()
             # It should be a copy, not a hard link
             assert 1 == os.stat(hello).st_nlink
 
@@ -286,7 +305,8 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
 def test_temporary_docker_directory_quotes_args():
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
-        open("hello", "w").write("world")
+        with open("hello", "w") as fp:
+            fp.write("world")
         with utils.temporary_docker_directory(
             files=["hello"],
             name="t",
@@ -302,7 +322,8 @@ def test_temporary_docker_directory_quotes_args():
             secret="secret",
         ) as temp_docker:
             df = os.path.join(temp_docker, "Dockerfile")
-            df_contents = open(df).read()
+            with open(df) as fp:
+                df_contents = fp.read()
             assert "'$PWD'" in df_contents
             assert "'--$HOME'" in df_contents
             assert "ENV DATASETTE_SECRET 'secret'" in df_contents
@@ -383,8 +404,20 @@ def test_table_columns():
 )
 def test_path_with_format(path, format, extra_qs, expected):
     request = Request.fake(path)
-    actual = utils.path_with_format(request, format, extra_qs)
+    actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
     assert expected == actual
+
+
+def test_path_with_format_replace_format():
+    request = Request.fake("/foo/bar.csv")
+    assert (
+        utils.path_with_format(request=request, format="blob")
+        == "/foo/bar.csv?_format=blob"
+    )
+    assert (
+        utils.path_with_format(request=request, format="blob", replace_format="csv")
+        == "/foo/bar.blob"
+    )
 
 
 @pytest.mark.parametrize(
@@ -420,6 +453,18 @@ def test_escape_fts(query, expected):
     assert expected == utils.escape_fts(query)
 
 
+@pytest.mark.parametrize(
+    "input,expected",
+    [
+        ("dog", "dog"),
+        ('dateutil_parse("1/2/2020")', r"dateutil_parse(\0000221/2/2020\000022)"),
+        ("this\r\nand\r\nthat", r"this\00000Aand\00000Athat"),
+    ],
+)
+def test_escape_css_string(input, expected):
+    assert expected == utils.escape_css_string(input)
+
+
 def test_check_connection_spatialite_raises():
     path = str(pathlib.Path(__file__).parent / "spatialite.db")
     conn = sqlite3.connect(path)
@@ -434,7 +479,7 @@ def test_check_connection_passes():
 
 def test_call_with_supported_arguments():
     def foo(a, b):
-        return "{}+{}".format(a, b)
+        return f"{a}+{b}"
 
     assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2)
     assert "1+2" == utils.call_with_supported_arguments(foo, a=1, b=2, c=3)
@@ -473,6 +518,12 @@ def test_multi_params(data, should_raise):
         # {} means deny-all:
         (None, {}, False),
         ({"id": "root"}, {}, False),
+        # true means allow-all
+        ({"id": "root"}, True, True),
+        (None, True, True),
+        # false means deny-all
+        ({"id": "root"}, False, False),
+        (None, False, False),
         # Special case for "unauthenticated": true
         (None, {"unauthenticated": True}, True),
         (None, {"unauthenticated": False}, False),
@@ -517,3 +568,45 @@ def test_actor_matches_allow(actor, allow, expected):
 )
 def test_resolve_env_secrets(config, expected):
     assert expected == utils.resolve_env_secrets(config, {"FOO": "x"})
+
+
+@pytest.mark.parametrize(
+    "actor,expected",
+    [
+        ({"id": "blah"}, "blah"),
+        ({"id": "blah", "login": "l"}, "l"),
+        ({"id": "blah", "login": "l"}, "l"),
+        ({"id": "blah", "login": "l", "username": "u"}, "u"),
+        ({"login": "l", "name": "n"}, "n"),
+        (
+            {"id": "blah", "login": "l", "username": "u", "name": "n", "display": "d"},
+            "d",
+        ),
+        ({"weird": "shape"}, "{'weird': 'shape'}"),
+    ],
+)
+def test_display_actor(actor, expected):
+    assert expected == utils.display_actor(actor)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "dbs,expected_path",
+    [
+        (["one_table"], "/one/one"),
+        (["two_tables"], "/two"),
+        (["one_table", "two_tables"], "/"),
+    ],
+)
+async def test_initial_path_for_datasette(tmp_path_factory, dbs, expected_path):
+    db_dir = tmp_path_factory.mktemp("dbs")
+    one_table = str(db_dir / "one.db")
+    sqlite3.connect(one_table).execute("create table one (id integer primary key)")
+    two_tables = str(db_dir / "two.db")
+    sqlite3.connect(two_tables).execute("create table two (id integer primary key)")
+    sqlite3.connect(two_tables).execute("create table three (id integer primary key)")
+    datasette = Datasette(
+        [{"one_table": one_table, "two_tables": two_tables}[db] for db in dbs]
+    )
+    path = await utils.initial_path_for_datasette(datasette)
+    assert path == expected_path

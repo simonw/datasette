@@ -19,7 +19,7 @@ def add_common_publish_arguments_and_options(subcommand):
                 "--extra-options", help="Extra options to pass to datasette serve"
             ),
             click.option(
-                "--branch", help="Install datasette from a GitHub branch e.g. master"
+                "--branch", help="Install datasette from a GitHub branch e.g. main"
             ),
             click.option(
                 "--template-dir",
@@ -85,9 +85,7 @@ def fail_if_publish_binary_not_installed(binary, publish_target, install_link):
             err=True,
         )
         click.echo(
-            "Follow the instructions at {install_link}".format(
-                install_link=install_link
-            ),
+            f"Follow the instructions at {install_link}",
             err=True,
         )
         sys.exit(1)

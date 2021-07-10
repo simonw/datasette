@@ -2,11 +2,12 @@ import urllib
 import itertools
 import json
 
-import jinja2
+import markupsafe
 
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette.utils import (
+    await_me_maybe,
     CustomRow,
     MultiParams,
     append_querystring,
@@ -18,12 +19,11 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
     path_with_replaced_args,
-    sqlite3,
     to_css_class,
     urlsafe_components,
     value_as_boolean,
 )
-from datasette.utils.asgi import NotFound
+from datasette.utils.asgi import BadRequest, NotFound
 from datasette.filters import Filters
 from .base import DataView, DatasetteError, ureg
 from .database import QueryView
@@ -64,6 +64,41 @@ class Row:
 
 
 class RowTableShared(DataView):
+    async def columns_to_select(self, db, table, request):
+        table_columns = await db.table_columns(table)
+        pks = await db.primary_keys(table)
+        columns = list(table_columns)
+        if "_col" in request.args:
+            columns = list(pks)
+            _cols = request.args.getlist("_col")
+            bad_columns = [column for column in _cols if column not in table_columns]
+            if bad_columns:
+                raise DatasetteError(
+                    "_col={} - invalid columns".format(", ".join(bad_columns)),
+                    status=400,
+                )
+            # De-duplicate maintaining order:
+            columns.extend(dict.fromkeys(_cols))
+        if "_nocol" in request.args:
+            # Return all columns EXCEPT these
+            bad_columns = [
+                column
+                for column in request.args.getlist("_nocol")
+                if (column not in table_columns) or (column in pks)
+            ]
+            if bad_columns:
+                raise DatasetteError(
+                    "_nocol={} - invalid columns".format(", ".join(bad_columns)),
+                    status=400,
+                )
+            tmp_columns = [
+                column
+                for column in columns
+                if column not in request.args.getlist("_nocol")
+            ]
+            columns = tmp_columns
+        return columns
+
     async def sortable_columns_for_table(self, database, table, use_rowid):
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
@@ -87,21 +122,41 @@ class RowTableShared(DataView):
     async def display_columns_and_rows(
         self, database, table, description, rows, link_column=False, truncate_cells=0
     ):
-        "Returns columns, rows for specified table - including fancy foreign key treatment"
+        """Returns columns, rows for specified table - including fancy foreign key treatment"""
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
+        column_details = {col.name: col for col in await db.table_column_details(table)}
         sortable_columns = await self.sortable_columns_for_table(database, table, True)
-        columns = [
-            {"name": r[0], "sortable": r[0] in sortable_columns} for r in description
-        ]
         pks = await db.primary_keys(table)
+        pks_for_display = pks
+        if not pks_for_display:
+            pks_for_display = ["rowid"]
+
+        columns = []
+        for r in description:
+            if r[0] == "rowid" and "rowid" not in column_details:
+                type_ = "integer"
+                notnull = 0
+            else:
+                type_ = column_details[r[0]].type
+                notnull = column_details[r[0]].notnull
+            columns.append(
+                {
+                    "name": r[0],
+                    "sortable": r[0] in sortable_columns,
+                    "is_pk": r[0] in pks_for_display,
+                    "type": type_,
+                    "notnull": notnull,
+                }
+            )
+
         column_to_foreign_key_table = {
             fk["column"]: fk["other_table"]
             for fk in await db.foreign_keys_for_table(table)
         }
 
         cell_rows = []
-        base_url = self.ds.config("base_url")
+        base_url = self.ds.setting("base_url")
         for row in rows:
             cells = []
             # Unless we are a view, the first column is a link - either to the rowid
@@ -115,12 +170,12 @@ class RowTableShared(DataView):
                         "value_type": "pk",
                         "is_special_link_column": is_special_link_column,
                         "raw": pk_path,
-                        "value": jinja2.Markup(
+                        "value": markupsafe.Markup(
                             '<a href="{base_url}{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                                 base_url=base_url,
                                 database=database,
                                 table=urllib.parse.quote_plus(table),
-                                flat_pks=str(jinja2.escape(pk_path)),
+                                flat_pks=str(markupsafe.escape(pk_path)),
                                 flat_pks_quoted=path_from_row_pks(row, pks, not pks),
                             )
                         ),
@@ -146,9 +201,16 @@ class RowTableShared(DataView):
                 if plugin_display_value is not None:
                     display_value = plugin_display_value
                 elif isinstance(value, bytes):
-                    display_value = jinja2.Markup(
-                        "&lt;Binary&nbsp;data:&nbsp;{}&nbsp;byte{}&gt;".format(
-                            len(value), "" if len(value) == 1 else "s"
+                    display_value = markupsafe.Markup(
+                        '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
+                            self.ds.urls.row_blob(
+                                database,
+                                table,
+                                path_from_row_pks(row, pks, not pks),
+                                column,
+                            ),
+                            len(value),
+                            "" if len(value) == 1 else "s",
                         )
                     )
                 elif isinstance(value, dict):
@@ -160,22 +222,22 @@ class RowTableShared(DataView):
                     link_template = (
                         LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
                     )
-                    display_value = jinja2.Markup(
+                    display_value = markupsafe.Markup(
                         link_template.format(
                             database=database,
                             base_url=base_url,
                             table=urllib.parse.quote_plus(other_table),
                             link_id=urllib.parse.quote_plus(str(value)),
-                            id=str(jinja2.escape(value)),
-                            label=str(jinja2.escape(label)),
+                            id=str(markupsafe.escape(value)),
+                            label=str(markupsafe.escape(label)) or "-",
                         )
                     )
                 elif value in ("", None):
-                    display_value = jinja2.Markup("&nbsp;")
+                    display_value = markupsafe.Markup("&nbsp;")
                 elif is_url(str(value).strip()):
-                    display_value = jinja2.Markup(
+                    display_value = markupsafe.Markup(
                         '<a href="{url}">{url}</a>'.format(
-                            url=jinja2.escape(value.strip())
+                            url=markupsafe.escape(value.strip())
                         )
                     )
                 elif column in table_metadata.get("units", {}) and value != "":
@@ -185,13 +247,13 @@ class RowTableShared(DataView):
                     # representation, which we have to round off to avoid ugliness. In the vast
                     # majority of cases this rounding will be inconsequential. I hope.
                     value = round(value.to_compact(), 6)
-                    display_value = jinja2.Markup(
-                        "{:~P}".format(value).replace(" ", "&nbsp;")
+                    display_value = markupsafe.Markup(
+                        f"{value:~P}".replace(" ", "&nbsp;")
                     )
                 else:
                     display_value = str(value)
                     if truncate_cells and len(display_value) > truncate_cells:
-                        display_value = display_value[:truncate_cells] + u"\u2026"
+                        display_value = display_value[:truncate_cells] + "\u2026"
 
                 cells.append(
                     {
@@ -209,12 +271,25 @@ class RowTableShared(DataView):
             # Add the link column header.
             # If it's a simple primary key, we have to remove and re-add that column name at
             # the beginning of the header row.
+            first_column = None
             if len(pks) == 1:
                 columns = [col for col in columns if col["name"] != pks[0]]
-
-            columns = [
-                {"name": pks[0] if len(pks) == 1 else "Link", "sortable": len(pks) == 1}
-            ] + columns
+                first_column = {
+                    "name": pks[0],
+                    "sortable": len(pks) == 1,
+                    "is_pk": True,
+                    "type": column_details[pks[0]].type,
+                    "notnull": column_details[pks[0]].notnull,
+                }
+            else:
+                first_column = {
+                    "name": "Link",
+                    "sortable": False,
+                    "is_pk": False,
+                    "type": "",
+                    "notnull": 0,
+                }
+            columns = [first_column] + columns
         return columns, cell_rows
 
 
@@ -267,11 +342,16 @@ class TableView(RowTableShared):
         is_view = bool(await db.get_view_definition(table))
         table_exists = bool(await db.table_exists(table))
         if not is_view and not table_exists:
-            raise NotFound("Table not found: {}".format(table))
+            raise NotFound(f"Table not found: {table}")
 
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
-        await self.check_permission(request, "view-table", (database, table))
+        await self.check_permissions(
+            request,
+            [
+                ("view-table", (database, table)),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
 
         private = not await self.ds.permission_allowed(
             None, "view-table", (database, table), default=True
@@ -280,20 +360,31 @@ class TableView(RowTableShared):
         pks = await db.primary_keys(table)
         table_columns = await db.table_columns(table)
 
-        select_columns = ", ".join(escape_sqlite(t) for t in table_columns)
+        specified_columns = await self.columns_to_select(db, table, request)
+        select_specified_columns = ", ".join(
+            escape_sqlite(t) for t in specified_columns
+        )
+        select_all_columns = ", ".join(escape_sqlite(t) for t in table_columns)
 
         use_rowid = not pks and not is_view
         if use_rowid:
-            select = "rowid, {}".format(select_columns)
+            select_specified_columns = f"rowid, {select_specified_columns}"
+            select_all_columns = f"rowid, {select_all_columns}"
             order_by = "rowid"
             order_by_pks = "rowid"
         else:
-            select = select_columns
             order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
             order_by = order_by_pks
 
         if is_view:
             order_by = ""
+
+        nocount = request.args.get("_nocount")
+        nofacet = request.args.get("_nofacet")
+
+        if request.args.get("_shape") in ("array", "object"):
+            nocount = True
+            nofacet = True
 
         # Ensure we don't drop anything with an empty value e.g. ?name__exact=
         args = MultiParams(
@@ -321,7 +412,7 @@ class TableView(RowTableShared):
                 forward_querystring=False,
             )
 
-        # Spot ?_sort_by_desc and redirect to _sort_desc=(_sort)
+        # If ?_sort_by_desc=on (from checkbox) redirect to _sort_desc=(_sort)
         if "_sort_by_desc" in special_args:
             return self.redirect(
                 request,
@@ -345,7 +436,10 @@ class TableView(RowTableShared):
         # Add _where= from querystring
         if "_where" in request.args:
             if not await self.ds.permission_allowed(
-                request.actor, "execute-sql", resource=database, default=True,
+                request.actor,
+                "execute-sql",
+                resource=database,
+                default=True,
             ):
                 raise DatasetteError("_where= is not allowed", status=403)
             else:
@@ -375,7 +469,7 @@ class TableView(RowTableShared):
                     raise DatasetteError(
                         "Invalid _through - could not find corresponding foreign key"
                     )
-                param = "p{}".format(len(params))
+                param = f"p{len(params)}"
                 where_clauses.append(
                     "{our_pk} in (select {our_column} from {through_table} where {other_column} = :{param})".format(
                         through_table=escape_sqlite(through_table),
@@ -387,7 +481,7 @@ class TableView(RowTableShared):
                 )
                 params[param] = value
                 extra_human_descriptions.append(
-                    '{}.{} = "{}"'.format(through_table, other_column, value)
+                    f'{through_table}.{other_column} = "{value}"'
                 )
 
         # _search support:
@@ -396,10 +490,18 @@ class TableView(RowTableShared):
         fts_table = fts_table or await db.fts_table(table)
         fts_pk = special_args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
         search_args = dict(
-            pair for pair in special_args.items() if pair[0].startswith("_search")
+            pair
+            for pair in special_args.items()
+            if pair[0].startswith("_search") and pair[0] != "_searchmode"
         )
         search = ""
-        search_mode_raw = special_args.get("_searchmode") == "raw"
+        search_mode_raw = table_metadata.get("searchmode") == "raw"
+        # Or set it from the querystring
+        qs_searchmode = special_args.get("_searchmode")
+        if qs_searchmode == "escaped":
+            search_mode_raw = False
+        if qs_searchmode == "raw":
+            search_mode_raw = True
         if fts_table and search_args:
             if "_search" in search_args:
                 # Simple ?_search=xxx
@@ -413,14 +515,14 @@ class TableView(RowTableShared):
                         else "escape_fts(:search)",
                     )
                 )
-                extra_human_descriptions.append('search matches "{}"'.format(search))
+                extra_human_descriptions.append(f'search matches "{search}"')
                 params["search"] = search
             else:
                 # More complex: search against specific columns
                 for i, (key, search_text) in enumerate(search_args.items()):
                     search_col = key.split("_search_", 1)[1]
                     if search_col not in await db.table_columns(fts_table):
-                        raise DatasetteError("Cannot search by that column", status=400)
+                        raise BadRequest("Cannot search by that column")
 
                     where_clauses.append(
                         "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
@@ -432,11 +534,9 @@ class TableView(RowTableShared):
                         )
                     )
                     extra_human_descriptions.append(
-                        'search column "{}" matches "{}"'.format(
-                            search_col, search_text
-                        )
+                        f'search column "{search_col}" matches "{search_text}"'
                     )
-                    params["search_{}".format(i)] = search_text
+                    params[f"search_{i}"] = search_text
 
         sortable_columns = set()
 
@@ -457,15 +557,15 @@ class TableView(RowTableShared):
 
         if sort:
             if sort not in sortable_columns:
-                raise DatasetteError("Cannot sort table by {}".format(sort))
+                raise DatasetteError(f"Cannot sort table by {sort}")
 
             order_by = escape_sqlite(sort)
 
         if sort_desc:
             if sort_desc not in sortable_columns:
-                raise DatasetteError("Cannot sort table by {}".format(sort_desc))
+                raise DatasetteError(f"Cannot sort table by {sort_desc}")
 
-            order_by = "{} desc".format(escape_sqlite(sort_desc))
+            order_by = f"{escape_sqlite(sort_desc)} desc"
 
         from_sql = "from {table_name} {where}".format(
             table_name=escape_sqlite(table),
@@ -476,14 +576,14 @@ class TableView(RowTableShared):
         # Copy of params so we can mutate them later:
         from_sql_params = dict(**params)
 
-        count_sql = "select count(*) {}".format(from_sql)
+        count_sql = f"select count(*) {from_sql}"
 
         _next = _next or special_args.get("_next")
         offset = ""
         if _next:
             if is_view:
                 # _next is an offset
-                offset = " offset {}".format(int(_next))
+                offset = f" offset {int(_next)}"
             else:
                 components = urlsafe_components(_next)
                 # If a sort order is applied, the first of these is the sort value
@@ -497,8 +597,8 @@ class TableView(RowTableShared):
                 # Figure out the SQL for next-based-on-primary-key first
                 next_by_pk_clauses = []
                 if use_rowid:
-                    next_by_pk_clauses.append("rowid > :p{}".format(len(params)))
-                    params["p{}".format(len(params))] = components[0]
+                    next_by_pk_clauses.append(f"rowid > :p{len(params)}")
+                    params[f"p{len(params)}"] = components[0]
                 else:
                     # Apply the tie-breaker based on primary keys
                     if len(components) == len(pks):
@@ -507,7 +607,7 @@ class TableView(RowTableShared):
                             compound_keys_after_sql(pks, param_len)
                         )
                         for i, pk_value in enumerate(components):
-                            params["p{}".format(param_len + i)] = pk_value
+                            params[f"p{param_len + i}"] = pk_value
 
                 # Now add the sort SQL, which may incorporate next_by_pk_clauses
                 if sort or sort_desc:
@@ -541,17 +641,17 @@ class TableView(RowTableShared):
                                 next_clauses=" and ".join(next_by_pk_clauses),
                             )
                         )
-                        params["p{}".format(len(params))] = sort_value
-                    order_by = "{}, {}".format(order_by, order_by_pks)
+                        params[f"p{len(params)}"] = sort_value
+                    order_by = f"{order_by}, {order_by_pks}"
                 else:
                     where_clauses.extend(next_by_pk_clauses)
 
         where_clause = ""
         if where_clauses:
-            where_clause = "where {} ".format(" and ".join(where_clauses))
+            where_clause = f"where {' and '.join(where_clauses)} "
 
         if order_by:
-            order_by = "order by {} ".format(order_by)
+            order_by = f"order by {order_by}"
 
         extra_args = {}
         # Handle ?_size=500
@@ -565,25 +665,30 @@ class TableView(RowTableShared):
                     raise ValueError
 
             except ValueError:
-                raise DatasetteError("_size must be a positive integer", status=400)
+                raise BadRequest("_size must be a positive integer")
 
             if page_size > self.ds.max_returned_rows:
-                raise DatasetteError(
-                    "_size must be <= {}".format(self.ds.max_returned_rows), status=400
-                )
+                raise BadRequest(f"_size must be <= {self.ds.max_returned_rows}")
 
             extra_args["page_size"] = page_size
         else:
             page_size = self.ds.page_size
 
-        sql_no_limit = "select {select} from {table_name} {where}{order_by}".format(
-            select=select,
+        sql_no_limit = (
+            "select {select_all_columns} from {table_name} {where}{order_by}".format(
+                select_all_columns=select_all_columns,
+                table_name=escape_sqlite(table),
+                where=where_clause,
+                order_by=order_by,
+            )
+        )
+        sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(
+            select_specified_columns=select_specified_columns,
             table_name=escape_sqlite(table),
             where=where_clause,
             order_by=order_by,
-        )
-        sql = "{sql_no_limit} limit {limit}{offset}".format(
-            sql_no_limit=sql_no_limit.rstrip(), limit=page_size + 1, offset=offset
+            page_size=page_size + 1,
+            offset=offset,
         )
 
         if request.args.get("_timelimit"):
@@ -596,7 +701,7 @@ class TableView(RowTableShared):
         if (
             not db.is_mutable
             and self.ds.inspect_data
-            and count_sql == "select count(*) from {} ".format(table)
+            and count_sql == f"select count(*) from {table} "
         ):
             try:
                 filtered_table_rows_count = self.ds.inspect_data[database]["tables"][
@@ -605,7 +710,7 @@ class TableView(RowTableShared):
             except KeyError:
                 pass
 
-        if count_sql and filtered_table_rows_count is None:
+        if count_sql and filtered_table_rows_count is None and not nocount:
             try:
                 count_rows = list(await db.execute(count_sql, from_sql_params))
                 filtered_table_rows_count = count_rows[0][0]
@@ -613,10 +718,10 @@ class TableView(RowTableShared):
                 pass
 
         # facets support
-        if not self.ds.config("allow_facet") and any(
+        if not self.ds.setting("allow_facet") and any(
             arg.startswith("_facet") for arg in request.args
         ):
-            raise DatasetteError("_facet= is not allowed", status=400)
+            raise BadRequest("_facet= is not allowed")
 
         # pylint: disable=no-member
         facet_classes = list(
@@ -639,13 +744,14 @@ class TableView(RowTableShared):
                 )
             )
 
-        for facet in facet_instances:
-            (
-                instance_facet_results,
-                instance_facets_timed_out,
-            ) = await facet.facet_results()
-            facet_results.update(instance_facet_results)
-            facets_timed_out.extend(instance_facets_timed_out)
+        if not nofacet:
+            for facet in facet_instances:
+                (
+                    instance_facet_results,
+                    instance_facets_timed_out,
+                ) = await facet.facet_results()
+                facet_results.update(instance_facet_results)
+                facets_timed_out.extend(instance_facets_timed_out)
 
         # Figure out columns and rows for the query
         columns = [r[0] for r in results.description]
@@ -671,6 +777,8 @@ class TableView(RowTableShared):
             for fk, _ in expandable_columns:
                 column = fk["column"]
                 if column not in columns_to_expand:
+                    continue
+                if column not in columns:
                     continue
                 expanded_columns.append(column)
                 # Gather the values
@@ -700,7 +808,7 @@ class TableView(RowTableShared):
         # Pagination next link
         next_value = None
         next_url = None
-        if len(rows) > page_size and page_size > 0:
+        if 0 < page_size < len(rows):
             if is_view:
                 next_value = int(_next or 0) + page_size
             else:
@@ -714,7 +822,7 @@ class TableView(RowTableShared):
                     prefix = "$null"
                 else:
                     prefix = urllib.parse.quote_plus(str(prefix))
-                next_value = "{},{}".format(prefix, next_value)
+                next_value = f"{prefix},{next_value}"
                 added_args = {"_next": next_value}
                 if sort:
                     added_args["_sort"] = sort
@@ -731,9 +839,10 @@ class TableView(RowTableShared):
         suggested_facets = []
 
         if (
-            self.ds.config("suggest_facets")
-            and self.ds.config("allow_facet")
+            self.ds.setting("suggest_facets")
+            and self.ds.setting("allow_facet")
             and not _next
+            and not nofacet
         ):
             for facet in facet_instances:
                 suggested_facets.extend(await facet.suggest())
@@ -760,7 +869,7 @@ class TableView(RowTableShared):
                 results.description,
                 rows,
                 link_column=not is_view,
-                truncate_cells=self.ds.config("truncate_cells_html"),
+                truncate_cells=self.ds.setting("truncate_cells_html"),
             )
             metadata = (
                 (self.ds.metadata("databases") or {})
@@ -769,13 +878,12 @@ class TableView(RowTableShared):
                 .get(table, {})
             )
             self.ds.update_with_inherited_metadata(metadata)
+
             form_hidden_args = []
-            for arg in ("_fts_table", "_fts_pk"):
-                if arg in special_args:
-                    form_hidden_args.append((arg, special_args[arg]))
-            if request.args.get("_where"):
-                for where_text in request.args.getlist("_where"):
-                    form_hidden_args.append(("_where", where_text))
+            for key in request.args:
+                if key.startswith("_") and key not in ("_sort", "_search"):
+                    for value in request.args.getlist(key):
+                        form_hidden_args.append((key, value))
 
             # if no sort specified AND table has a single primary key,
             # set sort to that so arrow is displayed
@@ -785,7 +893,22 @@ class TableView(RowTableShared):
                 elif use_rowid:
                     sort = "rowid"
 
+            async def table_actions():
+                links = []
+                for hook in pm.hook.table_actions(
+                    datasette=self.ds,
+                    table=table,
+                    database=database,
+                    actor=request.actor,
+                    request=request,
+                ):
+                    extra_links = await await_me_maybe(hook)
+                    if extra_links:
+                        links.extend(extra_links)
+                return links
+
             return {
+                "table_actions": table_actions,
                 "supports_search": bool(fts_table),
                 "search": search or "",
                 "use_rowid": use_rowid,
@@ -810,12 +933,8 @@ class TableView(RowTableShared):
                 "sort_desc": sort_desc,
                 "disable_sort": is_view,
                 "custom_table_templates": [
-                    "_table-{}-{}.html".format(
-                        to_css_class(database), to_css_class(table)
-                    ),
-                    "_table-table-{}-{}.html".format(
-                        to_css_class(database), to_css_class(table)
-                    ),
+                    f"_table-{to_css_class(database)}-{to_css_class(table)}.html",
+                    f"_table-table-{to_css_class(database)}-{to_css_class(table)}.html",
                     "_table.html",
                 ],
                 "metadata": metadata,
@@ -849,39 +968,47 @@ class TableView(RowTableShared):
             },
             extra_template,
             (
-                "table-{}-{}.html".format(to_css_class(database), to_css_class(table)),
+                f"table-{to_css_class(database)}-{to_css_class(table)}.html",
                 "table.html",
             ),
         )
+
+
+async def _sql_params_pks(db, table, pk_values):
+    pks = await db.primary_keys(table)
+    use_rowid = not pks
+    select = "*"
+    if use_rowid:
+        select = "rowid, *"
+        pks = ["rowid"]
+    wheres = [f'"{pk}"=:p{i}' for i, pk in enumerate(pks)]
+    sql = f"select {select} from {escape_sqlite(table)} where {' AND '.join(wheres)}"
+    params = {}
+    for i, pk_value in enumerate(pk_values):
+        params[f"p{i}"] = pk_value
+    return sql, params, pks
 
 
 class RowView(RowTableShared):
     name = "row"
 
     async def data(self, request, database, hash, table, pk_path, default_labels=False):
-        pk_values = urlsafe_components(pk_path)
-        await self.check_permission(request, "view-instance")
-        await self.check_permission(request, "view-database", database)
-        await self.check_permission(request, "view-table", (database, table))
-        db = self.ds.databases[database]
-        pks = await db.primary_keys(table)
-        use_rowid = not pks
-        select = "*"
-        if use_rowid:
-            select = "rowid, *"
-            pks = ["rowid"]
-        wheres = ['"{}"=:p{}'.format(pk, i) for i, pk in enumerate(pks)]
-        sql = "select {} from {} where {}".format(
-            select, escape_sqlite(table), " AND ".join(wheres)
+        await self.check_permissions(
+            request,
+            [
+                ("view-table", (database, table)),
+                ("view-database", database),
+                "view-instance",
+            ],
         )
-        params = {}
-        for i, pk_value in enumerate(pk_values):
-            params["p{}".format(i)] = pk_value
+        pk_values = urlsafe_components(pk_path)
+        db = self.ds.databases[database]
+        sql, params, pks = await _sql_params_pks(db, table, pk_values)
         results = await db.execute(sql, params, truncate=True)
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
-            raise NotFound("Record not found: {}".format(pk_values))
+            raise NotFound(f"Record not found: {pk_values}")
 
         async def template_data():
             display_columns, display_rows = await self.display_columns_and_rows(
@@ -894,6 +1021,7 @@ class RowView(RowTableShared):
             )
             for column in display_columns:
                 column["sortable"] = False
+
             return {
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
@@ -901,12 +1029,8 @@ class RowView(RowTableShared):
                 "display_columns": display_columns,
                 "display_rows": display_rows,
                 "custom_table_templates": [
-                    "_table-{}-{}.html".format(
-                        to_css_class(database), to_css_class(table)
-                    ),
-                    "_table-row-{}-{}.html".format(
-                        to_css_class(database), to_css_class(table)
-                    ),
+                    f"_table-{to_css_class(database)}-{to_css_class(table)}.html",
+                    f"_table-row-{to_css_class(database)}-{to_css_class(table)}.html",
                     "_table.html",
                 ],
                 "metadata": (self.ds.metadata("databases") or {})
@@ -934,7 +1058,7 @@ class RowView(RowTableShared):
             data,
             template_data,
             (
-                "row-{}-{}.html".format(to_css_class(database), to_css_class(table)),
+                f"row-{to_css_class(database)}-{to_css_class(table)}.html",
                 "row.html",
             ),
         )
@@ -959,7 +1083,7 @@ class RowView(RowTableShared):
         )
         try:
             rows = list(await db.execute(sql, {"id": pk_values[0]}))
-        except sqlite3.OperationalError:
+        except QueryInterrupted:
             # Almost certainly hit the timeout
             return []
 

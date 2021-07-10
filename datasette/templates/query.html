@@ -20,20 +20,23 @@
 
 {% block nav %}
     <p class="crumbs">
-        <a href="/">home</a> /
-        <a href="{{ database_url(database) }}">{{ database }}</a>
+        <a href="{{ urls.instance() }}">home</a> /
+        <a href="{{ urls.database(database) }}">{{ database }}</a>
     </p>
     {{ super() }}
 {% endblock %}
 
 {% block content %}
 
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}{% if canned_query and not metadata.title %}: {{ canned_query }}{% endif %}{% if private %} 🔒{% endif %}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<form class="sql" action="{{ database_url(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_write %}post{% else %}get{% endif %}">
-    <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %} <span class="show-hide-sql">{% if hide_sql %}(<a href="{{ path_with_removed_args(request, {'_hide_sql': '1'}) }}">show</a>){% else %}(<a href="{{ path_with_added_args(request, {'_hide_sql': '1'}) }}">hide</a>){% endif %}</span></h3>
+<form class="sql" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_write %}post{% else %}get{% endif %}">
+    <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}{% if not query_error %} <span class="show-hide-sql">{% if hide_sql %}(<a href="{{ path_with_removed_args(request, {'_hide_sql': '1'}) }}">show</a>){% else %}(<a href="{{ path_with_added_args(request, {'_hide_sql': '1'}) }}">hide</a>){% endif %}</span>{% endif %}</h3>
+    {% if error %}
+        <p class="message-error">{{ error }}</p>
+    {% endif %}
     {% if not hide_sql %}
         {% if editable and allow_execute_sql %}
             <p><textarea id="sql-editor" name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
@@ -52,14 +55,15 @@
     {% endif %}
     <p>
         <button id="sql-format" type="button" hidden>Format SQL</button>
-        {% if canned_query %}<input type="hidden" name="csrftoken" value="{{ csrftoken() }}">{% endif %}
+        {% if canned_write %}<input type="hidden" name="csrftoken" value="{{ csrftoken() }}">{% endif %}
         <input type="submit" value="Run SQL">
+        {% if canned_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="canned-query-edit-sql">Edit SQL</a>{% endif %}
     </p>
 </form>
 
 {% if display_rows %}
-  <p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}, <a href="{{ url_csv }}">CSV</a></p>
-<table class="rows-and-columns">
+<p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}, <a href="{{ url_csv }}">CSV</a></p>
+<div class="table-wrapper"><table class="rows-and-columns">
     <thead>
         <tr>
             {% for column in columns %}<th class="col-{{ column|to_css_class }}" scope="col">{{ column }}</th>{% endfor %}
@@ -69,14 +73,14 @@
     {% for row in display_rows %}
         <tr>
             {% for column, td in zip(columns, row) %}
-                <td class="col-{{ column|to_css_class }}">{% if td == None %}{{ "&nbsp;"|safe }}{% else %}{{ td }}{% endif %}</td>
+                <td class="col-{{ column|to_css_class }}">{{ td }}</td>
             {% endfor %}
         </tr>
     {% endfor %}
     </tbody>
-</table>
+</table></div>
 {% else %}
-    {% if not canned_write %}
+    {% if not canned_write and not error %}
         <p class="zero-results">0 results</p>
     {% endif %}
 {% endif %}

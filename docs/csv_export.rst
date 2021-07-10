@@ -1,6 +1,6 @@
 .. _csv_export:
 
-CSV Export
+CSV export
 ==========
 
 Any Datasette table, view or custom SQL query can be exported as CSV.
@@ -23,10 +23,26 @@ file, which looks like this and has the following options:
   the ``city_id`` column is accompanied by a ``city_id_label`` column.
 
 * **stream all rows** - by default CSV files only contain the first
-  :ref:`config_max_returned_rows` records. This option will cause Datasette to
+  :ref:`setting_max_returned_rows` records. This option will cause Datasette to
   loop through every matching record and return them as a single CSV file.
 
 You can try that out on https://latest.datasette.io/fixtures/facetable?_size=4
+
+.. _csv_export_url_parameters:
+
+URL parameters
+--------------
+
+The following options can be used to customize the CSVs returned by Datasette.
+
+``?_header=off``
+    This removes the first row of the CSV file specifying the headings - only the row data will be returned.
+
+``?_stream=on``
+    Stream all matching records, not just the first page of results. See below.
+
+``?_dl=on``
+    Causes Datasette to return a ``content-disposition: attachment; filename="filename.csv"`` header.
 
 Streaming all records
 ---------------------
@@ -40,9 +56,9 @@ Since databases can get pretty large, by default this option is capped at 100MB 
 if a table returns more than 100MB of data the last line of the CSV will be a
 truncation error message.
 
-You can increase or remove this limit using the :ref:`config_max_csv_mb` config
+You can increase or remove this limit using the :ref:`setting_max_csv_mb` config
 setting. You can also disable the CSV export feature entirely using
-:ref:`config_allow_csv_stream`.
+:ref:`setting_allow_csv_stream`.
 
 A note on URLs
 --------------
@@ -55,7 +71,7 @@ The default URL for the CSV representation of a table is that table with
 * https://latest.datasette.io/fixtures/facetable.json - JSON API
 
 This pattern doesn't work for tables with names that already end in ``.csv`` or
-``.json``. For those tables, you can instead use the ``_format=`` querystring
+``.json``. For those tables, you can instead use the ``_format=`` query string
 parameter:
 
 * https://latest.datasette.io/fixtures/table%2Fwith%2Fslashes.csv - HTML interface

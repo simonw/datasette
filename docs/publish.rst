@@ -15,23 +15,6 @@ Once you have created a SQLite database (e.g. using `csvs-to-sqlite <https://git
 
 You will need a hosting account with `Heroku <https://www.heroku.com/>`__ or `Google Cloud <https://cloud.google.com/>`__. Once you have created your account you will need to install and configure the ``heroku`` or ``gcloud`` command-line tools.
 
-Publishing to Heroku
---------------------
-
-To publish your data using Heroku, first create an account there and install and configure the `Heroku CLI tool <https://devcenter.heroku.com/articles/heroku-cli>`_.
-
-You can publish a database to Heroku using the following command::
-
-    datasette publish heroku mydatabase.db
-
-This will output some details about the new deployment, including a URL like this one::
-
-    https://limitless-reef-88278.herokuapp.com/ deployed to Heroku
-
-You can specify a custom app name by passing ``-n my-app-name`` to the publish command. This will also allow you to overwrite an existing app.
-
-.. literalinclude:: datasette-publish-heroku-help.txt
-
 .. _publish_cloud_run:
 
 Publishing to Google Cloud Run
@@ -49,26 +32,67 @@ A Cloud Run **service** is a single hosted application. The service name you spe
 
 If you omit the ``--service`` option you will be asked to pick a service name interactively during the deploy.
 
-You may need to interact with prompts from the tool. Once it has finished it will output a URL like this one::
+You may need to interact with prompts from the tool. Many of the prompts ask for values that can be `set as properties for the Google Cloud SDK <https://cloud.google.com/sdk/docs/properties>`_ if you want to avoid the prompts. 
+
+For example, the default region for the deployed instance can be set using the command::
+
+    gcloud config set run/region us-central1
+    
+You should replace ``us-central1`` with your desired `region <https://cloud.google.com/about/locations>`_. Alternately, you can specify the region by setting the ``CLOUDSDK_RUN_REGION`` environment variable. 
+
+Once it has finished it will output a URL like this one::
 
     Service [my-service] revision [my-service-00001] has been deployed
     and is serving traffic at https://my-service-j7hipcg4aq-uc.a.run.app
 
+Cloud Run provides a URL on the ``.run.app`` domain, but you can also point your own domain or subdomain at your Cloud Run service - see `mapping custom domains <https://cloud.google.com/run/docs/mapping-custom-domains>`__ in the Cloud Run documentation for details.
+
 .. literalinclude:: datasette-publish-cloudrun-help.txt
+
+Publishing to Heroku
+--------------------
+
+To publish your data using `Heroku <https://www.heroku.com/>`__, first create an account there and install and configure the `Heroku CLI tool <https://devcenter.heroku.com/articles/heroku-cli>`_.
+
+You can publish a database to Heroku using the following command::
+
+    datasette publish heroku mydatabase.db
+
+This will output some details about the new deployment, including a URL like this one::
+
+    https://limitless-reef-88278.herokuapp.com/ deployed to Heroku
+
+You can specify a custom app name by passing ``-n my-app-name`` to the publish command. This will also allow you to overwrite an existing app.
+
+.. literalinclude:: datasette-publish-heroku-help.txt
+
+.. _publish_vercel:
+
+Publishing to Vercel
+--------------------
+
+`Vercel <https://vercel.com/>`__  - previously known as Zeit Now - provides a layer over AWS Lambda to allow for quick, scale-to-zero deployment. You can deploy Datasette instances to Vercel using the `datasette-publish-vercel <https://github.com/simonw/datasette-publish-vercel>`__ plugin.
+
+::
+
+    pip install datasette-publish-vercel
+    datasette publish vercel mydatabase.db --project my-database-project
+
+Not every feature is supported: consult the `datasette-publish-vercel README <https://github.com/simonw/datasette-publish-vercel/blob/main/README.md>`__ for more details.
 
 .. _publish_fly:
 
 Publishing to Fly
 -----------------
 
-`Fly <https://fly.io/>`__ is a `competitively priced <https://fly.io/docs/pricing/>`__ Docker-compatible hosting platform that makes it easy to run applications in globally distributed data centers close to your end users. You can deploy Datasette instances to Fly using the `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`__ plugin, installed separately.
+`Fly <https://fly.io/>`__ is a `competitively priced <https://fly.io/docs/pricing/>`__ Docker-compatible hosting platform that supports running applications in globally distributed data centers close to your end users. You can deploy Datasette instances to Fly using the `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`__ plugin.
 
 ::
 
     pip install datasette-publish-fly
-    datasette publish fly mydatabase.db
+    datasette publish fly mydatabase.db --app="my-app"
 
-Consult the `datasette-publish-fly README <https://github.com/simonw/datasette-publish-fly/blob/master/README.md>`__ for more details.
+Consult the `datasette-publish-fly README <https://github.com/simonw/datasette-publish-fly/blob/main/README.md>`__ for more details.
 
 .. _publish_custom_metadata_and_plugins:
 
@@ -111,7 +135,7 @@ If you have docker installed (e.g. using `Docker for Mac <https://www.docker.com
 
 Here's example output for the package command::
 
-    $ datasette package parlgov.db --extra-options="--config sql_time_limit_ms:2500"
+    $ datasette package parlgov.db --extra-options="--setting sql_time_limit_ms 2500"
     Sending build context to Docker daemon  4.459MB
     Step 1/7 : FROM python:3
      ---> 79e1dc9af1c1
@@ -130,7 +154,7 @@ Here's example output for the package command::
     Step 6/7 : EXPOSE 8001
      ---> Using cache
      ---> 8e83844b0fed
-    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --config sql_time_limit_ms:2500
+    Step 7/7 : CMD datasette serve parlgov.db --port 8001 --inspect-file inspect-data.json --setting sql_time_limit_ms 2500
      ---> Using cache
      ---> 1bd380ea8af3
     Successfully built 1bd380ea8af3

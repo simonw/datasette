@@ -7,6 +7,7 @@ from html import escape
 from http.cookies import SimpleCookie, Morsel
 import re
 import aiofiles
+import aiofiles.os
 
 # Workaround for adding samesite support to pre 3.8 python
 Morsel._reserved["samesite"] = "SameSite"
@@ -14,12 +15,20 @@ Morsel._reserved["samesite"] = "SameSite"
 # https://github.com/encode/starlette/blob/519f575/starlette/responses.py#L17
 
 
-class NotFound(Exception):
-    pass
+class Base400(Exception):
+    status = 400
 
 
-class Forbidden(Exception):
-    pass
+class NotFound(Base400):
+    status = 404
+
+
+class Forbidden(Base400):
+    status = 403
+
+
+class BadRequest(Base400):
+    status = 400
 
 
 SAMESITE_VALUES = ("strict", "lax", "none")
@@ -50,12 +59,10 @@ class Request:
 
     @property
     def headers(self):
-        return dict(
-            [
-                (k.decode("latin-1").lower(), v.decode("latin-1"))
-                for k, v in self.scope.get("headers") or []
-            ]
-        )
+        return {
+            k.decode("latin-1").lower(): v.decode("latin-1")
+            for k, v in self.scope.get("headers") or []
+        }
 
     @property
     def host(self):
@@ -83,6 +90,11 @@ class Request:
         return (self.scope.get("query_string") or b"").decode("latin-1")
 
     @property
+    def full_path(self):
+        qs = self.query_string
+        return "{}{}".format(self.path, ("?" + qs) if qs else "")
+
+    @property
     def args(self):
         return MultiParams(parse_qs(qs=self.query_string))
 
@@ -90,8 +102,7 @@ class Request:
     def actor(self):
         return self.scope.get("actor", None)
 
-    async def post_vars(self):
-        body = []
+    async def post_body(self):
         body = b""
         more_body = True
         while more_body:
@@ -99,12 +110,15 @@ class Request:
             assert message["type"] == "http.request", message
             body += message.get("body", b"")
             more_body = message.get("more_body", False)
+        return body
 
+    async def post_vars(self):
+        body = await self.post_body()
         return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
 
     @classmethod
     def fake(cls, path_with_query_string, method="GET", scheme="http"):
-        "Useful for constructing Request objects for tests"
+        """Useful for constructing Request objects for tests"""
         path, _, query_string = path_with_query_string.partition("?")
         scope = {
             "http_version": "1.1",
@@ -156,9 +170,7 @@ class AsgiStream:
 
     async def asgi_send(self, send):
         # Remove any existing content-type header
-        headers = dict(
-            [(k, v) for k, v in self.headers.items() if k.lower() != "content-type"]
-        )
+        headers = {k: v for k, v in self.headers.items() if k.lower() != "content-type"}
         headers["content-type"] = self.content_type
         await send(
             {
@@ -229,7 +241,7 @@ async def asgi_send(send, content, status, headers=None, content_type="text/plai
 async def asgi_start(send, status, headers=None, content_type="text/plain"):
     headers = headers or {}
     # Remove any existing content-type header
-    headers = dict([(k, v) for k, v in headers.items() if k.lower() != "content-type"])
+    headers = {k: v for k, v in headers.items() if k.lower() != "content-type"}
     headers["content-type"] = content_type
     await send(
         {
@@ -244,12 +256,13 @@ async def asgi_start(send, status, headers=None, content_type="text/plain"):
 
 
 async def asgi_send_file(
-    send, filepath, filename=None, content_type=None, chunk_size=4096
+    send, filepath, filename=None, content_type=None, chunk_size=4096, headers=None
 ):
-    headers = {}
+    headers = headers or {}
     if filename:
-        headers["Content-Disposition"] = 'attachment; filename="{}"'.format(filename)
+        headers["content-disposition"] = f'attachment; filename="{filename}"'
     first = True
+    headers["content-length"] = str((await aiofiles.os.stat(str(filepath))).st_size)
     async with aiofiles.open(str(filepath), mode="rb") as fp:
         if first:
             await asgi_start(
@@ -269,26 +282,28 @@ async def asgi_send_file(
 
 
 def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
+    root_path = Path(root_path)
+
     async def inner_static(request, send):
         path = request.scope["url_route"]["kwargs"]["path"]
         try:
-            full_path = (Path(root_path) / path).resolve().absolute()
+            full_path = (root_path / path).resolve().absolute()
         except FileNotFoundError:
-            await asgi_send_html(send, "404", 404)
+            await asgi_send_html(send, "404: Directory not found", 404)
             return
         if full_path.is_dir():
             await asgi_send_html(send, "403: Directory listing is not allowed", 403)
             return
         # Ensure full_path is within root_path to avoid weird "../" tricks
         try:
-            full_path.relative_to(root_path)
+            full_path.relative_to(root_path.resolve())
         except ValueError:
-            await asgi_send_html(send, "404", 404)
+            await asgi_send_html(send, "404: Path not inside root path", 404)
             return
         try:
             await asgi_send_file(send, full_path, chunk_size=chunk_size)
         except FileNotFoundError:
-            await asgi_send_html(send, "404", 404)
+            await asgi_send_html(send, "404: File not found", 404)
             return
 
     return inner_static
@@ -374,9 +389,9 @@ class Response:
         )
 
     @classmethod
-    def json(cls, body, status=200, headers=None):
+    def json(cls, body, status=200, headers=None, default=None):
         return cls(
-            json.dumps(body),
+            json.dumps(body, default=default),
             status=status,
             headers=headers,
             content_type="application/json; charset=utf-8",
@@ -391,11 +406,22 @@ class Response:
 
 class AsgiFileDownload:
     def __init__(
-        self, filepath, filename=None, content_type="application/octet-stream"
+        self,
+        filepath,
+        filename=None,
+        content_type="application/octet-stream",
+        headers=None,
     ):
+        self.headers = headers or {}
         self.filepath = filepath
         self.filename = filename
         self.content_type = content_type
 
     async def asgi_send(self, send):
-        return await asgi_send_file(send, self.filepath, content_type=self.content_type)
+        return await asgi_send_file(
+            send,
+            self.filepath,
+            filename=self.filename,
+            content_type=self.content_type,
+            headers=self.headers,
+        )

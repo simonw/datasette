@@ -50,10 +50,7 @@ SQLite string escaping rules will be applied to values passed using named
 parameters - they will be wrapped in quotes and their content will be correctly
 escaped.
 
-Datasette disallows custom SQL containing the string PRAGMA, as SQLite pragma
-statements can be used to change database settings at runtime. If you need to
-include the string "pragma" in a query you can do so safely using a named
-parameter.
+Datasette disallows custom SQL queries containing the string PRAGMA (with a small number `of exceptions <https://github.com/simonw/datasette/issues/761>`__) as SQLite pragma statements can be used to change database settings at runtime. If you need to include the string "pragma" in a query you can do so safely using a named parameter.
 
 .. _sql_views:
 
@@ -64,7 +61,7 @@ If you want to bundle some pre-written SQL queries with your Datasette-hosted
 database you can do so in two ways. The first is to include SQL views in your
 database - Datasette will then list those views on your database index page.
 
-The easiest way to create views is with the SQLite command-line interface::
+The quickest way to create views is with the SQLite command-line interface::
 
     $ sqlite3 sf-trees.db
     SQLite version 3.19.3 2017-06-27 16:48:08
@@ -272,14 +269,14 @@ For example:
 
 You can use ``"params"`` to explicitly list the named parameters that should be displayed as form fields - otherwise they will be automatically detected.
 
-You can pre-populate form fields when the page first loads using a querystring, e.g. ``/mydatabase/add_name?name=Prepopulated``. The user will have to submit the form to execute the query.
+You can pre-populate form fields when the page first loads using a query string, e.g. ``/mydatabase/add_name?name=Prepopulated``. The user will have to submit the form to execute the query.
 
 .. _canned_queries_magic_parameters:
 
 Magic parameters
 ~~~~~~~~~~~~~~~~
 
-Named parameters that start with an underscore are special: they can be used to automatically add values created by Datasette that are not contained in the incoming form fields or querystring.
+Named parameters that start with an underscore are special: they can be used to automatically add values created by Datasette that are not contained in the incoming form fields or query string.
 
 Available magic parameters are:
 
@@ -316,15 +313,52 @@ Here's an example configuration (this time using ``metadata.yaml`` since that pr
               id: "*"
             sql: |-
               INSERT INTO messages (
-                user_id, ip, message, datetime
+                user_id, message, datetime
               ) VALUES (
-                :_actor_id, :_request_ip, :message, :_now_datetime_utc
+                :_actor_id, :message, :_now_datetime_utc
               )
             write: true
 
 The form presented at ``/mydatabase/add_message`` will have just a field for ``message`` - the other parameters will be populated by the magic parameter mechanism.
 
 Additional custom magic parameters can be added by plugins using the :ref:`plugin_hook_register_magic_parameters` hook.
+
+.. _canned_queries_json_api:
+
+JSON API for writable canned queries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Writable canned queries can also be accessed using a JSON API. You can POST data to them using JSON, and you can request that their response is returned to you as JSON.
+
+To submit JSON to a writable canned query, encode key/value parameters as a JSON document::
+
+    POST /mydatabase/add_message
+
+    {"message": "Message goes here"}
+
+You can also continue to submit data using regular form encoding, like so::
+
+    POST /mydatabase/add_message
+
+    message=Message+goes+here
+
+There are three options for specifying that you would like the response to your request to return JSON data, as opposed to an HTTP redirect to another page.
+
+- Set an ``Accept: application/json`` header on your request
+- Include ``?_json=1`` in the URL that you POST to
+- Include ``"_json": 1`` in your JSON body, or ``&_json=1`` in your form encoded body
+
+The JSON response will look like this:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "message": "Query executed, 1 row affected",
+        "redirect": "/data/add_name"
+    }
+
+The ``"message"`` and ``"redirect"`` values here will take into account ``on_success_message``, ``on_success_redirect``, ``on_error_message`` and ``on_error_redirect``, if they have been set.
 
 .. _pagination:
 
@@ -355,3 +389,34 @@ detect if there should be another page.
 Since the where clause acts against the index on the primary key, the query is
 extremely fast even for records that are a long way into the overall pagination
 set.
+
+.. _cross_database_queries:
+
+Cross-database queries
+----------------------
+
+SQLite has the ability to run queries that join across multiple databases. Up to ten databases can be attached to a single SQLite connection and queried together.
+
+Datasette can execute joins across multiple databases if it is started with the ``--crossdb`` option::
+
+    datasette fixtures.db extra_database.db --crossdb
+
+If it is started in this way, the ``/_memory`` page can be used to execute queries that join across multiple databases.
+
+References to tables in attached databases should be preceeded by the database name and a period.
+
+For example, this query will show a list of tables across both of the above databases:
+
+.. code-block:: sql
+
+    select
+      'fixtures' as database, *
+    from
+      [fixtures].sqlite_master
+    union
+    select
+      'extra_database' as database, *
+    from
+      [extra_database].sqlite_master
+
+`Try that out here <https://latest.datasette.io/_memory?sql=select%0D%0A++%27fixtures%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bfixtures%5D.sqlite_master%0D%0Aunion%0D%0Aselect%0D%0A++%27extra_database%27+as+database%2C+*%0D%0Afrom%0D%0A++%5Bextra_database%5D.sqlite_master>`__.

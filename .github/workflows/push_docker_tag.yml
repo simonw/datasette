@@ -1,0 +1,25 @@
+name: Push specific Docker tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: Tag to build and push
+
+jobs:
+  deploy_docker:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build and push to Docker Hub
+      env:
+        DOCKER_USER: ${{ secrets.DOCKER_USER }}
+        DOCKER_PASS: ${{ secrets.DOCKER_PASS }}
+        VERSION_TAG: ${{ github.event.inputs.version_tag }}
+      run: |-
+        docker login -u $DOCKER_USER -p $DOCKER_PASS
+        export REPO=datasetteproject/datasette
+        docker build -f Dockerfile \
+          -t $REPO:${VERSION_TAG} \
+          --build-arg VERSION=${VERSION_TAG} .
+        docker push $REPO:${VERSION_TAG}

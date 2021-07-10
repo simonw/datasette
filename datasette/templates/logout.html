@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Log out{% endblock %}
+
+{% block nav %}
+    <p class="crumbs">
+        <a href="{{ base_url }}">home</a>
+    </p>
+    {{ super() }}
+{% endblock %}
+
+{% block content %}
+
+<h1>Log out</h1>
+
+<p>You are logged in as <strong>{{ display_actor(actor) }}</strong></p>
+
+<form action="{{ urls.logout() }}" method="post">
+    <div>
+        <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+        <input type="submit" value="Log out">
+    </div>
+</form>
+
+{% endblock %}

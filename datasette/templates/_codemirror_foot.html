@@ -23,6 +23,7 @@ window.onload = () => {
                 editor.setValue(sqlFormatter.format(editor.getValue()));
             })
         }
+        cmResize(editor, {resizableWidth: false});
     }
     if (sqlFormat && readOnly) {
         const formatted = sqlFormatter.format(readOnly.innerHTML);

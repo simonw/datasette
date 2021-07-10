@@ -1,41 +1,74 @@
 .. _installation:
 
-Installation
-============
+==============
+ Installation
+==============
 
 .. note::
-    If you just want to try Datasette out you don't need to install anything: see :ref:`glitch`
+    If you just want to try Datasette out you don't need to install anything: see :ref:`getting_started_glitch`
 
 There are two main options for installing Datasette. You can install it directly
 on to your machine, or you can install it using Docker.
 
+If you want to start making contributions to the Datasette project by installing a copy that lets you directly modify the code, take a look at our guide to :ref:`devenvironment`.
+
 .. contents::
+   :local:
+
+.. _installation_basic:
+
+Basic installation
+==================
+
+.. _installation_homebrew:
+
+Using Homebrew
+--------------
+
+If you have a Mac and use `Homebrew <https://brew.sh/>`__, you can install Datasette by running this command in your terminal::
+
+    brew install datasette
+
+This should install the latest version. You can confirm by running::
+
+    datasette --version
+
+You can upgrade to the latest Homebrew packaged version using::
+
+    brew upgrade datasette
+
+Once you have installed Datasette you can install plugins using the following::
+
+    datasette install datasette-vega
+
+If the latest packaged release of Datasette has not yet been made available through Homebrew, you can upgrade your Homebrew installation in-place using::
+
+    datasette install -U datasette
 
 .. _installation_pip:
 
-Install using pip
------------------
+Using pip
+---------
 
-To run Datasette without Docker you will need Python 3.6 or higher.
+Datasette requires Python 3.6 or higher. Visit `InstallPython3.com <https://installpython3.com/>`__ for step-by-step installation guides for your operating system.
 
 You can install Datasette and its dependencies using ``pip``::
 
     pip install datasette
 
-The last version to support Python 3.5 was 0.30.2. If you are running Python 3.5 (check using ``python3 --version``) you can install that version of Datasette like so::
-
-    pip install datasette==0.30.2
-
 You can now run Datasette like so::
 
     datasette
 
-If you want to start making contributions to the Datasette project by installing a copy that lets you directly modify the code, take a look at our guide to :ref:`devenvironment`.
+.. _installation_advanced:
+
+Advanced installation options
+=============================
 
 .. _installation_pipx:
 
-Install using pipx
-------------------
+Using pipx
+----------
 
 `pipx <https://pipxproject.github.io/pipx/>`__ is a tool for installing Python software with all of its dependencies in an isolated environment, to ensure that they will not conflict with any other installed Python software.
 
@@ -56,28 +89,6 @@ Once pipx is installed you can use it to install Datasette like this::
     pipx install datasette
 
 Then run ``datasette --version`` to confirm that it has been successfully installed.
-
-Installing plugins using pipx
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Datasette plugins need to be installed into the same environment as Datasette itself. You can do this using ``pipx inject datasette name-of-plugin`` - and then confirm that the plugin has been installed using the ``datasette plugins`` command::
-
-    $ datasette plugins
-    []
-
-    $ pipx inject datasette datasette-json-html            
-      injected package datasette-json-html into venv datasette
-    done! ✨ 🌟 ✨
-
-    $ datasette plugins
-    [
-        {
-            "name": "datasette-json-html",
-            "static": false,
-            "templates": false,
-            "version": "0.6"
-        }
-    ]
 
 Upgrading packages using pipx
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -159,7 +170,7 @@ module, use the following command::
     docker run -p 8001:8001 -v `pwd`:/mnt \
         datasetteproject/datasette \
         datasette -p 8001 -h 0.0.0.0 /mnt/fixtures.db \
-        --load-extension=/usr/local/lib/mod_spatialite.so
+        --load-extension=spatialite
 
 You can confirm that SpatiaLite is successfully loaded by visiting
 http://127.0.0.1:8001/-/versions
@@ -184,3 +195,12 @@ You can now run the new custom image like so::
 
 You can confirm that the plugins are installed by visiting
 http://127.0.0.1:8001/-/plugins
+
+Some plugins such as `datasette-ripgrep <https://datasette.io/plugins/datasette-ripgrep>`__ may need additional system packages. You can install these by running `apt-get install` inside the container::
+
+    docker run datasette-057a0 bash -c '
+        apt-get update && 
+        apt-get install ripgrep &&
+        pip install datasette-ripgrep'
+
+    docker commit $(docker ps -lq) datasette-with-ripgrep

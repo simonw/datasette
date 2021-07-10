@@ -2,8 +2,9 @@
 Tests for the datasette.database.Database class
 """
 from datasette.database import Database, Results, MultipleValues
-from datasette.utils import sqlite3
-from .fixtures import app_client
+from datasette.utils.sqlite import sqlite3
+from datasette.utils import Column
+from .fixtures import app_client, app_client_two_attached_databases_crossdb_enabled
 import pytest
 import time
 import uuid
@@ -69,10 +70,222 @@ async def test_table_exists(db, tables, exists):
         assert exists == actual
 
 
+@pytest.mark.parametrize(
+    "table,expected",
+    (
+        (
+            "facetable",
+            [
+                "pk",
+                "created",
+                "planet_int",
+                "on_earth",
+                "state",
+                "city_id",
+                "neighborhood",
+                "tags",
+                "complex_array",
+                "distinct_some_null",
+            ],
+        ),
+        (
+            "sortable",
+            [
+                "pk1",
+                "pk2",
+                "content",
+                "sortable",
+                "sortable_with_nulls",
+                "sortable_with_nulls_2",
+                "text",
+            ],
+        ),
+    ),
+)
+@pytest.mark.asyncio
+async def test_table_columns(db, table, expected):
+    columns = await db.table_columns(table)
+    assert columns == expected
+
+
+@pytest.mark.parametrize(
+    "table,expected",
+    (
+        (
+            "facetable",
+            [
+                Column(
+                    cid=0,
+                    name="pk",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=1,
+                    hidden=0,
+                ),
+                Column(
+                    cid=1,
+                    name="created",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=2,
+                    name="planet_int",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=3,
+                    name="on_earth",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=4,
+                    name="state",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=5,
+                    name="city_id",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=6,
+                    name="neighborhood",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=7,
+                    name="tags",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=8,
+                    name="complex_array",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=9,
+                    name="distinct_some_null",
+                    type="",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+            ],
+        ),
+        (
+            "sortable",
+            [
+                Column(
+                    cid=0,
+                    name="pk1",
+                    type="varchar(30)",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=1,
+                    hidden=0,
+                ),
+                Column(
+                    cid=1,
+                    name="pk2",
+                    type="varchar(30)",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=2,
+                    hidden=0,
+                ),
+                Column(
+                    cid=2,
+                    name="content",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=3,
+                    name="sortable",
+                    type="integer",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=4,
+                    name="sortable_with_nulls",
+                    type="real",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=5,
+                    name="sortable_with_nulls_2",
+                    type="real",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=6,
+                    name="text",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+            ],
+        ),
+    ),
+)
+@pytest.mark.asyncio
+async def test_table_column_details(db, table, expected):
+    columns = await db.table_column_details(table)
+    assert columns == expected
+
+
 @pytest.mark.asyncio
 async def test_get_all_foreign_keys(db):
     all_foreign_keys = await db.get_all_foreign_keys()
-    assert {
+    assert all_foreign_keys["roadside_attraction_characteristics"] == {
         "incoming": [],
         "outgoing": [
             {
@@ -86,8 +299,8 @@ async def test_get_all_foreign_keys(db):
                 "other_column": "pk",
             },
         ],
-    } == all_foreign_keys["roadside_attraction_characteristics"]
-    assert {
+    }
+    assert all_foreign_keys["attraction_characteristic"] == {
         "incoming": [
             {
                 "other_table": "roadside_attraction_characteristics",
@@ -96,13 +309,38 @@ async def test_get_all_foreign_keys(db):
             }
         ],
         "outgoing": [],
-    } == all_foreign_keys["attraction_characteristic"]
+    }
+    assert all_foreign_keys["compound_primary_key"] == {
+        # No incoming because these are compound foreign keys, which we currently ignore
+        "incoming": [],
+        "outgoing": [],
+    }
+    assert all_foreign_keys["foreign_key_references"] == {
+        "incoming": [],
+        "outgoing": [
+            {
+                "other_table": "primary_key_multiple_columns",
+                "column": "foreign_key_with_no_label",
+                "other_column": "id",
+            },
+            {
+                "other_table": "simple_primary_key",
+                "column": "foreign_key_with_blank_label",
+                "other_column": "id",
+            },
+            {
+                "other_table": "simple_primary_key",
+                "column": "foreign_key_with_label",
+                "other_column": "id",
+            },
+        ],
+    }
 
 
 @pytest.mark.asyncio
 async def test_table_names(db):
     table_names = await db.table_names()
-    assert [
+    assert table_names == [
         "simple_primary_key",
         "primary_key_multiple_columns",
         "primary_key_multiple_columns_explicit_label",
@@ -121,9 +359,10 @@ async def test_table_names(db):
         "searchable",
         "searchable_tags",
         "searchable_fts",
-        "searchable_fts_content",
         "searchable_fts_segments",
         "searchable_fts_segdir",
+        "searchable_fts_docsize",
+        "searchable_fts_stat",
         "select",
         "infinity",
         "facet_cities",
@@ -132,7 +371,7 @@ async def test_table_names(db):
         "roadside_attractions",
         "attraction_characteristic",
         "roadside_attraction_characteristics",
-    ] == table_names
+    ]
 
 
 @pytest.mark.asyncio
@@ -149,7 +388,8 @@ async def test_execute_write_block_true(db):
 @pytest.mark.asyncio
 async def test_execute_write_block_false(db):
     await db.execute_write(
-        "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1],
+        "update roadside_attractions set name = ? where pk = ?",
+        ["Mystery!", 1],
     )
     time.sleep(0.1)
     rows = await db.execute("select name from roadside_attractions where pk = 1")
@@ -190,10 +430,72 @@ async def test_execute_write_fn_exception(db):
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(1)
+async def test_execute_write_fn_connection_exception(tmpdir, app_client):
+    path = str(tmpdir / "immutable.db")
+    sqlite3.connect(path).execute("vacuum")
+    db = Database(app_client.ds, path=path, is_mutable=False)
+    app_client.ds.add_database(db, name="immutable-db")
+
+    def write_fn(conn):
+        assert False
+
+    with pytest.raises(AssertionError):
+        await db.execute_write_fn(write_fn, block=True)
+
+    app_client.ds.remove_database("immutable-db")
+
+
+@pytest.mark.asyncio
 async def test_mtime_ns(db):
     assert isinstance(db.mtime_ns, int)
 
 
 def test_mtime_ns_is_none_for_memory(app_client):
     memory_db = Database(app_client.ds, is_memory=True)
+    assert memory_db.is_memory is True
     assert None is memory_db.mtime_ns
+
+
+def test_is_mutable(app_client):
+    assert Database(app_client.ds, is_memory=True, is_mutable=True).is_mutable is True
+    assert Database(app_client.ds, is_memory=True, is_mutable=False).is_mutable is False
+
+
+@pytest.mark.asyncio
+async def test_attached_databases(app_client_two_attached_databases_crossdb_enabled):
+    database = app_client_two_attached_databases_crossdb_enabled.ds.get_database(
+        "_memory"
+    )
+    attached = await database.attached_databases()
+    assert {a.name for a in attached} == {"extra database", "fixtures"}
+
+
+@pytest.mark.asyncio
+async def test_database_memory_name(app_client):
+    ds = app_client.ds
+    foo1 = ds.add_database(Database(ds, memory_name="foo"))
+    foo2 = ds.add_memory_database("foo")
+    bar1 = ds.add_database(Database(ds, memory_name="bar"))
+    bar2 = ds.add_memory_database("bar")
+    for db in (foo1, foo2, bar1, bar2):
+        table_names = await db.table_names()
+        assert table_names == []
+    # Now create a table in foo
+    await foo1.execute_write("create table foo (t text)", block=True)
+    assert await foo1.table_names() == ["foo"]
+    assert await foo2.table_names() == ["foo"]
+    assert await bar1.table_names() == []
+    assert await bar2.table_names() == []
+
+
+@pytest.mark.asyncio
+async def test_in_memory_databases_forbid_writes(app_client):
+    ds = app_client.ds
+    db = ds.add_database(Database(ds, memory_name="test"))
+    with pytest.raises(sqlite3.OperationalError):
+        await db.execute("create table foo (t text)")
+    assert await db.table_names() == []
+    # Using db.execute_write() should work:
+    await db.execute_write("create table foo (t text)", block=True)
+    assert await db.table_names() == ["foo"]

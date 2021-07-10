@@ -1,3 +1,5 @@
+.. _json_api:
+
 JSON API
 ========
 
@@ -17,6 +19,8 @@ requests to fetch the data.
 
 If you start Datasette without the ``--cors`` option only JavaScript running on
 the same domain as Datasette will be able to access the API.
+
+.. _json_api_shapes:
 
 Different shapes
 ----------------
@@ -138,11 +142,39 @@ this format.
 The ``object`` keys are always strings. If your table has a compound primary
 key, the ``object`` keys will be a comma-separated string.
 
+.. _json_api_pagination:
+
+Pagination
+----------
+
+The default JSON representation includes a ``"next_url"`` key which can be used to access the next page of results. If that key is null or missing then it means you have reached the final page of results.
+
+Other representations include pagination information in the ``link`` HTTP header. That header will look something like this::
+
+    link: <https://latest.datasette.io/fixtures/sortable.json?_next=d%2Cv>; rel="next"
+
+Here is an example Python function built using `requests <https://requests.readthedocs.io/>`__ that returns a list of all of the paginated items from one of these API endpoints:
+
+.. code-block:: python
+
+    def paginate(url):
+        items = []
+        while url:
+            response = requests.get(url)
+            try:
+                url = response.links.get("next").get("url")
+            except AttributeError:
+                url = None
+            items.extend(response.json())
+        return items
+
+.. _json_api_special:
+
 Special JSON arguments
 ----------------------
 
 Every Datasette endpoint that can return JSON also accepts the following
-querystring arguments:
+query string arguments:
 
 ``?_shape=SHAPE``
     The shape of the JSON to return, documented above.
@@ -174,17 +206,27 @@ querystring arguments:
     For how many seconds should this response be cached by HTTP proxies? Use
     ``?_ttl=0`` to disable HTTP caching entirely for this request.
 
+``?_trace=1``
+    Turns on tracing for this page: SQL queries executed during the request will
+    be gathered and included in the response, either in a new ``"_traces"`` key
+    for JSON responses or at the bottom of the page if the response is in HTML.
+
+    The structure of the data returned here should be considered highly unstable
+    and very likely to change.
+
+    Only available if the :ref:`setting_trace_debug` setting is enabled.
+
 .. _table_arguments:
 
 Table arguments
 ---------------
 
-The Datasette table view takes a number of special querystring arguments.
+The Datasette table view takes a number of special query string arguments.
 
 Column filter arguments
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-You can filter the data returned by the table based on column values using a querystring argument.
+You can filter the data returned by the table based on column values using a query string argument.
 
 ``?column__exact=value`` or ``?_column=value``
     Returns rows where the specified column exactly matches the value.
@@ -235,7 +277,12 @@ You can filter the data returned by the table based on column values using a que
     Rows where column does not match any of the provided values. The inverse of ``__in=``. Also supports JSON arrays.
 
 ``?column__arraycontains=value``
-    Works against columns that contain JSON arrays - matches if any of the values in that array match.
+    Works against columns that contain JSON arrays - matches if any of the values in that array match the provided value.
+
+    This is only available if the ``json1`` SQLite extension is enabled.
+
+``?column__arraynotcontains=value``
+    Works against columns that contain JSON arrays - matches if none of the values in that array match the provided value.
 
     This is only available if the ``json1`` SQLite extension is enabled.
 
@@ -258,6 +305,12 @@ You can filter the data returned by the table based on column values using a que
 
 Special table arguments
 ~~~~~~~~~~~~~~~~~~~~~~~
+
+``?_col=COLUMN1&_col=COLUMN2``
+    List specific columns to display. These will be shown along with any primary keys.
+
+``?_nocol=COLUMN1&_nocol=COLUMN2``
+    List specific columns to hide - any column not listed will be displayed. Primary keys cannot be hidden.
 
 ``?_labels=on/off``
     Expand foreign key references for every possible column. See below.
@@ -334,13 +387,17 @@ Special table arguments
     Pagination by continuation token - pass the token that was returned in the
     ``"next"`` property by the previous page.
 
-``?_trace=1``
-    Turns on tracing for this page: SQL queries executed during the request will
-    be gathered and included in the response, either in a new ``"_traces"`` key
-    for JSON responses or at the bottom of the page if the response is in HTML.
+``?_facet=column``
+    Facet by column. Can be applied multiple times, see :ref:`facets`. Only works on the default JSON output, not on any of the custom shapes.
 
-    The structure of the data returned here should be considered highly unstable
-    and very likely to change.
+``?_facet_size=100``
+    Increase the number of facet results returned for each facet. Use ``?_facet_size=max`` for the maximum available size, determined by :ref:`setting_max_returned_rows`.
+
+``?_nofacet=1``
+    Disable all facets and facet suggestions for this page, including any defined by :ref:`facets_metadata`.
+
+``?_nocount=1``
+    Disable the ``select count(*)`` query used on this page - a count of ``None`` will be returned instead.
 
 .. _expand_foreign_keys:
 
@@ -352,7 +409,7 @@ labels. The HTML interface does this by default for every detected foreign key
 column - you can turn that off using ``?_labels=off``.
 
 You can request foreign keys be expanded in JSON using the ``_labels=on`` or
-``_label=COLUMN`` special querystring parameters. Here's what an expanded row
+``_label=COLUMN`` special query string parameters. Here's what an expanded row
 looks like::
 
     [

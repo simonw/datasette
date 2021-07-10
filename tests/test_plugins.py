@@ -9,14 +9,14 @@ from .fixtures import (
 from datasette.app import Datasette
 from datasette import cli
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
-from datasette.utils import sqlite3, CustomRow
+from datasette.utils.sqlite import sqlite3
+from datasette.utils import CustomRow
 from jinja2.environment import Template
 import base64
 import json
 import os
 import pathlib
 import re
-import sqlite3
 import textwrap
 import pytest
 import urllib
@@ -28,23 +28,23 @@ at_memory_re = re.compile(r" at 0x\w+")
     "plugin_hook", [name for name in dir(pm.hook) if not name.startswith("_")]
 )
 def test_plugin_hooks_have_tests(plugin_hook):
-    "Every plugin hook should be referenced in this test module"
-    tests_in_this_module = [t for t in globals().keys() if t.startswith("test_")]
+    """Every plugin hook should be referenced in this test module"""
+    tests_in_this_module = [t for t in globals().keys() if t.startswith("test_hook_")]
     ok = False
     for test in tests_in_this_module:
         if plugin_hook in test:
             ok = True
-    assert ok, "Plugin hook is missing tests: {}".format(plugin_hook)
+    assert ok, f"Plugin hook is missing tests: {plugin_hook}"
 
 
-def test_plugins_dir_plugin_prepare_connection(app_client):
+def test_hook_plugins_dir_plugin_prepare_connection(app_client):
     response = app_client.get(
         "/fixtures.json?sql=select+convert_units(100%2C+'m'%2C+'ft')"
     )
     assert pytest.approx(328.0839) == response.json["rows"][0][0]
 
 
-def test_plugin_prepare_connection_arguments(app_client):
+def test_hook_plugin_prepare_connection_arguments(app_client):
     response = app_client.get(
         "/fixtures.json?sql=select+prepare_connection_args()&_shape=arrayfirst"
     )
@@ -56,18 +56,53 @@ def test_plugin_prepare_connection_arguments(app_client):
 @pytest.mark.parametrize(
     "path,expected_decoded_object",
     [
-        ("/", {"template": "index.html", "database": None, "table": None}),
+        (
+            "/",
+            {
+                "template": "index.html",
+                "database": None,
+                "table": None,
+                "view_name": "index",
+                "request_path": "/",
+                "added": 15,
+                "columns": None,
+            },
+        ),
         (
             "/fixtures/",
-            {"template": "database.html", "database": "fixtures", "table": None},
+            {
+                "template": "database.html",
+                "database": "fixtures",
+                "table": None,
+                "view_name": "database",
+                "request_path": "/fixtures",
+                "added": 15,
+                "columns": None,
+            },
         ),
         (
             "/fixtures/sortable",
-            {"template": "table.html", "database": "fixtures", "table": "sortable"},
+            {
+                "template": "table.html",
+                "database": "fixtures",
+                "table": "sortable",
+                "view_name": "table",
+                "request_path": "/fixtures/sortable",
+                "added": 15,
+                "columns": [
+                    "pk1",
+                    "pk2",
+                    "content",
+                    "sortable",
+                    "sortable_with_nulls",
+                    "sortable_with_nulls_2",
+                    "text",
+                ],
+            },
         ),
     ],
 )
-def test_plugin_extra_css_urls(app_client, path, expected_decoded_object):
+def test_hook_extra_css_urls(app_client, path, expected_decoded_object):
     response = app_client.get(path)
     links = Soup(response.body, "html.parser").findAll("link")
     special_href = [
@@ -80,19 +115,22 @@ def test_plugin_extra_css_urls(app_client, path, expected_decoded_object):
     )
 
 
-def test_plugin_extra_js_urls(app_client):
+def test_hook_extra_js_urls(app_client):
     response = app_client.get("/")
     scripts = Soup(response.body, "html.parser").findAll("script")
-    assert [
-        s
-        for s in scripts
-        if s.attrs
-        == {
+    script_attrs = [s.attrs for s in scripts]
+    for attrs in [
+        {
             "integrity": "SRIHASH",
             "crossorigin": "anonymous",
-            "src": "https://plugin-example.com/jquery.js",
-        }
-    ]
+            "src": "https://plugin-example.datasette.io/jquery.js",
+        },
+        {
+            "src": "https://plugin-example.datasette.io/plugin.module.js",
+            "type": "module",
+        },
+    ]:
+        assert any(s == attrs for s in script_attrs), "Expected: {}".format(attrs)
 
 
 def test_plugins_with_duplicate_js_urls(app_client):
@@ -100,7 +138,7 @@ def test_plugins_with_duplicate_js_urls(app_client):
     response = app_client.get("/fixtures")
     # This test is a little tricky, as if the user has any other plugins in
     # their current virtual environment those may affect what comes back too.
-    # What matters is that https://plugin-example.com/jquery.js is only there once
+    # What matters is that https://plugin-example.datasette.io/jquery.js is only there once
     # and it comes before plugin1.js and plugin2.js which could be in either
     # order
     scripts = Soup(response.body, "html.parser").findAll("script")
@@ -108,20 +146,20 @@ def test_plugins_with_duplicate_js_urls(app_client):
     # No duplicates allowed:
     assert len(srcs) == len(set(srcs))
     # jquery.js loaded once:
-    assert 1 == srcs.count("https://plugin-example.com/jquery.js")
+    assert 1 == srcs.count("https://plugin-example.datasette.io/jquery.js")
     # plugin1.js and plugin2.js are both there:
-    assert 1 == srcs.count("https://plugin-example.com/plugin1.js")
-    assert 1 == srcs.count("https://plugin-example.com/plugin2.js")
+    assert 1 == srcs.count("https://plugin-example.datasette.io/plugin1.js")
+    assert 1 == srcs.count("https://plugin-example.datasette.io/plugin2.js")
     # jquery comes before them both
-    assert srcs.index("https://plugin-example.com/jquery.js") < srcs.index(
-        "https://plugin-example.com/plugin1.js"
+    assert srcs.index("https://plugin-example.datasette.io/jquery.js") < srcs.index(
+        "https://plugin-example.datasette.io/plugin1.js"
     )
-    assert srcs.index("https://plugin-example.com/jquery.js") < srcs.index(
-        "https://plugin-example.com/plugin2.js"
+    assert srcs.index("https://plugin-example.datasette.io/jquery.js") < srcs.index(
+        "https://plugin-example.datasette.io/plugin2.js"
     )
 
 
-def test_plugins_render_cell_link_from_json(app_client):
+def test_hook_render_cell_link_from_json(app_client):
     sql = """
         select '{"href": "http://example.com/", "label":"Example"}'
     """.strip()
@@ -135,7 +173,7 @@ def test_plugins_render_cell_link_from_json(app_client):
     assert a.text == "Example"
 
 
-def test_plugins_render_cell_demo(app_client):
+def test_hook_render_cell_demo(app_client):
     response = app_client.get("/fixtures/simple_primary_key?id=4")
     soup = Soup(response.body, "html.parser")
     td = soup.find("td", {"class": "col-content"})
@@ -187,7 +225,8 @@ def test_plugin_config_env_from_list(app_client):
 
 
 def test_plugin_config_file(app_client):
-    open(TEMP_PLUGIN_SECRET_FILE, "w").write("FROM_FILE")
+    with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:
+        fp.write("FROM_FILE")
     assert {"foo": "FROM_FILE"} == app_client.ds.plugin_config("file-plugin")
     # Ensure secrets aren't visible in /-/metadata.json
     metadata = app_client.get("/-/metadata.json")
@@ -207,6 +246,10 @@ def test_plugin_config_file(app_client):
                 "database": None,
                 "table": None,
                 "config": {"depth": "root"},
+                "view_name": "index",
+                "request_path": "/",
+                "added": 15,
+                "columns": None,
             },
         ),
         (
@@ -216,6 +259,10 @@ def test_plugin_config_file(app_client):
                 "database": "fixtures",
                 "table": None,
                 "config": {"depth": "database"},
+                "view_name": "database",
+                "request_path": "/fixtures",
+                "added": 15,
+                "columns": None,
             },
         ),
         (
@@ -225,23 +272,35 @@ def test_plugin_config_file(app_client):
                 "database": "fixtures",
                 "table": "sortable",
                 "config": {"depth": "table"},
+                "view_name": "table",
+                "request_path": "/fixtures/sortable",
+                "added": 15,
+                "columns": [
+                    "pk1",
+                    "pk2",
+                    "content",
+                    "sortable",
+                    "sortable_with_nulls",
+                    "sortable_with_nulls_2",
+                    "text",
+                ],
             },
         ),
     ],
 )
-def test_plugins_extra_body_script(app_client, path, expected_extra_body_script):
-    r = re.compile(r"<script>var extra_body_script = (.*?);</script>")
+def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
+    r = re.compile(r"<script type=\"module\">var extra_body_script = (.*?);</script>")
     json_data = r.search(app_client.get(path).text).group(1)
     actual_data = json.loads(json_data)
     assert expected_extra_body_script == actual_data
 
 
-def test_plugins_asgi_wrapper(app_client):
+def test_hook_asgi_wrapper(app_client):
     response = app_client.get("/fixtures")
-    assert "fixtures" == response.headers["x-databases"]
+    assert "_internal, fixtures" == response.headers["x-databases"]
 
 
-def test_plugins_extra_template_vars(restore_working_directory):
+def test_hook_extra_template_vars(restore_working_directory):
     with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
     ) as client:
@@ -253,6 +312,7 @@ def test_plugins_extra_template_vars(restore_working_directory):
         assert {
             "template": "show_json.html",
             "scope_path": "/-/metadata",
+            "columns": None,
         } == extra_template_vars
         extra_template_vars_from_awaitable = json.loads(
             Soup(response.body, "html.parser")
@@ -324,9 +384,7 @@ def view_names_client(tmp_path_factory):
     conn = sqlite3.connect(db_path)
     conn.executescript(TABLES)
     return _TestClient(
-        Datasette(
-            [db_path], template_dir=str(templates), plugins_dir=str(plugins)
-        ).app()
+        Datasette([db_path], template_dir=str(templates), plugins_dir=str(plugins))
     )
 
 
@@ -344,23 +402,22 @@ def view_names_client(tmp_path_factory):
 def test_view_names(view_names_client, path, view_name):
     response = view_names_client.get(path)
     assert response.status == 200
-    assert "view_name:{}".format(view_name) == response.text
+    assert f"view_name:{view_name}" == response.text
 
 
-def test_register_output_renderer_no_parameters(app_client):
+def test_hook_register_output_renderer_no_parameters(app_client):
     response = app_client.get("/fixtures/facetable.testnone")
     assert 200 == response.status
     assert b"Hello" == response.body
 
 
-def test_register_output_renderer_all_parameters(app_client):
+def test_hook_register_output_renderer_all_parameters(app_client):
     response = app_client.get("/fixtures/facetable.testall")
     assert 200 == response.status
     # Lots of 'at 0x103a4a690' in here - replace those so we can do
     # an easy comparison
     body = at_memory_re.sub(" at 0xXXX", response.text)
-    assert {
-        "1+1": 2,
+    assert json.loads(body) == {
         "datasette": "<datasette.app.Datasette object at 0xXXX>",
         "columns": [
             "pk",
@@ -397,25 +454,26 @@ def test_register_output_renderer_all_parameters(app_client):
         "table": "facetable",
         "request": "<datasette.utils.asgi.Request object at 0xXXX>",
         "view_name": "table",
-    } == json.loads(body)
+        "1+1": 2,
+    }
     # Test that query_name is set correctly
     query_response = app_client.get("/fixtures/pragma_cache_size.testall")
     assert "pragma_cache_size" == json.loads(query_response.body)["query_name"]
 
 
-def test_register_output_renderer_custom_status_code(app_client):
+def test_hook_register_output_renderer_custom_status_code(app_client):
     response = app_client.get("/fixtures/pragma_cache_size.testall?status_code=202")
     assert 202 == response.status
 
 
-def test_register_output_renderer_custom_content_type(app_client):
+def test_hook_register_output_renderer_custom_content_type(app_client):
     response = app_client.get(
         "/fixtures/pragma_cache_size.testall?content_type=text/blah"
     )
     assert "text/blah" == response.headers["content-type"]
 
 
-def test_register_output_renderer_custom_headers(app_client):
+def test_hook_register_output_renderer_custom_headers(app_client):
     response = app_client.get(
         "/fixtures/pragma_cache_size.testall?header=x-wow:1&header=x-gosh:2"
     )
@@ -423,7 +481,19 @@ def test_register_output_renderer_custom_headers(app_client):
     assert "2" == response.headers["x-gosh"]
 
 
-def test_register_output_renderer_can_render(app_client):
+def test_hook_register_output_renderer_returning_response(app_client):
+    response = app_client.get("/fixtures/facetable.testresponse")
+    assert 200 == response.status
+    assert response.json == {"this_is": "json"}
+
+
+def test_hook_register_output_renderer_returning_broken_value(app_client):
+    response = app_client.get("/fixtures/facetable.testresponse?_broken=1")
+    assert 500 == response.status
+    assert "this should break should be dict or Response" in response.text
+
+
+def test_hook_register_output_renderer_can_render(app_client):
     response = app_client.get("/fixtures/facetable?_no_can_render=1")
     assert response.status == 200
     links = (
@@ -431,9 +501,9 @@ def test_register_output_renderer_can_render(app_client):
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
-    actual = [l["href"].split("/")[-1] for l in links]
+    actual = [l["href"] for l in links]
     # Should not be present because we sent ?_no_can_render=1
-    assert "facetable.testall?_labels=on" not in actual
+    assert "/fixtures/facetable.testall?_labels=on" not in actual
     # Check that it was passed the values we expected
     assert hasattr(app_client.ds, "_can_render_saw")
     assert {
@@ -459,7 +529,7 @@ def test_register_output_renderer_can_render(app_client):
 
 
 @pytest.mark.asyncio
-async def test_prepare_jinja2_environment(app_client):
+async def test_hook_prepare_jinja2_environment(app_client):
     template = app_client.ds.jinja_env.from_string(
         "Hello there, {{ a|format_numeric }}", {"a": 3412341}
     )
@@ -467,7 +537,7 @@ async def test_prepare_jinja2_environment(app_client):
     assert "Hello there, 3,412,341" == rendered
 
 
-def test_publish_subcommand():
+def test_hook_publish_subcommand():
     # This is hard to test properly, because publish subcommand plugins
     # cannot be loaded using the --plugins-dir mechanism - they need
     # to be installed using "pip install". So I'm cheating and taking
@@ -476,7 +546,7 @@ def test_publish_subcommand():
     assert ["cloudrun", "heroku"] == cli.publish.list_commands({})
 
 
-def test_register_facet_classes(app_client):
+def test_hook_register_facet_classes(app_client):
     response = app_client.get(
         "/fixtures/compound_three_primary_keys.json?_dummy_facet=1"
     )
@@ -516,7 +586,7 @@ def test_register_facet_classes(app_client):
     ] == response.json["suggested_facets"]
 
 
-def test_actor_from_request(app_client):
+def test_hook_actor_from_request(app_client):
     app_client.get("/")
     # Should have no actor
     assert None == app_client.ds._last_request.scope["actor"]
@@ -525,7 +595,7 @@ def test_actor_from_request(app_client):
     assert {"id": "bot"} == app_client.ds._last_request.scope["actor"]
 
 
-def test_actor_from_request_async(app_client):
+def test_hook_actor_from_request_async(app_client):
     app_client.get("/")
     # Should have no actor
     assert None == app_client.ds._last_request.scope["actor"]
@@ -550,7 +620,7 @@ def test_existing_scope_actor_respected(app_client):
         ("no_match", None),
     ],
 )
-async def test_permission_allowed(app_client, action, expected):
+async def test_hook_permission_allowed(app_client, action, expected):
     actual = await app_client.ds.permission_allowed(
         {"id": "actor"}, action, default=None
     )
@@ -572,20 +642,20 @@ def test_actor_json(app_client):
         ("/not-async/", "This was not async"),
     ],
 )
-def test_register_routes(app_client, path, body):
+def test_hook_register_routes(app_client, path, body):
     response = app_client.get(path)
     assert 200 == response.status
     assert body == response.text
 
 
-def test_register_routes_post(app_client):
+def test_hook_register_routes_post(app_client):
     response = app_client.post("/post/", {"this is": "post data"}, csrftoken_from=True)
     assert 200 == response.status
     assert "csrftoken" in response.json
     assert "post data" == response.json["this is"]
 
 
-def test_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
+def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
     templates = tmpdir_factory.mktemp("templates")
     (templates / "csrftoken_form.html").write_text(
         "CSRFTOKEN: {{ csrftoken() }}", "utf-8"
@@ -593,16 +663,16 @@ def test_register_routes_csrftoken(restore_working_directory, tmpdir_factory):
     with make_app_client(template_dir=templates) as client:
         response = client.get("/csrftoken-form/")
         expected_token = client.ds._last_request.scope["csrftoken"]()
-        assert "CSRFTOKEN: {}".format(expected_token) == response.text
+        assert f"CSRFTOKEN: {expected_token}" == response.text
 
 
-def test_register_routes_asgi(app_client):
+def test_hook_register_routes_asgi(app_client):
     response = app_client.get("/three/")
     assert {"hello": "world"} == response.json
     assert "1" == response.headers["x-three"]
 
 
-def test_register_routes_add_message(app_client):
+def test_hook_register_routes_add_message(app_client):
     response = app_client.get("/add-message/")
     assert 200 == response.status
     assert "Added message" == response.text
@@ -610,7 +680,7 @@ def test_register_routes_add_message(app_client):
     assert [["Hello from messages", 1]] == decoded
 
 
-def test_register_routes_render_message(restore_working_directory, tmpdir_factory):
+def test_hook_register_routes_render_message(restore_working_directory, tmpdir_factory):
     templates = tmpdir_factory.mktemp("templates")
     (templates / "render_message.html").write_text('{% extends "base.html" %}', "utf-8")
     with make_app_client(template_dir=templates) as client:
@@ -621,13 +691,13 @@ def test_register_routes_render_message(restore_working_directory, tmpdir_factor
 
 
 @pytest.mark.asyncio
-async def test_startup(app_client):
+async def test_hook_startup(app_client):
     await app_client.ds.invoke_startup()
     assert app_client.ds._startup_hook_fired
     assert 2 == app_client.ds._startup_hook_calculation
 
 
-def test_canned_queries(app_client):
+def test_hook_canned_queries(app_client):
     queries = app_client.get("/fixtures.json").json["queries"]
     queries_by_name = {q["name"]: q for q in queries}
     assert {
@@ -642,23 +712,23 @@ def test_canned_queries(app_client):
     } == queries_by_name["from_hook"]
 
 
-def test_canned_queries_non_async(app_client):
+def test_hook_canned_queries_non_async(app_client):
     response = app_client.get("/fixtures/from_hook.json?_shape=array")
     assert [{"1": 1, "actor_id": "null"}] == response.json
 
 
-def test_canned_queries_async(app_client):
+def test_hook_canned_queries_async(app_client):
     response = app_client.get("/fixtures/from_async_hook.json?_shape=array")
     assert [{"2": 2}] == response.json
 
 
-def test_canned_queries_actor(app_client):
+def test_hook_canned_queries_actor(app_client):
     assert [{"1": 1, "actor_id": "bot"}] == app_client.get(
         "/fixtures/from_hook.json?_bot=1&_shape=array"
     ).json
 
 
-def test_register_magic_parameters(restore_working_directory):
+def test_hook_register_magic_parameters(restore_working_directory):
     with make_app_client(
         extra_databases={"data.db": "create table logs (line text)"},
         metadata={
@@ -669,7 +739,9 @@ def test_register_magic_parameters(restore_working_directory):
                             "sql": "insert into logs (line) values (:_request_http_version)",
                             "write": True,
                         },
-                        "get_uuid": {"sql": "select :_uuid_new",},
+                        "get_uuid": {
+                            "sql": "select :_uuid_new",
+                        },
                     }
                 }
             }
@@ -678,9 +750,128 @@ def test_register_magic_parameters(restore_working_directory):
         response = client.post("/data/runme", {}, csrftoken_from=True)
         assert 200 == response.status
         actual = client.get("/data/logs.json?_sort_desc=rowid&_shape=array").json
-        assert [{"rowid": 1, "line": "1.0"}] == actual
+        assert [{"rowid": 1, "line": "1.1"}] == actual
         # Now try the GET request against get_uuid
         response_get = client.get("/data/get_uuid.json?_shape=array")
         assert 200 == response_get.status
         new_uuid = response_get.json[0][":_uuid_new"]
         assert 4 == new_uuid.count("-")
+
+
+def test_hook_forbidden(restore_working_directory):
+    with make_app_client(
+        extra_databases={"data2.db": "create table logs (line text)"},
+        metadata={"allow": {}},
+    ) as client:
+        response = client.get("/")
+        assert 403 == response.status
+        response2 = client.get("/data2", allow_redirects=False)
+        assert 302 == response2.status
+        assert "/login?message=view-database" == response2.headers["Location"]
+        assert "view-database" == client.ds._last_forbidden_message
+
+
+def test_hook_menu_links(app_client):
+    def get_menu_links(html):
+        soup = Soup(html, "html.parser")
+        return [
+            {"label": a.text, "href": a["href"]} for a in soup.find("nav").select("a")
+        ]
+
+    response = app_client.get("/")
+    assert get_menu_links(response.text) == []
+
+    response_2 = app_client.get("/?_bot=1&_hello=BOB")
+    assert get_menu_links(response_2.text) == [
+        {"label": "Hello, BOB", "href": "/"},
+        {"label": "Hello 2", "href": "/"},
+    ]
+
+
+@pytest.mark.parametrize("table_or_view", ["facetable", "simple_view"])
+def test_hook_table_actions(app_client, table_or_view):
+    def get_table_actions_links(html):
+        soup = Soup(html, "html.parser")
+        details = soup.find("details", {"class": "actions-menu-links"})
+        if details is None:
+            return []
+        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
+
+    response = app_client.get(f"/fixtures/{table_or_view}")
+    assert get_table_actions_links(response.text) == []
+
+    response_2 = app_client.get(f"/fixtures/{table_or_view}?_bot=1&_hello=BOB")
+    assert sorted(
+        get_table_actions_links(response_2.text), key=lambda l: l["label"]
+    ) == [
+        {"label": "Database: fixtures", "href": "/"},
+        {"label": "From async BOB", "href": "/"},
+        {"label": f"Table: {table_or_view}", "href": "/"},
+    ]
+
+
+def test_hook_database_actions(app_client):
+    def get_table_actions_links(html):
+        soup = Soup(html, "html.parser")
+        details = soup.find("details", {"class": "actions-menu-links"})
+        if details is None:
+            return []
+        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
+
+    response = app_client.get("/fixtures")
+    assert get_table_actions_links(response.text) == []
+
+    response_2 = app_client.get("/fixtures?_bot=1&_hello=BOB")
+    assert get_table_actions_links(response_2.text) == [
+        {"label": "Database: fixtures - BOB", "href": "/"},
+    ]
+
+
+def test_hook_skip_csrf(app_client):
+    cookie = app_client.actor_cookie({"id": "test"})
+    csrf_response = app_client.post(
+        "/post/",
+        post_data={"this is": "post data"},
+        csrftoken_from=True,
+        cookies={"ds_actor": cookie},
+    )
+    assert csrf_response.status == 200
+    missing_csrf_response = app_client.post(
+        "/post/", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
+    )
+    assert missing_csrf_response.status == 403
+    # But "/skip-csrf" should allow
+    allow_csrf_response = app_client.post(
+        "/skip-csrf", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
+    )
+    assert allow_csrf_response.status == 405  # Method not allowed
+    # /skip-csrf-2 should not
+    second_missing_csrf_response = app_client.post(
+        "/skip-csrf-2", post_data={"this is": "post data"}, cookies={"ds_actor": cookie}
+    )
+    assert second_missing_csrf_response.status == 403
+
+
+def test_hook_get_metadata(app_client):
+    app_client.ds._metadata_local = {
+        "title": "Testing get_metadata hook!",
+        "databases": {"from-local": {"title": "Hello from local metadata"}},
+    }
+    og_pm_hook_get_metadata = pm.hook.get_metadata
+
+    def get_metadata_mock(*args, **kwargs):
+        return [
+            {
+                "databases": {
+                    "from-hook": {"title": "Hello from the plugin hook"},
+                    "from-local": {"title": "This will be overwritten!"},
+                }
+            }
+        ]
+
+    pm.hook.get_metadata = get_metadata_mock
+    meta = app_client.ds.metadata()
+    assert "Testing get_metadata hook!" == meta["title"]
+    assert "Hello from local metadata" == meta["databases"]["from-local"]["title"]
+    assert "Hello from the plugin hook" == meta["databases"]["from-hook"]["title"]
+    pm.hook.get_metadata = og_pm_hook_get_metadata

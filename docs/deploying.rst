@@ -144,14 +144,12 @@ Here is an example of an `nginx <https://nginx.org/>`__ configuration file that 
     events {
       worker_connections  1024;
     }
-
     http {
       server {
         listen 80;
         location /my-datasette {
-          proxy_pass              http://127.0.0.1:8009/my-datasette;
-          proxy_set_header        X-Real-IP $remote_addr;
-          proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_pass http://127.0.0.1:8009/my-datasette;
+          proxy_set_header Host $host;
         }
       }
     }
@@ -166,9 +164,8 @@ You can also use the ``--uds`` option to Datasette to listen on a Unix domain so
       server {
         listen 80;
         location / {
-          proxy_pass              http://datasette;
-          proxy_set_header        X-Real-IP $remote_addr;
-          proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_pass http://datasette;
+          proxy_set_header Host $host;
         }
       }
       upstream datasette {

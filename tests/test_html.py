@@ -397,7 +397,7 @@ def test_sort_links(app_client):
                 "data-column-not-null": "0",
                 "data-is-pk": "1",
             },
-            "a_href": None,
+            "a_href": "/fixtures/sortable?_sort=pk1",
         },
         {
             "attrs": {
@@ -408,7 +408,7 @@ def test_sort_links(app_client):
                 "data-column-not-null": "0",
                 "data-is-pk": "1",
             },
-            "a_href": None,
+            "a_href": "/fixtures/sortable?_sort=pk2",
         },
         {
             "attrs": {

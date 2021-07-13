@@ -950,6 +950,24 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
         ),
         # text column contains '$null' - ensure it doesn't confuse pagination:
         ("_sort=text", lambda row: row["text"], "sorted by text"),
+        # test cases for sorting by multiple columns
+        (
+            "_sort_desc=sortable&_sort=pk2",
+            lambda row: (
+                -row["sortable"],
+                row["pk2"],
+            ),
+            "sorted by sortable descending, pk2",
+        ),
+        (
+            "_sort=pk2&_sort_desc=sortable&_sort=pk1",
+            lambda row: (
+                row["pk2"],
+                -row["sortable"],
+                row["pk1"],
+            ),
+            "sorted by pk2, sortable descending, pk1",
+        ),
     ],
 )
 def test_sortable(app_client, query_string, sort_key, human_description_en):
@@ -993,10 +1011,12 @@ def test_sortable_argument_errors(app_client):
     assert "Cannot sort table by badcolumn" == response.json["error"]
     response = app_client.get("/fixtures/sortable.json?_sort_desc=badcolumn2")
     assert "Cannot sort table by badcolumn2" == response.json["error"]
+    """ Test not needed anymore - Datasette should now support sorting by many conditions
     response = app_client.get(
         "/fixtures/sortable.json?_sort=sortable_with_nulls&_sort_desc=sortable"
     )
     assert "Cannot use _sort and _sort_desc at the same time" == response.json["error"]
+    """
 
 
 def test_sortable_columns_metadata(app_client):

@@ -318,6 +318,8 @@ METADATA = {
                 },
                 "sortable": {
                     "sortable_columns": [
+                        "pk1",
+                        "pk2",
                         "sortable",
                         "sortable_with_nulls",
                         "sortable_with_nulls_2",

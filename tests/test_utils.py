@@ -349,6 +349,61 @@ def test_compound_keys_after_sql():
     )
 
 
+def test_compound_sort_sql():
+    assert """
+((a > :p0)
+  or
+(a = :p0 and b > :p1)
+  or
+(a = :p0 and b = :p1 and c < :p2))
+    """.strip() == utils.compound_sort_sql(
+        [
+            utils.SortingOrder("a", "asc"),
+            utils.SortingOrder("b", "asc"),
+            utils.SortingOrder("c", "dsc"),
+        ]
+    )
+    assert """
+((a < :p0)
+  or
+(a = :p0 and b < :p1)
+  or
+(a = :p0 and b = :p1 and c > :p2))
+    """.strip() == utils.compound_sort_sql(
+        [
+            utils.SortingOrder("a", "dsc"),
+            utils.SortingOrder("b", "dsc"),
+            utils.SortingOrder("c", "asc"),
+        ]
+    )
+    assert """
+((a < :p0)
+  or
+(a = :p0 and b > :p1)
+  or
+(a = :p0 and b = :p1 and c < :p2))
+    """.strip() == utils.compound_sort_sql(
+        [
+            utils.SortingOrder("a", "dsc"),
+            utils.SortingOrder("b", "asc"),
+            utils.SortingOrder("c", "dsc"),
+        ]
+    )
+    assert """
+((a < :p0)
+  or
+(a = :p0 and b < :p1)
+  or
+(a = :p0 and b = :p1 and c < :p2))
+    """.strip() == utils.compound_sort_sql(
+        [
+            utils.SortingOrder("a", "dsc"),
+            utils.SortingOrder("b", "dsc"),
+            utils.SortingOrder("c", "dsc"),
+        ]
+    )
+
+
 async def table_exists(table):
     return table == "exists.csv"
 

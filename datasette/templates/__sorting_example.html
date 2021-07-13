@@ -1,0 +1,30 @@
+<script src="{{ urls.static('sort_utils.js') }}"></script>
+<div id="sort_utils">
+    <p style="display:inline-block;">Sorting options:</p>
+    <button type="button" class="btn-secondary" id="toggle_sort_menu" onclick="toggleSortMenu();" style="display:inline-block;">show</button>
+</div>
+<div style="display:block; position: absolute; z-index: 1;">
+    <div class="dropdown-menu" id="sort_menu" style="display:none;">
+        <div class="hook"></div>
+        <div class="row" name="sorting_options">
+        <div class="col">
+            <p style="margin:0; display:inline-block;">Selected options: <div style="display:inline-block;" id="selected_options"> </div>
+            <p style="margin:0; margin-top:1%;">Column | Type</p>
+        </div>
+        {% for column in display_columns if column.sortable %}
+            <div class="col">
+                <input type="checkbox" onclick="modifySortingQueue('{{column.name}}');" name="{{column.name}}">
+                {{column.name}} 
+                <input type="radio" id="{{column.name}}_asc" name="{{column.name}}_direction" onclick="modifySortingDirection('{{column.name}}');" value="asc" checked>
+                <label for="{{column.name}}_asc">Ascending</label>
+                <input type="radio" id="{{column.name}}_dsc" name="{{column.name}}_direction" onclick="modifySortingDirection('{{column.name}}');" value="dsc">
+                <label for="{{column.name}}_dsc">Descending</label>
+                </div>
+                {% endfor %}
+                <input type="button" class="btn-primary" value="Sort" onclick="sort();" style="width:100%; border-top-right-radius: 0px; border-top-left-radius: 0px;">
+        </div>
+    </div>
+    <script type="text/javascript">
+        populateSortMenu();
+    </script>
+</div>

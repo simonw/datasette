@@ -163,8 +163,8 @@ You can also use the ``--uds`` option to Datasette to listen on a Unix domain so
     http {
       server {
         listen 80;
-        location / {
-          proxy_pass http://datasette;
+        location /my-datasette {
+          proxy_pass http://datasette/my-datasette;
           proxy_set_header Host $host;
         }
       }
@@ -173,7 +173,7 @@ You can also use the ``--uds`` option to Datasette to listen on a Unix domain so
       }
     }
 
-Then run Datasette with ``datasette --uds /tmp/datasette.sock path/to/database.db``.
+Then run Datasette with ``datasette --uds /tmp/datasette.sock path/to/database.db --setting base_url /my-datasette/``.
 
 Apache proxy configuration
 --------------------------

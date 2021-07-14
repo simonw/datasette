@@ -65,7 +65,7 @@ You can start the Datasette process running using the following::
     sudo systemctl daemon-reload
     sudo systemctl start datasette.service
 
-You may need to restart the Datasette service after making changes to its ``metadata.json`` configuration or the ``datasette.service`` file. You can do that using::
+You will need to restart the Datasette service after making changes to its ``metadata.json`` configuration or adding a new database file to that directory. You can do that using::
 
     sudo systemctl restart datasette.service
 

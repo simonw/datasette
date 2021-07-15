@@ -674,12 +674,11 @@ class TableView(RowTableShared):
         else:
             page_size = self.ds.page_size
 
-        sql_no_limit = (
-            "select {select_all_columns} from {table_name} {where}{order_by}".format(
+        sql_no_order_no_limit = (
+            "select {select_all_columns} from {table_name} {where}".format(
                 select_all_columns=select_all_columns,
                 table_name=escape_sqlite(table),
                 where=where_clause,
-                order_by=order_by,
             )
         )
         sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(
@@ -736,7 +735,7 @@ class TableView(RowTableShared):
                     self.ds,
                     request,
                     database,
-                    sql=sql_no_limit,
+                    sql=sql_no_order_no_limit,
                     params=params,
                     table=table,
                     metadata=table_metadata,

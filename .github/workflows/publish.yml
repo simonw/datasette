@@ -115,5 +115,5 @@ jobs:
           -t $REPO:${GITHUB_REF#refs/tags/} \
           --build-arg VERSION=${GITHUB_REF#refs/tags/} .
         docker tag $REPO:${GITHUB_REF#refs/tags/} $REPO:latest
-        docker push $REPO:${VERSION_TAG}
+        docker push $REPO:${GITHUB_REF#refs/tags/}
         docker push $REPO:latest

@@ -4,21 +4,20 @@
 Changelog
 =========
 
-.. _v0_58a1:
+.. _v0_58:
 
-0.58a1 (2021-06-24)
--------------------
+0.58 (2021-07-14)
+-----------------
 
+- New ``datasette --uds /tmp/datasette.sock`` option for binding Datasette to a Unix domain socket, see :ref:`proxy documentation <deploying_proxy>` (:issue:`1388`)
+- ``"searchmode": "raw"`` table metadata option for defaulting a table to executing SQLite full-text search syntax without first escaping it, see :ref:`full_text_search_advanced_queries`. (:issue:`1389`)
+- New plugin hook: :ref:`plugin_hook_get_metadata`, for returning custom metadata for an instance, database or table. Thanks, Brandon Roberts! (:issue:`1384`)
 - New plugin hook: :ref:`plugin_hook_skip_csrf`, for opting out of CSRF protection based on the incoming request. (:issue:`1377`)
+- The :ref:`menu_links() <plugin_hook_menu_links>`, :ref:`table_actions() <plugin_hook_table_actions>` and :ref:`database_actions() <plugin_hook_database_actions>` plugin hooks all gained a new optional ``request`` argument providing access to the current request. (:issue:`1371`)
+- Major performance improvement for Datasette faceting. (:issue:`1394`)
+- Improved documentation for :ref:`deploying_proxy` to recommend using ``ProxyPreservehost On`` with Apache. (:issue:`1387`)
 - ``POST`` requests to endpoints that do not support that HTTP verb now return a 405 error.
 - ``db.path`` can now be provided as a ``pathlib.Path`` object, useful when writing unit tests for plugins. Thanks, Chris Amico. (:issue:`1365`)
-
-.. _v0_58a0:
-
-0.58a0 (2021-06-09)
--------------------
-
-- The :ref:`menu_links() <plugin_hook_menu_links>`, :ref:`table_actions() <plugin_hook_table_actions>` and :ref:`database_actions() <plugin_hook_database_actions>` plugin hooks all gained a new optional ``request`` argument providing access to the current request. (:issue:`1371`)
 
 .. _v0_57_1:
 

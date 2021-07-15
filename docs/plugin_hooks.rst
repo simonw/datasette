@@ -1130,6 +1130,8 @@ This example will disable CSRF protection for that specific URL path:
 
 If any of the currently active ``skip_csrf()`` plugin hooks return ``True``, CSRF protection will be skipped for the request.
 
+.. _plugin_hook_get_metadata:
+
 get_metadata(datasette, key, database, table)
 ---------------------------------------------
 

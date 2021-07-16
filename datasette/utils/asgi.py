@@ -3,9 +3,7 @@ from datasette.utils import MultiParams
 from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
-from html import escape
 from http.cookies import SimpleCookie, Morsel
-import re
 import aiofiles
 import aiofiles.os
 

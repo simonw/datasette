@@ -5,7 +5,6 @@ from collections import OrderedDict, namedtuple, Counter
 import base64
 import hashlib
 import inspect
-import itertools
 import json
 import markupsafe
 import mergedeep
@@ -17,10 +16,9 @@ import time
 import types
 import shutil
 import urllib
-import numbers
 import yaml
 from .shutil_backport import copytree
-from .sqlite import sqlite3, sqlite_version, supports_table_xinfo
+from .sqlite import sqlite3, supports_table_xinfo
 
 
 # From https://www.sqlite.org/lang_keywords.html

@@ -1,6 +1,5 @@
 import json
 import urllib
-import re
 from datasette import hookimpl
 from datasette.database import QueryInterrupted
 from datasette.utils import (
@@ -8,7 +7,6 @@ from datasette.utils import (
     path_with_added_args,
     path_with_removed_args,
     detect_json1,
-    InvalidSql,
     sqlite3,
 )
 

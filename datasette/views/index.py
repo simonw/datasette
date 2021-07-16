@@ -2,7 +2,7 @@ import hashlib
 import json
 
 from datasette.utils import check_visibility, CustomJSONEncoder
-from datasette.utils.asgi import Response, Forbidden
+from datasette.utils.asgi import Response
 from datasette.version import __version__
 
 from .base import BaseView

@@ -1,7 +1,5 @@
-from re import VERBOSE
 from setuptools import setup, find_packages
 import os
-import sys
 
 
 def get_long_description():

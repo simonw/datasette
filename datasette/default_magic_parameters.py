@@ -1,5 +1,4 @@
 from datasette import hookimpl
-from datasette.utils import escape_fts
 import datetime
 import os
 import time

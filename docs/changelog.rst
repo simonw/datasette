@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_58_1:
+
+0.58.1 (2021-07-16)
+-------------------
+
+- Fix for an intermittent race condition caused by the ``refresh_schemas()`` internal function. (:issue:`1231`)
+
 .. _v0_58:
 
 0.58 (2021-07-14)

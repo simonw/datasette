@@ -224,6 +224,7 @@ class Datasette:
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
+        self._refresh_schemas_lock = asyncio.Lock()
         self.crossdb = crossdb
         if memory or crossdb or not self.files:
             self.add_database(Database(self, is_memory=True), name="_memory")
@@ -332,6 +333,12 @@ class Datasette:
         self.client = DatasetteClient(self)
 
     async def refresh_schemas(self):
+        if self._refresh_schemas_lock.locked():
+            return
+        async with self._refresh_schemas_lock:
+            await self._refresh_schemas()
+
+    async def _refresh_schemas(self):
         internal_db = self.databases["_internal"]
         if not self.internal_db_created:
             await init_internal_db(internal_db)

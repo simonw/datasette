@@ -31,22 +31,22 @@ function toggleSortMenu() {
   */
   let menu = document.getElementById("sort_menu");
   let btn = document.getElementById("toggle_sort_menu");
-  if (menu.style.display == "none") {
-    menu.style.display = "inline-block";
-    menu.classList.add("anim-scale-in");
-    //Taken from table.js - lines 79-85
-    document.addEventListener("click", function (ev) {
-      var target = ev.target;
-      while (target && target != menu && target != btn) {
-        target = target.parentNode;
-      }
-      if (!target) {
-        menu.style.display = "none";
-      }
-    });
-  } else {
-    menu.style.display = "none";
+  if (menu.style.display != "none") {
+    menu.style.dispaly = "none";
+    return;
   }
+  menu.style.display = "inline-block";
+  menu.classList.add("anim-scale-in");
+  //Taken from table.js - lines 79-85
+  document.addEventListener("click", function (ev) {
+    var target = ev.target;
+    while (target && target != menu && target != btn) {
+      target = target.parentNode;
+    }
+    if (!target) {
+      menu.style.display = "none";
+    }
+  });
 }
 
 function populateSortMenu() {

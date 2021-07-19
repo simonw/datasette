@@ -519,7 +519,7 @@ input[type="search"]::-webkit-search-results-decoration {
     display: none;
 }
 
-form input[type=submit], form button[type=button], .btn-primary, .btn-secondary{
+form input[type=submit], form button[type=button], .btn-primary, .btn-secondary {
     font-weight: 400;
     cursor: pointer;
     text-align: center;

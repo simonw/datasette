@@ -553,22 +553,17 @@ class TableView(RowTableShared):
         # Getting sorting conditions from url and saving them in a list
         #
         sort = [
-            SortingOrder(escape_sqlite(value), "asc" if name == "_sort" else "desc")
+            SortingOrder(value, "asc" if name == "_sort" else "desc")
             for name, value in query_params
             if name == "_sort" or name == "_sort_desc"
         ]
-        sort_asc = []
-        sort_desc = []
         if not sort:
             if table_metadata.get("sort"):
                 sort.append(SortingOrder(table_metadata.get("sort"), "asc"))
             if table_metadata.get("sort_desc"):
                 sort.append(SortingOrder(table_metadata.get("sort_desc"), "desc"))
-        for item in sort:
-            if item.direction == "asc":
-                sort_asc.append(item.name)
-            elif item.direction == "desc":
-                sort_desc.append(item.name)
+        sort_asc = [item.name for item in sort if item.direction == "asc"]
+        sort_desc = [item.name for item in sort if item.direction == "desc"]
         order_by_list = []
         for condition in sort:
             if condition.name not in sortable_columns:

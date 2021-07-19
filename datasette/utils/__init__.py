@@ -141,11 +141,12 @@ def compound_sort_sql(sort, start_index=0):
     or_clauses = []
     pks_left = sort[:]
     while pks_left:
-        and_clauses = []
         last = pks_left[-1]
         rest = pks_left[:-1]
-        for i, pk in enumerate(rest):
-            and_clauses.append(f"{escape_sqlite(pk.name)} = :p{i + start_index}")
+        and_clauses = [
+            f"{escape_sqlite(pk.name)} = :p{i + start_index}"
+            for i, pk in enumerate(rest)
+        ]
         and_clauses.append(
             f"{escape_sqlite(last.name)} {'>' if last.direction=='asc' else '<'} :p{len(rest) + start_index}"
         )

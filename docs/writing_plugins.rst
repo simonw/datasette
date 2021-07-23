@@ -41,7 +41,7 @@ Plugins that can be installed should be written as Python packages using a ``set
 
 The quickest way to start writing one an installable plugin is to use the `datasette-plugin <https://github.com/simonw/datasette-plugin>`__ cookiecutter template. This creates a new plugin structure for you complete with an example test and GitHub Actions workflows for testing and publishing your plugin.
 
-`Install cookiecutter <https://cookiecutter.readthedocs.io/en/1.7.2/installation.html>`__ and then run this command to start building a plugin using the template::
+`Install cookiecutter <https://cookiecutter.readthedocs.io/en/stable/installation.html>`__ and then run this command to start building a plugin using the template::
 
     cookiecutter gh:simonw/datasette-plugin
 

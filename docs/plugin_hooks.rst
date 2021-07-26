@@ -529,8 +529,11 @@ Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `dataset
 
 .. _plugin_register_routes:
 
-register_routes()
------------------
+register_routes(datasette)
+--------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 Register additional view functions to execute for specified URL routes.
 

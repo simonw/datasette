@@ -960,7 +960,7 @@ class Datasette:
         """Returns an ASGI app function that serves the whole of Datasette"""
         routes = []
 
-        for routes_to_add in pm.hook.register_routes():
+        for routes_to_add in pm.hook.register_routes(datasette=self):
             for regex, view_fn in routes_to_add:
                 routes.append((regex, wrap_view(view_fn, self)))
 

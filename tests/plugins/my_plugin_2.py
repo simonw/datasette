@@ -1,4 +1,5 @@
 from datasette import hookimpl
+from datasette.utils.asgi import Response
 from functools import wraps
 import markupsafe
 import json
@@ -167,3 +168,12 @@ def table_actions(datasette, database, table, actor, request):
             return [{"href": datasette.urls.instance(), "label": label}]
 
     return inner
+
+
+@hookimpl
+def register_routes(datasette):
+    config = datasette.plugin_config("register-route-demo")
+    if not config:
+        return
+    path = config["path"]
+    return [(r"/{}/$".format(path), lambda: Response.text(path.upper()))]

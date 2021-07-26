@@ -648,6 +648,25 @@ def test_hook_register_routes(app_client, path, body):
     assert body == response.text
 
 
+@pytest.mark.parametrize("configured_path", ("path1", "path2"))
+def test_hook_register_routes_with_datasette(configured_path):
+    with make_app_client(
+        metadata={
+            "plugins": {
+                "register-route-demo": {
+                    "path": configured_path,
+                }
+            }
+        }
+    ) as client:
+        response = client.get(f"/{configured_path}/")
+        assert response.status == 200
+        assert configured_path.upper() == response.text
+        # Other one should 404
+        other_path = [p for p in ("path1", "path2") if configured_path != p][0]
+        assert client.get(f"/{other_path}/").status == 404
+
+
 def test_hook_register_routes_post(app_client):
     response = app_client.post("/post/", {"this is": "post data"}, csrftoken_from=True)
     assert 200 == response.status

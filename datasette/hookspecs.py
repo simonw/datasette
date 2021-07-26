@@ -75,7 +75,7 @@ def register_facet_classes():
 
 
 @hookspec
-def register_routes():
+def register_routes(datasette):
     """Register URL routes: return a list of (regex, view_function) pairs"""
 
 

@@ -70,6 +70,7 @@ EXPECTED_PLUGINS = [
             "extra_template_vars",
             "menu_links",
             "permission_allowed",
+            "register_routes",
             "render_cell",
             "startup",
             "table_actions",

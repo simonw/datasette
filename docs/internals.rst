@@ -795,3 +795,21 @@ By default all actors are denied access to the ``view-database`` permission for 
 Plugins can access this database by calling ``db = datasette.get_database("_internal")`` and then executing queries using the :ref:`Database API <internals_database>`.
 
 You can explore an example of this database by `signing in as root <https://latest.datasette.io/login-as-root>`__ to the ``latest.datasette.io`` demo instance and then navigating to `latest.datasette.io/_internal <https://latest.datasette.io/_internal>`__.
+
+.. _internals_utils:
+
+The datasette.utils module
+==========================
+
+The ``datasette.utils`` module contains various utility functions used by Datasette. As a general rule you should consider anything in this module to be unstable - functions and classes here could change without warning or be removed entirely between Datasette releases, without being mentioned in the release notes.
+
+The exception to this rule is anythang that is documented here. If you find a need for an undocumented utility function in your own work, consider `opening an issue <https://github.com/simonw/datasette/issues/new>`__ requesting that the function you are using be upgraded to documented and supported status.
+
+.. _internals_utils_parse_metadata:
+
+parse_metadata(content)
+-----------------------
+
+This function accepts a string containing either JSON or YAML, expected to be of the format described in :ref:`metadata`. It returns a nested Python dictionary representing the parsed data from that string.
+
+If the metadata cannot be parsed as either JSON or YAML the function will raise a ``utils.BadMetadataError`` exception.

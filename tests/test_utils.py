@@ -610,3 +610,19 @@ async def test_initial_path_for_datasette(tmp_path_factory, dbs, expected_path):
     )
     path = await utils.initial_path_for_datasette(datasette)
     assert path == expected_path
+
+
+@pytest.mark.parametrize(
+    "content,expected",
+    (
+        ("title: Hello", {"title": "Hello"}),
+        ('{"title": "Hello"}', {"title": "Hello"}),
+        ("{{ this }} is {{ bad }}", None),
+    ),
+)
+def test_parse_metadata(content, expected):
+    if expected is None:
+        with pytest.raises(utils.BadMetadataError):
+            utils.parse_metadata(content)
+    else:
+        assert utils.parse_metadata(content) == expected

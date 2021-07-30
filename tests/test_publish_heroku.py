@@ -1,15 +1,13 @@
 from click.testing import CliRunner
 from datasette import cli
 from unittest import mock
-import pytest
 
 
-@pytest.mark.serial
 @mock.patch("shutil.which")
-def test_publish_heroku_requires_heroku(mock_which):
+def test_publish_heroku_requires_heroku(mock_which, tmp_path_factory):
     mock_which.return_value = False
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
         with open("test.db", "w") as fp:
             fp.write("data")
         result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
@@ -17,15 +15,16 @@ def test_publish_heroku_requires_heroku(mock_which):
         assert "Publishing to Heroku requires heroku" in result.output
 
 
-@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.heroku.check_output")
 @mock.patch("datasette.publish.heroku.call")
-def test_publish_heroku_installs_plugin(mock_call, mock_check_output, mock_which):
+def test_publish_heroku_installs_plugin(
+    mock_call, mock_check_output, mock_which, tmp_path_factory
+):
     mock_which.return_value = True
     mock_check_output.side_effect = lambda s: {"['heroku', 'plugins']": b""}[repr(s)]
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
         with open("t.db", "w") as fp:
             fp.write("data")
         result = runner.invoke(cli.cli, ["publish", "heroku", "t.db"], input="y\n")
@@ -47,11 +46,10 @@ def test_publish_heroku_invalid_database(mock_which):
     assert "Path 'woop.db' does not exist" in result.output
 
 
-@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.heroku.check_output")
 @mock.patch("datasette.publish.heroku.call")
-def test_publish_heroku(mock_call, mock_check_output, mock_which):
+def test_publish_heroku(mock_call, mock_check_output, mock_which, tmp_path_factory):
     mock_which.return_value = True
     mock_check_output.side_effect = lambda s: {
         "['heroku', 'plugins']": b"heroku-builds",
@@ -59,7 +57,7 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
         "['heroku', 'apps:create', 'datasette', '--json']": b'{"name": "f"}',
     }[repr(s)]
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
         with open("test.db", "w") as fp:
             fp.write("data")
         result = runner.invoke(
@@ -83,11 +81,12 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which):
         )
 
 
-@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.heroku.check_output")
 @mock.patch("datasette.publish.heroku.call")
-def test_publish_heroku_plugin_secrets(mock_call, mock_check_output, mock_which):
+def test_publish_heroku_plugin_secrets(
+    mock_call, mock_check_output, mock_which, tmp_path_factory
+):
     mock_which.return_value = True
     mock_check_output.side_effect = lambda s: {
         "['heroku', 'plugins']": b"heroku-builds",
@@ -95,7 +94,7 @@ def test_publish_heroku_plugin_secrets(mock_call, mock_check_output, mock_which)
         "['heroku', 'apps:create', 'datasette', '--json']": b'{"name": "f"}',
     }[repr(s)]
     runner = CliRunner()
-    with runner.isolated_filesystem():
+    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
         with open("test.db", "w") as fp:
             fp.write("data")
         result = runner.invoke(

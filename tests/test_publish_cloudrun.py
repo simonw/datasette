@@ -6,6 +6,7 @@ import pytest
 import textwrap
 
 
+@pytest.mark.serial
 @mock.patch("shutil.which")
 def test_publish_cloudrun_requires_gcloud(mock_which):
     mock_which.return_value = False
@@ -27,6 +28,7 @@ def test_publish_cloudrun_invalid_database(mock_which):
     assert "Path 'woop.db' does not exist" in result.output
 
 
+@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")
@@ -75,6 +77,7 @@ Service name: input-service
         )
 
 
+@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")
@@ -103,6 +106,7 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which):
         )
 
 
+@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")
@@ -147,6 +151,7 @@ def test_publish_cloudrun_memory(
         )
 
 
+@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")
@@ -225,6 +230,7 @@ def test_publish_cloudrun_plugin_secrets(mock_call, mock_output, mock_which):
         } == json.loads(metadata)
 
 
+@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")
@@ -280,6 +286,7 @@ def test_publish_cloudrun_apt_get_install(mock_call, mock_output, mock_which):
         assert expected == dockerfile
 
 
+@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")

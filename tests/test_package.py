@@ -2,7 +2,7 @@ from click.testing import CliRunner
 from datasette import cli
 from unittest import mock
 import pathlib
-import json
+import pytest
 
 
 class CaptureDockerfile:
@@ -24,6 +24,7 @@ CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data
 """.strip()
 
 
+@pytest.mark.serial
 @mock.patch("shutil.which")
 @mock.patch("datasette.cli.call")
 def test_package(mock_call, mock_which):

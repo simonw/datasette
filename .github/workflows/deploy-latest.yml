@@ -29,7 +29,9 @@ jobs:
         python -m pip install -e .[docs]
         python -m pip install sphinx-to-sqlite==0.1a1
     - name: Run tests
-      run: pytest
+      run: |
+        pytest -n auto -m "not serial"
+        pytest -m "serial"
     - name: Build fixtures.db
       run: python tests/fixtures.py fixtures.db fixtures.json plugins --extra-db-filename extra_database.db
     - name: Build docs.db

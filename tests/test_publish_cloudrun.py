@@ -2,6 +2,7 @@ from click.testing import CliRunner
 from datasette import cli
 from unittest import mock
 import json
+import os
 import pytest
 import textwrap
 
@@ -11,12 +12,12 @@ import textwrap
 def test_publish_cloudrun_requires_gcloud(mock_which, tmp_path_factory):
     mock_which.return_value = False
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(cli.cli, ["publish", "cloudrun", "test.db"])
-        assert result.exit_code == 1
-        assert "Publishing to Google Cloud requires gcloud" in result.output
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(cli.cli, ["publish", "cloudrun", "test.db"])
+    assert result.exit_code == 1
+    assert "Publishing to Google Cloud requires gcloud" in result.output
 
 
 @mock.patch("shutil.which")
@@ -42,39 +43,32 @@ def test_publish_cloudrun_prompts_for_service(
     mock_output.return_value = "myproject"
     mock_which.return_value = True
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(
-            cli.cli, ["publish", "cloudrun", "test.db"], input="input-service"
-        )
-        assert (
-            """
-Please provide a service name for this deployment
-
-Using an existing service name will over-write it
-
-Your existing services:
-
-  existing - created 2019-01-01 - http://www.example.com/
-
-Service name: input-service
-""".strip()
-            == result.output.strip()
-        )
-        assert 0 == result.exit_code
-        tag = "gcr.io/myproject/datasette"
-        mock_call.assert_has_calls(
-            [
-                mock.call(f"gcloud builds submit --tag {tag}", shell=True),
-                mock.call(
-                    "gcloud run deploy --allow-unauthenticated --platform=managed --image {} input-service".format(
-                        tag
-                    ),
-                    shell=True,
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(
+        cli.cli, ["publish", "cloudrun", "test.db"], input="input-service"
+    )
+    assert (
+        "Please provide a service name for this deployment\n\n"
+        "Using an existing service name will over-write it\n\n"
+        "Your existing services:\n\n"
+        "  existing - created 2019-01-01 - http://www.example.com/\n\n"
+        "Service name: input-service"
+    ) == result.output.strip()
+    assert 0 == result.exit_code
+    tag = "gcr.io/myproject/datasette"
+    mock_call.assert_has_calls(
+        [
+            mock.call(f"gcloud builds submit --tag {tag}", shell=True),
+            mock.call(
+                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} input-service".format(
+                    tag
                 ),
-            ]
-        )
+                shell=True,
+            ),
+        ]
+    )
 
 
 @pytest.mark.serial
@@ -85,25 +79,25 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
     mock_output.return_value = "myproject"
     mock_which.return_value = True
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(
-            cli.cli, ["publish", "cloudrun", "test.db", "--service", "test"]
-        )
-        assert 0 == result.exit_code
-        tag = f"gcr.io/{mock_output.return_value}/datasette"
-        mock_call.assert_has_calls(
-            [
-                mock.call(f"gcloud builds submit --tag {tag}", shell=True),
-                mock.call(
-                    "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test".format(
-                        tag
-                    ),
-                    shell=True,
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(
+        cli.cli, ["publish", "cloudrun", "test.db", "--service", "test"]
+    )
+    assert 0 == result.exit_code
+    tag = f"gcr.io/{mock_output.return_value}/datasette"
+    mock_call.assert_has_calls(
+        [
+            mock.call(f"gcloud builds submit --tag {tag}", shell=True),
+            mock.call(
+                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test".format(
+                    tag
                 ),
-            ]
-        )
+                shell=True,
+            ),
+        ]
+    )
 
 
 @pytest.mark.serial
@@ -126,29 +120,29 @@ def test_publish_cloudrun_memory(
     mock_output.return_value = "myproject"
     mock_which.return_value = True
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(
-            cli.cli,
-            ["publish", "cloudrun", "test.db", "--service", "test", "--memory", memory],
-        )
-        if should_fail:
-            assert 2 == result.exit_code
-            return
-        assert 0 == result.exit_code
-        tag = f"gcr.io/{mock_output.return_value}/datasette"
-        mock_call.assert_has_calls(
-            [
-                mock.call(f"gcloud builds submit --tag {tag}", shell=True),
-                mock.call(
-                    "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test --memory {}".format(
-                        tag, memory
-                    ),
-                    shell=True,
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(
+        cli.cli,
+        ["publish", "cloudrun", "test.db", "--service", "test", "--memory", memory],
+    )
+    if should_fail:
+        assert 2 == result.exit_code
+        return
+    assert 0 == result.exit_code
+    tag = f"gcr.io/{mock_output.return_value}/datasette"
+    mock_call.assert_has_calls(
+        [
+            mock.call(f"gcloud builds submit --tag {tag}", shell=True),
+            mock.call(
+                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test --memory {}".format(
+                    tag, memory
                 ),
-            ]
-        )
+                shell=True,
+            ),
+        ]
+    )
 
 
 @pytest.mark.serial
@@ -162,74 +156,74 @@ def test_publish_cloudrun_plugin_secrets(
     mock_output.return_value = "myproject"
 
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        with open("metadata.yml", "w") as fp:
-            fp.write(
-                textwrap.dedent(
-                    """
-                title: Hello from metadata YAML
-                plugins:
-                  datasette-auth-github:
-                    foo: bar
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    with open("metadata.yml", "w") as fp:
+        fp.write(
+            textwrap.dedent(
                 """
-                ).strip()
-            )
-        result = runner.invoke(
-            cli.cli,
-            [
-                "publish",
-                "cloudrun",
-                "test.db",
-                "--metadata",
-                "metadata.yml",
-                "--service",
-                "datasette",
-                "--plugin-secret",
-                "datasette-auth-github",
-                "client_id",
-                "x-client-id",
-                "--show-files",
-                "--secret",
-                "x-secret",
-            ],
+            title: Hello from metadata YAML
+            plugins:
+              datasette-auth-github:
+                foo: bar
+            """
+            ).strip()
         )
-        assert result.exit_code == 0
-        dockerfile = (
-            result.output.split("==== Dockerfile ====\n")[1]
-            .split("\n====================\n")[0]
-            .strip()
-        )
-        expected = textwrap.dedent(
-            r"""
-        FROM python:3.8
-        COPY . /app
-        WORKDIR /app
+    result = runner.invoke(
+        cli.cli,
+        [
+            "publish",
+            "cloudrun",
+            "test.db",
+            "--metadata",
+            "metadata.yml",
+            "--service",
+            "datasette",
+            "--plugin-secret",
+            "datasette-auth-github",
+            "client_id",
+            "x-client-id",
+            "--show-files",
+            "--secret",
+            "x-secret",
+        ],
+    )
+    assert result.exit_code == 0
+    dockerfile = (
+        result.output.split("==== Dockerfile ====\n")[1]
+        .split("\n====================\n")[0]
+        .strip()
+    )
+    expected = textwrap.dedent(
+        r"""
+    FROM python:3.8
+    COPY . /app
+    WORKDIR /app
 
-        ENV DATASETTE_AUTH_GITHUB_CLIENT_ID 'x-client-id'
-        ENV DATASETTE_SECRET 'x-secret'
-        RUN pip install -U datasette
-        RUN datasette inspect test.db --inspect-file inspect-data.json
-        ENV PORT 8001
-        EXPOSE 8001
-        CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --metadata metadata.json --setting force_https_urls on --port $PORT"""
-        ).strip()
-        assert expected == dockerfile
-        metadata = (
-            result.output.split("=== metadata.json ===\n")[1]
-            .split("\n==== Dockerfile ====\n")[0]
-            .strip()
-        )
-        assert {
-            "title": "Hello from metadata YAML",
-            "plugins": {
-                "datasette-auth-github": {
-                    "foo": "bar",
-                    "client_id": {"$env": "DATASETTE_AUTH_GITHUB_CLIENT_ID"},
-                }
+    ENV DATASETTE_AUTH_GITHUB_CLIENT_ID 'x-client-id'
+    ENV DATASETTE_SECRET 'x-secret'
+    RUN pip install -U datasette
+    RUN datasette inspect test.db --inspect-file inspect-data.json
+    ENV PORT 8001
+    EXPOSE 8001
+    CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --metadata metadata.json --setting force_https_urls on --port $PORT"""
+    ).strip()
+    assert expected == dockerfile
+    metadata = (
+        result.output.split("=== metadata.json ===\n")[1]
+        .split("\n==== Dockerfile ====\n")[0]
+        .strip()
+    )
+    assert {
+        "title": "Hello from metadata YAML",
+        "plugins": {
+            "datasette-auth-github": {
+                "client_id": {"$env": "DATASETTE_AUTH_GITHUB_CLIENT_ID"},
+                "foo": "bar",
             },
-        } == json.loads(metadata)
+        },
+    } == json.loads(metadata)
 
 
 @pytest.mark.serial
@@ -243,51 +237,51 @@ def test_publish_cloudrun_apt_get_install(
     mock_output.return_value = "myproject"
 
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(
-            cli.cli,
-            [
-                "publish",
-                "cloudrun",
-                "test.db",
-                "--service",
-                "datasette",
-                "--show-files",
-                "--secret",
-                "x-secret",
-                "--apt-get-install",
-                "ripgrep",
-                "--spatialite",
-            ],
-        )
-        assert result.exit_code == 0
-        dockerfile = (
-            result.output.split("==== Dockerfile ====\n")[1]
-            .split("\n====================\n")[0]
-            .strip()
-        )
-        expected = textwrap.dedent(
-            r"""
-        FROM python:3.8
-        COPY . /app
-        WORKDIR /app
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(
+        cli.cli,
+        [
+            "publish",
+            "cloudrun",
+            "test.db",
+            "--service",
+            "datasette",
+            "--show-files",
+            "--secret",
+            "x-secret",
+            "--apt-get-install",
+            "ripgrep",
+            "--spatialite",
+        ],
+    )
+    assert result.exit_code == 0
+    dockerfile = (
+        result.output.split("==== Dockerfile ====\n")[1]
+        .split("\n====================\n")[0]
+        .strip()
+    )
+    expected = textwrap.dedent(
+        r"""
+    FROM python:3.8
+    COPY . /app
+    WORKDIR /app
 
-        RUN apt-get update && \
-            apt-get install -y ripgrep python3-dev gcc libsqlite3-mod-spatialite && \
-            rm -rf /var/lib/apt/lists/*
+    RUN apt-get update && \
+        apt-get install -y ripgrep python3-dev gcc libsqlite3-mod-spatialite && \
+        rm -rf /var/lib/apt/lists/*
 
-        ENV DATASETTE_SECRET 'x-secret'
-        ENV SQLITE_EXTENSIONS '/usr/lib/x86_64-linux-gnu/mod_spatialite.so'
-        RUN pip install -U datasette
-        RUN datasette inspect test.db --inspect-file inspect-data.json
-        ENV PORT 8001
-        EXPOSE 8001
-        CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --setting force_https_urls on --port $PORT
-        """
-        ).strip()
-        assert expected == dockerfile
+    ENV DATASETTE_SECRET 'x-secret'
+    ENV SQLITE_EXTENSIONS '/usr/lib/x86_64-linux-gnu/mod_spatialite.so'
+    RUN pip install -U datasette
+    RUN datasette inspect test.db --inspect-file inspect-data.json
+    ENV PORT 8001
+    EXPOSE 8001
+    CMD datasette serve --host 0.0.0.0 -i test.db --cors --inspect-file inspect-data.json --setting force_https_urls on --port $PORT
+    """
+    ).strip()
+    assert expected == dockerfile
 
 
 @pytest.mark.serial
@@ -312,32 +306,32 @@ def test_publish_cloudrun_extra_options(
     mock_output.return_value = "myproject"
 
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(
-            cli.cli,
-            [
-                "publish",
-                "cloudrun",
-                "test.db",
-                "--service",
-                "datasette",
-                "--show-files",
-                "--extra-options",
-                extra_options,
-            ],
-        )
-        assert result.exit_code == 0
-        dockerfile = (
-            result.output.split("==== Dockerfile ====\n")[1]
-            .split("\n====================\n")[0]
-            .strip()
-        )
-        last_line = dockerfile.split("\n")[-1]
-        extra_options = (
-            last_line.split("--inspect-file inspect-data.json")[1]
-            .split("--port")[0]
-            .strip()
-        )
-        assert extra_options == expected
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(
+        cli.cli,
+        [
+            "publish",
+            "cloudrun",
+            "test.db",
+            "--service",
+            "datasette",
+            "--show-files",
+            "--extra-options",
+            extra_options,
+        ],
+    )
+    assert result.exit_code == 0
+    dockerfile = (
+        result.output.split("==== Dockerfile ====\n")[1]
+        .split("\n====================\n")[0]
+        .strip()
+    )
+    last_line = dockerfile.split("\n")[-1]
+    extra_options = (
+        last_line.split("--inspect-file inspect-data.json")[1]
+        .split("--port")[0]
+        .strip()
+    )
+    assert extra_options == expected

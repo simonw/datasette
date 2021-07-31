@@ -1,6 +1,7 @@
 from click.testing import CliRunner
 from datasette import cli
 from unittest import mock
+import os
 import pytest
 
 
@@ -9,12 +10,12 @@ import pytest
 def test_publish_heroku_requires_heroku(mock_which, tmp_path_factory):
     mock_which.return_value = False
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
-        assert result.exit_code == 1
-        assert "Publishing to Heroku requires heroku" in result.output
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(cli.cli, ["publish", "heroku", "test.db"])
+    assert result.exit_code == 1
+    assert "Publishing to Heroku requires heroku" in result.output
 
 
 @pytest.mark.serial
@@ -27,11 +28,11 @@ def test_publish_heroku_installs_plugin(
     mock_which.return_value = True
     mock_check_output.side_effect = lambda s: {"['heroku', 'plugins']": b""}[repr(s)]
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("t.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(cli.cli, ["publish", "heroku", "t.db"], input="y\n")
-        assert 0 != result.exit_code
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("t.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(cli.cli, ["publish", "heroku", "t.db"], input="y\n")
+    assert 0 != result.exit_code
     mock_check_output.assert_has_calls(
         [mock.call(["heroku", "plugins"]), mock.call(["heroku", "apps:list", "--json"])]
     )
@@ -61,28 +62,26 @@ def test_publish_heroku(mock_call, mock_check_output, mock_which, tmp_path_facto
         "['heroku', 'apps:create', 'datasette', '--json']": b'{"name": "f"}',
     }[repr(s)]
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(
-            cli.cli, ["publish", "heroku", "test.db", "--tar", "gtar"]
-        )
-        assert 0 == result.exit_code, result.output
-        mock_call.assert_has_calls(
-            [
-                mock.call(
-                    [
-                        "heroku",
-                        "builds:create",
-                        "-a",
-                        "f",
-                        "--include-vcs-ignore",
-                        "--tar",
-                        "gtar",
-                    ]
-                ),
-            ]
-        )
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(cli.cli, ["publish", "heroku", "test.db", "--tar", "gtar"])
+    assert 0 == result.exit_code, result.output
+    mock_call.assert_has_calls(
+        [
+            mock.call(
+                [
+                    "heroku",
+                    "builds:create",
+                    "-a",
+                    "f",
+                    "--include-vcs-ignore",
+                    "--tar",
+                    "gtar",
+                ]
+            ),
+        ]
+    )
 
 
 @pytest.mark.serial
@@ -99,35 +98,33 @@ def test_publish_heroku_plugin_secrets(
         "['heroku', 'apps:create', 'datasette', '--json']": b'{"name": "f"}',
     }[repr(s)]
     runner = CliRunner()
-    with runner.isolated_filesystem(tmp_path_factory.mktemp("runner")):
-        with open("test.db", "w") as fp:
-            fp.write("data")
-        result = runner.invoke(
-            cli.cli,
-            [
-                "publish",
-                "heroku",
-                "test.db",
-                "--plugin-secret",
-                "datasette-auth-github",
-                "client_id",
-                "x-client-id",
-            ],
-        )
-        assert 0 == result.exit_code, result.output
-        mock_call.assert_has_calls(
-            [
-                mock.call(
-                    [
-                        "heroku",
-                        "config:set",
-                        "-a",
-                        "f",
-                        "DATASETTE_AUTH_GITHUB_CLIENT_ID=x-client-id",
-                    ]
-                ),
-                mock.call(
-                    ["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]
-                ),
-            ]
-        )
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    result = runner.invoke(
+        cli.cli,
+        [
+            "publish",
+            "heroku",
+            "test.db",
+            "--plugin-secret",
+            "datasette-auth-github",
+            "client_id",
+            "x-client-id",
+        ],
+    )
+    assert 0 == result.exit_code, result.output
+    mock_call.assert_has_calls(
+        [
+            mock.call(
+                [
+                    "heroku",
+                    "config:set",
+                    "-a",
+                    "f",
+                    "DATASETTE_AUTH_GITHUB_CLIENT_ID=x-client-id",
+                ]
+            ),
+            mock.call(["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]),
+        ]
+    )

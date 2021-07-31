@@ -157,8 +157,11 @@ def ds_localhost_https_server(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def ds_unix_domain_socket_server(tmp_path_factory):
-    socket_folder = tmp_path_factory.mktemp("uds")
-    uds = str(socket_folder / "datasette.sock")
+    # This used to use tmp_path_factory.mktemp("uds") but that turned out to
+    # produce paths that were too long to use as UDS on macOS, see
+    # https://github.com/simonw/datasette/issues/1407 - so I switched to
+    # using tempfile.gettempdir()
+    uds = str(pathlib.Path(tempfile.gettempdir()) / "datasette.sock")
     ds_proc = subprocess.Popen(
         ["datasette", "--memory", "--uds", uds],
         stdout=subprocess.PIPE,

@@ -44,7 +44,7 @@
             <pre id="sql-query">{% if query %}{{ query.sql }}{% endif %}</pre>
         {% endif %}
     {% else %}
-        <input type="hidden" name="sql" value="{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}">
+    {% if not canned_query %}<input type="hidden" name="sql" value="{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}">{% endif %}
         <input type="hidden" name="_hide_sql" value="1">
     {% endif %}
     {% if named_parameter_values %}

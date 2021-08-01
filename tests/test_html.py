@@ -1238,6 +1238,17 @@ def test_show_hide_sql_query(app_client):
     ] == [(hidden["name"], hidden["value"]) for hidden in hiddens]
 
 
+def test_canned_query_with_hide_has_no_hidden_sql(app_client):
+    # For a canned query the show/hide should NOT have a hidden SQL field
+    # https://github.com/simonw/datasette/issues/1411
+    response = app_client.get("/fixtures/neighborhood_search?_hide_sql=1")
+    soup = Soup(response.body, "html.parser")
+    hiddens = soup.find("form").select("input[type=hidden]")
+    assert [
+        ("_hide_sql", "1"),
+    ] == [(hidden["name"], hidden["value"]) for hidden in hiddens]
+
+
 def test_extra_where_clauses(app_client):
     response = app_client.get(
         "/fixtures/facetable?_where=neighborhood='Dogpatch'&_where=city_id=1"

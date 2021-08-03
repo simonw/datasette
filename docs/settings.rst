@@ -349,7 +349,7 @@ Using secrets with datasette publish
 
 The :ref:`cli_publish` and :ref:`cli_package` commands both generate a secret for you automatically when Datasette is deployed.
 
-This means that every time you deploy a new version of a Datasette project, a new secret will be generated. This will cause signed cookies to become inalid on every fresh deploy.
+This means that every time you deploy a new version of a Datasette project, a new secret will be generated. This will cause signed cookies to become invalid on every fresh deploy.
 
 You can fix this by creating a secret that will be used for multiple deploys and passing it using the ``--secret`` option::
 

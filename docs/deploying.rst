@@ -188,7 +188,7 @@ Then add these directives to proxy traffic::
     ProxyPass /my-datasette/ http://127.0.0.1:8009/my-datasette/
     ProxyPreserveHost On
 
-Using ``--uds`` you can use Unix domain sockets similiar to the nginx example::
+Using ``--uds`` you can use Unix domain sockets similar to the nginx example::
 
     ProxyPass /my-datasette/ unix:/tmp/datasette.sock|http://localhost/my-datasette/
 

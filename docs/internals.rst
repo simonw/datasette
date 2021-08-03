@@ -431,13 +431,13 @@ It offers the following methods:
 ``await datasette.client.get(path, **kwargs)`` - returns HTTPX Response
     Execute an internal GET request against that path.
 
-``await datasette.client.post(path, **kwargs)`` - returns HTTPX Respons
+``await datasette.client.post(path, **kwargs)`` - returns HTTPX Response
     Execute an internal POST request. Use ``data={"name": "value"}`` to pass form parameters.
 
 ``await datasette.client.options(path, **kwargs)`` - returns HTTPX Response
     Execute an internal OPTIONS request.
 
-``await datasette.client.head(path, **kwargs)`` - returns HTTPX Respons
+``await datasette.client.head(path, **kwargs)`` - returns HTTPX Response
     Execute an internal HEAD request.
 
 ``await datasette.client.put(path, **kwargs)`` - returns HTTPX Response
@@ -714,7 +714,7 @@ The ``Database`` class also provides properties and methods for introspecting th
     List of names of tables in the database.
 
 ``await db.view_names()`` - list of strings
-    List of names of views in tha database.
+    List of names of views in the database.
 
 ``await db.table_columns(table)`` - list of strings
     Names of columns in a specific table.

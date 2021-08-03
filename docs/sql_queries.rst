@@ -403,7 +403,7 @@ Datasette can execute joins across multiple databases if it is started with the 
 
 If it is started in this way, the ``/_memory`` page can be used to execute queries that join across multiple databases.
 
-References to tables in attached databases should be preceeded by the database name and a period.
+References to tables in attached databases should be preceded by the database name and a period.
 
 For example, this query will show a list of tables across both of the above databases:
 

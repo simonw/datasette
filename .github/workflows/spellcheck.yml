@@ -22,4 +22,6 @@ jobs:
       run: |
         pip install -e '.[docs]'
     - name: Check spelling
-      run: codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt
+      run: |
+        codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt
+        codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt

@@ -664,7 +664,7 @@ Return an `ASGI <https://asgi.readthedocs.io/>`__ middleware wrapper function th
 
 This is a very powerful hook. You can use it to manipulate the entire Datasette response, or even to configure new URL routes that will be handled by your own custom code.
 
-You can write your ASGI code directly against the low-level specification, or you can use the middleware utilites provided by an ASGI framework such as `Starlette <https://www.starlette.io/middleware/>`__.
+You can write your ASGI code directly against the low-level specification, or you can use the middleware utilities provided by an ASGI framework such as `Starlette <https://www.starlette.io/middleware/>`__.
 
 This example plugin adds a ``x-databases`` HTTP header listing the currently attached databases:
 

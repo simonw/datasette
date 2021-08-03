@@ -81,6 +81,11 @@ from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
+try:
+    import rich
+except ImportError:
+    rich = None
+
 app_root = Path(__file__).parent.parent
 
 # https://github.com/simonw/datasette/issues/283#issuecomment-781591015
@@ -1269,6 +1274,9 @@ class DatasetteRouter:
             import pdb
 
             pdb.post_mortem(exception.__traceback__)
+
+        if rich is not None:
+            rich.console.Console().print_exception(show_locals=True)
 
         title = None
         if isinstance(exception, Forbidden):

@@ -75,6 +75,7 @@ setup(
             "pytest-timeout>=1.4.2,<1.5",
             "trustme>=0.7,<0.9",
         ],
+        "rich": ["rich"],
     },
     tests_require=["datasette[test]"],
     classifiers=[

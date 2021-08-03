@@ -31,6 +31,14 @@ from .utils.sqlite import sqlite3
 from .utils.testing import TestClient
 from .version import __version__
 
+# Use Rich for tracebacks if it is installed
+try:
+    from rich.traceback import install
+
+    install(show_locals=True)
+except ImportError:
+    pass
+
 
 class Config(click.ParamType):
     # This will be removed in Datasette 1.0 in favour of class Setting

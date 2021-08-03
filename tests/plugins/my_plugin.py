@@ -178,11 +178,11 @@ def actor_from_request(datasette, request):
 @hookimpl
 def asgi_wrapper():
     def wrap(app):
-        async def maybe_set_actor_in_scope(scope, recieve, send):
+        async def maybe_set_actor_in_scope(scope, receive, send):
             if b"_actor_in_scope" in scope.get("query_string", b""):
                 scope = dict(scope, actor={"id": "from-scope"})
                 print(scope)
-            await app(scope, recieve, send)
+            await app(scope, receive, send)
 
         return maybe_set_actor_in_scope
 

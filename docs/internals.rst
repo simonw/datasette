@@ -149,7 +149,7 @@ Create a ``Response`` object and then use ``await response.asgi_send(send)``, pa
 
 .. code-block:: python
 
-    async def require_authorization(scope, recieve, send):
+    async def require_authorization(scope, receive, send):
         response = Response.text(
             "401 Authorization Required",
             headers={

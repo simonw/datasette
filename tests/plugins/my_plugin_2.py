@@ -77,7 +77,7 @@ def extra_template_vars(template, database, table, view_name, request, datasette
 def asgi_wrapper(datasette):
     def wrap_with_databases_header(app):
         @wraps(app)
-        async def add_x_databases_header(scope, recieve, send):
+        async def add_x_databases_header(scope, receive, send):
             async def wrapped_send(event):
                 if event["type"] == "http.response.start":
                     original_headers = event.get("headers") or []
@@ -94,7 +94,7 @@ def asgi_wrapper(datasette):
                     }
                 await send(event)
 
-            await app(scope, recieve, wrapped_send)
+            await app(scope, receive, wrapped_send)
 
         return add_x_databases_header
 

@@ -678,7 +678,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
     def asgi_wrapper(datasette):
         def wrap_with_databases_header(app):
             @wraps(app)
-            async def add_x_databases_header(scope, recieve, send):
+            async def add_x_databases_header(scope, receive, send):
                 async def wrapped_send(event):
                     if event["type"] == "http.response.start":
                         original_headers = event.get("headers") or []
@@ -691,7 +691,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
                             ],
                         }
                     await send(event)
-                await app(scope, recieve, wrapped_send)
+                await app(scope, receive, wrapped_send)
             return add_x_databases_header
         return wrap_with_databases_header
 

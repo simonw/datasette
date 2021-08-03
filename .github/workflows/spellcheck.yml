@@ -3,7 +3,7 @@ name: Check spelling in documentation
 on: [push, pull_request]
 
 jobs:
-  test:
+  spellcheck:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2

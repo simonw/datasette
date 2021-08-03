@@ -20,6 +20,6 @@ jobs:
           ${{ runner.os }}-pip-
     - name: Install dependencies
       run: |
-        pip install codespell
+        pip install -e '.[docs]'
     - name: Check spelling
       run: codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt

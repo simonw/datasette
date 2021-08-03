@@ -65,7 +65,7 @@ setup(
     """,
     setup_requires=["pytest-runner"],
     extras_require={
-        "docs": ["sphinx_rtd_theme", "sphinx-autobuild"],
+        "docs": ["sphinx_rtd_theme", "sphinx-autobuild", "codespell"],
         "test": [
             "pytest>=5.2.2,<6.3.0",
             "pytest-xdist>=2.2.1,<2.4",

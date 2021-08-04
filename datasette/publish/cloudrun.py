@@ -37,6 +37,11 @@ def publish_subcommand(publish):
         help="Memory to allocate in Cloud Run, e.g. 1Gi",
     )
     @click.option(
+        "--cpu",
+        type=click.Choice(["1", "2", "4"]),
+        help="Number of vCPUs to allocate in Cloud Run",
+    )
+    @click.option(
         "--apt-get-install",
         "apt_get_extras",
         multiple=True,
@@ -66,6 +71,7 @@ def publish_subcommand(publish):
         spatialite,
         show_files,
         memory,
+        cpu,
         apt_get_extras,
     ):
         fail_if_publish_binary_not_installed(
@@ -151,8 +157,11 @@ def publish_subcommand(publish):
             image_id = f"gcr.io/{project}/{name}"
             check_call(f"gcloud builds submit --tag {image_id}", shell=True)
         check_call(
-            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}".format(
-                image_id, service, " --memory {}".format(memory) if memory else ""
+            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}{}".format(
+                image_id,
+                service,
+                " --memory {}".format(memory) if memory else "",
+                " --cpu {}".format(cpu) if cpu else "",
             ),
             shell=True,
         )

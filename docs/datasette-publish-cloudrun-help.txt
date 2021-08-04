@@ -28,5 +28,6 @@ Options:
   --spatialite                    Enable SpatialLite extension
   --show-files                    Output the generated Dockerfile and metadata.json
   --memory TEXT                   Memory to allocate in Cloud Run, e.g. 1Gi
+  --cpu [1|2|4]                   Number of vCPUs to allocate in Cloud Run
   --apt-get-install TEXT          Additional packages to apt-get install
   --help                          Show this message and exit.

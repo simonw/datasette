@@ -105,17 +105,28 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")
 @pytest.mark.parametrize(
-    "memory,should_fail",
+    "memory,cpu,expected_gcloud_args",
     [
-        ["1Gi", False],
-        ["2G", False],
-        ["256Mi", False],
-        ["4", True],
-        ["GB", True],
+        ["1Gi", None, "--memory 1Gi"],
+        ["2G", None, "--memory 2G"],
+        ["256Mi", None, "--memory 256Mi"],
+        ["4", None, None],
+        ["GB", None, None],
+        [None, 1, "--cpu 1"],
+        [None, 2, "--cpu 2"],
+        [None, 3, None],
+        [None, 4, "--cpu 4"],
+        ["2G", 4, "--memory 2G --cpu 4"],
     ],
 )
-def test_publish_cloudrun_memory(
-    mock_call, mock_output, mock_which, memory, should_fail, tmp_path_factory
+def test_publish_cloudrun_memory_cpu(
+    mock_call,
+    mock_output,
+    mock_which,
+    memory,
+    cpu,
+    expected_gcloud_args,
+    tmp_path_factory,
 ):
     mock_output.return_value = "myproject"
     mock_which.return_value = True
@@ -123,22 +134,30 @@ def test_publish_cloudrun_memory(
     os.chdir(tmp_path_factory.mktemp("runner"))
     with open("test.db", "w") as fp:
         fp.write("data")
-    result = runner.invoke(
-        cli.cli,
-        ["publish", "cloudrun", "test.db", "--service", "test", "--memory", memory],
-    )
-    if should_fail:
+    args = ["publish", "cloudrun", "test.db", "--service", "test"]
+    if memory:
+        args.extend(["--memory", memory])
+    if cpu:
+        args.extend(["--cpu", str(cpu)])
+    result = runner.invoke(cli.cli, args)
+    if expected_gcloud_args is None:
         assert 2 == result.exit_code
         return
     assert 0 == result.exit_code
     tag = f"gcr.io/{mock_output.return_value}/datasette"
+    expected_call = (
+        "gcloud run deploy --allow-unauthenticated --platform=managed"
+        " --image {} test".format(tag)
+    )
+    if memory:
+        expected_call += " --memory {}".format(memory)
+    if cpu:
+        expected_call += " --cpu {}".format(cpu)
     mock_call.assert_has_calls(
         [
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
             mock.call(
-                "gcloud run deploy --allow-unauthenticated --platform=managed --image {} test --memory {}".format(
-                    tag, memory
-                ),
+                expected_call,
                 shell=True,
             ),
         ]

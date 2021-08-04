@@ -50,7 +50,7 @@ def test_help_includes(name, filename):
     # actual has "Usage: cli package [OPTIONS] FILES"
     # because it doesn't know that cli will be aliased to datasette
     expected = expected.replace("Usage: datasette", "Usage: cli")
-    assert expected == actual
+    assert expected == actual, "Run python update-docs-help.py to fix this"
 
 
 @pytest.fixture(scope="session")

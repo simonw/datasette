@@ -497,6 +497,9 @@ label.sort_by_desc {
     width: auto;
     padding-right: 1em;
 }
+pre#sql-query {
+    margin-bottom: 1em;
+}
 form input[type=text],
 form input[type=search] {
     border: 1px solid #ccc;

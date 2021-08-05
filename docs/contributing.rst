@@ -39,7 +39,7 @@ The next step is to create a virtual environment for your project and use it to 
     # Now activate the virtual environment, so pip can install into it
     source venv/bin/activate
     # Install Datasette and its testing dependencies
-    python3 -m pip install -e .[test]
+    python3 -m pip install -e '.[test]'
 
 That last line does most of the work: ``pip install -e`` means "install this package in a way that allows me to edit the source code in place". The ``.[test]`` option means "use the setup.py in this directory and install the optional testing dependencies as well".
 

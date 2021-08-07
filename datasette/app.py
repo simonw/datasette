@@ -1276,7 +1276,7 @@ class DatasetteRouter:
             pdb.post_mortem(exception.__traceback__)
 
         if rich is not None:
-            rich.console.Console().print_exception(show_locals=True)
+            rich.get_console().print_exception(show_locals=True)
 
         title = None
         if isinstance(exception, Forbidden):

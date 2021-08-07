@@ -1241,12 +1241,61 @@ def test_show_hide_sql_query(app_client):
 def test_canned_query_with_hide_has_no_hidden_sql(app_client):
     # For a canned query the show/hide should NOT have a hidden SQL field
     # https://github.com/simonw/datasette/issues/1411
-    response = app_client.get("/fixtures/neighborhood_search?_hide_sql=1")
+    response = app_client.get("/fixtures/pragma_cache_size?_hide_sql=1")
     soup = Soup(response.body, "html.parser")
     hiddens = soup.find("form").select("input[type=hidden]")
     assert [
         ("_hide_sql", "1"),
     ] == [(hidden["name"], hidden["value"]) for hidden in hiddens]
+
+
+@pytest.mark.parametrize(
+    "hide_sql,querystring,expected_hidden,expected_show_hide_link,expected_show_hide_text",
+    (
+        (False, "", None, "/_memory/one?_hide_sql=1", "hide"),
+        (False, "?_hide_sql=1", "_hide_sql", "/_memory/one", "show"),
+        (True, "", None, "/_memory/one?_show_sql=1", "show"),
+        (True, "?_show_sql=1", "_show_sql", "/_memory/one", "hide"),
+    ),
+)
+def test_canned_query_show_hide_metadata_option(
+    hide_sql,
+    querystring,
+    expected_hidden,
+    expected_show_hide_link,
+    expected_show_hide_text,
+):
+    with make_app_client(
+        metadata={
+            "databases": {
+                "_memory": {
+                    "queries": {
+                        "one": {
+                            "sql": "select 1 + 1",
+                            "hide_sql": hide_sql,
+                        }
+                    }
+                }
+            }
+        },
+        memory=True,
+    ) as client:
+        expected_show_hide_fragment = '(<a href="{}">{}</a>)'.format(
+            expected_show_hide_link, expected_show_hide_text
+        )
+        response = client.get("/_memory/one" + querystring)
+        html = response.text
+        show_hide_fragment = html.split('<span class="show-hide-sql">')[1].split(
+            "</span>"
+        )[0]
+        assert show_hide_fragment == expected_show_hide_fragment
+        if expected_hidden:
+            assert (
+                '<input type="hidden" name="{}" value="1">'.format(expected_hidden)
+                in html
+            )
+        else:
+            assert '<input type="hidden" ' not in html
 
 
 def test_extra_where_clauses(app_client):

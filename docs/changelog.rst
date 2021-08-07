@@ -674,7 +674,7 @@ The main focus of this release is a major upgrade to the :ref:`plugin_register_o
 * Visually distinguish float and integer columns - useful for figuring out why order-by-column might be returning unexpected results. (:issue:`729`)
 * The :ref:`internals_request`, which is passed to several plugin hooks, is now documented. (:issue:`706`)
 * New ``metadata.json`` option for setting a custom default page size for specific tables and views, see :ref:`metadata_page_size`. (:issue:`751`)
-* Canned queries can now be configured with a default URL fragment hash, useful when working with plugins such as `datasette-vega <https://github.com/simonw/datasette-vega>`__, see :ref:`canned_queries_default_fragment`. (:issue:`706`)
+* Canned queries can now be configured with a default URL fragment hash, useful when working with plugins such as `datasette-vega <https://github.com/simonw/datasette-vega>`__, see :ref:`canned_queries_options`. (:issue:`706`)
 * Fixed a bug in ``datasette publish`` when running on operating systems where the ``/tmp`` directory lives in a different volume, using a backport of the Python 3.8 ``shutil.copytree()`` function. (:issue:`744`)
 * Every plugin hook is now covered by the unit tests, and a new unit test checks that each plugin hook has at least one corresponding test. (:issue:`771`, :issue:`773`)
 

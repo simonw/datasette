@@ -5,6 +5,8 @@ import json
 from markupsafe import Markup, escape
 from urllib.parse import parse_qsl, urlencode
 
+import markupsafe
+
 from datasette.utils import (
     await_me_maybe,
     check_visibility,
@@ -415,6 +417,29 @@ class QueryView(DataView):
                         }
                     )
                 )
+
+            show_hide_hidden = ""
+            if metadata.get("hide_sql"):
+                if bool(params.get("_show_sql")):
+                    show_hide_link = path_with_removed_args(request, {"_show_sql"})
+                    show_hide_text = "hide"
+                    show_hide_hidden = (
+                        '<input type="hidden" name="_show_sql" value="1">'
+                    )
+                else:
+                    show_hide_link = path_with_added_args(request, {"_show_sql": 1})
+                    show_hide_text = "show"
+            else:
+                if bool(params.get("_hide_sql")):
+                    show_hide_link = path_with_removed_args(request, {"_hide_sql"})
+                    show_hide_text = "show"
+                    show_hide_hidden = (
+                        '<input type="hidden" name="_hide_sql" value="1">'
+                    )
+                else:
+                    show_hide_link = path_with_added_args(request, {"_hide_sql": 1})
+                    show_hide_text = "hide"
+            hide_sql = show_hide_text == "show"
             return {
                 "display_rows": display_rows,
                 "custom_sql": True,
@@ -425,9 +450,10 @@ class QueryView(DataView):
                 "metadata": metadata,
                 "config": self.ds.config_dict(),
                 "request": request,
-                "path_with_added_args": path_with_added_args,
-                "path_with_removed_args": path_with_removed_args,
-                "hide_sql": "_hide_sql" in params,
+                "show_hide_link": show_hide_link,
+                "show_hide_text": show_hide_text,
+                "show_hide_hidden": markupsafe.Markup(show_hide_hidden),
+                "hide_sql": hide_sql,
             }
 
         return (

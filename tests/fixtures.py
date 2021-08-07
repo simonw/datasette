@@ -360,6 +360,7 @@ METADATA = {
                     "title": "Search neighborhoods",
                     "description_html": "<b>Demonstrating</b> simple like search",
                     "fragment": "fragment-goes-here",
+                    "hide_sql": True,
                 },
             },
         }

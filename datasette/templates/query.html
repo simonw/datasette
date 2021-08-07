@@ -33,7 +33,9 @@
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 <form class="sql" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_write %}post{% else %}get{% endif %}">
-    <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}{% if not query_error %} <span class="show-hide-sql">{% if hide_sql %}(<a href="{{ path_with_removed_args(request, {'_hide_sql': '1'}) }}">show</a>){% else %}(<a href="{{ path_with_added_args(request, {'_hide_sql': '1'}) }}">hide</a>){% endif %}</span>{% endif %}</h3>
+    <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}{% if not query_error %}
+        <span class="show-hide-sql">(<a href="{{ show_hide_link }}">{{ show_hide_text }}</a>)</span>
+    {% endif %}</h3>
     {% if error %}
         <p class="message-error">{{ error }}</p>
     {% endif %}
@@ -44,8 +46,11 @@
             <pre id="sql-query">{% if query %}{{ query.sql }}{% endif %}</pre>
         {% endif %}
     {% else %}
-    {% if not canned_query %}<input type="hidden" name="sql" value="{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}">{% endif %}
-        <input type="hidden" name="_hide_sql" value="1">
+        {% if not canned_query %}
+            <input type="hidden" name="sql"
+                value="{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}"
+            >
+        {% endif %}
     {% endif %}
     {% if named_parameter_values %}
         <h3>Query parameters</h3>
@@ -54,9 +59,10 @@
         {% endfor %}
     {% endif %}
     <p>
-        <button id="sql-format" type="button" hidden>Format SQL</button>
+        {% if not hide_sql %}<button id="sql-format" type="button" hidden>Format SQL</button>{% endif %}
         {% if canned_write %}<input type="hidden" name="csrftoken" value="{{ csrftoken() }}">{% endif %}
         <input type="submit" value="Run SQL">
+        {{ show_hide_hidden }}
         {% if canned_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="canned-query-edit-sql">Edit SQL</a>{% endif %}
     </p>
 </form>

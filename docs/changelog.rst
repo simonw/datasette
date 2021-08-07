@@ -4,6 +4,17 @@
 Changelog
 =========
 
+.. _v0_59a0:
+
+0.59a0 (2021-08-06)
+-------------------
+
+- :ref:`plugin_register_routes` plugin hook now accepts an optional ``datasette`` argument. (:issue:`1404`)
+- New ``hide_sql`` canned query option for defaulting to hiding the SQL quey used by a canned query, see :ref:`canned_queries_options`. (:issue:`1422`)
+- New ``--cpu`` option for :ref:`datasette publish cloudrun <publish_cloud_run>`. (:issue:`1420`)
+- If `Rich <https://github.com/willmcgugan/rich>`__ is installed in the same virtual environment as Datasette, it will be used to provide enhanced display of error tracebacks on the console. (:issue:`1416`)
+- ``datasette.utils`` :ref:`internals_utils_parse_metadata` function, used by the new `datasette-remote-metadata plugin <https://datasette.io/plugins/datasette-remote-metadata>`__, is now a documented API. (:issue:`1405`)
+
 .. _v0_58_1:
 
 0.58.1 (2021-07-16)

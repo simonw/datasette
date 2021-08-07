@@ -53,7 +53,7 @@ arguments and can be called like this::
 
     select random_integer(1, 10);
 
-Examples: `datasette-jellyfish <https://github.com/simonw/datasette-jellyfish>`__, `datasette-jq <https://github.com/simonw/datasette-jq>`__, `datasette-haversine <https://github.com/simonw/datasette-haversine>`__, `datasette-rure <https://github.com/simonw/datasette-rure>`__
+Examples: `datasette-jellyfish <https://datasette.io/plugins/datasette-jellyfish>`__, `datasette-jq <https://datasette.io/plugins/datasette-jq>`__, `datasette-haversine <https://datasette.io/plugins/datasette-haversine>`__, `datasette-rure <https://datasette.io/plugins/datasette-rure>`__
 
 .. _plugin_hook_prepare_jinja2_environment:
 
@@ -161,7 +161,7 @@ You can then use the new function in a template like so::
 
     SQLite version: {{ sql_first("select sqlite_version()") }}
 
-Examples: `datasette-search-all <https://github.com/simonw/datasette-search-all>`_, `datasette-template-sql <https://github.com/simonw/datasette-template-sql>`_
+Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-all>`_, `datasette-template-sql <https://datasette.io/plugins/datasette-template-sql>`_
 
 .. _plugin_hook_extra_css_urls:
 
@@ -210,7 +210,7 @@ This function can also return an awaitable function, useful if it needs to run a
 
         return inner
 
-Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
+Examples: `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster-map>`_, `datasette-vega <https://datasette.io/plugins/datasette-vega>`_
 
 .. _plugin_hook_extra_js_urls:
 
@@ -257,7 +257,7 @@ If your code uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/
             "module": True
         ]
 
-Examples: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_, `datasette-vega <https://github.com/simonw/datasette-vega>`_
+Examples: `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster-map>`_, `datasette-vega <https://datasette.io/plugins/datasette-vega>`_
 
 .. _plugin_hook_extra_body_script:
 
@@ -291,7 +291,7 @@ This will add the following to the end of your page:
 
     <script type="module">console.log('Your JavaScript goes here...')</script>
 
-Example: `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_
+Example: `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster-map>`_
 
 .. _plugin_hook_publish_subcommand:
 
@@ -348,7 +348,7 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
         ):
             # Your implementation goes here
 
-Examples: `datasette-publish-fly <https://github.com/simonw/datasette-publish-fly>`_, `datasette-publish-vercel <https://github.com/simonw/datasette-publish-vercel>`_
+Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish-fly>`_, `datasette-publish-vercel <https://datasette.io/plugins/datasette-publish-vercel>`_
 
 .. _plugin_hook_render_cell:
 
@@ -420,7 +420,7 @@ If the value matches that pattern, the plugin returns an HTML link element:
             label=markupsafe.escape(data["label"] or "") or "&nbsp;"
         ))
 
-Examples: `datasette-render-binary <https://github.com/simonw/datasette-render-binary>`_, `datasette-render-markdown <https://github.com/simonw/datasette-render-markdown>`__, `datasette-json-html <https://github.com/simonw/datasette-json-html>`__
+Examples: `datasette-render-binary <https://datasette.io/plugins/datasette-render-binary>`_, `datasette-render-markdown <https://datasette.io/plugins/datasette-render-markdown>`__, `datasette-json-html <https://datasette.io/plugins/datasette-json-html>`__
 
 .. _plugin_register_output_renderer:
 
@@ -525,7 +525,7 @@ And here is an example ``can_render`` function which returns ``True`` only if th
     def can_render_demo(columns):
         return {"atom_id", "atom_title", "atom_updated"}.issubset(columns)
 
-Examples: `datasette-atom <https://github.com/simonw/datasette-atom>`_, `datasette-ics <https://github.com/simonw/datasette-ics>`_
+Examples: `datasette-atom <https://datasette.io/plugins/datasette-atom>`_, `datasette-ics <https://datasette.io/plugins/datasette-ics>`_
 
 .. _plugin_register_routes:
 
@@ -583,7 +583,7 @@ The function can either return a :ref:`internals_response` or it can return noth
 
 See :ref:`writing_plugins_designing_urls` for tips on designing the URL routes used by your plugin.
 
-Examples: `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__, `datasette-psutil <https://github.com/simonw/datasette-psutil>`__
+Examples: `datasette-auth-github <https://datasette.io/plugins/datasette-auth-github>`__, `datasette-psutil <https://datasette.io/plugins/datasette-psutil>`__
 
 .. _plugin_register_facet_classes:
 
@@ -695,7 +695,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
             return add_x_databases_header
         return wrap_with_databases_header
 
-Example: `datasette-cors <https://github.com/simonw/datasette-cors>`_
+Example: `datasette-cors <https://datasette.io/plugins/datasette-cors>`_
 
 .. _plugin_hook_startup:
 
@@ -743,7 +743,7 @@ Potential use-cases:
             await ds.invoke_startup()
             # Rest of test goes here
 
-Examples: `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__, `datasette-init <https://github.com/simonw/datasette-init>`__
+Examples: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__, `datasette-init <https://datasette.io/plugins/datasette-init>`__
 
 .. _plugin_hook_canned_queries:
 
@@ -812,7 +812,7 @@ The actor parameter can be used to include the currently authenticated actor in 
                 } for result in results}
         return inner
 
-Example: `datasette-saved-queries <https://github.com/simonw/datasette-saved-queries>`__
+Example: `datasette-saved-queries <https://datasette.io/plugins/datasette-saved-queries>`__
 
 .. _plugin_hook_actor_from_request:
 
@@ -873,7 +873,7 @@ Instead of returning a dictionary, this function can return an awaitable functio
 
         return inner
 
-Example: `datasette-auth-tokens <https://github.com/simonw/datasette-auth-tokens>`_
+Example: `datasette-auth-tokens <https://datasette.io/plugins/datasette-auth-tokens>`_
 
 .. _plugin_hook_permission_allowed:
 
@@ -932,7 +932,7 @@ Here's an example that allows users to view the ``admin_log`` table only if thei
 
 See :ref:`built-in permissions <permissions>` for a full list of permissions that are included in Datasette core.
 
-Example: `datasette-permissions-sql <https://github.com/simonw/datasette-permissions-sql>`_
+Example: `datasette-permissions-sql <https://datasette.io/plugins/datasette-permissions-sql>`_
 
 .. _plugin_hook_register_magic_parameters:
 
@@ -1051,6 +1051,8 @@ This example adds a new menu item but only if the signed in user is ``"root"``:
 
 Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`setting_base_url` setting into account.
 
+Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-all>`_, `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
+
 .. _plugin_hook_table_actions:
 
 table_actions(datasette, actor, database, table, request)
@@ -1089,6 +1091,8 @@ This example adds a new table action if the signed in user is ``"root"``:
                 "label": "Edit schema for this table",
             }]
 
+Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
+
 .. _plugin_hook_database_actions:
 
 database_actions(datasette, actor, database, request)
@@ -1107,6 +1111,8 @@ database_actions(datasette, actor, database, request)
     The current HTTP :ref:`internals_request`.
 
 This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.
+
+Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
 
 .. _plugin_hook_skip_csrf:
 
@@ -1172,3 +1178,5 @@ This hook is responsible for returning a dictionary corresponding to Datasette :
         # whatever we return here will be merged with any other plugins using this hook and
         # will be overwritten by a local metadata.yaml if one exists!
         return metadata
+
+Example: `datasette-remote-metadata plugin <https://datasette.io/plugins/datasette-remote-metadata>`__

@@ -361,6 +361,7 @@ class QueryView(DataView):
                         database=database,
                         datasette=self.ds,
                     )
+                    plugin_value = await await_me_maybe(plugin_value)
                     if plugin_value is not None:
                         display_value = plugin_value
                     else:

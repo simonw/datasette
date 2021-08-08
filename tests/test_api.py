@@ -415,7 +415,7 @@ def test_database_page(app_client):
             "name": "simple_primary_key",
             "columns": ["id", "content"],
             "primary_keys": ["id"],
-            "count": 4,
+            "count": 5,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {
@@ -652,6 +652,7 @@ def test_custom_sql(app_client):
         {"content": "world"},
         {"content": ""},
         {"content": "RENDER_CELL_DEMO"},
+        {"content": "RENDER_CELL_ASYNC"},
     ] == data["rows"]
     assert ["content"] == data["columns"]
     assert "fixtures" == data["database"]
@@ -693,6 +694,7 @@ def test_table_json(app_client):
         {"id": "2", "content": "world"},
         {"id": "3", "content": ""},
         {"id": "4", "content": "RENDER_CELL_DEMO"},
+        {"id": "5", "content": "RENDER_CELL_ASYNC"},
     ]
 
 
@@ -723,6 +725,7 @@ def test_table_shape_arrays(app_client):
         ["2", "world"],
         ["3", ""],
         ["4", "RENDER_CELL_DEMO"],
+        ["5", "RENDER_CELL_ASYNC"],
     ] == response.json["rows"]
 
 
@@ -736,7 +739,13 @@ def test_table_shape_arrayfirst(app_client):
             }
         )
     )
-    assert ["hello", "world", "", "RENDER_CELL_DEMO"] == response.json
+    assert [
+        "hello",
+        "world",
+        "",
+        "RENDER_CELL_DEMO",
+        "RENDER_CELL_ASYNC",
+    ] == response.json
 
 
 def test_table_shape_objects(app_client):
@@ -746,6 +755,7 @@ def test_table_shape_objects(app_client):
         {"id": "2", "content": "world"},
         {"id": "3", "content": ""},
         {"id": "4", "content": "RENDER_CELL_DEMO"},
+        {"id": "5", "content": "RENDER_CELL_ASYNC"},
     ] == response.json["rows"]
 
 
@@ -756,6 +766,7 @@ def test_table_shape_array(app_client):
         {"id": "2", "content": "world"},
         {"id": "3", "content": ""},
         {"id": "4", "content": "RENDER_CELL_DEMO"},
+        {"id": "5", "content": "RENDER_CELL_ASYNC"},
     ] == response.json
 
 
@@ -768,6 +779,7 @@ def test_table_shape_array_nl(app_client):
         {"id": "2", "content": "world"},
         {"id": "3", "content": ""},
         {"id": "4", "content": "RENDER_CELL_DEMO"},
+        {"id": "5", "content": "RENDER_CELL_ASYNC"},
     ] == results
 
 
@@ -788,6 +800,7 @@ def test_table_shape_object(app_client):
         "2": {"id": "2", "content": "world"},
         "3": {"id": "3", "content": ""},
         "4": {"id": "4", "content": "RENDER_CELL_DEMO"},
+        "5": {"id": "5", "content": "RENDER_CELL_ASYNC"},
     } == response.json
 
 
@@ -1145,12 +1158,21 @@ def test_searchable_invalid_column(app_client):
         ("/fixtures/simple_primary_key.json?content=hello", [["1", "hello"]]),
         (
             "/fixtures/simple_primary_key.json?content__contains=o",
-            [["1", "hello"], ["2", "world"], ["4", "RENDER_CELL_DEMO"]],
+            [
+                ["1", "hello"],
+                ["2", "world"],
+                ["4", "RENDER_CELL_DEMO"],
+            ],
         ),
         ("/fixtures/simple_primary_key.json?content__exact=", [["3", ""]]),
         (
             "/fixtures/simple_primary_key.json?content__not=world",
-            [["1", "hello"], ["3", ""], ["4", "RENDER_CELL_DEMO"]],
+            [
+                ["1", "hello"],
+                ["3", ""],
+                ["4", "RENDER_CELL_DEMO"],
+                ["5", "RENDER_CELL_ASYNC"],
+            ],
         ),
     ],
 )
@@ -1163,7 +1185,11 @@ def test_table_filter_queries_multiple_of_same_type(app_client):
     response = app_client.get(
         "/fixtures/simple_primary_key.json?content__not=world&content__not=hello"
     )
-    assert [["3", ""], ["4", "RENDER_CELL_DEMO"]] == response.json["rows"]
+    assert [
+        ["3", ""],
+        ["4", "RENDER_CELL_DEMO"],
+        ["5", "RENDER_CELL_ASYNC"],
+    ] == response.json["rows"]
 
 
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
@@ -1293,6 +1319,7 @@ def test_view(app_client):
         {"upper_content": "WORLD", "content": "world"},
         {"upper_content": "", "content": ""},
         {"upper_content": "RENDER_CELL_DEMO", "content": "RENDER_CELL_DEMO"},
+        {"upper_content": "RENDER_CELL_ASYNC", "content": "RENDER_CELL_ASYNC"},
     ]
 
 

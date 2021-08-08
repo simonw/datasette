@@ -97,21 +97,29 @@ def extra_body_script(
 
 @hookimpl
 def render_cell(value, column, table, database, datasette):
-    # Render some debug output in cell with value RENDER_CELL_DEMO
-    if value != "RENDER_CELL_DEMO":
-        return None
-    return json.dumps(
-        {
-            "column": column,
-            "table": table,
-            "database": database,
-            "config": datasette.plugin_config(
-                "name-of-plugin",
-                database=database,
-                table=table,
-            ),
-        }
-    )
+    async def inner():
+        # Render some debug output in cell with value RENDER_CELL_DEMO
+        if value == "RENDER_CELL_DEMO":
+            return json.dumps(
+                {
+                    "column": column,
+                    "table": table,
+                    "database": database,
+                    "config": datasette.plugin_config(
+                        "name-of-plugin",
+                        database=database,
+                        table=table,
+                    ),
+                }
+            )
+        elif value == "RENDER_CELL_ASYNC":
+            return (
+                await datasette.get_database(database).execute(
+                    "select 'RENDER_CELL_ASYNC_RESULT'"
+                )
+            ).single_value()
+
+    return inner
 
 
 @hookimpl

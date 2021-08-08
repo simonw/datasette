@@ -198,6 +198,7 @@ class RowTableShared(DataView):
                     database=database,
                     datasette=self.ds,
                 )
+                plugin_display_value = await await_me_maybe(plugin_display_value)
                 if plugin_display_value is not None:
                     display_value = plugin_display_value
                 elif isinstance(value, bytes):

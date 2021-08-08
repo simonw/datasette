@@ -370,13 +370,15 @@ Lets you customize the display of values within table cells in the HTML table vi
     The name of the database
 
 ``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
 
 If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
 
 If the hook returns a string, that string will be rendered in the table cell.
 
 If you want to return HTML markup you can do so by returning a ``jinja2.Markup`` object.
+
+You can also return an awaitable function which returns a value.
 
 Datasette will loop through all available ``render_cell`` hooks and display the value returned by the first one that does not return ``None``.
 

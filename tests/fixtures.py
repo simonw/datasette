@@ -644,6 +644,7 @@ INSERT INTO simple_primary_key VALUES (1, 'hello');
 INSERT INTO simple_primary_key VALUES (2, 'world');
 INSERT INTO simple_primary_key VALUES (3, '');
 INSERT INTO simple_primary_key VALUES (4, 'RENDER_CELL_DEMO');
+INSERT INTO simple_primary_key VALUES (5, 'RENDER_CELL_ASYNC');
 
 INSERT INTO primary_key_multiple_columns VALUES (1, 'hey', 'world');
 INSERT INTO primary_key_multiple_columns_explicit_label VALUES (1, 'hey', 'world2');

@@ -185,6 +185,11 @@ def test_hook_render_cell_demo(app_client):
     } == json.loads(td.string)
 
 
+def test_hook_render_cell_async(app_client):
+    response = app_client.get("/fixtures?sql=select+'RENDER_CELL_ASYNC'")
+    assert b"RENDER_CELL_ASYNC_RESULT" in response.body
+
+
 def test_plugin_config(app_client):
     assert {"depth": "table"} == app_client.ds.plugin_config(
         "name-of-plugin", database="fixtures", table="sortable"

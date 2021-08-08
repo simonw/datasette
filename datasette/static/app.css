@@ -522,7 +522,7 @@ input[type="search"]::-webkit-search-results-decoration {
     display: none;
 }
 
-form input[type=submit], form button[type=button] {
+form input[type=submit], form button[type=button], .btn-primary, .btn-secondary {
     font-weight: 400;
     cursor: pointer;
     text-align: center;
@@ -535,14 +535,14 @@ form input[type=submit], form button[type=button] {
     border-radius: .25rem;
 }
 
-form input[type=submit] {
+form input[type=submit], .btn-primary{
     color: #fff;
     background-color: #007bff;
     border-color: #007bff;
     -webkit-appearance: button;
 }
 
-form button[type=button] {
+form button[type=button]{
     color: #007bff;
     background-color: #fff;
     border-color: #007bff;

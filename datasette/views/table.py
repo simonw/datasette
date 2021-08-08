@@ -22,6 +22,10 @@ from datasette.utils import (
     to_css_class,
     urlsafe_components,
     value_as_boolean,
+    check_nulls,
+    check_not_nulls,
+    compound_sort_sql,
+    SortingOrder,
 )
 from datasette.utils.asgi import BadRequest, NotFound
 from datasette.filters import Filters
@@ -387,9 +391,11 @@ class TableView(RowTableShared):
             nofacet = True
 
         # Ensure we don't drop anything with an empty value e.g. ?name__exact=
-        args = MultiParams(
-            urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
+        query_params = urllib.parse.parse_qsl(
+            request.query_string, keep_blank_values=True
         )
+
+        args = MultiParams(query_params)
 
         # Special args start with _ and do not contain a __
         # That's so if there is a column that starts with _
@@ -543,29 +549,30 @@ class TableView(RowTableShared):
         sortable_columns = await self.sortable_columns_for_table(
             database, table, use_rowid
         )
-
-        # Allow for custom sort order
-        sort = special_args.get("_sort")
-        sort_desc = special_args.get("_sort_desc")
-
-        if not sort and not sort_desc:
-            sort = table_metadata.get("sort")
-            sort_desc = table_metadata.get("sort_desc")
-
-        if sort and sort_desc:
-            raise DatasetteError("Cannot use _sort and _sort_desc at the same time")
-
-        if sort:
-            if sort not in sortable_columns:
-                raise DatasetteError(f"Cannot sort table by {sort}")
-
-            order_by = escape_sqlite(sort)
-
-        if sort_desc:
-            if sort_desc not in sortable_columns:
-                raise DatasetteError(f"Cannot sort table by {sort_desc}")
-
-            order_by = f"{escape_sqlite(sort_desc)} desc"
+        #
+        # Getting sorting conditions from url and saving them in a list
+        #
+        sort = [
+            SortingOrder(value, "asc" if name == "_sort" else "desc")
+            for name, value in query_params
+            if name == "_sort" or name == "_sort_desc"
+        ]
+        if not sort:
+            if table_metadata.get("sort"):
+                sort.append(SortingOrder(table_metadata.get("sort"), "asc"))
+            if table_metadata.get("sort_desc"):
+                sort.append(SortingOrder(table_metadata.get("sort_desc"), "desc"))
+        sort_asc = [item.name for item in sort if item.direction == "asc"]
+        sort_desc = [item.name for item in sort if item.direction == "desc"]
+        order_by_list = []
+        for condition in sort:
+            if condition.name not in sortable_columns:
+                raise DatasetteError(f"Cannot sort table by {condition.name}")
+            order_by_list.append(
+                f"{escape_sqlite(condition.name)}{' desc' if condition.direction == 'desc' else ''}"
+            )
+        if order_by_list:
+            order_by = ",".join(order_by_list)
 
         from_sql = "from {table_name} {where}".format(
             table_name=escape_sqlite(table),
@@ -581,18 +588,23 @@ class TableView(RowTableShared):
         _next = _next or special_args.get("_next")
         offset = ""
         if _next:
+            next_params_not_parsed = _next.split(",")
             if is_view:
                 # _next is an offset
                 offset = f" offset {int(_next)}"
             else:
                 components = urlsafe_components(_next)
                 # If a sort order is applied, the first of these is the sort value
-                if sort or sort_desc:
-                    sort_value = components[0]
-                    # Special case for if non-urlencoded first token was $null
-                    if _next.split(",")[0] == "$null":
-                        sort_value = None
-                    components = components[1:]
+                if sort:
+                    sort_values = dict()
+                    next_sorting_values = components[: len(sort)]
+                    for index, item in enumerate(sort):
+                        sv = next_sorting_values[index]
+                        if sv == "$null" and next_params_not_parsed[index] == "$null":
+                            sort_values[item.name] = None
+                        else:
+                            sort_values[item.name] = sv
+                    components = components[len(sort) :]
 
                 # Figure out the SQL for next-based-on-primary-key first
                 next_by_pk_clauses = []
@@ -602,50 +614,58 @@ class TableView(RowTableShared):
                 else:
                     # Apply the tie-breaker based on primary keys
                     if len(components) == len(pks):
-                        param_len = len(params)
+                        param_len = len(params) + len(sort)
                         next_by_pk_clauses.append(
                             compound_keys_after_sql(pks, param_len)
                         )
                         for i, pk_value in enumerate(components):
                             params[f"p{param_len + i}"] = pk_value
-
                 # Now add the sort SQL, which may incorporate next_by_pk_clauses
-                if sort or sort_desc:
-                    if sort_value is None:
+                if sort:
+                    if None in sort_values.values():
                         if sort_desc:
                             # Just items where column is null ordered by pk
                             where_clauses.append(
-                                "({column} is null and {next_clauses})".format(
-                                    column=escape_sqlite(sort_desc),
+                                "({column_null} and {next_clauses})".format(
+                                    column_null=check_nulls(sort_desc, sort_values),
                                     next_clauses=" and ".join(next_by_pk_clauses),
                                 )
                             )
+
                         else:
                             where_clauses.append(
-                                "({column} is not null or ({column} is null and {next_clauses}))".format(
-                                    column=escape_sqlite(sort),
+                                "({column_not_null} or ({column_null} and {next_clauses}))".format(
+                                    column_not_null=check_not_nulls(
+                                        sort_asc, sort_values
+                                    ),
+                                    column_null=check_nulls(sort_asc, sort_values),
                                     next_clauses=" and ".join(next_by_pk_clauses),
                                 )
                             )
                     else:
+
+                        pagination = []
+                        pagination.append(compound_sort_sql(sort, 0))
+                        ties = []
+                        for index, item in enumerate(sort):
+                            ties.append(f"{item.name} = :p{index}")
                         where_clauses.append(
-                            "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
-                                column=escape_sqlite(sort or sort_desc),
-                                op=">" if sort else "<",
-                                p=len(params),
+                            "({pagination}{extra_desc_only} or ({ties} and {next_clauses}))".format(
+                                ties=" and ".join(ties),
+                                pagination="".join(pagination),
                                 extra_desc_only=""
-                                if sort
+                                if sort_asc
                                 else " or {column2} is null".format(
-                                    column2=escape_sqlite(sort or sort_desc)
+                                    column2=escape_sqlite(",".join(sort_desc))
                                 ),
                                 next_clauses=" and ".join(next_by_pk_clauses),
                             )
                         )
-                        params[f"p{len(params)}"] = sort_value
+                        for index, item in enumerate(sort):
+                            params[f"p{index}"] = sort_values[item.name]
                     order_by = f"{order_by}, {order_by_pks}"
                 else:
                     where_clauses.extend(next_by_pk_clauses)
-
         where_clause = ""
         if where_clauses:
             where_clause = f"where {' and '.join(where_clauses)} "
@@ -807,28 +827,35 @@ class TableView(RowTableShared):
         # Pagination next link
         next_value = None
         next_url = None
+        added_args = []
         if 0 < page_size < len(rows):
             if is_view:
                 next_value = int(_next or 0) + page_size
             else:
                 next_value = path_from_row_pks(rows[-2], pks, use_rowid)
             # If there's a sort or sort_desc, add that value as a prefix
-            if (sort or sort_desc) and not is_view:
-                prefix = rows[-2][sort or sort_desc]
-                if isinstance(prefix, dict) and "value" in prefix:
-                    prefix = prefix["value"]
-                if prefix is None:
-                    prefix = "$null"
-                else:
-                    prefix = urllib.parse.quote_plus(str(prefix))
+            if sort and not is_view:
+                prefix = []
+                for condition in sort:
+                    item = rows[-2][condition.name]
+                    if item:
+                        if isinstance(item, dict) and "value" in item:
+                            item = item["value"]
+                        item = urllib.parse.quote_plus(str(item))
+                        prefix.append(item)
+                    else:
+                        prefix.append("$null")
+
+                prefix = ",".join(prefix)
                 next_value = f"{prefix},{next_value}"
-                added_args = {"_next": next_value}
-                if sort:
-                    added_args["_sort"] = sort
-                else:
-                    added_args["_sort_desc"] = sort_desc
+                added_args.append(("_next", next_value))
+                for item in sort:
+                    if item.direction == "asc":
+                        added_args.append(("_sort", item.name))
+                    else:
+                        added_args.append(("_sort_desc", item.name))
             else:
-                added_args = {"_next": next_value}
+                added_args.append(("_next", next_value))
             next_url = self.ds.absolute_url(
                 request, path_with_replaced_args(request, added_args)
             )
@@ -850,11 +877,14 @@ class TableView(RowTableShared):
         human_description_en = filters.human_description_en(
             extra=extra_human_descriptions
         )
-
-        if sort or sort_desc:
-            sorted_by = "sorted by {}{}".format(
-                (sort or sort_desc), " descending" if sort_desc else ""
-            )
+        sorting_conditions = []
+        for item in sort:
+            if item.direction == "asc":
+                sorting_conditions.append(item.name)
+            else:
+                sorting_conditions.append(f"{item.name} descending")
+        if sorting_conditions:
+            sorted_by = f"sorted by {', '.join(sorting_conditions)}"
             human_description_en = " ".join(
                 [b for b in [human_description_en, sorted_by] if b]
             )
@@ -886,11 +916,11 @@ class TableView(RowTableShared):
 
             # if no sort specified AND table has a single primary key,
             # set sort to that so arrow is displayed
-            if not sort and not sort_desc:
+            if not sort:
                 if 1 == len(pks):
-                    sort = pks[0]
+                    sort_asc.append(pks[0])
                 elif use_rowid:
-                    sort = "rowid"
+                    sort_asc.append("rowid")
 
             async def table_actions():
                 links = []
@@ -928,7 +958,7 @@ class TableView(RowTableShared):
                 "path_with_removed_args": path_with_removed_args,
                 "append_querystring": append_querystring,
                 "request": request,
-                "sort": sort,
+                "sort": sort_asc,
                 "sort_desc": sort_desc,
                 "disable_sort": is_view,
                 "custom_table_templates": [

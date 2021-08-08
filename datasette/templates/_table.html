@@ -1,4 +1,5 @@
 {% if display_rows %}
+{% include "__sorting_example.html" %}
 <div class="table-wrapper">
     <table class="rows-and-columns">
         <thead>
@@ -8,10 +9,10 @@
                         {% if not column.sortable %}
                             {{ column.name }}
                         {% else %}
-                            {% if column.name == sort %}
+                            {% if column.name in sort %}
                                 <a href="{{ path_with_replaced_args(request, {'_sort_desc': column.name, '_sort': None, '_next': None}) }}" rel="nofollow">{{ column.name }}&nbsp;▼</a>
                             {% else %}
-                                <a href="{{ path_with_replaced_args(request, {'_sort': column.name, '_sort_desc': None, '_next': None}) }}" rel="nofollow">{{ column.name }}{% if column.name == sort_desc %}&nbsp;▲{% endif %}</a>
+                                <a href="{{ path_with_replaced_args(request, {'_sort': column.name, '_sort_desc': None, '_next': None}) }}" rel="nofollow">{{ column.name }}{% if column.name in sort_desc %}&nbsp;▲{% endif %}</a>
                             {% endif %}
                         {% endif %}
                     </th>

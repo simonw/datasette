@@ -68,6 +68,24 @@ async def await_me_maybe(value):
     return value
 
 
+def check_nulls(list, values):
+    """Takes a Python list, escapes its values and converts to '{column_name} is null'"""
+    value_list = ""
+    for item in list:
+        if not values[item]:
+            value_list += f"{escape_sqlite(item)} is null and"
+    return value_list[:-4]
+
+
+def check_not_nulls(list, values):
+    """Takes a Python list, escapes its values and converts to '{column_name} is not null'"""
+    value_list = ""
+    for item in list:
+        if not values[item]:
+            value_list += f"{escape_sqlite(item)} is not null and"
+    return value_list[:-4]
+
+
 def urlsafe_components(token):
     """Splits token on commas and URL decodes each component"""
     return [urllib.parse.unquote_plus(b) for b in token.split(",")]
@@ -110,6 +128,28 @@ def compound_keys_after_sql(pks, start_index=0):
             f"{escape_sqlite(pk)} = :p{i + start_index}" for i, pk in enumerate(rest)
         ]
         and_clauses.append(f"{escape_sqlite(last)} > :p{len(rest) + start_index}")
+        or_clauses.append(f"({' and '.join(and_clauses)})")
+        pks_left.pop()
+    or_clauses.reverse()
+    return "({})".format("\n  or\n".join(or_clauses))
+
+
+def compound_sort_sql(sort, start_index=0):
+    #
+    # A modified version of compound_keys_after_sql supporting sorting by multiple columns in any direction
+    #
+    or_clauses = []
+    pks_left = sort[:]
+    while pks_left:
+        last = pks_left[-1]
+        rest = pks_left[:-1]
+        and_clauses = [
+            f"{escape_sqlite(pk.name)} = :p{i + start_index}"
+            for i, pk in enumerate(rest)
+        ]
+        and_clauses.append(
+            f"{escape_sqlite(last.name)} {'>' if last.direction=='asc' else '<'} :p{len(rest) + start_index}"
+        )
         or_clauses.append(f"({' and '.join(and_clauses)})")
         pks_left.pop()
     or_clauses.reverse()
@@ -1076,3 +1116,7 @@ class PrefixedUrlString(str):
 
 class StartupError(Exception):
     pass
+
+
+SortingOrder = namedtuple("SortingOrder", ["name", "direction"])
+"""An Object storing a particular sorting condition."""

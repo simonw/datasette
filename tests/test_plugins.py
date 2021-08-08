@@ -185,8 +185,11 @@ def test_hook_render_cell_demo(app_client):
     } == json.loads(td.string)
 
 
-def test_hook_render_cell_async(app_client):
-    response = app_client.get("/fixtures?sql=select+'RENDER_CELL_ASYNC'")
+@pytest.mark.parametrize(
+    "path", ("/fixtures?sql=select+'RENDER_CELL_ASYNC'", "/fixtures/simple_primary_key")
+)
+def test_hook_render_cell_async(app_client, path):
+    response = app_client.get(path)
     assert b"RENDER_CELL_ASYNC_RESULT" in response.body
 
 

@@ -17,6 +17,7 @@ import types
 import shutil
 import urllib
 import yaml
+from jinja2 import BaseLoader
 from .shutil_backport import copytree
 from .sqlite import sqlite3, supports_table_xinfo
 
@@ -1076,3 +1077,26 @@ class PrefixedUrlString(str):
 
 class StartupError(Exception):
     pass
+
+
+class PrependingLoader(BaseLoader):
+    # Based on http://codyaray.com/2015/05/auto-load-jinja2-macros
+    def __init__(self, delegate, prepend_template):
+        self.delegate = delegate
+        self.prepend_template = prepend_template
+
+    def get_source(self, environment, template):
+        prepend_source, _, prepend_uptodate = self.delegate.get_source(
+            environment, self.prepend_template
+        )
+        main_source, main_filename, main_uptodate = self.delegate.get_source(
+            environment, template
+        )
+        uptodate = lambda: prepend_uptodate() and main_uptodate()
+        return prepend_source + main_source, main_filename, uptodate
+
+    def list_templates(self):
+        return self.delegate.list_templates()
+
+    def select_template(self, *args, **kwargs):
+        return self.delegate.select_template(*args, **kwargs)

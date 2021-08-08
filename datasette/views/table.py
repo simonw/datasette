@@ -939,6 +939,20 @@ class TableView(RowTableShared):
                 "metadata": metadata,
                 "view_definition": await db.get_view_definition(table),
                 "table_definition": await db.get_table_definition(table),
+                "table_top_includes": self.ds._include_templates(
+                    "include_table_top",
+                    database=database,
+                    table=table,
+                    actor=request.actor,
+                    datasette=self.ds,
+                ),
+                "table_bottom_includes": self.ds._include_templates(
+                    "include_table_bottom",
+                    database=database,
+                    table=table,
+                    actor=request.actor,
+                    datasette=self.ds,
+                ),
             }
 
         return (

@@ -45,6 +45,7 @@ from .database import Database, QueryInterrupted
 
 from .utils import (
     PrefixedUrlString,
+    PrependingLoader,
     StartupError,
     async_call_with_supported_arguments,
     await_me_maybe,
@@ -323,7 +324,9 @@ class Datasette:
             ]
         )
         self.jinja_env = Environment(
-            loader=template_loader, autoescape=True, enable_async=True
+            loader=PrependingLoader(template_loader, "_macros.html"),
+            autoescape=True,
+            enable_async=True,
         )
         self.jinja_env.filters["escape_css_string"] = escape_css_string
         self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
@@ -828,6 +831,14 @@ class Datasette:
                 renderer.get("render") or renderer["callback"],
                 renderer.get("can_render") or (lambda: True),
             )
+
+    def _include_templates(self, name, **kwargs):
+        include_templates = []
+        for templates in getattr(pm.hook, name)(**kwargs):
+            if isinstance(templates, str):
+                templates = [templates]
+            include_templates.extend(templates)
+        return include_templates
 
     async def render_template(
         self, templates, context=None, request=None, view_name=None

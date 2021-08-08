@@ -11,6 +11,7 @@ EXPECTED_TABLE_CSV = """id,content
 2,world
 3,
 4,RENDER_CELL_DEMO
+5,RENDER_CELL_ASYNC
 """.replace(
     "\n", "\r\n"
 )
@@ -167,7 +168,7 @@ def test_csv_trace(app_client_with_trace):
     soup = Soup(response.text, "html.parser")
     assert (
         soup.find("textarea").text
-        == "id,content\r\n1,hello\r\n2,world\r\n3,\r\n4,RENDER_CELL_DEMO\r\n"
+        == "id,content\r\n1,hello\r\n2,world\r\n3,\r\n4,RENDER_CELL_DEMO\r\n5,RENDER_CELL_ASYNC\r\n"
     )
     assert "select id, content from simple_primary_key" in soup.find("pre").text
 

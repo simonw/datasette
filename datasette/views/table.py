@@ -191,15 +191,19 @@ class RowTableShared(DataView):
 
                 # First let the plugins have a go
                 # pylint: disable=no-member
-                plugin_display_value = pm.hook.render_cell(
+                plugin_display_value = None
+                for candidate in pm.hook.render_cell(
                     value=value,
                     column=column,
                     table=table,
                     database=database,
                     datasette=self.ds,
-                )
-                plugin_display_value = await await_me_maybe(plugin_display_value)
-                if plugin_display_value is not None:
+                ):
+                    candidate = await await_me_maybe(candidate)
+                    if candidate is not None:
+                        plugin_display_value = candidate
+                        break
+                if plugin_display_value:
                     display_value = plugin_display_value
                 elif isinstance(value, bytes):
                     display_value = markupsafe.Markup(

@@ -59,7 +59,7 @@ def publish_subcommand(publish):
     """Subcommands for 'datasette publish'"""
 
 
-@hookspec(firstresult=True)
+@hookspec
 def render_cell(value, column, table, database, datasette):
     """Customize rendering of HTML table cell values"""
 

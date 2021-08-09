@@ -354,16 +354,20 @@ class QueryView(DataView):
                     display_value = value
                     # Let the plugins have a go
                     # pylint: disable=no-member
-                    plugin_value = pm.hook.render_cell(
+                    plugin_display_value = None
+                    for candidate in pm.hook.render_cell(
                         value=value,
                         column=column,
                         table=None,
                         database=database,
                         datasette=self.ds,
-                    )
-                    plugin_value = await await_me_maybe(plugin_value)
-                    if plugin_value is not None:
-                        display_value = plugin_value
+                    ):
+                        candidate = await await_me_maybe(candidate)
+                        if candidate is not None:
+                            plugin_display_value = candidate
+                            break
+                    if plugin_display_value is not None:
+                        display_value = plugin_display_value
                     else:
                         if value in ("", None):
                             display_value = Markup("&nbsp;")

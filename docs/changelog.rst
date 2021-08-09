@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_59a1:
+
+0.59a1 (2021-08-08)
+-------------------
+
+- The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook can now return an awaitable function. This means the hook can execute SQL queries. (:issue:`1425`)
+
 .. _v0_59a0:
 
 0.59a0 (2021-08-06)

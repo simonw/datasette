@@ -1080,11 +1080,12 @@ class StartupError(Exception):
 
 _re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
 
+
 async def derive_named_parameters(db, sql):
-    explain = 'explain {}'.format(sql.strip().rstrip(";"))
+    explain = "explain {}".format(sql.strip().rstrip(";"))
     possible_params = _re_named_parameter.findall(sql)
     try:
         results = await db.execute(explain, {p: None for p in possible_params})
         return [row["p4"].lstrip(":") for row in results if row["opcode"] == "Variable"]
     except sqlite3.DatabaseError:
-        return []
+        return possible_params

@@ -629,13 +629,16 @@ def test_parse_metadata(content, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("sql,expected", (
-    ("select 1", []),
-    ("select 1 + :one", ["one"]),
-    ("select 1 + :one + :two", ["one", "two"]),
-    ("select 'bob' || '0:00' || :cat", ["cat"]),
-    ("select this is invalid", []),
-))
+@pytest.mark.parametrize(
+    "sql,expected",
+    (
+        ("select 1", []),
+        ("select 1 + :one", ["one"]),
+        ("select 1 + :one + :two", ["one", "two"]),
+        ("select 'bob' || '0:00' || :cat", ["cat"]),
+        ("select this is invalid :one, :two, :three", ["one", "two", "three"]),
+    ),
+)
 async def test_derive_named_parameters(sql, expected):
     ds = Datasette([], memory=True)
     db = ds.get_database("_memory")

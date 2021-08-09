@@ -10,6 +10,7 @@ import markupsafe
 from datasette.utils import (
     await_me_maybe,
     check_visibility,
+    derive_named_parameters,
     to_css_class,
     validate_sql_select,
     is_url,
@@ -223,7 +224,9 @@ class QueryView(DataView):
             await self.check_permission(request, "execute-sql", database)
 
         # Extract any :named parameters
-        named_parameters = named_parameters or self.re_named_parameter.findall(sql)
+        named_parameters = named_parameters or await derive_named_parameters(
+            self.ds.get_database(database), sql
+        )
         named_parameter_values = {
             named_parameter: params.get(named_parameter) or ""
             for named_parameter in named_parameters

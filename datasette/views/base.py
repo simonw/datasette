@@ -159,7 +159,6 @@ class BaseView:
 
 class DataView(BaseView):
     name = ""
-    re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
 
     async def options(self, request, *args, **kwargs):
         r = Response.text("ok")

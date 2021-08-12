@@ -171,9 +171,9 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     var columnDescriptionP = menu.querySelector(".dropdown-column-description");
     if (th.dataset.columnDescription) {
       columnDescriptionP.innerText = th.dataset.columnDescription;
-      columnDescriptionP.style.display = 'block';
+      columnDescriptionP.style.display = "block";
     } else {
-      columnDescriptionP.style.display = 'none';
+      columnDescriptionP.style.display = "none";
     }
     menu.style.position = "absolute";
     menu.style.top = menuTop + 6 + "px";

@@ -125,6 +125,7 @@ class RowTableShared(DataView):
         """Returns columns, rows for specified table - including fancy foreign key treatment"""
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
+        column_descriptions = table_metadata.get("columns") or {}
         column_details = {col.name: col for col in await db.table_column_details(table)}
         sortable_columns = await self.sortable_columns_for_table(database, table, True)
         pks = await db.primary_keys(table)
@@ -147,6 +148,7 @@ class RowTableShared(DataView):
                     "is_pk": r[0] in pks_for_display,
                     "type": type_,
                     "notnull": notnull,
+                    "description": column_descriptions.get(r[0]),
                 }
             )
 

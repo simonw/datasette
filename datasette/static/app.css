@@ -784,8 +784,13 @@ svg.dropdown-menu-icon {
     font-size: 0.7em;
     color: #666;
     margin: 0;
-    padding: 0;
     padding: 4px 8px 4px 8px;
+}
+.dropdown-menu .dropdown-column-description {
+    margin: 0;
+    color: #666;
+    padding: 4px 8px 4px 8px;
+    max-width: 20em;
 }
 .dropdown-menu li {
     border-bottom: 1px solid #ccc;
@@ -834,6 +839,16 @@ svg.dropdown-menu-icon {
     background-size: 16px 16px;
     background-position: right;
     background-repeat: no-repeat;
+}
+
+dl.column-descriptions dt {
+    font-weight: bold;
+}
+dl.column-descriptions dd {
+    padding-left: 1.5em;
+    white-space: pre-wrap;
+    line-height: 1.1em;
+    color: #666;
 }
 
 .anim-scale-in {

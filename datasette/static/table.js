@@ -9,6 +9,7 @@ var DROPDOWN_HTML = `<div class="dropdown-menu">
   <li><a class="dropdown-not-blank" href="#">Show not-blank rows</a></li>
 </ul>
 <p class="dropdown-column-type"></p>
+<p class="dropdown-column-description"></p>
 </div>`;
 
 var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -165,6 +166,14 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       columnTypeP.innerText = `Type: ${columnType.toUpperCase()}${notNull}`;
     } else {
       columnTypeP.style.display = "none";
+    }
+
+    var columnDescriptionP = menu.querySelector(".dropdown-column-description");
+    if (th.dataset.columnDescription) {
+      columnDescriptionP.innerText = th.dataset.columnDescription;
+      columnDescriptionP.style.display = 'block';
+    } else {
+      columnDescriptionP.style.display = 'none';
     }
     menu.style.position = "absolute";
     menu.style.top = menuTop + 6 + "px";

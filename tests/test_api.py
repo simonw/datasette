@@ -1269,7 +1269,7 @@ def test_table_filter_extra_where_invalid(app_client):
 
 
 def test_table_filter_extra_where_disabled_if_no_sql_allowed():
-    with make_app_client(metadata={"allow_sql": {}}) as client:
+    with make_app_client(filename='filter_extra.db', metadata={"allow_sql": {}}) as client:
         response = client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
         assert 403 == response.status
         assert "_where= is not allowed" == response.json["error"]
@@ -1711,14 +1711,14 @@ def test_suggested_facets(app_client):
 
 
 def test_allow_facet_off():
-    with make_app_client(config={"allow_facet": False}) as client:
+    with make_app_client(filename='facet_off.db', config={"allow_facet": False}) as client:
         assert 400 == client.get("/fixtures/facetable.json?_facet=planet_int").status
         # Should not suggest any facets either:
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
 
 def test_suggest_facets_off():
-    with make_app_client(config={"suggest_facets": False}) as client:
+    with make_app_client(filename='suggest.db', config={"suggest_facets": False}) as client:
         # Now suggested_facets should be []
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
@@ -1883,7 +1883,7 @@ def test_config_cache_size(app_client_larger_cache_size):
 
 
 def test_config_force_https_urls():
-    with make_app_client(config={"force_https_urls": True}) as client:
+    with make_app_client(filename='force_https.db', config={"force_https_urls": True}) as client:
         response = client.get("/fixtures/facetable.json?_size=3&_facet=state")
         assert response.json["next_url"].startswith("https://")
         assert response.json["facet_results"]["state"]["results"][0][

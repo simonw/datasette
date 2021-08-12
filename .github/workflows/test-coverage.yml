@@ -8,7 +8,7 @@ on:
     branches:
       - main
 jobs:
-  test:
+  test-linux:
     runs-on: ubuntu-latest
     steps:
     - name: Check out datasette
@@ -40,3 +40,25 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         file: coverage.xml
+  test-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Check out datasette
+      uses: actions/checkout@v2
+    - name: Set up Python
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.8
+    - uses: actions/cache@v2
+      name: Configure pip caching
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    - name: Install Python dependencies
+      run: |
+        python -m pip install -e .[test]
+    - name: Run tests
+      run: pytest --tb=short tests/test_api.py
+

@@ -154,7 +154,9 @@ def make_app_client(
             crossdb=crossdb,
         )
         ds.sqlite_functions.append(("sleep", 1, lambda n: time.sleep(float(n))))
-        yield TestClient(ds)
+        client = TestClient(ds)
+        yield client
+        conn.close()
 
 
 @pytest.fixture(scope="session")

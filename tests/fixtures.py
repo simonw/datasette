@@ -336,6 +336,12 @@ METADATA = {
                     "fts_table": "searchable_fts",
                     "fts_pk": "pk",
                 },
+                "roadside_attractions": {
+                    "columns": {
+                        "name": "The name of the attraction",
+                        "address": "The street address for the attraction",
+                    }
+                },
                 "attraction_characteristic": {"sort_desc": "pk"},
                 "facet_cities": {"sort": "name"},
                 "paginated_view": {"size": 25},

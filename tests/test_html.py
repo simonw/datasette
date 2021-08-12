@@ -1777,3 +1777,21 @@ def test_trace_correctly_escaped(app_client):
     response = app_client.get("/fixtures?sql=select+'<h1>Hello'&_trace=1")
     assert "select '<h1>Hello" not in response.text
     assert "select &#39;&lt;h1&gt;Hello" in response.text
+
+
+def test_column_metadata(app_client):
+    response = app_client.get("/fixtures/roadside_attractions")
+    soup = Soup(response.body, "html.parser")
+    dl = soup.find("dl")
+    assert [(dt.text, dt.nextSibling.text) for dt in dl.findAll("dt")] == [
+        ("name", "The name of the attraction"),
+        ("address", "The street address for the attraction"),
+    ]
+    assert (
+        soup.select("th[data-column=name]")[0]["data-column-description"]
+        == "The name of the attraction"
+    )
+    assert (
+        soup.select("th[data-column=address]")[0]["data-column-description"]
+        == "The street address for the attraction"
+    )

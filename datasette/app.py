@@ -277,7 +277,7 @@ class Datasette:
         self.static_mounts = static_mounts or []
         if config_dir and (config_dir / "config.json").exists():
             raise StartupError("config.json should be renamed to settings.json")
-        if config_dir and (config_dir / "settings.json").exists() and not config:
+        if config_dir and (config_dir / "settings.json").exists() and not settings:
             config = json.loads((config_dir / "settings.json").read_text())
         self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions

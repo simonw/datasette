@@ -51,7 +51,7 @@ class Config(click.ParamType):
         name, value = config.split(":", 1)
         if name not in DEFAULT_SETTINGS:
             self.fail(
-                f"{name} is not a valid option (--help-config to see all)",
+                f"{name} is not a valid option (--help-settings to see all)",
                 param,
                 ctx,
             )
@@ -84,7 +84,7 @@ class Setting(CompositeParamType):
         name, value = config
         if name not in DEFAULT_SETTINGS:
             self.fail(
-                f"{name} is not a valid option (--help-config to see all)",
+                f"{name} is not a valid option (--help-settings to see all)",
                 param,
                 ctx,
             )
@@ -408,7 +408,7 @@ def uninstall(packages, yes):
     help="Run an HTTP GET request against this path, print results and exit",
 )
 @click.option("--version-note", help="Additional note to show on /-/versions")
-@click.option("--help-config", is_flag=True, help="Show available config options")
+@click.option("--help-settings", is_flag=True, help="Show available settings")
 @click.option("--pdb", is_flag=True, help="Launch debugger on any errors")
 @click.option(
     "-o",
@@ -456,7 +456,7 @@ def serve(
     root,
     get,
     version_note,
-    help_config,
+    help_settings,
     pdb,
     open_browser,
     create,
@@ -466,9 +466,9 @@ def serve(
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
-    if help_config:
+    if help_settings:
         formatter = formatting.HelpFormatter()
-        with formatter.section("Config options"):
+        with formatter.section("Settings"):
             formatter.write_dl(
                 [
                     (option.name, f"{option.help} (default={option.default})")

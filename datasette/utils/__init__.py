@@ -1098,6 +1098,8 @@ def columns_for_query(conn, sql, params=None):
     per returned column. ``(None, None)`` if no table and column
     could be derived.
     """
+    if sql.lower().strip().startswith("explain"):
+        return []
     rows = conn.execute("explain " + sql, params).fetchall()
     table_rootpage_by_register = {
         r["p1"]: r["p2"] for r in rows if r["opcode"] == "OpenRead"
@@ -1113,8 +1115,11 @@ def columns_for_query(conn, sql, params=None):
     for row in rows:
         if row["opcode"] in ("Rowid", "Column"):
             addr, opcode, table_id, cid, column_register, p4, p5, comment = row
-            table = names_by_rootpage[table_rootpage_by_register[table_id]]
-            columns_by_column_register[column_register] = (table, cid)
+            try:
+                table = names_by_rootpage[table_rootpage_by_register[table_id]]
+                columns_by_column_register[column_register] = (table, cid)
+            except KeyError:
+                pass
     result_row = [dict(r) for r in rows if r["opcode"] == "ResultRow"][0]
     registers = list(range(result_row["p1"], result_row["p1"] + result_row["p2"]))
     all_column_names = {}

@@ -32,7 +32,7 @@ Options:
   --get TEXT                Run an HTTP GET request against this path, print results and
                             exit
   --version-note TEXT       Additional note to show on /-/versions
-  --help-config             Show available config options
+  --help-settings           Show available settings
   --pdb                     Launch debugger on any errors
   -o, --open                Open Datasette in your web browser
   --create                  Create database files if they do not exist

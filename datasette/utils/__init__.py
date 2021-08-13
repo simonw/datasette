@@ -1089,3 +1089,44 @@ async def derive_named_parameters(db, sql):
         return [row["p4"].lstrip(":") for row in results if row["opcode"] == "Variable"]
     except sqlite3.DatabaseError:
         return possible_params
+
+
+def columns_for_query(conn, sql, params=None):
+    """
+    Given a SQLite connection ``conn`` and a SQL query ``sql``,
+    returns a list of ``(table_name, column_name)`` pairs, one
+    per returned column. ``(None, None)`` if no table and column
+    could be derived.
+    """
+    rows = conn.execute("explain " + sql, params).fetchall()
+    table_rootpage_by_register = {
+        r["p1"]: r["p2"] for r in rows if r["opcode"] == "OpenRead"
+    }
+    names_by_rootpage = dict(
+        conn.execute(
+            "select rootpage, name from sqlite_master where rootpage in ({})".format(
+                ", ".join(map(str, table_rootpage_by_register.values()))
+            )
+        )
+    )
+    columns_by_column_register = {}
+    for row in rows:
+        if row["opcode"] in ("Rowid", "Column"):
+            addr, opcode, table_id, cid, column_register, p4, p5, comment = row
+            table = names_by_rootpage[table_rootpage_by_register[table_id]]
+            columns_by_column_register[column_register] = (table, cid)
+    result_row = [dict(r) for r in rows if r["opcode"] == "ResultRow"][0]
+    registers = list(range(result_row["p1"], result_row["p1"] + result_row["p2"]))
+    all_column_names = {}
+    for table in names_by_rootpage.values():
+        table_xinfo = conn.execute("pragma table_xinfo({})".format(table)).fetchall()
+        for row in table_xinfo:
+            all_column_names[(table, row["cid"])] = row["name"]
+    final_output = []
+    for r in registers:
+        try:
+            table, cid = columns_by_column_register[r]
+            final_output.append((table, all_column_names[table, cid]))
+        except KeyError:
+            final_output.append((None, None))
+    return final_output

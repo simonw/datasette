@@ -10,6 +10,7 @@ import markupsafe
 from datasette.utils import (
     await_me_maybe,
     check_visibility,
+    columns_for_query,
     derive_named_parameters,
     to_css_class,
     validate_sql_select,
@@ -248,6 +249,8 @@ class QueryView(DataView):
 
         query_error = None
 
+        extra_column_info = None
+
         # Execute query - as write or as read
         if write:
             if request.method == "POST":
@@ -334,6 +337,12 @@ class QueryView(DataView):
                     database, sql, params_for_query, truncate=True, **extra_args
                 )
                 columns = [r[0] for r in results.description]
+
+                # Try to figure out extra column information
+                db = self.ds.get_database(database)
+                extra_column_info = await db.execute_fn(
+                    lambda conn: columns_for_query(conn, sql, params_for_query)
+                )
             except sqlite3.DatabaseError as e:
                 query_error = e
                 results = None
@@ -462,6 +471,7 @@ class QueryView(DataView):
                 "show_hide_text": show_hide_text,
                 "show_hide_hidden": markupsafe.Markup(show_hide_hidden),
                 "hide_sql": hide_sql,
+                "extra_column_info": extra_column_info,
             }
 
         return (

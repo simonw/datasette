@@ -67,6 +67,8 @@
     </p>
 </form>
 
+extra_column_info: {{ extra_column_info }}
+
 {% if display_rows %}
 <p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}, <a href="{{ url_csv }}">CSV</a></p>
 <div class="table-wrapper"><table class="rows-and-columns">

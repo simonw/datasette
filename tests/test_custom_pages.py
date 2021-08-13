@@ -14,7 +14,7 @@ def custom_pages_client():
 @pytest.fixture(scope="session")
 def custom_pages_client_with_base_url():
     with make_app_client(
-        template_dir=TEST_TEMPLATE_DIRS, config={"base_url": "/prefix/"}
+        template_dir=TEST_TEMPLATE_DIRS, settings={"base_url": "/prefix/"}
     ) as client:
         yield client
 

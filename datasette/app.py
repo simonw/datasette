@@ -200,7 +200,7 @@ class Datasette:
         plugins_dir=None,
         static_mounts=None,
         memory=False,
-        config=None,
+        settings=None,
         secret=None,
         version_note=None,
         config_dir=None,
@@ -279,7 +279,7 @@ class Datasette:
             raise StartupError("config.json should be renamed to settings.json")
         if config_dir and (config_dir / "settings.json").exists() and not config:
             config = json.loads((config_dir / "settings.json").read_text())
-        self._settings = dict(DEFAULT_SETTINGS, **(config or {}))
+        self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
         self.executor = futures.ThreadPoolExecutor(
@@ -419,8 +419,8 @@ class Datasette:
     def setting(self, key):
         return self._settings.get(key, None)
 
-    def config_dict(self):
-        # Returns a fully resolved config dictionary, useful for templates
+    def settings_dict(self):
+        # Returns a fully resolved settings dictionary, useful for templates
         return {option.name: self.setting(option.name) for option in SETTINGS}
 
     def _metadata_recursive_update(self, orig, updated):

@@ -214,7 +214,7 @@ def test_definition_sql(path, expected_definition_sql, app_client):
 
 
 def test_table_cell_truncation():
-    with make_app_client(config={"truncate_cells_html": 5}) as client:
+    with make_app_client(settings={"truncate_cells_html": 5}) as client:
         response = client.get("/fixtures/facetable")
         assert response.status == 200
         table = Soup(response.body, "html.parser").find("table")
@@ -239,7 +239,7 @@ def test_table_cell_truncation():
 
 
 def test_row_page_does_not_truncate():
-    with make_app_client(config={"truncate_cells_html": 5}) as client:
+    with make_app_client(settings={"truncate_cells_html": 5}) as client:
         response = client.get("/fixtures/facetable/1")
         assert response.status == 200
         table = Soup(response.body, "html.parser").find("table")
@@ -1072,7 +1072,9 @@ def test_database_download_disallowed_for_memory():
 
 
 def test_allow_download_off():
-    with make_app_client(is_immutable=True, config={"allow_download": False}) as client:
+    with make_app_client(
+        is_immutable=True, settings={"allow_download": False}
+    ) as client:
         response = client.get("/fixtures")
         soup = Soup(response.body, "html.parser")
         assert not len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
@@ -1486,7 +1488,7 @@ def test_query_error(app_client):
 
 
 def test_config_template_debug_on():
-    with make_app_client(config={"template_debug": True}) as client:
+    with make_app_client(settings={"template_debug": True}) as client:
         response = client.get("/fixtures/facetable?_context=1")
         assert response.status == 200
         assert response.text.startswith("<pre>{")
@@ -1500,7 +1502,7 @@ def test_config_template_debug_off(app_client):
 
 def test_debug_context_includes_extra_template_vars():
     # https://github.com/simonw/datasette/issues/693
-    with make_app_client(config={"template_debug": True}) as client:
+    with make_app_client(settings={"template_debug": True}) as client:
         response = client.get("/fixtures/facetable?_context=1")
         # scope_path is added by PLUGIN1
         assert "scope_path" in response.text
@@ -1744,7 +1746,7 @@ def test_facet_more_links(
     expected_ellipses_url,
 ):
     with make_app_client(
-        config={"max_returned_rows": max_returned_rows, "default_facet_size": 2}
+        settings={"max_returned_rows": max_returned_rows, "default_facet_size": 2}
     ) as client:
         response = client.get(path)
         soup = Soup(response.body, "html.parser")

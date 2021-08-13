@@ -1711,14 +1711,14 @@ def test_suggested_facets(app_client):
 
 
 def test_allow_facet_off():
-    with make_app_client(config={"allow_facet": False}) as client:
+    with make_app_client(settings={"allow_facet": False}) as client:
         assert 400 == client.get("/fixtures/facetable.json?_facet=planet_int").status
         # Should not suggest any facets either:
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
 
 def test_suggest_facets_off():
-    with make_app_client(config={"suggest_facets": False}) as client:
+    with make_app_client(settings={"suggest_facets": False}) as client:
         # Now suggested_facets should be []
         assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
 
@@ -1883,7 +1883,7 @@ def test_config_cache_size(app_client_larger_cache_size):
 
 
 def test_config_force_https_urls():
-    with make_app_client(config={"force_https_urls": True}) as client:
+    with make_app_client(settings={"force_https_urls": True}) as client:
         response = client.get("/fixtures/facetable.json?_size=3&_facet=state")
         assert response.json["next_url"].startswith("https://")
         assert response.json["facet_results"]["state"]["results"][0][
@@ -1921,7 +1921,7 @@ def test_custom_query_with_unicode_characters(app_client):
 
 @pytest.mark.parametrize("trace_debug", (True, False))
 def test_trace(trace_debug):
-    with make_app_client(config={"trace_debug": trace_debug}) as client:
+    with make_app_client(settings={"trace_debug": trace_debug}) as client:
         response = client.get("/fixtures/simple_primary_key.json?_trace=1")
         assert response.status == 200
 

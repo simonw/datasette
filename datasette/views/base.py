@@ -614,7 +614,7 @@ class DataView(BaseView):
                     ]
                     + [("_size", "max")],
                     "datasette_version": __version__,
-                    "config": self.ds.config_dict(),
+                    "settings": self.ds.settings_dict(),
                 },
             }
             if "metadata" not in context:

@@ -351,7 +351,7 @@ async def test_json_array_with_blanks_and_nulls():
 
 @pytest.mark.asyncio
 async def test_facet_size():
-    ds = Datasette([], memory=True, config={"max_returned_rows": 50})
+    ds = Datasette([], memory=True, settings={"max_returned_rows": 50})
     db = ds.add_database(Database(ds, memory_name="test_facet_size"))
     await db.execute_write(
         "create table neighbourhoods(city text, neighbourhood text)", block=True

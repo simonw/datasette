@@ -495,14 +495,14 @@ def serve(
     if metadata:
         metadata_data = parse_metadata(metadata.read())
 
-    combined_config = {}
+    combined_settings = {}
     if config:
         click.echo(
             "--config name:value will be deprecated in Datasette 1.0, use --setting name value instead",
             err=True,
         )
-        combined_config.update(config)
-    combined_config.update(settings)
+        combined_settings.update(config)
+    combined_settings.update(settings)
 
     kwargs = dict(
         immutables=immutable,
@@ -514,7 +514,7 @@ def serve(
         template_dir=template_dir,
         plugins_dir=plugins_dir,
         static_mounts=static,
-        config=combined_config,
+        settings=combined_settings,
         memory=memory,
         secret=secret,
         version_note=version_note,

@@ -456,7 +456,7 @@ class QueryView(DataView):
                 "canned_query": canned_query,
                 "edit_sql_url": edit_sql_url,
                 "metadata": metadata,
-                "config": self.ds.config_dict(),
+                "settings": self.ds.settings_dict(),
                 "request": request,
                 "show_hide_link": show_hide_link,
                 "show_hide_text": show_hide_text,

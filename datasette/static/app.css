@@ -633,6 +633,11 @@ form button[type=button] {
     width: 250px;
     margin-right: 15px;
 }
+.facet-info-total {
+    font-size: 0.8em;
+    color: #666;
+    padding-right: 0.25em;
+}
 .facet-info li,
 .facet-info ul {
     margin: 0;

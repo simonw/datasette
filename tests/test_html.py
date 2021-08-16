@@ -479,7 +479,7 @@ def test_facet_display(app_client):
     for div in divs:
         actual.append(
             {
-                "name": div.find("strong").text,
+                "name": div.find("strong").text.split()[0],
                 "items": [
                     {
                         "name": a.text,
@@ -1797,3 +1797,23 @@ def test_column_metadata(app_client):
         soup.select("th[data-column=address]")[0]["data-column-description"]
         == "The street address for the attraction"
     )
+
+
+@pytest.mark.parametrize("use_facet_size_max", (True, False))
+def test_facet_total_shown_if_facet_max_size(use_facet_size_max):
+    # https://github.com/simonw/datasette/issues/1423
+    with make_app_client(settings={"max_returned_rows": 100}) as client:
+        path = "/fixtures/sortable?_facet=content&_facet=pk1"
+        if use_facet_size_max:
+            path += "&_facet_size=max"
+        response = client.get(path)
+        assert response.status == 200
+    fragments = (
+        '<span class="facet-info-total">&gt;100</span>',
+        '<span class="facet-info-total">8</span>',
+    )
+    for fragment in fragments:
+        if use_facet_size_max:
+            assert fragment in response.text
+        else:
+            assert fragment not in response.text

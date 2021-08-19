@@ -1108,11 +1108,14 @@ def columns_for_query(conn, sql, params=None):
     }
     print(f"{table_rootpage_by_register=}")
     names_and_types_by_rootpage = dict(
-        [(r[0], (r[1], r[2])) for r in conn.execute(
-            "select rootpage, name, type from sqlite_master where rootpage in ({})".format(
-                ", ".join(map(str, table_rootpage_by_register.values()))
+        [
+            (r[0], (r[1], r[2]))
+            for r in conn.execute(
+                "select rootpage, name, type from sqlite_master where rootpage in ({})".format(
+                    ", ".join(map(str, table_rootpage_by_register.values()))
+                )
             )
-        )]
+        ]
     )
     print(f"{names_and_types_by_rootpage=}")
     columns_by_column_register = {}
@@ -1122,18 +1125,26 @@ def columns_for_query(conn, sql, params=None):
             print(f"{table_id=} {cid=} {column_register=}")
             table = None
             try:
-                table = names_and_types_by_rootpage[table_rootpage_by_register[table_id]][0]
+                table = names_and_types_by_rootpage[
+                    table_rootpage_by_register[table_id]
+                ][0]
                 columns_by_column_register[column_register] = (table, cid)
             except KeyError as e:
                 print("  KeyError")
                 print("   ", e)
-                print("    table = names_and_types_by_rootpage[table_rootpage_by_register[table_id]][0]")
-                print(f"    {names_and_types_by_rootpage=} {table_rootpage_by_register=} {table_id=}")
+                print(
+                    "    table = names_and_types_by_rootpage[table_rootpage_by_register[table_id]][0]"
+                )
+                print(
+                    f"    {names_and_types_by_rootpage=} {table_rootpage_by_register=} {table_id=}"
+                )
                 print("    columns_by_column_register[column_register] = (table, cid)")
                 print(f"    {column_register=} = ({table=}, {cid=})")
                 pass
     result_row = [dict(r) for r in opcodes if r["opcode"] == "ResultRow"][0]
-    result_registers = list(range(result_row["p1"], result_row["p1"] + result_row["p2"]))
+    result_registers = list(
+        range(result_row["p1"], result_row["p1"] + result_row["p2"])
+    )
     print(f"{result_registers=}")
     print(f"{columns_by_column_register=}")
     all_column_names = {}

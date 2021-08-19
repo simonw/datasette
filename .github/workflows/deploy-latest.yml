@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - deploy-this-branch
 
 jobs:
   deploy:
@@ -50,6 +51,8 @@ jobs:
       run: |-
         gcloud config set run/region us-central1
         gcloud config set project datasette-222320
+        export SUFFIX="-${GITHUB_REF#refs/heads/}"
+        export SUFFIX=${SUFFIX#-main}
         datasette publish cloudrun fixtures.db extra_database.db \
             -m fixtures.json \
             --plugins-dir=plugins \
@@ -57,7 +60,10 @@ jobs:
             --version-note=$GITHUB_SHA \
             --extra-options="--setting template_debug 1 --setting trace_debug 1 --crossdb" \
             --install=pysqlite3-binary \
-            --service=datasette-latest
+            --service "datasette-latest$SUFFIX"
+    - name: Deploy to docs as well (only for main)
+      if: ${{ github.ref == 'refs/heads/main' }}
+      run: |-
         # Deploy docs.db to a different service
         datasette publish cloudrun docs.db \
             --branch=$GITHUB_SHA \

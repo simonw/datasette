@@ -196,6 +196,17 @@ Datasette class
 
 This object is an instance of the ``Datasette`` class, passed to many plugin hooks as an argument called ``datasette``.
 
+.. _datasette_databases:
+
+.databases
+----------
+
+Property exposing an ordered dictionary of databases currently connected to Datasette.
+
+The dictionary keys are the name of the database that is used in the URL - e.g. ``/fixtures`` would have a key of ``"fixtures"``. The values are :ref:`internals_database` instances.
+
+All databases are listed, irrespective of user permissions. This means that the ``_internal`` database will always be listed here.
+
 .. _datasette_plugin_config:
 
 .plugin_config(plugin_name, database=None, table=None)

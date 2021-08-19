@@ -202,6 +202,17 @@ For added productivity, you can use use `sphinx-autobuild <https://pypi.org/proj
 
 Now browse to ``http://localhost:8000/`` to view the documentation. Any edits you make should be instantly reflected in your browser.
 
+.. _contributing_continuous_deployment:
+
+Continuously deployed demo instances
+------------------------------------
+
+The demo instance at `latest.datasette.io <https://latest.datasette.io/>`__ is re-deployed automatically to Google Cloud Run for every push to ``main`` that passes the test suite. This is implemented by the GitHub Actions workflow at `.github/workflows/deploy-latest.yml <https://github.com/simonw/datasette/blob/main/.github/workflows/deploy-latest.yml>`__.
+
+Specific branches can also be set to automatically deploy by adding them to the ``on: push: branches`` block at the top of the workflow YAML file. Branches configured in this way will be deployed to a new Cloud Run service whether or not their tests pass.
+
+The Cloud Run URL for a branch demo can be found in the GitHub Actions logs.
+
 .. _contributing_release:
 
 Release process

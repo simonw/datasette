@@ -30,6 +30,7 @@ jobs:
         python -m pip install -e .[docs]
         python -m pip install sphinx-to-sqlite==0.1a1
     - name: Run tests
+      if: ${{ github.ref == 'refs/heads/main' }}
       run: |
         pytest -n auto -m "not serial"
         pytest -m "serial"

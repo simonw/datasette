@@ -36,6 +36,7 @@ jobs:
     - name: Build fixtures.db
       run: python tests/fixtures.py fixtures.db fixtures.json plugins --extra-db-filename extra_database.db
     - name: Build docs.db
+      if: ${{ github.ref == 'refs/heads/main' }}
       run: |-
         cd docs
         sphinx-build -b xml . _build

@@ -13,6 +13,7 @@
 {% block extra_head %}{% endblock %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
+<div class="not-footer">
 <header><nav>{% block nav %}
     {% set links = menu_links() %}{% if links or show_logout %}
     <details class="nav-menu">
@@ -56,7 +57,7 @@
 {% block content %}
 {% endblock %}
 </section>
-
+</div>
 <footer class="ft">{% block footer %}{% include "_footer.html" %}{% endblock %}</footer>
 
 {% include "_close_open_menus.html" %}

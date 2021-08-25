@@ -70,7 +70,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
                     "display_ads": {
                         "fts_table": "ads_fts",
                         "fts_pk": "id",
-                        "search_mode": "raw"
+                        "searchmode": "raw"
                     }
                 }
             }

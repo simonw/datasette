@@ -4,6 +4,19 @@
 Changelog
 =========
 
+.. _v0_59a2:
+
+0.59a2 (2021-08-27)
+-------------------
+
+- Columns can now have associated metadata descriptions in ``metadata.json``, see :ref:`metadata_column_descriptions`. (:issue:`942`)
+- New :ref:`register_commands() <plugin_hook_register_commands>` plugin hook allows plugins to register additional Datasette CLI commands, e.g. ``datasette mycommand file.db``. (:issue:`1449`)
+- Adding ``?_facet_size=max`` to a table page now shows the number of unique values in each facet. (:issue:`1423`)
+- Code that figures out which named parameters a SQL query takes in order to display form fields for them is no longer confused by strings that contain colon characters. (:issue:`1421`)
+- Renamed ``--help-config`` option to ``--help-settings``. (:issue:`1431`)
+- ``datasette.databases`` property is now a documented API. (:issue:`1443`)
+- Datasette base template now wraps everything other than the ``<footer>`` in a ``<div class="not-footer">`` element, to help with advanced CSS customization. (:issue:`1446`)
+
 .. _v0_59a1:
 
 0.59a1 (2021-08-08)

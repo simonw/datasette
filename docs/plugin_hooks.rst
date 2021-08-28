@@ -587,7 +587,7 @@ See :ref:`writing_plugins_designing_urls` for tips on designing the URL routes u
 
 Examples: `datasette-auth-github <https://datasette.io/plugins/datasette-auth-github>`__, `datasette-psutil <https://datasette.io/plugins/datasette-psutil>`__
 
-.. _plugin_register_commands:
+.. _plugin_hook_register_commands:
 
 register_commands(cli)
 ----------------------

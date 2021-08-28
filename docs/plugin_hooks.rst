@@ -80,7 +80,6 @@ You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
 
-
 .. _plugin_hook_extra_template_vars:
 
 extra_template_vars(template, database, table, columns, view_name, request, datasette)
@@ -631,6 +630,8 @@ Plugins can register multiple commands by making multiple calls to the ``@cli.co
 Note that ``register_commands()`` plugins cannot used with the :ref:`--plugins-dir mechanism <writing_plugins_one_off>` - they need to be installed into the same virtual environment as Datasette using ``pip install``. Provided it has a ``setup.py`` file (see :ref:`writing_plugins_packaging`) you can run ``pip install`` directly against the directory in which you are developing your plugin like so::
 
     pip install -e path/to/my/datasette-plugin
+
+Example: `datasette-verify <https://datasette.io/plugins/datasette-verify>`_
 
 .. _plugin_register_facet_classes:
 

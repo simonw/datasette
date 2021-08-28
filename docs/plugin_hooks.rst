@@ -587,6 +587,51 @@ See :ref:`writing_plugins_designing_urls` for tips on designing the URL routes u
 
 Examples: `datasette-auth-github <https://datasette.io/plugins/datasette-auth-github>`__, `datasette-psutil <https://datasette.io/plugins/datasette-psutil>`__
 
+.. _plugin_register_commands:
+
+register_commands(cli)
+----------------------
+
+``cli`` - the root Datasette `Click command group <https://click.palletsprojects.com/en/latest/commands/#callback-invocation>`__
+    Use this to register additional CLI commands
+
+Register additional CLI commands that can be run using ``datsette yourcommand ...``. This provides a mechanism by which plugins can add new CLI commands to Datasette.
+
+This example registers a new ``datasette verify file1.db file2.db`` command that checks if the provided file paths are valid SQLite databases:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import click
+    import sqlite3
+
+    @hookimpl
+    def register_commands(cli):
+        @cli.command()
+        @click.argument("files", type=click.Path(exists=True), nargs=-1)
+        def verify(files):
+            "Verify that files can be opened by Datasette"
+            for file in files:
+                conn = sqlite3.connect(str(file))
+                try:
+                    conn.execute("select * from sqlite_master")
+                except sqlite3.DatabaseError:
+                    raise click.ClickException("Invalid database: {}".format(file))
+
+The new command can then be executed like so::
+
+    datasette verify fixtures.db
+
+Help text (from the docstring for the function plus any defined Click arguments or options) will become available using::
+
+    datasette verify --help
+
+Plugins can register multiple commands by making multiple calls to the ``@cli.command()`` decorator.Consult the `Click documentation <https://click.palletsprojects.com/>`__ for full details on how to build a CLI command, including how to define arguments and options.
+
+Note that ``register_commands()`` plugins cannot used with the :ref:`--plugins-dir mechanism <writing_plugins_one_off>` - they need to be installed into the same virtual environment as Datasette using ``pip install``. Provided it has a ``setup.py`` file (see :ref:`writing_plugins_packaging`) you can run ``pip install`` directly against the directory in which you are developing your plugin like so::
+
+    pip install -e path/to/my/datasette-plugin
+
 .. _plugin_register_facet_classes:
 
 register_facet_classes()

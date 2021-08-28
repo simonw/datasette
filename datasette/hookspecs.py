@@ -80,6 +80,11 @@ def register_routes(datasette):
 
 
 @hookspec
+def register_commands(cli):
+    """Register additional CLI commands, e.g. 'datasette mycommand ...'"""
+
+
+@hookspec
 def actor_from_request(datasette, request):
     """Return an actor dictionary based on the incoming request"""
 

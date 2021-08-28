@@ -595,6 +595,9 @@ def serve(
     uvicorn.run(ds.app(), **uvicorn_kwargs)
 
 
+pm.hook.register_commands(cli=cli)
+
+
 async def check_databases(ds):
     # Run check_connection against every connected database
     # to confirm they are all usable

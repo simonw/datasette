@@ -626,7 +626,7 @@ Help text (from the docstring for the function plus any defined Click arguments 
 
     datasette verify --help
 
-Plugins can register multiple commands by making multiple calls to the ``@cli.command()`` decorator.Consult the `Click documentation <https://click.palletsprojects.com/>`__ for full details on how to build a CLI command, including how to define arguments and options.
+Plugins can register multiple commands by making multiple calls to the ``@cli.command()`` decorator. Consult the `Click documentation <https://click.palletsprojects.com/>`__ for full details on how to build a CLI command, including how to define arguments and options.
 
 Note that ``register_commands()`` plugins cannot used with the :ref:`--plugins-dir mechanism <writing_plugins_one_off>` - they need to be installed into the same virtual environment as Datasette using ``pip install``. Provided it has a ``setup.py`` file (see :ref:`writing_plugins_packaging`) you can run ``pip install`` directly against the directory in which you are developing your plugin like so::
 

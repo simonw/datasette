@@ -123,7 +123,11 @@ def sqlite_extensions(fn):
 @click.version_option(version=__version__)
 def cli():
     """
-    Datasette!
+    Datasette is an open source multi-tool for exploring and publishing data
+
+    \b
+    About Datasette: https://datasette.io/
+    Full documentation: https://docs.datasette.io/
     """
 
 

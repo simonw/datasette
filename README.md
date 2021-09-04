@@ -12,7 +12,7 @@
 
 Datasette is a tool for exploring and publishing data. It helps people take data of any shape or size and publish that as an interactive, explorable website and accompanying API.
 
-Datasette is aimed at data journalists, museum curators, archivists, local governments and anyone else who has data that they wish to share with the world.
+Datasette is aimed at data journalists, museum curators, archivists, local governments, scientists and anyone else who has data that they wish to share with the world.
 
 [Explore a demo](https://global-power-plants.datasettes.com/global-power-plants/global-power-plants), watch [a video about the project](https://simonwillison.net/2021/Feb/7/video/) or try it out by [uploading and publishing your own CSV data](https://docs.datasette.io/en/stable/getting_started.html#try-datasette-without-installing-anything-using-glitch).
 

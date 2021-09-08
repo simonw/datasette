@@ -560,7 +560,8 @@ def serve(
     # Run async soundness checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
 
-    if get:
+    # if '--get' is supplied w/o '--open', fetch URL and output response:
+    if get and not open_browser:
         client = TestClient(ds)
         response = client.get(get)
         click.echo(response.text)
@@ -575,6 +576,17 @@ def serve(
             host, port, ds.urls.path("-/auth-token"), ds._root_token
         )
         print(url)
+    if get:
+        assert open_browser     # should only be here if -o was specified
+
+        if root:                # incompatible for now?
+            assert url
+            # @CTB: print out some error message
+            sys.exit(1)
+
+        # @CTB: do we want to require that --get starts with a '/'?
+        url = f"http://{host}:{port}{get}"
+
     if open_browser:
         if url is None:
             # Figure out most convenient URL - to table, database or homepage

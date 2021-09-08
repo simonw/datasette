@@ -1319,6 +1319,7 @@ class DatasetteRouter:
         headers = {}
         if self.ds.cors:
             headers["Access-Control-Allow-Origin"] = "*"
+            headers["Access-Control-Allow-Headers"] = "Authorization"
         if request.path.split("?")[0].endswith(".json"):
             await asgi_send_json(send, info, status=status, headers=headers)
         else:

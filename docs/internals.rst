@@ -664,6 +664,10 @@ This method works like ``.execute_write()``, but instead of a SQL statement you 
 
 The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection as long as it is executing.
 
+.. warning::
+
+    ``fn`` needs to be a regular function, not an ``async def`` function.
+
 For example:
 
 .. code-block:: python

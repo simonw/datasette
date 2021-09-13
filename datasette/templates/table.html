@@ -172,12 +172,11 @@
     </div>
 {% endif %}
 
+{% include custom_table_templates %}
+
 {% if next_url %}
      <p><a href="{{ next_url }}">Next page</a></p>
 {% endif %}
-
-{% include custom_table_templates %}
-
 
 {% if display_rows %}
     <div id="export" class="advanced-export">

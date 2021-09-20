@@ -468,10 +468,18 @@ class TableView(RowTableShared):
                 other_column = through_data["column"]
                 value = through_data["value"]
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
+                incoming_foreign_keys = await db.foreign_keys_for_table(table)
                 try:
-                    fk_to_us = [
+                    fk = [
                         fk for fk in outgoing_foreign_keys if fk["other_table"] == table
-                    ][0]
+                    ]
+                    if len(fk) > 0:
+                        fk = fk[0]
+                    else:
+                        fk= [
+                            fk for fk in incoming_foreign_keys if fk["other_table"] == through_table
+                        ]
+                        fk = fk[0]
                 except IndexError:
                     raise DatasetteError(
                         "Invalid _through - could not find corresponding foreign key"
@@ -480,8 +488,8 @@ class TableView(RowTableShared):
                 where_clauses.append(
                     "{our_pk} in (select {our_column} from {through_table} where {other_column} = :{param})".format(
                         through_table=escape_sqlite(through_table),
-                        our_pk=escape_sqlite(fk_to_us["other_column"]),
-                        our_column=escape_sqlite(fk_to_us["column"]),
+                        our_pk=escape_sqlite(fk["other_column"]),
+                        our_column=escape_sqlite(fk["column"]),
                         other_column=escape_sqlite(other_column),
                         param=param,
                     )

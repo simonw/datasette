@@ -793,6 +793,10 @@ If your plugin implements a ``<form method="POST">`` anywhere you will need to i
 
     <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
 
+If you are rendering templates using the :ref:`datasette_render_template` method the ``csrftoken()`` helper will only work if you provide the ``request=`` argument to that method. If you forget to do this you will see the following error::
+
+    form-urlencoded POST field did not match cookie
+
 You can selectively disable CSRF protection using the :ref:`plugin_hook_skip_csrf` hook.
 
 .. _internals_internal:

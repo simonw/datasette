@@ -353,4 +353,4 @@ def test_magic_parameters_cannot_be_used_in_arbitrary_queries(magic_parameters_c
         "/data.json?sql=select+:_header_host&_shape=array"
     )
     assert 400 == response.status
-    assert "You did not supply a value for binding 1." == response.json["error"]
+    assert response.json["error"].startswith("You did not supply a value for binding")

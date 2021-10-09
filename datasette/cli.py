@@ -14,6 +14,7 @@ from runpy import run_module
 import webbrowser
 from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, SQLITE_LIMIT_ATTACHED, pm
 from .utils import (
+    asyncio_run,
     StartupError,
     check_connection,
     find_spatialite,
@@ -136,9 +137,7 @@ def cli():
 @click.option("--inspect-file", default="-")
 @sqlite_extensions
 def inspect(files, inspect_file, sqlite_extensions):
-    app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
-    loop = asyncio.get_event_loop()
-    inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))
+    inspect_data = asyncio_run(inspect_(files, sqlite_extensions))
     if inspect_file == "-":
         sys.stdout.write(json.dumps(inspect_data, indent=2))
     else:
@@ -555,10 +554,10 @@ def serve(
         return ds
 
     # Run the "startup" plugin hooks
-    asyncio.get_event_loop().run_until_complete(ds.invoke_startup())
+    asyncio_run(ds.invoke_startup())
 
     # Run async soundness checks - but only if we're not under pytest
-    asyncio.get_event_loop().run_until_complete(check_databases(ds))
+    asyncio_run(check_databases(ds))
 
     if get:
         client = TestClient(ds)
@@ -578,9 +577,7 @@ def serve(
     if open_browser:
         if url is None:
             # Figure out most convenient URL - to table, database or homepage
-            path = asyncio.get_event_loop().run_until_complete(
-                initial_path_for_datasette(ds)
-            )
+            path = asyncio_run(initial_path_for_datasette(ds))
             url = f"http://{host}:{port}{path}"
         webbrowser.open(url)
     uvicorn_kwargs = dict(

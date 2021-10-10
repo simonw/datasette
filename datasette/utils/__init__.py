@@ -1089,12 +1089,3 @@ async def derive_named_parameters(db, sql):
         return [row["p4"].lstrip(":") for row in results if row["opcode"] == "Variable"]
     except sqlite3.DatabaseError:
         return possible_params
-
-
-def asyncio_run(coro):
-    if hasattr(asyncio, "run"):
-        # Added in Python 3.7
-        return asyncio.run(coro)
-    else:
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(coro)

@@ -1817,3 +1817,9 @@ def test_facet_total_shown_if_facet_max_size(use_facet_size_max):
             assert fragment in response.text
         else:
             assert fragment not in response.text
+
+
+def test_sort_rowid_with_next(app_client):
+    # https://github.com/simonw/datasette/issues/1470
+    response = app_client.get("/fixtures/binary_data?_size=1&_next=1&_sort=rowid")
+    assert response.status == 200

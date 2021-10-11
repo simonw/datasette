@@ -72,7 +72,7 @@ setup(
             "pytest-asyncio>=0.10,<0.16",
             "beautifulsoup4>=4.8.1,<4.10.0",
             "black==21.7b0",
-            "pytest-timeout>=1.4.2,<1.5",
+            "pytest-timeout>=1.4.2,<2.1",
             "trustme>=0.7,<0.10",
         ],
         "rich": ["rich"],

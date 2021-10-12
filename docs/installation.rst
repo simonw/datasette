@@ -90,6 +90,25 @@ Once pipx is installed you can use it to install Datasette like this::
 
 Then run ``datasette --version`` to confirm that it has been successfully installed.
 
+Installing plugins using pipx
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can install additional datasette plugins with ``pipx inject`` like so::
+
+    $ pipx inject datasette datasette-json-html
+    injected package datasette-json-html into venv datasette
+    done! ✨ 🌟 ✨
+
+    $ datasette plugins
+    [
+        {
+            "name": "datasette-json-html",
+            "static": false,
+            "templates": false,
+            "version": "0.6"
+        }
+    ]
+
 Upgrading packages using pipx
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

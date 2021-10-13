@@ -129,16 +129,15 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       hideColumn.parentNode.style.display = "none";
     }
     /* Only show facet if it's not the first column, not selected, not a single PK */
+    var displayedFacets = Array.from(
+      document.querySelectorAll(".facet-info")
+    ).map((el) => el.dataset.column);
     var isFirstColumn =
       th.parentElement.querySelector("th:first-of-type") == th;
     var isSinglePk =
       th.getAttribute("data-is-pk") == "1" &&
       document.querySelectorAll('th[data-is-pk="1"]').length == 1;
-    if (
-      isFirstColumn ||
-      params.getAll("_facet").includes(column) ||
-      isSinglePk
-    ) {
+    if (isFirstColumn || displayedFacets.includes(column) || isSinglePk) {
       facetItem.parentNode.style.display = "none";
     } else {
       facetItem.parentNode.style.display = "block";

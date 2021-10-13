@@ -47,7 +47,7 @@ If that option has been specified in the table metadata but you want to over-rid
 Configuring full-text search for a table or view
 ------------------------------------------------
 
-If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown above, Datasette will detect it automatically and add a search interface to the table page for that table.
+If a table has a corresponding FTS table set up using the ``content=`` argument to ``CREATE VIRTUAL TABLE`` shown below, Datasette will detect it automatically and add a search interface to the table page for that table.
 
 You can also manually configure which table should be used for full-text search using query string parameters or :ref:`metadata`. You can set the associated FTS table for a specific table and you can also set one for a view - if you do that, the page for that SQL view will offer a search option.
 

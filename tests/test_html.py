@@ -563,6 +563,16 @@ def test_facets_persist_through_filter_form(app_client):
     ]
 
 
+def test_next_does_not_persist_in_hidden_field(app_client):
+    response = app_client.get("/fixtures/searchable?_size=1&_next=1")
+    assert response.status == 200
+    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+    hiddens = [i for i in inputs if i["type"] == "hidden"]
+    assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
+        ("_size", "1"),
+    ]
+
+
 @pytest.mark.parametrize(
     "path,expected_classes",
     [

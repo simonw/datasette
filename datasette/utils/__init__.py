@@ -1089,3 +1089,75 @@ async def derive_named_parameters(db, sql):
         return [row["p4"].lstrip(":") for row in results if row["opcode"] == "Variable"]
     except sqlite3.DatabaseError:
         return possible_params
+
+
+def columns_for_query(conn, sql, params=None):
+    """
+    Given a SQLite connection ``conn`` and a SQL query ``sql``, returns a list of
+    ``(table_name, column_name)`` pairs corresponding to the columns that would be
+    returned by that SQL query.
+
+    Each pair indicates the source table and column for the returned column, or
+    ``(None, None)`` if no table and column could be derived (e.g. for "select 1")
+    """
+    if sql.lower().strip().startswith("explain"):
+        return []
+    opcodes = conn.execute("explain " + sql, params).fetchall()
+    table_rootpage_by_register = {
+        r["p1"]: r["p2"] for r in opcodes if r["opcode"] == "OpenRead"
+    }
+    print(f"{table_rootpage_by_register=}")
+    names_and_types_by_rootpage = dict(
+        [
+            (r[0], (r[1], r[2]))
+            for r in conn.execute(
+                "select rootpage, name, type from sqlite_master where rootpage in ({})".format(
+                    ", ".join(map(str, table_rootpage_by_register.values()))
+                )
+            )
+        ]
+    )
+    print(f"{names_and_types_by_rootpage=}")
+    columns_by_column_register = {}
+    for opcode_row in opcodes:
+        if opcode_row["opcode"] in ("Rowid", "Column"):
+            addr, opcode, table_id, cid, column_register, p4, p5, comment = opcode_row
+            print(f"{table_id=} {cid=} {column_register=}")
+            table = None
+            try:
+                table = names_and_types_by_rootpage[
+                    table_rootpage_by_register[table_id]
+                ][0]
+                columns_by_column_register[column_register] = (table, cid)
+            except KeyError as e:
+                print("  KeyError")
+                print("   ", e)
+                print(
+                    "    table = names_and_types_by_rootpage[table_rootpage_by_register[table_id]][0]"
+                )
+                print(
+                    f"    {names_and_types_by_rootpage=} {table_rootpage_by_register=} {table_id=}"
+                )
+                print("    columns_by_column_register[column_register] = (table, cid)")
+                print(f"    {column_register=} = ({table=}, {cid=})")
+                pass
+    result_row = [dict(r) for r in opcodes if r["opcode"] == "ResultRow"][0]
+    result_registers = list(
+        range(result_row["p1"], result_row["p1"] + result_row["p2"])
+    )
+    print(f"{result_registers=}")
+    print(f"{columns_by_column_register=}")
+    all_column_names = {}
+    for (table, _) in names_and_types_by_rootpage.values():
+        table_xinfo = conn.execute("pragma table_xinfo({})".format(table)).fetchall()
+        for column_info in table_xinfo:
+            all_column_names[(table, column_info["cid"])] = column_info["name"]
+    print(f"{all_column_names=}")
+    final_output = []
+    for register in result_registers:
+        try:
+            table, cid = columns_by_column_register[register]
+            final_output.append((table, all_column_names[table, cid]))
+        except KeyError:
+            final_output.append((None, None))
+    return final_output

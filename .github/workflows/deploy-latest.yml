@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - query-info
 
 jobs:
   deploy:

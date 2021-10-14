@@ -67,7 +67,7 @@ class TestClient:
         path,
         post_data=None,
         body=None,
-        follow_redirects=True,
+        follow_redirects=False,
         redirect_count=0,
         content_type="application/x-www-form-urlencoded",
         cookies=None,

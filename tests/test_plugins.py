@@ -71,7 +71,7 @@ def test_hook_plugin_prepare_connection_arguments(app_client):
             },
         ),
         (
-            "/fixtures/",
+            "/fixtures",
             {
                 "template": "database.html",
                 "database": "fixtures",
@@ -106,6 +106,7 @@ def test_hook_plugin_prepare_connection_arguments(app_client):
 )
 def test_hook_extra_css_urls(app_client, path, expected_decoded_object):
     response = app_client.get(path)
+    assert response.status == 200
     links = Soup(response.body, "html.parser").findAll("link")
     special_href = [
         l for l in links if l.attrs["href"].endswith("/extra-css-urls-demo.css")
@@ -263,7 +264,7 @@ def test_plugin_config_file(app_client):
             },
         ),
         (
-            "/fixtures/",
+            "/fixtures",
             {
                 "template": "database.html",
                 "database": "fixtures",
@@ -640,7 +641,7 @@ async def test_hook_permission_allowed(app_client, action, expected):
 def test_actor_json(app_client):
     assert {"actor": None} == app_client.get("/-/actor.json").json
     assert {"actor": {"id": "bot2", "1+1": 2}} == app_client.get(
-        "/-/actor.json/?_bot2=1"
+        "/-/actor.json?_bot2=1"
     ).json
 
 
@@ -674,7 +675,7 @@ def test_hook_register_routes_with_datasette(configured_path):
         assert configured_path.upper() == response.text
         # Other one should 404
         other_path = [p for p in ("path1", "path2") if configured_path != p][0]
-        assert client.get(f"/{other_path}/").status == 404
+        assert client.get(f"/{other_path}/", follow_redirects=True).status == 404
 
 
 def test_hook_register_routes_post(app_client):
@@ -777,7 +778,7 @@ def test_hook_register_magic_parameters(restore_working_directory):
         },
     ) as client:
         response = client.post("/data/runme", {}, csrftoken_from=True)
-        assert 200 == response.status
+        assert 302 == response.status
         actual = client.get("/data/logs.json?_sort_desc=rowid&_shape=array").json
         assert [{"rowid": 1, "line": "1.1"}] == actual
         # Now try the GET request against get_uuid

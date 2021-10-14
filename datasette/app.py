@@ -46,6 +46,7 @@ from .database import Database, QueryInterrupted
 from .utils import (
     PrefixedUrlString,
     StartupError,
+    add_cors_headers,
     async_call_with_supported_arguments,
     await_me_maybe,
     call_with_supported_arguments,
@@ -1321,7 +1322,7 @@ class DatasetteRouter:
         )
         headers = {}
         if self.ds.cors:
-            headers["Access-Control-Allow-Origin"] = "*"
+            add_cors_headers(headers)
         if request.path.split("?")[0].endswith(".json"):
             await asgi_send_json(send, info, status=status, headers=headers)
         else:

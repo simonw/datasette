@@ -8,6 +8,7 @@ from urllib.parse import parse_qsl, urlencode
 import markupsafe
 
 from datasette.utils import (
+    add_cors_headers,
     await_me_maybe,
     check_visibility,
     derive_named_parameters,
@@ -176,7 +177,7 @@ class DatabaseDownload(DataView):
         filepath = db.path
         headers = {}
         if self.ds.cors:
-            headers["Access-Control-Allow-Origin"] = "*"
+            add_cors_headers(headers)
         headers["Transfer-Encoding"] = "chunked"
         return AsgiFileDownload(
             filepath,

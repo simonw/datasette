@@ -11,6 +11,7 @@ import pint
 from datasette import __version__
 from datasette.database import QueryInterrupted
 from datasette.utils import (
+    add_cors_headers,
     await_me_maybe,
     EscapeHtmlWriter,
     InvalidSql,
@@ -163,7 +164,7 @@ class DataView(BaseView):
     async def options(self, request, *args, **kwargs):
         r = Response.text("ok")
         if self.ds.cors:
-            r.headers["Access-Control-Allow-Origin"] = "*"
+            add_cors_headers(r.headers)
         return r
 
     def redirect(self, request, path, forward_querystring=True, remove_args=None):
@@ -174,7 +175,7 @@ class DataView(BaseView):
         r = Response.redirect(path)
         r.headers["Link"] = f"<{path}>; rel=preload"
         if self.ds.cors:
-            r.headers["Access-Control-Allow-Origin"] = "*"
+            add_cors_headers(r.headers)
         return r
 
     async def data(self, request, database, hash, **kwargs):
@@ -417,7 +418,7 @@ class DataView(BaseView):
 
         headers = {}
         if self.ds.cors:
-            headers["Access-Control-Allow-Origin"] = "*"
+            add_cors_headers(headers)
         if request.args.get("_dl", None):
             if not trace:
                 content_type = "text/csv; charset=utf-8"
@@ -643,5 +644,5 @@ class DataView(BaseView):
             response.headers["Cache-Control"] = ttl_header
         response.headers["Referrer-Policy"] = "no-referrer"
         if self.ds.cors:
-            response.headers["Access-Control-Allow-Origin"] = "*"
+            add_cors_headers(response.headers)
         return response

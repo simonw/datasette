@@ -1955,7 +1955,8 @@ def test_trace(trace_debug):
 def test_cors(app_client_with_cors, path, status_code):
     response = app_client_with_cors.get(path)
     assert response.status == status_code
-    assert "*" == response.headers["Access-Control-Allow-Origin"]
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
+    assert response.headers["Access-Control-Allow-Headers"] == "Authorization"
 
 
 @pytest.mark.parametrize(

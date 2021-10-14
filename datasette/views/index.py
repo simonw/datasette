@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from datasette.utils import check_visibility, CustomJSONEncoder
+from datasette.utils import add_cors_headers, check_visibility, CustomJSONEncoder
 from datasette.utils.asgi import Response
 from datasette.version import __version__
 
@@ -129,7 +129,7 @@ class IndexView(BaseView):
         if as_format:
             headers = {}
             if self.ds.cors:
-                headers["Access-Control-Allow-Origin"] = "*"
+                add_cors_headers(headers)
             return Response(
                 json.dumps({db["name"]: db for db in databases}, cls=CustomJSONEncoder),
                 content_type="application/json; charset=utf-8",

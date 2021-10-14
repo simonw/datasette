@@ -1089,3 +1089,8 @@ async def derive_named_parameters(db, sql):
         return [row["p4"].lstrip(":") for row in results if row["opcode"] == "Variable"]
     except sqlite3.DatabaseError:
         return possible_params
+
+
+def add_cors_headers(headers):
+    headers["Access-Control-Allow-Origin"] = "*"
+    headers["Access-Control-Allow-Headers"] = "Authorization"

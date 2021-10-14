@@ -1,6 +1,6 @@
 import json
 from datasette.utils.asgi import Response, Forbidden
-from datasette.utils import actor_matches_allow
+from datasette.utils import actor_matches_allow, add_cors_headers
 from .base import BaseView
 import secrets
 
@@ -23,7 +23,7 @@ class JsonDataView(BaseView):
         if as_format:
             headers = {}
             if self.ds.cors:
-                headers["Access-Control-Allow-Origin"] = "*"
+                add_cors_headers(headers)
             return Response(
                 json.dumps(data),
                 content_type="application/json; charset=utf-8",

@@ -10,9 +10,10 @@ To access the API for a page, either click on the ``.json`` link on that page or
 edit the URL and add a ``.json`` extension to it.
 
 If you started Datasette with the ``--cors`` option, each JSON endpoint will be
-served with the following additional HTTP header::
+served with the following additional HTTP headers::
 
     Access-Control-Allow-Origin: *
+    Access-Control-Allow-Headers: Authorization
 
 This means JavaScript running on any domain will be able to make cross-origin
 requests to fetch the data.

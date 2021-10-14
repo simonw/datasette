@@ -4,36 +4,28 @@
 Changelog
 =========
 
-.. _v0_59a2:
+.. _v0_59:
 
-0.59a2 (2021-08-27)
--------------------
+0.59 (2021-10-14)
+-----------------
 
 - Columns can now have associated metadata descriptions in ``metadata.json``, see :ref:`metadata_column_descriptions`. (:issue:`942`)
 - New :ref:`register_commands() <plugin_hook_register_commands>` plugin hook allows plugins to register additional Datasette CLI commands, e.g. ``datasette mycommand file.db``. (:issue:`1449`)
 - Adding ``?_facet_size=max`` to a table page now shows the number of unique values in each facet. (:issue:`1423`)
+- Upgraded dependency `httpx 0.20 <https://github.com/encode/httpx/releases/tag/0.20.0>`__ - the undocumented ``allow_redirects=`` parameter to :ref:`internals_datasette_client` is now ``follow_redirects=``, and defalts to ``False`` where it previously defaulted to ``True``. (:issue:`1488`)
+- The ``--cors`` option now causes Datasette to return the ``Access-Control-Allow-Headers: Authorization`` header, in addition to ``Access-Control-Allow-Origin: *``. (`#1467 <https://github.com/simonw/datasette/pull/1467>`__)
 - Code that figures out which named parameters a SQL query takes in order to display form fields for them is no longer confused by strings that contain colon characters. (:issue:`1421`)
 - Renamed ``--help-config`` option to ``--help-settings``. (:issue:`1431`)
 - ``datasette.databases`` property is now a documented API. (:issue:`1443`)
-- Datasette base template now wraps everything other than the ``<footer>`` in a ``<div class="not-footer">`` element, to help with advanced CSS customization. (:issue:`1446`)
-
-.. _v0_59a1:
-
-0.59a1 (2021-08-08)
--------------------
-
+- The ``base.html`` template now wraps everything other than the ``<footer>`` in a ``<div class="not-footer">`` element, to help with advanced CSS customization. (:issue:`1446`)
 - The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook can now return an awaitable function. This means the hook can execute SQL queries. (:issue:`1425`)
-
-.. _v0_59a0:
-
-0.59a0 (2021-08-06)
--------------------
-
 - :ref:`plugin_register_routes` plugin hook now accepts an optional ``datasette`` argument. (:issue:`1404`)
 - New ``hide_sql`` canned query option for defaulting to hiding the SQL quey used by a canned query, see :ref:`canned_queries_options`. (:issue:`1422`)
 - New ``--cpu`` option for :ref:`datasette publish cloudrun <publish_cloud_run>`. (:issue:`1420`)
 - If `Rich <https://github.com/willmcgugan/rich>`__ is installed in the same virtual environment as Datasette, it will be used to provide enhanced display of error tracebacks on the console. (:issue:`1416`)
 - ``datasette.utils`` :ref:`internals_utils_parse_metadata` function, used by the new `datasette-remote-metadata plugin <https://datasette.io/plugins/datasette-remote-metadata>`__, is now a documented API. (:issue:`1405`)
+- Fixed bug where ``?_next=x&_sort=rowid`` could throw an error. (:issue:`1470`)
+- Column cog menu no longer shows the option to facet by a column that is already selected by the default facets in metadata. (:issue:`1469`)
 
 .. _v0_58_1:
 

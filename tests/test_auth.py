@@ -10,7 +10,6 @@ def test_auth_token(app_client):
     path = f"/-/auth-token?token={app_client.ds._root_token}"
     response = app_client.get(
         path,
-        allow_redirects=False,
     )
     assert 302 == response.status
     assert "/" == response.headers["Location"]
@@ -23,7 +22,6 @@ def test_auth_token(app_client):
         403
         == app_client.get(
             path,
-            allow_redirects=False,
         ).status
     )
 
@@ -78,14 +76,13 @@ def test_logout(app_client):
         in response2.text
     )
     # If logged out you get a redirect to /
-    response3 = app_client.get("/-/logout", allow_redirects=False)
+    response3 = app_client.get("/-/logout")
     assert 302 == response3.status
     # A POST to that page should log the user out
     response4 = app_client.post(
         "/-/logout",
         csrftoken_from=True,
         cookies={"ds_actor": app_client.actor_cookie({"id": "test"})},
-        allow_redirects=False,
     )
     # The ds_actor cookie should have been unset
     assert response4.cookie_was_deleted("ds_actor")

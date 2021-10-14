@@ -97,11 +97,14 @@ def test_request_url_vars():
     [("/", "", "/"), ("/", "foo=bar", "/?foo=bar"), ("/foo", "bar", "/foo?bar")],
 )
 def test_request_properties(path, query_string, expected_full_path):
+    path_with_query_string = path
+    if query_string:
+        path_with_query_string += "?" + query_string
     scope = {
         "http_version": "1.1",
         "method": "POST",
         "path": path,
-        "raw_path": path.encode("latin-1"),
+        "raw_path": path_with_query_string.encode("latin-1"),
         "query_string": query_string.encode("latin-1"),
         "scheme": "http",
         "type": "http",

@@ -75,7 +75,7 @@ class Request:
     @property
     def path(self):
         if self.scope.get("raw_path") is not None:
-            return self.scope["raw_path"].decode("latin-1")
+            return self.scope["raw_path"].decode("latin-1").partition("?")[0]
         else:
             path = self.scope["path"]
             if isinstance(path, str):
@@ -122,7 +122,7 @@ class Request:
             "http_version": "1.1",
             "method": method,
             "path": path,
-            "raw_path": path.encode("latin-1"),
+            "raw_path": path_with_query_string.encode("latin-1"),
             "query_string": query_string.encode("latin-1"),
             "scheme": scheme,
             "type": "http",

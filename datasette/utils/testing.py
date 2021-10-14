@@ -55,10 +55,10 @@ class TestClient:
 
     @async_to_sync
     async def get(
-        self, path, allow_redirects=True, redirect_count=0, method="GET", cookies=None
+        self, path, follow_redirects=False, redirect_count=0, method="GET", cookies=None
     ):
         return await self._request(
-            path, allow_redirects, redirect_count, method, cookies
+            path, follow_redirects, redirect_count, method, cookies
         )
 
     @async_to_sync
@@ -67,7 +67,7 @@ class TestClient:
         path,
         post_data=None,
         body=None,
-        allow_redirects=True,
+        follow_redirects=False,
         redirect_count=0,
         content_type="application/x-www-form-urlencoded",
         cookies=None,
@@ -90,7 +90,7 @@ class TestClient:
             body = urlencode(post_data, doseq=True)
         return await self._request(
             path=path,
-            allow_redirects=allow_redirects,
+            follow_redirects=follow_redirects,
             redirect_count=redirect_count,
             method="POST",
             cookies=cookies,
@@ -103,7 +103,7 @@ class TestClient:
     async def request(
         self,
         path,
-        allow_redirects=True,
+        follow_redirects=True,
         redirect_count=0,
         method="GET",
         cookies=None,
@@ -113,7 +113,7 @@ class TestClient:
     ):
         return await self._request(
             path,
-            allow_redirects=allow_redirects,
+            follow_redirects=follow_redirects,
             redirect_count=redirect_count,
             method=method,
             cookies=cookies,
@@ -125,7 +125,7 @@ class TestClient:
     async def _request(
         self,
         path,
-        allow_redirects=True,
+        follow_redirects=True,
         redirect_count=0,
         method="GET",
         cookies=None,
@@ -139,19 +139,19 @@ class TestClient:
         httpx_response = await self.ds.client.request(
             method,
             path,
-            allow_redirects=allow_redirects,
+            follow_redirects=follow_redirects,
             avoid_path_rewrites=True,
             cookies=cookies,
             headers=headers,
             content=post_body,
         )
         response = TestResponse(httpx_response)
-        if allow_redirects and response.status in (301, 302):
+        if follow_redirects and response.status in (301, 302):
             assert (
                 redirect_count < self.max_redirects
             ), f"Redirected {redirect_count} times, max_redirects={self.max_redirects}"
             location = response.headers["Location"]
             return await self._request(
-                location, allow_redirects=True, redirect_count=redirect_count + 1
+                location, follow_redirects=True, redirect_count=redirect_count + 1
             )
         return response

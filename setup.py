@@ -54,7 +54,7 @@ setup(
         "aiofiles>=0.4,<0.8",
         "janus>=0.4,<0.7",
         "asgi-csrf>=0.9",
-        "PyYAML~=5.3",
+        "PyYAML>=5.3,<7.0",
         "mergedeep>=1.1.1,<1.4.0",
         "itsdangerous>=1.1,<3.0",
         "python-baseconv==1.2.2",

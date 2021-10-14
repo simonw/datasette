@@ -173,18 +173,18 @@ Datasette can serve static files for you, using the ``--static`` option.
 Consider the following directory structure::
 
     metadata.json
-    static/styles.css
-    static/app.js
+    static-files/styles.css
+    static-files/app.js
 
-You can start Datasette using ``--static static:static/`` to serve those
-files from the ``/static/`` mount point::
+You can start Datasette using ``--static assets:static-files/`` to serve those
+files from the ``/assets/`` mount point::
 
-    $ datasette -m metadata.json --static static:static/ --memory
+    $ datasette -m metadata.json --static assets:static-files/ --memory
 
 The following URLs will now serve the content from those CSS and JS files::
 
-    http://localhost:8001/static/styles.css
-    http://localhost:8001/static/app.js
+    http://localhost:8001/assets/styles.css
+    http://localhost:8001/assets/app.js
 
 You can reference those files from ``metadata.json`` like so:
 
@@ -192,10 +192,10 @@ You can reference those files from ``metadata.json`` like so:
 
     {
         "extra_css_urls": [
-            "/static/styles.css"
+            "/assets/styles.css"
         ],
         "extra_js_urls": [
-            "/static/app.js"
+            "/assets/app.js"
         ]
     }
 
@@ -205,10 +205,10 @@ Publishing static assets
 The :ref:`cli_publish` command can be used to publish your static assets,
 using the same syntax as above::
 
-    $ datasette publish cloudrun mydb.db --static static:static/
+    $ datasette publish cloudrun mydb.db --static assets:static-files/
 
-This will upload the contents of the ``static/`` directory as part of the
-deployment, and configure Datasette to correctly serve the assets.
+This will upload the contents of the ``static-files/`` directory as part of the
+deployment, and configure Datasette to correctly serve the assets from ``/assets/``.
 
 .. _customization_custom_templates:
 

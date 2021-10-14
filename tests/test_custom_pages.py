@@ -67,13 +67,13 @@ def test_custom_content_type(custom_pages_client):
 
 
 def test_redirect(custom_pages_client):
-    response = custom_pages_client.get("/redirect", allow_redirects=False)
+    response = custom_pages_client.get("/redirect")
     assert 302 == response.status
     assert "/example" == response.headers["Location"]
 
 
 def test_redirect2(custom_pages_client):
-    response = custom_pages_client.get("/redirect2", allow_redirects=False)
+    response = custom_pages_client.get("/redirect2")
     assert 301 == response.status
     assert "/example" == response.headers["Location"]
 

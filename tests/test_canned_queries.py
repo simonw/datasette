@@ -59,7 +59,6 @@ def test_insert(canned_write_client):
     response = canned_write_client.post(
         "/data/add_name",
         {"name": "Hello"},
-        allow_redirects=False,
         csrftoken_from=True,
         cookies={"foo": "bar"},
     )
@@ -95,16 +94,13 @@ def test_insert_with_cookies_requires_csrf(canned_write_client):
     response = canned_write_client.post(
         "/data/add_name",
         {"name": "Hello"},
-        allow_redirects=False,
         cookies={"foo": "bar"},
     )
     assert 403 == response.status
 
 
 def test_insert_no_cookies_no_csrf(canned_write_client):
-    response = canned_write_client.post(
-        "/data/add_name", {"name": "Hello"}, allow_redirects=False
-    )
+    response = canned_write_client.post("/data/add_name", {"name": "Hello"})
     assert 302 == response.status
     assert "/data/add_name?success" == response.headers["Location"]
 
@@ -114,7 +110,6 @@ def test_custom_success_message(canned_write_client):
         "/data/delete_name",
         {"rowid": 1},
         cookies={"ds_actor": canned_write_client.actor_cookie({"id": "root"})},
-        allow_redirects=False,
         csrftoken_from=True,
     )
     assert 302 == response.status
@@ -129,7 +124,6 @@ def test_insert_error(canned_write_client):
     response = canned_write_client.post(
         "/data/add_name_specify_id",
         {"rowid": 1, "name": "Should fail"},
-        allow_redirects=False,
         csrftoken_from=True,
     )
     assert 302 == response.status
@@ -145,7 +139,6 @@ def test_insert_error(canned_write_client):
     response = canned_write_client.post(
         "/data/add_name_specify_id",
         {"rowid": 1, "name": "Should fail"},
-        allow_redirects=False,
         csrftoken_from=True,
     )
     assert [["ERROR", 3]] == canned_write_client.ds.unsign(
@@ -168,7 +161,6 @@ def test_json_post_body(canned_write_client):
     response = canned_write_client.post(
         "/data/add_name",
         body=json.dumps({"name": ["Hello", "there"]}),
-        allow_redirects=False,
     )
     assert 302 == response.status
     assert "/data/add_name?success" == response.headers["Location"]
@@ -189,7 +181,6 @@ def test_json_response(canned_write_client, headers, body, querystring):
     response = canned_write_client.post(
         "/data/add_name" + (querystring or ""),
         body=body,
-        allow_redirects=False,
         headers=headers,
     )
     assert 200 == response.status
@@ -331,7 +322,6 @@ def test_magic_parameters_csrf_json(magic_parameters_client, use_csrf, return_js
         f"/data/runme_post{qs}",
         {},
         csrftoken_from=use_csrf or None,
-        allow_redirects=False,
     )
     if return_json:
         assert response.status == 200

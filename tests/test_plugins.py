@@ -794,7 +794,7 @@ def test_hook_forbidden(restore_working_directory):
     ) as client:
         response = client.get("/")
         assert 403 == response.status
-        response2 = client.get("/data2", allow_redirects=False)
+        response2 = client.get("/data2")
         assert 302 == response2.status
         assert "/login?message=view-database" == response2.headers["Location"]
         assert "view-database" == client.ds._last_forbidden_message

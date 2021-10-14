@@ -629,7 +629,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
     ),
 )
 def test_old_memory_urls_redirect(app_client_no_files, path, expected_redirect):
-    response = app_client_no_files.get(path, allow_redirects=False)
+    response = app_client_no_files.get(path)
     assert response.status == 301
     assert response.headers["location"] == expected_redirect
 
@@ -708,12 +708,8 @@ def test_table_not_exists_json(app_client):
 
 
 def test_jsono_redirects_to_shape_objects(app_client_with_hash):
-    response_1 = app_client_with_hash.get(
-        "/fixtures/simple_primary_key.jsono", allow_redirects=False
-    )
-    response = app_client_with_hash.get(
-        response_1.headers["Location"], allow_redirects=False
-    )
+    response_1 = app_client_with_hash.get("/fixtures/simple_primary_key.jsono")
+    response = app_client_with_hash.get(response_1.headers["Location"])
     assert response.status == 302
     assert response.headers["Location"].endswith("?_shape=objects")
 
@@ -1488,7 +1484,7 @@ def test_settings_json(app_client):
     ),
 )
 def test_config_redirects_to_settings(app_client, path, expected_redirect):
-    response = app_client.get(path, allow_redirects=False)
+    response = app_client.get(path)
     assert response.status == 301
     assert response.headers["Location"] == expected_redirect
 
@@ -1834,9 +1830,7 @@ def test_hash_parameter(
     current_hash = app_client_two_attached_databases_one_immutable.ds.databases[
         "fixtures"
     ].hash[:7]
-    response = app_client_two_attached_databases_one_immutable.get(
-        path, allow_redirects=False
-    )
+    response = app_client_two_attached_databases_one_immutable.get(path)
     assert response.status == 302
     location = response.headers["Location"]
     assert expected_redirect.replace("HASH", current_hash) == location
@@ -1844,7 +1838,7 @@ def test_hash_parameter(
 
 def test_hash_parameter_ignored_for_mutable_databases(app_client):
     path = "/fixtures/facetable.json?_hash=1"
-    response = app_client.get(path, allow_redirects=False)
+    response = app_client.get(path)
     assert response.status == 200
 
 
@@ -1976,7 +1970,9 @@ def test_cors(app_client_with_cors, path, status_code):
     ),
 )
 def test_database_with_space_in_name(app_client_two_attached_databases, path):
-    response = app_client_two_attached_databases.get("/extra database" + path)
+    response = app_client_two_attached_databases.get(
+        "/extra database" + path, follow_redirects=True
+    )
     assert response.status == 200
 
 

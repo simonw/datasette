@@ -42,7 +42,6 @@ async def test_client_post(datasette, prefix):
             data={
                 "message": "A message",
             },
-            allow_redirects=False,
         )
         assert isinstance(response, httpx.Response)
         assert response.status_code == 302

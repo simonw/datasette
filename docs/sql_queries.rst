@@ -34,6 +34,14 @@ You can also provide values for these fields by constructing a URL::
 
 SQLite string escaping rules will be applied to values passed using named parameters - they will be wrapped in quotes and their content will be correctly escaped.
 
+Values from named parameters are treated as SQLite strings. If you need to perform numeric comparisons on them you should cast them to an integer or float first using ``cast(:name as integer)`` or ``cast(:name as real)``, for example:
+
+.. code-block:: sql
+
+    select * from Street_Tree_List
+    where latitude > cast(:min_latitude as real)
+    and latitude < cast(:max_latitude as real)
+
 Datasette disallows custom SQL queries containing the string PRAGMA (with a small number `of exceptions <https://github.com/simonw/datasette/issues/761>`__) as SQLite pragma statements can be used to change database settings at runtime. If you need to include the string "pragma" in a query you can do so safely using a named parameter.
 
 .. _sql_views:

@@ -28,3 +28,65 @@ jobs:
       run: |
         pytest -n auto -m "not serial"
         pytest -m "serial"
+
+  test-docker:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/386
+          - linux/amd64
+          - linux/arm/v6
+          - linux/arm/v7
+          - linux/arm64
+          - linux/ppc64le
+          - linux/s390x
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v1
+
+    - name: Set up Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Available platforms
+      run: echo ${{ steps.buildx.outputs.platforms }}
+
+    - name: Build and push to Local registry
+      id: build-image
+      run: |
+        docker buildx build \
+          --file Dockerfile . \
+          --tag $REPO:${COMMIT_SHA} \
+          --build-arg VERSION=${COMMIT_SHA} \
+          --platform ${{ matrix.platform }} \
+          --load
+        echo "::set-output name=image_name::$REPO:${COMMIT_SHA}"
+      env:
+        COMMIT_SHA: ${{ github.sha }}
+        REPO: datasetteproject/datasette
+
+    - name: Test Docker image
+      run: |
+        docker run -v `pwd`:/mnt --platform ${{ matrix.platform }} \
+            ${{ steps.build-image.outputs.image_name }} bash -c '
+              apt-get update --yes && apt-get install --yes gcc && \
+              pip install "pytest>=5.2.2,<6.3.0" \
+              "pytest-xdist>=2.2.1,<2.3" \
+              "pytest-asyncio>=0.10,<0.16" \
+              "beautifulsoup4>=4.8.1,<4.10.0" \
+              "black==21.5b1" \
+              "pytest-timeout>=1.4.2,<1.5" \
+              "trustme>=0.7,<0.8" \
+              && cd /mnt && pytest'
+
+    # Scan image for vulnerabilities
+    - uses: Azure/container-scan@v0
+      with:
+        image-name: ${{ steps.build-image.outputs.image_name }}
+        severity-threshold: CRITICAL
+        run-quality-checks: false

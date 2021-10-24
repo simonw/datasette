@@ -1,18 +1,11 @@
-FROM python:3.9.2-slim-buster as build
+FROM python:3.9.7-slim-bullseye as build
 
 # Version of Datasette to install, e.g. 0.55
 #   docker build . -t datasette --build-arg VERSION=0.55
 ARG VERSION
 
-# software-properties-common provides add-apt-repository
-# which we need in order to install a more recent release
-# of libsqlite3-mod-spatialite from the sid distribution
 RUN apt-get update && \
-    apt-get -y --no-install-recommends install software-properties-common && \
-    add-apt-repository "deb http://httpredir.debian.org/debian sid main" && \
-    apt-get update && \
-    apt-get -t sid install -y --no-install-recommends libsqlite3-mod-spatialite && \
-    apt-get remove -y software-properties-common && \
+    apt-get install -y --no-install-recommends libsqlite3-mod-spatialite && \
     apt clean && \
     rm -rf /var/lib/apt && \
     rm -rf /var/lib/dpkg/info/*

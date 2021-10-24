@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_59_1:
+
+0.59.1 (2021-10-24)
+-------------------
+
+- Fix compatibility with Python 3.10. (:issue:`1482`)
+- Documentation on how to use :ref:`sql_parameters` with integer and floating point values. (:issue:`1496`)
+
 .. _v0_59:
 
 0.59 (2021-10-14)

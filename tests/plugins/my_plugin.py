@@ -274,6 +274,7 @@ def register_routes():
         (r"/one/$", one),
         (r"/two/(?P<name>.*)$", two),
         (r"/three/$", three),
+        (r"/four/$", two, {"name": "Simon"}),
         (r"/post/$", post),
         (r"/csrftoken-form/$", csrftoken_form),
         (r"/login-as-root$", login_as_root),

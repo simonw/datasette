@@ -1124,12 +1124,15 @@ class DatasetteRouter:
     def __init__(self, datasette, routes):
         self.ds = datasette
         routes = routes or []
-        self.routes = []
-        for pattern, view, options in routes:
-            compiled_pattern = (
-                re.compile(pattern) if isinstance(pattern, str) else pattern
+        self.routes = [
+            # Compile any strings to regular expressions
+            (
+                (re.compile(pattern) if isinstance(pattern, str) else pattern),
+                view,
+                options,
             )
-            self.routes.append((compiled_pattern, view, options))
+            for pattern, view, options in routes
+        ]
         # Build a list of pages/blah/{name}.html matching expressions
         pattern_templates = [
             filepath

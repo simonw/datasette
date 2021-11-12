@@ -1,4 +1,4 @@
-# Datasette
+<img src="https://datasette.io/static/datasette-logo.svg" alt="Datasette">
 
 [![PyPI](https://img.shields.io/pypi/v/datasette.svg)](https://pypi.org/project/datasette/)
 [![Changelog](https://img.shields.io/github/v/release/simonw/datasette?label=changelog)](https://docs.datasette.io/en/stable/changelog.html)

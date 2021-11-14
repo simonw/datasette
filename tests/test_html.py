@@ -923,6 +923,26 @@ def test_table_html_filter_form_column_options(
     assert expected_column_options == column_options
 
 
+def test_table_html_filter_form_still_shows_nocol_columns(app_client):
+    # https://github.com/simonw/datasette/issues/1503
+    response = app_client.get("/fixtures/sortable?_nocol=sortable")
+    assert response.status == 200
+    form = Soup(response.body, "html.parser").find("form")
+    assert [
+        o.string
+        for o in form.select("select[name='_filter_column']")[0].select("option")
+    ] == [
+        "- column -",
+        "pk1",
+        "pk2",
+        "content",
+        "sortable",
+        "sortable_with_nulls",
+        "sortable_with_nulls_2",
+        "text",
+    ]
+
+
 def test_row_html_compound_primary_key(app_client):
     response = app_client.get("/fixtures/compound_primary_key/a,b")
     assert response.status == 200

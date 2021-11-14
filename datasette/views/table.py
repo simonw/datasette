@@ -922,7 +922,7 @@ class TableView(RowTableShared):
                 "use_rowid": use_rowid,
                 "filters": filters,
                 "display_columns": display_columns,
-                "filter_columns": columns,
+                "filter_columns": table_columns,
                 "display_rows": display_rows,
                 "facets_timed_out": facets_timed_out,
                 "sorted_facet_results": sorted(

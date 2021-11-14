@@ -355,12 +355,12 @@ METADATA = {
                 "neighborhood_search": {
                     "sql": textwrap.dedent(
                         """
-                        select neighborhood, facet_cities.name, state
+                        select _neighborhood, facet_cities.name, state
                         from facetable
                             join facet_cities
                                 on facetable.city_id = facet_cities.id
-                        where neighborhood like '%' || :text || '%'
-                        order by neighborhood;
+                        where _neighborhood like '%' || :text || '%'
+                        order by _neighborhood;
                     """
                     ),
                     "title": "Search neighborhoods",
@@ -559,14 +559,14 @@ CREATE TABLE facetable (
     on_earth integer,
     state text,
     city_id integer,
-    neighborhood text,
+    _neighborhood text,
     tags text,
     complex_array text,
     distinct_some_null,
     FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (created, planet_int, on_earth, state, city_id, neighborhood, tags, complex_array, distinct_some_null)
+    (created, planet_int, on_earth, state, city_id, _neighborhood, tags, complex_array, distinct_some_null)
 VALUES
     ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]', 'one'),
     ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]', 'two'),

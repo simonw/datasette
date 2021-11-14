@@ -24,7 +24,7 @@ world
 )
 
 EXPECTED_TABLE_WITH_LABELS_CSV = """
-pk,created,planet_int,on_earth,state,city_id,city_id_label,neighborhood,tags,complex_array,distinct_some_null
+pk,created,planet_int,on_earth,state,city_id,city_id_label,_neighborhood,tags,complex_array,distinct_some_null
 1,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Mission,"[""tag1"", ""tag2""]","[{""foo"": ""bar""}]",one
 2,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Dogpatch,"[""tag1"", ""tag3""]",[],two
 3,2019-01-14 08:00:00,1,1,CA,1,San Francisco,SOMA,[],[],

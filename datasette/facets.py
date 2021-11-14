@@ -237,14 +237,17 @@ class ColumnFacet(Facet):
                 else:
                     expanded = {}
                 for row in facet_rows:
-                    selected = (column, str(row["value"])) in qs_pairs
+                    column_qs = column
+                    if column.startswith("_"):
+                        column_qs = "{}__exact".format(column)
+                    selected = (column_qs, str(row["value"])) in qs_pairs
                     if selected:
                         toggle_path = path_with_removed_args(
-                            self.request, {column: str(row["value"])}
+                            self.request, {column_qs: str(row["value"])}
                         )
                     else:
                         toggle_path = path_with_added_args(
-                            self.request, {column: row["value"]}
+                            self.request, {column_qs: row["value"]}
                         )
                     facet_results_values.append(
                         {

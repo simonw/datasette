@@ -213,7 +213,7 @@ def test_database_page(app_client):
                 "on_earth",
                 "state",
                 "city_id",
-                "neighborhood",
+                "_neighborhood",
                 "tags",
                 "complex_array",
                 "distinct_some_null",
@@ -1241,7 +1241,9 @@ def test_table_filter_json_arraynotcontains(app_client):
 
 
 def test_table_filter_extra_where(app_client):
-    response = app_client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
+    response = app_client.get(
+        "/fixtures/facetable.json?_where=_neighborhood='Dogpatch'"
+    )
     assert [
         [
             2,
@@ -1259,14 +1261,16 @@ def test_table_filter_extra_where(app_client):
 
 
 def test_table_filter_extra_where_invalid(app_client):
-    response = app_client.get("/fixtures/facetable.json?_where=neighborhood=Dogpatch'")
+    response = app_client.get("/fixtures/facetable.json?_where=_neighborhood=Dogpatch'")
     assert 400 == response.status
     assert "Invalid SQL" == response.json["title"]
 
 
 def test_table_filter_extra_where_disabled_if_no_sql_allowed():
     with make_app_client(metadata={"allow_sql": {}}) as client:
-        response = client.get("/fixtures/facetable.json?_where=neighborhood='Dogpatch'")
+        response = client.get(
+            "/fixtures/facetable.json?_where=_neighborhood='Dogpatch'"
+        )
         assert 403 == response.status
         assert "_where= is not allowed" == response.json["error"]
 
@@ -1696,7 +1700,7 @@ def test_suggested_facets(app_client):
         {"name": "on_earth", "querystring": "_facet=on_earth"},
         {"name": "state", "querystring": "_facet=state"},
         {"name": "city_id", "querystring": "_facet=city_id"},
-        {"name": "neighborhood", "querystring": "_facet=neighborhood"},
+        {"name": "_neighborhood", "querystring": "_facet=_neighborhood"},
         {"name": "tags", "querystring": "_facet=tags"},
         {"name": "complex_array", "querystring": "_facet=complex_array"},
         {"name": "created", "querystring": "_facet_date=created"},
@@ -1752,7 +1756,7 @@ def test_nocount_nofacet_if_shape_is_object(app_client_with_trace):
 def test_expand_labels(app_client):
     response = app_client.get(
         "/fixtures/facetable.json?_shape=object&_labels=1&_size=2"
-        "&neighborhood__contains=c"
+        "&_neighborhood__contains=c"
     )
     assert {
         "2": {
@@ -1762,7 +1766,7 @@ def test_expand_labels(app_client):
             "on_earth": 1,
             "state": "CA",
             "city_id": {"value": 1, "label": "San Francisco"},
-            "neighborhood": "Dogpatch",
+            "_neighborhood": "Dogpatch",
             "tags": '["tag1", "tag3"]',
             "complex_array": "[]",
             "distinct_some_null": "two",
@@ -1774,7 +1778,7 @@ def test_expand_labels(app_client):
             "on_earth": 1,
             "state": "MI",
             "city_id": {"value": 3, "label": "Detroit"},
-            "neighborhood": "Corktown",
+            "_neighborhood": "Corktown",
             "tags": "[]",
             "complex_array": "[]",
             "distinct_some_null": None,
@@ -2125,7 +2129,7 @@ def test_http_options_request(app_client):
                 "on_earth",
                 "state",
                 "city_id",
-                "neighborhood",
+                "_neighborhood",
                 "tags",
                 "complex_array",
                 "distinct_some_null",
@@ -2152,7 +2156,7 @@ def test_http_options_request(app_client):
                 "planet_int",
                 "on_earth",
                 "city_id",
-                "neighborhood",
+                "_neighborhood",
                 "tags",
                 "complex_array",
                 "distinct_some_null",

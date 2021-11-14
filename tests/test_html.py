@@ -235,7 +235,10 @@ def test_table_cell_truncation():
             "Corkt…",
             "Mexic…",
             "Arcad…",
-        ] == [td.string for td in table.findAll("td", {"class": "col-neighborhood"})]
+        ] == [
+            td.string
+            for td in table.findAll("td", {"class": "col-neighborhood-b352a7"})
+        ]
 
 
 def test_row_page_does_not_truncate():
@@ -245,7 +248,8 @@ def test_row_page_does_not_truncate():
         table = Soup(response.body, "html.parser").find("table")
         assert table["class"] == ["rows-and-columns"]
         assert ["Mission"] == [
-            td.string for td in table.findAll("td", {"class": "col-neighborhood"})
+            td.string
+            for td in table.findAll("td", {"class": "col-neighborhood-b352a7"})
         ]
 
 
@@ -1312,7 +1316,7 @@ def test_canned_query_show_hide_metadata_option(
 
 def test_extra_where_clauses(app_client):
     response = app_client.get(
-        "/fixtures/facetable?_where=neighborhood='Dogpatch'&_where=city_id=1"
+        "/fixtures/facetable?_where=_neighborhood='Dogpatch'&_where=city_id=1"
     )
     soup = Soup(response.body, "html.parser")
     div = soup.select(".extra-wheres")[0]
@@ -1320,12 +1324,12 @@ def test_extra_where_clauses(app_client):
     hrefs = [a["href"] for a in div.findAll("a")]
     assert [
         "/fixtures/facetable?_where=city_id%3D1",
-        "/fixtures/facetable?_where=neighborhood%3D%27Dogpatch%27",
+        "/fixtures/facetable?_where=_neighborhood%3D%27Dogpatch%27",
     ] == hrefs
     # These should also be persisted as hidden fields
     inputs = soup.find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
-    assert [("_where", "neighborhood='Dogpatch'"), ("_where", "city_id=1")] == [
+    assert [("_where", "_neighborhood='Dogpatch'"), ("_where", "city_id=1")] == [
         (hidden["name"], hidden["value"]) for hidden in hiddens
     ]
 
@@ -1634,11 +1638,11 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
     [
         (
             "/fixtures/neighborhood_search",
-            "/fixtures?sql=%0Aselect+neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+neighborhood%3B%0A&amp;text=",
+            "/fixtures?sql=%0Aselect+_neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+_neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+_neighborhood%3B%0A&amp;text=",
         ),
         (
             "/fixtures/neighborhood_search?text=ber",
-            "/fixtures?sql=%0Aselect+neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+neighborhood%3B%0A&amp;text=ber",
+            "/fixtures?sql=%0Aselect+_neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+_neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+_neighborhood%3B%0A&amp;text=ber",
         ),
         ("/fixtures/pragma_cache_size", None),
         (
@@ -1716,23 +1720,23 @@ def test_navigation_menu_links(
         (
             5,
             # Default should show 2 facets
-            "/fixtures/facetable?_facet=neighborhood",
+            "/fixtures/facetable?_facet=_neighborhood",
             2,
             True,
-            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+            "/fixtures/facetable?_facet=_neighborhood&_facet_size=max",
         ),
         # _facet_size above max_returned_rows should show max_returned_rows (5)
         (
             5,
-            "/fixtures/facetable?_facet=neighborhood&_facet_size=50",
+            "/fixtures/facetable?_facet=_neighborhood&_facet_size=50",
             5,
             True,
-            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+            "/fixtures/facetable?_facet=_neighborhood&_facet_size=max",
         ),
         # If max_returned_rows is high enough, should return all
         (
             20,
-            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+            "/fixtures/facetable?_facet=_neighborhood&_facet_size=max",
             14,
             False,
             None,
@@ -1741,7 +1745,7 @@ def test_navigation_menu_links(
         # _facet_size above max_returned_rows should show max_returned_rows (5)
         (
             5,
-            "/fixtures/facetable?_facet=neighborhood&_facet_size=max",
+            "/fixtures/facetable?_facet=_neighborhood&_facet_size=max",
             5,
             True,
             None,
@@ -1760,7 +1764,7 @@ def test_facet_more_links(
     ) as client:
         response = client.get(path)
         soup = Soup(response.body, "html.parser")
-        lis = soup.select("#facet-neighborhood ul li:not(.facet-truncated)")
+        lis = soup.select("#facet-neighborhood-b352a7 ul li:not(.facet-truncated)")
         facet_truncated = soup.select_one(".facet-truncated")
         assert len(lis) == expected_num_facets
         if not expected_ellipses:

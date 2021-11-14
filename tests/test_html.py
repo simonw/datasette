@@ -936,10 +936,11 @@ def test_table_html_filter_form_still_shows_nocol_columns(app_client):
         "pk1",
         "pk2",
         "content",
-        "sortable",
         "sortable_with_nulls",
         "sortable_with_nulls_2",
         "text",
+        # Moved to the end because it is no longer returned by the query:
+        "sortable",
     ]
 
 

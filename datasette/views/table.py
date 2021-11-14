@@ -915,6 +915,14 @@ class TableView(RowTableShared):
                         links.extend(extra_links)
                 return links
 
+            # filter_columns combine the columns we know are available
+            # in the table with any additional columns (such as rowid)
+            # which are available in the query
+            filter_columns = list(columns) + [
+                table_column
+                for table_column in table_columns
+                if table_column not in columns
+            ]
             return {
                 "table_actions": table_actions,
                 "supports_search": bool(fts_table),
@@ -922,7 +930,7 @@ class TableView(RowTableShared):
                 "use_rowid": use_rowid,
                 "filters": filters,
                 "display_columns": display_columns,
-                "filter_columns": table_columns,
+                "filter_columns": filter_columns,
                 "display_rows": display_rows,
                 "facets_timed_out": facets_timed_out,
                 "sorted_facet_results": sorted(

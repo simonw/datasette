@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v0_59_2:
+
+0.59.2 (2021-11-13)
+-------------------
+
+- Column names with a leading underscore now work correctly when used as a facet. (:issue:`1506`)
+- Applying ``?_nocol=`` to a column no longer removes that column from the filtering interface. (:issue:`1503`)
+- Official Datasette Docker container now uses Debian Bullseye as the base image. (:issue:`1497`)
+- Datasette is four years old today! Here's the `original release announcement <https://simonwillison.net/2017/Nov/13/datasette/>`__ from 2017.
+
 .. _v0_59_1:
 
 0.59.1 (2021-10-24)

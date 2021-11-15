@@ -149,19 +149,13 @@ class Filters:
                 TemplatedFilter(
                     "arraycontains",
                     "array contains",
-                    """rowid in (
-            select {t}.rowid from {t}, json_each([{t}].[{c}]) j
-            where j.value = :{p}
-        )""",
+                    """:{p} in (select value from json_each([{t}].[{c}]))""",
                     '{c} contains "{v}"',
                 ),
                 TemplatedFilter(
                     "arraynotcontains",
                     "array does not contain",
-                    """rowid not in (
-            select {t}.rowid from {t}, json_each([{t}].[{c}]) j
-            where j.value = :{p}
-        )""",
+                    """:{p} not in (select value from json_each([{t}].[{c}]))""",
                     '{c} does not contain "{v}"',
                 ),
             ]

@@ -56,12 +56,15 @@ import pytest
         # Not in, and JSON array not in
         ((("foo__notin", "1,2,3"),), ["foo not in (:p0, :p1, :p2)"], ["1", "2", "3"]),
         ((("foo__notin", "[1,2,3]"),), ["foo not in (:p0, :p1, :p2)"], [1, 2, 3]),
-        # JSON arraycontains
+        # JSON arraycontains, arraynotcontains
         (
             (("Availability+Info__arraycontains", "yes"),),
-            [
-                "rowid in (\n            select table.rowid from table, json_each([table].[Availability+Info]) j\n            where j.value = :p0\n        )"
-            ],
+            [":p0 in (select value from json_each([table].[Availability+Info]))"],
+            ["yes"],
+        ),
+        (
+            (("Availability+Info__arraynotcontains", "yes"),),
+            [":p0 not in (select value from json_each([table].[Availability+Info]))"],
             ["yes"],
         ),
     ],

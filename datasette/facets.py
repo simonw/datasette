@@ -373,7 +373,7 @@ class ArrayFacet(Facet):
                 group by
                     value
                 order by
-                    count(*) desc limit {limit}
+                    count(*) desc, value limit {limit}
             """.format(
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )

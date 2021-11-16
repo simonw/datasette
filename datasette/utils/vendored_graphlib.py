@@ -1,4 +1,5 @@
 # Vendored from https://raw.githubusercontent.com/python/cpython/3.10/Lib/graphlib.py
+# Modified to work on Python 3.6 (I removed := operator)
 # License: https://github.com/python/cpython/blob/main/LICENSE
 
 __all__ = ["TopologicalSorter", "CycleError"]
@@ -53,7 +54,8 @@ class TopologicalSorter:
                 self.add(node, *predecessors)
 
     def _get_nodeinfo(self, node):
-        if (result := self._node2info.get(node)) is None:
+        result = self._node2info.get(node)
+        if result is None:
             self._node2info[node] = result = _NodeInfo(node)
         return result
 
@@ -169,7 +171,8 @@ class TopologicalSorter:
         for node in nodes:
 
             # Check if we know about this node (it was added previously using add()
-            if (nodeinfo := n2i.get(node)) is None:
+            nodeinfo = n2i.get(node)
+            if nodeinfo is None:
                 raise ValueError(f"node {node!r} was not added using add()")
 
             # If the node has not being returned (marked as ready) previously, inform the user.

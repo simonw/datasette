@@ -8,13 +8,23 @@ except ImportError:
     from . import vendored_graphlib as graphlib
 
 
+def inject(fn):
+    fn._inject = True
+    return fn
+
+
 class AsyncMeta(type):
     def __new__(cls, name, bases, attrs):
         # Decorate any items that are 'async def' methods
         _registry = {}
         new_attrs = {"_registry": _registry}
+        inject_all = attrs.get("inject_all")
         for key, value in attrs.items():
-            if inspect.iscoroutinefunction(value) and not value.__name__ == "resolve":
+            if (
+                inspect.iscoroutinefunction(value)
+                and not value.__name__ == "resolve"
+                and (inject_all or getattr(value, "_inject", None))
+            ):
                 new_attrs[key] = make_method(value)
                 _registry[key] = new_attrs[key]
             else:

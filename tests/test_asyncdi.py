@@ -1,5 +1,5 @@
 import asyncio
-from datasette.utils.asyncdi import AsyncBase
+from datasette.utils.asyncdi import AsyncBase, inject
 import pytest
 from random import random
 
@@ -8,15 +8,22 @@ class Simple(AsyncBase):
     def __init__(self):
         self.log = []
 
+    @inject
     async def two(self):
         self.log.append("two")
 
+    @inject
     async def one(self, two):
         self.log.append("one")
         return self.log
 
+    async def not_inject(self, one, two):
+        return one + two
+
 
 class Complex(AsyncBase):
+    inject_all = True
+
     def __init__(self):
         self.log = []
 
@@ -40,6 +47,8 @@ class Complex(AsyncBase):
 
 
 class WithParameters(AsyncBase):
+    inject_all = True
+
     async def go(self, calc1, calc2, param1):
         return param1 + calc1 + calc2
 
@@ -53,6 +62,7 @@ class WithParameters(AsyncBase):
 @pytest.mark.asyncio
 async def test_simple():
     assert await Simple().one() == ["two", "one"]
+    assert await Simple().not_inject(6, 7) == 13
 
 
 @pytest.mark.asyncio

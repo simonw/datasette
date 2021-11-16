@@ -4,6 +4,7 @@ from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
 from datasette.utils.asgi import Request
 from datasette.utils import detect_json1
 from .fixtures import app_client  # noqa
+import json
 import pytest
 
 
@@ -400,6 +401,63 @@ async def test_array_facet_results(app_client):
             "truncated": False,
         }
     } == buckets
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
+async def test_array_facet_handle_duplicate_tags():
+    ds = Datasette([], memory=True)
+    db = ds.add_database(Database(ds, memory_name="test_array_facet"))
+    await db.execute_write("create table otters(name text, tags text)", block=True)
+    for name, tags in (
+        ("Charles", ["friendly", "cunning", "friendly"]),
+        ("Shaun", ["cunning", "empathetic", "friendly"]),
+        ("Tracy", ["empathetic", "eager"]),
+    ):
+        await db.execute_write(
+            "insert into otters (name, tags) values (?, ?)",
+            [name, json.dumps(tags)],
+            block=True,
+        )
+
+    response = await ds.client.get("/test_array_facet/otters.json?_facet_array=tags")
+    assert response.json()["facet_results"]["tags"] == {
+        "name": "tags",
+        "type": "array",
+        "results": [
+            {
+                "value": "cunning",
+                "label": "cunning",
+                "count": 2,
+                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=cunning",
+                "selected": False,
+            },
+            {
+                "value": "empathetic",
+                "label": "empathetic",
+                "count": 2,
+                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=empathetic",
+                "selected": False,
+            },
+            {
+                "value": "friendly",
+                "label": "friendly",
+                "count": 2,
+                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=friendly",
+                "selected": False,
+            },
+            {
+                "value": "eager",
+                "label": "eager",
+                "count": 1,
+                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=eager",
+                "selected": False,
+            },
+        ],
+        "hideable": True,
+        "toggle_url": "/test_array_facet/otters.json",
+        "truncated": False,
+    }
 
 
 @pytest.mark.asyncio

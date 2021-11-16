@@ -354,11 +354,26 @@ class ArrayFacet(Facet):
             config = source_and_config["config"]
             source = source_and_config["source"]
             column = config.get("column") or config["simple"]
+            # https://github.com/simonw/datasette/issues/448
             facet_sql = """
-                select j.value as value, count(*) as count from (
-                    {sql}
-                ) join json_each({col}) j
-                group by j.value order by count desc, value limit {limit}
+                with inner as ({sql}),
+                deduped_array_items as (
+                    select
+                        distinct j.value,
+                        inner.*
+                    from
+                        json_each([inner].{col}) j
+                        join inner
+                )
+                select
+                    value as value,
+                    count(*) as count
+                from
+                    deduped_array_items
+                group by
+                    value
+                order by
+                    count(*) desc limit {limit}
             """.format(
                 col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
             )

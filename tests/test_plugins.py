@@ -463,7 +463,7 @@ def test_hook_register_output_renderer_all_parameters(app_client):
         "query_name": None,
         "database": "fixtures",
         "table": "facetable",
-        "request": "<datasette.utils.asgi.Request object at 0xXXX>",
+        "request": '<asgi.Request method="GET" url="http://localhost/fixtures/facetable.testall">',
         "view_name": "table",
         "1+1": 2,
     }

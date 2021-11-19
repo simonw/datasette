@@ -678,6 +678,25 @@ def test_hook_register_routes_with_datasette(configured_path):
         assert client.get(f"/{other_path}/", follow_redirects=True).status == 404
 
 
+def test_hook_register_routes_override():
+    "Plugins can over-ride default paths such as /db/table"
+    with make_app_client(
+        metadata={
+            "plugins": {
+                "register-route-demo": {
+                    "path": "blah",
+                }
+            }
+        }
+    ) as client:
+        response = client.get("/db/table")
+        assert response.status == 200
+        assert (
+            response.text
+            == "/db/table: [('db_name', 'db'), ('table_and_format', 'table')]"
+        )
+
+
 def test_hook_register_routes_post(app_client):
     response = app_client.post("/post/", {"this is": "post data"}, csrftoken_from=True)
     assert 200 == response.status

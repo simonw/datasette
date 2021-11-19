@@ -176,4 +176,12 @@ def register_routes(datasette):
     if not config:
         return
     path = config["path"]
-    return [(r"/{}/$".format(path), lambda: Response.text(path.upper()))]
+
+    def new_table(request):
+        return Response.text("/db/table: {}".format(sorted(request.url_vars.items())))
+
+    return [
+        (r"/{}/$".format(path), lambda: Response.text(path.upper())),
+        # Also serves to demonstrate over-ride of default paths:
+        (r"/(?P<db_name>[^/]+)/(?P<table_and_format>[^/]+?$)", new_table),
+    ]

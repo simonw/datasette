@@ -37,6 +37,9 @@ class Request:
         self.scope = scope
         self.receive = receive
 
+    def __repr__(self):
+        return '<asgi.Request method="{}" url="{}">'.format(self.method, self.url)
+
     @property
     def method(self):
         return self.scope["method"]

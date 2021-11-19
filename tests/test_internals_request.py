@@ -75,6 +75,14 @@ def test_request_args():
         request.args["missing"]
 
 
+def test_request_repr():
+    request = Request.fake("/foo?multi=1&multi=2&single=3")
+    assert (
+        repr(request)
+        == '<asgi.Request method="GET" url="http://localhost/foo?multi=1&multi=2&single=3">'
+    )
+
+
 def test_request_url_vars():
     scope = {
         "http_version": "1.1",

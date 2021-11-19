@@ -2,6 +2,7 @@ import asyncio
 import asgi_csrf
 import collections
 import datetime
+import functools
 import glob
 import hashlib
 import httpx
@@ -1354,6 +1355,7 @@ def _cleaner_task_str(task):
 
 
 def wrap_view(view_fn, datasette):
+    @functools.wraps(view_fn)
     async def async_view_fn(request, send):
         if inspect.iscoroutinefunction(view_fn):
             response = await async_call_with_supported_arguments(

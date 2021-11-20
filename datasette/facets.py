@@ -225,7 +225,7 @@ class ColumnFacet(Facet):
                     "name": column,
                     "type": self.type,
                     "hideable": source != "metadata",
-                    "toggle_url": ds.urls.path(
+                    "toggle_url": self.ds.urls.path(
                         path_with_removed_args(self.request, {"_facet": column})
                     ),
                     "results": facet_results_values,

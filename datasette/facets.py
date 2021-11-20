@@ -225,8 +225,8 @@ class ColumnFacet(Facet):
                     "name": column,
                     "type": self.type,
                     "hideable": source != "metadata",
-                    "toggle_url": path_with_removed_args(
-                        self.request, {"_facet": column}
+                    "toggle_url": ds.urls.path(
+                        path_with_removed_args(self.request, {"_facet": column})
                     ),
                     "results": facet_results_values,
                     "truncated": len(facet_rows_results) > facet_size,
@@ -259,7 +259,7 @@ class ColumnFacet(Facet):
                             "label": expanded.get((column, row["value"]), row["value"]),
                             "count": row["count"],
                             "toggle_url": self.ds.absolute_url(
-                                self.request, toggle_path
+                                self.request, self.ds.urls.path(toggle_path)
                             ),
                             "selected": selected,
                         }
@@ -397,8 +397,8 @@ class ArrayFacet(Facet):
                     "type": self.type,
                     "results": facet_results_values,
                     "hideable": source != "metadata",
-                    "toggle_url": path_with_removed_args(
-                        self.request, {"_facet_array": column}
+                    "toggle_url": self.ds.urls.path(
+                        path_with_removed_args(self.request, {"_facet_array": column})
                     ),
                     "truncated": len(facet_rows_results) > facet_size,
                 }

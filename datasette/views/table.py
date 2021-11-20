@@ -839,7 +839,7 @@ class TableView(RowTableShared):
             else:
                 added_args = {"_next": next_value}
             next_url = self.ds.absolute_url(
-                request, path_with_replaced_args(request, added_args)
+                request, self.ds.urls.path(path_with_replaced_args(request, added_args))
             )
             rows = rows[:page_size]
 

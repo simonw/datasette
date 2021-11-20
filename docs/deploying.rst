@@ -188,6 +188,8 @@ Then add these directives to proxy traffic::
     ProxyPass /my-datasette/ http://127.0.0.1:8009/my-datasette/
     ProxyPreserveHost On
 
+A live demo of Datasette running behind Apache using this proxy setup can be seen at `datasette-apache-proxy-demo.datasette.io/prefix/ <https://datasette-apache-proxy-demo.datasette.io/prefix/>`__. The code for that demo can be found in the `demos/apache-proxy <https://github.com/simonw/datasette/tree/main/demos/apache-proxy>`__ directory.
+
 Using ``--uds`` you can use Unix domain sockets similar to the nginx example::
 
     ProxyPass /my-datasette/ unix:/tmp/datasette.sock|http://localhost/my-datasette/

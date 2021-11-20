@@ -21,6 +21,7 @@ RUN echo -e 'ServerName localhost\n\
   Allow from all\n\
 </Proxy>\n\
 \n\
+ProxyPreserveHost On\n\
 ProxyPass /prefix/ http://localhost:8001/\n\
 Header add X-Proxied-By "Apache2"' >> /etc/apache2/httpd.conf
 

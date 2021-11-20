@@ -27,31 +27,17 @@ ARG DATASETTE_REF
 
 RUN pip install https://github.com/simonw/datasette/archive/${DATASETTE_REF}.zip
 
-# Append this to the end of the default httpd.conf file
-RUN echo '\n\
-<Directory /app/html/>\n\
-    Options Indexes FollowSymLinks\n\
-    AllowOverride None\n\
-    Require all granted\n\
-</Directory>\n\
-\n\
-<VirtualHost *:80>\n\
-    ServerName localhost\n\
-    DocumentRoot /app/html\n\
-    ProxyPreserveHost On\n\
-    ProxyPass /prefix/ http://127.0.0.1:8001/\n\
-    Header add X-Proxied-By "Apache2 Debian"\n\
-</VirtualHost>\n\
-' > /etc/apache2/sites-enabled/000-default.conf
+ADD 000-default.conf /etc/apache2/sites-enabled/000-default.conf
 
 WORKDIR /app
 RUN mkdir -p /app/html
-RUN echo '<a href="/prefix/">Datasette</a>' > /app/html/index.html
+RUN echo '<h1><a href="/prefix/">Demo is at /prefix/</a></h1>' > /app/html/index.html
 
 ADD https://latest.datasette.io/fixtures.db /app/fixtures.db
 
 EXPOSE 80
 
+# Dynamically build supervisord config since it includes $DATASETTE_REF:
 RUN echo "[supervisord]" >> /app/supervisord.conf
 RUN echo "nodaemon=true" >> /app/supervisord.conf
 RUN echo "" >> /app/supervisord.conf

@@ -1614,11 +1614,16 @@ def test_metadata_sort_desc(app_client):
         "/fixtures/compound_three_primary_keys/a,a,a",
         "/fixtures/paginated_view",
         "/fixtures/facetable",
+        "/fixtures?sql=select+1",
     ],
 )
-def test_base_url_config(app_client_base_url_prefix, path):
+@pytest.mark.parametrize("use_prefix", (True, False))
+def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
     client = app_client_base_url_prefix
-    response = client.get("/prefix/" + path.lstrip("/"))
+    path_to_get = path
+    if use_prefix:
+        path_to_get = "/prefix/" + path.lstrip("/")
+    response = client.get(path_to_get)
     soup = Soup(response.body, "html.parser")
     for el in soup.findAll(["a", "link", "script"]):
         if "href" in el.attrs:
@@ -1642,11 +1647,16 @@ def test_base_url_config(app_client_base_url_prefix, path):
             # If this has been made absolute it may start http://localhost/
             if href.startswith("http://localhost/"):
                 href = href[len("http://localost/") :]
-            assert href.startswith("/prefix/"), {
-                "path": path,
-                "href_or_src": href,
-                "element_parent": str(el.parent),
-            }
+            assert href.startswith("/prefix/"), json.dumps(
+                {
+                    "path": path,
+                    "path_to_get": path_to_get,
+                    "href_or_src": href,
+                    "element_parent": str(el.parent),
+                },
+                indent=4,
+                default=repr,
+            )
 
 
 def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):

@@ -459,7 +459,7 @@ class QueryView(DataView):
                 "metadata": metadata,
                 "settings": self.ds.settings_dict(),
                 "request": request,
-                "show_hide_link": show_hide_link,
+                "show_hide_link": self.ds.urls.path(show_hide_link),
                 "show_hide_text": show_hide_text,
                 "show_hide_hidden": markupsafe.Markup(show_hide_hidden),
                 "hide_sql": hide_sql,

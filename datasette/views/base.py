@@ -592,13 +592,15 @@ class DataView(BaseView):
                 )
                 it_can_render = await await_me_maybe(it_can_render)
                 if it_can_render:
-                    renderers[key] = path_with_format(
-                        request=request, format=key, extra_qs={**url_labels_extra}
+                    renderers[key] = self.ds.urls.path(
+                        path_with_format(
+                            request=request, format=key, extra_qs={**url_labels_extra}
+                        )
                     )
 
             url_csv_args = {"_size": "max", **url_labels_extra}
-            url_csv = path_with_format(
-                request=request, format="csv", extra_qs=url_csv_args
+            url_csv = self.ds.urls.path(
+                path_with_format(request=request, format="csv", extra_qs=url_csv_args)
             )
             url_csv_path = url_csv.split("?")[0]
             context = {

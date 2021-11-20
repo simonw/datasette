@@ -180,7 +180,11 @@ class ColumnFacet(Facet):
                             "name": column,
                             "toggle_url": self.ds.absolute_url(
                                 self.request,
-                                path_with_added_args(self.request, {"_facet": column}),
+                                self.ds.urls.path(
+                                    path_with_added_args(
+                                        self.request, {"_facet": column}
+                                    )
+                                ),
                             ),
                         }
                     )
@@ -334,8 +338,10 @@ class ArrayFacet(Facet):
                                 "type": "array",
                                 "toggle_url": self.ds.absolute_url(
                                     self.request,
-                                    path_with_added_args(
-                                        self.request, {"_facet_array": column}
+                                    self.ds.urls.path(
+                                        path_with_added_args(
+                                            self.request, {"_facet_array": column}
+                                        )
                                     ),
                                 ),
                             }
@@ -461,8 +467,10 @@ class DateFacet(Facet):
                             "type": "date",
                             "toggle_url": self.ds.absolute_url(
                                 self.request,
-                                path_with_added_args(
-                                    self.request, {"_facet_date": column}
+                                self.ds.urls.path(
+                                    path_with_added_args(
+                                        self.request, {"_facet_date": column}
+                                    )
                                 ),
                             ),
                         }

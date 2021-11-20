@@ -25,7 +25,9 @@ RUN a2enmod headers
 
 ARG DATASETTE_REF
 
-RUN pip install https://github.com/simonw/datasette/archive/${DATASETTE_REF}.zip
+RUN pip install \
+    https://github.com/simonw/datasette/archive/${DATASETTE_REF}.zip \
+    datasette-redirect-to-https
 
 ADD 000-default.conf /etc/apache2/sites-enabled/000-default.conf
 
@@ -43,8 +45,12 @@ RUN echo "nodaemon=true" >> /app/supervisord.conf
 RUN echo "" >> /app/supervisord.conf
 RUN echo "[program:apache2]" >> /app/supervisord.conf
 RUN echo "command=apache2 -D FOREGROUND" >> /app/supervisord.conf
+RUN echo "stdout_logfile=/dev/stdout" >> /app/supervisord.conf
+RUN echo "stdout_logfile_maxbytes=0" >> /app/supervisord.conf
 RUN echo "" >> /app/supervisord.conf
 RUN echo "[program:datasette]" >> /app/supervisord.conf
 RUN echo "command=datasette /app/fixtures.db --setting base_url '/prefix/' --version-note '${DATASETTE_REF}' -h 0.0.0.0 -p 8001" >> /app/supervisord.conf
+RUN echo "stdout_logfile=/dev/stdout" >> /app/supervisord.conf
+RUN echo "stdout_logfile_maxbytes=0" >> /app/supervisord.conf
 
 CMD ["/usr/bin/supervisord", "-c", "/app/supervisord.conf"]

@@ -1069,3 +1069,31 @@ def test_table_page_title(app_client, path, expected):
     response = app_client.get(path)
     title = Soup(response.text, "html.parser").find("title").text
     assert title == expected
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        (
+            "/fixtures/table%2Fwith%2Fslashes.csv",
+            "http://localhost/fixtures/table%2Fwith%2Fslashes.csv?_format=json",
+        ),
+        ("/fixtures/facetable", "http://localhost/fixtures/facetable.json"),
+        (
+            "/fixtures/no_primary_key/1",
+            "http://localhost/fixtures/no_primary_key/1.json",
+        ),
+    ),
+)
+def test_alternate_url_json(app_client, path, expected):
+    response = app_client.get(path)
+    link = response.headers["link"]
+    assert link == '{}; rel="alternate"; type="application/json+datasette"'.format(
+        expected
+    )
+    assert (
+        '<link rel="alternate" type="application/json+datasette" href="{}">'.format(
+            expected
+        )
+        in response.text
+    )

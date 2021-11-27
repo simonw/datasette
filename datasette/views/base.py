@@ -137,10 +137,18 @@ class BaseView:
                 ],
             },
         }
+        # Hacky cheat to add extra headers
+        headers = {}
+        if "_extra_headers" in context:
+            headers.update(context["_extra_headers"])
         return Response.html(
             await self.ds.render_template(
-                template, template_context, request=request, view_name=self.name
-            )
+                template,
+                template_context,
+                request=request,
+                view_name=self.name,
+            ),
+            headers=headers,
         )
 
     @classmethod

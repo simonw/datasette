@@ -977,6 +977,7 @@ def test_cors(app_client_with_cors, path, status_code):
     assert response.status == status_code
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert response.headers["Access-Control-Allow-Headers"] == "Authorization"
+    assert response.headers["Access-Control-Expose-Headers"] == "Link"
 
 
 @pytest.mark.parametrize(

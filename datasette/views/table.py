@@ -17,6 +17,7 @@ from datasette.utils import (
     is_url,
     path_from_row_pks,
     path_with_added_args,
+    path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
     to_css_class,
@@ -850,7 +851,12 @@ class TableView(RowTableShared):
                 for table_column in table_columns
                 if table_column not in columns
             ]
+            alternate_url_json = self.ds.absolute_url(
+                request,
+                self.ds.urls.path(path_with_format(request=request, format="json")),
+            )
             d = {
+                "alternate_url_json": alternate_url_json,
                 "table_actions": table_actions,
                 "use_rowid": use_rowid,
                 "filters": filters,
@@ -881,6 +887,11 @@ class TableView(RowTableShared):
                 "metadata": metadata,
                 "view_definition": await db.get_view_definition(table),
                 "table_definition": await db.get_table_definition(table),
+                "_extra_headers": {
+                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                        alternate_url_json
+                    )
+                },
             }
             d.update(extra_context_from_filters)
             return d
@@ -964,8 +975,12 @@ class RowView(RowTableShared):
             )
             for column in display_columns:
                 column["sortable"] = False
-
+            alternate_url_json = self.ds.absolute_url(
+                request,
+                self.ds.urls.path(path_with_format(request=request, format="json")),
+            )
             return {
+                "alternate_url_json": alternate_url_json,
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
                 ),
@@ -980,6 +995,11 @@ class RowView(RowTableShared):
                 .get(database, {})
                 .get("tables", {})
                 .get(table, {}),
+                "_extra_headers": {
+                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                        alternate_url_json
+                    )
+                },
             }
 
         data = {

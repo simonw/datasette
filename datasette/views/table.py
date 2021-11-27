@@ -17,6 +17,7 @@ from datasette.utils import (
     is_url,
     path_from_row_pks,
     path_with_added_args,
+    path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
     to_css_class,
@@ -958,6 +959,13 @@ class TableView(RowTableShared):
                 "metadata": metadata,
                 "view_definition": await db.get_view_definition(table),
                 "table_definition": await db.get_table_definition(table),
+                "_extra_headers": {
+                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                        self.ds.absolute_url(
+                            request, path_with_format(request=request, format="json")
+                        ),
+                    )
+                },
             }
 
         return (

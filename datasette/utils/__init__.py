@@ -1094,3 +1094,4 @@ async def derive_named_parameters(db, sql):
 def add_cors_headers(headers):
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization"
+    headers["Access-Control-Expose-Headers"] = "Link"

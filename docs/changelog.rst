@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v0_59_4:
+
+0.59.4 (2021-11-29)
+-------------------
+
+- Fixed bug where columns with a leading underscore could not be removed from the interactive filters list. (:issue:`1527`)
+- Fixed bug where columns with a leading underscore were not correctly linked to by the "Links from other tables" interface on the row page. (:issue:`1525`)
+- Upgraded dependencies ``aiofiles``, ``black`` and ``janus``.
+
 .. _v0_59_3:
 
 0.59.3 (2021-11-20)

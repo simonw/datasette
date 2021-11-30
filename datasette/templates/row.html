@@ -38,7 +38,7 @@
     <ul>
         {% for other in foreign_key_tables %}
             <li>
-                <a href="{{ urls.table(database, other.other_table) }}?{{ other.other_column }}={{ ', '.join(primary_key_values) }}">
+                <a href="{{ other.link }}">
                     {{ "{:,}".format(other.count) }} row{% if other.count == 1 %}{% else %}s{% endif %}</a>
                 from {{ other.other_column }} in {{ other.other_table }}
             </li>

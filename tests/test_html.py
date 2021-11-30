@@ -820,6 +820,34 @@ def test_row_html_no_primary_key(app_client):
     ]
 
 
+@pytest.mark.parametrize(
+    "path,expected_text,expected_link",
+    (
+        (
+            "/fixtures/facet_cities/1",
+            "6 rows from _city_id in facetable",
+            "/fixtures/facetable?_city_id__exact=1",
+        ),
+        (
+            "/fixtures/attraction_characteristic/2",
+            "3 rows from characteristic_id in roadside_attraction_characteristics",
+            "/fixtures/roadside_attraction_characteristics?characteristic_id=2",
+        ),
+    ),
+)
+def test_row_links_from_other_tables(app_client, path, expected_text, expected_link):
+    response = app_client.get(path)
+    assert response.status == 200
+    soup = Soup(response.body, "html.parser")
+    h2 = soup.find("h2")
+    assert h2.text == "Links from other tables"
+    li = h2.findNext("ul").find("li")
+    text = re.sub(r"\s+", " ", li.text.strip())
+    assert text == expected_text
+    link = li.find("a")["href"]
+    assert link == expected_link
+
+
 def test_table_html_compound_primary_key(app_client):
     response = app_client.get("/fixtures/compound_primary_key")
     assert response.status == 200

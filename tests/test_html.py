@@ -487,7 +487,7 @@ def test_sort_links(app_client):
 
 def test_facet_display(app_client):
     response = app_client.get(
-        "/fixtures/facetable?_facet=planet_int&_facet=city_id&_facet=on_earth"
+        "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet=on_earth"
     )
     assert response.status == 200
     soup = Soup(response.body, "html.parser")
@@ -509,26 +509,26 @@ def test_facet_display(app_client):
         )
     assert actual == [
         {
-            "name": "city_id",
+            "name": "_city_id",
             "items": [
                 {
                     "name": "San Francisco",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=1",
+                    "qs": "_facet=planet_int&_facet=_city_id&_facet=on_earth&_city_id__exact=1",
                     "count": 6,
                 },
                 {
                     "name": "Los Angeles",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=2",
+                    "qs": "_facet=planet_int&_facet=_city_id&_facet=on_earth&_city_id__exact=2",
                     "count": 4,
                 },
                 {
                     "name": "Detroit",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=3",
+                    "qs": "_facet=planet_int&_facet=_city_id&_facet=on_earth&_city_id__exact=3",
                     "count": 4,
                 },
                 {
                     "name": "Memnonia",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&city_id=4",
+                    "qs": "_facet=planet_int&_facet=_city_id&_facet=on_earth&_city_id__exact=4",
                     "count": 1,
                 },
             ],
@@ -538,12 +538,12 @@ def test_facet_display(app_client):
             "items": [
                 {
                     "name": "1",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&planet_int=1",
+                    "qs": "_facet=planet_int&_facet=_city_id&_facet=on_earth&planet_int=1",
                     "count": 14,
                 },
                 {
                     "name": "2",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&planet_int=2",
+                    "qs": "_facet=planet_int&_facet=_city_id&_facet=on_earth&planet_int=2",
                     "count": 1,
                 },
             ],
@@ -553,12 +553,12 @@ def test_facet_display(app_client):
             "items": [
                 {
                     "name": "1",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&on_earth=1",
+                    "qs": "_facet=planet_int&_facet=_city_id&_facet=on_earth&on_earth=1",
                     "count": 14,
                 },
                 {
                     "name": "0",
-                    "qs": "_facet=planet_int&_facet=city_id&_facet=on_earth&on_earth=0",
+                    "qs": "_facet=planet_int&_facet=_city_id&_facet=on_earth&on_earth=0",
                     "count": 1,
                 },
             ],
@@ -568,14 +568,14 @@ def test_facet_display(app_client):
 
 def test_facets_persist_through_filter_form(app_client):
     response = app_client.get(
-        "/fixtures/facetable?_facet=planet_int&_facet=city_id&_facet_array=tags"
+        "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet_array=tags"
     )
     assert response.status == 200
     inputs = Soup(response.body, "html.parser").find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
         ("_facet", "planet_int"),
-        ("_facet", "city_id"),
+        ("_facet", "_city_id"),
         ("_facet_array", "tags"),
     ]
 
@@ -1350,20 +1350,20 @@ def test_canned_query_show_hide_metadata_option(
 
 def test_extra_where_clauses(app_client):
     response = app_client.get(
-        "/fixtures/facetable?_where=_neighborhood='Dogpatch'&_where=city_id=1"
+        "/fixtures/facetable?_where=_neighborhood='Dogpatch'&_where=_city_id=1"
     )
     soup = Soup(response.body, "html.parser")
     div = soup.select(".extra-wheres")[0]
     assert "2 extra where clauses" == div.find("h3").text
     hrefs = [a["href"] for a in div.findAll("a")]
     assert [
-        "/fixtures/facetable?_where=city_id%3D1",
+        "/fixtures/facetable?_where=_city_id%3D1",
         "/fixtures/facetable?_where=_neighborhood%3D%27Dogpatch%27",
     ] == hrefs
     # These should also be persisted as hidden fields
     inputs = soup.find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
-    assert [("_where", "_neighborhood='Dogpatch'"), ("_where", "city_id=1")] == [
+    assert [("_where", "_neighborhood='Dogpatch'"), ("_where", "_city_id=1")] == [
         (hidden["name"], hidden["value"]) for hidden in hiddens
     ]
 
@@ -1683,11 +1683,11 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
     [
         (
             "/fixtures/neighborhood_search",
-            "/fixtures?sql=%0Aselect+_neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+_neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+_neighborhood%3B%0A&amp;text=",
+            "/fixtures?sql=%0Aselect+_neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable._city_id+%3D+facet_cities.id%0Awhere+_neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+_neighborhood%3B%0A&amp;text=",
         ),
         (
             "/fixtures/neighborhood_search?text=ber",
-            "/fixtures?sql=%0Aselect+_neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable.city_id+%3D+facet_cities.id%0Awhere+_neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+_neighborhood%3B%0A&amp;text=ber",
+            "/fixtures?sql=%0Aselect+_neighborhood%2C+facet_cities.name%2C+state%0Afrom+facetable%0A++++join+facet_cities%0A++++++++on+facetable._city_id+%3D+facet_cities.id%0Awhere+_neighborhood+like+%27%25%27+%7C%7C+%3Atext+%7C%7C+%27%25%27%0Aorder+by+_neighborhood%3B%0A&amp;text=ber",
         ),
         ("/fixtures/pragma_cache_size", None),
         (

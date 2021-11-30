@@ -358,7 +358,7 @@ METADATA = {
                         select _neighborhood, facet_cities.name, state
                         from facetable
                             join facet_cities
-                                on facetable.city_id = facet_cities.id
+                                on facetable._city_id = facet_cities.id
                         where _neighborhood like '%' || :text || '%'
                         order by _neighborhood;
                     """
@@ -558,15 +558,15 @@ CREATE TABLE facetable (
     planet_int integer,
     on_earth integer,
     state text,
-    city_id integer,
+    _city_id integer,
     _neighborhood text,
     tags text,
     complex_array text,
     distinct_some_null,
-    FOREIGN KEY ("city_id") REFERENCES [facet_cities](id)
+    FOREIGN KEY ("_city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (created, planet_int, on_earth, state, city_id, _neighborhood, tags, complex_array, distinct_some_null)
+    (created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null)
 VALUES
     ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]', 'one'),
     ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]', 'two'),

@@ -23,7 +23,7 @@ async def test_column_facet_suggest(app_client):
         {"name": "planet_int", "toggle_url": "http://localhost/?_facet=planet_int"},
         {"name": "on_earth", "toggle_url": "http://localhost/?_facet=on_earth"},
         {"name": "state", "toggle_url": "http://localhost/?_facet=state"},
-        {"name": "city_id", "toggle_url": "http://localhost/?_facet=city_id"},
+        {"name": "_city_id", "toggle_url": "http://localhost/?_facet=_city_id"},
         {
             "name": "_neighborhood",
             "toggle_url": "http://localhost/?_facet=_neighborhood",
@@ -56,8 +56,8 @@ async def test_column_facet_suggest_skip_if_already_selected(app_client):
             "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=state",
         },
         {
-            "name": "city_id",
-            "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=city_id",
+            "name": "_city_id",
+            "toggle_url": "http://localhost/?_facet=planet_int&_facet=on_earth&_facet=_city_id",
         },
         {
             "name": "_neighborhood",
@@ -82,7 +82,7 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
-        metadata={"facets": ["city_id"]},
+        metadata={"facets": ["_city_id"]},
     )
     suggestions = [s["name"] for s in await facet.suggest()]
     assert [
@@ -100,7 +100,7 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(app_client):
 async def test_column_facet_results(app_client):
     facet = ColumnFacet(
         app_client.ds,
-        Request.fake("/?_facet=city_id"),
+        Request.fake("/?_facet=_city_id"),
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
@@ -108,8 +108,8 @@ async def test_column_facet_results(app_client):
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
     assert {
-        "city_id": {
-            "name": "city_id",
+        "_city_id": {
+            "name": "_city_id",
             "type": "column",
             "hideable": True,
             "toggle_url": "/",
@@ -118,28 +118,28 @@ async def test_column_facet_results(app_client):
                     "value": 1,
                     "label": "San Francisco",
                     "count": 6,
-                    "toggle_url": "http://localhost/?_facet=city_id&city_id=1",
+                    "toggle_url": "http://localhost/?_facet=_city_id&_city_id__exact=1",
                     "selected": False,
                 },
                 {
                     "value": 2,
                     "label": "Los Angeles",
                     "count": 4,
-                    "toggle_url": "http://localhost/?_facet=city_id&city_id=2",
+                    "toggle_url": "http://localhost/?_facet=_city_id&_city_id__exact=2",
                     "selected": False,
                 },
                 {
                     "value": 3,
                     "label": "Detroit",
                     "count": 4,
-                    "toggle_url": "http://localhost/?_facet=city_id&city_id=3",
+                    "toggle_url": "http://localhost/?_facet=_city_id&_city_id__exact=3",
                     "selected": False,
                 },
                 {
                     "value": 4,
                     "label": "Memnonia",
                     "count": 1,
-                    "toggle_url": "http://localhost/?_facet=city_id&city_id=4",
+                    "toggle_url": "http://localhost/?_facet=_city_id&_city_id__exact=4",
                     "selected": False,
                 },
             ],
@@ -278,13 +278,13 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
-        metadata={"facets": ["city_id"]},
+        metadata={"facets": ["_city_id"]},
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
     assert {
-        "city_id": {
-            "name": "city_id",
+        "_city_id": {
+            "name": "_city_id",
             "type": "column",
             "hideable": False,
             "toggle_url": "/",
@@ -293,28 +293,28 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
                     "value": 1,
                     "label": "San Francisco",
                     "count": 6,
-                    "toggle_url": "http://localhost/?city_id=1",
+                    "toggle_url": "http://localhost/?_city_id__exact=1",
                     "selected": False,
                 },
                 {
                     "value": 2,
                     "label": "Los Angeles",
                     "count": 4,
-                    "toggle_url": "http://localhost/?city_id=2",
+                    "toggle_url": "http://localhost/?_city_id__exact=2",
                     "selected": False,
                 },
                 {
                     "value": 3,
                     "label": "Detroit",
                     "count": 4,
-                    "toggle_url": "http://localhost/?city_id=3",
+                    "toggle_url": "http://localhost/?_city_id__exact=3",
                     "selected": False,
                 },
                 {
                     "value": 4,
                     "label": "Memnonia",
                     "count": 1,
-                    "toggle_url": "http://localhost/?city_id=4",
+                    "toggle_url": "http://localhost/?_city_id__exact=4",
                     "selected": False,
                 },
             ],

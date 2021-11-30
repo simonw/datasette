@@ -81,7 +81,7 @@ async def test_table_exists(db, tables, exists):
                 "planet_int",
                 "on_earth",
                 "state",
-                "city_id",
+                "_city_id",
                 "_neighborhood",
                 "tags",
                 "complex_array",
@@ -161,7 +161,7 @@ async def test_table_columns(db, table, expected):
                 ),
                 Column(
                     cid=5,
-                    name="city_id",
+                    name="_city_id",
                     type="integer",
                     notnull=0,
                     default_value=None,

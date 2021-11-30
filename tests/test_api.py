@@ -1357,30 +1357,35 @@ def test_row_foreign_key_tables(app_client):
             "column": "id",
             "other_column": "foreign_key_with_blank_label",
             "count": 0,
+            "link": "/fixtures/foreign_key_references?foreign_key_with_blank_label=1",
         },
         {
             "other_table": "foreign_key_references",
             "column": "id",
             "other_column": "foreign_key_with_label",
             "count": 1,
+            "link": "/fixtures/foreign_key_references?foreign_key_with_label=1",
         },
         {
             "other_table": "complex_foreign_keys",
             "column": "id",
             "other_column": "f3",
             "count": 1,
+            "link": "/fixtures/complex_foreign_keys?f3=1",
         },
         {
             "other_table": "complex_foreign_keys",
             "column": "id",
             "other_column": "f2",
             "count": 0,
+            "link": "/fixtures/complex_foreign_keys?f2=1",
         },
         {
             "other_table": "complex_foreign_keys",
             "column": "id",
             "other_column": "f1",
             "count": 1,
+            "link": "/fixtures/complex_foreign_keys?f1=1",
         },
     ]
 

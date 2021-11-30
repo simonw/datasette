@@ -326,6 +326,19 @@ def test_existing_filter_redirects(app_client):
     assert "?" not in response.headers["Location"]
 
 
+def test_exact_parameter_results_in_correct_hidden_fields(app_client):
+    # https://github.com/simonw/datasette/issues/1527
+    response = app_client.get(
+        "/fixtures/facetable?_facet=_neighborhood&_neighborhood__exact=Downtown"
+    )
+    # In this case we should NOT have a hidden _neighborhood__exact=Downtown field
+    form = Soup(response.body, "html.parser").find("form")
+    hidden_inputs = {
+        input["name"]: input["value"] for input in form.select("input[type=hidden]")
+    }
+    assert hidden_inputs == {"_facet": "_neighborhood"}
+
+
 def test_empty_search_parameter_gets_removed(app_client):
     path_base = "/fixtures/simple_primary_key"
     path = (

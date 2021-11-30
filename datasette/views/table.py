@@ -889,7 +889,11 @@ class TableView(RowTableShared):
 
             form_hidden_args = []
             for key in request.args:
-                if key.startswith("_") and key not in ("_sort", "_search", "_next"):
+                if (
+                    key.startswith("_")
+                    and key not in ("_sort", "_search", "_next")
+                    and not key.endswith("__exact")
+                ):
                     for value in request.args.getlist(key):
                         form_hidden_args.append((key, value))
 

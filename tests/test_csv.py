@@ -24,7 +24,7 @@ world
 )
 
 EXPECTED_TABLE_WITH_LABELS_CSV = """
-pk,created,planet_int,on_earth,state,city_id,city_id_label,_neighborhood,tags,complex_array,distinct_some_null
+pk,created,planet_int,on_earth,state,_city_id,_city_id_label,_neighborhood,tags,complex_array,distinct_some_null
 1,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Mission,"[""tag1"", ""tag2""]","[{""foo"": ""bar""}]",one
 2,2019-01-14 08:00:00,1,1,CA,1,San Francisco,Dogpatch,"[""tag1"", ""tag3""]",[],two
 3,2019-01-14 08:00:00,1,1,CA,1,San Francisco,SOMA,[],[],
@@ -57,42 +57,42 @@ def test_table_csv(app_client):
     response = app_client.get("/fixtures/simple_primary_key.csv?_oh=1")
     assert response.status == 200
     assert not response.headers.get("Access-Control-Allow-Origin")
-    assert "text/plain; charset=utf-8" == response.headers["content-type"]
-    assert EXPECTED_TABLE_CSV == response.text
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == EXPECTED_TABLE_CSV
 
 
 def test_table_csv_cors_headers(app_client_with_cors):
     response = app_client_with_cors.get("/fixtures/simple_primary_key.csv")
     assert response.status == 200
-    assert "*" == response.headers["Access-Control-Allow-Origin"]
+    assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
 def test_table_csv_no_header(app_client):
     response = app_client.get("/fixtures/simple_primary_key.csv?_header=off")
     assert response.status == 200
     assert not response.headers.get("Access-Control-Allow-Origin")
-    assert "text/plain; charset=utf-8" == response.headers["content-type"]
-    assert EXPECTED_TABLE_CSV.split("\r\n", 1)[1] == response.text
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == EXPECTED_TABLE_CSV.split("\r\n", 1)[1]
 
 
 def test_table_csv_with_labels(app_client):
     response = app_client.get("/fixtures/facetable.csv?_labels=1")
     assert response.status == 200
-    assert "text/plain; charset=utf-8" == response.headers["content-type"]
-    assert EXPECTED_TABLE_WITH_LABELS_CSV == response.text
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == EXPECTED_TABLE_WITH_LABELS_CSV
 
 
 def test_table_csv_with_nullable_labels(app_client):
     response = app_client.get("/fixtures/foreign_key_references.csv?_labels=1")
     assert response.status == 200
-    assert "text/plain; charset=utf-8" == response.headers["content-type"]
-    assert EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV == response.text
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV
 
 
 def test_table_csv_blob_columns(app_client):
     response = app_client.get("/fixtures/binary_data.csv")
     assert response.status == 200
-    assert "text/plain; charset=utf-8" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == (
         "rowid,data\r\n"
         "1,http://localhost/fixtures/binary_data/1.blob?_blob_column=data\r\n"
@@ -104,7 +104,7 @@ def test_table_csv_blob_columns(app_client):
 def test_custom_sql_csv_blob_columns(app_client):
     response = app_client.get("/fixtures.csv?sql=select+rowid,+data+from+binary_data")
     assert response.status == 200
-    assert "text/plain; charset=utf-8" == response.headers["content-type"]
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == (
         "rowid,data\r\n"
         '1,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d"\r\n'
@@ -118,16 +118,18 @@ def test_custom_sql_csv(app_client):
         "/fixtures.csv?sql=select+content+from+simple_primary_key+limit+2"
     )
     assert response.status == 200
-    assert "text/plain; charset=utf-8" == response.headers["content-type"]
-    assert EXPECTED_CUSTOM_CSV == response.text
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == EXPECTED_CUSTOM_CSV
 
 
 def test_table_csv_download(app_client):
     response = app_client.get("/fixtures/simple_primary_key.csv?_dl=1")
     assert response.status == 200
-    assert "text/csv; charset=utf-8" == response.headers["content-type"]
-    expected_disposition = 'attachment; filename="simple_primary_key.csv"'
-    assert expected_disposition == response.headers["content-disposition"]
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert (
+        response.headers["content-disposition"]
+        == 'attachment; filename="simple_primary_key.csv"'
+    )
 
 
 def test_csv_with_non_ascii_characters(app_client):
@@ -135,8 +137,8 @@ def test_csv_with_non_ascii_characters(app_client):
         "/fixtures.csv?sql=select%0D%0A++%27%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC%27+as+text%2C%0D%0A++1+as+number%0D%0Aunion%0D%0Aselect%0D%0A++%27bob%27+as+text%2C%0D%0A++2+as+number%0D%0Aorder+by%0D%0A++number"
     )
     assert response.status == 200
-    assert "text/plain; charset=utf-8" == response.headers["content-type"]
-    assert "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n" == response.text
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.text == "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n"
 
 
 def test_max_csv_mb(app_client_csv_max_mb_one):
@@ -156,10 +158,10 @@ def test_max_csv_mb(app_client_csv_max_mb_one):
 def test_table_csv_stream(app_client):
     # Without _stream should return header + 100 rows:
     response = app_client.get("/fixtures/compound_three_primary_keys.csv?_size=max")
-    assert 101 == len([b for b in response.body.split(b"\r\n") if b])
+    assert len([b for b in response.body.split(b"\r\n") if b]) == 101
     # With _stream=1 should return header + 1001 rows
     response = app_client.get("/fixtures/compound_three_primary_keys.csv?_stream=1")
-    assert 1002 == len([b for b in response.body.split(b"\r\n") if b])
+    assert len([b for b in response.body.split(b"\r\n") if b]) == 1002
 
 
 def test_csv_trace(app_client_with_trace):

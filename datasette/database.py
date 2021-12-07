@@ -286,7 +286,7 @@ class Database:
             return explicit_label_column
         column_names = await self.execute_fn(lambda conn: table_columns(conn, table))
         # Is there a name or title column?
-        name_or_title = [c for c in column_names if c in ("name", "title")]
+        name_or_title = [c for c in column_names if c.lower() in ("name", "title")]
         if name_or_title:
             return name_or_title[0]
         # If a table has two columns, one of which is ID, then label_column is the other one

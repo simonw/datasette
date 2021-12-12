@@ -121,3 +121,19 @@ def test_request_properties(path, query_string, expected_full_path):
     assert request.path == path
     assert request.query_string == query_string
     assert request.full_path == expected_full_path
+
+
+def test_request_blank_values():
+    query_string = "a=b&foo=bar&foo=bar2&baz="
+    path_with_query_string = "/?" + query_string
+    scope = {
+        "http_version": "1.1",
+        "method": "POST",
+        "path": "/",
+        "raw_path": path_with_query_string.encode("latin-1"),
+        "query_string": query_string.encode("latin-1"),
+        "scheme": "http",
+        "type": "http",
+    }
+    request = Request(scope, None)
+    assert request.args._data == {"a": ["b"], "foo": ["bar", "bar2"], "baz": [""]}

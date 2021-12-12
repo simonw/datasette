@@ -393,21 +393,16 @@ class TableView(RowTableShared):
             nocount = True
             nofacet = True
 
-        # Ensure we don't drop anything with an empty value e.g. ?name__exact=
-        args = MultiParams(
-            urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
-        )
-
         # Special args start with _ and do not contain a __
         # That's so if there is a column that starts with _
         # it can still be queried using ?_col__exact=blah
         special_args = {}
         other_args = []
-        for key in args:
+        for key in request.args:
             if key.startswith("_") and "__" not in key:
-                special_args[key] = args[key]
+                special_args[key] = request.args[key]
             else:
-                for v in args.getlist(key):
+                for v in request.args.getlist(key):
                     other_args.append((key, v))
 
         # Handle ?_filter_column and redirect, if present

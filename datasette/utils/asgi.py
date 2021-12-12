@@ -97,7 +97,7 @@ class Request:
 
     @property
     def args(self):
-        return MultiParams(parse_qs(qs=self.query_string))
+        return MultiParams(parse_qs(qs=self.query_string, keep_blank_values=True))
 
     @property
     def actor(self):

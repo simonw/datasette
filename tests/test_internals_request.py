@@ -124,16 +124,18 @@ def test_request_properties(path, query_string, expected_full_path):
 
 
 def test_request_blank_values():
-    query_string = "a=b&foo=bar&foo=bar2&baz="
-    path_with_query_string = "/?" + query_string
-    scope = {
-        "http_version": "1.1",
-        "method": "POST",
-        "path": "/",
-        "raw_path": path_with_query_string.encode("latin-1"),
-        "query_string": query_string.encode("latin-1"),
-        "scheme": "http",
-        "type": "http",
-    }
-    request = Request(scope, None)
+    request = Request.fake("/?a=b&foo=bar&foo=bar2&baz=")
     assert request.args._data == {"a": ["b"], "foo": ["bar", "bar2"], "baz": [""]}
+
+
+def test_json_in_query_string_name():
+    query_string = (
+        '?_through.["roadside_attraction_characteristics"%2C"characteristic_id"]=1'
+    )
+    request = Request.fake("/" + query_string)
+    assert (
+        request.args[
+            '_through.["roadside_attraction_characteristics","characteristic_id"]'
+        ]
+        == "1"
+    )

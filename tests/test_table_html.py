@@ -1015,24 +1015,19 @@ def test_column_metadata(app_client):
     )
 
 
-@pytest.mark.parametrize("use_facet_size_max", (True, False))
-def test_facet_total_shown_if_facet_max_size(use_facet_size_max):
+def test_facet_total():
     # https://github.com/simonw/datasette/issues/1423
+    # https://github.com/simonw/datasette/issues/1556
     with make_app_client(settings={"max_returned_rows": 100}) as client:
         path = "/fixtures/sortable?_facet=content&_facet=pk1"
-        if use_facet_size_max:
-            path += "&_facet_size=max"
         response = client.get(path)
         assert response.status == 200
     fragments = (
-        '<span class="facet-info-total">&gt;100</span>',
+        '<span class="facet-info-total">&gt;30</span>',
         '<span class="facet-info-total">8</span>',
     )
     for fragment in fragments:
-        if use_facet_size_max:
-            assert fragment in response.text
-        else:
-            assert fragment not in response.text
+        assert fragment in response.text
 
 
 def test_sort_rowid_with_next(app_client):

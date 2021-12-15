@@ -157,7 +157,7 @@
             <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}" id="facet-{{ facet_info.name|to_css_class }}" data-column="{{ facet_info.name }}">
                 <p class="facet-info-name">
                     <strong>{{ facet_info.name }}{% if facet_info.type != "column" %} ({{ facet_info.type }}){% endif %}
-                        {% if show_facet_counts %} <span class="facet-info-total">{% if facet_info.truncated %}&gt;{% endif %}{{ facet_info.results|length }}</span>{% endif %}
+                        <span class="facet-info-total">{% if facet_info.truncated %}&gt;{% endif %}{{ facet_info.results|length }}</span>
                     </strong>
                     {% if facet_info.hideable %}
                         <a href="{{ facet_info.toggle_url }}" class="cross">&#x2716;</a>

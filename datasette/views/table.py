@@ -937,7 +937,6 @@ class TableView(RowTableShared):
                     key=lambda f: (len(f["results"]), f["name"]),
                     reverse=True,
                 ),
-                "show_facet_counts": special_args.get("_facet_size") == "max",
                 "extra_wheres_for_ui": extra_wheres_for_ui,
                 "form_hidden_args": form_hidden_args,
                 "is_sortable": any(c["sortable"] for c in display_columns),

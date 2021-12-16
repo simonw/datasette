@@ -611,3 +611,16 @@ def test_other_types_of_facet_in_metadata():
             "<strong>state\n",
         ):
             assert fragment in response.text
+
+
+def test_conflicting_facet_names_json(app_client):
+    response = app_client.get(
+        "/fixtures/facetable.json?_facet=created&_facet_date=created"
+        "&_facet=tags&_facet_array=tags"
+    )
+    assert set(response.json["facet_results"].keys()) == {
+        "created",
+        "tags",
+        "created_2",
+        "tags_2",
+    }

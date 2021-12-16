@@ -133,6 +133,10 @@ The performance of facets can be greatly improved by adding indexes on the colum
     Enter ".help" for usage hints.
     sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");
 
+Or using the `sqlite-utils <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-indexes>`__ command-line utility::
+
+    $ sqlite-utils create-index mydatabase.db Food_Trucks state
+
 .. _facet_by_json_array:
 
 Facet by JSON array

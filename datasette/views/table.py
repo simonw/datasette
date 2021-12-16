@@ -64,41 +64,6 @@ class Row:
 
 
 class RowTableShared(DataView):
-    async def columns_to_select(self, db, table, request):
-        table_columns = await db.table_columns(table)
-        pks = await db.primary_keys(table)
-        columns = list(table_columns)
-        if "_col" in request.args:
-            columns = list(pks)
-            _cols = request.args.getlist("_col")
-            bad_columns = [column for column in _cols if column not in table_columns]
-            if bad_columns:
-                raise DatasetteError(
-                    "_col={} - invalid columns".format(", ".join(bad_columns)),
-                    status=400,
-                )
-            # De-duplicate maintaining order:
-            columns.extend(dict.fromkeys(_cols))
-        if "_nocol" in request.args:
-            # Return all columns EXCEPT these
-            bad_columns = [
-                column
-                for column in request.args.getlist("_nocol")
-                if (column not in table_columns) or (column in pks)
-            ]
-            if bad_columns:
-                raise DatasetteError(
-                    "_nocol={} - invalid columns".format(", ".join(bad_columns)),
-                    status=400,
-                )
-            tmp_columns = [
-                column
-                for column in columns
-                if column not in request.args.getlist("_nocol")
-            ]
-            columns = tmp_columns
-        return columns
-
     async def sortable_columns_for_table(self, database, table, use_rowid):
         db = self.ds.databases[database]
         table_metadata = self.ds.table_metadata(database, table)
@@ -321,6 +286,39 @@ class TableView(RowTableShared):
             write=bool(canned_query.get("write")),
         )
 
+    async def columns_to_select(self, table_columns, pks, request):
+        columns = list(table_columns)
+        if "_col" in request.args:
+            columns = list(pks)
+            _cols = request.args.getlist("_col")
+            bad_columns = [column for column in _cols if column not in table_columns]
+            if bad_columns:
+                raise DatasetteError(
+                    "_col={} - invalid columns".format(", ".join(bad_columns)),
+                    status=400,
+                )
+            # De-duplicate maintaining order:
+            columns.extend(dict.fromkeys(_cols))
+        if "_nocol" in request.args:
+            # Return all columns EXCEPT these
+            bad_columns = [
+                column
+                for column in request.args.getlist("_nocol")
+                if (column not in table_columns) or (column in pks)
+            ]
+            if bad_columns:
+                raise DatasetteError(
+                    "_nocol={} - invalid columns".format(", ".join(bad_columns)),
+                    status=400,
+                )
+            tmp_columns = [
+                column
+                for column in columns
+                if column not in request.args.getlist("_nocol")
+            ]
+            columns = tmp_columns
+        return columns
+
     async def data(
         self,
         request,
@@ -331,6 +329,7 @@ class TableView(RowTableShared):
         _next=None,
         _size=None,
     ):
+        # If this is a canned query, not a table, then dispatch to QueryView instead
         canned_query = await self.ds.get_canned_query(database, table, request.actor)
         if canned_query:
             return await QueryView(self.ds).data(
@@ -348,9 +347,12 @@ class TableView(RowTableShared):
         db = self.ds.databases[database]
         is_view = bool(await db.get_view_definition(table))
         table_exists = bool(await db.table_exists(table))
+
+        # If table or view not found, return 404
         if not is_view and not table_exists:
             raise NotFound(f"Table not found: {table}")
 
+        # Ensure user has permission to view this table
         await self.check_permissions(
             request,
             [
@@ -364,15 +366,18 @@ class TableView(RowTableShared):
             None, "view-table", (database, table), default=True
         )
 
+        # Introspect columns and primary keys for table
         pks = await db.primary_keys(table)
         table_columns = await db.table_columns(table)
 
-        specified_columns = await self.columns_to_select(db, table, request)
+        # Take ?_col= and ?_nocol= into account
+        specified_columns = await self.columns_to_select(table_columns, pks, request)
         select_specified_columns = ", ".join(
             escape_sqlite(t) for t in specified_columns
         )
         select_all_columns = ", ".join(escape_sqlite(t) for t in table_columns)
 
+        # rowid tables (no specified primary key) need a different SELECT
         use_rowid = not pks and not is_view
         if use_rowid:
             select_specified_columns = f"rowid, {select_specified_columns}"
@@ -487,7 +492,7 @@ class TableView(RowTableShared):
                     f'{through_table}.{other_column} = "{value}"'
                 )
 
-        # _search support:
+        # _search= support:
         fts_table = special_args.get("_fts_table")
         fts_table = fts_table or table_metadata.get("fts_table")
         fts_table = fts_table or await db.fts_table(table)
@@ -541,8 +546,6 @@ class TableView(RowTableShared):
                     )
                     params[f"search_{i}"] = search_text
 
-        sortable_columns = set()
-
         sortable_columns = await self.sortable_columns_for_table(
             database, table, use_rowid
         )
@@ -581,6 +584,7 @@ class TableView(RowTableShared):
 
         count_sql = f"select count(*) {from_sql}"
 
+        # Handl pagination driven by ?_next=
         _next = _next or special_args.get("_next")
         offset = ""
         if _next:
@@ -679,6 +683,7 @@ class TableView(RowTableShared):
         else:
             page_size = self.ds.page_size
 
+        # Facets are calculated against SQL without order by or limit
         sql_no_order_no_limit = (
             "select {select_all_columns} from {table_name} {where}".format(
                 select_all_columns=select_all_columns,
@@ -686,6 +691,8 @@ class TableView(RowTableShared):
                 where=where_clause,
             )
         )
+
+        # This is the SQL that populates the main table on the page
         sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(
             select_specified_columns=select_specified_columns,
             table_name=escape_sqlite(table),
@@ -698,15 +705,17 @@ class TableView(RowTableShared):
         if request.args.get("_timelimit"):
             extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
 
+        # Execute the main query!
         results = await db.execute(sql, params, truncate=True, **extra_args)
 
-        # Number of filtered rows in whole set:
+        # Calculate the total count for this query
         filtered_table_rows_count = None
         if (
             not db.is_mutable
             and self.ds.inspect_data
             and count_sql == f"select count(*) from {table} "
         ):
+            # We can use a previously cached table row count
             try:
                 filtered_table_rows_count = self.ds.inspect_data[database]["tables"][
                     table
@@ -714,6 +723,7 @@ class TableView(RowTableShared):
             except KeyError:
                 pass
 
+        # Otherwise run a select count(*) ...
         if count_sql and filtered_table_rows_count is None and not nocount:
             try:
                 count_rows = list(await db.execute(count_sql, from_sql_params))
@@ -721,7 +731,7 @@ class TableView(RowTableShared):
             except QueryInterrupted:
                 pass
 
-        # facets support
+        # Faceting
         if not self.ds.setting("allow_facet") and any(
             arg.startswith("_facet") for arg in request.args
         ):
@@ -763,6 +773,18 @@ class TableView(RowTableShared):
                         key = f"{base_key}_{i}"
                     facet_results[key] = facet_info
                 facets_timed_out.extend(instance_facets_timed_out)
+
+        # Calculate suggested facets
+        suggested_facets = []
+        if (
+            self.ds.setting("suggest_facets")
+            and self.ds.setting("allow_facet")
+            and not _next
+            and not nofacet
+            and not nosuggest
+        ):
+            for facet in facet_instances:
+                suggested_facets.extend(await facet.suggest())
 
         # Figure out columns and rows for the query
         columns = [r[0] for r in results.description]
@@ -845,19 +867,6 @@ class TableView(RowTableShared):
                 request, self.ds.urls.path(path_with_replaced_args(request, added_args))
             )
             rows = rows[:page_size]
-
-        # Detect suggested facets
-        suggested_facets = []
-
-        if (
-            self.ds.setting("suggest_facets")
-            and self.ds.setting("allow_facet")
-            and not _next
-            and not nofacet
-            and not nosuggest
-        ):
-            for facet in facet_instances:
-                suggested_facets.extend(await facet.suggest())
 
         # human_description_en combines filters AND search, if provided
         human_description_en = filters.human_description_en(

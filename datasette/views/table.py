@@ -442,117 +442,27 @@ class TableView(RowTableShared):
         filters = Filters(sorted(other_args), units, ureg)
         where_clauses, params = filters.build_where_clauses(table)
 
-        extra_wheres_for_ui = []
-        # Add _where= from querystring
-        if "_where" in request.args:
-            if not await self.ds.permission_allowed(
-                request.actor,
-                "execute-sql",
-                resource=database,
-                default=True,
-            ):
-                raise DatasetteError("_where= is not allowed", status=403)
-            else:
-                where_clauses.extend(request.args.getlist("_where"))
-                extra_wheres_for_ui = [
-                    {
-                        "text": text,
-                        "remove_url": path_with_removed_args(request, {"_where": text}),
-                    }
-                    for text in request.args.getlist("_where")
-                ]
-
-        # Support for ?_through={table, column, value}
+        # Execute filters_from_request plugin hooks
+        extra_context_from_filters = {}
         extra_human_descriptions = []
-        if "_through" in request.args:
-            for through in request.args.getlist("_through"):
-                through_data = json.loads(through)
-                through_table = through_data["table"]
-                other_column = through_data["column"]
-                value = through_data["value"]
-                outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
-                try:
-                    fk_to_us = [
-                        fk for fk in outgoing_foreign_keys if fk["other_table"] == table
-                    ][0]
-                except IndexError:
-                    raise DatasetteError(
-                        "Invalid _through - could not find corresponding foreign key"
-                    )
-                param = f"p{len(params)}"
-                where_clauses.append(
-                    "{our_pk} in (select {our_column} from {through_table} where {other_column} = :{param})".format(
-                        through_table=escape_sqlite(through_table),
-                        our_pk=escape_sqlite(fk_to_us["other_column"]),
-                        our_column=escape_sqlite(fk_to_us["column"]),
-                        other_column=escape_sqlite(other_column),
-                        param=param,
-                    )
-                )
-                params[param] = value
-                extra_human_descriptions.append(
-                    f'{through_table}.{other_column} = "{value}"'
-                )
 
-        # _search= support:
-        fts_table = special_args.get("_fts_table")
-        fts_table = fts_table or table_metadata.get("fts_table")
-        fts_table = fts_table or await db.fts_table(table)
-        fts_pk = special_args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
-        search_args = dict(
-            pair
-            for pair in special_args.items()
-            if pair[0].startswith("_search") and pair[0] != "_searchmode"
-        )
-        search = ""
-        search_mode_raw = table_metadata.get("searchmode") == "raw"
-        # Or set it from the querystring
-        qs_searchmode = special_args.get("_searchmode")
-        if qs_searchmode == "escaped":
-            search_mode_raw = False
-        if qs_searchmode == "raw":
-            search_mode_raw = True
-        if fts_table and search_args:
-            if "_search" in search_args:
-                # Simple ?_search=xxx
-                search = search_args["_search"]
-                where_clauses.append(
-                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match {match_clause})".format(
-                        fts_table=escape_sqlite(fts_table),
-                        fts_pk=escape_sqlite(fts_pk),
-                        match_clause=":search"
-                        if search_mode_raw
-                        else "escape_fts(:search)",
-                    )
-                )
-                extra_human_descriptions.append(f'search matches "{search}"')
-                params["search"] = search
-            else:
-                # More complex: search against specific columns
-                for i, (key, search_text) in enumerate(search_args.items()):
-                    search_col = key.split("_search_", 1)[1]
-                    if search_col not in await db.table_columns(fts_table):
-                        raise BadRequest("Cannot search by that column")
+        for hook in pm.hook.filters_from_request(
+            request=request,
+            table=table,
+            database=database,
+            datasette=self.ds,
+        ):
+            filter_arguments = await await_me_maybe(hook)
+            if filter_arguments:
+                where_clauses.extend(filter_arguments.where_clauses)
+                params.update(filter_arguments.params)
+                extra_human_descriptions.extend(filter_arguments.human_descriptions)
+                extra_context_from_filters.update(filter_arguments.extra_context)
 
-                    where_clauses.append(
-                        "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
-                            fts_table=escape_sqlite(fts_table),
-                            search_col=escape_sqlite(search_col),
-                            match_clause=":search_{}".format(i)
-                            if search_mode_raw
-                            else "escape_fts(:search_{})".format(i),
-                        )
-                    )
-                    extra_human_descriptions.append(
-                        f'search column "{search_col}" matches "{search_text}"'
-                    )
-                    params[f"search_{i}"] = search_text
-
+        # Deal with custom sort orders
         sortable_columns = await self.sortable_columns_for_table(
             database, table, use_rowid
         )
-
-        # Allow for custom sort order
         sort = special_args.get("_sort")
         sort_desc = special_args.get("_sort_desc")
 
@@ -942,10 +852,8 @@ class TableView(RowTableShared):
                 for table_column in table_columns
                 if table_column not in columns
             ]
-            return {
+            d = {
                 "table_actions": table_actions,
-                "supports_search": bool(fts_table),
-                "search": search or "",
                 "use_rowid": use_rowid,
                 "filters": filters,
                 "display_columns": display_columns,
@@ -957,7 +865,6 @@ class TableView(RowTableShared):
                     key=lambda f: (len(f["results"]), f["name"]),
                     reverse=True,
                 ),
-                "extra_wheres_for_ui": extra_wheres_for_ui,
                 "form_hidden_args": form_hidden_args,
                 "is_sortable": any(c["sortable"] for c in display_columns),
                 "fix_path": self.ds.urls.path,
@@ -977,6 +884,8 @@ class TableView(RowTableShared):
                 "view_definition": await db.get_view_definition(table),
                 "table_definition": await db.get_table_definition(table),
             }
+            d.update(extra_context_from_filters)
+            return d
 
         return (
             {

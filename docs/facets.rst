@@ -16,7 +16,9 @@ To turn on faceting for specific columns on a Datasette table view, add one or m
 
     /dbname/tablename?_facet=state&_facet=city_id
 
-This works for both the HTML interface and the ``.json`` view. When enabled, facets will cause a ``facet_results`` block to be added to the JSON output, looking something like this::
+This works for both the HTML interface and the ``.json`` view. When enabled, facets will cause a ``facet_results`` block to be added to the JSON output, looking something like this:
+
+.. code-block:: json
 
     {
       "state": {
@@ -93,7 +95,9 @@ Facets in metadata.json
 
 You can turn facets on by default for specific tables by adding them to a ``"facets"`` key in a Datasette :ref:`metadata` file.
 
-Here's an example that turns on faceting by default for the ``qLegalStatus`` column in the ``Street_Tree_List`` table in the ``sf-trees`` database::
+Here's an example that turns on faceting by default for the ``qLegalStatus`` column in the ``Street_Tree_List`` table in the ``sf-trees`` database:
+
+.. code-block:: json
 
     {
       "databases": {
@@ -108,6 +112,18 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
     }
 
 Facets defined in this way will always be shown in the interface and returned in the API, regardless of the ``_facet`` arguments passed to the view.
+
+You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>` facets in metadata using JSON objects with a single key of ``array`` or ``date`` and a value specifying the column, like this:
+
+.. code-block:: json
+
+  {
+    "facets": [
+      {"array": "tags"},
+      {"date": "created"}
+    ]
+  }
+
 
 Suggested facets
 ----------------

@@ -30,7 +30,7 @@ def load_facet_configs(request, table_metadata):
             assert (
                 len(metadata_config.values()) == 1
             ), "Metadata config dicts should be {type: config}"
-            type, metadata_config = metadata_config.items()[0]
+            type, metadata_config = list(metadata_config.items())[0]
             if isinstance(metadata_config, str):
                 metadata_config = {"simple": metadata_config}
         facet_configs.setdefault(type, []).append(

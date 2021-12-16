@@ -3,7 +3,7 @@ from datasette.database import Database
 from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
 from datasette.utils.asgi import Request
 from datasette.utils import detect_json1
-from .fixtures import app_client  # noqa
+from .fixtures import app_client, make_app_client  # noqa
 import json
 import pytest
 
@@ -588,3 +588,26 @@ async def test_facet_size():
     )
     data5 = response5.json()
     assert len(data5["facet_results"]["city"]["results"]) == 20
+
+
+def test_other_types_of_facet_in_metadata():
+    with make_app_client(
+        metadata={
+            "databases": {
+                "fixtures": {
+                    "tables": {
+                        "facetable": {
+                            "facets": ["state", {"array": "tags"}, {"date": "created"}]
+                        }
+                    }
+                }
+            }
+        }
+    ) as client:
+        response = client.get("/fixtures/facetable")
+        for fragment in (
+            "<strong>created (date)\n",
+            "<strong>tags (array)\n",
+            "<strong>state\n",
+        ):
+            assert fragment in response.text

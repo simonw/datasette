@@ -915,6 +915,21 @@ def test_nofacet(app_client, nofacet):
         assert response.json["facet_results"] != {}
 
 
+@pytest.mark.parametrize("nosuggest", (True, False))
+def test_nosuggest(app_client, nosuggest):
+    path = "/fixtures/facetable.json?_facet=state"
+    if nosuggest:
+        path += "&_nosuggest=1"
+    response = app_client.get(path)
+    if nosuggest:
+        assert response.json["suggested_facets"] == []
+        # But facets should still be returned:
+        assert response.json["facet_results"] != {}
+    else:
+        assert response.json["suggested_facets"] != []
+        assert response.json["facet_results"] != {}
+
+
 @pytest.mark.parametrize("nocount,expected_count", ((True, None), (False, 15)))
 def test_nocount(app_client, nocount, expected_count):
     path = "/fixtures/facetable.json"

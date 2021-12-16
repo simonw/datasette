@@ -388,6 +388,7 @@ class TableView(RowTableShared):
 
         nocount = request.args.get("_nocount")
         nofacet = request.args.get("_nofacet")
+        nosuggest = request.args.get("_nosuggest")
 
         if request.args.get("_shape") in ("array", "object"):
             nocount = True
@@ -846,6 +847,7 @@ class TableView(RowTableShared):
             and self.ds.setting("allow_facet")
             and not _next
             and not nofacet
+            and not nosuggest
         ):
             for facet in facet_instances:
                 suggested_facets.extend(await facet.suggest())

@@ -193,7 +193,7 @@ class ColumnFacet(Facet):
         return suggested_facets
 
     async def facet_results(self):
-        facet_results = {}
+        facet_results = []
         facets_timed_out = []
 
         qs_pairs = self.get_querystring_pairs()
@@ -221,16 +221,18 @@ class ColumnFacet(Facet):
                     custom_time_limit=self.ds.setting("facet_time_limit_ms"),
                 )
                 facet_results_values = []
-                facet_results[column] = {
-                    "name": column,
-                    "type": self.type,
-                    "hideable": source != "metadata",
-                    "toggle_url": self.ds.urls.path(
-                        path_with_removed_args(self.request, {"_facet": column})
-                    ),
-                    "results": facet_results_values,
-                    "truncated": len(facet_rows_results) > facet_size,
-                }
+                facet_results.append(
+                    {
+                        "name": column,
+                        "type": self.type,
+                        "hideable": source != "metadata",
+                        "toggle_url": self.ds.urls.path(
+                            path_with_removed_args(self.request, {"_facet": column})
+                        ),
+                        "results": facet_results_values,
+                        "truncated": len(facet_rows_results) > facet_size,
+                    }
+                )
                 facet_rows = facet_rows_results.rows[:facet_size]
                 if self.table:
                     # Attempt to expand foreign keys into labels
@@ -352,7 +354,7 @@ class ArrayFacet(Facet):
 
     async def facet_results(self):
         # self.configs should be a plain list of columns
-        facet_results = {}
+        facet_results = []
         facets_timed_out = []
 
         facet_size = self.get_facet_size()
@@ -392,16 +394,20 @@ class ArrayFacet(Facet):
                     custom_time_limit=self.ds.setting("facet_time_limit_ms"),
                 )
                 facet_results_values = []
-                facet_results[column] = {
-                    "name": column,
-                    "type": self.type,
-                    "results": facet_results_values,
-                    "hideable": source != "metadata",
-                    "toggle_url": self.ds.urls.path(
-                        path_with_removed_args(self.request, {"_facet_array": column})
-                    ),
-                    "truncated": len(facet_rows_results) > facet_size,
-                }
+                facet_results.append(
+                    {
+                        "name": column,
+                        "type": self.type,
+                        "results": facet_results_values,
+                        "hideable": source != "metadata",
+                        "toggle_url": self.ds.urls.path(
+                            path_with_removed_args(
+                                self.request, {"_facet_array": column}
+                            )
+                        ),
+                        "truncated": len(facet_rows_results) > facet_size,
+                    }
+                )
                 facet_rows = facet_rows_results.rows[:facet_size]
                 pairs = self.get_querystring_pairs()
                 for row in facet_rows:
@@ -480,7 +486,7 @@ class DateFacet(Facet):
         return suggested_facets
 
     async def facet_results(self):
-        facet_results = {}
+        facet_results = []
         facets_timed_out = []
         args = dict(self.get_querystring_pairs())
         facet_size = self.get_facet_size()
@@ -507,16 +513,18 @@ class DateFacet(Facet):
                     custom_time_limit=self.ds.setting("facet_time_limit_ms"),
                 )
                 facet_results_values = []
-                facet_results[column] = {
-                    "name": column,
-                    "type": self.type,
-                    "results": facet_results_values,
-                    "hideable": source != "metadata",
-                    "toggle_url": path_with_removed_args(
-                        self.request, {"_facet_date": column}
-                    ),
-                    "truncated": len(facet_rows_results) > facet_size,
-                }
+                facet_results.append(
+                    {
+                        "name": column,
+                        "type": self.type,
+                        "results": facet_results_values,
+                        "hideable": source != "metadata",
+                        "toggle_url": path_with_removed_args(
+                            self.request, {"_facet_date": column}
+                        ),
+                        "truncated": len(facet_rows_results) > facet_size,
+                    }
+                )
                 facet_rows = facet_rows_results.rows[:facet_size]
                 for row in facet_rows:
                     selected = str(args.get(f"{column}__date")) == str(row["value"])

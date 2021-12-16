@@ -668,7 +668,7 @@ Each Facet subclass implements a new type of facet operation. The class should l
         async def facet_results(self):
             # This should execute the facet operation and return results, again
             # using self.sql and self.params as the starting point
-            facet_results = {}
+            facet_results = []
             facets_timed_out = []
             facet_size = self.get_facet_size()
             # Do some calculations here...
@@ -683,11 +683,11 @@ Each Facet subclass implements a new type of facet operation. The class should l
                         "toggle_url": self.ds.absolute_url(self.request, toggle_path),
                         "selected": selected,
                     })
-                    facet_results[column] = {
+                    facet_results.append({
                         "name": column,
                         "results": facet_results_values,
                         "truncated": len(facet_rows_results) > facet_size,
-                    }
+                    })
                 except QueryInterrupted:
                     facets_timed_out.append(column)
 

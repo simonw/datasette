@@ -107,8 +107,8 @@ async def test_column_facet_results(app_client):
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
-    assert {
-        "_city_id": {
+    assert [
+        {
             "name": "_city_id",
             "type": "column",
             "hideable": True,
@@ -145,7 +145,7 @@ async def test_column_facet_results(app_client):
             ],
             "truncated": False,
         }
-    } == buckets
+    ] == buckets
 
 
 @pytest.mark.asyncio
@@ -159,8 +159,8 @@ async def test_column_facet_results_column_starts_with_underscore(app_client):
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
-    assert buckets == {
-        "_neighborhood": {
+    assert buckets == [
+        {
             "name": "_neighborhood",
             "type": "column",
             "hideable": True,
@@ -267,7 +267,7 @@ async def test_column_facet_results_column_starts_with_underscore(app_client):
             ],
             "truncated": False,
         }
-    }
+    ]
 
 
 @pytest.mark.asyncio
@@ -282,8 +282,8 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
-    assert {
-        "_city_id": {
+    assert [
+        {
             "name": "_city_id",
             "type": "column",
             "hideable": False,
@@ -320,7 +320,7 @@ async def test_column_facet_from_metadata_cannot_be_hidden(app_client):
             ],
             "truncated": False,
         }
-    } == buckets
+    ] == buckets
 
 
 @pytest.mark.asyncio
@@ -369,8 +369,8 @@ async def test_array_facet_results(app_client):
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
-    assert {
-        "tags": {
+    assert [
+        {
             "name": "tags",
             "type": "array",
             "results": [
@@ -400,7 +400,7 @@ async def test_array_facet_results(app_client):
             "toggle_url": "/",
             "truncated": False,
         }
-    } == buckets
+    ] == buckets
 
 
 @pytest.mark.asyncio
@@ -471,8 +471,8 @@ async def test_date_facet_results(app_client):
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out
-    assert {
-        "created": {
+    assert [
+        {
             "name": "created",
             "type": "date",
             "results": [
@@ -509,7 +509,7 @@ async def test_date_facet_results(app_client):
             "toggle_url": "/",
             "truncated": False,
         }
-    } == buckets
+    ] == buckets
 
 
 @pytest.mark.asyncio

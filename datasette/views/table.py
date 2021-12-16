@@ -754,7 +754,14 @@ class TableView(RowTableShared):
                     instance_facet_results,
                     instance_facets_timed_out,
                 ) = await facet.facet_results()
-                facet_results.update(instance_facet_results)
+                for facet_info in instance_facet_results:
+                    base_key = facet_info["name"]
+                    key = base_key
+                    i = 1
+                    while key in facet_results:
+                        i += 1
+                        key = f"{base_key}_{i}"
+                    facet_results[key] = facet_info
                 facets_timed_out.extend(instance_facets_timed_out)
 
         # Figure out columns and rows for the query

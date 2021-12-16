@@ -437,6 +437,8 @@ class TableView(RowTableShared):
 
         table_metadata = self.ds.table_metadata(database, table)
         units = table_metadata.get("units", {})
+
+        # Build where clauses from query string arguments
         filters = Filters(sorted(other_args), units, ureg)
         where_clauses, params = filters.build_where_clauses(table)
 
@@ -584,7 +586,7 @@ class TableView(RowTableShared):
 
         count_sql = f"select count(*) {from_sql}"
 
-        # Handl pagination driven by ?_next=
+        # Handle pagination driven by ?_next=
         _next = _next or special_args.get("_next")
         offset = ""
         if _next:

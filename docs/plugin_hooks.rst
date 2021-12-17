@@ -976,6 +976,8 @@ This example plugin causes 0 results to be returned if ``?_nothing=1`` is added 
         if request.args.get("_nothing"):
             return FilterArguments(["1 = 0"], human_descriptions=["NOTHING"])
 
+Example: `datasette-leaflet-freedraw <https://datasette.io/plugins/datasette-leaflet-freedraw>`_
+
 .. _plugin_hook_permission_allowed:
 
 permission_allowed(datasette, actor, action, resource)

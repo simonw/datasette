@@ -4,6 +4,19 @@
 Changelog
 =========
 
+.. _v0_60a0:
+
+0.60a0 (2021-12-17)
+-------------------
+
+- New plugin hook: :ref:`plugin_hook_filters_from_request`, which runs on the table page and can be used to support new custom query string parameters that modify the SQL query. (:issue:`473`)
+- The number of unique values in a facet is now always displayed. Previously it was only displayed if the user specified ``?_facet_size=max``. (:issue:`1556`)
+- Fixed bug where ``?_facet_array=tags&_facet=tags`` would only display one of the two selected facets. (:issue:`625`)
+- Facets of type ``date`` or ``array`` can now be configured in ``metadata.json``, see :ref:`facets_metadata`. Thanks, David Larlet. (:issue:`1552`)
+- New ``?_nosuggest=1`` parameter for table views, which disables facet suggestion. (:issue:`1557`)
+- Label columns detected for foreign keys are now case-insensitive, so ``Name`` or ``TITLE`` will be detected in the same way as ``name`` or ``title``. (:issue:`1544`)
+- The query string variables exposed by ``request.args`` will now include blank strings for arguments such as ``foo`` in ``?foo=&bar=1`` rather than ignoring those parameters entirely. (:issue:`1551`)
+
 .. _v0_59_4:
 
 0.59.4 (2021-11-29)

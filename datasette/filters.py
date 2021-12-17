@@ -1,7 +1,172 @@
+from datasette import hookimpl
+from datasette.views.base import DatasetteError
+from datasette.utils.asgi import BadRequest
 import json
 import numbers
+from .utils import detect_json1, escape_sqlite, path_with_removed_args
 
-from .utils import detect_json1, escape_sqlite
+
+@hookimpl(specname="filters_from_request")
+def where_filters(request, database, datasette):
+    # This one deals with ?_where=
+    async def inner():
+        where_clauses = []
+        extra_wheres_for_ui = []
+        if "_where" in request.args:
+            if not await datasette.permission_allowed(
+                request.actor,
+                "execute-sql",
+                resource=database,
+                default=True,
+            ):
+                raise DatasetteError("_where= is not allowed", status=403)
+            else:
+                where_clauses.extend(request.args.getlist("_where"))
+                extra_wheres_for_ui = [
+                    {
+                        "text": text,
+                        "remove_url": path_with_removed_args(request, {"_where": text}),
+                    }
+                    for text in request.args.getlist("_where")
+                ]
+
+        return FilterArguments(
+            where_clauses,
+            extra_context={
+                "extra_wheres_for_ui": extra_wheres_for_ui,
+            },
+        )
+
+    return inner
+
+
+@hookimpl(specname="filters_from_request")
+def search_filters(request, database, table, datasette):
+    # ?_search= and _search_colname=
+    async def inner():
+        where_clauses = []
+        params = {}
+        human_descriptions = []
+        extra_context = {}
+
+        # Figure out which fts_table to use
+        table_metadata = datasette.table_metadata(database, table)
+        db = datasette.get_database(database)
+        fts_table = request.args.get("_fts_table")
+        fts_table = fts_table or table_metadata.get("fts_table")
+        fts_table = fts_table or await db.fts_table(table)
+        fts_pk = request.args.get("_fts_pk", table_metadata.get("fts_pk", "rowid"))
+        search_args = {
+            key: request.args[key]
+            for key in request.args
+            if key.startswith("_search") and key != "_searchmode"
+        }
+        search = ""
+        search_mode_raw = table_metadata.get("searchmode") == "raw"
+        # Or set search mode from the querystring
+        qs_searchmode = request.args.get("_searchmode")
+        if qs_searchmode == "escaped":
+            search_mode_raw = False
+        if qs_searchmode == "raw":
+            search_mode_raw = True
+
+        extra_context["supports_search"] = bool(fts_table)
+
+        if fts_table and search_args:
+            if "_search" in search_args:
+                # Simple ?_search=xxx
+                search = search_args["_search"]
+                where_clauses.append(
+                    "{fts_pk} in (select rowid from {fts_table} where {fts_table} match {match_clause})".format(
+                        fts_table=escape_sqlite(fts_table),
+                        fts_pk=escape_sqlite(fts_pk),
+                        match_clause=":search"
+                        if search_mode_raw
+                        else "escape_fts(:search)",
+                    )
+                )
+                human_descriptions.append(f'search matches "{search}"')
+                params["search"] = search
+                extra_context["search"] = search
+            else:
+                # More complex: search against specific columns
+                for i, (key, search_text) in enumerate(search_args.items()):
+                    search_col = key.split("_search_", 1)[1]
+                    if search_col not in await db.table_columns(fts_table):
+                        raise BadRequest("Cannot search by that column")
+
+                    where_clauses.append(
+                        "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
+                            fts_table=escape_sqlite(fts_table),
+                            search_col=escape_sqlite(search_col),
+                            match_clause=":search_{}".format(i)
+                            if search_mode_raw
+                            else "escape_fts(:search_{})".format(i),
+                        )
+                    )
+                    human_descriptions.append(
+                        f'search column "{search_col}" matches "{search_text}"'
+                    )
+                    params[f"search_{i}"] = search_text
+                    extra_context["search"] = search_text
+
+        return FilterArguments(where_clauses, params, human_descriptions, extra_context)
+
+    return inner
+
+
+@hookimpl(specname="filters_from_request")
+def through_filters(request, database, table, datasette):
+    # ?_search= and _search_colname=
+    async def inner():
+        where_clauses = []
+        params = {}
+        human_descriptions = []
+        extra_context = {}
+
+        # Support for ?_through={table, column, value}
+        if "_through" in request.args:
+            for through in request.args.getlist("_through"):
+                through_data = json.loads(through)
+                through_table = through_data["table"]
+                other_column = through_data["column"]
+                value = through_data["value"]
+                db = datasette.get_database(database)
+                outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
+                try:
+                    fk_to_us = [
+                        fk for fk in outgoing_foreign_keys if fk["other_table"] == table
+                    ][0]
+                except IndexError:
+                    raise DatasetteError(
+                        "Invalid _through - could not find corresponding foreign key"
+                    )
+                param = f"p{len(params)}"
+                where_clauses.append(
+                    "{our_pk} in (select {our_column} from {through_table} where {other_column} = :{param})".format(
+                        through_table=escape_sqlite(through_table),
+                        our_pk=escape_sqlite(fk_to_us["other_column"]),
+                        our_column=escape_sqlite(fk_to_us["column"]),
+                        other_column=escape_sqlite(other_column),
+                        param=param,
+                    )
+                )
+                params[param] = value
+                human_descriptions.append(f'{through_table}.{other_column} = "{value}"')
+
+        return FilterArguments(where_clauses, params, human_descriptions, extra_context)
+
+    return inner
+
+
+class FilterArguments:
+    def __init__(
+        self, where_clauses, params=None, human_descriptions=None, extra_context=None
+    ):
+        self.where_clauses = where_clauses
+        self.params = params or {}
+        self.human_descriptions = human_descriptions or []
+        self.extra_context = extra_context or {}
 
 
 class Filter:

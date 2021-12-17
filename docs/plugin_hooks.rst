@@ -923,6 +923,59 @@ Instead of returning a dictionary, this function can return an awaitable functio
 
 Example: `datasette-auth-tokens <https://datasette.io/plugins/datasette-auth-tokens>`_
 
+.. _plugin_hook_filters_from_request:
+
+filters_from_request(request, database, table, datasette)
+---------------------------------------------------------
+
+``request`` - object
+    The current HTTP :ref:`internals_request`.
+
+``database`` - string
+    The name of the database.
+
+``table`` - string
+    The name of the table.
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+This hook runs on the :ref:`table <TableView>` page, and can influence the ``where`` clause of the SQL query used to populate that page, based on query string arguments on the incoming request.
+
+The hook should return an instance of ``datasette.filters.FilterArguments`` which has one required and three optional arguments:
+
+.. code-block:: python
+
+    return FilterArguments(
+        where_clauses=["id > :max_id"],
+        params={"max_id": 5},
+        human_descriptions=["max_id is greater than 5"],
+        extra_context={}
+    )
+
+The arguments to the ``FilterArguments`` class constructor are as follows:
+
+``where_clauses`` - list of strings, required
+    A list of SQL fragments that will be inserted into the SQL query, joined by the ``and`` operator. These can include ``:named`` parameters which will be populated using data in ``params``.
+``params`` - dictionary, optional
+    Additional keyword arguments to be used when the query is executed. These should match any ``:arguments`` in the where clauses.
+``human_descriptions`` - list of strings, optional
+    These strings will be included in the human-readable description at the top of the page and the page ``<title>``.
+``extra_context`` - dictionary, optional
+    Additional context variables that should be made available to the ``table.html`` template when it is rendered.
+
+This example plugin causes 0 results to be returned if ``?_nothing=1`` is added to the URL:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.filters import FilterArguments
+
+    @hookimpl
+    def filters_from_request(self, request):
+        if request.args.get("_nothing"):
+            return FilterArguments(["1 = 0"], human_descriptions=["NOTHING"])
+
 .. _plugin_hook_permission_allowed:
 
 permission_allowed(datasette, actor, action, resource)

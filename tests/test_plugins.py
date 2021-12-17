@@ -9,6 +9,7 @@ from .fixtures import (
 from click.testing import CliRunner
 from datasette.app import Datasette
 from datasette import cli, hookimpl
+from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import CustomRow
@@ -977,3 +978,20 @@ def test_hook_register_commands():
     }
     pm.unregister(name="verify")
     importlib.reload(cli)
+
+
+def test_hook_filters_from_request(app_client):
+    class ReturnNothingPlugin:
+        __name__ = "ReturnNothingPlugin"
+
+        @hookimpl
+        def filters_from_request(self, request):
+            if request.args.get("_nothing"):
+                return FilterArguments(["1 = 0"], human_descriptions=["NOTHING"])
+
+    pm.register(ReturnNothingPlugin(), name="ReturnNothingPlugin")
+    response = app_client.get("/fixtures/facetable?_nothing=1")
+    assert "0 rows\n        where NOTHING" in response.text
+    json_response = app_client.get("/fixtures/facetable.json?_nothing=1")
+    assert json_response.json["rows"] == []
+    pm.unregister(name="ReturnNothingPlugin")

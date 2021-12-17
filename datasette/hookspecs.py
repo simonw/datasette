@@ -90,6 +90,17 @@ def actor_from_request(datasette, request):
 
 
 @hookspec
+def filters_from_request(request, database, table, datasette):
+    """
+    Return datasette.filters.FilterArguments(
+        where_clauses=[str, str, str],
+        params={},
+        human_descriptions=[str, str, str],
+        extra_context={}
+    ) based on the request"""
+
+
+@hookspec
 def permission_allowed(datasette, actor, action, resource):
     """Check if actor is allowed to perform this action - return True, False or None"""
 

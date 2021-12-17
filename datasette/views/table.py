@@ -442,7 +442,8 @@ class TableView(RowTableShared):
         filters = Filters(sorted(other_args), units, ureg)
         where_clauses, params = filters.build_where_clauses(table)
 
-        # Execute filters_from_request plugin hooks
+        # Execute filters_from_request plugin hooks - including the default
+        # ones that live in datasette/filters.py
         extra_context_from_filters = {}
         extra_human_descriptions = []
 

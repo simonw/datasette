@@ -52,7 +52,7 @@ setup(
         "pluggy>=0.13,<1.1",
         "uvicorn~=0.11",
         "aiofiles>=0.4,<0.9",
-        "janus>=0.6.2,<0.8",
+        "janus>=0.6.2,<1.1",
         "asgi-csrf>=0.9",
         "PyYAML>=5.3,<7.0",
         "mergedeep>=1.1.1,<1.4.0",

@@ -553,7 +553,7 @@ class Datasette:
         if self.sqlite_extensions:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
-                conn.execute(f"SELECT load_extension('{extension}')")
+                conn.execute("SELECT load_extension(?)", [extension])
         if self.setting("cache_size_kb"):
             conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
         # pylint: disable=no-member

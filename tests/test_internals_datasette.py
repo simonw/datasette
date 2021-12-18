@@ -1,6 +1,7 @@
 """
 Tests for the datasette.app.Datasette class
 """
+from datasette.app import Datasette
 from itsdangerous import BadSignature
 from .fixtures import app_client
 import pytest
@@ -45,3 +46,19 @@ def test_sign_unsign(datasette, value, namespace):
 )
 def test_datasette_setting(datasette, setting, expected):
     assert datasette.setting(setting) == expected
+
+
+@pytest.mark.asyncio
+async def test_datasette_constructor():
+    ds = Datasette(memory=True)
+    databases = (await ds.client.get("/-/databases.json")).json()
+    assert databases == [
+        {
+            "name": "_memory",
+            "path": None,
+            "size": 0,
+            "is_mutable": False,
+            "is_memory": True,
+            "hash": None,
+        }
+    ]

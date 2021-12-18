@@ -191,7 +191,7 @@ class Datasette:
 
     def __init__(
         self,
-        files,
+        files=None,
         immutables=None,
         cache_headers=True,
         cors=False,
@@ -214,7 +214,7 @@ class Datasette:
         ), "config_dir= should be a pathlib.Path"
         self.pdb = pdb
         self._secret = secret or secrets.token_hex(32)
-        self.files = tuple(files) + tuple(immutables or [])
+        self.files = tuple(files or []) + tuple(immutables or [])
         if config_dir:
             self.files += tuple([str(p) for p in config_dir.glob("*.db")])
         if (

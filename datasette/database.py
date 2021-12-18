@@ -99,7 +99,9 @@ class Database:
             with conn:
                 return conn.execute(sql, params or [])
 
-        return await self.execute_write_fn(_inner, block=block)
+        with trace("sql", database=self.name, sql=sql.strip(), params=params):
+            results = await self.execute_write_fn(_inner, block=block)
+        return results
 
     async def execute_write_fn(self, fn, block=False):
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")

@@ -939,6 +939,19 @@ def test_trace(trace_debug):
         assert isinstance(trace["sql"], str)
         assert isinstance(trace["params"], (list, dict, None.__class__))
 
+    sqls = [trace["sql"] for trace in trace_info["traces"] if "sql" in trace]
+    # There should be a mix of different types of SQL statement
+    expected = (
+        "CREATE TABLE ",
+        "PRAGMA ",
+        "INSERT OR REPLACE INTO ",
+        "DELETE FROM ",
+        "INSERT INTO",
+        "select ",
+    )
+    for prefix in expected:
+        assert any(sql.startswith(prefix) for sql in sqls)
+
 
 @pytest.mark.parametrize(
     "path,status_code",

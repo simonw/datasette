@@ -397,6 +397,27 @@ async def test_execute_write_block_false(db):
 
 
 @pytest.mark.asyncio
+async def test_execute_write_executescript(db):
+    await db.execute_write(
+        "create table foo (id integer primary key); create table bar (id integer primary key); ",
+        executescript=True,
+        block=True
+    )
+    table_names = await db.table_names()
+    assert {"foo", "bar"}.issubset(table_names)
+
+
+@pytest.mark.asyncio
+async def test_execute_write_executescript_not_allowed_with_params(db):
+    with pytest.raises(AssertionError):
+        await db.execute_write(
+            "update roadside_attractions set name = ? where pk = ?",
+            ["Mystery!", 1],
+            executescript=True
+        )
+
+
+@pytest.mark.asyncio
 async def test_execute_write_has_correctly_prepared_connection(db):
     # The sleep() function is only available if ds._prepare_connection() was called
     await db.execute_write("select sleep(0.01)", block=True)

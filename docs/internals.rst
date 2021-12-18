@@ -663,8 +663,8 @@ Example usage:
 
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=False)
------------------------------------------------------
+await db.execute_write(sql, params=None, executescript=False, block=False)
+--------------------------------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -675,6 +675,8 @@ You can pass additional SQL parameters as a tuple or dictionary.
 By default queries are considered to be "fire and forget" - they will be added to the queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 
 If you pass ``block=True`` this behaviour changes: the method will block until the write operation has completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
+
+If you pass ``executescript=True`` your SQL will be executed using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method. This allows multiple SQL statements to be separated by semicolons, but cannot be used with the ``params=`` option.
 
 .. _database_execute_write_fn:
 

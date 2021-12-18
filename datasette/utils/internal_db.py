@@ -70,84 +70,102 @@ async def populate_schema_tables(internal_db, db):
         "DELETE FROM tables WHERE database_name = ?", [database_name], block=True
     )
     tables = (await db.execute("select * from sqlite_master WHERE type = 'table'")).rows
+    tables_to_insert = []
+    columns_to_delete = []
+    columns_to_insert = []
+    foreign_keys_to_delete = []
+    foreign_keys_to_insert = []
+    indexes_to_delete = []
+    indexes_to_insert = []
+
     for table in tables:
         table_name = table["name"]
-        await internal_db.execute_write(
-            """
-            INSERT INTO tables (database_name, table_name, rootpage, sql)
-            values (?, ?, ?, ?)
-        """,
-            [database_name, table_name, table["rootpage"], table["sql"]],
-            block=True,
+        tables_to_insert.append(
+            (database_name, table_name, table["rootpage"], table["sql"])
         )
-        # And the columns
-        await internal_db.execute_write(
-            "DELETE FROM columns WHERE database_name = ? and table_name = ?",
-            [database_name, table_name],
-            block=True,
-        )
+        columns_to_delete.append((database_name, table_name))
         columns = await db.table_column_details(table_name)
-        for column in columns:
-            params = {
+        columns_to_insert.extend(
+            {
                 **{"database_name": database_name, "table_name": table_name},
                 **column._asdict(),
             }
-            await internal_db.execute_write(
-                """
-                INSERT INTO columns (
-                    database_name, table_name, cid, name, type, "notnull", default_value, is_pk, hidden
-                ) VALUES (
-                    :database_name, :table_name, :cid, :name, :type, :notnull, :default_value, :is_pk, :hidden
-                )
-            """,
-                params,
-                block=True,
-            )
-        # And the foreign_keys
-        await internal_db.execute_write(
-            "DELETE FROM foreign_keys WHERE database_name = ? and table_name = ?",
-            [database_name, table_name],
-            block=True,
+            for column in columns
         )
+        foreign_keys_to_delete.append((database_name, table_name))
         foreign_keys = (
             await db.execute(f"PRAGMA foreign_key_list([{table_name}])")
         ).rows
-        for foreign_key in foreign_keys:
-            params = {
+        foreign_keys_to_insert.extend(
+            {
                 **{"database_name": database_name, "table_name": table_name},
                 **dict(foreign_key),
             }
-            await internal_db.execute_write(
-                """
-                INSERT INTO foreign_keys (
-                    database_name, table_name, "id", seq, "table", "from", "to", on_update, on_delete, match
-                ) VALUES (
-                    :database_name, :table_name, :id, :seq, :table, :from, :to, :on_update, :on_delete, :match
-                )
-            """,
-                params,
-                block=True,
-            )
-        # And the indexes
-        await internal_db.execute_write(
-            "DELETE FROM indexes WHERE database_name = ? and table_name = ?",
-            [database_name, table_name],
-            block=True,
+            for foreign_key in foreign_keys
         )
+        indexes_to_delete.append((database_name, table_name))
         indexes = (await db.execute(f"PRAGMA index_list([{table_name}])")).rows
-        for index in indexes:
-            params = {
+        indexes_to_insert.extend(
+            {
                 **{"database_name": database_name, "table_name": table_name},
                 **dict(index),
             }
-            await internal_db.execute_write(
-                """
-                INSERT INTO indexes (
-                    database_name, table_name, seq, name, "unique", origin, partial
-                ) VALUES (
-                    :database_name, :table_name, :seq, :name, :unique, :origin, :partial
-                )
-            """,
-                params,
-                block=True,
-            )
+            for index in indexes
+        )
+
+    await internal_db.execute_write_many(
+        """
+        INSERT INTO tables (database_name, table_name, rootpage, sql)
+        values (?, ?, ?, ?)
+    """,
+        tables_to_insert,
+        block=True,
+    )
+    await internal_db.execute_write_many(
+        "DELETE FROM columns WHERE database_name = ? and table_name = ?",
+        columns_to_delete,
+        block=True,
+    )
+    await internal_db.execute_write_many(
+        """
+        INSERT INTO columns (
+            database_name, table_name, cid, name, type, "notnull", default_value, is_pk, hidden
+        ) VALUES (
+            :database_name, :table_name, :cid, :name, :type, :notnull, :default_value, :is_pk, :hidden
+        )
+    """,
+        columns_to_insert,
+        block=True,
+    )
+    await internal_db.execute_write_many(
+        "DELETE FROM foreign_keys WHERE database_name = ? and table_name = ?",
+        foreign_keys_to_delete,
+        block=True,
+    )
+    await internal_db.execute_write_many(
+        """
+        INSERT INTO foreign_keys (
+            database_name, table_name, "id", seq, "table", "from", "to", on_update, on_delete, match
+        ) VALUES (
+            :database_name, :table_name, :id, :seq, :table, :from, :to, :on_update, :on_delete, :match
+        )
+    """,
+        foreign_keys_to_insert,
+        block=True,
+    )
+    await internal_db.execute_write_many(
+        "DELETE FROM indexes WHERE database_name = ? and table_name = ?",
+        indexes_to_delete,
+        block=True,
+    )
+    await internal_db.execute_write_many(
+        """
+        INSERT INTO indexes (
+            database_name, table_name, seq, name, "unique", origin, partial
+        ) VALUES (
+            :database_name, :table_name, :seq, :name, :unique, :origin, :partial
+        )
+    """,
+        indexes_to_insert,
+        block=True,
+    )

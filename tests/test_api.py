@@ -937,7 +937,7 @@ def test_trace(trace_debug):
         assert isinstance(trace["traceback"], list)
         assert isinstance(trace["database"], str)
         assert isinstance(trace["sql"], str)
-        assert isinstance(trace["params"], (list, dict, None.__class__))
+        assert isinstance(trace.get("params"), (list, dict, None.__class__))
 
     sqls = [trace["sql"] for trace in trace_info["traces"] if "sql" in trace]
     # There should be a mix of different types of SQL statement

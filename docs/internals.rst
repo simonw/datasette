@@ -196,6 +196,27 @@ Datasette class
 
 This object is an instance of the ``Datasette`` class, passed to many plugin hooks as an argument called ``datasette``.
 
+You can create your own instance of this - for example to help write tests for a plugin - like so:
+
+.. code-block:: python
+
+    from datasette.app import Datasette
+
+    # With no arguments a single in-memory database will be attached
+    datasette = Datasette()
+
+    # The files= argument can load files from disk
+    datasette = Datasette(files="/path/to/my-database.db")
+
+    # Pass metadata as a JSON dictionary like this
+    datasette = Datasette(files="/path/to/my-database.db", metadata={
+        "databases": {
+            "my-database": {
+                "description": "This is my database"
+            }
+        }
+    })
+
 .. _datasette_databases:
 
 .databases

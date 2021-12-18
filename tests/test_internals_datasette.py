@@ -50,7 +50,7 @@ def test_datasette_setting(datasette, setting, expected):
 
 @pytest.mark.asyncio
 async def test_datasette_constructor():
-    ds = Datasette(memory=True)
+    ds = Datasette()
     databases = (await ds.client.get("/-/databases.json")).json()
     assert databases == [
         {

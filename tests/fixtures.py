@@ -84,6 +84,13 @@ EXPECTED_PLUGINS = [
         "hooks": ["register_output_renderer"],
     },
     {
+        "name": "sleep_sql_function.py",
+        "static": False,
+        "templates": False,
+        "version": None,
+        "hooks": ["prepare_connection"],
+    },
+    {
         "name": "view_name.py",
         "static": False,
         "templates": False,

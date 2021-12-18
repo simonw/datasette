@@ -206,10 +206,10 @@ You can create your own instance of this - for example to help write tests for a
     datasette = Datasette()
 
     # The files= argument can load files from disk
-    datasette = Datasette(files="/path/to/my-database.db")
+    datasette = Datasette(files=["/path/to/my-database.db"])
 
     # Pass metadata as a JSON dictionary like this
-    datasette = Datasette(files="/path/to/my-database.db", metadata={
+    datasette = Datasette(files=["/path/to/my-database.db"], metadata={
         "databases": {
             "my-database": {
                 "description": "This is my database"

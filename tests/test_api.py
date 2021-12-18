@@ -950,7 +950,9 @@ def test_trace(trace_debug):
         "select ",
     )
     for prefix in expected:
-        assert any(sql.startswith(prefix) for sql in sqls)
+        assert any(
+            sql.startswith(prefix) for sql in sqls
+        ), "No trace beginning with: {}".format(prefix)
 
 
 @pytest.mark.parametrize(

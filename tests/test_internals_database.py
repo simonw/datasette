@@ -401,7 +401,7 @@ async def test_execute_write_executescript(db):
     await db.execute_write(
         "create table foo (id integer primary key); create table bar (id integer primary key); ",
         executescript=True,
-        block=True
+        block=True,
     )
     table_names = await db.table_names()
     assert {"foo", "bar"}.issubset(table_names)
@@ -413,7 +413,7 @@ async def test_execute_write_executescript_not_allowed_with_params(db):
         await db.execute_write(
             "update roadside_attractions set name = ? where pk = ?",
             ["Mystery!", 1],
-            executescript=True
+            executescript=True,
         )
 
 

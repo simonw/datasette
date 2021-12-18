@@ -95,7 +95,10 @@ class Database:
         )
 
     async def execute_write(self, sql, params=None, executescript=False, block=False):
-        assert not (executescript and params), "Cannot use params with executescript=True"
+        assert not (
+            executescript and params
+        ), "Cannot use params with executescript=True"
+
         def _inner(conn):
             with conn:
                 if executescript:

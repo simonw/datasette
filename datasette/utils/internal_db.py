@@ -2,22 +2,14 @@ import textwrap
 
 
 async def init_internal_db(db):
-    await db.execute_write(
-        textwrap.dedent(
-            """
+    create_tables_sql = textwrap.dedent(
+        """
     CREATE TABLE IF NOT EXISTS databases (
         database_name TEXT PRIMARY KEY,
         path TEXT,
         is_memory INTEGER,
         schema_version INTEGER
-    )
-    """
-        ),
-        block=True,
-    )
-    await db.execute_write(
-        textwrap.dedent(
-            """
+    );
     CREATE TABLE IF NOT EXISTS tables (
         database_name TEXT,
         table_name TEXT,
@@ -25,14 +17,7 @@ async def init_internal_db(db):
         sql TEXT,
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES databases(database_name)
-    )
-    """
-        ),
-        block=True,
-    )
-    await db.execute_write(
-        textwrap.dedent(
-            """
+    );
     CREATE TABLE IF NOT EXISTS columns (
         database_name TEXT,
         table_name TEXT,
@@ -46,14 +31,7 @@ async def init_internal_db(db):
         PRIMARY KEY (database_name, table_name, name),
         FOREIGN KEY (database_name) REFERENCES databases(database_name),
         FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
-    )
-    """
-        ),
-        block=True,
-    )
-    await db.execute_write(
-        textwrap.dedent(
-            """
+    );
     CREATE TABLE IF NOT EXISTS indexes (
         database_name TEXT,
         table_name TEXT,
@@ -65,14 +43,7 @@ async def init_internal_db(db):
         PRIMARY KEY (database_name, table_name, name),
         FOREIGN KEY (database_name) REFERENCES databases(database_name),
         FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
-    )
-    """
-        ),
-        block=True,
-    )
-    await db.execute_write(
-        textwrap.dedent(
-            """
+    );
     CREATE TABLE IF NOT EXISTS foreign_keys (
         database_name TEXT,
         table_name TEXT,
@@ -87,11 +58,10 @@ async def init_internal_db(db):
         PRIMARY KEY (database_name, table_name, id, seq),
         FOREIGN KEY (database_name) REFERENCES databases(database_name),
         FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
-    )
+    );
     """
-        ),
-        block=True,
-    )
+    ).strip()
+    await db.execute_write(create_tables_sql, block=True, executescript=True)
 
 
 async def populate_schema_tables(internal_db, db):

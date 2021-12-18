@@ -259,7 +259,6 @@ class Datasette:
             with metadata_files[0].open() as fp:
                 metadata = parse_metadata(fp.read())
         self._metadata_local = metadata or {}
-        self.sqlite_functions = []
         self.sqlite_extensions = []
         for extension in sqlite_extensions or []:
             # Resolve spatialite, if requested
@@ -548,8 +547,6 @@ class Datasette:
     def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
-        for name, num_args, func in self.sqlite_functions:
-            conn.create_function(name, num_args, func)
         if self.sqlite_extensions:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:

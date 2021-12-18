@@ -397,6 +397,12 @@ async def test_execute_write_block_false(db):
 
 
 @pytest.mark.asyncio
+async def test_execute_write_has_correctly_prepared_connection(db):
+    # The sleep() function is only available if ds._prepare_connection() was called
+    await db.execute_write("select sleep(0.01)", block=True)
+
+
+@pytest.mark.asyncio
 async def test_execute_write_fn_block_false(db):
     def write_fn(conn):
         with conn:

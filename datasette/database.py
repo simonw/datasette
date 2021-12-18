@@ -128,6 +128,7 @@ class Database:
         conn = None
         try:
             conn = self.connect(write=True)
+            self.ds._prepare_connection(conn, self.name)
         except Exception as e:
             conn_exception = e
         while True:

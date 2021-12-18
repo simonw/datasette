@@ -94,19 +94,30 @@ class Database:
             f"file:{self.path}{qs}", uri=True, check_same_thread=False
         )
 
-    async def execute_write(self, sql, params=None, executescript=False, block=False):
-        assert not (
-            executescript and params
-        ), "Cannot use params with executescript=True"
-
+    async def execute_write(self, sql, params=None, block=False):
         def _inner(conn):
             with conn:
-                if executescript:
-                    return conn.executescript(sql)
-                else:
-                    return conn.execute(sql, params or [])
+                return conn.execute(sql, params or [])
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
+            results = await self.execute_write_fn(_inner, block=block)
+        return results
+
+    async def execute_write_script(self, sql, block=False):
+        def _inner(conn):
+            with conn:
+                return conn.executescript(sql)
+
+        with trace("sql", database=self.name, sql=sql.strip(), executescript=True):
+            results = await self.execute_write_fn(_inner, block=block)
+        return results
+
+    async def execute_write_many(self, sql, params_seq, block=False):
+        def _inner(conn):
+            with conn:
+                return conn.executemany(sql, params_seq)
+
+        with trace("sql", database=self.name, sql=sql.strip(), executemany=True):
             results = await self.execute_write_fn(_inner, block=block)
         return results
 

@@ -61,7 +61,7 @@ async def init_internal_db(db):
     );
     """
     ).strip()
-    await db.execute_write(create_tables_sql, block=True, executescript=True)
+    await db.execute_write_script(create_tables_sql, block=True)
 
 
 async def populate_schema_tables(internal_db, db):

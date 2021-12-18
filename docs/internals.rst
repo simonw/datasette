@@ -663,8 +663,8 @@ Example usage:
 
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, executescript=False, block=False)
---------------------------------------------------------------------------
+await db.execute_write(sql, params=None, block=False)
+-----------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -676,7 +676,27 @@ By default queries are considered to be "fire and forget" - they will be added t
 
 If you pass ``block=True`` this behaviour changes: the method will block until the write operation has completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
 
-If you pass ``executescript=True`` your SQL will be executed using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method. This allows multiple SQL statements to be separated by semicolons, but cannot be used with the ``params=`` option.
+.. _database_execute_write_script:
+
+await db.execute_write_script(sql, block=False)
+-----------------------------------------------
+
+Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
+
+.. _database_execute_write_many:
+
+await db.execute_write_many(sql, params_seq, block=False)
+---------------------------------------------------------
+
+Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany>`__ method. This will efficiently execute the same SQL statement against each of the parameters in the ``params_seq`` iterator, for example:
+
+.. code-block:: python
+
+    await db.execute_write_many(
+        "insert into characters (id, name) values (?, ?)",
+        [(1, "Melanie"), (2, "Selma"), (2, "Viktor")],
+        block=True,
+    )
 
 .. _database_execute_write_fn:
 

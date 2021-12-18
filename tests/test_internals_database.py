@@ -397,10 +397,9 @@ async def test_execute_write_block_false(db):
 
 
 @pytest.mark.asyncio
-async def test_execute_write_executescript(db):
-    await db.execute_write(
+async def test_execute_write_script(db):
+    await db.execute_write_script(
         "create table foo (id integer primary key); create table bar (id integer primary key); ",
-        executescript=True,
         block=True,
     )
     table_names = await db.table_names()
@@ -408,13 +407,18 @@ async def test_execute_write_executescript(db):
 
 
 @pytest.mark.asyncio
-async def test_execute_write_executescript_not_allowed_with_params(db):
-    with pytest.raises(AssertionError):
-        await db.execute_write(
-            "update roadside_attractions set name = ? where pk = ?",
-            ["Mystery!", 1],
-            executescript=True,
-        )
+async def test_execute_write_many(db):
+    await db.execute_write_script(
+        "create table foomany (id integer primary key)",
+        block=True,
+    )
+    await db.execute_write_many(
+        "insert into foomany (id) values (?)",
+        [(1,), (10,), (100,)],
+        block=True,
+    )
+    result = await db.execute("select * from foomany")
+    assert [r[0] for r in result.rows] == [1, 10, 100]
 
 
 @pytest.mark.asyncio

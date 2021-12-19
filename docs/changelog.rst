@@ -4,6 +4,18 @@
 Changelog
 =========
 
+.. _v0_60a1:
+
+0.60a1 (2021-12-19)
+-------------------
+
+- Database write connections now execute the :ref:`plugin_hook_prepare_connection` plugin hook. (:issue:`1564`)
+- The ``Datasette()`` constructor no longer requires the ``files=`` argument, and is now documented at :ref:`internals_datasette`. (:issue:`1563`)
+- The tracing feature now traces write queries, not just read queries. (:issue:`1568`)
+- Added two methods for writing to the database: :ref:`database_execute_write_script` and :ref:`database_execute_write_many`. (:issue:`1570`)
+- Made several performance improvements to the database schema introspection code that runs when Datasette first starts up. (:issue:`1555`)
+- Fixed bug where writable canned queries could not be used with custom templates.  (:issue:`1547`)
+
 .. _v0_60a0:
 
 0.60a0 (2021-12-17)

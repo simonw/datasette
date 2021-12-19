@@ -32,14 +32,14 @@ def trace(type, **kwargs):
     ), f".trace() keyword parameters cannot include {TRACE_RESERVED_KEYS}"
     task_id = get_task_id()
     if task_id is None:
-        yield
+        yield kwargs
         return
     tracer = tracers.get(task_id)
     if tracer is None:
-        yield
+        yield kwargs
         return
     start = time.perf_counter()
-    yield
+    yield kwargs
     end = time.perf_counter()
     trace_info = {
         "type": type,

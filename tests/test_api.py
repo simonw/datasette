@@ -928,8 +928,9 @@ def test_trace(trace_debug):
     assert isinstance(trace_info["sum_trace_duration_ms"], float)
     assert isinstance(trace_info["num_traces"], int)
     assert isinstance(trace_info["traces"], list)
-    assert len(trace_info["traces"]) == trace_info["num_traces"]
-    for trace in trace_info["traces"]:
+    traces = trace_info["traces"]
+    assert len(traces) == trace_info["num_traces"]
+    for trace in traces:
         assert isinstance(trace["type"], str)
         assert isinstance(trace["start"], float)
         assert isinstance(trace["end"], float)
@@ -939,7 +940,7 @@ def test_trace(trace_debug):
         assert isinstance(trace["sql"], str)
         assert isinstance(trace.get("params"), (list, dict, None.__class__))
 
-    sqls = [trace["sql"] for trace in trace_info["traces"] if "sql" in trace]
+    sqls = [trace["sql"] for trace in traces if "sql" in trace]
     # There should be a mix of different types of SQL statement
     expected = (
         "CREATE TABLE ",
@@ -953,6 +954,13 @@ def test_trace(trace_debug):
         assert any(
             sql.startswith(prefix) for sql in sqls
         ), "No trace beginning with: {}".format(prefix)
+
+    # Should be at least one executescript
+    assert any(trace for trace in traces if trace.get("executescript"))
+    # And at least one executemany
+    execute_manys = [trace for trace in traces if trace.get("executemany")]
+    assert execute_manys
+    assert all(isinstance(trace["count"], int) for trace in execute_manys)
 
 
 @pytest.mark.parametrize(

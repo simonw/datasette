@@ -114,11 +114,22 @@ class Database:
 
     async def execute_write_many(self, sql, params_seq, block=False):
         def _inner(conn):
-            with conn:
-                return conn.executemany(sql, params_seq)
+            count = 0
 
-        with trace("sql", database=self.name, sql=sql.strip(), executemany=True):
-            results = await self.execute_write_fn(_inner, block=block)
+            def count_params(params):
+                nonlocal count
+                for param in params:
+                    count += 1
+                    yield param
+
+            with conn:
+                return conn.executemany(sql, count_params(params_seq)), count
+
+        with trace(
+            "sql", database=self.name, sql=sql.strip(), executemany=True
+        ) as kwargs:
+            results, count = await self.execute_write_fn(_inner, block=block)
+            kwargs["count"] = count
         return results
 
     async def execute_write_fn(self, fn, block=False):

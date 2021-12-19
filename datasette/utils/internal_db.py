@@ -1,4 +1,5 @@
 import textwrap
+from datasette.utils import table_column_details
 
 
 async def init_internal_db(db):
@@ -70,48 +71,69 @@ async def populate_schema_tables(internal_db, db):
         "DELETE FROM tables WHERE database_name = ?", [database_name], block=True
     )
     tables = (await db.execute("select * from sqlite_master WHERE type = 'table'")).rows
-    tables_to_insert = []
-    columns_to_delete = []
-    columns_to_insert = []
-    foreign_keys_to_delete = []
-    foreign_keys_to_insert = []
-    indexes_to_delete = []
-    indexes_to_insert = []
 
-    for table in tables:
-        table_name = table["name"]
-        tables_to_insert.append(
-            (database_name, table_name, table["rootpage"], table["sql"])
+    def collect_info(conn):
+        tables_to_insert = []
+        columns_to_delete = []
+        columns_to_insert = []
+        foreign_keys_to_delete = []
+        foreign_keys_to_insert = []
+        indexes_to_delete = []
+        indexes_to_insert = []
+
+        for table in tables:
+            table_name = table["name"]
+            tables_to_insert.append(
+                (database_name, table_name, table["rootpage"], table["sql"])
+            )
+            columns_to_delete.append((database_name, table_name))
+            columns = table_column_details(conn, table_name)
+            columns_to_insert.extend(
+                {
+                    **{"database_name": database_name, "table_name": table_name},
+                    **column._asdict(),
+                }
+                for column in columns
+            )
+            foreign_keys_to_delete.append((database_name, table_name))
+            foreign_keys = conn.execute(
+                f"PRAGMA foreign_key_list([{table_name}])"
+            ).fetchall()
+            foreign_keys_to_insert.extend(
+                {
+                    **{"database_name": database_name, "table_name": table_name},
+                    **dict(foreign_key),
+                }
+                for foreign_key in foreign_keys
+            )
+            indexes_to_delete.append((database_name, table_name))
+            indexes = conn.execute(f"PRAGMA index_list([{table_name}])").fetchall()
+            indexes_to_insert.extend(
+                {
+                    **{"database_name": database_name, "table_name": table_name},
+                    **dict(index),
+                }
+                for index in indexes
+            )
+        return (
+            tables_to_insert,
+            columns_to_delete,
+            columns_to_insert,
+            foreign_keys_to_delete,
+            foreign_keys_to_insert,
+            indexes_to_delete,
+            indexes_to_insert,
         )
-        columns_to_delete.append((database_name, table_name))
-        columns = await db.table_column_details(table_name)
-        columns_to_insert.extend(
-            {
-                **{"database_name": database_name, "table_name": table_name},
-                **column._asdict(),
-            }
-            for column in columns
-        )
-        foreign_keys_to_delete.append((database_name, table_name))
-        foreign_keys = (
-            await db.execute(f"PRAGMA foreign_key_list([{table_name}])")
-        ).rows
-        foreign_keys_to_insert.extend(
-            {
-                **{"database_name": database_name, "table_name": table_name},
-                **dict(foreign_key),
-            }
-            for foreign_key in foreign_keys
-        )
-        indexes_to_delete.append((database_name, table_name))
-        indexes = (await db.execute(f"PRAGMA index_list([{table_name}])")).rows
-        indexes_to_insert.extend(
-            {
-                **{"database_name": database_name, "table_name": table_name},
-                **dict(index),
-            }
-            for index in indexes
-        )
+
+    (
+        tables_to_insert,
+        columns_to_delete,
+        columns_to_insert,
+        foreign_keys_to_delete,
+        foreign_keys_to_insert,
+        indexes_to_delete,
+        indexes_to_insert,
+    ) = await db.execute_fn(collect_info)
 
     await internal_db.execute_write_many(
         """

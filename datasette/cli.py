@@ -224,6 +224,7 @@ def plugins(all, plugins_dir):
     "--install", help="Additional packages (e.g. plugins) to install", multiple=True
 )
 @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
+@click.option("--slim-base-image", is_flag=True, help="Use slim docker base image.")
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option(
     "--secret",
@@ -256,6 +257,7 @@ def package(
     static,
     install,
     spatialite,
+    slim_base_image,
     version_note,
     secret,
     port,
@@ -282,6 +284,7 @@ def package(
         static=static,
         install=install,
         spatialite=spatialite,
+        slim_base_image=slim_base_image,
         version_note=version_note,
         secret=secret,
         extra_metadata=extra_metadata,

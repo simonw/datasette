@@ -303,6 +303,7 @@ def make_dockerfile(
     environment_variables=None,
     port=8001,
     apt_get_extras=None,
+    slim_base_image=False,
 ):
     cmd = ["datasette", "serve", "--host", "0.0.0.0"]
     environment_variables = environment_variables or {}
@@ -344,8 +345,13 @@ def make_dockerfile(
         environment_variables[
             "SQLITE_EXTENSIONS"
         ] = "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
+    if slim_base_image:
+        baseImage = "python:3.8-slim-bullseye"
+    else:
+        baseImage = "python:3.8"
+
     return """
-FROM python:3.8
+FROM {baseImage}
 COPY . /app
 WORKDIR /app
 {apt_get_extras}
@@ -368,6 +374,7 @@ CMD {cmd}""".format(
         files=" ".join(files),
         port=port,
         cmd=cmd,
+        baseImage=baseImage,
     ).strip()
 
 
@@ -383,6 +390,7 @@ def temporary_docker_directory(
     static,
     install,
     spatialite,
+    slim_base_image,
     version_note,
     secret,
     extra_metadata=None,
@@ -423,6 +431,7 @@ def temporary_docker_directory(
             environment_variables,
             port=port,
             apt_get_extras=apt_get_extras,
+            slim_base_image=slim_base_image,
         )
         os.chdir(datasette_dir)
         if metadata_content:

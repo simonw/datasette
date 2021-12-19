@@ -15,6 +15,7 @@ Options:
   --static MOUNT:DIRECTORY  Serve static files from this directory at /MOUNT/...
   --install TEXT            Additional packages (e.g. plugins) to install
   --spatialite              Enable SpatialLite extension
+  --slim-base-image         Use slim docker base image.
   --version-note TEXT       Additional note to show on /-/versions
   --secret TEXT             Secret used for signing secure values, such as signed
                             cookies

@@ -246,6 +246,11 @@ class QueryView(DataView):
             extra_args["page_size"] = _size
 
         templates = [f"query-{to_css_class(database)}.html", "query.html"]
+        if canned_query:
+            templates.insert(
+                0,
+                f"query-{to_css_class(database)}-{to_css_class(canned_query)}.html",
+            )
 
         query_error = None
 
@@ -339,12 +344,6 @@ class QueryView(DataView):
                 query_error = e
                 results = None
                 columns = []
-
-        if canned_query:
-            templates.insert(
-                0,
-                f"query-{to_css_class(database)}-{to_css_class(canned_query)}.html",
-            )
 
         allow_execute_sql = await self.ds.permission_allowed(
             request.actor, "execute-sql", database, default=True

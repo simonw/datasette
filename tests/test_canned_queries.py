@@ -6,9 +6,19 @@ from .fixtures import make_app_client, app_client
 
 
 @pytest.fixture
-def canned_write_client():
+def canned_write_client(tmpdir):
+    template_dir = tmpdir / "canned_write_templates"
+    template_dir.mkdir()
+    (template_dir / "query-data-update_name.html").write_text(
+        """
+    {% extends "query.html" %}
+    {% block content %}!!!CUSTOM_UPDATE_NAME_TEMPLATE!!!{{ super() }}{% endblock %}
+    """,
+        "utf-8",
+    )
     with make_app_client(
         extra_databases={"data.db": "create table names (name text)"},
+        template_dir=str(template_dir),
         metadata={
             "databases": {
                 "data": {
@@ -344,3 +354,13 @@ def test_magic_parameters_cannot_be_used_in_arbitrary_queries(magic_parameters_c
     )
     assert 400 == response.status
     assert response.json["error"].startswith("You did not supply a value for binding")
+
+
+def test_canned_write_custom_template(canned_write_client):
+    response = canned_write_client.get("/data/update_name")
+    assert response.status == 200
+    assert (
+        "<!-- Templates considered: *query-data-update_name.html, query-data.html, query.html -->"
+        in response.text
+    )
+    assert "!!!CUSTOM_UPDATE_NAME_TEMPLATE!!!" in response.text

@@ -67,18 +67,23 @@ async def init_internal_db(db):
 
 async def populate_schema_tables(internal_db, db):
     database_name = db.name
-    await internal_db.execute_write(
-        "DELETE FROM tables WHERE database_name = ?", [database_name], block=True
-    )
+
+    def delete_everything(conn):
+        conn.execute("DELETE FROM tables WHERE database_name = ?", [database_name])
+        conn.execute("DELETE FROM columns WHERE database_name = ?", [database_name])
+        conn.execute(
+            "DELETE FROM foreign_keys WHERE database_name = ?", [database_name]
+        )
+        conn.execute("DELETE FROM indexes WHERE database_name = ?", [database_name])
+
+    await internal_db.execute_write_fn(delete_everything, block=True)
+
     tables = (await db.execute("select * from sqlite_master WHERE type = 'table'")).rows
 
     def collect_info(conn):
         tables_to_insert = []
-        columns_to_delete = []
         columns_to_insert = []
-        foreign_keys_to_delete = []
         foreign_keys_to_insert = []
-        indexes_to_delete = []
         indexes_to_insert = []
 
         for table in tables:
@@ -86,7 +91,6 @@ async def populate_schema_tables(internal_db, db):
             tables_to_insert.append(
                 (database_name, table_name, table["rootpage"], table["sql"])
             )
-            columns_to_delete.append((database_name, table_name))
             columns = table_column_details(conn, table_name)
             columns_to_insert.extend(
                 {
@@ -95,7 +99,6 @@ async def populate_schema_tables(internal_db, db):
                 }
                 for column in columns
             )
-            foreign_keys_to_delete.append((database_name, table_name))
             foreign_keys = conn.execute(
                 f"PRAGMA foreign_key_list([{table_name}])"
             ).fetchall()
@@ -106,7 +109,6 @@ async def populate_schema_tables(internal_db, db):
                 }
                 for foreign_key in foreign_keys
             )
-            indexes_to_delete.append((database_name, table_name))
             indexes = conn.execute(f"PRAGMA index_list([{table_name}])").fetchall()
             indexes_to_insert.extend(
                 {
@@ -117,21 +119,15 @@ async def populate_schema_tables(internal_db, db):
             )
         return (
             tables_to_insert,
-            columns_to_delete,
             columns_to_insert,
-            foreign_keys_to_delete,
             foreign_keys_to_insert,
-            indexes_to_delete,
             indexes_to_insert,
         )
 
     (
         tables_to_insert,
-        columns_to_delete,
         columns_to_insert,
-        foreign_keys_to_delete,
         foreign_keys_to_insert,
-        indexes_to_delete,
         indexes_to_insert,
     ) = await db.execute_fn(collect_info)
 
@@ -141,11 +137,6 @@ async def populate_schema_tables(internal_db, db):
         values (?, ?, ?, ?)
     """,
         tables_to_insert,
-        block=True,
-    )
-    await internal_db.execute_write_many(
-        "DELETE FROM columns WHERE database_name = ? and table_name = ?",
-        columns_to_delete,
         block=True,
     )
     await internal_db.execute_write_many(
@@ -160,11 +151,6 @@ async def populate_schema_tables(internal_db, db):
         block=True,
     )
     await internal_db.execute_write_many(
-        "DELETE FROM foreign_keys WHERE database_name = ? and table_name = ?",
-        foreign_keys_to_delete,
-        block=True,
-    )
-    await internal_db.execute_write_many(
         """
         INSERT INTO foreign_keys (
             database_name, table_name, "id", seq, "table", "from", "to", on_update, on_delete, match
@@ -173,11 +159,6 @@ async def populate_schema_tables(internal_db, db):
         )
     """,
         foreign_keys_to_insert,
-        block=True,
-    )
-    await internal_db.execute_write_many(
-        "DELETE FROM indexes WHERE database_name = ? and table_name = ?",
-        indexes_to_delete,
         block=True,
     )
     await internal_db.execute_write_many(

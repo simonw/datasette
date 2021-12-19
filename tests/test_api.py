@@ -946,7 +946,6 @@ def test_trace(trace_debug):
         "CREATE TABLE ",
         "PRAGMA ",
         "INSERT OR REPLACE INTO ",
-        "DELETE FROM ",
         "INSERT INTO",
         "select ",
     )

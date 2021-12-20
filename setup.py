@@ -49,7 +49,7 @@ setup(
         "hupper~=1.9",
         "httpx>=0.20",
         "pint~=0.9",
-        "pluggy>=0.13,<1.1",
+        "pluggy>=1.0,<1.1",
         "uvicorn~=0.11",
         "aiofiles>=0.4,<0.9",
         "janus>=0.6.2,<1.1",

@@ -1,5 +1,10 @@
 {%- extends "!layout.html" %}
 
+{% block htmltitle %}
+{{ super() }}
+<script defer data-domain="datasette.io" src="https://plausible.io/js/plausible.js"></script>
+{% endblock %}
+
 {% block sidebartitle %}
 
 <a href="https://datasette.io/">

@@ -366,6 +366,30 @@ class TableView(RowTableShared):
             None, "view-table", (database, table), default=True
         )
 
+        # Handle ?_filter_column and redirect, if present
+        redirect_params = filters_should_redirect(request.args)
+        if redirect_params:
+            return self.redirect(
+                request,
+                path_with_added_args(request, redirect_params),
+                forward_querystring=False,
+            )
+
+        # If ?_sort_by_desc=on (from checkbox) redirect to _sort_desc=(_sort)
+        if "_sort_by_desc" in request.args:
+            return self.redirect(
+                request,
+                path_with_added_args(
+                    request,
+                    {
+                        "_sort_desc": request.args.get("_sort"),
+                        "_sort_by_desc": None,
+                        "_sort": None,
+                    },
+                ),
+                forward_querystring=False,
+            )
+
         # Introspect columns and primary keys for table
         pks = await db.primary_keys(table)
         table_columns = await db.table_columns(table)
@@ -399,47 +423,20 @@ class TableView(RowTableShared):
             nocount = True
             nofacet = True
 
-        # Special args start with _ and do not contain a __
-        # That's so if there is a column that starts with _
-        # it can still be queried using ?_col__exact=blah
-        special_args = {}
-        other_args = []
-        for key in request.args:
-            if key.startswith("_") and "__" not in key:
-                special_args[key] = request.args[key]
-            else:
-                for v in request.args.getlist(key):
-                    other_args.append((key, v))
-
-        # Handle ?_filter_column and redirect, if present
-        redirect_params = filters_should_redirect(special_args)
-        if redirect_params:
-            return self.redirect(
-                request,
-                path_with_added_args(request, redirect_params),
-                forward_querystring=False,
-            )
-
-        # If ?_sort_by_desc=on (from checkbox) redirect to _sort_desc=(_sort)
-        if "_sort_by_desc" in special_args:
-            return self.redirect(
-                request,
-                path_with_added_args(
-                    request,
-                    {
-                        "_sort_desc": special_args.get("_sort"),
-                        "_sort_by_desc": None,
-                        "_sort": None,
-                    },
-                ),
-                forward_querystring=False,
-            )
-
         table_metadata = self.ds.table_metadata(database, table)
         units = table_metadata.get("units", {})
 
+        # Arguments that start with _ and don't contain a __ are
+        # special - things like ?_search= - and should not be
+        # treated as filters.
+        filter_args = []
+        for key in request.args:
+            if not (key.startswith("_") and "__" not in key):
+                for v in request.args.getlist(key):
+                    filter_args.append((key, v))
+
         # Build where clauses from query string arguments
-        filters = Filters(sorted(other_args), units, ureg)
+        filters = Filters(sorted(filter_args), units, ureg)
         where_clauses, params = filters.build_where_clauses(table)
 
         # Execute filters_from_request plugin hooks - including the default
@@ -464,8 +461,8 @@ class TableView(RowTableShared):
         sortable_columns = await self.sortable_columns_for_table(
             database, table, use_rowid
         )
-        sort = special_args.get("_sort")
-        sort_desc = special_args.get("_sort_desc")
+        sort = request.args.get("_sort")
+        sort_desc = request.args.get("_sort_desc")
 
         if not sort and not sort_desc:
             sort = table_metadata.get("sort")
@@ -498,7 +495,7 @@ class TableView(RowTableShared):
         count_sql = f"select count(*) {from_sql}"
 
         # Handle pagination driven by ?_next=
-        _next = _next or special_args.get("_next")
+        _next = _next or request.args.get("_next")
         offset = ""
         if _next:
             sort_value = None
@@ -708,7 +705,7 @@ class TableView(RowTableShared):
         expandable_columns = await self.expandable_columns(database, table)
         columns_to_expand = None
         try:
-            all_labels = value_as_boolean(special_args.get("_labels", ""))
+            all_labels = value_as_boolean(request.args.get("_labels", ""))
         except ValueError:
             all_labels = default_labels
         # Check for explicit _label=

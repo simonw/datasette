@@ -770,7 +770,7 @@ Or you can return an async function which will be awaited on startup. Use this o
             if "my_table" not in await db.table_names():
                 await db.execute_write("""
                     create table my_table (mycol text)
-                """, block=True)
+                """)
         return inner
 
 Potential use-cases:

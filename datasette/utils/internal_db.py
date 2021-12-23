@@ -62,7 +62,7 @@ async def init_internal_db(db):
     );
     """
     ).strip()
-    await db.execute_write_script(create_tables_sql, block=True)
+    await db.execute_write_script(create_tables_sql)
 
 
 async def populate_schema_tables(internal_db, db):
@@ -76,7 +76,7 @@ async def populate_schema_tables(internal_db, db):
         )
         conn.execute("DELETE FROM indexes WHERE database_name = ?", [database_name])
 
-    await internal_db.execute_write_fn(delete_everything, block=True)
+    await internal_db.execute_write_fn(delete_everything)
 
     tables = (await db.execute("select * from sqlite_master WHERE type = 'table'")).rows
 
@@ -137,7 +137,6 @@ async def populate_schema_tables(internal_db, db):
         values (?, ?, ?, ?)
     """,
         tables_to_insert,
-        block=True,
     )
     await internal_db.execute_write_many(
         """
@@ -148,7 +147,6 @@ async def populate_schema_tables(internal_db, db):
         )
     """,
         columns_to_insert,
-        block=True,
     )
     await internal_db.execute_write_many(
         """
@@ -159,7 +157,6 @@ async def populate_schema_tables(internal_db, db):
         )
     """,
         foreign_keys_to_insert,
-        block=True,
     )
     await internal_db.execute_write_many(
         """
@@ -170,5 +167,4 @@ async def populate_schema_tables(internal_db, db):
         )
     """,
         indexes_to_insert,
-        block=True,
     )

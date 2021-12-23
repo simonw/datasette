@@ -367,7 +367,6 @@ class Datasette:
                 VALUES (?, ?, ?, ?)
             """,
                 [database_name, str(db.path), db.is_memory, schema_version],
-                block=True,
             )
             await populate_schema_tables(internal_db, db)
 

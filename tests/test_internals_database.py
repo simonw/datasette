@@ -377,9 +377,7 @@ async def test_table_names(db):
 @pytest.mark.asyncio
 async def test_execute_write_block_true(db):
     await db.execute_write(
-        "update roadside_attractions set name = ? where pk = ?",
-        ["Mystery!", 1],
-        block=True,
+        "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1]
     )
     rows = await db.execute("select name from roadside_attractions where pk = 1")
     assert "Mystery!" == rows.rows[0][0]
@@ -399,8 +397,7 @@ async def test_execute_write_block_false(db):
 @pytest.mark.asyncio
 async def test_execute_write_script(db):
     await db.execute_write_script(
-        "create table foo (id integer primary key); create table bar (id integer primary key); ",
-        block=True,
+        "create table foo (id integer primary key); create table bar (id integer primary key);"
     )
     table_names = await db.table_names()
     assert {"foo", "bar"}.issubset(table_names)
@@ -408,14 +405,9 @@ async def test_execute_write_script(db):
 
 @pytest.mark.asyncio
 async def test_execute_write_many(db):
-    await db.execute_write_script(
-        "create table foomany (id integer primary key)",
-        block=True,
-    )
+    await db.execute_write_script("create table foomany (id integer primary key)")
     await db.execute_write_many(
-        "insert into foomany (id) values (?)",
-        [(1,), (10,), (100,)],
-        block=True,
+        "insert into foomany (id) values (?)", [(1,), (10,), (100,)]
     )
     result = await db.execute("select * from foomany")
     assert [r[0] for r in result.rows] == [1, 10, 100]
@@ -424,7 +416,7 @@ async def test_execute_write_many(db):
 @pytest.mark.asyncio
 async def test_execute_write_has_correctly_prepared_connection(db):
     # The sleep() function is only available if ds._prepare_connection() was called
-    await db.execute_write("select sleep(0.01)", block=True)
+    await db.execute_write("select sleep(0.01)")
 
 
 @pytest.mark.asyncio
@@ -447,7 +439,7 @@ async def test_execute_write_fn_block_true(db):
             row = conn.execute("select count(*) from roadside_attractions").fetchone()
         return row[0]
 
-    new_count = await db.execute_write_fn(write_fn, block=True)
+    new_count = await db.execute_write_fn(write_fn)
     assert 3 == new_count
 
 
@@ -457,7 +449,7 @@ async def test_execute_write_fn_exception(db):
         assert False
 
     with pytest.raises(AssertionError):
-        await db.execute_write_fn(write_fn, block=True)
+        await db.execute_write_fn(write_fn)
 
 
 @pytest.mark.asyncio
@@ -472,7 +464,7 @@ async def test_execute_write_fn_connection_exception(tmpdir, app_client):
         assert False
 
     with pytest.raises(AssertionError):
-        await db.execute_write_fn(write_fn, block=True)
+        await db.execute_write_fn(write_fn)
 
     app_client.ds.remove_database("immutable-db")
 
@@ -513,7 +505,7 @@ async def test_database_memory_name(app_client):
         table_names = await db.table_names()
         assert table_names == []
     # Now create a table in foo
-    await foo1.execute_write("create table foo (t text)", block=True)
+    await foo1.execute_write("create table foo (t text)")
     assert await foo1.table_names() == ["foo"]
     assert await foo2.table_names() == ["foo"]
     assert await bar1.table_names() == []
@@ -528,5 +520,5 @@ async def test_in_memory_databases_forbid_writes(app_client):
         await db.execute("create table foo (t text)")
     assert await db.table_names() == []
     # Using db.execute_write() should work:
-    await db.execute_write("create table foo (t text)", block=True)
+    await db.execute_write("create table foo (t text)")
     assert await db.table_names() == ["foo"]

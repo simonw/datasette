@@ -408,16 +408,14 @@ async def test_array_facet_results(app_client):
 async def test_array_facet_handle_duplicate_tags():
     ds = Datasette([], memory=True)
     db = ds.add_database(Database(ds, memory_name="test_array_facet"))
-    await db.execute_write("create table otters(name text, tags text)", block=True)
+    await db.execute_write("create table otters(name text, tags text)")
     for name, tags in (
         ("Charles", ["friendly", "cunning", "friendly"]),
         ("Shaun", ["cunning", "empathetic", "friendly"]),
         ("Tracy", ["empathetic", "eager"]),
     ):
         await db.execute_write(
-            "insert into otters (name, tags) values (?, ?)",
-            [name, json.dumps(tags)],
-            block=True,
+            "insert into otters (name, tags) values (?, ?)", [name, json.dumps(tags)]
         )
 
     response = await ds.client.get("/test_array_facet/otters.json?_facet_array=tags")
@@ -516,11 +514,9 @@ async def test_date_facet_results(app_client):
 async def test_json_array_with_blanks_and_nulls():
     ds = Datasette([], memory=True)
     db = ds.add_database(Database(ds, memory_name="test_json_array"))
-    await db.execute_write("create table foo(json_column text)", block=True)
+    await db.execute_write("create table foo(json_column text)")
     for value in ('["a", "b", "c"]', '["a", "b"]', "", None):
-        await db.execute_write(
-            "insert into foo (json_column) values (?)", [value], block=True
-        )
+        await db.execute_write("insert into foo (json_column) values (?)", [value])
     response = await ds.client.get("/test_json_array/foo.json")
     data = response.json()
     assert data["suggested_facets"] == [
@@ -536,15 +532,12 @@ async def test_json_array_with_blanks_and_nulls():
 async def test_facet_size():
     ds = Datasette([], memory=True, settings={"max_returned_rows": 50})
     db = ds.add_database(Database(ds, memory_name="test_facet_size"))
-    await db.execute_write(
-        "create table neighbourhoods(city text, neighbourhood text)", block=True
-    )
+    await db.execute_write("create table neighbourhoods(city text, neighbourhood text)")
     for i in range(1, 51):
         for j in range(1, 4):
             await db.execute_write(
                 "insert into neighbourhoods (city, neighbourhood) values (?, ?)",
                 ["City {}".format(i), "Neighbourhood {}".format(j)],
-                block=True,
             )
     response = await ds.client.get("/test_facet_size/neighbourhoods.json")
     data = response.json()

@@ -279,7 +279,7 @@ class QueryView(DataView):
                 ok = None
                 try:
                     cursor = await self.ds.databases[database].execute_write(
-                        sql, params_for_query, block=True
+                        sql, params_for_query
                     )
                     message = metadata.get(
                         "on_success_message"

@@ -435,7 +435,7 @@ async def test_execute_write_fn_block_false(db):
             row = conn.execute("select count(*) from roadside_attractions").fetchone()
         return row[0]
 
-    task_id = await db.execute_write_fn(write_fn)
+    task_id = await db.execute_write_fn(write_fn, block=False)
     assert isinstance(task_id, uuid.UUID)
 
 

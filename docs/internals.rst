@@ -663,7 +663,7 @@ Example usage:
 
 .. _database_execute_write:
 
-await db.execute_write(sql, params=None, block=False)
+await db.execute_write(sql, params=None, block=True)
 -----------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
@@ -672,20 +672,20 @@ This method can be used to queue up a non-SELECT SQL query to be executed agains
 
 You can pass additional SQL parameters as a tuple or dictionary.
 
-By default queries are considered to be "fire and forget" - they will be added to the queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
+The method will block until the operation is completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
 
-If you pass ``block=True`` this behaviour changes: the method will block until the write operation has completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
+If you pass ``block=False`` this behaviour changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
 
 .. _database_execute_write_script:
 
-await db.execute_write_script(sql, block=False)
+await db.execute_write_script(sql, block=True)
 -----------------------------------------------
 
 Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
 
 .. _database_execute_write_many:
 
-await db.execute_write_many(sql, params_seq, block=False)
+await db.execute_write_many(sql, params_seq, block=True)
 ---------------------------------------------------------
 
 Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany>`__ method. This will efficiently execute the same SQL statement against each of the parameters in the ``params_seq`` iterator, for example:
@@ -700,7 +700,7 @@ Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://d
 
 .. _database_execute_write_fn:
 
-await db.execute_write_fn(fn, block=False)
+await db.execute_write_fn(fn, block=True)
 ------------------------------------------
 
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. This function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
@@ -725,7 +725,7 @@ This method is fire-and-forget, queueing your function to be executed and then a
 
 If you pass ``block=True`` your calling code will block until the function has been executed. The return value to the ``await`` will be the return value of your function.
 
-If your function raises an exception and you specified ``block=True``, that exception will be propagated up to the ``await`` line. With ``block=False`` any exceptions will be silently ignored.
+If your function raises an exception and you specified ``block=True``, that exception will be propagated up to the ``await`` line. With ``block=True`` any exceptions will be silently ignored.
 
 Here's an example of ``block=True`` in action:
 

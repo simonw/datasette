@@ -94,7 +94,7 @@ class Database:
             f"file:{self.path}{qs}", uri=True, check_same_thread=False
         )
 
-    async def execute_write(self, sql, params=None, block=False):
+    async def execute_write(self, sql, params=None, block=True):
         def _inner(conn):
             with conn:
                 return conn.execute(sql, params or [])
@@ -103,7 +103,7 @@ class Database:
             results = await self.execute_write_fn(_inner, block=block)
         return results
 
-    async def execute_write_script(self, sql, block=False):
+    async def execute_write_script(self, sql, block=True):
         def _inner(conn):
             with conn:
                 return conn.executescript(sql)
@@ -112,7 +112,7 @@ class Database:
             results = await self.execute_write_fn(_inner, block=block)
         return results
 
-    async def execute_write_many(self, sql, params_seq, block=False):
+    async def execute_write_many(self, sql, params_seq, block=True):
         def _inner(conn):
             count = 0
 
@@ -132,7 +132,7 @@ class Database:
             kwargs["count"] = count
         return results
 
-    async def execute_write_fn(self, fn, block=False):
+    async def execute_write_fn(self, fn, block=True):
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
         if self._write_queue is None:
             self._write_queue = queue.Queue()

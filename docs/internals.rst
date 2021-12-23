@@ -331,7 +331,7 @@ This will add a mutable database and serve it at ``/my-new-database``.
 .. code-block:: python
 
     db = datasette.add_database(Database(datasette, memory_name="statistics"))
-    await db.execute_write("CREATE TABLE foo(id integer primary key)", block=True)
+    await db.execute_write("CREATE TABLE foo(id integer primary key)")
 
 .. _datasette_add_memory_database:
 
@@ -694,8 +694,7 @@ Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://d
 
     await db.execute_write_many(
         "insert into characters (id, name) values (?, ?)",
-        [(1, "Melanie"), (2, "Selma"), (2, "Viktor")],
-        block=True,
+        [(1, "Melanie"), (2, "Selma"), (2, "Viktor")]
     )
 
 .. _database_execute_write_fn:
@@ -703,9 +702,9 @@ Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://d
 await db.execute_write_fn(fn, block=True)
 ------------------------------------------
 
-This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. This function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
+This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
-The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection as long as it is executing.
+The function can then perform multiple actions, safe in the knowledge that it has exclusive access to the single writable connection for as long as it is executing.
 
 .. warning::
 
@@ -715,30 +714,20 @@ For example:
 
 .. code-block:: python
 
-    def my_action(conn):
-        conn.execute("delete from some_table")
-        conn.execute("delete from other_table")
-
-    await database.execute_write_fn(my_action)
-
-This method is fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned.
-
-If you pass ``block=True`` your calling code will block until the function has been executed. The return value to the ``await`` will be the return value of your function.
-
-If your function raises an exception and you specified ``block=True``, that exception will be propagated up to the ``await`` line. With ``block=True`` any exceptions will be silently ignored.
-
-Here's an example of ``block=True`` in action:
-
-.. code-block:: python
-
-    def my_action(conn):
+    def delete_and_return_count(conn):
         conn.execute("delete from some_table where id > 5")
         return conn.execute("select count(*) from some_table").fetchone()[0]
 
     try:
-        num_rows_left = await database.execute_write_fn(my_action, block=True)
+        num_rows_left = await database.execute_write_fn(delete_and_return_count)
     except Exception as e:
         print("An error occurred:", e)
+
+The value returned from ``await database.execute_write_fn(...)`` will be the return value from your function.
+
+If your function raises an exception that exception will be propagated up to the ``await`` line.
+
+If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
 
 .. _internals_database_introspection:
 

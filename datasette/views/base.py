@@ -628,6 +628,9 @@ class DataView(BaseView):
 
         ttl = request.args.get("_ttl", None)
         if ttl is None or not ttl.isdigit():
+            # if a db does not have hash, then the "hash" defaults
+            # to "000". Make sure we don't use the hashed ttl
+            # for such databases.
             if correct_hash_provided and hash != "000":
                 ttl = self.ds.setting("default_cache_ttl_hashed")
             else:

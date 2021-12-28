@@ -245,6 +245,7 @@ def test_to_css_class(s, expected):
     assert expected == utils.to_css_class(s)
 
 
+@pytest.mark.serial
 def test_temporary_docker_directory_uses_hard_link():
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
@@ -304,6 +305,7 @@ def test_temporary_docker_directory_uses_copy_if_hard_link_fails(mock_link):
             assert 1 == os.stat(hello).st_nlink
 
 
+@pytest.mark.serial
 def test_temporary_docker_directory_quotes_args():
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
@@ -332,11 +334,12 @@ def test_temporary_docker_directory_quotes_args():
             assert "ENV DATASETTE_SECRET 'secret'" in df_contents
 
 
+@pytest.mark.serial
 def test_slim_base_image():
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
         with utils.temporary_docker_directory(
-            files=["hello"],
+            files=[],
             name="t",
             metadata=None,
             extra_options="--$HOME",
@@ -356,11 +359,12 @@ def test_slim_base_image():
             assert "FROM python:3.8-slim-bullseye" in df_contents
 
 
+@pytest.mark.serial
 def test_fat_base_image():
     with tempfile.TemporaryDirectory() as td:
         os.chdir(td)
         with utils.temporary_docker_directory(
-            files=["hello"],
+            files=[],
             name="t",
             metadata=None,
             extra_options="--$HOME",

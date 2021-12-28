@@ -26,6 +26,7 @@ Options:
   -n, --name TEXT                 Application name to use when building
   --service TEXT                  Cloud Run service to deploy (or over-write)
   --spatialite                    Enable SpatialLite extension
+  --slim-base-image               Use slim docker base image.
   --show-files                    Output the generated Dockerfile and metadata.json
   --memory TEXT                   Memory to allocate in Cloud Run, e.g. 1Gi
   --cpu [1|2|4]                   Number of vCPUs to allocate in Cloud Run

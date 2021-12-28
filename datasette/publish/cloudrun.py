@@ -26,6 +26,7 @@ def publish_subcommand(publish):
         "--service", default="", help="Cloud Run service to deploy (or over-write)"
     )
     @click.option("--spatialite", is_flag=True, help="Enable SpatialLite extension")
+    @click.option("--slim-base-image", is_flag=True, help="Use slim docker base image.")
     @click.option(
         "--show-files",
         is_flag=True,

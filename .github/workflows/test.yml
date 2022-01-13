@@ -28,3 +28,6 @@ jobs:
       run: |
         pytest -n auto -m "not serial"
         pytest -m "serial"
+    - name: Check if cog needs to be run
+      run: |
+        cog --check docs/*.rst

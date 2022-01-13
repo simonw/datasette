@@ -60,4 +60,5 @@ Contents
    testing_plugins
    internals
    contributing
+   cli-reference
    changelog

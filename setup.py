@@ -74,6 +74,7 @@ setup(
             "black==21.12b0",
             "pytest-timeout>=1.4.2,<2.1",
             "trustme>=0.7,<0.10",
+            "cogapp>=3.3.0",
         ],
         "rich": ["rich"],
     },

@@ -162,11 +162,11 @@ class InvalidSql(Exception):
 
 allowed_sql_res = [
     re.compile(r"^select\b"),
-    re.compile(r"^explain select\b"),
-    re.compile(r"^explain query plan select\b"),
+    re.compile(r"^explain\s+select\b"),
+    re.compile(r"^explain\s+query\s+plan\s+select\b"),
     re.compile(r"^with\b"),
-    re.compile(r"^explain with\b"),
-    re.compile(r"^explain query plan with\b"),
+    re.compile(r"^explain\s+with\b"),
+    re.compile(r"^explain\s+query\s+plan\s+with\b"),
 ]
 allowed_pragmas = (
     "database_list",

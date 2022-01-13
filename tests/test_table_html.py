@@ -1038,3 +1038,22 @@ def test_sort_rowid_with_next(app_client):
 
 def assert_querystring_equal(expected, actual):
     assert sorted(expected.split("&")) == sorted(actual.split("&"))
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        (
+            "/fixtures/facetable",
+            "fixtures: facetable: 15 rows",
+        ),
+        (
+            "/fixtures/facetable?on_earth__exact=1",
+            "fixtures: facetable: 14 rows where on_earth = 1",
+        ),
+    ),
+)
+def test_table_page_title(app_client, path, expected):
+    response = app_client.get(path)
+    title = Soup(response.text, "html.parser").find("title").text
+    assert title == expected

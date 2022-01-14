@@ -51,7 +51,7 @@ datasette --help
 
     Commands:
       serve*     Serve up specified SQLite database files with a web UI
-      inspect
+      inspect    Generate JSON summary of provided database files
       install    Install Python packages - e.g.
       package    Package specified SQLite files into a new datasette Docker...
       plugins    List currently available plugins
@@ -316,6 +316,11 @@ datasette inspect --help
 ::
 
     Usage: datasette inspect [OPTIONS] [FILES]...
+
+      Generate JSON summary of provided database files
+
+      This can then be passed to "datasette --inspect-file" to speed up count
+      operations against immutable database files.
 
     Options:
       --inspect-file TEXT

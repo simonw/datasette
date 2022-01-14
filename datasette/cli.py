@@ -136,6 +136,12 @@ def cli():
 @click.option("--inspect-file", default="-")
 @sqlite_extensions
 def inspect(files, inspect_file, sqlite_extensions):
+    """
+    Generate JSON summary of provided database files
+
+    This can then be passed to "datasette --inspect-file" to speed up count
+    operations against immutable database files.
+    """
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     loop = asyncio.get_event_loop()
     inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))

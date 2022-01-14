@@ -59,6 +59,6 @@ Contents
    plugin_hooks
    testing_plugins
    internals
-   contributing
    cli-reference
+   contributing
    changelog

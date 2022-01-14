@@ -161,11 +161,4 @@ The ``--get`` option can specify the path to a page within Datasette and cause D
 
 The exit code will be 0 if the request succeeds and 1 if the request produced an HTTP status code other than 200 - e.g. a 404 or 500 error. This means you can use ``datasette --get /`` to run tests against a Datasette application in a continuous integration environment such as GitHub Actions.
 
-.. _getting_started_serve_help:
-
-datasette serve --help
-----------------------
-
-Running ``datasette downloads.db`` executes the default ``serve`` sub-command, and is equivalent to running ``datasette serve downloads.db``. The full list of options to that command is shown below.
-
-.. literalinclude:: datasette-serve-help.txt
+Running ``datasette`` without specifying a command runs the default command, ``datasette serve``.  See :ref:`cli_help_serve___help` for the full list of options for that command.

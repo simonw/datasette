@@ -33,26 +33,6 @@ def test_settings_are_documented(settings_headings, setting):
     assert setting.name in settings_headings
 
 
-@pytest.mark.parametrize(
-    "name,filename",
-    (
-        ("serve", "datasette-serve-help.txt"),
-        ("package", "datasette-package-help.txt"),
-        ("publish heroku", "datasette-publish-heroku-help.txt"),
-        ("publish cloudrun", "datasette-publish-cloudrun-help.txt"),
-    ),
-)
-def test_help_includes(name, filename):
-    expected = (docs_path / filename).read_text()
-    runner = CliRunner()
-    result = runner.invoke(cli, name.split() + ["--help"], terminal_width=88)
-    actual = f"$ datasette {name} --help\n\n{result.output}"
-    # actual has "Usage: cli package [OPTIONS] FILES"
-    # because it doesn't know that cli will be aliased to datasette
-    expected = expected.replace("Usage: datasette", "Usage: cli")
-    assert expected == actual, "Run python update-docs-help.py to fix this"
-
-
 @pytest.fixture(scope="session")
 def plugin_hooks_content():
     return (docs_path / "plugin_hooks.rst").read_text()

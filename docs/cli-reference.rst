@@ -26,6 +26,8 @@ This page lists the ``--help`` for every ``datasette`` CLI command.
     cog.out("\n")
     for command in commands:
         title = "datasette " + " ".join(command)
+        ref = "_cli_help_" + ("_".join(command).replace("-", "_"))
+        cog.out(".. {}:\n\n".format(ref))
         cog.out(title + "\n")
         cog.out(("=" * len(title)) + "\n\n")
         cog.out("::\n\n")
@@ -34,6 +36,8 @@ This page lists the ``--help`` for every ``datasette`` CLI command.
         cog.out(textwrap.indent(output, '    '))
         cog.out("\n\n")
 .. ]]]
+
+.. _cli_help___help:
 
 datasette --help
 ================
@@ -60,6 +64,8 @@ datasette --help
       publish    Publish specified SQLite database files to the internet along...
       uninstall  Uninstall plugins and Python packages from the Datasette...
 
+
+.. _cli_help_serve___help:
 
 datasette serve --help
 ======================
@@ -114,6 +120,8 @@ datasette serve --help
       --help                    Show this message and exit.
 
 
+.. _cli_help_serve___help_settings:
+
 datasette serve --help-settings
 ===============================
 
@@ -165,6 +173,8 @@ datasette serve --help-settings
 
 
 
+.. _cli_help_plugins___help:
+
 datasette plugins --help
 ========================
 
@@ -179,6 +189,8 @@ datasette plugins --help
       --plugins-dir DIRECTORY  Path to directory containing custom plugins
       --help                   Show this message and exit.
 
+
+.. _cli_help_publish___help:
 
 datasette publish --help
 ========================
@@ -197,6 +209,8 @@ datasette publish --help
       cloudrun  Publish databases to Datasette running on Cloud Run
       heroku    Publish databases to Datasette running on Heroku
 
+
+.. _cli_help_publish_cloudrun___help:
 
 datasette publish cloudrun --help
 =================================
@@ -242,6 +256,8 @@ datasette publish cloudrun --help
       --help                          Show this message and exit.
 
 
+.. _cli_help_publish_heroku___help:
+
 datasette publish heroku --help
 ===============================
 
@@ -281,6 +297,8 @@ datasette publish heroku --help
       --help                          Show this message and exit.
 
 
+.. _cli_help_package___help:
+
 datasette package --help
 ========================
 
@@ -317,6 +335,8 @@ datasette package --help
       --help                    Show this message and exit.
 
 
+.. _cli_help_inspect___help:
+
 datasette inspect --help
 ========================
 
@@ -335,6 +355,8 @@ datasette inspect --help
       --help                 Show this message and exit.
 
 
+.. _cli_help_install___help:
+
 datasette install --help
 ========================
 
@@ -348,6 +370,8 @@ datasette install --help
       -U, --upgrade  Upgrade packages to latest version
       --help         Show this message and exit.
 
+
+.. _cli_help_uninstall___help:
 
 datasette uninstall --help
 ==========================

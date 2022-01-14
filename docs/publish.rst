@@ -47,7 +47,7 @@ Once it has finished it will output a URL like this one::
 
 Cloud Run provides a URL on the ``.run.app`` domain, but you can also point your own domain or subdomain at your Cloud Run service - see `mapping custom domains <https://cloud.google.com/run/docs/mapping-custom-domains>`__ in the Cloud Run documentation for details.
 
-.. literalinclude:: datasette-publish-cloudrun-help.txt
+See :ref:`cli_help_publish_cloudrun___help` for the full list of options for this command.
 
 Publishing to Heroku
 --------------------
@@ -64,7 +64,7 @@ This will output some details about the new deployment, including a URL like thi
 
 You can specify a custom app name by passing ``-n my-app-name`` to the publish command. This will also allow you to overwrite an existing app.
 
-.. literalinclude:: datasette-publish-heroku-help.txt
+See :ref:`cli_help_publish_heroku___help` for the full list of options for this command.
 
 .. _publish_vercel:
 
@@ -171,4 +171,4 @@ You can customize the port that is exposed by the container using the ``--port``
 
 A full list of options can be seen by running ``datasette package --help``:
 
-.. literalinclude:: datasette-package-help.txt
+See :ref:`cli_help_package___help` for the full list of options for this command.

@@ -23,6 +23,7 @@ This page lists the ``--help`` for every ``datasette`` CLI command.
         ["install", "--help"],
         ["uninstall", "--help"],
     ]
+    cog.out("\n")
     for command in commands:
         title = "datasette " + " ".join(command)
         cog.out(title + "\n")
@@ -33,6 +34,7 @@ This page lists the ``--help`` for every ``datasette`` CLI command.
         cog.out(textwrap.indent(output, '    '))
         cog.out("\n\n")
 .. ]]]
+
 datasette --help
 ================
 

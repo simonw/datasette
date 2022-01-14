@@ -400,7 +400,7 @@ def uninstall(packages, yes):
     "--setting",
     "settings",
     type=Setting(),
-    help="Setting, see docs.datasette.io/en/stable/config.html",
+    help="Setting, see docs.datasette.io/en/stable/settings.html",
     multiple=True,
 )
 @click.option(

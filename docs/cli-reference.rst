@@ -94,7 +94,8 @@ datasette serve --help
       --memory                  Make /_memory database available
       --config CONFIG           Deprecated: set config option using
                                 configname:value. Use --setting instead.
-      --setting SETTING...      Setting, see docs.datasette.io/en/stable/config.html
+      --setting SETTING...      Setting, see
+                                docs.datasette.io/en/stable/settings.html
       --secret TEXT             Secret used for signing secure values, such as
                                 signed cookies
       --root                    Output URL that sets a cookie authenticating the

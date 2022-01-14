@@ -155,7 +155,7 @@ def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get("/fixtures?sql=select+sleep(0.5)")
     assert 400 == response.status
     expected_html_fragment = """
-        <a href="https://docs.datasette.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
+        <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
     """.strip()
     assert expected_html_fragment in response.text
 

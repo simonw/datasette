@@ -74,6 +74,7 @@ def publish_subcommand(publish):
         cpu,
         apt_get_extras,
     ):
+        "Publish databases to Datasette running on Cloud Run"
         fail_if_publish_binary_not_installed(
             "gcloud", "Google Cloud", "https://cloud.google.com/sdk/"
         )

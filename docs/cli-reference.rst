@@ -191,8 +191,8 @@ datasette publish --help
       --help  Show this message and exit.
 
     Commands:
-      cloudrun
-      heroku
+      cloudrun  Publish databases to Datasette running on Cloud Run
+      heroku    Publish databases to Datasette running on Heroku
 
 
 datasette publish cloudrun --help
@@ -201,6 +201,8 @@ datasette publish cloudrun --help
 ::
 
     Usage: datasette publish cloudrun [OPTIONS] [FILES]...
+
+      Publish databases to Datasette running on Cloud Run
 
     Options:
       -m, --metadata FILENAME         Path to JSON/YAML file containing metadata to
@@ -243,6 +245,8 @@ datasette publish heroku --help
 ::
 
     Usage: datasette publish heroku [OPTIONS] [FILES]...
+
+      Publish databases to Datasette running on Heroku
 
     Options:
       -m, --metadata FILENAME         Path to JSON/YAML file containing metadata to

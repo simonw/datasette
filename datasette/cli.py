@@ -307,7 +307,7 @@ def package(
     "-U", "--upgrade", is_flag=True, help="Upgrade packages to latest version"
 )
 def install(packages, upgrade):
-    """Install Python packages - e.g. Datasette plugins - into the same environment as Datasette"""
+    """Install plugins and packages from PyPI into the same environment as Datasette"""
     args = ["pip", "install"]
     if upgrade:
         args += ["--upgrade"]
@@ -320,7 +320,7 @@ def install(packages, upgrade):
 @click.argument("packages", nargs=-1, required=True)
 @click.option("-y", "--yes", is_flag=True, help="Don't ask for confirmation")
 def uninstall(packages, yes):
-    """Uninstall Python packages (e.g. plugins) from the Datasette environment"""
+    """Uninstall plugins and Python packages from the Datasette environment"""
     sys.argv = ["pip", "uninstall"] + list(packages) + (["-y"] if yes else [])
     run_module("pip", run_name="__main__")
 

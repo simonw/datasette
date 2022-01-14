@@ -52,11 +52,11 @@ datasette --help
     Commands:
       serve*     Serve up specified SQLite database files with a web UI
       inspect    Generate JSON summary of provided database files
-      install    Install Python packages - e.g.
+      install    Install plugins and packages from PyPI into the same...
       package    Package specified SQLite files into a new datasette Docker...
       plugins    List currently available plugins
       publish    Publish specified SQLite database files to the internet along...
-      uninstall  Uninstall Python packages (e.g.
+      uninstall  Uninstall plugins and Python packages from the Datasette...
 
 
 datasette serve --help
@@ -335,8 +335,7 @@ datasette install --help
 
     Usage: datasette install [OPTIONS] PACKAGES...
 
-      Install Python packages - e.g. Datasette plugins - into the same environment
-      as Datasette
+      Install plugins and packages from PyPI into the same environment as Datasette
 
     Options:
       -U, --upgrade  Upgrade packages to latest version
@@ -350,7 +349,7 @@ datasette uninstall --help
 
     Usage: datasette uninstall [OPTIONS] PACKAGES...
 
-      Uninstall Python packages (e.g. plugins) from the Datasette environment
+      Uninstall plugins and Python packages from the Datasette environment
 
     Options:
       -y, --yes  Don't ask for confirmation

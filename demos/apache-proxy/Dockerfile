@@ -27,7 +27,7 @@ ARG DATASETTE_REF
 
 RUN pip install \
     https://github.com/simonw/datasette/archive/${DATASETTE_REF}.zip \
-    datasette-redirect-to-https
+    datasette-redirect-to-https datasette-debug-asgi
 
 ADD 000-default.conf /etc/apache2/sites-enabled/000-default.conf
 

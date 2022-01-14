@@ -54,7 +54,7 @@ datasette --help
       inspect    Generate JSON summary of provided database files
       install    Install plugins and packages from PyPI into the same...
       package    Package specified SQLite files into a new datasette Docker...
-      plugins    List currently available plugins
+      plugins    List currently installed plugins
       publish    Publish specified SQLite database files to the internet along...
       uninstall  Uninstall plugins and Python packages from the Datasette...
 
@@ -169,7 +169,7 @@ datasette plugins --help
 
     Usage: datasette plugins [OPTIONS]
 
-      List currently available plugins
+      List currently installed plugins
 
     Options:
       --all                    Include built-in default plugins

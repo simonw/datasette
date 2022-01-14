@@ -190,7 +190,7 @@ pm.hook.publish_subcommand(publish=publish)
     help="Path to directory containing custom plugins",
 )
 def plugins(all, plugins_dir):
-    """List currently available plugins"""
+    """List currently installed plugins"""
     app = Datasette([], plugins_dir=plugins_dir)
     click.echo(json.dumps(app._plugins(all=all), indent=4))
 

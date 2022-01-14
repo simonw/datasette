@@ -4,30 +4,41 @@
 Changelog
 =========
 
-.. _v0_60a1:
+.. _v0_60:
 
-0.60a1 (2021-12-19)
--------------------
+0.60 (2022-01-13)
+-----------------
 
+Plugins and internals
+~~~~~~~~~~~~~~~~~~~~~
+
+- New plugin hook: :ref:`plugin_hook_filters_from_request`, which runs on the table page and can be used to support new custom query string parameters that modify the SQL query. (:issue:`473`)
+- Added two additional methods for writing to the database: :ref:`database_execute_write_script` and :ref:`database_execute_write_many`. (:issue:`1570`)
+- The :ref:`db.execute_write() <database_execute_write>` internal method now defaults to blocking until the write operation has completed. Previously it defaulted to queuing the write and then continuing to run code while the write was in the queue. (:issue:`1579`)
 - Database write connections now execute the :ref:`plugin_hook_prepare_connection` plugin hook. (:issue:`1564`)
 - The ``Datasette()`` constructor no longer requires the ``files=`` argument, and is now documented at :ref:`internals_datasette`. (:issue:`1563`)
 - The tracing feature now traces write queries, not just read queries. (:issue:`1568`)
-- Added two methods for writing to the database: :ref:`database_execute_write_script` and :ref:`database_execute_write_many`. (:issue:`1570`)
-- Made several performance improvements to the database schema introspection code that runs when Datasette first starts up. (:issue:`1555`)
-- Fixed bug where writable canned queries could not be used with custom templates.  (:issue:`1547`)
+- The query string variables exposed by ``request.args`` will now include blank strings for arguments such as ``foo`` in ``?foo=&bar=1`` rather than ignoring those parameters entirely. (:issue:`1551`)
 
-.. _v0_60a0:
+Faceting
+~~~~~~~~
 
-0.60a0 (2021-12-17)
--------------------
-
-- New plugin hook: :ref:`plugin_hook_filters_from_request`, which runs on the table page and can be used to support new custom query string parameters that modify the SQL query. (:issue:`473`)
 - The number of unique values in a facet is now always displayed. Previously it was only displayed if the user specified ``?_facet_size=max``. (:issue:`1556`)
-- Fixed bug where ``?_facet_array=tags&_facet=tags`` would only display one of the two selected facets. (:issue:`625`)
 - Facets of type ``date`` or ``array`` can now be configured in ``metadata.json``, see :ref:`facets_metadata`. Thanks, David Larlet. (:issue:`1552`)
 - New ``?_nosuggest=1`` parameter for table views, which disables facet suggestion. (:issue:`1557`)
+- Fixed bug where ``?_facet_array=tags&_facet=tags`` would only display one of the two selected facets. (:issue:`625`)
+
+Other small fixes
+~~~~~~~~~~~~~~~~~
+
+- Made several performance improvements to the database schema introspection code that runs when Datasette first starts up. (:issue:`1555`)
 - Label columns detected for foreign keys are now case-insensitive, so ``Name`` or ``TITLE`` will be detected in the same way as ``name`` or ``title``. (:issue:`1544`)
-- The query string variables exposed by ``request.args`` will now include blank strings for arguments such as ``foo`` in ``?foo=&bar=1`` rather than ignoring those parameters entirely. (:issue:`1551`)
+- Upgraded Pluggy dependency to 1.0. (:issue:`1575`)
+- Now using `Plausible analytics <https://plausible.io/>`__ for the Datasette documentation.
+- ``explain query plan`` is now allowed with varying amounts of whitespace in the query. (:issue:`1588`)
+- New :ref:`cli_reference` page showing the output of ``--help`` for each of the ``datasette`` sub-commands. This lead to several small improvements to the help copy. (:issue:`1594`)
+- Fixed bug where writable canned queries could not be used with custom templates.  (:issue:`1547`)
+- Improved fix for a bug where columns with a underscore prefix could result in unnecessary hidden form fields. (:issue:`1527`)
 
 .. _v0_59_4:
 

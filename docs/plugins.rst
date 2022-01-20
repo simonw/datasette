@@ -110,24 +110,6 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
 
     [
         {
-            "name": "datasette.publish.heroku",
-            "static": false,
-            "templates": false,
-            "version": null,
-            "hooks": [
-                "publish_subcommand"
-            ]
-        },
-        {
-            "name": "datasette.sql_functions",
-            "static": false,
-            "templates": false,
-            "version": null,
-            "hooks": [
-                "prepare_connection"
-            ]
-        },
-        {
             "name": "datasette.actor_auth_cookie",
             "static": false,
             "templates": false,
@@ -146,21 +128,21 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
-            "name": "datasette.facets",
-            "static": false,
-            "templates": false,
-            "version": null,
-            "hooks": [
-                "register_facet_classes"
-            ]
-        },
-        {
             "name": "datasette.default_magic_parameters",
             "static": false,
             "templates": false,
             "version": null,
             "hooks": [
                 "register_magic_parameters"
+            ]
+        },
+        {
+            "name": "datasette.default_menu_links",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "menu_links"
             ]
         },
         {
@@ -173,12 +155,12 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
-            "name": "datasette.default_menu_links",
+            "name": "datasette.facets",
             "static": false,
             "templates": false,
             "version": null,
             "hooks": [
-                "menu_links"
+                "register_facet_classes"
             ]
         },
         {
@@ -197,6 +179,24 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "version": null,
             "hooks": [
                 "publish_subcommand"
+            ]
+        },
+        {
+            "name": "datasette.publish.heroku",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "publish_subcommand"
+            ]
+        },
+        {
+            "name": "datasette.sql_functions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "prepare_connection"
             ]
         }
     ]

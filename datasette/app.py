@@ -764,13 +764,14 @@ class Datasette:
             should_show_all = all
         if not should_show_all:
             ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
+        ps.sort(key=lambda p: p["name"])
         return [
             {
                 "name": p["name"],
                 "static": p["static_path"] is not None,
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
-                "hooks": list(set(p["hooks"])),
+                "hooks": list(sorted(set(p["hooks"]))),
             }
             for p in ps
         ]

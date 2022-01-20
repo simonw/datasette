@@ -64,7 +64,7 @@ def test_favicon(app_client):
     response = app_client.get("/favicon.ico")
     assert response.status == 200
     assert response.headers["cache-control"] == "max-age=3600, immutable, public"
-    assert response.headers["content-length"] == "1207"
+    assert int(response.headers["content-length"]) > 100
     assert response.headers["content-type"] == "image/png"
 
 

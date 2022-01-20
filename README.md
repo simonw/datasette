@@ -35,7 +35,7 @@ You can also install it using `pip` or `pipx`:
 
     pip install datasette
 
-Datasette requires Python 3.6 or higher. We also have [detailed installation instructions](https://docs.datasette.io/en/stable/installation.html) covering other options such as Docker.
+Datasette requires Python 3.7 or higher. We also have [detailed installation instructions](https://docs.datasette.io/en/stable/installation.html) covering other options such as Docker.
 
 ## Basic usage
 

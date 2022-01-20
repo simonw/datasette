@@ -770,7 +770,7 @@ class Datasette:
                 "static": p["static_path"] is not None,
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
-                "hooks": p["hooks"],
+                "hooks": list(set(p["hooks"])),
             }
             for p in ps
         ]

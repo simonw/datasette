@@ -1030,3 +1030,15 @@ async def test_db_path(app_client):
 
     # Previously this broke if path was a pathlib.Path:
     await datasette.refresh_schemas()
+
+
+@pytest.mark.asyncio
+async def test_hidden_sqlite_stat1_table():
+    ds = Datasette()
+    db = ds.add_memory_database("db")
+    await db.execute_write("create table normal (id integer primary key, name text)")
+    await db.execute_write("create index idx on normal (name)")
+    await db.execute_write("analyze")
+    data = (await ds.client.get("/db.json?_show_hidden=1")).json()
+    tables = [(t["name"], t["hidden"]) for t in data["tables"]]
+    assert tables == [("normal", False), ("sqlite_stat1", True)]

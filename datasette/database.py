@@ -365,6 +365,9 @@ class Database:
                 "sqlite_sequence",
                 "views_geometry_columns",
                 "virts_geometry_columns",
+                "data_licenses",
+                "KNN",
+                "KNN2",
             ] + [
                 r[0]
                 for r in (

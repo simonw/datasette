@@ -70,6 +70,7 @@ from .utils.asgi import (
     Response,
     asgi_static,
     asgi_send,
+    asgi_send_file,
     asgi_send_html,
     asgi_send_json,
     asgi_send_redirect,
@@ -178,9 +179,17 @@ SETTINGS = (
 
 DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 
+FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
+
 
 async def favicon(request, send):
-    await asgi_send(send, "", 200)
+    await asgi_send_file(
+        send,
+        str(FAVICON_PATH),
+        content_type="image/png",
+        chunk_size=4096,
+        headers={"Cache-Control": "max-age=3600, immutable, public"},
+    )
 
 
 class Datasette:

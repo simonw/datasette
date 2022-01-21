@@ -24,6 +24,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -e '.[test]'
+        pip freeze
     - name: Run tests
       run: |
         pytest -n auto -m "not serial"

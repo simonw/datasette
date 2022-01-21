@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_60.1:
+
+0.60.1 (2022-01-20)
+-------------------
+
+- Fixed a bug where installation on Python 3.6 stopped working due to a change to an underlying dependency. This release can now be installed on Python 3.6, but is the last release of Datasette that will support anything less than Python 3.7. (:issue:`1609`)
+
 .. _v0_60:
 
 0.60 (2022-01-13)

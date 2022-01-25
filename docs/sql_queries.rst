@@ -275,6 +275,8 @@ Magic parameters
 
 Named parameters that start with an underscore are special: they can be used to automatically add values created by Datasette that are not contained in the incoming form fields or query string.
 
+These magic parameters are only supported for canned queries: to avoid security issues (such as queries that extract the user's private cookies) they are not available to SQL that is executed by the user as a custom SQL query.
+
 Available magic parameters are:
 
 ``_actor_*`` - e.g. ``_actor_id``, ``_actor_name``

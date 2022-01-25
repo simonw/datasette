@@ -67,10 +67,23 @@
     </div>
 {% endif %}
 
+{% if queries %}
+    <h2 id="queries">Queries</h2>
+    <ul class="bullets">
+        {% for query in queries %}
+            <li><a href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
+        {% endfor %}
+    </ul>
+{% endif %}
+
+{% if tables %}
+<h2 id="tables">Tables</h2>
+{% endif %}
+
 {% for table in tables %}
 {% if show_hidden or not table.hidden %}
 <div class="db-table">
-    <h2><a href="{{ urls.table(database, table.name) }}">{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if table.hidden %}<em> (hidden)</em>{% endif %}</h2>
+    <h3><a href="{{ urls.table(database, table.name) }}">{{ table.name }}</a>{% if table.private %} 🔒{% endif %}{% if table.hidden %}<em> (hidden)</em>{% endif %}</h3>
     <p><em>{% for column in table.columns %}{{ column }}{% if not loop.last %}, {% endif %}{% endfor %}</em></p>
     <p>{% if table.count is none %}Many rows{% else %}{{ "{:,}".format(table.count) }} row{% if table.count == 1 %}{% else %}s{% endif %}{% endif %}</p>
 </div>
@@ -86,15 +99,6 @@
     <ul class="bullets">
         {% for view in views %}
             <li><a href="{{ urls.database(database) }}/{{ view.name|urlencode }}">{{ view.name }}</a>{% if view.private %} 🔒{% endif %}</li>
-        {% endfor %}
-    </ul>
-{% endif %}
-
-{% if queries %}
-    <h2 id="queries">Queries</h2>
-    <ul class="bullets">
-        {% for query in queries %}
-            <li><a href="{{ urls.query(database, query.name) }}{% if query.fragment %}#{{ query.fragment }}{% endif %}" title="{{ query.description or query.sql }}">{{ query.title or query.name }}</a>{% if query.private %} 🔒{% endif %}</li>
         {% endfor %}
     </ul>
 {% endif %}

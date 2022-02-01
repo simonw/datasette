@@ -1212,7 +1212,8 @@ class DatasetteRouter:
         else:
             # Is there a pages/* template matching this path?
             route_path = request.scope.get("route_path", request.scope["path"])
-            template_path = os.path.join("pages", *route_path.split("/")) + ".html"
+            # Ensure template_path always uses "/" to match jina
+            template_path = "pages" + route_path + ".html"
             try:
                 template = self.ds.jinja_env.select_template([template_path])
             except TemplateNotFound:

@@ -43,6 +43,7 @@ class JsonDataView(BaseView):
 
 class PatternPortfolioView(BaseView):
     name = "patterns"
+    has_json_alternate = False
 
     async def get(self, request):
         await self.check_permission(request, "view-instance")
@@ -51,6 +52,7 @@ class PatternPortfolioView(BaseView):
 
 class AuthTokenView(BaseView):
     name = "auth_token"
+    has_json_alternate = False
 
     async def get(self, request):
         token = request.args.get("token") or ""
@@ -69,6 +71,7 @@ class AuthTokenView(BaseView):
 
 class LogoutView(BaseView):
     name = "logout"
+    has_json_alternate = False
 
     async def get(self, request):
         if not request.actor:
@@ -88,6 +91,7 @@ class LogoutView(BaseView):
 
 class PermissionsDebugView(BaseView):
     name = "permissions_debug"
+    has_json_alternate = False
 
     async def get(self, request):
         await self.check_permission(request, "view-instance")
@@ -103,6 +107,7 @@ class PermissionsDebugView(BaseView):
 
 class AllowDebugView(BaseView):
     name = "allow_debug"
+    has_json_alternate = False
 
     async def get(self, request):
         errors = []
@@ -137,6 +142,7 @@ class AllowDebugView(BaseView):
 
 class MessagesDebugView(BaseView):
     name = "messages_debug"
+    has_json_alternate = False
 
     async def get(self, request):
         await self.check_permission(request, "view-instance")

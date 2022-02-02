@@ -922,3 +922,15 @@ def test_alternate_url_json(app_client, path, expected):
         )
         in response.text
     )
+
+
+@pytest.mark.parametrize(
+    "path",
+    ("/-/patterns", "/-/messages", "/-/allow-debug", "/fixtures.db"),
+)
+def test_no_alternate_url_json(app_client, path):
+    response = app_client.get(path)
+    assert "link" not in response.headers
+    assert (
+        '<link rel="alternate" type="application/json+datasette"' not in response.text
+    )

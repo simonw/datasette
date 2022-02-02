@@ -4,7 +4,6 @@
 
 {% block extra_head %}
 {{- super() -}}
-<link rel="alternate" type="application/json+datasette" href="{{ alternate_url_json }}">
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in columns %}

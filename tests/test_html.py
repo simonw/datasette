@@ -875,12 +875,14 @@ def test_trace_correctly_escaped(app_client):
 @pytest.mark.parametrize(
     "path,expected",
     (
+        # Instance index page
+        ("/", "http://localhost/.json"),
         # Table page
+        ("/fixtures/facetable", "http://localhost/fixtures/facetable.json"),
         (
             "/fixtures/table%2Fwith%2Fslashes.csv",
             "http://localhost/fixtures/table%2Fwith%2Fslashes.csv?_format=json",
         ),
-        ("/fixtures/facetable", "http://localhost/fixtures/facetable.json"),
         # Row page
         (
             "/fixtures/no_primary_key/1",
@@ -900,6 +902,11 @@ def test_trace_correctly_escaped(app_client):
         (
             "/fixtures/neighborhood_search?text=town",
             "http://localhost/fixtures/neighborhood_search.json?text=town",
+        ),
+        # /-/ pages
+        (
+            "/-/plugins",
+            "http://localhost/-/plugins.json",
         ),
     ),
 )

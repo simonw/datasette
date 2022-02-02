@@ -55,6 +55,7 @@ class DatasetteError(Exception):
 
 class BaseView:
     ds = None
+    has_json_alternate = True
 
     def __init__(self, datasette):
         self.ds = datasette
@@ -137,10 +138,20 @@ class BaseView:
                 ],
             },
         }
-        # Hacky cheat to add extra headers
         headers = {}
-        if "_extra_headers" in context:
-            headers.update(context["_extra_headers"])
+        if self.has_json_alternate:
+            alternate_url_json = self.ds.absolute_url(
+                request,
+                self.ds.urls.path(path_with_format(request=request, format="json")),
+            )
+            template_context["alternate_url_json"] = alternate_url_json
+            headers.update(
+                {
+                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                        alternate_url_json
+                    )
+                }
+            )
         return Response.html(
             await self.ds.render_template(
                 template,

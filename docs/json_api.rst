@@ -442,9 +442,9 @@ in ``metadata.json`` - see :ref:`label_columns`.
 Discovering the JSON for a page
 -------------------------------
 
-The :ref:`database <DatabaseView>`, :ref:`table <TableView>`, :ref:`custom/canned query <sql>` and :ref:`row <RowView>` HTML pages all provide a mechanism for discovering their JSON equivalents using the HTML ``link`` mechanism.
+Most of the HTML pages served by Datasette provide a mechanism for discovering their JSON equivalents using the HTML ``link`` mechanism.
 
-You can find this near the top of those pages, looking like this:
+You can find this near the top of the source code of those pages, looking like this:
 
 .. code-block:: python
 

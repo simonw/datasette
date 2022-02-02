@@ -123,10 +123,6 @@ class DatabaseView(DataView):
 
         attached_databases = [d.name for d in await db.attached_databases()]
 
-        alternate_url_json = self.ds.absolute_url(
-            request,
-            self.ds.urls.path(path_with_format(request=request, format="json")),
-        )
         return (
             {
                 "database": database,
@@ -144,7 +140,6 @@ class DatabaseView(DataView):
                 ),
             },
             {
-                "alternate_url_json": alternate_url_json,
                 "database_actions": database_actions,
                 "show_hidden": request.args.get("_show_hidden"),
                 "editable": True,
@@ -153,11 +148,6 @@ class DatabaseView(DataView):
                 and not db.is_mutable
                 and not db.is_memory,
                 "attached_databases": attached_databases,
-                "_extra_headers": {
-                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
-                        alternate_url_json
-                    )
-                },
             },
             (f"database-{to_css_class(database)}.html", "database.html"),
         )
@@ -318,14 +308,7 @@ class QueryView(DataView):
             else:
 
                 async def extra_template():
-                    alternate_url_json = self.ds.absolute_url(
-                        request,
-                        self.ds.urls.path(
-                            path_with_format(request=request, format="json")
-                        ),
-                    )
                     return {
-                        "alternate_url_json": alternate_url_json,
                         "request": request,
                         "path_with_added_args": path_with_added_args,
                         "path_with_removed_args": path_with_removed_args,
@@ -333,11 +316,6 @@ class QueryView(DataView):
                         "canned_query": canned_query,
                         "success_message": request.args.get("_success") or "",
                         "canned_write": True,
-                        "_extra_headers": {
-                            "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
-                                alternate_url_json
-                            )
-                        },
                     }
 
                 return (
@@ -470,12 +448,7 @@ class QueryView(DataView):
                     show_hide_link = path_with_added_args(request, {"_hide_sql": 1})
                     show_hide_text = "hide"
             hide_sql = show_hide_text == "show"
-            alternate_url_json = self.ds.absolute_url(
-                request,
-                self.ds.urls.path(path_with_format(request=request, format="json")),
-            )
             return {
-                "alternate_url_json": alternate_url_json,
                 "display_rows": display_rows,
                 "custom_sql": True,
                 "named_parameter_values": named_parameter_values,
@@ -489,11 +462,6 @@ class QueryView(DataView):
                 "show_hide_text": show_hide_text,
                 "show_hide_hidden": markupsafe.Markup(show_hide_hidden),
                 "hide_sql": hide_sql,
-                "_extra_headers": {
-                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
-                        alternate_url_json
-                    )
-                },
             }
 
         return (

@@ -3,7 +3,8 @@
 {% block title %}{{ database }}{% if query and query.sql %}: {{ query.sql }}{% endif %}{% endblock %}
 
 {% block extra_head %}
-{{ super() }}
+{{- super() -}}
+<link rel="alternate" type="application/json+datasette" href="{{ alternate_url_json }}">
 {% if columns %}
 <style>
 @media only screen and (max-width: 576px) {

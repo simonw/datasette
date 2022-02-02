@@ -364,3 +364,12 @@ def test_canned_write_custom_template(canned_write_client):
         in response.text
     )
     assert "!!!CUSTOM_UPDATE_NAME_TEMPLATE!!!" in response.text
+    # And test for link rel=alternate while we're here:
+    assert (
+        '<link rel="alternate" type="application/json+datasette" href="http://localhost/data/update_name.json">'
+        in response.text
+    )
+    assert (
+        response.headers["link"]
+        == 'http://localhost/data/update_name.json; rel="alternate"; type="application/json+datasette"'
+    )

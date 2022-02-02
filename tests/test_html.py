@@ -870,3 +870,48 @@ def test_trace_correctly_escaped(app_client):
     response = app_client.get("/fixtures?sql=select+'<h1>Hello'&_trace=1")
     assert "select '<h1>Hello" not in response.text
     assert "select &#39;&lt;h1&gt;Hello" in response.text
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        # Table page
+        (
+            "/fixtures/table%2Fwith%2Fslashes.csv",
+            "http://localhost/fixtures/table%2Fwith%2Fslashes.csv?_format=json",
+        ),
+        ("/fixtures/facetable", "http://localhost/fixtures/facetable.json"),
+        # Row page
+        (
+            "/fixtures/no_primary_key/1",
+            "http://localhost/fixtures/no_primary_key/1.json",
+        ),
+        # Database index page
+        (
+            "/fixtures",
+            "http://localhost/fixtures.json",
+        ),
+        # Custom query page
+        (
+            "/fixtures?sql=select+*+from+facetable",
+            "http://localhost/fixtures.json?sql=select+*+from+facetable",
+        ),
+        # Canned query page
+        (
+            "/fixtures/neighborhood_search?text=town",
+            "http://localhost/fixtures/neighborhood_search.json?text=town",
+        ),
+    ),
+)
+def test_alternate_url_json(app_client, path, expected):
+    response = app_client.get(path)
+    link = response.headers["link"]
+    assert link == '{}; rel="alternate"; type="application/json+datasette"'.format(
+        expected
+    )
+    assert (
+        '<link rel="alternate" type="application/json+datasette" href="{}">'.format(
+            expected
+        )
+        in response.text
+    )

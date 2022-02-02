@@ -3,7 +3,8 @@
 {% block title %}{{ database }}{% endblock %}
 
 {% block extra_head %}
-{{ super() }}
+{{- super() -}}
+<link rel="alternate" type="application/json+datasette" href="{{ alternate_url_json }}">
 {% include "_codemirror.html" %}
 {% endblock %}
 

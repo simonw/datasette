@@ -442,7 +442,7 @@ in ``metadata.json`` - see :ref:`label_columns`.
 Discovering the JSON for a page
 -------------------------------
 
-The :ref:`table <TableView>` and :ref:`row <RowView>` HTML pages both provide a mechanism for discovering their JSON equivalents using the HTML ``link`` mechanism.
+The :ref:`database <DatabaseView>`, :ref:`table <TableView>`, :ref:`custom/canned query <sql>` and :ref:`row <RowView>` HTML pages all provide a mechanism for discovering their JSON equivalents using the HTML ``link`` mechanism.
 
 You can find this near the top of those pages, looking like this:
 

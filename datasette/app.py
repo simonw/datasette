@@ -1212,9 +1212,10 @@ class DatasetteRouter:
         else:
             # Is there a pages/* template matching this path?
             route_path = request.scope.get("route_path", request.scope["path"])
-            template_path = os.path.join("pages", *route_path.split("/")) + ".html"
+            # Jinja requires template names to use "/" even on Windows
+            template_name = "pages" + route_path + ".html"
             try:
-                template = self.ds.jinja_env.select_template([template_path])
+                template = self.ds.jinja_env.select_template([template_name])
             except TemplateNotFound:
                 template = None
             if template is None:

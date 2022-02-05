@@ -1,5 +1,7 @@
+import asyncio
 from datasette import hookimpl
 from datasette.facets import Facet
+from datasette import tracer
 from datasette.utils import path_with_added_args
 from datasette.utils.asgi import asgi_send_json, Response
 import base64
@@ -270,6 +272,15 @@ def register_routes():
     def asgi_scope(scope):
         return Response.json(scope, default=repr)
 
+    async def parallel_queries(datasette):
+        db = datasette.get_database()
+        with tracer.trace_child_tasks():
+            one, two = await asyncio.gather(
+                db.execute("select coalesce(sleep(0.1), 1)"),
+                db.execute("select coalesce(sleep(0.1), 2)"),
+            )
+        return Response.json({"one": one.single_value(), "two": two.single_value()})
+
     return [
         (r"/one/$", one),
         (r"/two/(?P<name>.*)$", two),
@@ -281,6 +292,7 @@ def register_routes():
         (r"/add-message/$", add_message),
         (r"/render-message/$", render_message),
         (r"/asgi-scope$", asgi_scope),
+        (r"/parallel-queries$", parallel_queries),
     ]
 
 

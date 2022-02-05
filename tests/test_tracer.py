@@ -51,3 +51,18 @@ def test_trace(trace_debug):
     execute_manys = [trace for trace in traces if trace.get("executemany")]
     assert execute_manys
     assert all(isinstance(trace["count"], int) for trace in execute_manys)
+
+
+def test_trace_parallel_queries():
+    with make_app_client(settings={"trace_debug": True}) as client:
+        response = client.get("/parallel-queries?_trace=1")
+        assert response.status == 200
+
+    data = response.json
+    assert data["one"] == 1
+    assert data["two"] == 2
+    trace_info = data["_trace"]
+    traces = [trace for trace in trace_info["traces"] if "sql" in trace]
+    one, two = traces
+    # "two" should have started before "one" ended
+    assert two["start"] < one["end"]

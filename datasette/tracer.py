@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import contextmanager
+from contextvars import ContextVar
 from markupsafe import escape
 import time
 import json
@@ -9,20 +10,25 @@ tracers = {}
 
 TRACE_RESERVED_KEYS = {"type", "start", "end", "duration_ms", "traceback"}
 
-
-# asyncio.current_task was introduced in Python 3.7:
-for obj in (asyncio, asyncio.Task):
-    current_task = getattr(obj, "current_task", None)
-    if current_task is not None:
-        break
+trace_task_id = ContextVar("trace_task_id", default=None)
 
 
 def get_task_id():
+    current = trace_task_id.get(None)
+    if current is not None:
+        return current
     try:
         loop = asyncio.get_event_loop()
     except RuntimeError:
         return None
-    return id(current_task(loop=loop))
+    return id(asyncio.current_task(loop=loop))
+
+
+@contextmanager
+def trace_child_tasks():
+    token = trace_task_id.set(get_task_id())
+    yield
+    trace_task_id.reset(token)
 
 
 @contextmanager

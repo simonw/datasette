@@ -864,3 +864,74 @@ parse_metadata(content)
 This function accepts a string containing either JSON or YAML, expected to be of the format described in :ref:`metadata`. It returns a nested Python dictionary representing the parsed data from that string.
 
 If the metadata cannot be parsed as either JSON or YAML the function will raise a ``utils.BadMetadataError`` exception.
+
+.. _internals_tracer
+
+datasette.tracer
+================
+
+Running Datasette with ``--setting trace_debug 1`` enables trace debug output, which can then be viewed by adding ``?_trace=1`` to the query string for any page.
+
+You can see an example of this at the bottom of `latest.datasette.io/fixtures/facetable?_trace=1 <https://latest.datasette.io/fixtures/facetable?_trace=1>`__. The JSON output shows full details of every SQL query that was executed to generate the page.
+
+The `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ plugin can be installed to provide a more readable display of this information. You can see `a demo of that here <https://latest-with-plugins.datasette.io/github/commits?_trace=1>`__.
+
+You can add your own custom traces to the JSON output using the ``trace()`` context manager. This takes a string that identifies the type of trace being recorded, and records any keyword arguments as additional JSON keys on the resulting trace object.
+
+The start and end time, duration and a traceback of where the trace was executed will be automatically attached to the JSON object.
+
+This example uses trace to record the start, end and duration of any HTTP GET requests made using the function:
+
+.. code-block:: python
+
+    from datasette.tracer import trace
+    import httpx
+
+    async def fetch_url(url):
+        with trace("fetch-url", url=url):
+            async with httpx.AsyncClient() as client:
+                return await client.get(url)
+
+.. _internals_tracer_trace_child_tasks
+
+Tracing child tasks
+-------------------
+
+If your code uses a mechanism such as ``asyncio.gather()`` to execute code in additional tasks you may find that some of the traces are missing from the display.
+
+You can use the ``trace_child_tasks()`` context manager to ensure these child tasks are correctly handled.
+
+.. code-block:: python
+
+    from datasette import tracer
+
+    with tracer.trace_child_tasks():
+        results = await asyncio.gather(
+            # ... async tasks here
+        )
+
+This example uses the :ref:`register_routes() <plugin_register_routes>` plugin hook to add a page at ``/parallel-queries`` which executes two SQL queries in parallel using ``asyncio.gather()`` and returns their results.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette import tracer
+
+    @hookimpl
+    def register_routes():
+
+        async def parallel_queries(datasette):
+            db = datasette.get_database()
+            with tracer.trace_child_tasks():
+                one, two = await asyncio.gather(
+                    db.execute("select 1"),
+                    db.execute("select 2"),
+                )
+            return Response.json({"one": one.single_value(), "two": two.single_value()})
+
+        return [
+            (r"/parallel-queries$", parallel_queries),
+        ]
+
+
+Adding ``?_trace=1`` will show that the trace covers both of those child tasks.

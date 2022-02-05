@@ -302,6 +302,8 @@ Some examples:
 * https://latest.datasette.io/?_trace=1
 * https://latest.datasette.io/fixtures/roadside_attractions?_trace=1
 
+See :ref:`internals_tracer` for details on how to hook into this mechanism as a plugin author.
+
 .. _setting_base_url:
 
 base_url

@@ -582,7 +582,7 @@ The view function can be a regular function or an ``async def`` function, depend
 
 The function can either return a :ref:`internals_response` or it can return nothing and instead respond directly to the request using the ASGI ``send`` function (for advanced uses only).
 
-It can also rase the ``datasette.NotFound`` exception to return a 404 not found error, or the ``datasette.Forbidden`` exception for a 403 forbidden.
+It can also raise the ``datasette.NotFound`` exception to return a 404 not found error, or the ``datasette.Forbidden`` exception for a 403 forbidden.
 
 See :ref:`writing_plugins_designing_urls` for tips on designing the URL routes used by your plugin.
 

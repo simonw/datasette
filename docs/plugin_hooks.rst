@@ -542,7 +542,7 @@ Return a list of ``(regex, view_function)`` pairs, something like this:
 
 .. code-block:: python
 
-    from datasette.utils.asgi import Response
+    from datasette import Response
     import html
 
 
@@ -581,6 +581,8 @@ The optional view function arguments are as follows:
 The view function can be a regular function or an ``async def`` function, depending on if it needs to use any ``await`` APIs.
 
 The function can either return a :ref:`internals_response` or it can return nothing and instead respond directly to the request using the ASGI ``send`` function (for advanced uses only).
+
+It can also rase the ``datasette.NotFound`` exception to return a 404 not found error, or the ``datasette.Forbidden`` exception for a 403 forbidden.
 
 See :ref:`writing_plugins_designing_urls` for tips on designing the URL routes used by your plugin.
 

@@ -935,3 +935,18 @@ This example uses the :ref:`register_routes() <plugin_register_routes>` plugin h
 
 
 Adding ``?_trace=1`` will show that the trace covers both of those child tasks.
+
+.. _internals_shortcuts:
+
+Import shortcuts
+================
+
+The following commonly used symbols can be imported directly from the ``datasette`` module:
+
+.. code-block:: python
+
+    from datasette import Response
+    from datasette import Forbidden
+    from datasette import NotFound
+    from datasette import hookimpl
+    from datasette import actor_matches_allow

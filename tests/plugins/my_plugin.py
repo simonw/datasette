@@ -300,6 +300,15 @@ def register_routes():
 def startup(datasette):
     datasette._startup_hook_fired = True
 
+    # And test some import shortcuts too
+    from datasette import Response
+    from datasette import Forbidden
+    from datasette import NotFound
+    from datasette import hookimpl
+    from datasette import actor_matches_allow
+
+    _ = (Response, Forbidden, NotFound, hookimpl, actor_matches_allow)
+
 
 @hookimpl
 def canned_queries(datasette, database, actor):

@@ -865,7 +865,7 @@ This function accepts a string containing either JSON or YAML, expected to be of
 
 If the metadata cannot be parsed as either JSON or YAML the function will raise a ``utils.BadMetadataError`` exception.
 
-.. _internals_tracer
+.. _internals_tracer:
 
 datasette.tracer
 ================
@@ -892,7 +892,7 @@ This example uses trace to record the start, end and duration of any HTTP GET re
             async with httpx.AsyncClient() as client:
                 return await client.get(url)
 
-.. _internals_tracer_trace_child_tasks
+.. _internals_tracer_trace_child_tasks:
 
 Tracing child tasks
 -------------------

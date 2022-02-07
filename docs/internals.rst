@@ -865,6 +865,17 @@ This function accepts a string containing either JSON or YAML, expected to be of
 
 If the metadata cannot be parsed as either JSON or YAML the function will raise a ``utils.BadMetadataError`` exception.
 
+.. autofunction:: datasette.utils.parse_metadata
+
+.. _internals_utils_await_me_maybe:
+
+await_me_maybe(value)
+---------------------
+
+Utility function for calling ``await`` on a return value if it is awaitable, otherwise returning the value. This is used by Datasette to support plugin hooks that can optionally return awaitable functions. Read more about this function in `The “await me maybe” pattern for Python asyncio <https://simonwillison.net/2020/Sep/2/await-me-maybe/>`__.
+
+.. autofunction:: datasette.utils.await_me_maybe
+
 .. _internals_tracer:
 
 datasette.tracer

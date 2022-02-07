@@ -259,6 +259,7 @@ def test_serve_create(ensure_eventloop, tmpdir):
 
 
 def test_serve_duplicate_database_names(ensure_eventloop, tmpdir):
+    "'datasette db.db nested/db.db' should attach two databases, /db and /db_2"
     runner = CliRunner()
     db_1_path = str(tmpdir / "db.db")
     nested = tmpdir / "nested"
@@ -270,6 +271,17 @@ def test_serve_duplicate_database_names(ensure_eventloop, tmpdir):
     assert result.exit_code == 0, result.output
     databases = json.loads(result.output)
     assert {db["name"] for db in databases} == {"db", "db_2"}
+
+
+def test_serve_deduplicate_same_database_path(ensure_eventloop, tmpdir):
+    "'datasette db.db db.db' should only attach one database, /db"
+    runner = CliRunner()
+    db_path = str(tmpdir / "db.db")
+    sqlite3.connect(db_path).execute("vacuum")
+    result = runner.invoke(cli, [db_path, db_path, "--get", "/-/databases.json"])
+    assert result.exit_code == 0, result.output
+    databases = json.loads(result.output)
+    assert {db["name"] for db in databases} == {"db"}
 
 
 @pytest.mark.parametrize(

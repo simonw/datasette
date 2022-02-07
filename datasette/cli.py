@@ -550,7 +550,9 @@ def serve(
                 )
 
     # De-duplicate files so 'datasette db.db db.db' only attaches one /db
-    files = list(dict.fromkeys(files))
+    files_seen = set()
+    deduped_files = [f for f in files if f not in files_seen and not files_seen.add(f)]
+    files = deduped_files
 
     try:
         ds = Datasette(files, **kwargs)

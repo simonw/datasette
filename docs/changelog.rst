@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_60.2:
+
+0.60.2 (2022-02-07)
+-------------------
+
+- Fixed a bug where Datasette would open the same file twice with two different database names if you ran ``datasette file.db file.db``. (:issue:`1632`)
+
 .. _v0_60.1:
 
 0.60.1 (2022-01-20)

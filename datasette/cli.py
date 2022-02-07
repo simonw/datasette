@@ -549,6 +549,9 @@ def serve(
                     )
                 )
 
+    # De-duplicate files so 'datasette db.db db.db' only attaches one /db
+    files = list(dict.fromkeys(files))
+
     try:
         ds = Datasette(files, **kwargs)
     except SpatialiteNotFound:

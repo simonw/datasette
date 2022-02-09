@@ -52,8 +52,40 @@ SPATIALITE_PATHS = (
     "/usr/local/lib/mod_spatialite.dylib",
     "/usr/local/lib/mod_spatialite.so",
 )
+# Used to display /-/versions.json SpatiaLite information
+SPATIALITE_FUNCTIONS = (
+    "spatialite_version",
+    "spatialite_target_cpu",
+    "check_strict_sql_quoting",
+    "freexl_version",
+    "proj_version",
+    "geos_version",
+    "rttopo_version",
+    "libxml2_version",
+    "HasIconv",
+    "HasMathSQL",
+    "HasGeoCallbacks",
+    "HasProj",
+    "HasProj6",
+    "HasGeos",
+    "HasGeosAdvanced",
+    "HasGeosTrunk",
+    "HasGeosReentrant",
+    "HasGeosOnlyReentrant",
+    "HasMiniZip",
+    "HasRtTopo",
+    "HasLibXML2",
+    "HasEpsg",
+    "HasFreeXL",
+    "HasGeoPackage",
+    "HasGCP",
+    "HasTopology",
+    "HasKNN",
+    "HasRouting",
+)
 # Length of hash subset used in hashed URLs:
 HASH_LENGTH = 7
+
 
 # Can replace this with Column from sqlite_utils when I add that dependency
 Column = namedtuple(

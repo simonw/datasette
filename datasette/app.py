@@ -46,6 +46,7 @@ from .database import Database, QueryInterrupted
 
 from .utils import (
     PrefixedUrlString,
+    SPATIALITE_FUNCTIONS,
     StartupError,
     add_cors_headers,
     async_call_with_supported_arguments,
@@ -724,6 +725,17 @@ class Datasette:
                     sqlite_extensions[extension] = None
             except Exception:
                 pass
+        # More details on SpatiaLite
+        if "spatialite" in sqlite_extensions:
+            spatialite_details = {}
+            for fn in SPATIALITE_FUNCTIONS:
+                try:
+                    result = conn.execute("select {}()".format(fn))
+                    spatialite_details[fn] = result.fetchone()[0]
+                except Exception as e:
+                    spatialite_details[fn] = {"error": str(e)}
+            sqlite_extensions["spatialite"] = spatialite_details
+
         # Figure out supported FTS versions
         fts_versions = []
         for fts in ("FTS5", "FTS4", "FTS3"):

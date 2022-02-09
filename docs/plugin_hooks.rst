@@ -633,7 +633,7 @@ Note that ``register_commands()`` plugins cannot used with the :ref:`--plugins-d
 
     pip install -e path/to/my/datasette-plugin
 
-Example: `datasette-verify <https://datasette.io/plugins/datasette-verify>`_
+Examples: `datasette-auth-passwords <https://datasette.io/plugins/datasette-auth-passwords>`__, `datasette-verify <https://datasette.io/plugins/datasette-verify>`__
 
 .. _plugin_register_facet_classes:
 

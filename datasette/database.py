@@ -256,18 +256,26 @@ class Database:
         # Try to get counts for each table, $limit timeout for each count
         counts = {}
         for table in await self.table_names():
-            try:
-                table_count = (
-                    await self.execute(
-                        f"select count(*) from [{table}]",
-                        custom_time_limit=limit,
-                    )
-                ).rows[0][0]
-                counts[table] = table_count
-            # In some cases I saw "SQL Logic Error" here in addition to
-            # QueryInterrupted - so we catch that too:
-            except (QueryInterrupted, sqlite3.OperationalError, sqlite3.DatabaseError):
-                counts[table] = None
+            print(table.lower())
+            if table.lower() == "knn":
+                counts[table] = 0
+            else:
+                try:
+                    table_count = (
+                        await self.execute(
+                            f"select count(*) from [{table}]",
+                            custom_time_limit=limit,
+                        )
+                    ).rows[0][0]
+                    counts[table] = table_count
+                # In some cases I saw "SQL Logic Error" here in addition to
+                # QueryInterrupted - so we catch that too:
+                except (
+                    QueryInterrupted,
+                    sqlite3.OperationalError,
+                    sqlite3.DatabaseError,
+                ):
+                    counts[table] = None
         if not self.is_mutable:
             self._cached_table_counts = counts
         return counts
@@ -318,7 +326,7 @@ class Database:
             return explicit_label_column
         column_names = await self.execute_fn(lambda conn: table_columns(conn, table))
         # Is there a name or title column?
-        name_or_title = [c for c in column_names if c.lower() in ("name", "title")]
+        name_or_title = [c for c in column_names if c.lower() in ("name", "title", "display_name", "displayname")]
         if name_or_title:
             return name_or_title[0]
         # If a table has two columns, one of which is ID, then label_column is the other one

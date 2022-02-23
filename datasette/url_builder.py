@@ -7,12 +7,18 @@ class Urls:
         self.ds = ds
 
     def path(self, path, format=None):
+        print(
+            "Urls.path called with: {} (PrefixedUrlString = {})".format(
+                path, isinstance(path, PrefixedUrlString)
+            )
+        )
         if not isinstance(path, PrefixedUrlString):
             if path.startswith("/"):
                 path = path[1:]
             path = self.ds.setting("base_url") + path
         if format is not None:
             path = path_with_format(path=path, format=format)
+        print("  returning", path)
         return PrefixedUrlString(path)
 
     def instance(self, format=None):

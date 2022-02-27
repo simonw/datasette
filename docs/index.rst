@@ -25,7 +25,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 `Explore a demo <https://fivethirtyeight.datasettes.com/fivethirtyeight>`__, watch `a presentation about the project <https://static.simonwillison.net/static/2018/pybay-datasette/>`__ or :ref:`getting_started_glitch`.
 
-More examples: https://datasette.io/examples
+Interested in learning Datasette? Start with `the official tutorials <https://datasette.io/tutorials>`__.
 
 Support questions, feedback? Join our `GitHub Discussions forum <https://github.com/simonw/datasette/discussions>`__.
 

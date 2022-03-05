@@ -1139,3 +1139,15 @@ def add_cors_headers(headers):
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization"
     headers["Access-Control-Expose-Headers"] = "Link"
+
+
+@documented
+def dash_encode(s: str) -> str:
+    "Returns dash-encoded string - for example ``/foo/bar`` -> ``-/foo-/bar``"
+    return s.replace("-", "--").replace(".", "-.").replace("/", "-/")
+
+
+@documented
+def dash_decode(s: str) -> str:
+    "Decodes a dash-encoded string, so ``-/foo-/bar`` -> ``/foo/bar``"
+    return s.replace("-/", "/").replace("-.", ".").replace("--", "-")

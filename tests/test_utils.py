@@ -646,3 +646,19 @@ async def test_derive_named_parameters(sql, expected):
     db = ds.get_database("_memory")
     params = await utils.derive_named_parameters(db, sql)
     assert params == expected
+
+
+@pytest.mark.parametrize(
+    "original,expected",
+    (
+        ("abc", "abc"),
+        ("/foo/bar", "-/foo-/bar"),
+        ("/-/bar", "-/---/bar"),
+        ("-/db-/table---.csv-.csv", "---/db---/table-------.csv---.csv"),
+    ),
+)
+def test_dash_encoding(original, expected):
+    actual = utils.dash_encode(original)
+    assert actual == expected
+    # And test round-trip
+    assert original == utils.dash_decode(actual)

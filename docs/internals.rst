@@ -876,6 +876,29 @@ Utility function for calling ``await`` on a return value if it is awaitable, oth
 
 .. autofunction:: datasette.utils.await_me_maybe
 
+.. _internals_dash_encoding:
+
+Dash encoding
+-------------
+
+Datasette uses a custom encoding scheme in some places, called **dash encoding**. This is primarily used for table names and row primary keys, to avoid any confusion between ``/`` characters in those values and the Datasette URL that references them.
+
+Dash encoding applies the following rules, in order:
+
+- All single ``-`` characters are replaced by ``--``
+- ``.`` characters are replaced by ``-.``
+- ``/`` characters are replaced by ``./``
+
+These rules are applied in reverse order to decode a dash encoded string.
+
+.. _internals_utils_dash_encode:
+
+.. autofunction:: datasette.utils.dash_encode
+
+.. _internals_utils_dash_decode:
+
+.. autofunction:: datasette.utils.dash_decode
+
 .. _internals_tracer:
 
 datasette.tracer

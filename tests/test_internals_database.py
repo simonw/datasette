@@ -279,7 +279,15 @@ async def test_table_columns(db, table, expected):
 @pytest.mark.asyncio
 async def test_table_column_details(db, table, expected):
     columns = await db.table_column_details(table)
-    assert columns == expected
+    # Convert "type" to lowercase before comparison
+    # https://github.com/simonw/datasette/issues/1647
+    compare_columns = [
+        Column(
+            c.cid, c.name, c.type.lower(), c.notnull, c.default_value, c.is_pk, c.hidden
+        )
+        for c in columns
+    ]
+    assert compare_columns == expected
 
 
 @pytest.mark.asyncio

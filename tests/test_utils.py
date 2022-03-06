@@ -652,9 +652,11 @@ async def test_derive_named_parameters(sql, expected):
     "original,expected",
     (
         ("abc", "abc"),
-        ("/foo/bar", "-/foo-/bar"),
-        ("/-/bar", "-/---/bar"),
-        ("-/db-/table---.csv-.csv", "---/db---/table-------.csv---.csv"),
+        ("/foo/bar", "-2Ffoo-2Fbar"),
+        ("/-/bar", "-2F-2D-2Fbar"),
+        ("-/db-/table.csv", "-2D-2Fdb-2D-2Ftable-2Ecsv"),
+        (r"%~-/", "-25-7E-2D-2F"),
+        ("-25-7E-2D-2F", "-2D25-2D7E-2D2D-2D2F"),
     ),
 )
 def test_dash_encoding(original, expected):

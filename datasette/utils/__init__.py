@@ -1141,13 +1141,34 @@ def add_cors_headers(headers):
     headers["Access-Control-Expose-Headers"] = "Link"
 
 
+_DASH_ENCODING_SAFE = frozenset(
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    b"abcdefghijklmnopqrstuvwxyz"
+    b"0123456789_"
+    # This is the same as Python percent-encoding but I removed
+    # '.' and '-' and '~'
+)
+
+
+class DashEncoder(dict):
+    # Keeps a cache internally, via __missing__
+    def __missing__(self, b):
+        # Handle a cache miss, store encoded string in cache and return.
+        res = chr(b) if b in _DASH_ENCODING_SAFE else "-{:02X}".format(b)
+        self[b] = res
+        return res
+
+
+_dash_encoder = DashEncoder().__getitem__
+
+
 @documented
 def dash_encode(s: str) -> str:
-    "Returns dash-encoded string - for example ``/foo/bar`` -> ``-/foo-/bar``"
-    return s.replace("-", "--").replace(".", "-.").replace("/", "-/")
+    "Returns dash-encoded string - for example ``/foo/bar`` -> ``-2Ffoo-2Fbar``"
+    return "".join(_dash_encoder(char) for char in s.encode("utf-8"))
 
 
 @documented
 def dash_decode(s: str) -> str:
-    "Decodes a dash-encoded string, so ``-/foo-/bar`` -> ``/foo/bar``"
-    return s.replace("-/", "/").replace("-.", ".").replace("--", "-")
+    "Decodes a dash-encoded string, so ``-2Ffoo-2Fbar`` -> ``/foo/bar``"
+    return urllib.parse.unquote(s.replace("-", "%"))

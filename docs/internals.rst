@@ -883,13 +883,16 @@ Dash encoding
 
 Datasette uses a custom encoding scheme in some places, called **dash encoding**. This is primarily used for table names and row primary keys, to avoid any confusion between ``/`` characters in those values and the Datasette URLs that reference them.
 
-Dash encoding applies the following rules, in order:
+Dash encoding uses the same algorithm as `URL percent-encoding <https://developer.mozilla.org/en-US/docs/Glossary/percent-encoding>`__, but with the ``-`` hyphen character used in place of ``%``.
 
-- All single ``-`` characters are replaced by ``--``
-- ``.`` characters are replaced by ``-.``
-- ``/`` characters are replaced by ``./``
+Any character other than ``ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789_`` will be replaced by the numeric equivalent preceded by a hyphen. For example:
 
-These rules are applied in reverse order to decode a dash encoded string.
+- ``/`` becomes ``-2F``
+- ``.`` becomes ``-2E``
+- ``%`` becomes ``-25``
+- ``-`` becomes ``-2D``
+- Space character becomes ``-20``
+- ``polls/2022.primary`` becomes ``polls-2F2022-2Eprimary``
 
 .. _internals_utils_dash_encode:
 

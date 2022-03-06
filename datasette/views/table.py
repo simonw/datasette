@@ -12,6 +12,7 @@ from datasette.utils import (
     MultiParams,
     append_querystring,
     compound_keys_after_sql,
+    dash_encode,
     escape_sqlite,
     filters_should_redirect,
     is_url,
@@ -765,7 +766,7 @@ class TableView(RowTableShared):
                 if prefix is None:
                     prefix = "$null"
                 else:
-                    prefix = urllib.parse.quote_plus(str(prefix))
+                    prefix = dash_encode(str(prefix))
                 next_value = f"{prefix},{next_value}"
                 added_args = {"_next": next_value}
                 if sort:

@@ -406,6 +406,7 @@ CREATE TABLE compound_primary_key (
 );
 
 INSERT INTO compound_primary_key VALUES ('a', 'b', 'c');
+INSERT INTO compound_primary_key VALUES ('a/b', '.c-d', 'c');
 
 CREATE TABLE compound_three_primary_keys (
   pk1 varchar(30),

@@ -143,7 +143,7 @@ def test_database_page(app_client):
             "name": "compound_primary_key",
             "columns": ["pk1", "pk2", "content"],
             "primary_keys": ["pk1", "pk2"],
-            "count": 1,
+            "count": 2,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},

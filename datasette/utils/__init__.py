@@ -111,12 +111,12 @@ async def await_me_maybe(value: typing.Any) -> typing.Any:
 
 
 def urlsafe_components(token):
-    """Splits token on commas and URL decodes each component"""
-    return [urllib.parse.unquote_plus(b) for b in token.split(",")]
+    """Splits token on commas and dash-decodes each component"""
+    return [dash_decode(b) for b in token.split(",")]
 
 
 def path_from_row_pks(row, pks, use_rowid, quote=True):
-    """Generate an optionally URL-quoted unique identifier
+    """Generate an optionally dash-quoted unique identifier
     for a row from its primary keys."""
     if use_rowid:
         bits = [row["rowid"]]
@@ -125,7 +125,7 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
             row[pk]["value"] if isinstance(row[pk], dict) else row[pk] for pk in pks
         ]
     if quote:
-        bits = [urllib.parse.quote_plus(str(bit)) for bit in bits]
+        bits = [dash_encode(str(bit)) for bit in bits]
     else:
         bits = [str(bit) for bit in bits]
 

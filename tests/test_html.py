@@ -345,19 +345,37 @@ def test_row_links_from_other_tables(app_client, path, expected_text, expected_l
     assert link == expected_link
 
 
-def test_row_html_compound_primary_key(app_client):
-    response = app_client.get("/fixtures/compound_primary_key/a,b")
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        (
+            "/fixtures/compound_primary_key/a,b",
+            [
+                [
+                    '<td class="col-pk1 type-str">a</td>',
+                    '<td class="col-pk2 type-str">b</td>',
+                    '<td class="col-content type-str">c</td>',
+                ]
+            ],
+        ),
+        (
+            "/fixtures/compound_primary_key/a-2Fb,-2Ec-2Dd",
+            [
+                [
+                    '<td class="col-pk1 type-str">a/b</td>',
+                    '<td class="col-pk2 type-str">.c-d</td>',
+                    '<td class="col-content type-str">c</td>',
+                ]
+            ],
+        ),
+    ),
+)
+def test_row_html_compound_primary_key(app_client, path, expected):
+    response = app_client.get(path)
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     assert ["pk1", "pk2", "content"] == [
         th.string.strip() for th in table.select("thead th")
-    ]
-    expected = [
-        [
-            '<td class="col-pk1 type-str">a</td>',
-            '<td class="col-pk2 type-str">b</td>',
-            '<td class="col-content type-str">c</td>',
-        ]
     ]
     assert expected == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")

@@ -563,11 +563,17 @@ def test_table_html_compound_primary_key(app_client):
             '<td class="col-pk1 type-str">a</td>',
             '<td class="col-pk2 type-str">b</td>',
             '<td class="col-content type-str">c</td>',
-        ]
+        ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/compound_primary_key/a-2Fb,-2Ec-2Dd">a/b,.c-d</a></td>',
+            '<td class="col-pk1 type-str">a/b</td>',
+            '<td class="col-pk2 type-str">.c-d</td>',
+            '<td class="col-content type-str">c</td>',
+        ],
     ]
-    assert expected == [
+    assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+    ] == expected
 
 
 def test_table_html_foreign_key_links(app_client):

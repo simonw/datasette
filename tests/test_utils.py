@@ -93,7 +93,7 @@ def test_path_with_replaced_args(path, args, expected):
     "row,pks,expected_path",
     [
         ({"A": "foo", "B": "bar"}, ["A", "B"], "foo,bar"),
-        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f%2Co,bar"),
+        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f-2Co,bar"),
         ({"A": 123}, ["A"], "123"),
         (
             utils.CustomRow(

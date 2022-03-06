@@ -136,7 +136,10 @@ def test_table_shape_object(app_client):
 
 def test_table_shape_object_compound_primary_key(app_client):
     response = app_client.get("/fixtures/compound_primary_key.json?_shape=object")
-    assert {"a,b": {"pk1": "a", "pk2": "b", "content": "c"}} == response.json
+    assert response.json == {
+        "a,b": {"pk1": "a", "pk2": "b", "content": "c"},
+        "a-2Fb,-2Ec-2Dd": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
+    }
 
 
 def test_table_with_slashes_in_name(app_client):
@@ -308,7 +311,7 @@ def test_sortable(app_client, query_string, sort_key, human_description_en):
         path = response.json["next_url"]
         if path:
             path = path.replace("http://localhost", "")
-    assert 5 == page
+    assert page == 5
     expected = list(generate_sortable_rows(201))
     expected.sort(key=sort_key)
     assert [r["content"] for r in expected] == [r["content"] for r in fetched]

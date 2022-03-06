@@ -1,4 +1,4 @@
-from .utils import path_with_format, HASH_LENGTH, PrefixedUrlString
+from .utils import dash_encode, path_with_format, HASH_LENGTH, PrefixedUrlString
 import urllib
 
 
@@ -38,13 +38,13 @@ class Urls:
         return path
 
     def table(self, database, table, format=None):
-        path = f"{self.database(database)}/{urllib.parse.quote_plus(table)}"
+        path = f"{self.database(database)}/{dash_encode(table)}"
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)
 
     def query(self, database, query, format=None):
-        path = f"{self.database(database)}/{urllib.parse.quote_plus(query)}"
+        path = f"{self.database(database)}/{dash_encode(query)}"
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)

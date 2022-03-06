@@ -140,7 +140,7 @@ def test_database_page(app_client):
     assert queries_ul is not None
     assert [
         (
-            "/fixtures/%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC",
+            "/fixtures/-F0-9D-90-9C-F0-9D-90-A2-F0-9D-90-AD-F0-9D-90-A2-F0-9D-90-9E-F0-9D-90-AC",
             "𝐜𝐢𝐭𝐢𝐞𝐬",
         ),
         ("/fixtures/from_async_hook", "from_async_hook"),
@@ -193,11 +193,11 @@ def test_row_redirects_with_url_hash(app_client_with_hash):
 
 
 def test_row_strange_table_name_with_url_hash(app_client_with_hash):
-    response = app_client_with_hash.get("/fixtures/table%2Fwith%2Fslashes.csv/3")
+    response = app_client_with_hash.get("/fixtures/table-2Fwith-2Fslashes-2Ecsv/3")
     assert response.status == 302
-    assert response.headers["Location"].endswith("/table%2Fwith%2Fslashes.csv/3")
+    assert response.headers["Location"].endswith("/table-2Fwith-2Fslashes-2Ecsv/3")
     response = app_client_with_hash.get(
-        "/fixtures/table%2Fwith%2Fslashes.csv/3", follow_redirects=True
+        "/fixtures/table-2Fwith-2Fslashes-2Ecsv/3", follow_redirects=True
     )
     assert response.status == 200
 

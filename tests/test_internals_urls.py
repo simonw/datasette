@@ -121,7 +121,7 @@ def test_database(ds, base_url, format, expected):
         ("/", "name", None, "/_memory/name"),
         ("/prefix/", "name", None, "/prefix/_memory/name"),
         ("/", "name", "json", "/_memory/name.json"),
-        ("/", "name.json", "json", "/_memory/name.json?_format=json"),
+        ("/", "name.json", "json", "/_memory/name-2Ejson.json"),
     ],
 )
 def test_table_and_query(ds, base_url, name, format, expected):

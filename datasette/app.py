@@ -1216,6 +1216,8 @@ class DatasetteRouter:
             # Try the same path but with "%" replaced by "-"
             # and "-" replaced with "-2D"
             new_path = request.path.replace("-", "-2D").replace("%", "-")
+            if request.query_string:
+                new_path += "?{}".format(request.query_string)
             await asgi_send_redirect(send, new_path)
             return
         # If URL has a trailing slash, redirect to URL without it

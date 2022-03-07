@@ -954,7 +954,18 @@ def test_no_alternate_url_json(app_client, path):
     )
 
 
-def test_redirect_percent_encoding_to_dash_encoding(app_client):
-    response = app_client.get("/fivethirtyeight/twitter-ratio%2Fsenators")
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        (
+            "/fivethirtyeight/twitter-ratio%2Fsenators",
+            "/fivethirtyeight/twitter-2Dratio-2Fsenators",
+        ),
+        # query string should be preserved
+        ("/foo/bar%2Fbaz?id=5", "/foo/bar-2Fbaz?id=5"),
+    ),
+)
+def test_redirect_percent_encoding_to_dash_encoding(app_client, path, expected):
+    response = app_client.get(path)
     assert response.status == 302
-    assert response.headers["location"] == "/fivethirtyeight/twitter-2Dratio-2Fsenators"
+    assert response.headers["location"] == expected

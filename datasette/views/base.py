@@ -205,17 +205,17 @@ class DataView(BaseView):
     async def resolve_db_name(self, request, db_name, **kwargs):
         hash = None
         name = None
-        db_name = urllib.parse.unquote_plus(db_name)
-        if db_name not in self.ds.databases and "-" in db_name:
+        decoded_name = dash_decode(db_name)
+        if decoded_name not in self.ds.databases and "-" in db_name:
             # No matching DB found, maybe it's a name-hash?
             name_bit, hash_bit = db_name.rsplit("-", 1)
-            if name_bit not in self.ds.databases:
+            if dash_decode(name_bit) not in self.ds.databases:
                 raise NotFound(f"Database not found: {name}")
             else:
-                name = name_bit
+                name = dash_decode(name_bit)
                 hash = hash_bit
         else:
-            name = db_name
+            name = decoded_name
 
         try:
             db = self.ds.databases[name]

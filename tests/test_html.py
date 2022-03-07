@@ -29,7 +29,7 @@ def test_homepage(app_client_two_attached_databases):
     )
     # Should be two attached databases
     assert [
-        {"href": r"/extra%20database", "text": "extra database"},
+        {"href": r"/extra-20database", "text": "extra database"},
         {"href": "/fixtures", "text": "fixtures"},
     ] == [{"href": a["href"], "text": a.text.strip()} for a in soup.select("h2 a")]
     # Database should show count text and attached tables
@@ -44,8 +44,8 @@ def test_homepage(app_client_two_attached_databases):
         {"href": a["href"], "text": a.text.strip()} for a in links_p.findAll("a")
     ]
     assert [
-        {"href": r"/extra%20database/searchable", "text": "searchable"},
-        {"href": r"/extra%20database/searchable_view", "text": "searchable_view"},
+        {"href": r"/extra-20database/searchable", "text": "searchable"},
+        {"href": r"/extra-20database/searchable_view", "text": "searchable_view"},
     ] == table_links
 
 

@@ -112,12 +112,12 @@ async def await_me_maybe(value: typing.Any) -> typing.Any:
 
 
 def urlsafe_components(token):
-    """Splits token on commas and URL decodes each component"""
-    return [urllib.parse.unquote_plus(b) for b in token.split(",")]
+    """Splits token on commas and dash-decodes each component"""
+    return [dash_decode(b) for b in token.split(",")]
 
 
 def path_from_row_pks(row, pks, use_rowid, quote=True):
-    """Generate an optionally URL-quoted unique identifier
+    """Generate an optionally dash-quoted unique identifier
     for a row from its primary keys."""
     if use_rowid:
         bits = [row["rowid"]]
@@ -126,7 +126,7 @@ def path_from_row_pks(row, pks, use_rowid, quote=True):
             row[pk]["value"] if isinstance(row[pk], dict) else row[pk] for pk in pks
         ]
     if quote:
-        bits = [urllib.parse.quote_plus(str(bit)) for bit in bits]
+        bits = [dash_encode(str(bit)) for bit in bits]
     else:
         bits = [str(bit) for bit in bits]
 
@@ -1140,3 +1140,36 @@ def add_cors_headers(headers):
     headers["Access-Control-Allow-Origin"] = "*"
     headers["Access-Control-Allow-Headers"] = "Authorization"
     headers["Access-Control-Expose-Headers"] = "Link"
+
+
+_DASH_ENCODING_SAFE = frozenset(
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    b"abcdefghijklmnopqrstuvwxyz"
+    b"0123456789_"
+    # This is the same as Python percent-encoding but I removed
+    # '.' and '-' and '~'
+)
+
+
+class DashEncoder(dict):
+    # Keeps a cache internally, via __missing__
+    def __missing__(self, b):
+        # Handle a cache miss, store encoded string in cache and return.
+        res = chr(b) if b in _DASH_ENCODING_SAFE else "-{:02X}".format(b)
+        self[b] = res
+        return res
+
+
+_dash_encoder = DashEncoder().__getitem__
+
+
+@documented
+def dash_encode(s: str) -> str:
+    "Returns dash-encoded string - for example ``/foo/bar`` -> ``-2Ffoo-2Fbar``"
+    return "".join(_dash_encoder(char) for char in s.encode("utf-8"))
+
+
+@documented
+def dash_decode(s: str) -> str:
+    "Decodes a dash-encoded string, so ``-2Ffoo-2Fbar`` -> ``/foo/bar``"
+    return urllib.parse.unquote(s.replace("-", "%"))

@@ -29,7 +29,7 @@ def test_homepage(app_client_two_attached_databases):
     )
     # Should be two attached databases
     assert [
-        {"href": r"/extra%20database", "text": "extra database"},
+        {"href": r"/extra-20database", "text": "extra database"},
         {"href": "/fixtures", "text": "fixtures"},
     ] == [{"href": a["href"], "text": a.text.strip()} for a in soup.select("h2 a")]
     # Database should show count text and attached tables
@@ -44,8 +44,8 @@ def test_homepage(app_client_two_attached_databases):
         {"href": a["href"], "text": a.text.strip()} for a in links_p.findAll("a")
     ]
     assert [
-        {"href": r"/extra%20database/searchable", "text": "searchable"},
-        {"href": r"/extra%20database/searchable_view", "text": "searchable_view"},
+        {"href": r"/extra-20database/searchable", "text": "searchable"},
+        {"href": r"/extra-20database/searchable_view", "text": "searchable_view"},
     ] == table_links
 
 
@@ -140,7 +140,7 @@ def test_database_page(app_client):
     assert queries_ul is not None
     assert [
         (
-            "/fixtures/%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC",
+            "/fixtures/-F0-9D-90-9C-F0-9D-90-A2-F0-9D-90-AD-F0-9D-90-A2-F0-9D-90-9E-F0-9D-90-AC",
             "𝐜𝐢𝐭𝐢𝐞𝐬",
         ),
         ("/fixtures/from_async_hook", "from_async_hook"),
@@ -193,11 +193,11 @@ def test_row_redirects_with_url_hash(app_client_with_hash):
 
 
 def test_row_strange_table_name_with_url_hash(app_client_with_hash):
-    response = app_client_with_hash.get("/fixtures/table%2Fwith%2Fslashes.csv/3")
+    response = app_client_with_hash.get("/fixtures/table-2Fwith-2Fslashes-2Ecsv/3")
     assert response.status == 302
-    assert response.headers["Location"].endswith("/table%2Fwith%2Fslashes.csv/3")
+    assert response.headers["Location"].endswith("/table-2Fwith-2Fslashes-2Ecsv/3")
     response = app_client_with_hash.get(
-        "/fixtures/table%2Fwith%2Fslashes.csv/3", follow_redirects=True
+        "/fixtures/table-2Fwith-2Fslashes-2Ecsv/3", follow_redirects=True
     )
     assert response.status == 200
 
@@ -345,19 +345,37 @@ def test_row_links_from_other_tables(app_client, path, expected_text, expected_l
     assert link == expected_link
 
 
-def test_row_html_compound_primary_key(app_client):
-    response = app_client.get("/fixtures/compound_primary_key/a,b")
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        (
+            "/fixtures/compound_primary_key/a,b",
+            [
+                [
+                    '<td class="col-pk1 type-str">a</td>',
+                    '<td class="col-pk2 type-str">b</td>',
+                    '<td class="col-content type-str">c</td>',
+                ]
+            ],
+        ),
+        (
+            "/fixtures/compound_primary_key/a-2Fb,-2Ec-2Dd",
+            [
+                [
+                    '<td class="col-pk1 type-str">a/b</td>',
+                    '<td class="col-pk2 type-str">.c-d</td>',
+                    '<td class="col-content type-str">c</td>',
+                ]
+            ],
+        ),
+    ),
+)
+def test_row_html_compound_primary_key(app_client, path, expected):
+    response = app_client.get(path)
     assert response.status == 200
     table = Soup(response.body, "html.parser").find("table")
     assert ["pk1", "pk2", "content"] == [
         th.string.strip() for th in table.select("thead th")
-    ]
-    expected = [
-        [
-            '<td class="col-pk1 type-str">a</td>',
-            '<td class="col-pk2 type-str">b</td>',
-            '<td class="col-content type-str">c</td>',
-        ]
     ]
     assert expected == [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")

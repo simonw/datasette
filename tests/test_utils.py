@@ -93,7 +93,7 @@ def test_path_with_replaced_args(path, args, expected):
     "row,pks,expected_path",
     [
         ({"A": "foo", "B": "bar"}, ["A", "B"], "foo,bar"),
-        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f%2Co,bar"),
+        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f-2Co,bar"),
         ({"A": 123}, ["A"], "123"),
         (
             utils.CustomRow(
@@ -646,3 +646,21 @@ async def test_derive_named_parameters(sql, expected):
     db = ds.get_database("_memory")
     params = await utils.derive_named_parameters(db, sql)
     assert params == expected
+
+
+@pytest.mark.parametrize(
+    "original,expected",
+    (
+        ("abc", "abc"),
+        ("/foo/bar", "-2Ffoo-2Fbar"),
+        ("/-/bar", "-2F-2D-2Fbar"),
+        ("-/db-/table.csv", "-2D-2Fdb-2D-2Ftable-2Ecsv"),
+        (r"%~-/", "-25-7E-2D-2F"),
+        ("-25-7E-2D-2F", "-2D25-2D7E-2D2D-2D2F"),
+    ),
+)
+def test_dash_encoding(original, expected):
+    actual = utils.dash_encode(original)
+    assert actual == expected
+    # And test round-trip
+    assert original == utils.dash_decode(actual)

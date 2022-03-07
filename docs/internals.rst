@@ -876,6 +876,32 @@ Utility function for calling ``await`` on a return value if it is awaitable, oth
 
 .. autofunction:: datasette.utils.await_me_maybe
 
+.. _internals_dash_encoding:
+
+Dash encoding
+-------------
+
+Datasette uses a custom encoding scheme in some places, called **dash encoding**. This is primarily used for table names and row primary keys, to avoid any confusion between ``/`` characters in those values and the Datasette URLs that reference them.
+
+Dash encoding uses the same algorithm as `URL percent-encoding <https://developer.mozilla.org/en-US/docs/Glossary/percent-encoding>`__, but with the ``-`` hyphen character used in place of ``%``.
+
+Any character other than ``ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789_`` will be replaced by the numeric equivalent preceded by a hyphen. For example:
+
+- ``/`` becomes ``-2F``
+- ``.`` becomes ``-2E``
+- ``%`` becomes ``-25``
+- ``-`` becomes ``-2D``
+- Space character becomes ``-20``
+- ``polls/2022.primary`` becomes ``polls-2F2022-2Eprimary``
+
+.. _internals_utils_dash_encode:
+
+.. autofunction:: datasette.utils.dash_encode
+
+.. _internals_utils_dash_decode:
+
+.. autofunction:: datasette.utils.dash_decode
+
 .. _internals_tracer:
 
 datasette.tracer

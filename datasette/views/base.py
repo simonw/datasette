@@ -17,6 +17,8 @@ from datasette.utils import (
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
+    dash_decode,
+    dash_encode,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
@@ -203,17 +205,17 @@ class DataView(BaseView):
     async def resolve_db_name(self, request, db_name, **kwargs):
         hash = None
         name = None
-        db_name = urllib.parse.unquote_plus(db_name)
-        if db_name not in self.ds.databases and "-" in db_name:
+        decoded_name = dash_decode(db_name)
+        if decoded_name not in self.ds.databases and "-" in db_name:
             # No matching DB found, maybe it's a name-hash?
             name_bit, hash_bit = db_name.rsplit("-", 1)
-            if name_bit not in self.ds.databases:
+            if dash_decode(name_bit) not in self.ds.databases:
                 raise NotFound(f"Database not found: {name}")
             else:
-                name = name_bit
+                name = dash_decode(name_bit)
                 hash = hash_bit
         else:
-            name = db_name
+            name = decoded_name
 
         try:
             db = self.ds.databases[name]
@@ -233,9 +235,7 @@ class DataView(BaseView):
                     return await db.table_exists(t)
 
                 table, _format = await resolve_table_and_format(
-                    table_and_format=urllib.parse.unquote_plus(
-                        kwargs["table_and_format"]
-                    ),
+                    table_and_format=dash_decode(kwargs["table_and_format"]),
                     table_exists=async_table_exists,
                     allowed_formats=self.ds.renderers.keys(),
                 )
@@ -243,11 +243,11 @@ class DataView(BaseView):
                 if _format:
                     kwargs["as_format"] = f".{_format}"
             elif kwargs.get("table"):
-                kwargs["table"] = urllib.parse.unquote_plus(kwargs["table"])
+                kwargs["table"] = dash_decode(kwargs["table"])
 
             should_redirect = self.ds.urls.path(f"{name}-{expected}")
             if kwargs.get("table"):
-                should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
+                should_redirect += "/" + dash_encode(kwargs["table"])
             if kwargs.get("pk_path"):
                 should_redirect += "/" + kwargs["pk_path"]
             if kwargs.get("as_format"):
@@ -467,7 +467,7 @@ class DataView(BaseView):
                 return await db.table_exists(t)
 
             table, _ext_format = await resolve_table_and_format(
-                table_and_format=urllib.parse.unquote_plus(args["table_and_format"]),
+                table_and_format=dash_decode(args["table_and_format"]),
                 table_exists=async_table_exists,
                 allowed_formats=self.ds.renderers.keys(),
             )
@@ -475,7 +475,7 @@ class DataView(BaseView):
             args["table"] = table
             del args["table_and_format"]
         elif "table" in args:
-            args["table"] = urllib.parse.unquote_plus(args["table"])
+            args["table"] = dash_decode(args["table"])
         return _format, args
 
     async def view_get(self, request, database, hash, correct_hash_provided, **kwargs):

@@ -12,6 +12,7 @@ from datasette.utils import (
     MultiParams,
     append_querystring,
     compound_keys_after_sql,
+    dash_encode,
     escape_sqlite,
     filters_should_redirect,
     is_url,
@@ -142,7 +143,7 @@ class RowTableShared(DataView):
                             '<a href="{base_url}{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                                 base_url=base_url,
                                 database=database,
-                                table=urllib.parse.quote_plus(table),
+                                table=dash_encode(table),
                                 flat_pks=str(markupsafe.escape(pk_path)),
                                 flat_pks_quoted=path_from_row_pks(row, pks, not pks),
                             )
@@ -199,8 +200,8 @@ class RowTableShared(DataView):
                         link_template.format(
                             database=database,
                             base_url=base_url,
-                            table=urllib.parse.quote_plus(other_table),
-                            link_id=urllib.parse.quote_plus(str(value)),
+                            table=dash_encode(other_table),
+                            link_id=dash_encode(str(value)),
                             id=str(markupsafe.escape(value)),
                             label=str(markupsafe.escape(label)) or "-",
                         )
@@ -765,7 +766,7 @@ class TableView(RowTableShared):
                 if prefix is None:
                     prefix = "$null"
                 else:
-                    prefix = urllib.parse.quote_plus(str(prefix))
+                    prefix = dash_encode(str(prefix))
                 next_value = f"{prefix},{next_value}"
                 added_args = {"_next": next_value}
                 if sort:

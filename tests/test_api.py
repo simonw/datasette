@@ -143,7 +143,7 @@ def test_database_page(app_client):
             "name": "compound_primary_key",
             "columns": ["pk1", "pk2", "content"],
             "primary_keys": ["pk1", "pk2"],
-            "count": 1,
+            "count": 2,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
@@ -942,7 +942,7 @@ def test_cors(app_client_with_cors, path, status_code):
 )
 def test_database_with_space_in_name(app_client_two_attached_databases, path):
     response = app_client_two_attached_databases.get(
-        "/extra database" + path, follow_redirects=True
+        "/extra-20database" + path, follow_redirects=True
     )
     assert response.status == 200
 
@@ -953,7 +953,7 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
         d["name"]
         for d in app_client_conflicting_database_names.get("/-/databases.json").json
     ]
-    for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
+    for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-2Dbar.json")):
         data = app_client_conflicting_database_names.get(path).json
         assert db_name == data["database"]
 
@@ -992,3 +992,16 @@ async def test_hidden_sqlite_stat1_table():
     data = (await ds.client.get("/db.json?_show_hidden=1")).json()
     tables = [(t["name"], t["hidden"]) for t in data["tables"]]
     assert tables == [("normal", False), ("sqlite_stat1", True)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("db_name", ("foo", r"fo%o", "f~/c.d"))
+async def test_dash_encoded_database_names(db_name):
+    ds = Datasette()
+    ds.add_memory_database(db_name)
+    response = await ds.client.get("/.json")
+    assert db_name in response.json().keys()
+    path = response.json()[db_name]["path"]
+    # And the JSON for that database
+    response2 = await ds.client.get(path + ".json")
+    assert response2.status_code == 200

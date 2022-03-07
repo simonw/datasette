@@ -1211,6 +1211,13 @@ class DatasetteRouter:
         return await self.handle_404(request, send)
 
     async def handle_404(self, request, send, exception=None):
+        # If path contains % encoding, redirect to dash encoding
+        if "%" in request.path:
+            # Try the same path but with "%" replaced by "-"
+            # and "-" replaced with "-2D"
+            new_path = request.path.replace("-", "-2D").replace("%", "-")
+            await asgi_send_redirect(send, new_path)
+            return
         # If URL has a trailing slash, redirect to URL without it
         path = request.scope.get(
             "raw_path", request.scope["path"].encode("utf8")

@@ -952,3 +952,9 @@ def test_no_alternate_url_json(app_client, path):
     assert (
         '<link rel="alternate" type="application/json+datasette"' not in response.text
     )
+
+
+def test_redirect_percent_encoding_to_dash_encoding(app_client):
+    response = app_client.get("/fivethirtyeight/twitter-ratio%2Fsenators")
+    assert response.status == 302
+    assert response.headers["location"] == "/fivethirtyeight/twitter-2Dratio-2Fsenators"

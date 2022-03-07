@@ -1168,7 +1168,7 @@ class DatasetteRouter:
             path = "/" + path[len(base_url) :]
             scope = dict(scope, route_path=path)
         request = Request(scope, receive)
-        # Populate request_messages if ds_messages cookie is present
+        # Populate request._messages if ds_messages cookie is present
         try:
             request._messages = self.ds.unsign(
                 request.cookies.get("ds_messages", ""), "messages"

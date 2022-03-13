@@ -985,11 +985,17 @@ class Datasette:
         routes = []
 
         for routes_to_add in pm.hook.register_routes(datasette=self):
-            for regex, view_fn in routes_to_add:
-                routes.append((regex, wrap_view(view_fn, self)))
+            for regex, view_fn, *extra in routes_to_add:
+                wrapped_view = wrap_view(view_fn, self)
+                if extra:
+                    assert len(extra) == 1
+                    (options,) = extra
+                else:
+                    options = None
+                routes.append((regex, wrapped_view, options))
 
-        def add_route(view, regex):
-            routes.append((regex, view))
+        def add_route(view, regex, options=None):
+            routes.append((regex, view, options))
 
         # Generate a regex snippet to match all registered renderer file extensions
         renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
@@ -1138,8 +1144,12 @@ class DatasetteRouter:
         routes = routes or []
         self.routes = [
             # Compile any strings to regular expressions
-            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
-            for pattern, view in routes
+            (
+                (re.compile(pattern) if isinstance(pattern, str) else pattern),
+                view,
+                options,
+            )
+            for pattern, view, options in routes
         ]
         # Build a list of pages/blah/{name}.html matching expressions
         pattern_templates = [
@@ -1193,10 +1203,12 @@ class DatasetteRouter:
                 break
         scope_modifications["actor"] = actor or default_actor
         scope = dict(scope, **scope_modifications)
-        for regex, view in self.routes:
+        for regex, view, options in self.routes:
             match = regex.match(path)
             if match is not None:
                 new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
+                if options:
+                    new_scope["url_route"]["kwargs"].update(options)
                 request.scope = new_scope
                 try:
                     response = await view(request, send)

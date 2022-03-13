@@ -652,6 +652,7 @@ def test_actor_json(app_client):
         ("/one/", "2"),
         ("/two/Ray?greeting=Hail", "Hail Ray"),
         ("/not-async/", "This was not async"),
+        ("/four/?greeting=Hi", "Hi Simon"),
     ],
 )
 def test_hook_register_routes(app_client, path, body):

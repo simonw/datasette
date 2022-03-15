@@ -545,7 +545,7 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
 
-Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is usually the path with ``.json`` added on the end, but it may use ``?_format=json`` in cases where the path already includes ``.json``, for example a URL to a table named ``table.json``.
+Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
 
@@ -876,31 +876,31 @@ Utility function for calling ``await`` on a return value if it is awaitable, oth
 
 .. autofunction:: datasette.utils.await_me_maybe
 
-.. _internals_dash_encoding:
+.. _internals_tilde_encoding:
 
-Dash encoding
--------------
+Tilde encoding
+--------------
 
-Datasette uses a custom encoding scheme in some places, called **dash encoding**. This is primarily used for table names and row primary keys, to avoid any confusion between ``/`` characters in those values and the Datasette URLs that reference them.
+Datasette uses a custom encoding scheme in some places, called **tilde encoding**. This is primarily used for table names and row primary keys, to avoid any confusion between ``/`` characters in those values and the Datasette URLs that reference them.
 
-Dash encoding uses the same algorithm as `URL percent-encoding <https://developer.mozilla.org/en-US/docs/Glossary/percent-encoding>`__, but with the ``-`` hyphen character used in place of ``%``.
+Tilde encoding uses the same algorithm as `URL percent-encoding <https://developer.mozilla.org/en-US/docs/Glossary/percent-encoding>`__, but with the ``~`` tilde character used in place of ``%``.
 
-Any character other than ``ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789_`` will be replaced by the numeric equivalent preceded by a hyphen. For example:
+Any character other than ``ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789_-`` will be replaced by the numeric equivalent preceded by a tilde. For example:
 
-- ``/`` becomes ``-2F``
-- ``.`` becomes ``-2E``
-- ``%`` becomes ``-25``
-- ``-`` becomes ``-2D``
-- Space character becomes ``-20``
-- ``polls/2022.primary`` becomes ``polls-2F2022-2Eprimary``
+- ``/`` becomes ``~2F``
+- ``.`` becomes ``~2E``
+- ``%`` becomes ``~25``
+- ``~`` becomes ``~7E``
+- Space character becomes ``~20``
+- ``polls/2022.primary`` becomes ``polls~2F2022~2Eprimary``
 
-.. _internals_utils_dash_encode:
+.. _internals_utils_tilde_encode:
 
-.. autofunction:: datasette.utils.dash_encode
+.. autofunction:: datasette.utils.tilde_encode
 
-.. _internals_utils_dash_decode:
+.. _internals_utils_tilde_decode:
 
-.. autofunction:: datasette.utils.dash_decode
+.. autofunction:: datasette.utils.tilde_decode
 
 .. _internals_tracer:
 

@@ -681,7 +681,7 @@ def test_row(app_client):
 
 def test_row_strange_table_name(app_client):
     response = app_client.get(
-        "/fixtures/table-2Fwith-2Fslashes-2Ecsv/3.json?_shape=objects"
+        "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3.json?_shape=objects"
     )
     assert response.status == 200
     assert [{"pk": "3", "content": "hey"}] == response.json["rows"]

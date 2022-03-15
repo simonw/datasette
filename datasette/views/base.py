@@ -453,7 +453,7 @@ class DataView(BaseView):
         # _format may be in <as_format> captured by the URL router
         as_format = kwargs.pop("as_format", None)
         if as_format:
-            _format = as_format
+            _format = as_format.lstrip(".")
         else:
             # If there's a '.' in the last portion of the path, use that as format:
             last_path_component = request.path.split("/")[-1]

@@ -138,13 +138,13 @@ def test_table_shape_object_compound_primary_key(app_client):
     response = app_client.get("/fixtures/compound_primary_key.json?_shape=object")
     assert response.json == {
         "a,b": {"pk1": "a", "pk2": "b", "content": "c"},
-        "a-2Fb,-2Ec-2Dd": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
+        "a~2Fb,~2Ec-d": {"pk1": "a/b", "pk2": ".c-d", "content": "c"},
     }
 
 
 def test_table_with_slashes_in_name(app_client):
     response = app_client.get(
-        "/fixtures/table-2Fwith-2Fslashes-2Ecsv.json?_shape=objects"
+        "/fixtures/table~2Fwith~2Fslashes~2Ecsv.json?_shape=objects"
     )
     assert response.status == 200
     data = response.json
@@ -1034,7 +1034,7 @@ def test_infinity_returned_as_invalid_json_if_requested(app_client):
 def test_custom_query_with_unicode_characters(app_client):
     # /fixtures/𝐜𝐢𝐭𝐢𝐞𝐬.json
     response = app_client.get(
-        "/fixtures/-F0-9D-90-9C-F0-9D-90-A2-F0-9D-90-AD-F0-9D-90-A2-F0-9D-90-9E-F0-9D-90-AC.json?_shape=array"
+        "/fixtures/~F0~9D~90~9C~F0~9D~90~A2~F0~9D~90~AD~F0~9D~90~A2~F0~9D~90~9E~F0~9D~90~AC.json?_shape=array"
     )
     assert [{"id": 1, "name": "San Francisco"}] == response.json
 

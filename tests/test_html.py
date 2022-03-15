@@ -29,7 +29,7 @@ def test_homepage(app_client_two_attached_databases):
     )
     # Should be two attached databases
     assert [
-        {"href": r"/extra-20database", "text": "extra database"},
+        {"href": "/extra~20database", "text": "extra database"},
         {"href": "/fixtures", "text": "fixtures"},
     ] == [{"href": a["href"], "text": a.text.strip()} for a in soup.select("h2 a")]
     # Database should show count text and attached tables
@@ -44,8 +44,8 @@ def test_homepage(app_client_two_attached_databases):
         {"href": a["href"], "text": a.text.strip()} for a in links_p.findAll("a")
     ]
     assert [
-        {"href": r"/extra-20database/searchable", "text": "searchable"},
-        {"href": r"/extra-20database/searchable_view", "text": "searchable_view"},
+        {"href": r"/extra~20database/searchable", "text": "searchable"},
+        {"href": r"/extra~20database/searchable_view", "text": "searchable_view"},
     ] == table_links
 
 
@@ -139,15 +139,15 @@ def test_database_page(app_client):
     queries_ul = soup.find("h2", text="Queries").find_next_sibling("ul")
     assert queries_ul is not None
     assert [
-        (
-            "/fixtures/-F0-9D-90-9C-F0-9D-90-A2-F0-9D-90-AD-F0-9D-90-A2-F0-9D-90-9E-F0-9D-90-AC",
-            "𝐜𝐢𝐭𝐢𝐞𝐬",
-        ),
         ("/fixtures/from_async_hook", "from_async_hook"),
         ("/fixtures/from_hook", "from_hook"),
         ("/fixtures/magic_parameters", "magic_parameters"),
         ("/fixtures/neighborhood_search#fragment-goes-here", "Search neighborhoods"),
         ("/fixtures/pragma_cache_size", "pragma_cache_size"),
+        (
+            "/fixtures/~F0~9D~90~9C~F0~9D~90~A2~F0~9D~90~AD~F0~9D~90~A2~F0~9D~90~9E~F0~9D~90~AC",
+            "𝐜𝐢𝐭𝐢𝐞𝐬",
+        ),
     ] == sorted(
         [(a["href"], a.text) for a in queries_ul.find_all("a")], key=lambda p: p[0]
     )
@@ -193,11 +193,11 @@ def test_row_redirects_with_url_hash(app_client_with_hash):
 
 
 def test_row_strange_table_name_with_url_hash(app_client_with_hash):
-    response = app_client_with_hash.get("/fixtures/table-2Fwith-2Fslashes-2Ecsv/3")
+    response = app_client_with_hash.get("/fixtures/table~2Fwith~2Fslashes~2Ecsv/3")
     assert response.status == 302
-    assert response.headers["Location"].endswith("/table-2Fwith-2Fslashes-2Ecsv/3")
+    assert response.headers["Location"].endswith("/table~2Fwith~2Fslashes~2Ecsv/3")
     response = app_client_with_hash.get(
-        "/fixtures/table-2Fwith-2Fslashes-2Ecsv/3", follow_redirects=True
+        "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3", follow_redirects=True
     )
     assert response.status == 200
 
@@ -229,7 +229,7 @@ def test_row_page_does_not_truncate():
             ["query", "db-fixtures", "query-neighborhood_search"],
         ),
         (
-            "/fixtures/table-2Fwith-2Fslashes-2Ecsv",
+            "/fixtures/table~2Fwith~2Fslashes~2Ecsv",
             ["table", "db-fixtures", "table-tablewithslashescsv-fa7563"],
         ),
         (
@@ -255,7 +255,7 @@ def test_css_classes_on_body(app_client, path, expected_classes):
             "table-fixtures-simple_primary_key.html, *table.html",
         ),
         (
-            "/fixtures/table-2Fwith-2Fslashes-2Ecsv",
+            "/fixtures/table~2Fwith~2Fslashes~2Ecsv",
             "table-fixtures-tablewithslashescsv-fa7563.html, *table.html",
         ),
         (
@@ -359,7 +359,7 @@ def test_row_links_from_other_tables(app_client, path, expected_text, expected_l
             ],
         ),
         (
-            "/fixtures/compound_primary_key/a-2Fb,-2Ec-2Dd",
+            "/fixtures/compound_primary_key/a~2Fb,~2Ec~2Dd",
             [
                 [
                     '<td class="col-pk1 type-str">a/b</td>',
@@ -817,7 +817,7 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
         ("/fixtures/pragma_cache_size", None),
         (
             # /fixtures/𝐜𝐢𝐭𝐢𝐞𝐬
-            "/fixtures/-F0-9D-90-9C-F0-9D-90-A2-F0-9D-90-AD-F0-9D-90-A2-F0-9D-90-9E-F0-9D-90-AC",
+            "/fixtures/~F0~9D~90~9C~F0~9D~90~A2~F0~9D~90~AD~F0~9D~90~A2~F0~9D~90~9E~F0~9D~90~AC",
             "/fixtures?sql=select+id%2C+name+from+facet_cities+order+by+id+limit+1%3B",
         ),
         ("/fixtures/magic_parameters", None),
@@ -900,8 +900,8 @@ def test_trace_correctly_escaped(app_client):
         # Table page
         ("/fixtures/facetable", "http://localhost/fixtures/facetable.json"),
         (
-            "/fixtures/table-2Fwith-2Fslashes-2Ecsv",
-            "http://localhost/fixtures/table-2Fwith-2Fslashes-2Ecsv.json",
+            "/fixtures/table~2Fwith~2Fslashes~2Ecsv",
+            "http://localhost/fixtures/table~2Fwith~2Fslashes~2Ecsv.json",
         ),
         # Row page
         (
@@ -932,6 +932,7 @@ def test_trace_correctly_escaped(app_client):
 )
 def test_alternate_url_json(app_client, path, expected):
     response = app_client.get(path)
+    assert response.status == 200
     link = response.headers["link"]
     assert link == '{}; rel="alternate"; type="application/json+datasette"'.format(
         expected

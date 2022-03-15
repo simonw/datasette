@@ -19,8 +19,8 @@ from unittest.mock import patch
         ("foo", ["foo"]),
         ("foo,bar", ["foo", "bar"]),
         ("123,433,112", ["123", "433", "112"]),
-        ("123%2C433,112", ["123,433", "112"]),
-        ("123%2F433%2F112", ["123/433/112"]),
+        ("123~2C433,112", ["123,433", "112"]),
+        ("123~2F433~2F112", ["123/433/112"]),
     ],
 )
 def test_urlsafe_components(path, expected):
@@ -93,7 +93,7 @@ def test_path_with_replaced_args(path, args, expected):
     "row,pks,expected_path",
     [
         ({"A": "foo", "B": "bar"}, ["A", "B"], "foo,bar"),
-        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f-2Co,bar"),
+        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f~2Co,bar"),
         ({"A": 123}, ["A"], "123"),
         (
             utils.CustomRow(

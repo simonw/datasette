@@ -679,18 +679,9 @@ def test_row(app_client):
     assert [{"id": "1", "content": "hello"}] == response.json["rows"]
 
 
-def test_row_format_in_querystring(app_client):
-    # regression test for https://github.com/simonw/datasette/issues/563
-    response = app_client.get(
-        "/fixtures/simple_primary_key/1?_format=json&_shape=objects"
-    )
-    assert response.status == 200
-    assert [{"id": "1", "content": "hello"}] == response.json["rows"]
-
-
 def test_row_strange_table_name(app_client):
     response = app_client.get(
-        "/fixtures/table%2Fwith%2Fslashes.csv/3.json?_shape=objects"
+        "/fixtures/table-2Fwith-2Fslashes-2Ecsv/3.json?_shape=objects"
     )
     assert response.status == 200
     assert [{"pk": "3", "content": "hey"}] == response.json["rows"]
@@ -996,7 +987,7 @@ async def test_hidden_sqlite_stat1_table():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("db_name", ("foo", r"fo%o", "f~/c.d"))
-async def test_dash_encoded_database_names(db_name):
+async def test_tilde_encoded_database_names(db_name):
     ds = Datasette()
     ds.add_memory_database(db_name)
     response = await ds.client.get("/.json")

@@ -59,21 +59,3 @@ truncation error message.
 You can increase or remove this limit using the :ref:`setting_max_csv_mb` config
 setting. You can also disable the CSV export feature entirely using
 :ref:`setting_allow_csv_stream`.
-
-A note on URLs
---------------
-
-The default URL for the CSV representation of a table is that table with
-``.csv`` appended to it:
-
-* https://latest.datasette.io/fixtures/facetable - HTML interface
-* https://latest.datasette.io/fixtures/facetable.csv - CSV export
-* https://latest.datasette.io/fixtures/facetable.json - JSON API
-
-This pattern doesn't work for tables with names that already end in ``.csv`` or
-``.json``. For those tables, you can instead use the ``_format=`` query string
-parameter:
-
-* https://latest.datasette.io/fixtures/table%2Fwith%2Fslashes.csv - HTML interface
-* https://latest.datasette.io/fixtures/table%2Fwith%2Fslashes.csv?_format=csv - CSV export
-* https://latest.datasette.io/fixtures/table%2Fwith%2Fslashes.csv?_format=json - JSON API

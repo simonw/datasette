@@ -17,8 +17,8 @@ from datasette.utils import (
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
-    dash_decode,
-    dash_encode,
+    tilde_decode,
+    tilde_encode,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
@@ -205,14 +205,14 @@ class DataView(BaseView):
     async def resolve_db_name(self, request, db_name, **kwargs):
         hash = None
         name = None
-        decoded_name = dash_decode(db_name)
+        decoded_name = tilde_decode(db_name)
         if decoded_name not in self.ds.databases and "-" in db_name:
             # No matching DB found, maybe it's a name-hash?
             name_bit, hash_bit = db_name.rsplit("-", 1)
-            if dash_decode(name_bit) not in self.ds.databases:
+            if tilde_decode(name_bit) not in self.ds.databases:
                 raise NotFound(f"Database not found: {name}")
             else:
-                name = dash_decode(name_bit)
+                name = tilde_decode(name_bit)
                 hash = hash_bit
         else:
             name = decoded_name
@@ -235,7 +235,7 @@ class DataView(BaseView):
                     return await db.table_exists(t)
 
                 table, _format = await resolve_table_and_format(
-                    table_and_format=dash_decode(kwargs["table_and_format"]),
+                    table_and_format=tilde_decode(kwargs["table_and_format"]),
                     table_exists=async_table_exists,
                     allowed_formats=self.ds.renderers.keys(),
                 )
@@ -243,11 +243,11 @@ class DataView(BaseView):
                 if _format:
                     kwargs["as_format"] = f".{_format}"
             elif kwargs.get("table"):
-                kwargs["table"] = dash_decode(kwargs["table"])
+                kwargs["table"] = tilde_decode(kwargs["table"])
 
             should_redirect = self.ds.urls.path(f"{name}-{expected}")
             if kwargs.get("table"):
-                should_redirect += "/" + dash_encode(kwargs["table"])
+                should_redirect += "/" + tilde_encode(kwargs["table"])
             if kwargs.get("pk_path"):
                 should_redirect += "/" + kwargs["pk_path"]
             if kwargs.get("as_format"):
@@ -448,38 +448,17 @@ class DataView(BaseView):
 
         return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
-    async def get_format(self, request, database, args):
-        """Determine the format of the response from the request, from URL
-        parameters or from a file extension.
-
-        `args` is a dict of the path components parsed from the URL by the router.
-        """
-        # If ?_format= is provided, use that as the format
-        _format = request.args.get("_format", None)
-        if not _format:
-            _format = (args.pop("as_format", None) or "").lstrip(".")
-        else:
-            args.pop("as_format", None)
-        if "table_and_format" in args:
-            db = self.ds.databases[database]
-
-            async def async_table_exists(t):
-                return await db.table_exists(t)
-
-            table, _ext_format = await resolve_table_and_format(
-                table_and_format=dash_decode(args["table_and_format"]),
-                table_exists=async_table_exists,
-                allowed_formats=self.ds.renderers.keys(),
-            )
-            _format = _format or _ext_format
-            args["table"] = table
-            del args["table_and_format"]
-        elif "table" in args:
-            args["table"] = dash_decode(args["table"])
-        return _format, args
-
     async def view_get(self, request, database, hash, correct_hash_provided, **kwargs):
-        _format, kwargs = await self.get_format(request, database, kwargs)
+        _format = None
+        # _format may be in <as_format> captured by the URL router
+        as_format = kwargs.pop("as_format", None)
+        if as_format:
+            _format = as_format
+        else:
+            # If there's a '.' in the last portion of the path, use that as format:
+            last_path_component = request.path.split("/")[-1]
+            if "." in last_path_component:
+                _format = last_path_component.split(".")[-1]
 
         if _format == "csv":
             return await self.as_csv(request, database, hash, **kwargs)

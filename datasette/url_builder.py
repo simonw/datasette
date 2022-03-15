@@ -1,4 +1,4 @@
-from .utils import dash_encode, path_with_format, HASH_LENGTH, PrefixedUrlString
+from .utils import tilde_encode, path_with_format, HASH_LENGTH, PrefixedUrlString
 import urllib
 
 
@@ -31,20 +31,20 @@ class Urls:
         db = self.ds.databases[database]
         if self.ds.setting("hash_urls") and db.hash:
             path = self.path(
-                f"{dash_encode(database)}-{db.hash[:HASH_LENGTH]}", format=format
+                f"{tilde_encode(database)}-{db.hash[:HASH_LENGTH]}", format=format
             )
         else:
-            path = self.path(dash_encode(database), format=format)
+            path = self.path(tilde_encode(database), format=format)
         return path
 
     def table(self, database, table, format=None):
-        path = f"{self.database(database)}/{dash_encode(table)}"
+        path = f"{self.database(database)}/{tilde_encode(table)}"
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)
 
     def query(self, database, query, format=None):
-        path = f"{self.database(database)}/{dash_encode(query)}"
+        path = f"{self.database(database)}/{tilde_encode(query)}"
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)

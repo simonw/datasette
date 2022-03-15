@@ -545,7 +545,7 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
 
-Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is usually the path with ``.json`` added on the end, but it may use ``?_format=json`` in cases where the path already includes ``.json``, for example a URL to a table named ``table.json``.
+Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
 

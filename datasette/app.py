@@ -1215,7 +1215,10 @@ class DatasetteRouter:
         if "%" in request.path:
             # Try the same path but with "%" replaced by "~"
             # and "~" replaced with "~7E"
-            new_path = request.path.replace("~", "~7E").replace("%", "~")
+            # and "." replaced with "~2E"
+            new_path = (
+                request.path.replace("~", "~7E").replace("%", "~").replace(".", "~2E")
+            )
             if request.query_string:
                 new_path += "?{}".format(request.query_string)
             await asgi_send_redirect(send, new_path)

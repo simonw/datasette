@@ -964,11 +964,10 @@ def test_no_alternate_url_json(app_client, path):
             "/fivethirtyeight/twitter-ratio%2Fsenators",
             "/fivethirtyeight/twitter-ratio~2Fsenators",
         ),
-        # TODO: re-enable this test
-        # (
-        #    "/fixtures/table%2Fwith%2Fslashes.csv",
-        #    "/fixtures/table~2Fwith~2Fslashes~2Ecsv",
-        # ),
+        (
+            "/fixtures/table%2Fwith%2Fslashes.csv",
+            "/fixtures/table~2Fwith~2Fslashes~2Ecsv",
+        ),
         # query string should be preserved
         ("/foo/bar%2Fbaz?id=5", "/foo/bar~2Fbaz?id=5"),
     ),

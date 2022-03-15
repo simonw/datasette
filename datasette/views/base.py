@@ -10,6 +10,7 @@ import pint
 
 from datasette import __version__
 from datasette.database import QueryInterrupted
+from datasette.utils.asgi import Request
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -291,6 +292,7 @@ class DataView(BaseView):
             if not request.args.get(key)
         ]
         if extra_parameters:
+            # Replace request object with a new one with modified scope
             if not request.query_string:
                 new_query_string = "&".join(extra_parameters)
             else:
@@ -300,7 +302,8 @@ class DataView(BaseView):
             new_scope = dict(
                 request.scope, query_string=new_query_string.encode("latin-1")
             )
-            request.scope = new_scope
+            receive = request.receive
+            request = Request(new_scope, receive)
         if stream:
             # Some quick soundness checks
             if not self.ds.setting("allow_csv_stream"):

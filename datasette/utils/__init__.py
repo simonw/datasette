@@ -10,7 +10,6 @@ import markupsafe
 import mergedeep
 import os
 import re
-import secrets
 import shlex
 import tempfile
 import typing
@@ -1173,8 +1172,4 @@ def dash_encode(s: str) -> str:
 @documented
 def dash_decode(s: str) -> str:
     "Decodes a dash-encoded string, so ``-2Ffoo-2Fbar`` -> ``/foo/bar``"
-    # Avoid accidentally decoding a %2f style sequence
-    temp = secrets.token_hex(16)
-    s = s.replace("%", temp)
-    decoded = urllib.parse.unquote(s.replace("-", "%"))
-    return decoded.replace(temp, "%")
+    return urllib.parse.unquote(s.replace("-", "%"))

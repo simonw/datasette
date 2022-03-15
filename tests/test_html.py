@@ -961,10 +961,6 @@ def test_no_alternate_url_json(app_client, path):
             "/fivethirtyeight/twitter-ratio%2Fsenators",
             "/fivethirtyeight/twitter-2Dratio-2Fsenators",
         ),
-        (
-            "/fixtures/table%2Fwith%2Fslashes",
-            "/fixtures/table-2Fwith-2Fslashes",
-        ),
         # query string should be preserved
         ("/foo/bar%2Fbaz?id=5", "/foo/bar-2Fbaz?id=5"),
     ),

@@ -679,18 +679,9 @@ def test_row(app_client):
     assert [{"id": "1", "content": "hello"}] == response.json["rows"]
 
 
-def test_row_format_in_querystring(app_client):
-    # regression test for https://github.com/simonw/datasette/issues/563
-    response = app_client.get(
-        "/fixtures/simple_primary_key/1?_format=json&_shape=objects"
-    )
-    assert response.status == 200
-    assert [{"id": "1", "content": "hello"}] == response.json["rows"]
-
-
 def test_row_strange_table_name(app_client):
     response = app_client.get(
-        "/fixtures/table%2Fwith%2Fslashes.csv/3.json?_shape=objects"
+        "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3.json?_shape=objects"
     )
     assert response.status == 200
     assert [{"pk": "3", "content": "hey"}] == response.json["rows"]
@@ -942,7 +933,7 @@ def test_cors(app_client_with_cors, path, status_code):
 )
 def test_database_with_space_in_name(app_client_two_attached_databases, path):
     response = app_client_two_attached_databases.get(
-        "/extra-20database" + path, follow_redirects=True
+        "/extra~20database" + path, follow_redirects=True
     )
     assert response.status == 200
 
@@ -953,7 +944,7 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
         d["name"]
         for d in app_client_conflicting_database_names.get("/-/databases.json").json
     ]
-    for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-2Dbar.json")):
+    for db_name, path in (("foo", "/foo.json"), ("foo-bar", "/foo-bar.json")):
         data = app_client_conflicting_database_names.get(path).json
         assert db_name == data["database"]
 
@@ -996,7 +987,7 @@ async def test_hidden_sqlite_stat1_table():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("db_name", ("foo", r"fo%o", "f~/c.d"))
-async def test_dash_encoded_database_names(db_name):
+async def test_tilde_encoded_database_names(db_name):
     ds = Datasette()
     ds.add_memory_database(db_name)
     response = await ds.client.get("/.json")

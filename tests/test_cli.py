@@ -9,7 +9,7 @@ from datasette.app import SETTINGS
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.cli import cli, serve
 from datasette.version import __version__
-from datasette.utils import dash_encode
+from datasette.utils import tilde_encode
 from datasette.utils.sqlite import sqlite3
 from click.testing import CliRunner
 import io
@@ -295,12 +295,12 @@ def test_weird_database_names(ensure_eventloop, tmpdir, filename):
     assert result1.exit_code == 0, result1.output
     filename_no_stem = filename.rsplit(".", 1)[0]
     expected_link = '<a href="/{}">{}</a>'.format(
-        dash_encode(filename_no_stem), filename_no_stem
+        tilde_encode(filename_no_stem), filename_no_stem
     )
     assert expected_link in result1.output
     # Now try hitting that database page
     result2 = runner.invoke(
-        cli, [db_path, "--get", "/{}".format(dash_encode(filename_no_stem))]
+        cli, [db_path, "--get", "/{}".format(tilde_encode(filename_no_stem))]
     )
     assert result2.exit_code == 0, result2.output
 

@@ -1211,11 +1211,11 @@ class DatasetteRouter:
         return await self.handle_404(request, send)
 
     async def handle_404(self, request, send, exception=None):
-        # If path contains % encoding, redirect to dash encoding
+        # If path contains % encoding, redirect to tilde encoding
         if "%" in request.path:
-            # Try the same path but with "%" replaced by "-"
-            # and "-" replaced with "-2D"
-            new_path = request.path.replace("-", "-2D").replace("%", "-")
+            # Try the same path but with "%" replaced by "~"
+            # and "~" replaced with "~7E"
+            new_path = request.path.replace("~", "~7E").replace("%", "~")
             if request.query_string:
                 new_path += "?{}".format(request.query_string)
             await asgi_send_redirect(send, new_path)

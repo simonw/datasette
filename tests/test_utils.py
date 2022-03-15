@@ -393,9 +393,7 @@ def test_table_columns():
         ("/foo?sql=select+1", "json", {}, "/foo.json?sql=select+1"),
         ("/foo/bar", "json", {}, "/foo/bar.json"),
         ("/foo/bar", "csv", {}, "/foo/bar.csv"),
-        ("/foo/bar.csv", "json", {}, "/foo/bar.csv?_format=json"),
         ("/foo/bar", "csv", {"_dl": 1}, "/foo/bar.csv?_dl=1"),
-        ("/foo/b.csv", "json", {"_dl": 1}, "/foo/b.csv?_dl=1&_format=json"),
         (
             "/sf-trees/Street_Tree_List?_search=cherry&_size=1000",
             "csv",
@@ -408,18 +406,6 @@ def test_path_with_format(path, format, extra_qs, expected):
     request = Request.fake(path)
     actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
     assert expected == actual
-
-
-def test_path_with_format_replace_format():
-    request = Request.fake("/foo/bar.csv")
-    assert (
-        utils.path_with_format(request=request, format="blob")
-        == "/foo/bar.csv?_format=blob"
-    )
-    assert (
-        utils.path_with_format(request=request, format="blob", replace_format="csv")
-        == "/foo/bar.blob"
-    )
 
 
 @pytest.mark.parametrize(
@@ -652,15 +638,15 @@ async def test_derive_named_parameters(sql, expected):
     "original,expected",
     (
         ("abc", "abc"),
-        ("/foo/bar", "-2Ffoo-2Fbar"),
-        ("/-/bar", "-2F-2D-2Fbar"),
-        ("-/db-/table.csv", "-2D-2Fdb-2D-2Ftable-2Ecsv"),
-        (r"%~-/", "-25-7E-2D-2F"),
-        ("-25-7E-2D-2F", "-2D25-2D7E-2D2D-2D2F"),
+        ("/foo/bar", "~2Ffoo~2Fbar"),
+        ("/-/bar", "~2F-~2Fbar"),
+        ("-/db-/table.csv", "-~2Fdb-~2Ftable~2Ecsv"),
+        (r"%~-/", "~25~7E-~2F"),
+        ("~25~7E~2D~2F", "~7E25~7E7E~7E2D~7E2F"),
     ),
 )
-def test_dash_encoding(original, expected):
-    actual = utils.dash_encode(original)
+def test_tilde_encoding(original, expected):
+    actual = utils.tilde_encode(original)
     assert actual == expected
     # And test round-trip
-    assert original == utils.dash_decode(actual)
+    assert original == utils.tilde_decode(actual)

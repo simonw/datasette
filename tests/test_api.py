@@ -825,35 +825,6 @@ def test_config_redirects_to_settings(app_client, path, expected_redirect):
     assert response.headers["Location"] == expected_redirect
 
 
-@pytest.mark.parametrize(
-    "path,expected_redirect",
-    [
-        ("/fixtures/facetable.json?_hash=1", "/fixtures-HASH/facetable.json"),
-        (
-            "/fixtures/facetable.json?city_id=1&_hash=1",
-            "/fixtures-HASH/facetable.json?city_id=1",
-        ),
-    ],
-)
-def test_hash_parameter(
-    app_client_two_attached_databases_one_immutable, path, expected_redirect
-):
-    # First get the current hash for the fixtures database
-    current_hash = app_client_two_attached_databases_one_immutable.ds.databases[
-        "fixtures"
-    ].hash[:7]
-    response = app_client_two_attached_databases_one_immutable.get(path)
-    assert response.status == 302
-    location = response.headers["Location"]
-    assert expected_redirect.replace("HASH", current_hash) == location
-
-
-def test_hash_parameter_ignored_for_mutable_databases(app_client):
-    path = "/fixtures/facetable.json?_hash=1"
-    response = app_client.get(path)
-    assert response.status == 200
-
-
 test_json_columns_default_expected = [
     {"intval": 1, "strval": "s", "floatval": 0.5, "jsonval": '{"foo": "bar"}'}
 ]

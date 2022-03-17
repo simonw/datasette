@@ -5,7 +5,6 @@ from .fixtures import (  # noqa
     app_client_base_url_prefix,
     app_client_shorter_time_limit,
     app_client_two_attached_databases,
-    app_client_with_hash,
     make_app_client,
     METADATA,
 )
@@ -101,13 +100,6 @@ def test_not_allowed_methods():
             assert response.status == 405
 
 
-def test_database_page_redirects_with_url_hash(app_client_with_hash):
-    response = app_client_with_hash.get("/fixtures")
-    assert response.status == 302
-    response = app_client_with_hash.get("/fixtures", follow_redirects=True)
-    assert "fixtures" in response.text
-
-
 def test_database_page(app_client):
     response = app_client.get("/fixtures")
     soup = Soup(response.body, "html.parser")
@@ -180,26 +172,6 @@ def test_sql_time_limit(app_client_shorter_time_limit):
         <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
     """.strip()
     assert expected_html_fragment in response.text
-
-
-def test_row_redirects_with_url_hash(app_client_with_hash):
-    response = app_client_with_hash.get("/fixtures/simple_primary_key/1")
-    assert response.status == 302
-    assert response.headers["Location"].endswith("/1")
-    response = app_client_with_hash.get(
-        "/fixtures/simple_primary_key/1", follow_redirects=True
-    )
-    assert response.status == 200
-
-
-def test_row_strange_table_name_with_url_hash(app_client_with_hash):
-    response = app_client_with_hash.get("/fixtures/table~2Fwith~2Fslashes~2Ecsv/3")
-    assert response.status == 302
-    assert response.headers["Location"].endswith("/table~2Fwith~2Fslashes~2Ecsv/3")
-    response = app_client_with_hash.get(
-        "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3", follow_redirects=True
-    )
-    assert response.status == 200
 
 
 def test_row_page_does_not_truncate():

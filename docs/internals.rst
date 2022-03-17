@@ -217,12 +217,18 @@ You can create your own instance of this - for example to help write tests for a
         }
     })
 
+Constructor parameters include:
+
+- ``files=[...]`` - a list of database files to open
+- ``immutables=[...]`` - a list of database files to open in immutable mode
+- ``metadata={...}`` - a dictionary of :ref:`metadata`
+
 .. _datasette_databases:
 
 .databases
 ----------
 
-Property exposing an ordered dictionary of databases currently connected to Datasette.
+Property exposing a ``collections.OrderedDict`` of databases currently connected to Datasette.
 
 The dictionary keys are the name of the database that is used in the URL - e.g. ``/fixtures`` would have a key of ``"fixtures"``. The values are :ref:`internals_database` instances.
 
@@ -581,6 +587,13 @@ The arguments are as follows:
     Use this to create a named in-memory database. Unlike regular memory databases these can be accessed by multiple threads and will persist an changes made to them for the lifetime of the Datasette server process.
 
 The first argument is the ``datasette`` instance you are attaching to, the second is a ``path=``, then ``is_mutable`` and ``is_memory`` are both optional arguments.
+
+.. _database_hash:
+
+db.hash
+-------
+
+If the database was opened in immutable mode, this property returns the 64 character SHA-256 hash of the database contents as a string. Otherwise it returns ``None``.
 
 .. _database_execute:
 

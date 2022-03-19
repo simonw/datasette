@@ -19,12 +19,10 @@ from datasette.utils import (
     LimitedWriter,
     call_with_supported_arguments,
     tilde_decode,
-    tilde_encode,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
     path_with_format,
-    resolve_table_and_format,
     sqlite3,
     HASH_LENGTH,
 )
@@ -372,18 +370,10 @@ class DataView(BaseView):
 
         return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
-    def get_format(self, request):
-        # Format is the bit from the path following the ., if one exists
-        last_path_component = request.path.split("/")[-1]
-        if "." in last_path_component:
-            return last_path_component.split(".")[-1]
-        else:
-            return None
-
     async def get(self, request):
         db_name = request.url_vars["database"]
         database = tilde_decode(db_name)
-        _format = self.get_format(request)
+        _format = request.url_vars["format"]
         data_kwargs = {}
 
         if _format == "csv":

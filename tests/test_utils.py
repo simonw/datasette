@@ -351,31 +351,6 @@ def test_compound_keys_after_sql():
     )
 
 
-async def table_exists(table):
-    return table == "exists.csv"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "table_and_format,expected_table,expected_format",
-    [
-        ("blah", "blah", None),
-        ("blah.csv", "blah", "csv"),
-        ("blah.json", "blah", "json"),
-        ("blah.baz", "blah.baz", None),
-        ("exists.csv", "exists.csv", None),
-    ],
-)
-async def test_resolve_table_and_format(
-    table_and_format, expected_table, expected_format
-):
-    actual_table, actual_format = await utils.resolve_table_and_format(
-        table_and_format, table_exists, ["json"]
-    )
-    assert expected_table == actual_table
-    assert expected_format == actual_format
-
-
 def test_table_columns():
     conn = sqlite3.connect(":memory:")
     conn.executescript(

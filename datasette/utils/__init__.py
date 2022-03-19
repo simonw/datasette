@@ -731,26 +731,6 @@ def module_from_path(path, name):
     return mod
 
 
-async def resolve_table_and_format(
-    table_and_format, table_exists, allowed_formats=None
-):
-    if allowed_formats is None:
-        allowed_formats = []
-    if "." in table_and_format:
-        # Check if a table exists with this exact name
-        it_exists = await table_exists(table_and_format)
-        if it_exists:
-            return table_and_format, None
-
-    # Check if table ends with a known format
-    formats = list(allowed_formats) + ["csv", "jsono"]
-    for _format in formats:
-        if table_and_format.endswith(f".{_format}"):
-            table = table_and_format[: -(len(_format) + 1)]
-            return table, _format
-    return table_and_format, None
-
-
 def path_with_format(
     *, request=None, path=None, format=None, extra_qs=None, replace_format=None
 ):

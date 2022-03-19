@@ -119,11 +119,6 @@ SETTINGS = (
         "Time limit for calculating a suggested facet",
     ),
     Setting(
-        "hash_urls",
-        False,
-        "Include DB file contents hash in URLs, for far-future caching",
-    ),
-    Setting(
         "allow_facet",
         True,
         "Allow users to specify columns to facet using ?_facet= parameter",
@@ -177,6 +172,16 @@ SETTINGS = (
     ),
     Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
+OBSOLETE_SETTINGS = {
+    option.name: option
+    for option in (
+        Setting(
+            "hash_urls",
+            False,
+            "The hash_urls setting has been removed, try the datasette-hashed-urls plugin instead",
+        ),
+    )
+}
 
 DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 

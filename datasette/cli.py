@@ -12,7 +12,14 @@ from subprocess import call
 import sys
 from runpy import run_module
 import webbrowser
-from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, SQLITE_LIMIT_ATTACHED, pm
+from .app import (
+    OBSOLETE_SETTINGS,
+    Datasette,
+    DEFAULT_SETTINGS,
+    SETTINGS,
+    SQLITE_LIMIT_ATTACHED,
+    pm,
+)
 from .utils import (
     StartupError,
     check_connection,
@@ -50,8 +57,12 @@ class Config(click.ParamType):
             return
         name, value = config.split(":", 1)
         if name not in DEFAULT_SETTINGS:
+            if name in OBSOLETE_SETTINGS:
+                msg = OBSOLETE_SETTINGS[name].help
+            else:
+                msg = f"{name} is not a valid option (--help-settings to see all)"
             self.fail(
-                f"{name} is not a valid option (--help-settings to see all)",
+                msg,
                 param,
                 ctx,
             )
@@ -83,8 +94,12 @@ class Setting(CompositeParamType):
     def convert(self, config, param, ctx):
         name, value = config
         if name not in DEFAULT_SETTINGS:
+            if name in OBSOLETE_SETTINGS:
+                msg = OBSOLETE_SETTINGS[name].help
+            else:
+                msg = f"{name} is not a valid option (--help-settings to see all)"
             self.fail(
-                f"{name} is not a valid option (--help-settings to see all)",
+                msg,
                 param,
                 ctx,
             )

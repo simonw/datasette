@@ -310,3 +310,10 @@ def test_help_settings():
     result = runner.invoke(cli, ["--help-settings"])
     for setting in SETTINGS:
         assert setting.name in result.output
+
+
+def test_help_error_on_hash_urls_setting():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--setting", "hash_urls", 1])
+    assert result.exit_code == 2
+    assert 'The hash_urls setting has been removed' in result.output

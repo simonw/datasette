@@ -272,7 +272,7 @@ class TableView(RowTableShared):
     name = "table"
 
     async def post(self, request):
-        db_name = tilde_decode(request.url_vars["db_name"])
+        db_name = tilde_decode(request.url_vars["database"])
         table = tilde_decode(request.url_vars["table"])
         # Handle POST to a canned query
         canned_query = await self.ds.get_canned_query(db_name, table, request.actor)
@@ -327,7 +327,7 @@ class TableView(RowTableShared):
         _next=None,
         _size=None,
     ):
-        database = tilde_decode(request.url_vars["db_name"])
+        database = tilde_decode(request.url_vars["database"])
         table = tilde_decode(request.url_vars["table"])
         try:
             db = self.ds.databases[database]
@@ -938,7 +938,7 @@ class RowView(RowTableShared):
     name = "row"
 
     async def data(self, request, default_labels=False):
-        database = tilde_decode(request.url_vars["db_name"])
+        database = tilde_decode(request.url_vars["database"])
         table = tilde_decode(request.url_vars["table"])
         await self.check_permissions(
             request,
@@ -948,7 +948,7 @@ class RowView(RowTableShared):
                 "view-instance",
             ],
         )
-        pk_values = urlsafe_components(request.url_vars["pk_path"])
+        pk_values = urlsafe_components(request.url_vars["pks"])
         db = self.ds.databases[database]
         sql, params, pks = await _sql_params_pks(db, table, pk_values)
         results = await db.execute(sql, params, truncate=True)

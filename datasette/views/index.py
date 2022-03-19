@@ -19,7 +19,7 @@ class IndexView(BaseView):
     name = "index"
 
     async def get(self, request):
-        as_format = request.url_vars["as_format"]
+        as_format = request.url_vars["format"]
         await self.check_permission(request, "view-instance")
         databases = []
         for name, db in self.ds.databases.items():

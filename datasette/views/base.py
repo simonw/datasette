@@ -381,7 +381,7 @@ class DataView(BaseView):
             return None
 
     async def get(self, request):
-        db_name = request.url_vars["db_name"]
+        db_name = request.url_vars["database"]
         database = tilde_decode(db_name)
         _format = self.get_format(request)
         data_kwargs = {}

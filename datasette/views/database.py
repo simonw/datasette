@@ -32,7 +32,7 @@ class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, default_labels=False, _size=None):
-        database = tilde_decode(request.url_vars["db_name"])
+        database = tilde_decode(request.url_vars["database"])
         await self.check_permissions(
             request,
             [
@@ -162,7 +162,7 @@ class DatabaseDownload(DataView):
     name = "database_download"
 
     async def get(self, request):
-        database = tilde_decode(request.url_vars["db_name"])
+        database = tilde_decode(request.url_vars["database"])
         await self.check_permissions(
             request,
             [
@@ -205,7 +205,7 @@ class QueryView(DataView):
         named_parameters=None,
         write=False,
     ):
-        database = tilde_decode(request.url_vars["db_name"])
+        database = tilde_decode(request.url_vars["database"])
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
             params.pop("sql")

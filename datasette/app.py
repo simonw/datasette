@@ -134,11 +134,6 @@ SETTINGS = (
         5,
         "Default HTTP cache TTL (used in Cache-Control: max-age= header)",
     ),
-    Setting(
-        "default_cache_ttl_hashed",
-        365 * 24 * 60 * 60,
-        "Default HTTP cache TTL for hashed URL pages",
-    ),
     Setting("cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"),
     Setting(
         "allow_csv_stream",
@@ -172,17 +167,11 @@ SETTINGS = (
     ),
     Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
+_HASH_URLS_REMOVED = "The hash_urls setting has been removed, try the datasette-hashed-urls plugin instead"
 OBSOLETE_SETTINGS = {
-    option.name: option
-    for option in (
-        Setting(
-            "hash_urls",
-            False,
-            "The hash_urls setting has been removed, try the datasette-hashed-urls plugin instead",
-        ),
-    )
+    "hash_urls": _HASH_URLS_REMOVED,
+    "default_cache_ttl_hashed": _HASH_URLS_REMOVED,
 }
-
 DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 
 FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"

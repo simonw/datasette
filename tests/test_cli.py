@@ -312,8 +312,9 @@ def test_help_settings():
         assert setting.name in result.output
 
 
-def test_help_error_on_hash_urls_setting():
+@pytest.mark.parametrize("setting", ("hash_urls", "default_cache_ttl_hashed"))
+def test_help_error_on_hash_urls_setting(setting):
     runner = CliRunner()
-    result = runner.invoke(cli, ["--setting", "hash_urls", 1])
+    result = runner.invoke(cli, ["--setting", setting, 1])
     assert result.exit_code == 2
-    assert 'The hash_urls setting has been removed' in result.output
+    assert "The hash_urls setting has been removed" in result.output

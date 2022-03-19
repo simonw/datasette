@@ -57,10 +57,10 @@ class Config(click.ParamType):
             return
         name, value = config.split(":", 1)
         if name not in DEFAULT_SETTINGS:
-            if name in OBSOLETE_SETTINGS:
-                msg = OBSOLETE_SETTINGS[name].help
-            else:
-                msg = f"{name} is not a valid option (--help-settings to see all)"
+            msg = (
+                OBSOLETE_SETTINGS.get(name)
+                or f"{name} is not a valid option (--help-settings to see all)"
+            )
             self.fail(
                 msg,
                 param,
@@ -94,10 +94,10 @@ class Setting(CompositeParamType):
     def convert(self, config, param, ctx):
         name, value = config
         if name not in DEFAULT_SETTINGS:
-            if name in OBSOLETE_SETTINGS:
-                msg = OBSOLETE_SETTINGS[name].help
-            else:
-                msg = f"{name} is not a valid option (--help-settings to see all)"
+            msg = (
+                OBSOLETE_SETTINGS.get(name)
+                or f"{name} is not a valid option (--help-settings to see all)"
+            )
             self.fail(
                 msg,
                 param,

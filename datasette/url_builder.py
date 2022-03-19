@@ -28,14 +28,7 @@ class Urls:
         return self.path("-/logout")
 
     def database(self, database, format=None):
-        db = self.ds.databases[database]
-        if self.ds.setting("hash_urls") and db.hash:
-            path = self.path(
-                f"{tilde_encode(database)}-{db.hash[:HASH_LENGTH]}", format=format
-            )
-        else:
-            path = self.path(tilde_encode(database), format=format)
-        return path
+        return self.path(tilde_encode(database), format=format)
 
     def table(self, database, table, format=None):
         path = f"{self.database(database)}/{tilde_encode(table)}"

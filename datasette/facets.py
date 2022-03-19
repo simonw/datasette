@@ -151,10 +151,10 @@ class ColumnFacet(Facet):
             if column in already_enabled:
                 continue
             suggested_facet_sql = """
-                select {column}, count(*) as n from (
+                select {column} as value, count(*) as n from (
                     {sql}
-                ) where {column} is not null
-                group by {column}
+                ) where value is not null
+                group by value
                 limit {limit}
             """.format(
                 column=escape_sqlite(column), sql=self.sql, limit=facet_size + 1

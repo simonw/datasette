@@ -532,6 +532,7 @@ def test_table_filter_json_arraycontains(app_client):
             '["tag1", "tag2"]',
             '[{"foo": "bar"}]',
             "one",
+            "n1",
         ],
         [
             2,
@@ -544,6 +545,7 @@ def test_table_filter_json_arraycontains(app_client):
             '["tag1", "tag3"]',
             "[]",
             "two",
+            "n2",
         ],
     ]
 
@@ -565,6 +567,7 @@ def test_table_filter_json_arraynotcontains(app_client):
             '["tag1", "tag2"]',
             '[{"foo": "bar"}]',
             "one",
+            "n1",
         ]
     ]
 
@@ -585,6 +588,7 @@ def test_table_filter_extra_where(app_client):
             '["tag1", "tag3"]',
             "[]",
             "two",
+            "n2",
         ]
     ] == response.json["rows"]
 
@@ -958,6 +962,7 @@ def test_expand_labels(app_client):
             "tags": '["tag1", "tag3"]',
             "complex_array": "[]",
             "distinct_some_null": "two",
+            "n": "n2",
         },
         "13": {
             "pk": 13,
@@ -970,6 +975,7 @@ def test_expand_labels(app_client):
             "tags": "[]",
             "complex_array": "[]",
             "distinct_some_null": None,
+            "n": None,
         },
     } == response.json
 
@@ -1161,6 +1167,7 @@ def test_generated_columns_are_visible_in_datasette():
                 "tags",
                 "complex_array",
                 "distinct_some_null",
+                "n",
             ],
         ),
         (
@@ -1188,6 +1195,7 @@ def test_generated_columns_are_visible_in_datasette():
                 "tags",
                 "complex_array",
                 "distinct_some_null",
+                "n",
             ],
         ),
         (

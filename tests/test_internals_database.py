@@ -86,6 +86,7 @@ async def test_table_exists(db, tables, exists):
                 "tags",
                 "complex_array",
                 "distinct_some_null",
+                "n",
             ],
         ),
         (
@@ -199,6 +200,15 @@ async def test_table_columns(db, table, expected):
                     cid=9,
                     name="distinct_some_null",
                     type="",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=10,
+                    name="n",
+                    type="text",
                     notnull=0,
                     default_value=None,
                     is_pk=0,

@@ -564,26 +564,27 @@ CREATE TABLE facetable (
     tags text,
     complex_array text,
     distinct_some_null,
+    n text,
     FOREIGN KEY ("_city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null)
+    (created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n)
 VALUES
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]', 'one'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]', 'two'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]', '[]', null),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]', '[]', null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]', '[]', null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]', '[]', null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]', '[]', null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]', '[]', null),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]', '[]', null),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]', '[]', null),
-    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]', '[]', null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]', '[]', null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]', '[]', null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]', '[]', null),
-    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]', '[]', null)
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]', 'one', 'n1'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]', 'two', 'n2'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]', '[]', null, null),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]', '[]', null, null),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]', '[]', null, null),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]', '[]', null, null),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]', '[]', null, null),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]', '[]', null, null),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]', '[]', null, null),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]', '[]', null, null),
+    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]', '[]', null, null),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]', '[]', null, null),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]', '[]', null, null),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]', '[]', null, null),
+    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]', '[]', null, null)
 ;
 
 CREATE TABLE binary_data (

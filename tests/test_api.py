@@ -210,6 +210,7 @@ def test_database_page(app_client):
                 "tags",
                 "complex_array",
                 "distinct_some_null",
+                "n",
             ],
             "primary_keys": ["pk"],
             "count": 15,

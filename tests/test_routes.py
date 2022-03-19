@@ -10,25 +10,34 @@ def routes():
 
 
 @pytest.mark.parametrize(
-    "path,expected",
+    "path,expected_class,expected_matches",
     (
-        ("/", "IndexView"),
-        ("/foo", "DatabaseView"),
-        ("/foo.csv", "DatabaseView"),
-        ("/foo.json", "DatabaseView"),
-        ("/foo.humbug", "DatabaseView"),
-        ("/foo/humbug", "TableView"),
-        ("/foo/humbug.json", "TableView"),
-        ("/foo/humbug.blah", "TableView"),
-        ("/foo/humbug/1", "RowView"),
-        ("/foo/humbug/1.json", "RowView"),
-        ("/-/metadata.json", "JsonDataView"),
-        ("/-/metadata", "JsonDataView"),
+        ("/", "IndexView", {"as_format": ""}),
+        ("/foo", "DatabaseView", {"as_format": None, "db_name": "foo"}),
+        ("/foo.csv", "DatabaseView", {"as_format": ".csv", "db_name": "foo"}),
+        ("/foo.json", "DatabaseView", {"as_format": ".json", "db_name": "foo"}),
+        ("/foo.humbug", "DatabaseView", {"as_format": None, "db_name": "foo.humbug"}),
+        ("/foo/humbug", "TableView", {"db_name": "foo", "table": "humbug"}),
+        ("/foo/humbug.json", "TableView", {"db_name": "foo", "table": "humbug"}),
+        ("/foo/humbug.blah", "TableView", {"db_name": "foo", "table": "humbug"}),
+        (
+            "/foo/humbug/1",
+            "RowView",
+            {"as_format": None, "db_name": "foo", "pk_path": "1", "table": "humbug"},
+        ),
+        (
+            "/foo/humbug/1.json",
+            "RowView",
+            {"as_format": ".json", "db_name": "foo", "pk_path": "1", "table": "humbug"},
+        ),
+        ("/-/metadata.json", "JsonDataView", {"as_format": ".json"}),
+        ("/-/metadata", "JsonDataView", {"as_format": ""}),
     ),
 )
-def test_routes(routes, path, expected):
+def test_routes(routes, path, expected_class, expected_matches):
     match, view = resolve_routes(routes, path)
-    if expected is None:
+    if expected_class is None:
         assert match is None
     else:
-        assert view.view_class.__name__ == expected
+        assert view.view_class.__name__ == expected_class
+        assert match.groupdict() == expected_matches

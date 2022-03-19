@@ -60,18 +60,22 @@ The :ref:`setting_default_cache_ttl` setting sets the default HTTP cache TTL for
 
 You can also change the cache timeout on a per-request basis using the ``?_ttl=10`` query string parameter. This can be useful when you are working with the Datasette JSON API - you may decide that a specific query can be cached for a longer time, or maybe you need to set ``?_ttl=0`` for some requests for example if you are running a SQL ``order by random()`` query.
 
-Hashed URL mode
----------------
+datasette-hashed-urls
+---------------------
 
-When you open a database file in immutable mode using the ``-i`` option, Datasette calculates a SHA-256 hash of the contents of that file on startup. This content hash can then optionally be used to create URLs that are guaranteed to change if the contents of the file changes in the future. This results in URLs that can then be cached indefinitely by both browsers and caching proxies - an enormous potential performance optimization.
+If you open a database file in immutable mode using the ``-i`` option, you can be assured that the content of that database will not change for the lifetime of the Datasette server.
 
-You can enable these hashed URLs in two ways: using the :ref:`setting_hash_urls` configuration setting (which affects all requests to Datasette) or via the ``?_hash=1`` query string parameter (which only applies to the current request).
+The `datasette-hashed-urls plugin <https://datasette.io/plugins/datasette-hashed-urls>`__ implements an optimization where your database is served with part of the SHA-256 hash of the database contents baked into the URL.
 
-With hashed URLs enabled, any request to e.g. ``/mydatabase/mytable`` will 302 redirect to ``mydatabase-455fe3a/mytable``. The URL containing the hash will be served with a very long cache expire header - configured using :ref:`setting_default_cache_ttl_hashed` which defaults to 365 days.
+A database at ``/fixtures`` will instead be served at ``/fixtures-aa7318b``, and a year-long cache expiry header will be returned with those pages.
 
-Since these responses are cached for a long time, you may wish to build API clients against the non-hashed version of these URLs. These 302 redirects are served extremely quickly, so this should still be a performant way to work against the Datasette API.
+This will then be cached by both browsers and caching proxies such as Cloudflare or Fastly, providing a potentially significant performance boost.
 
-If you run Datasette behind an `HTTP/2 server push <https://en.wikipedia.org/wiki/HTTP/2_Server_Push>`__ aware proxy such as Cloudflare Datasette will serve the 302 redirects in such a way that the redirected page will be efficiently "pushed" to the browser as part of the response, without the browser needing to make a second HTTP request to fetch the redirected resource.
+To install the plugin, run the following::
+
+    datasette install datasette-hashed-urls
 
 .. note::
+    Prior to Datasette 0.61 hashed URL mode was a core Datasette feature, enabled using the ``hash_urls`` setting. This implementation has now been removed in favor of the ``datasette-hashed-urls`` plugin.
+
     Prior to Datasette 0.28 hashed URL mode was the default behaviour for Datasette, since all database files were assumed to be immutable and unchanging. From 0.28 onwards the default has been to treat database files as mutable unless explicitly configured otherwise.

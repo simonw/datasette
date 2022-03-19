@@ -142,8 +142,6 @@ datasette serve --help-settings
                                    (default=200)
       facet_suggest_time_limit_ms  Time limit for calculating a suggested facet
                                    (default=50)
-      hash_urls                    Include DB file contents hash in URLs, for far-
-                                   future caching (default=False)
       allow_facet                  Allow users to specify columns to facet using
                                    ?_facet= parameter (default=True)
       allow_download               Allow users to download the original SQLite
@@ -152,8 +150,6 @@ datasette serve --help-settings
                                    (default=True)
       default_cache_ttl            Default HTTP cache TTL (used in Cache-Control:
                                    max-age= header) (default=5)
-      default_cache_ttl_hashed     Default HTTP cache TTL for hashed URL pages
-                                   (default=31536000)
       cache_size_kb                SQLite cache size in KB (0 == use SQLite default)
                                    (default=0)
       allow_csv_stream             Allow .csv?_stream=1 to download all rows

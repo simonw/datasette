@@ -1178,3 +1178,11 @@ def tilde_decode(s: str) -> str:
     s = s.replace("%", temp)
     decoded = urllib.parse.unquote(s.replace("~", "%"))
     return decoded.replace(temp, "%")
+
+
+def resolve_routes(routes, path):
+    for regex, view in routes:
+        match = regex.match(path)
+        if match is not None:
+            return match, view
+    return None, None

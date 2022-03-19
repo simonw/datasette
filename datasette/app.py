@@ -60,6 +60,7 @@ from .utils import (
     module_from_path,
     parse_metadata,
     resolve_env_secrets,
+    resolve_routes,
     to_css_class,
 )
 from .utils.asgi import (
@@ -974,8 +975,7 @@ class Datasette:
             output.append(script)
         return output
 
-    def app(self):
-        """Returns an ASGI app function that serves the whole of Datasette"""
+    def _routes(self):
         routes = []
 
         for routes_to_add in pm.hook.register_routes(datasette=self):
@@ -1099,6 +1099,15 @@ class Datasette:
             + renderer_regex
             + r")?$",
         )
+        return [
+            # Compile any strings to regular expressions
+            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
+            for pattern, view in routes
+        ]
+
+    def app(self):
+        """Returns an ASGI app function that serves the whole of Datasette"""
+        routes = self._routes()
         self._register_custom_units()
 
         async def setup_db():
@@ -1129,12 +1138,7 @@ class Datasette:
 class DatasetteRouter:
     def __init__(self, datasette, routes):
         self.ds = datasette
-        routes = routes or []
-        self.routes = [
-            # Compile any strings to regular expressions
-            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
-            for pattern, view in routes
-        ]
+        self.routes = routes or []
         # Build a list of pages/blah/{name}.html matching expressions
         pattern_templates = [
             filepath
@@ -1187,22 +1191,24 @@ class DatasetteRouter:
                 break
         scope_modifications["actor"] = actor or default_actor
         scope = dict(scope, **scope_modifications)
-        for regex, view in self.routes:
-            match = regex.match(path)
-            if match is not None:
-                new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
-                request.scope = new_scope
-                try:
-                    response = await view(request, send)
-                    if response:
-                        self.ds._write_messages_to_response(request, response)
-                        await response.asgi_send(send)
-                    return
-                except NotFound as exception:
-                    return await self.handle_404(request, send, exception)
-                except Exception as exception:
-                    return await self.handle_500(request, send, exception)
-        return await self.handle_404(request, send)
+
+        match, view = resolve_routes(self.routes, path)
+
+        if match is None:
+            return await self.handle_404(request, send)
+
+        new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
+        request.scope = new_scope
+        try:
+            response = await view(request, send)
+            if response:
+                self.ds._write_messages_to_response(request, response)
+                await response.asgi_send(send)
+            return
+        except NotFound as exception:
+            return await self.handle_404(request, send, exception)
+        except Exception as exception:
+            return await self.handle_500(request, send, exception)
 
     async def handle_404(self, request, send, exception=None):
         # If path contains % encoding, redirect to tilde encoding

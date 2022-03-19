@@ -1097,7 +1097,7 @@ class Datasette:
         )
         add_route(
             TableView.as_view(self),
-            r"/(?P<db_name>[^/]+)/(?P<table_and_format>[^/]+?$)",
+            r"/(?P<db_name>[^/]+)/(?P<table>[^\/\.]+)(\.[a-zA-Z0-9_]+)?$",
         )
         add_route(
             RowView.as_view(self),

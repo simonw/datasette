@@ -271,20 +271,18 @@ class RowTableShared(DataView):
 class TableView(RowTableShared):
     name = "table"
 
-    async def post(self, request, db_name, table_and_format):
+    async def post(self, request):
+        db_name = tilde_decode(request.url_vars["db_name"])
+        table = tilde_decode(request.url_vars["table"])
         # Handle POST to a canned query
-        canned_query = await self.ds.get_canned_query(
-            db_name, table_and_format, request.actor
-        )
+        canned_query = await self.ds.get_canned_query(db_name, table, request.actor)
         assert canned_query, "You may only POST to a canned query"
         return await QueryView(self.ds).data(
             request,
-            db_name,
-            None,
             canned_query["sql"],
             metadata=canned_query,
             editable=False,
-            canned_query=table_and_format,
+            canned_query=table,
             named_parameters=canned_query.get("params"),
             write=bool(canned_query.get("write")),
         )
@@ -325,20 +323,22 @@ class TableView(RowTableShared):
     async def data(
         self,
         request,
-        database,
-        hash,
-        table,
         default_labels=False,
         _next=None,
         _size=None,
     ):
+        database = tilde_decode(request.url_vars["db_name"])
+        table = tilde_decode(request.url_vars["table"])
+        try:
+            db = self.ds.databases[database]
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database))
+
         # If this is a canned query, not a table, then dispatch to QueryView instead
         canned_query = await self.ds.get_canned_query(database, table, request.actor)
         if canned_query:
             return await QueryView(self.ds).data(
                 request,
-                database,
-                hash,
                 canned_query["sql"],
                 metadata=canned_query,
                 editable=False,
@@ -347,9 +347,6 @@ class TableView(RowTableShared):
                 write=bool(canned_query.get("write")),
             )
 
-        table = tilde_decode(table)
-
-        db = self.ds.databases[database]
         is_view = bool(await db.get_view_definition(table))
         table_exists = bool(await db.table_exists(table))
 
@@ -940,8 +937,9 @@ async def _sql_params_pks(db, table, pk_values):
 class RowView(RowTableShared):
     name = "row"
 
-    async def data(self, request, database, hash, table, pk_path, default_labels=False):
-        table = tilde_decode(table)
+    async def data(self, request, default_labels=False):
+        database = tilde_decode(request.url_vars["db_name"])
+        table = tilde_decode(request.url_vars["table"])
         await self.check_permissions(
             request,
             [
@@ -950,7 +948,7 @@ class RowView(RowTableShared):
                 "view-instance",
             ],
         )
-        pk_values = urlsafe_components(pk_path)
+        pk_values = urlsafe_components(request.url_vars["pk_path"])
         db = self.ds.databases[database]
         sql, params, pks = await _sql_params_pks(db, table, pk_values)
         results = await db.execute(sql, params, truncate=True)

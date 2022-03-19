@@ -14,7 +14,8 @@ class JsonDataView(BaseView):
         self.data_callback = data_callback
         self.needs_request = needs_request
 
-    async def get(self, request, as_format):
+    async def get(self, request):
+        as_format = request.url_vars["as_format"]
         await self.check_permission(request, "view-instance")
         if self.needs_request:
             data = self.data_callback(request)

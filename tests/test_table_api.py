@@ -2,7 +2,6 @@ from datasette.utils import detect_json1
 from datasette.utils.sqlite import sqlite_version
 from .fixtures import (  # noqa
     app_client,
-    app_client_with_hash,
     app_client_with_trace,
     app_client_returned_rows_matches_page_size,
     generate_compound_rows,
@@ -39,13 +38,6 @@ def test_table_not_exists_json(app_client):
         "status": 404,
         "title": None,
     } == app_client.get("/fixtures/blah.json").json
-
-
-def test_jsono_redirects_to_shape_objects(app_client_with_hash):
-    response_1 = app_client_with_hash.get("/fixtures/simple_primary_key.jsono")
-    response = app_client_with_hash.get(response_1.headers["Location"])
-    assert response.status == 302
-    assert response.headers["Location"].endswith("?_shape=objects")
 
 
 def test_table_shape_arrays(app_client):

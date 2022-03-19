@@ -584,9 +584,9 @@ def test_table_html_foreign_key_links(app_client):
     assert actual == [
         [
             '<td class="col-pk type-pk"><a href="/fixtures/foreign_key_references/1">1</a></td>',
-            '<td class="col-foreign_key_with_label type-str">1</td>',
-            '<td class="col-foreign_key_with_blank_label type-str">3</td>',
-            '<td class="col-foreign_key_with_no_label type-str">1</td>',
+            '<td class="col-foreign_key_with_label type-str"><a href="/fixtures/simple_primary_key/1">hello</a>\xa0<em>1</em></td>',
+            '<td class="col-foreign_key_with_blank_label type-str"><a href="/fixtures/simple_primary_key/3">-</a>\xa0<em>3</em></td>',
+            '<td class="col-foreign_key_with_no_label type-str"><a href="/fixtures/primary_key_multiple_columns/1">1</a></td>',
             '<td class="col-foreign_key_compound_pk1 type-str">a</td>',
             '<td class="col-foreign_key_compound_pk2 type-str">b</td>',
         ],

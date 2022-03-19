@@ -372,57 +372,33 @@ class DataView(BaseView):
 
         return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
-    async def get_format(self, request, database, args):
-        """Determine the format of the response from the request, from URL
-        parameters or from a file extension.
-
-        `args` is a dict of the path components parsed from the URL by the router.
-        """
-        # If ?_format= is provided, use that as the format
-        _format = request.args.get("_format", None)
-        if not _format:
-            _format = (args.pop("as_format", None) or "").lstrip(".")
+    def get_format(self, request):
+        # Format is the bit from the path following the ., if one exists
+        last_path_component = request.path.split("/")[-1]
+        if "." in last_path_component:
+            return last_path_component.split(".")[-1]
         else:
-            args.pop("as_format", None)
-        if "table_and_format" in args:
-            try:
-                db = self.ds.databases[database]
-            except KeyError:
-                raise NotFound("Database not found: {}".format(database))
-
-            async def async_table_exists(t):
-                return await db.table_exists(t)
-
-            table, _ext_format = await resolve_table_and_format(
-                table_and_format=tilde_decode(args["table_and_format"]),
-                table_exists=async_table_exists,
-                allowed_formats=self.ds.renderers.keys(),
-            )
-            _format = _format or _ext_format
-            args["table"] = table
-            del args["table_and_format"]
-        elif "table" in args:
-            args["table"] = tilde_decode(args["table"])
-        return _format, args
+            return None
 
     async def get(self, request):
         db_name = request.url_vars["db_name"]
         database = tilde_decode(db_name)
-        _format, kwargs = await self.get_format(request, database, request.url_vars)
+        _format = self.get_format(request)
+        data_kwargs = {}
 
         if _format == "csv":
             return await self.as_csv(request, database)
 
         if _format is None:
             # HTML views default to expanding all foreign key labels
-            kwargs["default_labels"] = True
+            data_kwargs["default_labels"] = True
 
         extra_template_data = {}
         start = time.perf_counter()
         status_code = None
         templates = []
         try:
-            response_or_template_contexts = await self.data(request)
+            response_or_template_contexts = await self.data(request, **data_kwargs)
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
             # If it has four items, it includes an HTTP status code

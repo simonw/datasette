@@ -273,18 +273,16 @@ class TableView(RowTableShared):
 
     async def post(self, request):
         db_name = tilde_decode(request.url_vars["db_name"])
-        table_and_format = tilde_decode(request.url_vars["table_and_format"])
+        table = tilde_decode(request.url_vars["table"])
         # Handle POST to a canned query
-        canned_query = await self.ds.get_canned_query(
-            db_name, table_and_format, request.actor
-        )
+        canned_query = await self.ds.get_canned_query(db_name, table, request.actor)
         assert canned_query, "You may only POST to a canned query"
         return await QueryView(self.ds).data(
             request,
             canned_query["sql"],
             metadata=canned_query,
             editable=False,
-            canned_query=table_and_format,
+            canned_query=table,
             named_parameters=canned_query.get("params"),
             write=bool(canned_query.get("write")),
         )
@@ -331,6 +329,11 @@ class TableView(RowTableShared):
     ):
         database = tilde_decode(request.url_vars["db_name"])
         table = tilde_decode(request.url_vars["table"])
+        try:
+            db = self.ds.databases[database]
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database))
+
         # If this is a canned query, not a table, then dispatch to QueryView instead
         canned_query = await self.ds.get_canned_query(database, table, request.actor)
         if canned_query:
@@ -344,7 +347,6 @@ class TableView(RowTableShared):
                 write=bool(canned_query.get("write")),
             )
 
-        db = self.ds.databases[database]
         is_view = bool(await db.get_view_definition(table))
         table_exists = bool(await db.table_exists(table))
 

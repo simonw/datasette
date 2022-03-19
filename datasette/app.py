@@ -985,10 +985,7 @@ class Datasette:
         def add_route(view, regex):
             routes.append((regex, view))
 
-        # Generate a regex snippet to match all registered renderer file extensions
-        renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
-
-        add_route(IndexView.as_view(self), r"/(?P<format>(\.jsono?)?$)")
+        add_route(IndexView.as_view(self), r"/(\.(?P<format>jsono?))?$")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         add_route(favicon, "/favicon.ico")
 
@@ -1020,21 +1017,21 @@ class Datasette:
         )
         add_route(
             JsonDataView.as_view(self, "metadata.json", lambda: self.metadata()),
-            r"/-/metadata(?P<format>(\.json)?)$",
+            r"/-/metadata(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "versions.json", self._versions),
-            r"/-/versions(?P<format>(\.json)?)$",
+            r"/-/versions(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(
                 self, "plugins.json", self._plugins, needs_request=True
             ),
-            r"/-/plugins(?P<format>(\.json)?)$",
+            r"/-/plugins(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "settings.json", lambda: self._settings),
-            r"/-/settings(?P<format>(\.json)?)$",
+            r"/-/settings(\.(?P<format>json))?$",
         )
         add_route(
             permanent_redirect("/-/settings.json"),
@@ -1046,15 +1043,15 @@ class Datasette:
         )
         add_route(
             JsonDataView.as_view(self, "threads.json", self._threads),
-            r"/-/threads(?P<format>(\.json)?)$",
+            r"/-/threads(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "databases.json", self._connected_databases),
-            r"/-/databases(?P<format>(\.json)?)$",
+            r"/-/databases(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "actor.json", self._actor, needs_request=True),
-            r"/-/actor(?P<format>(\.json)?)$",
+            r"/-/actor(\.(?P<format>json))?$",
         )
         add_route(
             AuthTokenView.as_view(self),
@@ -1080,20 +1077,17 @@ class Datasette:
             PatternPortfolioView.as_view(self),
             r"/-/patterns$",
         )
-        add_route(DatabaseDownload.as_view(self), r"/(?P<database>[^/]+?)\.db$")
+        add_route(DatabaseDownload.as_view(self), r"/(?P<database>[^\/\.]+)\.db$")
         add_route(
-            DatabaseView.as_view(self),
-            r"/(?P<database>[^/]+?)(?P<format>" + renderer_regex + r"|.jsono|\.csv)?$",
+            DatabaseView.as_view(self), r"/(?P<database>[^\/\.]+)(\.(?P<format>\w+))?$"
         )
         add_route(
             TableView.as_view(self),
-            r"/(?P<database>[^/]+)/(?P<table>[^\/\.]+)(\.[a-zA-Z0-9_]+)?$",
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
         add_route(
             RowView.as_view(self),
-            r"/(?P<database>[^/]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)(?P<format>"
-            + renderer_regex
-            + r")?$",
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)(\.(?P<format>\w+))?$",
         )
         return [
             # Compile any strings to regular expressions

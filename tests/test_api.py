@@ -629,8 +629,8 @@ def test_old_memory_urls_redirect(app_client_no_files, path, expected_redirect):
 
 
 def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
-    response = app_client_with_dot.get("/fixtures.dot.json")
-    assert 200 == response.status
+    response = app_client_with_dot.get("/fixtures~2Edot.json")
+    assert response.status == 200
 
 
 def test_custom_sql(app_client):

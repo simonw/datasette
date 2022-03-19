@@ -12,14 +12,26 @@ def routes():
 @pytest.mark.parametrize(
     "path,expected_class,expected_matches",
     (
-        ("/", "IndexView", {"format": ""}),
+        ("/", "IndexView", {"format": None}),
         ("/foo", "DatabaseView", {"format": None, "database": "foo"}),
-        ("/foo.csv", "DatabaseView", {"format": ".csv", "database": "foo"}),
-        ("/foo.json", "DatabaseView", {"format": ".json", "database": "foo"}),
-        ("/foo.humbug", "DatabaseView", {"format": None, "database": "foo.humbug"}),
-        ("/foo/humbug", "TableView", {"database": "foo", "table": "humbug"}),
-        ("/foo/humbug.json", "TableView", {"database": "foo", "table": "humbug"}),
-        ("/foo/humbug.blah", "TableView", {"database": "foo", "table": "humbug"}),
+        ("/foo.csv", "DatabaseView", {"format": "csv", "database": "foo"}),
+        ("/foo.json", "DatabaseView", {"format": "json", "database": "foo"}),
+        ("/foo.humbug", "DatabaseView", {"format": "humbug", "database": "foo"}),
+        (
+            "/foo/humbug",
+            "TableView",
+            {"database": "foo", "table": "humbug", "format": None},
+        ),
+        (
+            "/foo/humbug.json",
+            "TableView",
+            {"database": "foo", "table": "humbug", "format": "json"},
+        ),
+        (
+            "/foo/humbug.blah",
+            "TableView",
+            {"database": "foo", "table": "humbug", "format": "blah"},
+        ),
         (
             "/foo/humbug/1",
             "RowView",
@@ -28,10 +40,10 @@ def routes():
         (
             "/foo/humbug/1.json",
             "RowView",
-            {"format": ".json", "database": "foo", "pks": "1", "table": "humbug"},
+            {"format": "json", "database": "foo", "pks": "1", "table": "humbug"},
         ),
-        ("/-/metadata.json", "JsonDataView", {"format": ".json"}),
-        ("/-/metadata", "JsonDataView", {"format": ""}),
+        ("/-/metadata.json", "JsonDataView", {"format": "json"}),
+        ("/-/metadata", "JsonDataView", {"format": None}),
     ),
 )
 def test_routes(routes, path, expected_class, expected_matches):

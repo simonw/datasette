@@ -28,6 +28,7 @@ Changelog
 - Documentation now links to the `Datasette Tutorials <https://datasette.io/tutorials>`__.
 - Datasette will now also look for SpatiaLite in ``/opt/homebrew`` - thanks, Dan Peterson. (`#1649 <https://github.com/simonw/datasette/pull/1649>`__)
 - Datasette is now covered by a `Code of Conduct <https://github.com/simonw/datasette/blob/main/CODE_OF_CONDUCT.md>`__. (:issue:`1654`)
+- Fixed error caused when a table had a column named ``n``. (:issue:`1228`)
 
 .. _v0_60_2:
 

@@ -10,7 +10,7 @@ Changelog
 -------------------
 
 - Removed hashed URL mode from Datasette. The new ``datasette-hashed-urls`` plugin can be used to achieve the same result, see :ref:`performance_hashed_urls` for details. (:issue:`1661`)
-- Databases can now have a custom path within the Datasette instance that is indpendent of the database name, using the ``db.route`` property. (:issue:`1668`)
+- Databases can now have a custom path within the Datasette instance that is independent of the database name, using the ``db.route`` property. (:issue:`1668`)
 - URLs within Datasette now use a different encoding scheme for tables or databases that include "special" characters outside of the range of ``a-zA-Z0-9_-``. This scheme is explained here: :ref:`internals_tilde_encoding`. (:issue:`1657`)
 - Table and row HTML pages now include a ``<link rel="alternate" type="application/json+datasette" href="...">`` element and return a ``Link: URL; rel="alternate"; type="application/json+datasette"`` HTTP header pointing to the JSON version of those pages. (:issue:`1533`)
 - ``Access-Control-Expose-Headers: Link`` is now added to the CORS headers, allowing remote JavaScript to access that header.

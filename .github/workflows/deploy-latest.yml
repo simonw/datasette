@@ -42,6 +42,17 @@ jobs:
         sphinx-build -b xml . _build
         sphinx-to-sqlite ../docs.db _build
         cd ..
+    - name: Set up the alternate-route demo
+      run: |
+        echo '
+        from datasette import hookimpl
+
+        @hookimpl
+        def startup(datasette):
+            db = datasette.get_database("fixtures2")
+            db.route = "alternative-route"
+        ' > plugins/alternative_route.py
+        cp fixtures.db fixtures2.db
     - name: Set up Cloud Run
       uses: google-github-actions/setup-gcloud@master
       with:
@@ -54,7 +65,7 @@ jobs:
         gcloud config set project datasette-222320
         export SUFFIX="-${GITHUB_REF#refs/heads/}"
         export SUFFIX=${SUFFIX#-main}
-        datasette publish cloudrun fixtures.db extra_database.db \
+        datasette publish cloudrun fixtures.db fixtures2.db extra_database.db \
             -m fixtures.json \
             --plugins-dir=plugins \
             --branch=$GITHUB_SHA \

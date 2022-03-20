@@ -60,6 +60,8 @@ The :ref:`setting_default_cache_ttl` setting sets the default HTTP cache TTL for
 
 You can also change the cache timeout on a per-request basis using the ``?_ttl=10`` query string parameter. This can be useful when you are working with the Datasette JSON API - you may decide that a specific query can be cached for a longer time, or maybe you need to set ``?_ttl=0`` for some requests for example if you are running a SQL ``order by random()`` query.
 
+.. _performance_hashed_urls:
+
 datasette-hashed-urls
 ---------------------
 

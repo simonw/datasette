@@ -4,14 +4,39 @@
 Changelog
 =========
 
-.. _v0_60.2:
+.. _v0_61_a0:
+
+0.61a0 (2022-03-19)
+-------------------
+
+- Removed hashed URL mode from Datasette. The new ``datasette-hashed-urls`` plugin can be used to achieve the same result, see :ref:`performance_hashed_urls` for details. (:issue:`1661`)
+- Databases can now have a custom path within the Datasette instance that is indpendent of the database name, using the ``db.route`` property. (:issue:`1668`)
+- URLs within Datasette now use a different encoding scheme for tables or databases that include "special" characters outside of the range of ``a-zA-Z0-9_-``. This scheme is explained here: :ref:`internals_tilde_encoding`. (:issue:`1657`)
+- Table and row HTML pages now include a ``<link rel="alternate" type="application/json+datasette" href="...">`` element and return a ``Link: URL; rel="alternate"; type="application/json+datasette"`` HTTP header pointing to the JSON version of those pages. (:issue:`1533`)
+- ``Access-Control-Expose-Headers: Link`` is now added to the CORS headers, allowing remote JavaScript to access that header.
+- Canned queries are now shown at the top of the database page, directly below the SQL editor. Previously they were shown at the bottom, below the list of tables. (:issue:`1612`)
+- Datasette now has a default favicon. (:issue:`1603`)
+- ``sqlite_stat`` tables are now hidden by default. (:issue:`1587`)
+- SpatiaLite tables ``data_licenses``, ``KNN`` and ``KNN2`` are now hidden by default. (:issue:`1601`)
+- Python 3.6 is no longer supported. (:issue:`1577`)
+- Tests now run against Python 3.11-dev. (:issue:`1621`)
+- Fixed bug where :ref:`custom pages <custom_pages>` did not work on Windows. Thanks, Robert Christie. (:issue:`1545`)
+- SQL query tracing mechanism now works for queries executed in ``asyncio`` sub-tasks, such as those created by ``asyncio.gather()``. (:issue:`1576`)
+- :ref:`internals_tracer` mechanism is now documented.
+- Common Datasette symbols can now be imported directly from the top-level ``datasette`` package, see :ref:`internals_shortcuts`. Those symbols are ``Response``, ``Forbidden``, ``NotFound``, ``hookimpl``, ``actor_matches_allow``. (:issue:`957`)
+- ``/-/versions`` page now returns additional details for libraries used by SpatiaLite. (:issue:`1607`)
+- Documentation now links to the `Datasette Tutorials <https://datasette.io/tutorials>`__.
+- Datasette will now also look for SpatiaLite in ``/opt/homebrew`` - thanks, Dan Peterson. (`#1649 <https://github.com/simonw/datasette/pull/1649>`__)
+- Datasette is now covered by a `Code of Conduct <https://github.com/simonw/datasette/blob/main/CODE_OF_CONDUCT.md>`__. (:issue:`1654`)
+
+.. _v0_60_2:
 
 0.60.2 (2022-02-07)
 -------------------
 
 - Fixed a bug where Datasette would open the same file twice with two different database names if you ran ``datasette file.db file.db``. (:issue:`1632`)
 
-.. _v0_60.1:
+.. _v0_60_1:
 
 0.60.1 (2022-01-20)
 -------------------

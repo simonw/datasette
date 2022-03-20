@@ -141,10 +141,9 @@ class RowTableShared(DataView):
                         "is_special_link_column": is_special_link_column,
                         "raw": pk_path,
                         "value": markupsafe.Markup(
-                            '<a href="{base_url}{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
+                            '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
                                 base_url=base_url,
-                                database=database,
-                                table=tilde_encode(table),
+                                table_path=self.ds.urls.table(database, table),
                                 flat_pks=str(markupsafe.escape(pk_path)),
                                 flat_pks_quoted=path_from_row_pks(row, pks, not pks),
                             )

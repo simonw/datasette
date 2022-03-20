@@ -61,7 +61,7 @@ async def ds_with_route():
     ds = Datasette()
     ds.remove_database("_memory")
     db = Database(ds, is_memory=True, memory_name="route-name-db")
-    ds.add_database(db, name="name", route="route-name")
+    ds.add_database(db, name="original-name", route="custom-route-name")
     await db.execute_write_script(
         """
         create table if not exists t (id integer primary key);
@@ -75,8 +75,8 @@ async def ds_with_route():
 async def test_db_with_route_databases(ds_with_route):
     response = await ds_with_route.client.get("/-/databases.json")
     assert response.json()[0] == {
-        "name": "name",
-        "route": "route-name",
+        "name": "original-name",
+        "route": "custom-route-name",
         "path": None,
         "size": 0,
         "is_mutable": True,
@@ -90,12 +90,12 @@ async def test_db_with_route_databases(ds_with_route):
     "path,expected_status",
     (
         ("/", 200),
-        ("/name", 404),
-        ("/name/t", 404),
-        ("/name/t/1", 404),
-        ("/route-name", 200),
-        ("/route-name/t", 200),
-        ("/route-name/t/1", 200),
+        ("/original-name", 404),
+        ("/original-name/t", 404),
+        ("/original-name/t/1", 404),
+        ("/custom-route-name", 200),
+        ("/custom-route-name/t", 200),
+        ("/custom-route-name/t/1", 200),
     ),
 )
 async def test_db_with_route_that_does_not_match_name(
@@ -103,3 +103,7 @@ async def test_db_with_route_that_does_not_match_name(
 ):
     response = await ds_with_route.client.get(path)
     assert response.status_code == expected_status
+    # There should be links to custom-route-name but none to original-name
+    if response.status_code == 200:
+        assert "/custom-route-name" in response.text
+        assert "/original-name" not in response.text

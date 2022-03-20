@@ -28,7 +28,8 @@ class Urls:
         return self.path("-/logout")
 
     def database(self, database, format=None):
-        return self.path(tilde_encode(database), format=format)
+        db = self.ds.get_database(database)
+        return self.path(tilde_encode(db.route), format=format)
 
     def table(self, database, table, format=None):
         path = f"{self.database(database)}/{tilde_encode(table)}"

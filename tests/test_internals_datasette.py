@@ -55,6 +55,7 @@ async def test_datasette_constructor():
     assert databases == [
         {
             "name": "_memory",
+            "route": "_memory",
             "path": None,
             "size": 0,
             "is_mutable": False,

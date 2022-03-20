@@ -1,6 +1,7 @@
-from datasette.app import Datasette
+from datasette.app import Datasette, Database
 from datasette.utils import resolve_routes
 import pytest
+import pytest_asyncio
 
 
 @pytest.fixture(scope="session")
@@ -53,3 +54,52 @@ def test_routes(routes, path, expected_class, expected_matches):
     else:
         assert view.view_class.__name__ == expected_class
         assert match.groupdict() == expected_matches
+
+
+@pytest_asyncio.fixture
+async def ds_with_route():
+    ds = Datasette()
+    ds.remove_database("_memory")
+    db = Database(ds, is_memory=True, memory_name="route-name-db")
+    ds.add_database(db, name="name", route="route-name")
+    await db.execute_write_script(
+        """
+        create table if not exists t (id integer primary key);
+        insert or replace into t (id) values (1);
+    """
+    )
+    return ds
+
+
+@pytest.mark.asyncio
+async def test_db_with_route_databases(ds_with_route):
+    response = await ds_with_route.client.get("/-/databases.json")
+    assert response.json()[0] == {
+        "name": "name",
+        "route": "route-name",
+        "path": None,
+        "size": 0,
+        "is_mutable": True,
+        "is_memory": True,
+        "hash": None,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_status",
+    (
+        ("/", 200),
+        ("/name", 404),
+        ("/name/t", 404),
+        ("/name/t/1", 404),
+        ("/route-name", 200),
+        ("/route-name/t", 200),
+        ("/route-name/t/1", 200),
+    ),
+)
+async def test_db_with_route_that_does_not_match_name(
+    ds_with_route, path, expected_status
+):
+    response = await ds_with_route.client.get(path)
+    assert response.status_code == expected_status

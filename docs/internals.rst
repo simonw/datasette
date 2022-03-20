@@ -307,14 +307,17 @@ Returns the specified database object. Raises a ``KeyError`` if the database doe
 
 .. _datasette_add_database:
 
-.add_database(db, name=None)
-----------------------------
+.add_database(db, name=None, route=None)
+----------------------------------------
 
 ``db`` - datasette.database.Database instance
     The database to be attached.
 
 ``name`` - string, optional
-    The name to be used for this database - this will be used in the URL path, e.g. ``/dbname``. If not specified Datasette will pick one based on the filename or memory name.
+    The name to be used for this database . If not specified Datasette will pick one based on the filename or memory name.
+
+``route`` - string, optional
+    This will be used in the URL path. If not specified, it will default to the same thing as the ``name``.
 
 The ``datasette.add_database(db)`` method lets you add a new database to the current Datasette instance.
 
@@ -371,7 +374,7 @@ Using either of these pattern will result in the in-memory database being served
 ``name`` - string
     The name of the database to be removed.
 
-This removes a database that has been previously added. ``name=`` is the unique name of that database, used in its URL path.
+This removes a database that has been previously added. ``name=`` is the unique name of that database.
 
 .. _datasette_sign:
 

@@ -32,7 +32,13 @@ class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, default_labels=False, _size=None):
-        database = tilde_decode(request.url_vars["database"])
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database_route))
+        database = db.name
+
         await self.check_permissions(
             request,
             [
@@ -49,11 +55,6 @@ class DatabaseView(DataView):
             return await QueryView(self.ds).data(
                 request, sql, _size=_size, metadata=metadata
             )
-
-        try:
-            db = self.ds.databases[database]
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database))
 
         table_counts = await db.table_counts(5)
         hidden_table_names = set(await db.hidden_table_names())
@@ -171,9 +172,10 @@ class DatabaseDownload(DataView):
                 "view-instance",
             ],
         )
-        if database not in self.ds.databases:
+        try:
+            db = self.ds.get_database(route=database)
+        except KeyError:
             raise DatasetteError("Invalid database", status=404)
-        db = self.ds.databases[database]
         if db.is_memory:
             raise DatasetteError("Cannot download in-memory databases", status=404)
         if not self.ds.setting("allow_download") or db.is_mutable:

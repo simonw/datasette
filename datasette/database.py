@@ -31,6 +31,7 @@ class Database:
         self, ds, path=None, is_mutable=False, is_memory=False, memory_name=None
     ):
         self.name = None
+        self.route = None
         self.ds = ds
         self.path = path
         self.is_mutable = is_mutable

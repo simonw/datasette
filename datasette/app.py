@@ -388,13 +388,18 @@ class Datasette:
     def unsign(self, signed, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).loads(signed)
 
-    def get_database(self, name=None):
+    def get_database(self, name=None, route=None):
+        if route is not None:
+            matches = [db for db in self.databases.values() if db.route == route]
+            if not matches:
+                raise KeyError
+            return matches[0]
         if name is None:
-            # Return first no-_schemas database
+            # Return first database that isn't "_internal"
             name = [key for key in self.databases.keys() if key != "_internal"][0]
         return self.databases[name]
 
-    def add_database(self, db, name=None):
+    def add_database(self, db, name=None, route=None):
         new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
@@ -407,6 +412,7 @@ class Datasette:
             name = "{}_{}".format(suggestion, i)
             i += 1
         db.name = name
+        db.route = route or name
         new_databases[name] = db
         # don't mutate! that causes race conditions with live import
         self.databases = new_databases
@@ -693,6 +699,7 @@ class Datasette:
         return [
             {
                 "name": d.name,
+                "route": d.route,
                 "path": d.path,
                 "size": d.size,
                 "is_mutable": d.is_mutable,

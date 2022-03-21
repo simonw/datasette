@@ -639,6 +639,7 @@ class Datasette:
 
         Raises datasette.Forbidden() if any of the checks fail
         """
+        assert actor is None or isinstance(actor, dict)
         for permission in permissions:
             if isinstance(permission, str):
                 action = permission

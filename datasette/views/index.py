@@ -20,7 +20,7 @@ class IndexView(BaseView):
 
     async def get(self, request):
         as_format = request.url_vars["format"]
-        await self.check_permission(request, "view-instance")
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
         databases = []
         for name, db in self.ds.databases.items():
             visible, database_private = await check_visibility(

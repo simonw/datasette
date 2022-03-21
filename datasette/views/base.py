@@ -66,16 +66,6 @@ class BaseView:
         response.body = b""
         return response
 
-    async def check_permission(self, request, action, resource=None):
-        ok = await self.ds.permission_allowed(
-            request.actor,
-            action,
-            resource=resource,
-            default=True,
-        )
-        if not ok:
-            raise Forbidden(action)
-
     def database_color(self, database):
         return "ff0000"
 

@@ -229,7 +229,7 @@ class QueryView(DataView):
                 None, "view-query", (database, canned_query), default=True
             )
         else:
-            await self.check_permission(request, "execute-sql", database)
+            await self.ds.ensure_permissions(request.actor, [("execute-sql", database)])
 
         # Extract any :named parameters
         named_parameters = named_parameters or await derive_named_parameters(

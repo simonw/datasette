@@ -664,6 +664,24 @@ class Datasette:
                 else:
                     raise Forbidden(action)
 
+    async def check_visibility(self, actor, action, resource):
+        """Returns (visible, private) - visible = can you see it, private = can others see it too"""
+        visible = await self.permission_allowed(
+            actor,
+            action,
+            resource=resource,
+            default=True,
+        )
+        if not visible:
+            return False, False
+        private = not await self.permission_allowed(
+            None,
+            action,
+            resource=resource,
+            default=True,
+        )
+        return visible, private
+
     async def execute(
         self,
         db_name,

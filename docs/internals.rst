@@ -295,7 +295,7 @@ If neither ``metadata.json`` nor any of the plugins provide an answer to the per
 
 See :ref:`permissions` for a full list of permission actions included in Datasette core.
 
-.. _datasette_permission_allowed:
+.. _datasette_ensure_permissions:
 
 await .ensure_permissions(actor, permissions)
 ---------------------------------------------
@@ -319,6 +319,32 @@ This is useful when you need to check multiple permissions at once. For example,
             ("view-database", database),
             "view-instance",
         ]
+    )
+
+.. _datasette_check_visibilty:
+
+await .check_visibility(actor, action, resource=None)
+-----------------------------------------------------
+
+``actor`` - dictionary
+    The authenticated actor. This is usually ``request.actor``.
+
+``action`` - string
+    The name of the action that is being permission checked.
+
+``resource`` - string or tuple, optional
+    The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
+
+This convenience method can be used to answer the question "should this item be considered private, in that it is visible to me but it is not visible to anonymous users?"
+
+It returns a tuple of two booleans, ``(visible, private)``. ``visible`` indicates if the actor can see this resource. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.
+
+This example checks if the user can access a specific table, and sets ``private`` so that a padlock icon can later be displayed:
+
+.. code-block:: python
+
+    visible, private = await self.ds.check_visibility(
+        request.actor, "view-table", (database, table)
     )
 
 .. _datasette_get_database:

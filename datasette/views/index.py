@@ -1,7 +1,7 @@
 import hashlib
 import json
 
-from datasette.utils import add_cors_headers, check_visibility, CustomJSONEncoder
+from datasette.utils import add_cors_headers, CustomJSONEncoder
 from datasette.utils.asgi import Response
 from datasette.version import __version__
 
@@ -23,8 +23,7 @@ class IndexView(BaseView):
         await self.ds.ensure_permissions(request.actor, ["view-instance"])
         databases = []
         for name, db in self.ds.databases.items():
-            visible, database_private = await check_visibility(
-                self.ds,
+            visible, database_private = await self.ds.check_visibility(
                 request.actor,
                 "view-database",
                 name,
@@ -36,8 +35,7 @@ class IndexView(BaseView):
 
             views = []
             for view_name in await db.view_names():
-                visible, private = await check_visibility(
-                    self.ds,
+                visible, private = await self.ds.check_visibility(
                     request.actor,
                     "view-table",
                     (name, view_name),
@@ -55,8 +53,7 @@ class IndexView(BaseView):
 
             tables = {}
             for table in table_names:
-                visible, private = await check_visibility(
-                    self.ds,
+                visible, private = await self.ds.check_visibility(
                     request.actor,
                     "view-table",
                     (name, table),

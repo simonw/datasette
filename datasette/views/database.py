@@ -10,7 +10,6 @@ import markupsafe
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
-    check_visibility,
     derive_named_parameters,
     tilde_decode,
     to_css_class,
@@ -62,8 +61,7 @@ class DatabaseView(DataView):
 
         views = []
         for view_name in await db.view_names():
-            visible, private = await check_visibility(
-                self.ds,
+            visible, private = await self.ds.check_visibility(
                 request.actor,
                 "view-table",
                 (database, view_name),
@@ -78,8 +76,7 @@ class DatabaseView(DataView):
 
         tables = []
         for table in table_counts:
-            visible, private = await check_visibility(
-                self.ds,
+            visible, private = await self.ds.check_visibility(
                 request.actor,
                 "view-table",
                 (database, table),
@@ -105,8 +102,7 @@ class DatabaseView(DataView):
         for query in (
             await self.ds.get_canned_queries(database, request.actor)
         ).values():
-            visible, private = await check_visibility(
-                self.ds,
+            visible, private = await self.ds.check_visibility(
                 request.actor,
                 "view-query",
                 (database, query["name"]),

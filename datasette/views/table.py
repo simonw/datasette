@@ -360,8 +360,8 @@ class TableView(RowTableShared):
             raise NotFound(f"Table not found: {table}")
 
         # Ensure user has permission to view this table
-        await self.check_permissions(
-            request,
+        await self.ds.ensure_permissions(
+            request.actor,
             [
                 ("view-table", (database, table)),
                 ("view-database", database),
@@ -950,8 +950,8 @@ class RowView(RowTableShared):
         except KeyError:
             raise NotFound("Database not found: {}".format(database_route))
         database = db.name
-        await self.check_permissions(
-            request,
+        await self.ds.ensure_permissions(
+            request.actor,
             [
                 ("view-table", (database, table)),
                 ("view-database", database),

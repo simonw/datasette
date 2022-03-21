@@ -1,4 +1,5 @@
 import asyncio
+from typing import Sequence, Union, Tuple
 import asgi_csrf
 import collections
 import datetime
@@ -627,6 +628,40 @@ class Datasette:
             }
         )
         return result
+
+    async def ensure_permissions(
+        self,
+        actor: dict,
+        permissions: Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]],
+    ):
+        """
+        permissions is a list of (action, resource) tuples or 'action' strings
+
+        Raises datasette.Forbidden() if any of the checks fail
+        """
+        for permission in permissions:
+            if isinstance(permission, str):
+                action = permission
+                resource = None
+            elif isinstance(permission, (tuple, list)) and len(permission) == 2:
+                action, resource = permission
+            else:
+                assert (
+                    False
+                ), "permission should be string or tuple of two items: {}".format(
+                    repr(permission)
+                )
+            ok = await self.permission_allowed(
+                actor,
+                action,
+                resource=resource,
+                default=None,
+            )
+            if ok is not None:
+                if ok:
+                    return
+                else:
+                    raise Forbidden(action)
 
     async def execute(
         self,

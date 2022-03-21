@@ -76,32 +76,6 @@ class BaseView:
         if not ok:
             raise Forbidden(action)
 
-    async def check_permissions(self, request, permissions):
-        """permissions is a list of (action, resource) tuples or 'action' strings"""
-        for permission in permissions:
-            if isinstance(permission, str):
-                action = permission
-                resource = None
-            elif isinstance(permission, (tuple, list)) and len(permission) == 2:
-                action, resource = permission
-            else:
-                assert (
-                    False
-                ), "permission should be string or tuple of two items: {}".format(
-                    repr(permission)
-                )
-            ok = await self.ds.permission_allowed(
-                request.actor,
-                action,
-                resource=resource,
-                default=None,
-            )
-            if ok is not None:
-                if ok:
-                    return
-                else:
-                    raise Forbidden(action)
-
     def database_color(self, database):
         return "ff0000"
 

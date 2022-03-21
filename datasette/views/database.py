@@ -39,8 +39,8 @@ class DatabaseView(DataView):
             raise NotFound("Database not found: {}".format(database_route))
         database = db.name
 
-        await self.check_permissions(
-            request,
+        await self.ds.ensure_permissions(
+            request.actor,
             [
                 ("view-database", database),
                 "view-instance",
@@ -164,8 +164,8 @@ class DatabaseDownload(DataView):
 
     async def get(self, request):
         database = tilde_decode(request.url_vars["database"])
-        await self.check_permissions(
-            request,
+        await self.ds.ensure_permissions(
+            request.actor,
             [
                 ("view-database-download", database),
                 ("view-database", database),
@@ -217,8 +217,8 @@ class QueryView(DataView):
         private = False
         if canned_query:
             # Respect canned query permissions
-            await self.check_permissions(
-                request,
+            await self.ds.ensure_permissions(
+                request.actor,
                 [
                     ("view-query", (database, canned_query)),
                     ("view-database", database),

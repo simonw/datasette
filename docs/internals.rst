@@ -295,6 +295,32 @@ If neither ``metadata.json`` nor any of the plugins provide an answer to the per
 
 See :ref:`permissions` for a full list of permission actions included in Datasette core.
 
+.. _datasette_permission_allowed:
+
+await .ensure_permissions(actor, permissions)
+---------------------------------------------
+
+``actor`` - dictionary
+    The authenticated actor. This is usually ``request.actor``.
+
+``permissions`` - list
+    A list of permissions to check. Each permission in that list can be a string ``action`` name or a 2-tuple of ``(action, resource)``.
+
+This method allows multiple permissions to be checked at onced. It raises a ``datasette.Forbidden`` exception if any of the checks are denied before one of them is explicitly granted.
+
+This is useful when you need to check multiple permissions at once. For example, an actor should be able to view a table if either one of the following checks returns ``True`` or not a single one of them returns ``False``:
+
+.. code-block:: python
+
+    await self.ds.ensure_permissions(
+        request.actor,
+        [
+            ("view-table", (database, table)),
+            ("view-database", database),
+            "view-instance",
+        ]
+    )
+
 .. _datasette_get_database:
 
 .get_database(name)

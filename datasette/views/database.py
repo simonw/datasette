@@ -203,7 +203,12 @@ class QueryView(DataView):
         named_parameters=None,
         write=False,
     ):
-        database = tilde_decode(request.url_vars["database"])
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database_route))
+        database = db.name
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
             params.pop("sql")

@@ -94,6 +94,7 @@ async def test_db_with_route_databases(ds_with_route):
         ("/original-name/t", 404),
         ("/original-name/t/1", 404),
         ("/custom-route-name", 200),
+        ("/custom-route-name?sql=select+id+from+t", 200),
         ("/custom-route-name/t", 200),
         ("/custom-route-name/t/1", 200),
     ),

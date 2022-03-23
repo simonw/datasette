@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_61_1:
+
+0.61.1 (2022-03-23)
+-------------------
+
+- Fixed a bug where databases with a different route from their name (as used by the `datasette-hashed-urls plugin <https://datasette.io/plugins/datasette-hashed-urls>`__) returned errors when executing custom SQL queries. (:issue:`1682`)
+
 .. _v0_61:
 
 0.61 (2022-03-23)

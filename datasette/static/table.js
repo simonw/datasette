@@ -128,7 +128,8 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     } else {
       hideColumn.parentNode.style.display = "none";
     }
-    /* Only show facet if it's not the first column, not selected, not a single PK */
+    /* Only show "Facet by this" if it's not the first column, not selected,
+       not a single PK and the Datasette allow_facet setting is True */
     var displayedFacets = Array.from(
       document.querySelectorAll(".facet-info")
     ).map((el) => el.dataset.column);
@@ -137,7 +138,12 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     var isSinglePk =
       th.getAttribute("data-is-pk") == "1" &&
       document.querySelectorAll('th[data-is-pk="1"]').length == 1;
-    if (isFirstColumn || displayedFacets.includes(column) || isSinglePk) {
+    if (
+      !DATASETTE_ALLOW_FACET ||
+      isFirstColumn ||
+      displayedFacets.includes(column) ||
+      isSinglePk
+    ) {
       facetItem.parentNode.style.display = "none";
     } else {
       facetItem.parentNode.style.display = "block";

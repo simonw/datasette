@@ -1075,3 +1075,17 @@ def test_table_page_title(app_client, path, expected):
     response = app_client.get(path)
     title = Soup(response.text, "html.parser").find("title").text
     assert title == expected
+
+
+@pytest.mark.parametrize("allow_facet", (True, False))
+def test_allow_facet_off(allow_facet):
+    with make_app_client(settings={"allow_facet": allow_facet}) as client:
+        response = client.get("/fixtures/facetable")
+        expected = "DATASETTE_ALLOW_FACET = {};".format(
+            "true" if allow_facet else "false"
+        )
+        assert expected in response.text
+        if allow_facet:
+            assert "Suggested facets" in response.text
+        else:
+            assert "Suggested facets" not in response.text

@@ -5,6 +5,7 @@
 {% block extra_head %}
 {{- super() -}}
 <script src="{{ urls.static('table.js') }}" defer></script>
+<script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in display_columns -%}

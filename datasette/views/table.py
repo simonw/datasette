@@ -888,6 +888,9 @@ class TableView(RowTableShared):
                 "metadata": metadata,
                 "view_definition": await db.get_view_definition(table),
                 "table_definition": await db.get_table_definition(table),
+                "datasette_allow_facet": "true"
+                if self.ds.setting("allow_facet")
+                else "false",
             }
             d.update(extra_context_from_filters)
             return d

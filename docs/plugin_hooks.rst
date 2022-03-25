@@ -542,7 +542,7 @@ Return a list of ``(regex, view_function)`` pairs, something like this:
 
 .. code-block:: python
 
-    from datasette import Response
+    from datasette import hookimpl, Response
     import html
 
 

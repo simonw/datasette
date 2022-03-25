@@ -45,7 +45,7 @@ setup(
         "asgiref>=3.2.10,<3.6.0",
         "click>=7.1.1,<8.1.0",
         "click-default-group~=1.2.2",
-        "Jinja2>=2.10.3,<3.1.0",
+        "Jinja2>=2.10.3,<3.2.0",
         "hupper~=1.9",
         "httpx>=0.20",
         "pint~=0.9",

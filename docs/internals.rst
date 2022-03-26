@@ -458,8 +458,8 @@ Returns the original, decoded object that was passed to :ref:`datasette_sign`. I
 
 .. _datasette_add_message:
 
-.add_message(request, message, message_type=datasette.INFO)
------------------------------------------------------------
+.add_message(request, message, type=datasette.INFO)
+---------------------------------------------------
 
 ``request`` - Request
     The current Request object
@@ -467,7 +467,7 @@ Returns the original, decoded object that was passed to :ref:`datasette_sign`. I
 ``message`` - string
     The message string
 
-``message_type`` - constant, optional
+``type`` - constant, optional
     The message type - ``datasette.INFO``, ``datasette.WARNING`` or ``datasette.ERROR``
 
 Datasette's flash messaging mechanism allows you to add a message that will be displayed to the user on the next page that they visit. Messages are persisted in a ``ds_messages`` cookie. This method adds a message to that cookie.

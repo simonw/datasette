@@ -118,7 +118,7 @@ class Request:
         return dict(parse_qsl(body.decode("utf-8"), keep_blank_values=True))
 
     @classmethod
-    def fake(cls, path_with_query_string, method="GET", scheme="http"):
+    def fake(cls, path_with_query_string, method="GET", scheme="http", url_vars=None):
         """Useful for constructing Request objects for tests"""
         path, _, query_string = path_with_query_string.partition("?")
         scope = {
@@ -130,6 +130,8 @@ class Request:
             "scheme": scheme,
             "type": "http",
         }
+        if url_vars:
+            scope["url_route"] = {"kwargs": url_vars}
         return cls(scope, None)
 
 

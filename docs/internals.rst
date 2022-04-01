@@ -60,6 +60,33 @@ The object also has two awaitable methods:
 ``await request.post_body()`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
 
+And a class method that can be used to create fake request objects for use in tests:
+
+``fake(path_with_query_string, method="GET", scheme="http", url_vars=None)``
+    Returns a ``Request`` instance for the specified path and method. For example:
+
+    .. code-block:: python
+
+        from datasette import Request
+        from pprint import pprint
+
+        request = Request.fake("/fixtures/facetable/", url_vars={
+            "database": "fixtures",
+            "table": "facetable"
+        })
+        pprint(request.scope)
+
+    This outputs::
+
+        {'http_version': '1.1',
+         'method': 'GET',
+         'path': '/fixtures/facetable/',
+         'query_string': b'',
+         'raw_path': b'/fixtures/facetable/',
+         'scheme': 'http',
+         'type': 'http',
+         'url_route': {'kwargs': {'database': 'fixtures', 'table': 'facetable'}}}
+
 .. _internals_multiparams:
 
 The MultiParams class

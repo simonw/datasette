@@ -20,7 +20,14 @@ You will need a hosting account with `Heroku <https://www.heroku.com/>`__ or `Go
 Publishing to Google Cloud Run
 ------------------------------
 
-`Google Cloud Run <https://cloud.google.com/run/>`__ launched as a GA in in November 2019. It allows you to publish data in a scale-to-zero environment, so your application will start running when the first request is received and will shut down again when traffic ceases. This means you only pay for time spent serving traffic.
+`Google Cloud Run <https://cloud.google.com/run/>`__ allows you to publish data in a scale-to-zero environment, so your application will start running when the first request is received and will shut down again when traffic ceases. This means you only pay for time spent serving traffic.
+
+.. warning::
+    Cloud Run is a great option for inexpensively hosting small, low traffic projects - but costs can add up for projects that serve a lot of requests.
+
+    Be particularly careful if your project has tables with large numbers of rows. Search engine crawlers that index a page for every row could result in a high bill.
+
+    The `datasette-block-robots <https://datasette.io/plugins/datasette-block-robots>`__ plugin can be used to request search engine crawlers omit crawling your site, which can help avoid this issue.
 
 You will first need to install and configure the Google Cloud CLI tools by following `these instructions <https://cloud.google.com/sdk/>`__.
 

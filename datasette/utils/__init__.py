@@ -1113,12 +1113,20 @@ _TILDE_ENCODING_SAFE = frozenset(
     # '.' and '~'
 )
 
+_space = ord(" ")
+
 
 class TildeEncoder(dict):
     # Keeps a cache internally, via __missing__
     def __missing__(self, b):
+        print("b is ", b)
         # Handle a cache miss, store encoded string in cache and return.
-        res = chr(b) if b in _TILDE_ENCODING_SAFE else "~{:02X}".format(b)
+        if b in _TILDE_ENCODING_SAFE:
+            res = chr(b)
+        elif b == _space:
+            res = "+"
+        else:
+            res = "~{:02X}".format(b)
         self[b] = res
         return res
 
@@ -1138,7 +1146,7 @@ def tilde_decode(s: str) -> str:
     # Avoid accidentally decoding a %2f style sequence
     temp = secrets.token_hex(16)
     s = s.replace("%", temp)
-    decoded = urllib.parse.unquote(s.replace("~", "%"))
+    decoded = urllib.parse.unquote_plus(s.replace("~", "%"))
     return decoded.replace(temp, "%")
 
 

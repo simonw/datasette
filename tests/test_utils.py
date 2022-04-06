@@ -618,6 +618,7 @@ async def test_derive_named_parameters(sql, expected):
         ("-/db-/table.csv", "-~2Fdb-~2Ftable~2Ecsv"),
         (r"%~-/", "~25~7E-~2F"),
         ("~25~7E~2D~2F", "~7E25~7E7E~7E2D~7E2F"),
+        ("with space", "with+space"),
     ),
 )
 def test_tilde_encoding(original, expected):

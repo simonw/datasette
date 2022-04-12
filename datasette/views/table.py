@@ -12,10 +12,12 @@ from datasette.utils import (
     MultiParams,
     append_querystring,
     compound_keys_after_sql,
+    format_bytes,
     tilde_decode,
     tilde_encode,
     escape_sqlite,
     filters_should_redirect,
+    format_bytes,
     is_url,
     path_from_row_pks,
     path_with_added_args,
@@ -175,14 +177,18 @@ class RowTableShared(DataView):
                 if plugin_display_value:
                     display_value = plugin_display_value
                 elif isinstance(value, bytes):
+                    formatted = format_bytes(len(value))
                     display_value = markupsafe.Markup(
-                        '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
+                        '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                             self.ds.urls.row_blob(
                                 database,
                                 table,
                                 path_from_row_pks(row, pks, not pks),
                                 column,
                             ),
+                            ' title="{}"'.format(formatted)
+                            if "bytes" not in formatted
+                            else "",
                             len(value),
                             "" if len(value) == 1 else "s",
                         )

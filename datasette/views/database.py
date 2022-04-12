@@ -11,6 +11,7 @@ from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
     derive_named_parameters,
+    format_bytes,
     tilde_decode,
     to_css_class,
     validate_sql_select,
@@ -399,13 +400,18 @@ class QueryView(DataView):
                                     ).hexdigest(),
                                 },
                             )
-                            display_value = Markup(
-                                '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
+                            formatted = format_bytes(len(value))
+                            display_value = markupsafe.Markup(
+                                '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                                     blob_url,
-                                    len(display_value),
+                                    ' title="{}"'.format(formatted)
+                                    if "bytes" not in formatted
+                                    else "",
+                                    len(value),
                                     "" if len(value) == 1 else "s",
                                 )
                             )
+
                     display_row.append(display_value)
                 display_rows.append(display_row)
 

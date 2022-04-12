@@ -1119,7 +1119,6 @@ _space = ord(" ")
 class TildeEncoder(dict):
     # Keeps a cache internally, via __missing__
     def __missing__(self, b):
-        print("b is ", b)
         # Handle a cache miss, store encoded string in cache and return.
         if b in _TILDE_ENCODING_SAFE:
             res = chr(b)

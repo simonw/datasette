@@ -526,7 +526,7 @@ And here is an example ``can_render`` function which returns ``True`` only if th
     def can_render_demo(columns):
         return {"atom_id", "atom_title", "atom_updated"}.issubset(columns)
 
-Examples: `datasette-atom <https://datasette.io/plugins/datasette-atom>`_, `datasette-ics <https://datasette.io/plugins/datasette-ics>`_
+Examples: `datasette-atom <https://datasette.io/plugins/datasette-atom>`_, `datasette-ics <https://datasette.io/plugins/datasette-ics>`_, `datasette-geojson <https://datasette.io/plugins/datasette-geojson>`__
 
 .. _plugin_register_routes:
 

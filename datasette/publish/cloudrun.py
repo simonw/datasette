@@ -43,7 +43,6 @@ def publish_subcommand(publish):
     )
     @click.option(
         "--timeout",
-        default="1800",
         help="Build timeout in seconds",
     )
     @click.option(
@@ -162,7 +161,12 @@ def publish_subcommand(publish):
                 print("\n====================\n")
 
             image_id = f"gcr.io/{project}/{name}"
-            check_call(f"gcloud builds submit --tag={image_id} --timeout={timeout}", shell=True)
+            check_call(
+                "gcloud builds submit --tag {}{}".format(
+                    image_id, " --timeout {}".format(timeout) if timeout else ""
+                ),
+                shell=True,
+            )
         check_call(
             "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}{}".format(
                 image_id,

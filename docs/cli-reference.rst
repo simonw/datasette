@@ -248,6 +248,7 @@ datasette publish cloudrun --help
                                       metadata.json
       --memory TEXT                   Memory to allocate in Cloud Run, e.g. 1Gi
       --cpu [1|2|4]                   Number of vCPUs to allocate in Cloud Run
+      --timeout TEXT                  Build timeout in seconds
       --apt-get-install TEXT          Additional packages to apt-get install
       --help                          Show this message and exit.
 

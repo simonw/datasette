@@ -43,6 +43,7 @@ def publish_subcommand(publish):
     )
     @click.option(
         "--timeout",
+        type=int,
         help="Build timeout in seconds",
     )
     @click.option(

@@ -446,7 +446,7 @@ Most of the HTML pages served by Datasette provide a mechanism for discovering t
 
 You can find this near the top of the source code of those pages, looking like this:
 
-.. code-block:: python
+.. code-block:: html
 
     <link rel="alternate"
       type="application/json+datasette"

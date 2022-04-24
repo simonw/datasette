@@ -381,11 +381,10 @@ Authentication plugins can set signed ``ds_actor`` cookies themselves like so:
 .. code-block:: python
 
     response = Response.redirect("/")
-    response.set_cookie("ds_actor", datasette.sign({
-        "a": {
-            "id": "cleopaws"
-        }
-    }, "actor"))
+    response.set_cookie(
+        "ds_actor",
+        datasette.sign({"a": {"id": "cleopaws"}}, "actor"),
+    )
 
 Note that you need to pass ``"actor"`` as the namespace to :ref:`datasette_sign`.
 
@@ -412,12 +411,16 @@ To include an expiry, add a ``"e"`` key to the cookie value containing a `base62
     expires_at = int(time.time()) + (24 * 60 * 60)
 
     response = Response.redirect("/")
-    response.set_cookie("ds_actor", datasette.sign({
-        "a": {
-            "id": "cleopaws"
-        },
-        "e": baseconv.base62.encode(expires_at),
-    }, "actor"))
+    response.set_cookie(
+        "ds_actor",
+        datasette.sign(
+            {
+                "a": {"id": "cleopaws"},
+                "e": baseconv.base62.encode(expires_at),
+            },
+            "actor",
+        ),
+    )
 
 The resulting cookie will encode data that looks something like this:
 

@@ -70,10 +70,10 @@ And a class method that can be used to create fake request objects for use in te
         from datasette import Request
         from pprint import pprint
 
-        request = Request.fake("/fixtures/facetable/", url_vars={
-            "database": "fixtures",
-            "table": "facetable"
-        })
+        request = Request.fake(
+            "/fixtures/facetable/",
+            url_vars={"database": "fixtures", "table": "facetable"},
+        )
         pprint(request.scope)
 
     This outputs::
@@ -146,7 +146,7 @@ For example:
 
     response = Response(
         "<xml>This is XML</xml>",
-        content_type="application/xml; charset=utf-8"
+        content_type="application/xml; charset=utf-8",
     )
 
 The quickest way to create responses is using the ``Response.text(...)``, ``Response.html(...)``, ``Response.json(...)`` or ``Response.redirect(...)`` helper methods:
@@ -157,9 +157,13 @@ The quickest way to create responses is using the ``Response.text(...)``, ``Resp
 
     html_response = Response.html("This is HTML")
     json_response = Response.json({"this_is": "json"})
-    text_response = Response.text("This will become utf-8 encoded text")
+    text_response = Response.text(
+        "This will become utf-8 encoded text"
+    )
     # Redirects are served as 302, unless you pass status=301:
-    redirect_response = Response.redirect("https://latest.datasette.io/")
+    redirect_response = Response.redirect(
+        "https://latest.datasette.io/"
+    )
 
 Each of these responses will use the correct corresponding content-type - ``text/html; charset=utf-8``, ``application/json; charset=utf-8`` or ``text/plain; charset=utf-8`` respectively.
 
@@ -207,13 +211,17 @@ To set cookies on the response, use the ``response.set_cookie(...)`` method. The
         httponly=False,
         samesite="lax",
     ):
+        ...
 
 You can use this with :ref:`datasette.sign() <datasette_sign>` to set signed cookies. Here's how you would set the :ref:`ds_actor cookie <authentication_ds_actor>` for use with Datasette :ref:`authentication <authentication>`:
 
 .. code-block:: python
 
     response = Response.redirect("/")
-    response.set_cookie("ds_actor", datasette.sign({"a": {"id": "cleopaws"}}, "actor"))
+    response.set_cookie(
+        "ds_actor",
+        datasette.sign({"a": {"id": "cleopaws"}}, "actor"),
+    )
     return response
 
 .. _internals_datasette:
@@ -236,13 +244,16 @@ You can create your own instance of this - for example to help write tests for a
     datasette = Datasette(files=["/path/to/my-database.db"])
 
     # Pass metadata as a JSON dictionary like this
-    datasette = Datasette(files=["/path/to/my-database.db"], metadata={
-        "databases": {
-            "my-database": {
-                "description": "This is my database"
+    datasette = Datasette(
+        files=["/path/to/my-database.db"],
+        metadata={
+            "databases": {
+                "my-database": {
+                    "description": "This is my database"
+                }
             }
-        }
-    })
+        },
+    )
 
 Constructor parameters include:
 
@@ -345,7 +356,7 @@ This is useful when you need to check multiple permissions at once. For example,
             ("view-table", (database, table)),
             ("view-database", database),
             "view-instance",
-        ]
+        ],
     )
 
 .. _datasette_check_visibilty:
@@ -406,11 +417,13 @@ The ``db`` parameter should be an instance of the ``datasette.database.Database`
 
     from datasette.database import Database
 
-    datasette.add_database(Database(
-        datasette,
-        path="path/to/my-new-database.db",
-        is_mutable=True
-    ))
+    datasette.add_database(
+        Database(
+            datasette,
+            path="path/to/my-new-database.db",
+            is_mutable=True,
+        )
+    )
 
 This will add a mutable database and serve it at ``/my-new-database``.
 
@@ -418,8 +431,12 @@ This will add a mutable database and serve it at ``/my-new-database``.
 
 .. code-block:: python
 
-    db = datasette.add_database(Database(datasette, memory_name="statistics"))
-    await db.execute_write("CREATE TABLE foo(id integer primary key)")
+    db = datasette.add_database(
+        Database(datasette, memory_name="statistics")
+    )
+    await db.execute_write(
+        "CREATE TABLE foo(id integer primary key)"
+    )
 
 .. _datasette_add_memory_database:
 
@@ -438,10 +455,9 @@ This is a shortcut for the following:
 
     from datasette.database import Database
 
-    datasette.add_database(Database(
-        datasette,
-        memory_name="statistics"
-    ))
+    datasette.add_database(
+        Database(datasette, memory_name="statistics")
+    )
 
 Using either of these pattern will result in the in-memory database being served at ``/statistics``.
 
@@ -516,7 +532,9 @@ Returns the absolute URL for the given path, including the protocol and host. Fo
 
 .. code-block:: python
 
-    absolute_url = datasette.absolute_url(request, "/dbname/table.json")
+    absolute_url = datasette.absolute_url(
+        request, "/dbname/table.json"
+    )
     # Would return "http://localhost:8001/dbname/table.json"
 
 The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`setting_force_https_urls` configuration setting is taken into account.
@@ -578,7 +596,9 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 
     table_json = (
         await datasette.client.get(
-            datasette.urls.table("fixtures", "facetable", format="json")
+            datasette.urls.table(
+                "fixtures", "facetable", format="json"
+            )
         )
     ).json()
 
@@ -754,6 +774,7 @@ Example usage:
             "select sqlite_version()"
         ).fetchall()[0][0]
 
+
     version = await db.execute_fn(get_version)
 
 .. _database_execute_write:
@@ -789,7 +810,7 @@ Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://d
 
     await db.execute_write_many(
         "insert into characters (id, name) values (?, ?)",
-        [(1, "Melanie"), (2, "Selma"), (2, "Viktor")]
+        [(1, "Melanie"), (2, "Selma"), (2, "Viktor")],
     )
 
 .. _database_execute_write_fn:
@@ -811,10 +832,15 @@ For example:
 
     def delete_and_return_count(conn):
         conn.execute("delete from some_table where id > 5")
-        return conn.execute("select count(*) from some_table").fetchone()[0]
+        return conn.execute(
+            "select count(*) from some_table"
+        ).fetchone()[0]
+
 
     try:
-        num_rows_left = await database.execute_write_fn(delete_and_return_count)
+        num_rows_left = await database.execute_write_fn(
+            delete_and_return_count
+        )
     except Exception as e:
         print("An error occurred:", e)
 
@@ -1021,6 +1047,7 @@ This example uses trace to record the start, end and duration of any HTTP GET re
     from datasette.tracer import trace
     import httpx
 
+
     async def fetch_url(url):
         with trace("fetch-url", url=url):
             async with httpx.AsyncClient() as client:
@@ -1051,9 +1078,9 @@ This example uses the :ref:`register_routes() <plugin_register_routes>` plugin h
     from datasette import hookimpl
     from datasette import tracer
 
+
     @hookimpl
     def register_routes():
-
         async def parallel_queries(datasette):
             db = datasette.get_database()
             with tracer.trace_child_tasks():
@@ -1061,7 +1088,12 @@ This example uses the :ref:`register_routes() <plugin_register_routes>` plugin h
                     db.execute("select 1"),
                     db.execute("select 2"),
                 )
-            return Response.json({"one": one.single_value(), "two": two.single_value()})
+            return Response.json(
+                {
+                    "one": one.single_value(),
+                    "two": two.single_value(),
+                }
+            )
 
         return [
             (r"/parallel-queries$", parallel_queries),

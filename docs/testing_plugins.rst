@@ -19,7 +19,10 @@ If you use the template described in :ref:`writing_plugins_cookiecutter` your pl
         response = await datasette.client.get("/-/plugins.json")
         assert response.status_code == 200
         installed_plugins = {p["name"] for p in response.json()}
-        assert "datasette-plugin-template-demo" in installed_plugins
+        assert (
+            "datasette-plugin-template-demo"
+            in installed_plugins
+        )
 
 
 This test uses the :ref:`internals_datasette_client` object to exercise a test instance of Datasette. ``datasette.client`` is a wrapper around the `HTTPX <https://www.python-httpx.org/>`__ Python library which can imitate HTTP requests using ASGI. This is the recommended way to write tests against a Datasette instance.
@@ -37,9 +40,7 @@ If you are building an installable package you can add them as test dependencies
     setup(
         name="datasette-my-plugin",
         # ...
-        extras_require={
-            "test": ["pytest", "pytest-asyncio"]
-        },
+        extras_require={"test": ["pytest", "pytest-asyncio"]},
         tests_require=["datasette-my-plugin[test]"],
     )
 
@@ -87,30 +88,33 @@ Here's an example that uses the `sqlite-utils library <https://sqlite-utils.data
     import pytest
     import sqlite_utils
 
+
     @pytest.fixture(scope="session")
     def datasette(tmp_path_factory):
         db_directory = tmp_path_factory.mktemp("dbs")
         db_path = db_directory / "test.db"
         db = sqlite_utils.Database(db_path)
-        db["dogs"].insert_all([
-            {"id": 1, "name": "Cleo", "age": 5},
-            {"id": 2, "name": "Pancakes", "age": 4}
-        ], pk="id")
+        db["dogs"].insert_all(
+            [
+                {"id": 1, "name": "Cleo", "age": 5},
+                {"id": 2, "name": "Pancakes", "age": 4},
+            ],
+            pk="id",
+        )
         datasette = Datasette(
             [db_path],
             metadata={
                 "databases": {
                     "test": {
                         "tables": {
-                            "dogs": {
-                                "title": "Some dogs"
-                            }
+                            "dogs": {"title": "Some dogs"}
                         }
                     }
                 }
-            }
+            },
         )
         return datasette
+
 
     @pytest.mark.asyncio
     async def test_example_table_json(datasette):
@@ -120,6 +124,7 @@ Here's an example that uses the `sqlite-utils library <https://sqlite-utils.data
             {"id": 1, "name": "Cleo", "age": 5},
             {"id": 2, "name": "Pancakes", "age": 4},
         ]
+
 
     @pytest.mark.asyncio
     async def test_example_table_html(datasette):
@@ -137,6 +142,7 @@ If you want to create that test database repeatedly for every individual test fu
     @pytest.fixture
     def datasette(tmp_path_factory):
         # This fixture will be executed repeatedly for every test
+        ...
 
 .. _testing_plugins_pytest_httpx:
 
@@ -197,14 +203,17 @@ Here's a test for that plugin that mocks the HTTPX outbound request:
 
     async def test_outbound_http_call(httpx_mock):
         httpx_mock.add_response(
-            url='https://www.example.com/',
-            text='Hello world',
+            url="https://www.example.com/",
+            text="Hello world",
         )
         datasette = Datasette([], memory=True)
-        response = await datasette.client.post("/-/fetch-url", data={
-            "url": "https://www.example.com/"
-        })
+        response = await datasette.client.post(
+            "/-/fetch-url",
+            data={"url": "https://www.example.com/"},
+        )
         assert response.text == "Hello world"
 
         outbound_request = httpx_mock.get_request()
-        assert outbound_request.url == "https://www.example.com/"
+        assert (
+            outbound_request.url == "https://www.example.com/"
+        )

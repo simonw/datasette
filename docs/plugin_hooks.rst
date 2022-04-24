@@ -162,9 +162,8 @@ And here's an example which adds a ``sql_first(sql_query)`` function which execu
                 or database
                 or next(iter(datasette.databases.keys()))
             )
-            return (await datasette.execute(dbname, sql)).rows[
-                0
-            ][0]
+            result = await datasette.execute(dbname, sql)
+            return result.rows[0][0]
 
         return {"sql_first": sql_first}
 
@@ -422,8 +421,8 @@ If the value matches that pattern, the plugin returns an HTML link element:
         if not isinstance(value, str):
             return None
         stripped = value.strip()
-        if not stripped.startswith("{") and stripped.endswith(
-            "}"
+        if not (
+            stripped.startswith("{") and stripped.endswith("}")
         ):
             return None
         try:

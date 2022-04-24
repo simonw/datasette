@@ -42,6 +42,10 @@ def publish_subcommand(publish):
         help="Number of vCPUs to allocate in Cloud Run",
     )
     @click.option(
+        "--timeout",
+        help="Build timeout in seconds",
+    )
+    @click.option(
         "--apt-get-install",
         "apt_get_extras",
         multiple=True,
@@ -72,6 +76,7 @@ def publish_subcommand(publish):
         show_files,
         memory,
         cpu,
+        timeout,
         apt_get_extras,
     ):
         "Publish databases to Datasette running on Cloud Run"
@@ -156,7 +161,12 @@ def publish_subcommand(publish):
                 print("\n====================\n")
 
             image_id = f"gcr.io/{project}/{name}"
-            check_call(f"gcloud builds submit --tag {image_id}", shell=True)
+            check_call(
+                "gcloud builds submit --tag {}{}".format(
+                    image_id, " --timeout {}".format(timeout) if timeout else ""
+                ),
+                shell=True,
+            )
         check_call(
             "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}{}".format(
                 image_id,

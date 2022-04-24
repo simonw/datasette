@@ -118,7 +118,9 @@ Here's an example that uses the `sqlite-utils library <https://sqlite-utils.data
 
     @pytest.mark.asyncio
     async def test_example_table_json(datasette):
-        response = await datasette.client.get("/test/dogs.json?_shape=array")
+        response = await datasette.client.get(
+            "/test/dogs.json?_shape=array"
+        )
         assert response.status_code == 200
         assert response.json() == [
             {"id": 1, "name": "Cleo", "age": 5},

@@ -34,6 +34,5 @@ jobs:
         cog --check docs/*.rst
     - name: Check if blacken-docs needs to be run
       run: |
+        # This fails on syntax errors, or a diff was applied
         blacken-docs -l 60 docs/*.rst
-        # This fails if a diff was generated:
-        git diff-index --quiet HEAD --

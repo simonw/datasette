@@ -58,21 +58,28 @@ Here's a recipe for taking a table with existing latitude and longitude columns,
 .. code-block:: python
 
     import sqlite3
-    conn = sqlite3.connect('museums.db')
+
+    conn = sqlite3.connect("museums.db")
     # Lead the spatialite extension:
     conn.enable_load_extension(True)
-    conn.load_extension('/usr/local/lib/mod_spatialite.dylib')
+    conn.load_extension("/usr/local/lib/mod_spatialite.dylib")
     # Initialize spatial metadata for this database:
-    conn.execute('select InitSpatialMetadata(1)')
+    conn.execute("select InitSpatialMetadata(1)")
     # Add a geometry column called point_geom to our museums table:
-    conn.execute("SELECT AddGeometryColumn('museums', 'point_geom', 4326, 'POINT', 2);")
+    conn.execute(
+        "SELECT AddGeometryColumn('museums', 'point_geom', 4326, 'POINT', 2);"
+    )
     # Now update that geometry column with the lat/lon points
-    conn.execute('''
+    conn.execute(
+        """
         UPDATE museums SET
         point_geom = GeomFromText('POINT('||"longitude"||' '||"latitude"||')',4326);
-    ''')
+    """
+    )
     # Now add a spatial index to that column
-    conn.execute('select CreateSpatialIndex("museums", "point_geom");')
+    conn.execute(
+        'select CreateSpatialIndex("museums", "point_geom");'
+    )
     # If you don't commit your changes will not be persisted:
     conn.commit()
     conn.close()
@@ -186,28 +193,37 @@ Here's Python code to create a SQLite database, enable SpatiaLite, create a plac
 .. code-block:: python
 
     import sqlite3
-    conn = sqlite3.connect('places.db')
+
+    conn = sqlite3.connect("places.db")
     # Enable SpatialLite extension
     conn.enable_load_extension(True)
-    conn.load_extension('/usr/local/lib/mod_spatialite.dylib')
+    conn.load_extension("/usr/local/lib/mod_spatialite.dylib")
     # Create the masic countries table
-    conn.execute('select InitSpatialMetadata(1)')
-    conn.execute('create table places (id integer primary key, name text);')
+    conn.execute("select InitSpatialMetadata(1)")
+    conn.execute(
+        "create table places (id integer primary key, name text);"
+    )
     # Add a MULTIPOLYGON Geometry column
-    conn.execute("SELECT AddGeometryColumn('places', 'geom', 4326, 'MULTIPOLYGON', 2);")
+    conn.execute(
+        "SELECT AddGeometryColumn('places', 'geom', 4326, 'MULTIPOLYGON', 2);"
+    )
     # Add a spatial index against the new column
     conn.execute("SELECT CreateSpatialIndex('places', 'geom');")
     # Now populate the table
     from shapely.geometry.multipolygon import MultiPolygon
     from shapely.geometry import shape
     import requests
-    geojson = requests.get('https://data.whosonfirst.org/404/227/475/404227475.geojson').json()
+
+    geojson = requests.get(
+        "https://data.whosonfirst.org/404/227/475/404227475.geojson"
+    ).json()
     # Convert to "Well Known Text" format
-    wkt = shape(geojson['geometry']).wkt
+    wkt = shape(geojson["geometry"]).wkt
     # Insert and commit the record
-    conn.execute("INSERT INTO places (id, name, geom) VALUES(null, ?, GeomFromText(?, 4326))", (
-       "Wales", wkt
-    ))
+    conn.execute(
+        "INSERT INTO places (id, name, geom) VALUES(null, ?, GeomFromText(?, 4326))",
+        ("Wales", wkt),
+    )
     conn.commit()
 
 Querying polygons using within()

@@ -32,3 +32,8 @@ jobs:
     - name: Check if cog needs to be run
       run: |
         cog --check docs/*.rst
+    - name: Check if blacken-docs needs to be run
+      run: |
+        blacken-docs -l 60 docs/*.rst
+        # This fails if a diff was generated:
+        git diff-index --quiet HEAD --

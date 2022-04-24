@@ -144,6 +144,15 @@ If any of your code does not conform to Black you can run this to automatically 
     All done! ✨ 🍰 ✨
     1 file reformatted, 94 files left unchanged.
 
+.. _contributing_formatting_blacken_docs:
+
+blacken-docs
+~~~~~~~~~~~~
+
+The `blacken-docs <https://pypi.org/project/blacken-docs/>`__ command applies Black formatting rules to code examples in the documentation. Run it like this::
+
+    blacken-docs -l 60 docs/*.rst
+
 .. _contributing_formatting_prettier:
 
 Prettier

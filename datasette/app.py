@@ -40,7 +40,8 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import RowView, TableView
+from .views.table import TableView
+from .views.row import RowView
 from .renderer import json_renderer
 from .url_builder import Urls
 from .database import Database, QueryInterrupted

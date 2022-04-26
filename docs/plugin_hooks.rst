@@ -801,7 +801,7 @@ This example plugin adds a ``x-databases`` HTTP header listing the currently att
 
         return wrap_with_databases_header
 
-Examples: `datasette-cors <https://datasette.io/plugins/datasette-cors>`__, `datasette-pyinstrument <https://datasette.io/plugins/datasette-pyinstrument>`__
+Examples: `datasette-cors <https://datasette.io/plugins/datasette-cors>`__, `datasette-pyinstrument <https://datasette.io/plugins/datasette-pyinstrument>`__, `datasette-total-page-time <https://datasette.io/plugins/datasette-total-page-time>`__
 
 .. _plugin_hook_startup:
 

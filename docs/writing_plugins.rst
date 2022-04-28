@@ -182,6 +182,8 @@ When you are writing plugins, you can access plugin configuration like this usin
 
 This will return the ``{"latitude_column": "lat", "longitude_column": "lng"}`` in the above example.
 
+If there is no configuration for that plugin, the method will return ``None``.
+
 If it cannot find the requested configuration at the table layer, it will fall back to the database layer and then the root layer. For example, a user may have set the plugin configuration option like so::
 
     {

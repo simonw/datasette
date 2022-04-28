@@ -288,6 +288,10 @@ All databases are listed, irrespective of user permissions. This means that the 
 
 This method lets you read plugin configuration values that were set in ``metadata.json``. See :ref:`writing_plugins_configuration` for full details of how this method should be used.
 
+The return value will be the value from the configuration file - usually a dictionary.
+
+If the plugin is not configured the return value will be ``None``.
+
 .. _datasette_render_template:
 
 await .render_template(template, context=None, request=None)

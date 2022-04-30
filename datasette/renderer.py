@@ -43,6 +43,41 @@ def json_renderer(args, data, view_name):
     if "rows" in data and not value_as_boolean(args.get("_json_infinity", "0")):
         data["rows"] = [remove_infinites(row) for row in data["rows"]]
 
+    # Start building the default JSON here
+    columns = data["columns"]
+    next_url = data.get("next_url")
+    output = {
+        "rows": [dict(zip(columns, row)) for row in data["rows"]],
+        "next": data["next"],
+        "next_url": next_url,
+     }
+
+    extras = set(args.getlist("_extra"))
+
+    extras_map = {
+        # _extra=   :    data[field]
+        "count": "filtered_table_rows_count",
+        "facet_results": "facet_results",
+        "suggested_facets": "suggested_facets",
+        "columns": "columns",
+        "primary_keys": "primary_keys",
+        "query_ms": "query_ms",
+        "query": "query",
+    }
+    for extra_key, data_key in extras_map.items():
+        if extra_key in extras:
+            output[extra_key] = data[data_key]
+
+    body = json.dumps(output, cls=CustomJSONEncoder)
+    content_type = "application/json; charset=utf-8"
+    headers = {}
+    if next_url:
+        headers["link"] = f'<{next_url}>; rel="next"'
+    return Response(
+        body, status=status_code, headers=headers, content_type=content_type
+    )
+
+
     # Deal with the _shape option
     shape = args.get("_shape", "arrays")
     # if there's an error, ignore the shape entirely

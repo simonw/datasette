@@ -44,20 +44,20 @@ setup(
     install_requires=[
         "asgiref>=3.2.10,<3.6.0",
         "click>=7.1.1,<8.2.0",
-        "click-default-group~=1.2.2",
+        # "click-default-group~=1.2.2",
         "Jinja2>=2.10.3,<3.1.0",
         "hupper~=1.9",
         "httpx>=0.20",
         "pint~=0.9",
         "pluggy>=1.0,<1.1",
-        "uvicorn~=0.11",
+        # "uvicorn~=0.11",
         "aiofiles>=0.4,<0.9",
         "janus>=0.6.2,<1.1",
         "asgi-csrf>=0.9",
         "PyYAML>=5.3,<7.0",
         "mergedeep>=1.1.1,<1.4.0",
         "itsdangerous>=1.1,<3.0",
-        "python-baseconv==1.2.2",
+        # "python-baseconv==1.2.2",
     ],
     entry_points="""
         [console_scripts]

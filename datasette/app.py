@@ -15,7 +15,6 @@ import pkg_resources
 import re
 import secrets
 import sys
-import threading
 import traceback
 import urllib.parse
 from concurrent import futures
@@ -852,23 +851,7 @@ class Datasette:
         ]
 
     def _threads(self):
-        threads = list(threading.enumerate())
-        d = {
-            "num_threads": len(threads),
-            "threads": [
-                {"name": t.name, "ident": t.ident, "daemon": t.daemon} for t in threads
-            ],
-        }
-        # Only available in Python 3.7+
-        if hasattr(asyncio, "all_tasks"):
-            tasks = asyncio.all_tasks()
-            d.update(
-                {
-                    "num_tasks": len(tasks),
-                    "tasks": [_cleaner_task_str(t) for t in tasks],
-                }
-            )
-        return d
+        return {"num_threads": 0, "threads": []}
 
     def _actor(self, request):
         return {"actor": request.actor}

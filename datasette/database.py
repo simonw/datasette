@@ -4,7 +4,6 @@ from pathlib import Path
 import janus
 import queue
 import sys
-import threading
 import uuid
 
 from .tracer import trace
@@ -20,8 +19,6 @@ from .utils import (
     table_column_details,
 )
 from .inspect import inspect_hash
-
-connections = threading.local()
 
 AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
@@ -43,12 +40,12 @@ class Database:
         self.hash = None
         self.cached_size = None
         self._cached_table_counts = None
-        self._write_thread = None
-        self._write_queue = None
         if not self.is_mutable and not self.is_memory:
             p = Path(path)
             self.hash = inspect_hash(p)
             self.cached_size = p.stat().st_size
+        self._read_connection = None
+        self._write_connection = None
 
     @property
     def cached_table_counts(self):
@@ -134,60 +131,15 @@ class Database:
         return results
 
     async def execute_write_fn(self, fn, block=True):
-        task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
-        if self._write_queue is None:
-            self._write_queue = queue.Queue()
-        if self._write_thread is None:
-            self._write_thread = threading.Thread(
-                target=self._execute_writes, daemon=True
-            )
-            self._write_thread.start()
-        reply_queue = janus.Queue()
-        self._write_queue.put(WriteTask(fn, task_id, reply_queue))
-        if block:
-            result = await reply_queue.async_q.get()
-            if isinstance(result, Exception):
-                raise result
-            else:
-                return result
-        else:
-            return task_id
-
-    def _execute_writes(self):
-        # Infinite looping thread that protects the single write connection
-        # to this database
-        conn_exception = None
-        conn = None
-        try:
-            conn = self.connect(write=True)
-            self.ds._prepare_connection(conn, self.name)
-        except Exception as e:
-            conn_exception = e
-        while True:
-            task = self._write_queue.get()
-            if conn_exception is not None:
-                result = conn_exception
-            else:
-                try:
-                    result = task.fn(conn)
-                except Exception as e:
-                    sys.stderr.write("{}\n".format(e))
-                    sys.stderr.flush()
-                    result = e
-            task.reply_queue.sync_q.put(result)
+        # We always treat it as if block=True now
+        if self._write_connection is None:
+            self._write_connection = self.connect(write=True)
+        return fn(self._write_connection)
 
     async def execute_fn(self, fn):
-        def in_thread():
-            conn = getattr(connections, self.name, None)
-            if not conn:
-                conn = self.connect()
-                self.ds._prepare_connection(conn, self.name)
-                setattr(connections, self.name, conn)
-            return fn(conn)
-
-        return await asyncio.get_event_loop().run_in_executor(
-            self.ds.executor, in_thread
-        )
+        if self._read_connection is None:
+            self._read_connection = self.connect()
+        return fn(self._read_connection)
 
     async def execute(
         self,

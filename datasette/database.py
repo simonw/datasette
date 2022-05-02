@@ -134,11 +134,13 @@ class Database:
         # We always treat it as if block=True now
         if self._write_connection is None:
             self._write_connection = self.connect(write=True)
+            self.ds._prepare_connection(self._write_connection, self.name)
         return fn(self._write_connection)
 
     async def execute_fn(self, fn):
         if self._read_connection is None:
             self._read_connection = self.connect()
+            self.ds._prepare_connection(self._read_connection, self.name)
         return fn(self._read_connection)
 
     async def execute(

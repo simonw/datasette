@@ -1,6 +1,8 @@
 name: Test in Pyodide with shot-scraper
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 jobs:

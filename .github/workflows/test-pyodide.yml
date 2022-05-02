@@ -21,7 +21,7 @@ jobs:
         key: ${{ runner.os }}-browsers
     - name: Install Playwright dependencies
       run: |
-        pip install shot-scraper
+        pip install shot-scraper build
         shot-scraper install
     - name: Run test
       run: |

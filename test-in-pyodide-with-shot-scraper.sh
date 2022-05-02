@@ -1,12 +1,12 @@
 #!/bin/bash
+set -e
+# So the script fails if there are any errors
 
 # Build the wheel
 python3 -m build
 
-# Find name of wheel
+# Find name of wheel, strip off the dist/
 wheel=$(basename $(ls dist/*.whl))
-# strip off the dist/
-
 
 # Create a blank index page
 echo '

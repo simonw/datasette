@@ -804,6 +804,15 @@ class Datasette:
         datasette_version = {"version": __version__}
         if self.version_note:
             datasette_version["note"] = self.version_note
+
+        try:
+            # Optional import to avoid breaking Pyodide
+            # https://github.com/simonw/datasette/issues/1733#issuecomment-1115268245
+            import uvicorn
+
+            uvicorn_version = uvicorn.__version__
+        except ImportError:
+            uvicorn_version = None
         info = {
             "python": {
                 "version": ".".join(map(str, sys.version_info[:3])),
@@ -811,6 +820,7 @@ class Datasette:
             },
             "datasette": datasette_version,
             "asgi": "3.0",
+            "uvicorn": uvicorn_version,
             "sqlite": {
                 "version": sqlite_version,
                 "fts_versions": fts_versions,

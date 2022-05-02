@@ -15,6 +15,7 @@ import pkg_resources
 import re
 import secrets
 import sys
+import threading
 import traceback
 import urllib.parse
 from concurrent import futures
@@ -287,9 +288,12 @@ class Datasette:
         self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
-        self.executor = futures.ThreadPoolExecutor(
-            max_workers=self.setting("num_sql_threads")
-        )
+        if self.setting("num_sql_threads") == 0:
+            self.executor = None
+        else:
+            self.executor = futures.ThreadPoolExecutor(
+                max_workers=self.setting("num_sql_threads")
+            )
         self.max_returned_rows = self.setting("max_returned_rows")
         self.sql_time_limit_ms = self.setting("sql_time_limit_ms")
         self.page_size = self.setting("default_page_size")
@@ -861,7 +865,25 @@ class Datasette:
         ]
 
     def _threads(self):
-        return {"num_threads": 0, "threads": []}
+        if self.setting("num_sql_threads") == 0:
+            return {"num_threads": 0, "threads": []}
+        threads = list(threading.enumerate())
+        d = {
+            "num_threads": len(threads),
+            "threads": [
+                {"name": t.name, "ident": t.ident, "daemon": t.daemon} for t in threads
+            ],
+        }
+        # Only available in Python 3.7+
+        if hasattr(asyncio, "all_tasks"):
+            tasks = asyncio.all_tasks()
+            d.update(
+                {
+                    "num_tasks": len(tasks),
+                    "tasks": [_cleaner_task_str(t) for t in tasks],
+                }
+            )
+        return d
 
     def _actor(self, request):
         return {"actor": request.actor}

@@ -19,10 +19,10 @@ class BaseConverter(object):
     def __init__(self, digits):
         self.digits = digits
 
-    def from_decimal(self, i):
+    def encode(self, i):
         return self.convert(i, self.decimal_digits, self.digits)
 
-    def to_decimal(self, s):
+    def decode(self, s):
         return int(self.convert(s, self.digits, self.decimal_digits))
 
     def convert(number, fromdigits, todigits):

@@ -45,6 +45,9 @@ class Database:
         self._cached_table_counts = None
         self._write_thread = None
         self._write_queue = None
+        # These are used when in non-threaded mode:
+        self._read_connection = None
+        self._write_connection = None
         if not self.is_mutable and not self.is_memory:
             p = Path(path)
             self.hash = inspect_hash(p)
@@ -134,6 +137,14 @@ class Database:
         return results
 
     async def execute_write_fn(self, fn, block=True):
+        if self.ds.executor is None:
+            # non-threaded mode
+            if self._write_connection is None:
+                self._write_connection = self.connect(write=True)
+                self.ds._prepare_connection(self._write_connection, self.name)
+            return fn(self._write_connection)
+
+        # threaded mode
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
         if self._write_queue is None:
             self._write_queue = queue.Queue()
@@ -177,6 +188,14 @@ class Database:
             task.reply_queue.sync_q.put(result)
 
     async def execute_fn(self, fn):
+        if self.ds.executor is None:
+            # non-threaded mode
+            if self._read_connection is None:
+                self._read_connection = self.connect()
+                self.ds._prepare_connection(self._read_connection, self.name)
+            return fn(self._read_connection)
+
+        # threaded mode
         def in_thread():
             conn = getattr(connections, self.name, None)
             if not conn:

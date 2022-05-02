@@ -107,6 +107,8 @@ Maximum number of threads in the thread pool Datasette uses to execute SQLite qu
 
     datasette mydatabase.db --setting num_sql_threads 10
 
+Setting this to 0 turns off threaded SQL queries entirely - useful for environments that do not support threading such as `Pyodide <https://pyodide.org/>`__.
+
 .. _setting_allow_facet:
 
 allow_facet

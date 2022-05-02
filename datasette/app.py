@@ -288,9 +288,12 @@ class Datasette:
         self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
-        self.executor = futures.ThreadPoolExecutor(
-            max_workers=self.setting("num_sql_threads")
-        )
+        if self.setting("num_sql_threads") == 0:
+            self.executor = None
+        else:
+            self.executor = futures.ThreadPoolExecutor(
+                max_workers=self.setting("num_sql_threads")
+            )
         self.max_returned_rows = self.setting("max_returned_rows")
         self.sql_time_limit_ms = self.setting("sql_time_limit_ms")
         self.page_size = self.setting("default_page_size")
@@ -862,6 +865,8 @@ class Datasette:
         ]
 
     def _threads(self):
+        if self.setting("num_sql_threads") == 0:
+            return {"num_threads": 0, "threads": []}
         threads = list(threading.enumerate())
         d = {
             "num_threads": len(threads),

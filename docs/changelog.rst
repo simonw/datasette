@@ -4,6 +4,20 @@
 Changelog
 =========
 
+.. _v0_62a0:
+
+0.62a0 (2022-05-02)
+-------------------
+
+- Datasette now runs some SQL queries in parallel. This has limited impact on performance, see `this research issue <https://github.com/simonw/datasette/issues/1727>`__ for details.
+- Datasette should now be compatible with Pyodide. (:issue:`1733`)
+- ``datasette publish cloudrun`` has a new ``--timeout`` option which can be used to increase the time limit applied by the Google Cloud build environment. Thanks, Tim Sherratt. (`#1717 <https://github.com/simonw/datasette/pull/1717>`__)
+- Spaces in database names are now encoded as ``+`` rather than ``~20``. (:issue:`1701`)
+- ``<Binary: 2427344 bytes>`` is now displayed as ``<Binary: 2,427,344 bytes>`` and is accompanied by tooltip showing "2.3MB". (:issue:`1712`)
+- Don't show the facet option in the cog menu if faceting is not allowed. (:issue:`1683`)
+- Code examples in the documentation are now all formatted using Black. (:issue:`1718`)
+- ``Request.fake()`` method is now documented, see :ref:`internals_request`.
+
 .. _v0_61_1:
 
 0.61.1 (2022-03-23)

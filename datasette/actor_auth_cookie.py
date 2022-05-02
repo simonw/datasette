@@ -1,6 +1,6 @@
 from datasette import hookimpl
 from itsdangerous import BadSignature
-import baseconv
+from datasette.utils import baseconv
 import time
 
 

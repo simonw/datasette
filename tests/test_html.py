@@ -401,7 +401,7 @@ def test_database_download_for_immutable():
         assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
         # Check we can actually download it
         download_response = client.get("/fixtures.db")
-        assert 200 == download_response.status
+        assert download_response.status == 200
         # Check the content-length header exists
         assert "content-length" in download_response.headers
         content_length = download_response.headers["content-length"]
@@ -413,6 +413,14 @@ def test_database_download_for_immutable():
             == 'attachment; filename="fixtures.db"'
         )
         assert download_response.headers["transfer-encoding"] == "chunked"
+        # ETag header should be present and match db.hash
+        assert "etag" in download_response.headers
+        etag = download_response.headers["etag"]
+        assert etag == '"{}"'.format(client.ds.databases["fixtures"].hash)
+        # Try a second download with If-None-Match: current-etag
+        download_response2 = client.get("/fixtures.db", if_none_match=etag)
+        assert download_response2.body == b""
+        assert download_response2.status == 304
 
 
 def test_database_download_disallowed_for_mutable(app_client):

@@ -183,6 +183,13 @@ class DatabaseDownload(DataView):
         headers = {}
         if self.ds.cors:
             add_cors_headers(headers)
+        if db.hash:
+            etag = '"{}"'.format(db.hash)
+            headers["Etag"] = etag
+            # Has user seen this already?
+            if_none_match = request.headers.get("if-none-match")
+            if if_none_match and if_none_match == etag:
+                return Response("", status=304)
         headers["Transfer-Encoding"] = "chunked"
         return AsgiFileDownload(
             filepath,

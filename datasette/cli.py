@@ -453,6 +453,11 @@ def uninstall(packages, yes):
     help="Enable cross-database joins using the /_memory database",
 )
 @click.option(
+    "--nolock",
+    is_flag=True,
+    help="Ignore locking, open locked files in read-only mode",
+)
+@click.option(
     "--ssl-keyfile",
     help="SSL key file",
 )
@@ -486,6 +491,7 @@ def serve(
     open_browser,
     create,
     crossdb,
+    nolock,
     ssl_keyfile,
     ssl_certfile,
     return_instance=False,
@@ -545,6 +551,7 @@ def serve(
         version_note=version_note,
         pdb=pdb,
         crossdb=crossdb,
+        nolock=nolock,
     )
 
     # if files is a single directory, use that as config_dir=

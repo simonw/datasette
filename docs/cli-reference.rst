@@ -115,6 +115,7 @@ datasette serve --help
       --create                  Create database files if they do not exist
       --crossdb                 Enable cross-database joins using the /_memory
                                 database
+      --nolock                  Ignore locking, open locked files in read-only mode
       --ssl-keyfile TEXT        SSL key file
       --ssl-certfile TEXT       SSL certificate file
       --help                    Show this message and exit.

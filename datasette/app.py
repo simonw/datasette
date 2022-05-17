@@ -213,6 +213,7 @@ class Datasette:
         config_dir=None,
         pdb=False,
         crossdb=False,
+        nolock=False,
     ):
         assert config_dir is None or isinstance(
             config_dir, Path
@@ -238,6 +239,7 @@ class Datasette:
         self.databases = collections.OrderedDict()
         self._refresh_schemas_lock = asyncio.Lock()
         self.crossdb = crossdb
+        self.nolock = nolock
         if memory or crossdb or not self.files:
             self.add_database(Database(self, is_memory=True), name="_memory")
         # memory_name is a random string so that each Datasette instance gets its own

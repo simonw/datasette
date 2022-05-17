@@ -211,6 +211,17 @@ For added productivity, you can use use `sphinx-autobuild <https://pypi.org/proj
 
 Now browse to ``http://localhost:8000/`` to view the documentation. Any edits you make should be instantly reflected in your browser.
 
+.. _contributing_documentation_cog:
+
+Running Cog
+~~~~~~~~~~~
+
+Some pages of documentation (in particular the :ref:`cli_reference`) are automatically updated using `Cog <https://github.com/nedbat/cog>`__.
+
+To update these pages, run the following command::
+
+    cog -r docs/*.rst
+
 .. _contributing_continuous_deployment:
 
 Continuously deployed demo instances

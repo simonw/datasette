@@ -58,7 +58,7 @@ like so:
 
      datasette ~/Library/Application\ Support/Google/Chrome/Default/History --nolock
 
-The `--nolock` option ignores any file locks. This is safe as Datasette will open the file in read-only mode.
+The ``--nolock`` option ignores any file locks. This is safe as Datasette will open the file in read-only mode.
 
 Now visiting http://localhost:8001/History/downloads will show you a web
 interface to browse your downloads data:

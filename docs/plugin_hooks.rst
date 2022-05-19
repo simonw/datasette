@@ -557,7 +557,7 @@ And here is an example ``can_render`` function which returns ``True`` only if th
             "atom_updated",
         }.issubset(columns)
 
-Examples: `datasette-atom <https://datasette.io/plugins/datasette-atom>`_, `datasette-ics <https://datasette.io/plugins/datasette-ics>`_, `datasette-geojson <https://datasette.io/plugins/datasette-geojson>`__
+Examples: `datasette-atom <https://datasette.io/plugins/datasette-atom>`_, `datasette-ics <https://datasette.io/plugins/datasette-ics>`_, `datasette-geojson <https://datasette.io/plugins/datasette-geojson>`__, `datasette-copyable <https://datasette.io/plugins/datasette-copyable>`__
 
 .. _plugin_register_routes:
 

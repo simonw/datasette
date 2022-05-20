@@ -51,7 +51,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "Datasette"
-copyright = "2017-2021, Simon Willison"
+copyright = "2017-2022, Simon Willison"
 author = "Simon Willison"
 
 # Disable -- turning into –

@@ -1,6 +1,8 @@
 Getting started
 ===============
 
+.. _getting_started_demo:
+
 Play with a live demo
 ---------------------
 
@@ -8,6 +10,16 @@ The best way to experience Datasette for the first time is with a demo:
 
 * `global-power-plants.datasettes.com <https://global-power-plants.datasettes.com/global-power-plants/global-power-plants>`__ provides a searchable database of power plants around the world, using data from the `World Resources Institude <https://www.wri.org/publication/global-power-plant-database>`__ rendered using the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ plugin.
 * `fivethirtyeight.datasettes.com <https://fivethirtyeight.datasettes.com/fivethirtyeight>`__ shows Datasette running against over 400 datasets imported from the `FiveThirtyEight GitHub repository <https://github.com/fivethirtyeight/data>`__.
+
+.. _getting_started_tutorial:
+
+Follow a tutorial
+-----------------
+
+Datasette has several `tutorials <https://datasette.io/tutorials>`__ to help you get started with the tool. Try one of the following:
+
+- `Exploring a database with Datasette <https://datasette.io/tutorials/explore>`__ shows how to use the Datasette web interface to explore a new database.
+- `Learn SQL with Datasette <https://datasette.io/tutorials/learn-sql>`__ introduces SQL, and shows how to use that query language to ask questions of your data.
 
 .. _getting_started_glitch:
 

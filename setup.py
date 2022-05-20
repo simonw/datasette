@@ -65,7 +65,7 @@ setup(
     setup_requires=["pytest-runner"],
     extras_require={
         "docs": [
-            "sphinx_rtd_theme",
+            "furo==2022.4.7",
             "sphinx-autobuild",
             "codespell",
             "blacken-docs",

@@ -1,0 +1,16 @@
+<div class="sidebar-brand centered">
+  {% block brand_content %}
+  <div class="sidebar-logo-container">
+    <a href="https://datasette.io/"><img class="sidebar-logo" src="{{ logo_url }}" alt="Datasette"></a>
+  </div>
+  {%- set nav_version = version %}
+  {% if READTHEDOCS and current_version %}
+    {%- set nav_version = current_version %}
+  {% endif %}
+  {% if nav_version %}
+    <div class="version">
+      {{ nav_version }}
+    </div>
+  {% endif %}
+  {% endblock brand_content %}
+</div>

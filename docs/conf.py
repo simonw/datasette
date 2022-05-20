@@ -90,17 +90,14 @@ todo_include_todos = False
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "sphinx_rtd_theme"
+html_theme = "furo"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    "logo_only": True,
-    "style_nav_header_background": "white",
-    "prev_next_buttons_location": "both",
+    "sidebar_hide_name": True,
 }
-
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -112,20 +109,9 @@ html_logo = "datasette-logo.svg"
 html_css_files = [
     "css/custom.css",
 ]
-
-
-# Custom sidebar templates, must be a dictionary that maps document names
-# to template names.
-#
-# This is required for the alabaster theme
-# refs: http://alabaster.readthedocs.io/en/latest/installation.html#sidebars
-html_sidebars = {
-    "**": [
-        "relations.html",  # needs 'show_related': True theme option to display
-        "searchbox.html",
-    ]
-}
-
+html_js_files = [
+    "js/custom.js"
+]
 
 # -- Options for HTMLHelp output ------------------------------------------
 

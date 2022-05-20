@@ -20,6 +20,7 @@ For example, you can implement the ``render_cell`` plugin hook like this even th
 
 .. contents:: List of plugin hooks
    :local:
+   :class: this-will-duplicate-information-and-it-is-still-useful-here
 
 .. _plugin_hook_prepare_connection:
 

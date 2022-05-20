@@ -13,6 +13,7 @@ If you want to start making contributions to the Datasette project by installing
 
 .. contents::
    :local:
+   :class: this-will-duplicate-information-and-it-is-still-useful-here
 
 .. _installation_basic:
 

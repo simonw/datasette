@@ -1,35 +1,3 @@
-{%- extends "!layout.html" %}
-
-{% block htmltitle %}
-{{ super() }}
-<script defer data-domain="docs.datasette.io" src="https://plausible.io/js/plausible.js"></script>
-{% endblock %}
-
-{% block sidebartitle %}
-
-<a href="https://datasette.io/">
-  <img src="{{ pathto('_static/' + logo, 1) }}" class="logo" alt="{{ _('Logo') }}"/>
-</a>
-
-{% if theme_display_version %}
-  {%- set nav_version = version %}
-  {% if READTHEDOCS and current_version %}
-    {%- set nav_version = current_version %}
-  {% endif %}
-  {% if nav_version %}
-    <div class="version">
-      {{ nav_version }}
-    </div>
-  {% endif %}
-{% endif %}
-
-{% include "searchbox.html" %}
-
-{% endblock %}
-
-{% block footer %}
-{{ super() }}
-<script>
 jQuery(function ($) {
   // Show banner linking to /stable/ if this is a /latest/ page
   if (!/\/latest\//.test(location.pathname)) {
@@ -57,5 +25,3 @@ jQuery(function ($) {
     }
   });
 });
-</script>
-{% endblock %}

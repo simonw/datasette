@@ -76,7 +76,7 @@ setup(
             "pytest-xdist>=2.2.1,<2.6",
             "pytest-asyncio>=0.17,<0.19",
             "beautifulsoup4>=4.8.1,<4.12.0",
-            "black==22.1.0",
+            "black==22.3.0",
             "blacken-docs==1.12.1",
             "pytest-timeout>=1.4.2,<2.2",
             "trustme>=0.7,<0.10",

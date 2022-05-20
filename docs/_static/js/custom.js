@@ -17,11 +17,7 @@ jQuery(function ($) {
         </div>`
       );
       warning.find("a").attr("href", stableUrl);
-      var body = $("div.body");
-      if (!body.length) {
-        body = $("div.document");
-      }
-      body.prepend(warning);
+      $("article[role=main]").prepend(warning);
     }
   });
 });

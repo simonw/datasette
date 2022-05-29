@@ -26,7 +26,7 @@ The request object is passed to various plugin hooks. It represents an incoming 
     The request scheme - usually ``https`` or ``http``.
 
 ``.headers`` - dictionary (str -> str)
-    A dictionary of incoming HTTP request headers.
+    A dictionary of incoming HTTP request headers. Header names have been converted to lowercase.
 
 ``.cookies`` - dictionary (str -> str)
     A dictionary of incoming cookies

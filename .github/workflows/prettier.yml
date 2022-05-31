@@ -2,6 +2,9 @@ name: Check JavaScript for conformance with Prettier
 
 on: [push]
 
+permissions:
+  contents: read
+
 jobs:
   prettier:
     runs-on: ubuntu-latest

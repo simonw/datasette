@@ -218,6 +218,7 @@ class Datasette:
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
+        self.config_dir = config_dir
         self.pdb = pdb
         self._secret = secret or secrets.token_hex(32)
         self.files = tuple(files or []) + tuple(immutables or [])

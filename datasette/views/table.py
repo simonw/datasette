@@ -895,6 +895,7 @@ async def display_columns_and_rows(
             # pylint: disable=no-member
             plugin_display_value = None
             for candidate in pm.hook.render_cell(
+                row=row,
                 value=value,
                 column=column,
                 table=table_name,

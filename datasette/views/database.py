@@ -375,6 +375,7 @@ class QueryView(DataView):
                     # pylint: disable=no-member
                     plugin_display_value = None
                     for candidate in pm.hook.render_cell(
+                        row=row,
                         value=value,
                         column=column,
                         table=None,

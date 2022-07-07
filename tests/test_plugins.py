@@ -181,12 +181,13 @@ def test_hook_render_cell_demo(app_client):
     response = app_client.get("/fixtures/simple_primary_key?id=4")
     soup = Soup(response.body, "html.parser")
     td = soup.find("td", {"class": "col-content"})
-    assert {
+    assert json.loads(td.string) == {
+        "row": {"id": "4", "content": "RENDER_CELL_DEMO"},
         "column": "content",
         "table": "simple_primary_key",
         "database": "fixtures",
         "config": {"depth": "table", "special": "this-is-simple_primary_key"},
-    } == json.loads(td.string)
+    }
 
 
 @pytest.mark.parametrize(

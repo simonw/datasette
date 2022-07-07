@@ -373,12 +373,15 @@ Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish
 
 .. _plugin_hook_render_cell:
 
-render_cell(value, column, table, database, datasette)
-------------------------------------------------------
+render_cell(row, value, column, table, database, datasette)
+-----------------------------------------------------------
 
 Lets you customize the display of values within table cells in the HTML table view.
 
-``value`` - string, integer or None
+``row`` - ``sqlite.Row``
+    The SQLite row object that the value being rendered is part of
+
+``value`` - string, integer, float, bytes or None
     The value that was loaded from the database
 
 ``column`` - string

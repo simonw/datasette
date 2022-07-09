@@ -5,7 +5,7 @@ Writing plugins
 
 You can write one-off plugins that apply to just one Datasette instance, or you can write plugins which can be installed using ``pip`` and can be shipped to the Python Package Index (`PyPI <https://pypi.org/>`__) for other people to install.
 
-Want to start by looking at an example? The `Datasette plugins directory <https://datasette.io/plugins>`__ lists more than 50 open source plugins with code you can explore. The :ref:`plugin hooks <plugin_hooks>` page includes links to example plugins for each of the documented hooks.
+Want to start by looking at an example? The `Datasette plugins directory <https://datasette.io/plugins>`__ lists more than 90 open source plugins with code you can explore. The :ref:`plugin hooks <plugin_hooks>` page includes links to example plugins for each of the documented hooks.
 
 .. _writing_plugins_one_off:
 

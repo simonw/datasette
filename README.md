@@ -7,6 +7,7 @@
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](https://docs.datasette.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/main/LICENSE)
 [![docker: datasette](https://img.shields.io/badge/docker-datasette-blue)](https://hub.docker.com/r/datasetteproject/datasette)
+[![discord](https://img.shields.io/discord/823971286308356157?label=Discord)](https://discord.gg/ktd74dm5mw)
 
 *An open source multi-tool for exploring and publishing data*
 

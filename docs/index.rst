@@ -16,6 +16,8 @@ datasette|
    :target: https://github.com/simonw/datasette/blob/main/LICENSE
 .. |docker: datasette| image:: https://img.shields.io/badge/docker-datasette-blue
    :target: https://hub.docker.com/r/datasetteproject/datasette
+.. |discord| image:: https://img.shields.io/discord/823971286308356157?label=Discord
+   :target: https://discord.gg/ktd74dm5mw
 
 *An open source multi-tool for exploring and publishing data*
 

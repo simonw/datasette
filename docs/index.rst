@@ -2,7 +2,7 @@ Datasette
 =========
 
 |PyPI| |Changelog| |Python 3.x| |Tests| |License| |docker:
-datasette|
+datasette| |discord|
 
 .. |PyPI| image:: https://img.shields.io/pypi/v/datasette.svg
    :target: https://pypi.org/project/datasette/

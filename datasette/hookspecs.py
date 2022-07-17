@@ -138,3 +138,8 @@ def database_actions(datasette, actor, database, request):
 @hookspec
 def skip_csrf(datasette, scope):
     """Mechanism for skipping CSRF checks for certain requests"""
+
+
+@hookspec
+def handle_exception(datasette, request, exception):
+    """Handle an uncaught exception. Can return a Response or None."""

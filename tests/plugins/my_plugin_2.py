@@ -185,3 +185,21 @@ def register_routes(datasette):
         # Also serves to demonstrate over-ride of default paths:
         (r"/(?P<db_name>[^/]+)/(?P<table_and_format>[^/]+?$)", new_table),
     ]
+
+
+@hookimpl
+def handle_exception(datasette, request, exception):
+    datasette._exception_hook_fired = (request, exception)
+    if request.args.get("_custom_error"):
+        return Response.text("_custom_error")
+    elif request.args.get("_custom_error_async"):
+
+        async def inner():
+            return Response.text("_custom_error_async")
+
+        return inner
+
+
+@hookimpl(specname="register_routes")
+def register_triger_error():
+    return ((r"/trigger-error", lambda: 1 / 0),)

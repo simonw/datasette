@@ -824,6 +824,20 @@ def test_hook_forbidden(restore_working_directory):
         assert "view-database" == client.ds._last_forbidden_message
 
 
+def test_hook_handle_exception(app_client):
+    app_client.get("/trigger-error?x=123")
+    assert hasattr(app_client.ds, "_exception_hook_fired")
+    request, exception = app_client.ds._exception_hook_fired
+    assert request.url == "http://localhost/trigger-error?x=123"
+    assert isinstance(exception, ZeroDivisionError)
+
+
+@pytest.mark.parametrize("param", ("_custom_error", "_custom_error_async"))
+def test_hook_handle_exception_custom_response(app_client, param):
+    response = app_client.get("/trigger-error?{}=1".format(param))
+    assert response.text == param
+
+
 def test_hook_menu_links(app_client):
     def get_menu_links(html):
         soup = Soup(html, "html.parser")

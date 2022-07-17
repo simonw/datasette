@@ -332,6 +332,7 @@ def test_permissions_debug(app_client):
     assert checks == [
         {"action": "permissions-debug", "result": True, "used_default": False},
         {"action": "view-instance", "result": None, "used_default": True},
+        {"action": "debug-menu", "result": False, "used_default": True},
         {"action": "permissions-debug", "result": False, "used_default": True},
         {"action": "view-instance", "result": None, "used_default": True},
     ]

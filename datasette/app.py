@@ -16,7 +16,6 @@ import re
 import secrets
 import sys
 import threading
-import traceback
 import urllib.parse
 from concurrent import futures
 from pathlib import Path
@@ -27,7 +26,7 @@ from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
-from .views.base import DatasetteError, ureg
+from .views.base import ureg
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
 from .views.special import (
@@ -49,7 +48,6 @@ from .utils import (
     PrefixedUrlString,
     SPATIALITE_FUNCTIONS,
     StartupError,
-    add_cors_headers,
     async_call_with_supported_arguments,
     await_me_maybe,
     call_with_supported_arguments,
@@ -86,11 +84,6 @@ from .utils.sqlite import (
 from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
-
-try:
-    import rich
-except ImportError:
-    rich = None
 
 app_root = Path(__file__).parent.parent
 
@@ -1274,6 +1267,16 @@ class DatasetteRouter:
             return
         except NotFound as exception:
             return await self.handle_404(request, send, exception)
+        except Forbidden as exception:
+            # Try the forbidden() plugin hook
+            for custom_response in pm.hook.forbidden(
+                datasette=self.ds, request=request, message=exception.args[0]
+            ):
+                custom_response = await await_me_maybe(custom_response)
+                assert (
+                    custom_response
+                ), "Default forbidden() hook should have been called"
+                return await custom_response.asgi_send(send)
         except Exception as exception:
             return await self.handle_exception(request, send, exception)
 
@@ -1372,72 +1375,20 @@ class DatasetteRouter:
                 await self.handle_exception(request, send, exception or NotFound("404"))
 
     async def handle_exception(self, request, send, exception):
-        if self.ds.pdb:
-            import pdb
+        responses = []
+        for hook in pm.hook.handle_exception(
+            datasette=self.ds,
+            request=request,
+            exception=exception,
+        ):
+            response = await await_me_maybe(hook)
+            if response is not None:
+                responses.append(response)
 
-            pdb.post_mortem(exception.__traceback__)
-
-        if rich is not None:
-            rich.get_console().print_exception(show_locals=True)
-
-        title = None
-        if isinstance(exception, Forbidden):
-            status = 403
-            info = {}
-            message = exception.args[0]
-            # Try the forbidden() plugin hook
-            for custom_response in pm.hook.forbidden(
-                datasette=self.ds, request=request, message=message
-            ):
-                custom_response = await await_me_maybe(custom_response)
-                if custom_response is not None:
-                    await custom_response.asgi_send(send)
-                    return
-        elif isinstance(exception, Base400):
-            status = exception.status
-            info = {}
-            message = exception.args[0]
-        elif isinstance(exception, DatasetteError):
-            status = exception.status
-            info = exception.error_dict
-            message = exception.message
-            if exception.message_is_html:
-                message = Markup(message)
-            title = exception.title
-        else:
-            status = 500
-            info = {}
-            message = str(exception)
-            traceback.print_exc()
-        templates = [f"{status}.html", "error.html"]
-        info.update(
-            {
-                "ok": False,
-                "error": message,
-                "status": status,
-                "title": title,
-            }
-        )
-        headers = {}
-        if self.ds.cors:
-            add_cors_headers(headers)
-        if request.path.split("?")[0].endswith(".json"):
-            await asgi_send_json(send, info, status=status, headers=headers)
-        else:
-            template = self.ds.jinja_env.select_template(templates)
-            await asgi_send_html(
-                send,
-                await template.render_async(
-                    dict(
-                        info,
-                        urls=self.ds.urls,
-                        app_css_hash=self.ds.app_css_hash(),
-                        menu_links=lambda: [],
-                    )
-                ),
-                status=status,
-                headers=headers,
-            )
+        assert responses, "Default exception handler should have returned something"
+        # Even if there are multiple responses use just the first one
+        response = responses[0]
+        await response.asgi_send(send)
 
 
 _cleaner_task_str_re = re.compile(r"\S*site-packages/")

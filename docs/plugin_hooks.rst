@@ -107,8 +107,8 @@ Extra template variables that should be made available in the rendered template 
 ``view_name`` - string
     The name of the view being displayed. (``index``, ``database``, ``table``, and ``row`` are the most important ones.)
 
-``request`` - object or None
-    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
+``request`` - :ref:`internals_request` or None
+    The current HTTP request. This can be ``None`` if the request object is not available.
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
@@ -504,7 +504,7 @@ When a request is received, the ``"render"`` callback function is called with ze
     The table or view, if one is being rendered.
 
 ``request`` - :ref:`internals_request`
-    The incoming HTTP request.
+    The current HTTP request.
 
 ``view_name`` - string
     The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
@@ -599,8 +599,8 @@ The optional view function arguments are as follows:
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
 
-``request`` - Request object
-    The current HTTP :ref:`internals_request`.
+``request`` - :ref:`internals_request`
+    The current HTTP request.
 
 ``scope`` - dictionary
     The incoming ASGI scope dictionary.
@@ -947,8 +947,8 @@ actor_from_request(datasette, request)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
 
-``request`` - object
-    The current HTTP :ref:`internals_request`.
+``request`` - :ref:`internals_request`
+    The current HTTP request.
 
 This is part of Datasette's :ref:`authentication and permissions system <authentication>`. The function should attempt to authenticate an actor (either a user or an API actor of some sort) based on information in the request.
 
@@ -1010,8 +1010,8 @@ Example: `datasette-auth-tokens <https://datasette.io/plugins/datasette-auth-tok
 filters_from_request(request, database, table, datasette)
 ---------------------------------------------------------
 
-``request`` - object
-    The current HTTP :ref:`internals_request`.
+``request`` - :ref:`internals_request`
+    The current HTTP request.
 
 ``database`` - string
     The name of the database.
@@ -1178,8 +1178,8 @@ forbidden(datasette, request, message)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
 
-``request`` - object
-    The current HTTP :ref:`internals_request`.
+``request`` - :ref:`internals_request`
+    The current HTTP request.
 
 ``message`` - string
     A message hinting at why the request was forbidden.
@@ -1206,19 +1206,53 @@ The function can alternatively return an awaitable function if it needs to make 
 
 .. code-block:: python
 
-    from datasette import hookimpl
-    from datasette.utils.asgi import Response
+    from datasette import hookimpl, Response
 
 
     @hookimpl
     def forbidden(datasette):
         async def inner():
             return Response.html(
-                await datasette.render_template(
-                    "forbidden.html"
-                )
+                await datasette.render_template("render_message.html", request=request)
             )
 
+        return inner
+
+.. _plugin_hook_handle_exception:
+
+handle_exception(datasette, request, exception)
+-----------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``exception`` - ``Exception``
+    The exception that was raised.
+
+This hook is called any time an unexpected exception is raised. You can use it to record the exception.
+
+If your handler returns a ``Response`` object it will be returned to the client in place of the default Datasette error page.
+
+The handler can return a response directly, or it can return return an awaitable function that returns a response.
+
+This example logs an error to `Sentry <https://sentry.io/>`__ and then renders a custom error page:
+
+.. code-block:: python
+
+    from datasette import hookimpl, Response
+    import sentry_sdk
+
+
+    @hookimpl
+    def handle_exception(datasette, exception):
+        sentry_sdk.capture_exception(exception)
+        async def inner():
+            return Response.html(
+                await datasette.render_template("custom_error.html", request=request)
+            )
         return inner
 
 .. _plugin_hook_menu_links:
@@ -1232,8 +1266,8 @@ menu_links(datasette, actor, request)
 ``actor`` - dictionary or None
     The currently authenticated :ref:`actor <authentication_actor>`.
 
-``request`` - object or None
-    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
+``request`` - :ref:`internals_request`
+    The current HTTP request. This can be ``None`` if the request object is not available.
 
 This hook allows additional items to be included in the menu displayed by Datasette's top right menu icon.
 
@@ -1281,8 +1315,8 @@ table_actions(datasette, actor, database, table, request)
 ``table`` - string
     The name of the table.
 
-``request`` - object
-    The current HTTP :ref:`internals_request`. This can be ``None`` if the request object is not available.
+``request`` - :ref:`internals_request`
+    The current HTTP request. This can be ``None`` if the request object is not available.
 
 This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items.
 
@@ -1325,8 +1359,8 @@ database_actions(datasette, actor, database, request)
 ``database`` - string
     The name of the database.
 
-``request`` - object
-    The current HTTP :ref:`internals_request`.
+``request`` - :ref:`internals_request`
+    The current HTTP request.
 
 This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.
 

@@ -15,6 +15,8 @@ DEFAULT_PLUGINS = (
     "datasette.default_magic_parameters",
     "datasette.blob_renderer",
     "datasette.default_menu_links",
+    "datasette.handle_exception",
+    "datasette.forbidden",
 )
 
 pm = pluggy.PluginManager("datasette")

@@ -68,6 +68,7 @@ EXPECTED_PLUGINS = [
             "canned_queries",
             "extra_js_urls",
             "extra_template_vars",
+            "handle_exception",
             "menu_links",
             "permission_allowed",
             "register_routes",

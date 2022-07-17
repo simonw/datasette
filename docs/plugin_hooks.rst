@@ -1176,7 +1176,7 @@ forbidden(datasette, request, message)
 --------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to render templates or execute SQL queries.
 
 ``request`` - :ref:`internals_request`
     The current HTTP request.
@@ -1224,7 +1224,7 @@ handle_exception(datasette, request, exception)
 -----------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to render templates or execute SQL queries.
 
 ``request`` - :ref:`internals_request`
     The current HTTP request.

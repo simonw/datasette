@@ -1275,7 +1275,7 @@ class DatasetteRouter:
         except NotFound as exception:
             return await self.handle_404(request, send, exception)
         except Exception as exception:
-            return await self.handle_500(request, send, exception)
+            return await self.handle_exception(request, send, exception)
 
     async def handle_404(self, request, send, exception=None):
         # If path contains % encoding, redirect to tilde encoding
@@ -1354,7 +1354,7 @@ class DatasetteRouter:
                         view_name="page",
                     )
                 except NotFoundExplicit as e:
-                    await self.handle_500(request, send, e)
+                    await self.handle_exception(request, send, e)
                     return
                 # Pull content-type out into separate parameter
                 content_type = "text/html; charset=utf-8"
@@ -1369,9 +1369,9 @@ class DatasetteRouter:
                     content_type=content_type,
                 )
             else:
-                await self.handle_500(request, send, exception or NotFound("404"))
+                await self.handle_exception(request, send, exception or NotFound("404"))
 
-    async def handle_500(self, request, send, exception):
+    async def handle_exception(self, request, send, exception):
         if self.ds.pdb:
             import pdb
 

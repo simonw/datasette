@@ -1213,7 +1213,9 @@ The function can alternatively return an awaitable function if it needs to make 
     def forbidden(datasette):
         async def inner():
             return Response.html(
-                await datasette.render_template("render_message.html", request=request)
+                await datasette.render_template(
+                    "render_message.html", request=request
+                )
             )
 
         return inner
@@ -1249,10 +1251,14 @@ This example logs an error to `Sentry <https://sentry.io/>`__ and then renders a
     @hookimpl
     def handle_exception(datasette, exception):
         sentry_sdk.capture_exception(exception)
+
         async def inner():
             return Response.html(
-                await datasette.render_template("custom_error.html", request=request)
+                await datasette.render_template(
+                    "custom_error.html", request=request
+                )
             )
+
         return inner
 
 .. _plugin_hook_menu_links:

@@ -219,3 +219,39 @@ Here's a test for that plugin that mocks the HTTPX outbound request:
         assert (
             outbound_request.url == "https://www.example.com/"
         )
+
+.. _testing_plugins_register_in_test:
+
+Registering a plugin for the duration of a test
+-----------------------------------------------
+
+When writing tests for plugins you may find it useful to register a test plugin just for the duration of a single test. You can do this using ``pm.register()`` and ``pm.unregister()`` like this:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.app import Datasette
+    from datasette.plugins import pm
+    import pytest
+
+
+    @pytest.mark.asyncio
+    async def test_using_test_plugin():
+        class TestPlugin:
+            __name__ = "TestPlugin"
+
+            # Use hookimpl and method names to register hooks
+            @hookimpl
+            def register_routes(self):
+                return [
+                    (r"^/error$", lambda: 1/0),
+                ]
+
+        pm.register(TestPlugin(), name="undo")
+        try:
+            # The test implementation goes here
+            datasette = Datasette()
+            response = await datasette.client.get("/error")
+            assert response.status_code == 500
+        finally:
+            pm.unregister(name="undo")

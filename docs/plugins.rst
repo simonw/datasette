@@ -173,6 +173,24 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.forbidden",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "forbidden"
+            ]
+        },
+        {
+            "name": "datasette.handle_exception",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "handle_exception"
+            ]
+        },
+        {
             "name": "datasette.publish.cloudrun",
             "static": false,
             "templates": false,

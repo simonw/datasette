@@ -1,4 +1,5 @@
 import json
+import pathlib
 import pytest
 
 from datasette.app import Datasette
@@ -150,3 +151,11 @@ def test_metadata_yaml(tmp_path_factory, filename):
     response = client.get("/-/metadata.json")
     assert 200 == response.status
     assert {"title": "Title from metadata"} == response.json
+
+
+def test_store_config_dir(config_dir_client):
+    ds = config_dir_client.ds
+
+    assert hasattr(ds, "config_dir")
+    assert ds.config_dir is not None
+    assert isinstance(ds.config_dir, pathlib.Path)

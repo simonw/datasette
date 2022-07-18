@@ -4,6 +4,20 @@
 Changelog
 =========
 
+.. _v0_62a1:
+
+0.62a1 (2022-07-17)
+-------------------
+
+- New plugin hook: :ref:`handle_exception() <plugin_hook_handle_exception>`, for custom handling of exceptions caught by Datasette. (:issue:`1770`)
+- The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook is now also passed a ``row`` argument, representing the ``sqlite3.Row`` object that is being rendered. (:issue:`1300`)
+- New ``--nolock`` option for ignoring file locks when opening read-only databases. (:issue:`1744`)
+- Documentation now uses the `Furo <https://github.com/pradyunsg/furo>`__ Sphinx theme. (:issue:`1746`)
+- Datasette now has a `Discord community <https://discord.gg/ktd74dm5mw>`__.
+- Database file downloads now implement conditional GET using ETags. (:issue:`1739`)
+- Examples in the documentation now include a copy-to-clipboard button. (:issue:`1748`)
+- HTML for facet results and suggested results has been extracted out into new templates ``_facet_results.html`` and ``_suggested_facets.html``. Thanks, M. Nasimul Haque. (`#1759 <https://github.com/simonw/datasette/pull/1759>`__)
+
 .. _v0_62a0:
 
 0.62a0 (2022-05-02)

@@ -244,7 +244,7 @@ When writing tests for plugins you may find it useful to register a test plugin 
             @hookimpl
             def register_routes(self):
                 return [
-                    (r"^/error$", lambda: 1/0),
+                    (r"^/error$", lambda: 1 / 0),
                 ]
 
         pm.register(TestPlugin(), name="undo")

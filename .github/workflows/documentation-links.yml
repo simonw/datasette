@@ -11,6 +11,6 @@ jobs:
   documentation-links:
     runs-on: ubuntu-latest
     steps:
-      - uses: readthedocs/readthedocs-preview@main
+      - uses: readthedocs/actions/preview@v1
         with:
           project-slug: "datasette"

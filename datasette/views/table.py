@@ -710,7 +710,7 @@ class TableView(DataView):
             for key in request.args:
                 if (
                     key.startswith("_")
-                    and key not in ("_sort", "_search", "_next")
+                    and key not in ("_sort", "_sort_desc", "_search", "_next")
                     and "__" not in key
                 ):
                     for value in request.args.getlist(key):

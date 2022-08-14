@@ -828,6 +828,7 @@ def test_other_hidden_form_fields(app_client, path, expected_hidden):
     [
         ("/fixtures/searchable?_search=terry", []),
         ("/fixtures/searchable?_sort=text2", []),
+        ("/fixtures/searchable?_sort_desc=text2", []),
         ("/fixtures/searchable?_sort=text2&_where=1", [("_where", "1")]),
     ],
 )

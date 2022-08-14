@@ -52,6 +52,16 @@ def publish_subcommand(publish):
         multiple=True,
         help="Additional packages to apt-get install",
     )
+    @click.option(
+        "--max-instances",
+        type=int,
+        help="Maximum Cloud Run instances",
+    )
+    @click.option(
+        "--min-instances",
+        type=int,
+        help="Minimum Cloud Run instances",
+    )
     def cloudrun(
         files,
         metadata,
@@ -79,6 +89,8 @@ def publish_subcommand(publish):
         cpu,
         timeout,
         apt_get_extras,
+        max_instances,
+        min_instances,
     ):
         "Publish databases to Datasette running on Cloud Run"
         fail_if_publish_binary_not_installed(
@@ -168,12 +180,20 @@ def publish_subcommand(publish):
                 ),
                 shell=True,
             )
+        extra_deploy_options = []
+        for option, value in (
+            ("--memory", memory),
+            ("--cpu", cpu),
+            ("--max-instances", max_instances),
+            ("--min-instances", min_instances),
+        ):
+            if value:
+                extra_deploy_options.append("{} {}".format(option, value))
         check_call(
-            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}{}".format(
+            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}".format(
                 image_id,
                 service,
-                " --memory {}".format(memory) if memory else "",
-                " --cpu {}".format(cpu) if cpu else "",
+                " " + " ".join(extra_deploy_options) if extra_deploy_options else "",
             ),
             shell=True,
         )

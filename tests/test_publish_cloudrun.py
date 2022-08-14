@@ -105,19 +105,36 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")
 @pytest.mark.parametrize(
-    "memory,cpu,timeout,expected_gcloud_args",
+    "memory,cpu,timeout,min_instances,max_instances,expected_gcloud_args",
     [
-        ["1Gi", None, None, "--memory 1Gi"],
-        ["2G", None, None, "--memory 2G"],
-        ["256Mi", None, None, "--memory 256Mi"],
-        ["4", None, None, None],
-        ["GB", None, None, None],
-        [None, 1, None, "--cpu 1"],
-        [None, 2, None, "--cpu 2"],
-        [None, 3, None, None],
-        [None, 4, None, "--cpu 4"],
-        ["2G", 4, None, "--memory 2G --cpu 4"],
-        [None, None, 1800, "--timeout 1800"],
+        ["1Gi", None, None, None, None, "--memory 1Gi"],
+        ["2G", None, None, None, None, "--memory 2G"],
+        ["256Mi", None, None, None, None, "--memory 256Mi"],
+        [
+            "4",
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+        [
+            "GB",
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+        [None, 1, None, None, None, "--cpu 1"],
+        [None, 2, None, None, None, "--cpu 2"],
+        [None, 3, None, None, None, None],
+        [None, 4, None, None, None, "--cpu 4"],
+        ["2G", 4, None, None, None, "--memory 2G --cpu 4"],
+        [None, None, 1800, None, None, "--timeout 1800"],
+        [None, None, None, 2, None, "--min-instances 2"],
+        [None, None, None, 2, 4, "--min-instances 2 --max-instances 4"],
+        [None, 2, None, None, 4, "--cpu 2 --max-instances 4"],
     ],
 )
 def test_publish_cloudrun_memory_cpu(
@@ -127,6 +144,8 @@ def test_publish_cloudrun_memory_cpu(
     memory,
     cpu,
     timeout,
+    min_instances,
+    max_instances,
     expected_gcloud_args,
     tmp_path_factory,
 ):

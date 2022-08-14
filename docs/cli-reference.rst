@@ -251,6 +251,8 @@ datasette publish cloudrun --help
       --cpu [1|2|4]                   Number of vCPUs to allocate in Cloud Run
       --timeout INTEGER               Build timeout in seconds
       --apt-get-install TEXT          Additional packages to apt-get install
+      --max-instances INTEGER         Maximum Cloud Run instances
+      --min-instances INTEGER         Minimum Cloud Run instances
       --help                          Show this message and exit.
 
 

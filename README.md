@@ -21,7 +21,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 * Latest [Datasette News](https://datasette.io/news)
 * Comprehensive documentation: https://docs.datasette.io/
 * Examples: https://datasette.io/examples
-* Live demo of current main: https://latest.datasette.io/
+* Live demo of current `main` branch: https://latest.datasette.io/
 * Questions, feedback or want to talk about the project? Join our [Discord](https://discord.gg/ktd74dm5mw)
 
 Want to stay up-to-date with the project? Subscribe to the [Datasette newsletter](https://datasette.substack.com/) for tips, tricks and news on what's new in the Datasette ecosystem.
@@ -85,3 +85,7 @@ Or:
 This will create a docker image containing both the datasette application and the specified SQLite database files. It will then deploy that image to Heroku or Cloud Run and give you a URL to access the resulting website and API.
 
 See [Publishing data](https://docs.datasette.io/en/stable/publish.html) in the documentation for more details.
+
+## Datasette Lite
+
+[Datasette Lite](https://lite.datasette.io/) is Datasette packaged using WebAssembly so that it runs entirely in your browser, no Python web application server required. Read more about that in the [Datasette Lite documentation](https://github.com/simonw/datasette-lite/blob/main/README.md).

@@ -1261,6 +1261,8 @@ This example logs an error to `Sentry <https://sentry.io/>`__ and then renders a
 
         return inner
 
+Example: `datasette-sentry <https://datasette.io/plugins/datasette-sentry>`_
+
 .. _plugin_hook_menu_links:
 
 menu_links(datasette, actor, request)

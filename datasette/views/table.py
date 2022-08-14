@@ -630,7 +630,27 @@ class TableView(DataView):
                 next_value = path_from_row_pks(rows[-2], pks, use_rowid)
             # If there's a sort or sort_desc, add that value as a prefix
             if (sort or sort_desc) and not is_view:
-                prefix = rows[-2][sort or sort_desc]
+                try:
+                    prefix = rows[-2][sort or sort_desc]
+                except IndexError:
+                    # sort/sort_desc column missing from SELECT - look up value by PK instead
+                    prefix_where_clause = " and ".join(
+                        "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)
+                    )
+                    prefix_lookup_sql = "select [{}] from [{}] where {}".format(
+                        sort or sort_desc, table_name, prefix_where_clause
+                    )
+                    prefix = (
+                        await db.execute(
+                            prefix_lookup_sql,
+                            {
+                                **{
+                                    "pk{}".format(i): rows[-2][pk]
+                                    for i, pk in enumerate(pks)
+                                }
+                            },
+                        )
+                    ).single_value()
                 if isinstance(prefix, dict) and "value" in prefix:
                     prefix = prefix["value"]
                 if prefix is None:

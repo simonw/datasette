@@ -288,6 +288,8 @@ def test_paginate_compound_keys_with_extra_filters(app_client):
         ),
         # text column contains '$null' - ensure it doesn't confuse pagination:
         ("_sort=text", lambda row: row["text"], "sorted by text"),
+        # Still works if sort column removed using _col=
+        ("_sort=text&_col=content", lambda row: row["text"], "sorted by text"),
     ],
 )
 def test_sortable(app_client, query_string, sort_key, human_description_en):

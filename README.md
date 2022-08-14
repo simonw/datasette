@@ -22,7 +22,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 * Comprehensive documentation: https://docs.datasette.io/
 * Examples: https://datasette.io/examples
 * Live demo of current main: https://latest.datasette.io/
-* Support questions, feedback? Join our [GitHub Discussions forum](https://github.com/simonw/datasette/discussions)
+* Questions, feedback or want to talk about the project? Join our [Discord](https://discord.gg/ktd74dm5mw)
 
 Want to stay up-to-date with the project? Subscribe to the [Datasette newsletter](https://datasette.substack.com/) for tips, tricks and news on what's new in the Datasette ecosystem.
 

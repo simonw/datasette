@@ -21,6 +21,17 @@ Datasette has several `tutorials <https://datasette.io/tutorials>`__ to help you
 - `Exploring a database with Datasette <https://datasette.io/tutorials/explore>`__ shows how to use the Datasette web interface to explore a new database.
 - `Learn SQL with Datasette <https://datasette.io/tutorials/learn-sql>`__ introduces SQL, and shows how to use that query language to ask questions of your data.
 
+.. _getting_started_datasette_lite:
+
+Datasette in your browser with Datasette Lite
+---------------------------------------------
+
+`Datasette Lite <https://lite.datasette.io/>`__ is Datasette packaged using WebAssembly so that it runs entirely in your browser, no Python web application server required.
+
+You can pass a URL to a CSV, SQLite or raw SQL file directly to Datasette Lite to explore that data in your browser.
+
+This `example link <https://lite.datasette.io/?url=https%3A%2F%2Fraw.githubusercontent.com%2FNUKnightLab%2Fsql-mysteries%2Fmaster%2Fsql-murder-mystery.db#/sql-murder-mystery>`__ opens Datasette Lite and loads the SQL Murder Mystery example database from `Northwestern University Knight Lab <https://github.com/NUKnightLab/sql-mysteries>`__. 
+
 .. _getting_started_glitch:
 
 Try Datasette without installing anything using Glitch

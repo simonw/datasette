@@ -260,6 +260,7 @@ Constructor parameters include:
 - ``files=[...]`` - a list of database files to open
 - ``immutables=[...]`` - a list of database files to open in immutable mode
 - ``metadata={...}`` - a dictionary of :ref:`metadata`
+- ``config_dir=...`` - the :ref:`configuration directory <config_dir>` to use, stored in ``datasette.config_dir``
 
 .. _datasette_databases:
 

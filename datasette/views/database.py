@@ -273,6 +273,9 @@ class QueryView(DataView):
         # Execute query - as write or as read
         if write:
             if request.method == "POST":
+                # If database is immutable, return an error
+                if not db.is_mutable:
+                    raise Forbidden("Database is immutable")
                 body = await request.post_body()
                 body = body.decode("utf-8").strip()
                 if body.startswith("{") and body.endswith("}"):
@@ -326,6 +329,7 @@ class QueryView(DataView):
                 async def extra_template():
                     return {
                         "request": request,
+                        "db_is_immutable": not db.is_mutable,
                         "path_with_added_args": path_with_added_args,
                         "path_with_removed_args": path_with_removed_args,
                         "named_parameter_values": named_parameter_values,

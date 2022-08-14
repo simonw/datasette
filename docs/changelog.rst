@@ -4,33 +4,52 @@
 Changelog
 =========
 
-.. _v0_62a1:
+.. _v0_62:
 
-0.62a1 (2022-07-17)
+0.62 (2022-08-14)
 -------------------
+
+Datasette can now run entirely in your browser using WebAssembly. Try out `Datasette Lite <https://lite.datasette.io/>`__, take a look `at the code <https://github.com/simonw/datasette-lite>`__ or read more about it in `Datasette Lite: a server-side Python web application running in a browser <https://simonwillison.net/2022/May/4/datasette-lite/>`__.
+
+Datasette now has a `Discord community <https://discord.gg/ktd74dm5mw>`__ for questions and discussions about Datasette and its ecosystem of projects.
+
+Features
+~~~~~~~~
+
+- Datasette is now compatible with `Pyodide <https://pyodide.org/>`__.  This is the enabling technology behind `Datasette Lite <https://lite.datasette.io/>`__. (:issue:`1733`)
+- Database file downloads now implement conditional GET using ETags. (:issue:`1739`)
+- HTML for facet results and suggested results has been extracted out into new templates ``_facet_results.html`` and ``_suggested_facets.html``. Thanks, M. Nasimul Haque. (`#1759 <https://github.com/simonw/datasette/pull/1759>`__)
+- Datasette now runs some SQL queries in parallel. This has limited impact on performance, see `this research issue <https://github.com/simonw/datasette/issues/1727>`__ for details.
+- New ``--nolock`` option for ignoring file locks when opening read-only databases. (:issue:`1744`)
+- Spaces in the database names in URLs are now encoded as ``+`` rather than ``~20``. (:issue:`1701`)
+- ``<Binary: 2427344 bytes>`` is now displayed as ``<Binary: 2,427,344 bytes>`` and is accompanied by tooltip showing "2.3MB". (:issue:`1712`)
+- The base Docker image used by ``datasette publish cloudrun``, ``datasette package`` and the `official Datasette image <https://hub.docker.com/datasetteproject/datasette>`__ has been upgraded to ``3.10.6-slim-bullseye``.  (:issue:`1768`)
+- Canned writable queries against immutable databases now show a warning message. (:issue:`1728`)
+- ``datasette publish cloudrun`` has a new ``--timeout`` option which can be used to increase the time limit applied by the Google Cloud build environment. Thanks, Tim Sherratt. (`#1717 <https://github.com/simonw/datasette/pull/1717>`__)
+- ``datasette publish cloudrun`` has new ``--min-instances`` and ``--max-instances`` options. (:issue:`1779`)
+
+Plugin hooks
+~~~~~~~~~~~~
 
 - New plugin hook: :ref:`handle_exception() <plugin_hook_handle_exception>`, for custom handling of exceptions caught by Datasette. (:issue:`1770`)
 - The :ref:`render_cell() <plugin_hook_render_cell>` plugin hook is now also passed a ``row`` argument, representing the ``sqlite3.Row`` object that is being rendered. (:issue:`1300`)
-- New ``--nolock`` option for ignoring file locks when opening read-only databases. (:issue:`1744`)
-- Documentation now uses the `Furo <https://github.com/pradyunsg/furo>`__ Sphinx theme. (:issue:`1746`)
-- Datasette now has a `Discord community <https://discord.gg/ktd74dm5mw>`__.
-- Database file downloads now implement conditional GET using ETags. (:issue:`1739`)
-- Examples in the documentation now include a copy-to-clipboard button. (:issue:`1748`)
-- HTML for facet results and suggested results has been extracted out into new templates ``_facet_results.html`` and ``_suggested_facets.html``. Thanks, M. Nasimul Haque. (`#1759 <https://github.com/simonw/datasette/pull/1759>`__)
+- The :ref:`configuration directory <config_dir>` is now stored in ``datasette.config_dir``, making it available to plugins. Thanks, Chris Amico. (`#1766 <https://github.com/simonw/datasette/pull/1766>`__)
 
-.. _v0_62a0:
+Bug fixes
+~~~~~~~~~
 
-0.62a0 (2022-05-02)
--------------------
-
-- Datasette now runs some SQL queries in parallel. This has limited impact on performance, see `this research issue <https://github.com/simonw/datasette/issues/1727>`__ for details.
-- Datasette should now be compatible with Pyodide. (:issue:`1733`)
-- ``datasette publish cloudrun`` has a new ``--timeout`` option which can be used to increase the time limit applied by the Google Cloud build environment. Thanks, Tim Sherratt. (`#1717 <https://github.com/simonw/datasette/pull/1717>`__)
-- Spaces in database names are now encoded as ``+`` rather than ``~20``. (:issue:`1701`)
-- ``<Binary: 2427344 bytes>`` is now displayed as ``<Binary: 2,427,344 bytes>`` and is accompanied by tooltip showing "2.3MB". (:issue:`1712`)
 - Don't show the facet option in the cog menu if faceting is not allowed. (:issue:`1683`)
+- ``?_sort`` and ``?_sort_desc`` now work if the column that is being sorted has been excluded from the query using ``?_col=`` or ``?_nocol=``. (:issue:`1773`)
+- Fixed bug where ``?_sort_desc`` was duplicated in the URL every time the Apply button was clicked. (:issue:`1738`)
+
+Documentation
+~~~~~~~~~~~~~
+
+- Examples in the documentation now include a copy-to-clipboard button. (:issue:`1748`)
+- Documentation now uses the `Furo <https://github.com/pradyunsg/furo>`__ Sphinx theme. (:issue:`1746`)
 - Code examples in the documentation are now all formatted using Black. (:issue:`1718`)
 - ``Request.fake()`` method is now documented, see :ref:`internals_request`.
+- New documentation for plugin authors: :ref:`testing_plugins_register_in_test`. (:issue:`903`)
 
 .. _v0_61_1:
 

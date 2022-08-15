@@ -20,6 +20,7 @@ Datasette has several `tutorials <https://datasette.io/tutorials>`__ to help you
 
 - `Exploring a database with Datasette <https://datasette.io/tutorials/explore>`__ shows how to use the Datasette web interface to explore a new database.
 - `Learn SQL with Datasette <https://datasette.io/tutorials/learn-sql>`__ introduces SQL, and shows how to use that query language to ask questions of your data.
+- `Cleaning data with sqlite-utils and Datasette <https://datasette.io/tutorials/clean-data>`__ guides you through using `sqlite-utils <https://sqlite-utils.datasette.io/>`__ to turn a CSV file into a database that you can explore using Datasette.
 
 .. _getting_started_datasette_lite:
 

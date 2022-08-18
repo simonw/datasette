@@ -56,6 +56,8 @@ Cloud Run provides a URL on the ``.run.app`` domain, but you can also point your
 
 See :ref:`cli_help_publish_cloudrun___help` for the full list of options for this command.
 
+.. _publish_heroku:
+
 Publishing to Heroku
 --------------------
 

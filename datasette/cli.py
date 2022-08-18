@@ -282,7 +282,7 @@ def package(
     port,
     **extra_metadata,
 ):
-    """Package specified SQLite files into a new datasette Docker container"""
+    """Package SQLite files into a Datasette Docker container"""
     if not shutil.which("docker"):
         click.secho(
             ' The package command requires "docker" to be installed and configured ',

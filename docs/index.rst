@@ -40,6 +40,7 @@ Contents
    getting_started
    installation
    ecosystem
+   cli-reference
    pages
    publish
    deploying
@@ -61,6 +62,5 @@ Contents
    plugin_hooks
    testing_plugins
    internals
-   cli-reference
    contributing
    changelog

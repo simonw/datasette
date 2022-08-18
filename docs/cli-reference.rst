@@ -4,44 +4,34 @@
  CLI reference
 ===============
 
-This page lists the ``--help`` for every ``datasette`` CLI command.
+The ``datasette`` CLI tool provides a number of commands.
+
+Running ``datasette`` without specifying a command runs the default command, ``datasette serve``.  See :ref:`cli_help_serve___help` for the full list of options for that command.
 
 .. [[[cog
     from datasette import cli
     from click.testing import CliRunner
     import textwrap
-    commands = [
-        ["--help"],
-        ["serve", "--help"],
-        ["serve", "--help-settings"],
-        ["plugins", "--help"],
-        ["publish", "--help"],
-        ["publish", "cloudrun", "--help"],
-        ["publish", "heroku", "--help"],
-        ["package", "--help"],
-        ["inspect", "--help"],
-        ["install", "--help"],
-        ["uninstall", "--help"],
-    ]
-    cog.out("\n")
-    for command in commands:
-        title = "datasette " + " ".join(command)
-        ref = "_cli_help_" + ("_".join(command).replace("-", "_"))
-        cog.out(".. {}:\n\n".format(ref))
-        cog.out(title + "\n")
-        cog.out(("=" * len(title)) + "\n\n")
+    def help(args):
+        title = "datasette " + " ".join(args)
         cog.out("::\n\n")
-        result = CliRunner().invoke(cli.cli, command)
+        result = CliRunner().invoke(cli.cli, args)
         output = result.output.replace("Usage: cli ", "Usage: datasette ")
         cog.out(textwrap.indent(output, '    '))
         cog.out("\n\n")
 .. ]]]
+.. [[[end]]]
 
 .. _cli_help___help:
 
 datasette --help
 ================
 
+Running ``datasette --help`` shows a list of all of the available commands.
+
+.. [[[cog
+    help(["--help"])
+.. ]]]
 ::
 
     Usage: datasette [OPTIONS] COMMAND [ARGS]...
@@ -59,17 +49,34 @@ datasette --help
       serve*     Serve up specified SQLite database files with a web UI
       inspect    Generate JSON summary of provided database files
       install    Install plugins and packages from PyPI into the same...
-      package    Package specified SQLite files into a new datasette Docker...
+      package    Package SQLite files into a Datasette Docker container
       plugins    List currently installed plugins
       publish    Publish specified SQLite database files to the internet along...
       uninstall  Uninstall plugins and Python packages from the Datasette...
 
 
+.. [[[end]]]
+
+Additional commands added by plugins that use the :ref:`plugin_hook_register_commands` hook will be listed here as well.
+
 .. _cli_help_serve___help:
 
-datasette serve --help
-======================
+datasette serve
+===============
 
+This command starts the Datasette web application running on your machine::
+
+    datasette serve mydatabase.db
+
+Or since this is the default command you can run this instead::
+
+    datasette mydatabase.db
+
+Once started you can access it at ``http://localhost:8001``
+
+.. [[[cog
+    help(["serve", "--help"])
+.. ]]]
 ::
 
     Usage: datasette serve [OPTIONS] [FILES]...
@@ -121,11 +128,75 @@ datasette serve --help
       --help                    Show this message and exit.
 
 
+.. [[[end]]]
+
+
+.. _cli_datasette_get:
+
+datasette --get
+---------------
+
+The ``--get`` option to ``datasette serve`` (or just ``datasette``) specifies the path to a page within Datasette and causes Datasette to output the content from that path without starting the web server.
+
+This means that all of Datasette's functionality can be accessed directly from the command-line.
+
+For example::
+
+    $ datasette --get '/-/versions.json' | jq .
+    {
+      "python": {
+        "version": "3.8.5",
+        "full": "3.8.5 (default, Jul 21 2020, 10:48:26) \n[Clang 11.0.3 (clang-1103.0.32.62)]"
+      },
+      "datasette": {
+        "version": "0.46+15.g222a84a.dirty"
+      },
+      "asgi": "3.0",
+      "uvicorn": "0.11.8",
+      "sqlite": {
+        "version": "3.32.3",
+        "fts_versions": [
+          "FTS5",
+          "FTS4",
+          "FTS3"
+        ],
+        "extensions": {
+          "json1": null
+        },
+        "compile_options": [
+          "COMPILER=clang-11.0.3",
+          "ENABLE_COLUMN_METADATA",
+          "ENABLE_FTS3",
+          "ENABLE_FTS3_PARENTHESIS",
+          "ENABLE_FTS4",
+          "ENABLE_FTS5",
+          "ENABLE_GEOPOLY",
+          "ENABLE_JSON1",
+          "ENABLE_PREUPDATE_HOOK",
+          "ENABLE_RTREE",
+          "ENABLE_SESSION",
+          "MAX_VARIABLE_NUMBER=250000",
+          "THREADSAFE=1"
+        ]
+      }
+    }
+
+The exit code will be 0 if the request succeeds and 1 if the request produced an HTTP status code other than 200 - e.g. a 404 or 500 error.
+
+This lets you use ``datasette --get /`` to run tests against a Datasette application in a continuous integration environment such as GitHub Actions.
+
 .. _cli_help_serve___help_settings:
 
 datasette serve --help-settings
-===============================
+-------------------------------
 
+This command outputs all of the available Datasette :ref:`settings <settings>`.
+
+These can be passed to ``datasette serve`` using ``datasette serve --setting name value``.
+
+.. [[[cog
+    help(["--help-settings"])
+.. ]]]
 ::
 
     Settings:
@@ -170,11 +241,18 @@ datasette serve --help-settings
 
 
 
+.. [[[end]]]
+
 .. _cli_help_plugins___help:
 
-datasette plugins --help
-========================
+datasette plugins
+=================
 
+Output JSON showing all currently installed plugins, their versions, whether they include static files or templates and which :ref:`plugin_hooks` they use.
+
+.. [[[cog
+    help(["plugins", "--help"])
+.. ]]]
 ::
 
     Usage: datasette plugins [OPTIONS]
@@ -187,11 +265,110 @@ datasette plugins --help
       --help                   Show this message and exit.
 
 
+.. [[[end]]]
+
+Example output:
+
+.. code-block:: json
+
+    [
+        {
+            "name": "datasette-geojson",
+            "static": false,
+            "templates": false,
+            "version": "0.3.1",
+            "hooks": [
+                "register_output_renderer"
+            ]
+        },
+        {
+            "name": "datasette-geojson-map",
+            "static": true,
+            "templates": false,
+            "version": "0.4.0",
+            "hooks": [
+                "extra_body_script",
+                "extra_css_urls",
+                "extra_js_urls"
+            ]
+        },
+        {
+            "name": "datasette-leaflet",
+            "static": true,
+            "templates": false,
+            "version": "0.2.2",
+            "hooks": [
+                "extra_body_script",
+                "extra_template_vars"
+            ]
+        }
+    ]
+
+
+.. _cli_help_install___help:
+
+datasette install
+=================
+
+Install new Datasette plugins. This command works like ``pip install`` but ensures that your plugins will be installed into the same environment as Datasette.
+
+This command::
+
+    datasette install datasette-cluster-map
+
+Would install the `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster-map>`__ plugin.
+
+.. [[[cog
+    help(["install", "--help"])
+.. ]]]
+::
+
+    Usage: datasette install [OPTIONS] PACKAGES...
+
+      Install plugins and packages from PyPI into the same environment as Datasette
+
+    Options:
+      -U, --upgrade  Upgrade packages to latest version
+      --help         Show this message and exit.
+
+
+.. [[[end]]]
+
+.. _cli_help_uninstall___help:
+
+datasette uninstall
+===================
+
+Uninstall one or more plugins.
+
+.. [[[cog
+    help(["uninstall", "--help"])
+.. ]]]
+::
+
+    Usage: datasette uninstall [OPTIONS] PACKAGES...
+
+      Uninstall plugins and Python packages from the Datasette environment
+
+    Options:
+      -y, --yes  Don't ask for confirmation
+      --help     Show this message and exit.
+
+
+.. [[[end]]]
+
 .. _cli_help_publish___help:
 
-datasette publish --help
-========================
+datasette publish
+=================
 
+Shows a list of available deployment targets for :ref:`publishing data <publishing>` with Datasette.
+
+Additional deployment targets can be added by plugins that use the :ref:`plugin_hook_publish_subcommand` hook.
+
+.. [[[cog
+    help(["publish", "--help"])
+.. ]]]
 ::
 
     Usage: datasette publish [OPTIONS] COMMAND [ARGS]...
@@ -207,11 +384,19 @@ datasette publish --help
       heroku    Publish databases to Datasette running on Heroku
 
 
+.. [[[end]]]
+
+
 .. _cli_help_publish_cloudrun___help:
 
-datasette publish cloudrun --help
-=================================
+datasette publish cloudrun
+==========================
 
+See :ref:`publish_cloud_run`.
+
+.. [[[cog
+    help(["publish", "cloudrun", "--help"])
+.. ]]]
 ::
 
     Usage: datasette publish cloudrun [OPTIONS] [FILES]...
@@ -256,11 +441,19 @@ datasette publish cloudrun --help
       --help                          Show this message and exit.
 
 
+.. [[[end]]]
+
+
 .. _cli_help_publish_heroku___help:
 
-datasette publish heroku --help
-===============================
+datasette publish heroku
+========================
 
+See :ref:`publish_heroku`.
+
+.. [[[cog
+    help(["publish", "heroku", "--help"])
+.. ]]]
 ::
 
     Usage: datasette publish heroku [OPTIONS] [FILES]...
@@ -297,16 +490,23 @@ datasette publish heroku --help
       --help                          Show this message and exit.
 
 
+.. [[[end]]]
+
 .. _cli_help_package___help:
 
-datasette package --help
-========================
+datasette package
+=================
 
+Package SQLite files into a Datasette Docker container, see :ref:`cli_package`.
+
+.. [[[cog
+    help(["package", "--help"])
+.. ]]]
 ::
 
     Usage: datasette package [OPTIONS] FILES...
 
-      Package specified SQLite files into a new datasette Docker container
+      Package SQLite files into a Datasette Docker container
 
     Options:
       -t, --tag TEXT            Name for the resulting Docker container, can
@@ -335,11 +535,26 @@ datasette package --help
       --help                    Show this message and exit.
 
 
+.. [[[end]]]
+
+
 .. _cli_help_inspect___help:
 
-datasette inspect --help
-========================
+datasette inspect
+=================
 
+Outputs JSON representing introspected data about one or more SQLite database files.
+
+If you are opening an immutable database, you can pass this file to the ``--inspect-data`` option to improve Datasette's performance by allowing it to skip running row counts against the database when it first starts running::
+
+    datasette inspect mydatabase.db > inspect-data.json
+    datasette serve -i mydatabase.db --inspect-file inspect-data.json
+
+This performance optimization is used automatically by some of the ``datasette publish`` commands. You are unlikely to need to apply this optimization manually.
+
+.. [[[cog
+    help(["inspect", "--help"])
+.. ]]]
 ::
 
     Usage: datasette inspect [OPTIONS] [FILES]...
@@ -353,38 +568,6 @@ datasette inspect --help
       --inspect-file TEXT
       --load-extension TEXT  Path to a SQLite extension to load
       --help                 Show this message and exit.
-
-
-.. _cli_help_install___help:
-
-datasette install --help
-========================
-
-::
-
-    Usage: datasette install [OPTIONS] PACKAGES...
-
-      Install plugins and packages from PyPI into the same environment as Datasette
-
-    Options:
-      -U, --upgrade  Upgrade packages to latest version
-      --help         Show this message and exit.
-
-
-.. _cli_help_uninstall___help:
-
-datasette uninstall --help
-==========================
-
-::
-
-    Usage: datasette uninstall [OPTIONS] PACKAGES...
-
-      Uninstall plugins and Python packages from the Datasette environment
-
-    Options:
-      -y, --yes  Don't ask for confirmation
-      --help     Show this message and exit.
 
 
 .. [[[end]]]

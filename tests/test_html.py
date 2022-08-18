@@ -695,10 +695,8 @@ def test_query_error(app_client):
     response = app_client.get("/fixtures?sql=select+*+from+notatable")
     html = response.text
     assert '<p class="message-error">no such table: notatable</p>' in html
-    assert (
-        '<textarea id="sql-editor" name="sql">select * from notatable</textarea>'
-        in html
-    )
+    assert '<textarea id="sql-editor" name="sql" style="height: 3em' in html
+    assert ">select * from notatable</textarea>" in html
     assert "0 results" not in html
 
 

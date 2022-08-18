@@ -45,7 +45,8 @@
     {% endif %}
     {% if not hide_sql %}
         {% if editable and allow_execute_sql %}
-            <p><textarea id="sql-editor" name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
+            <p><textarea id="sql-editor" name="sql"{% if query and query.sql %} style="height: {{ query.sql.split("\n")|length + 2 }}em"{% endif %}
+            >{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
         {% else %}
             <pre id="sql-query">{% if query %}{{ query.sql }}{% endif %}</pre>
         {% endif %}

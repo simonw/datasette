@@ -31,7 +31,7 @@ Publishing to Google Cloud Run
 
 You will first need to install and configure the Google Cloud CLI tools by following `these instructions <https://cloud.google.com/sdk/>`__.
 
-You can then publish a database to Google Cloud Run using the following command::
+You can then publish one or more SQLite database files to Google Cloud Run using the following command::
 
     datasette publish cloudrun mydatabase.db --service=my-database
 
@@ -63,7 +63,7 @@ Publishing to Heroku
 
 To publish your data using `Heroku <https://www.heroku.com/>`__, first create an account there and install and configure the `Heroku CLI tool <https://devcenter.heroku.com/articles/heroku-cli>`_.
 
-You can publish a database to Heroku using the following command::
+You can publish one or more databases to Heroku using the following command::
 
     datasette publish heroku mydatabase.db
 
@@ -138,7 +138,7 @@ If a plugin has any :ref:`plugins_configuration_secret` you can use the ``--plug
 datasette package
 =================
 
-If you have docker installed (e.g. using `Docker for Mac <https://www.docker.com/docker-mac>`_) you can use the ``datasette package`` command to create a new Docker image in your local repository containing the datasette app bundled together with your selected SQLite databases::
+If you have docker installed (e.g. using `Docker for Mac <https://www.docker.com/docker-mac>`_) you can use the ``datasette package`` command to create a new Docker image in your local repository containing the datasette app bundled together with one or more SQLite databases::
 
     datasette package mydatabase.db
 

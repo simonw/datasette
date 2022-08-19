@@ -118,3 +118,9 @@ ENV/
 .DS_Store
 node_modules
 .*.swp
+
+# In case someone compiled tests/ext.c for test_load_extensions, don't
+# include it in source control.
+tests/*.dylib
+tests/*.so
+tests/*.dll

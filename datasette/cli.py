@@ -21,6 +21,7 @@ from .app import (
     pm,
 )
 from .utils import (
+    LoadExtension,
     StartupError,
     check_connection,
     find_spatialite,
@@ -128,9 +129,10 @@ def sqlite_extensions(fn):
     return click.option(
         "sqlite_extensions",
         "--load-extension",
+        type=LoadExtension(),
         envvar="SQLITE_EXTENSIONS",
         multiple=True,
-        help="Path to a SQLite extension to load",
+        help="Path to a SQLite extension to load, and optional entrypoint",
     )(fn)
 
 

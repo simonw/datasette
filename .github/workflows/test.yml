@@ -26,7 +26,6 @@ jobs:
           ${{ runner.os }}-pip-
     - name: Build extension for --load-extension test
       run: |-
-        sudo apt-get install libsqlite3-dev gcc
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)
     - name: Install dependencies
       run: |

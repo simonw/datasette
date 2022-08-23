@@ -833,6 +833,7 @@ class StaticMount(click.ParamType):
             self.fail(f"{value} is not a valid directory path", param, ctx)
         return path, dirpath
 
+
 # The --load-extension parameter can optionally include a specific entrypoint.
 # This is done by appending ":entrypoint_name" after supplying the path to the extension
 class LoadExtension(click.ParamType):

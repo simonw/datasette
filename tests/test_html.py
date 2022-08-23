@@ -115,7 +115,7 @@ def test_database_page(app_client):
         assert fragment in response.text
 
     # And views
-    views_ul = soup.find("h2", text="Views").find_next_sibling("ul")
+    views_ul = soup.find("h2", string="Views").find_next_sibling("ul")
     assert views_ul is not None
     assert [
         ("/fixtures/paginated_view", "paginated_view"),
@@ -128,7 +128,7 @@ def test_database_page(app_client):
     ] == sorted([(a["href"], a.text) for a in views_ul.find_all("a")])
 
     # And a list of canned queries
-    queries_ul = soup.find("h2", text="Queries").find_next_sibling("ul")
+    queries_ul = soup.find("h2", string="Queries").find_next_sibling("ul")
     assert queries_ul is not None
     assert [
         ("/fixtures/from_async_hook", "from_async_hook"),

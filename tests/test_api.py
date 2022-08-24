@@ -36,7 +36,7 @@ def test_homepage(app_client):
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
     assert d["hidden_tables_count"] == 6
     # 201 in no_primary_key, plus 6 in other hidden tables:
-    assert d["hidden_table_rows_sum"] == 207, response.json()
+    assert d["hidden_table_rows_sum"] == 207, response.json
     assert d["views_count"] == 4
 
 

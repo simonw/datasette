@@ -74,7 +74,7 @@ The license and source information will be displayed on the index page and in th
 
 ## datasette publish
 
-If you have [Heroku](https://heroku.com/) or [Google Cloud Run](https://cloud.google.com/run/) configured, Datasette can deploy one or more SQLite databases to the internet with a single command:
+If you have [Heroku](https://heroku.com/) or [Google Cloud Run](https://cloud.google.com/run/) configured, Datasette can deploy one or more [SQLite databases](https://www.scaler.com/topics/sql/types-of-database-in-sql/) to the internet with a single command:
 
     datasette publish heroku database.db
 

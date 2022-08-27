@@ -260,6 +260,7 @@ ul.bullets li {
 ul.tight-bullets li {
     list-style-type: disc;
     margin-bottom: 0;
+    word-break: break-all;
 }
 a.not-underlined {
     text-decoration: none;

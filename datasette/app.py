@@ -334,6 +334,8 @@ class Datasette:
         self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
+        self.jinja_env.filters["json_loads"] = json.loads
+        self.jinja_env.filters["json_dumps"] = json.dumps
         # pylint: disable=no-member
         pm.hook.prepare_jinja2_environment(env=self.jinja_env)
 

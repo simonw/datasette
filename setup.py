@@ -51,7 +51,7 @@ setup(
         "pint~=0.9",
         "pluggy>=1.0,<1.1",
         "uvicorn~=0.11",
-        "aiofiles>=0.4,<0.9",
+        "aiofiles>=0.4,<22.2",
         "janus>=0.6.2,<1.1",
         "asgi-csrf>=0.9",
         "PyYAML>=5.3,<7.0",

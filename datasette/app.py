@@ -240,6 +240,8 @@ class Datasette:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 self._refresh_schemas_lock = asyncio.Lock()
+            else:
+                raise
         self.crossdb = crossdb
         self.nolock = nolock
         if memory or crossdb or not self.files:

@@ -231,7 +231,13 @@ class Datasette:
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
-        self._refresh_schemas_lock = asyncio.Lock()
+        try:
+            self._refresh_schemas_lock = asyncio.Lock()
+        except RuntimeError as rex:
+            if "There is no current event loop in thread" in str(rex):
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._refresh_schemas_lock = asyncio.Lock()
         self.crossdb = crossdb
         self.nolock = nolock
         if memory or crossdb or not self.files:

@@ -129,6 +129,22 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
     ]
   }
 
+You can change the default facet size (the number of results shown for each facet) for a table using ``facet_size``:
+
+.. code-block:: json
+
+    {
+      "databases": {
+        "sf-trees": {
+          "tables": {
+            "Street_Tree_List": {
+              "facets": ["qLegalStatus"],
+              "facet_size": 10
+            }
+          }
+        }
+      }
+    }
 
 Suggested facets
 ----------------

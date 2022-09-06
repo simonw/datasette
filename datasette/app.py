@@ -234,6 +234,8 @@ class Datasette:
         try:
             self._refresh_schemas_lock = asyncio.Lock()
         except RuntimeError as rex:
+            # Workaround for intermittent test failure, see:
+            # https://github.com/simonw/datasette/issues/1802
             if "There is no current event loop in thread" in str(rex):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)

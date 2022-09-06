@@ -24,6 +24,7 @@ from datasette.utils import (
     path_with_removed_args,
     path_with_replaced_args,
     to_css_class,
+    truncate_url,
     urlsafe_components,
     value_as_boolean,
 )
@@ -966,8 +967,11 @@ async def display_columns_and_rows(
                 display_value = markupsafe.Markup("&nbsp;")
             elif is_url(str(value).strip()):
                 display_value = markupsafe.Markup(
-                    '<a href="{url}">{url}</a>'.format(
-                        url=markupsafe.escape(value.strip())
+                    '<a href="{url}">{truncated_url}</a>'.format(
+                        url=markupsafe.escape(value.strip()),
+                        truncated_url=markupsafe.escape(
+                            truncate_url(value.strip(), truncate_cells)
+                        ),
                     )
                 )
             elif column in table_metadata.get("units", {}) and value != "":

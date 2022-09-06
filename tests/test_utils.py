@@ -626,3 +626,23 @@ def test_tilde_encoding(original, expected):
     assert actual == expected
     # And test round-trip
     assert original == utils.tilde_decode(actual)
+
+
+@pytest.mark.parametrize(
+    "url,length,expected",
+    (
+        ("https://example.com/", 5, "http…"),
+        ("https://example.com/foo/bar", 15, "https://exampl…"),
+        ("https://example.com/foo/bar/baz.jpg", 30, "https://example.com/foo/ba….jpg"),
+        # Extensions longer than 4 characters are not treated specially:
+        ("https://example.com/foo/bar/baz.jpeg2", 30, "https://example.com/foo/bar/b…"),
+        (
+            "https://example.com/foo/bar/baz.jpeg2",
+            None,
+            "https://example.com/foo/bar/baz.jpeg2",
+        ),
+    ),
+)
+def test_truncate_url(url, length, expected):
+    actual = utils.truncate_url(url, length)
+    assert actual == expected

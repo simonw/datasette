@@ -1167,3 +1167,13 @@ def resolve_routes(routes, path):
         if match is not None:
             return match, view
     return None, None
+
+
+def truncate_url(url, length):
+    if (not length) or (len(url) <= length):
+        return url
+    bits = url.rsplit(".", 1)
+    if len(bits) == 2 and 1 <= len(bits[1]) <= 4 and "/" not in bits[1]:
+        rest, ext = bits
+        return rest[: length - 1 - len(ext)] + "…." + ext
+    return url[: length - 1] + "…"

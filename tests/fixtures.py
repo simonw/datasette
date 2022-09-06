@@ -598,23 +598,24 @@ CREATE TABLE roadside_attractions (
     pk integer primary key,
     name text,
     address text,
+    url text,
     latitude real,
     longitude real
 );
 INSERT INTO roadside_attractions VALUES (
-    1, "The Mystery Spot", "465 Mystery Spot Road, Santa Cruz, CA 95065",
+    1, "The Mystery Spot", "465 Mystery Spot Road, Santa Cruz, CA 95065", "https://www.mysteryspot.com/",
     37.0167, -122.0024
 );
 INSERT INTO roadside_attractions VALUES (
-    2, "Winchester Mystery House", "525 South Winchester Boulevard, San Jose, CA 95128",
+    2, "Winchester Mystery House", "525 South Winchester Boulevard, San Jose, CA 95128", "https://winchestermysteryhouse.com/",
     37.3184, -121.9511
 );
 INSERT INTO roadside_attractions VALUES (
-    3, "Burlingame Museum of PEZ Memorabilia", "214 California Drive, Burlingame, CA 94010",
+    3, "Burlingame Museum of PEZ Memorabilia", "214 California Drive, Burlingame, CA 94010", null,
     37.5793, -122.3442
 );
 INSERT INTO roadside_attractions VALUES (
-    4, "Bigfoot Discovery Museum", "5497 Highway 9, Felton, CA 95018",
+    4, "Bigfoot Discovery Museum", "5497 Highway 9, Felton, CA 95018", "https://www.bigfootdiscoveryproject.com/",
     37.0414, -122.0725
 );
 

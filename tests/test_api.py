@@ -339,7 +339,7 @@ def test_database_page(app_client):
         },
         {
             "name": "roadside_attractions",
-            "columns": ["pk", "name", "address", "latitude", "longitude"],
+            "columns": ["pk", "name", "address", "url", "latitude", "longitude"],
             "primary_keys": ["pk"],
             "count": 4,
             "hidden": False,

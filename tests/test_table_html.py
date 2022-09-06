@@ -69,6 +69,17 @@ def test_table_cell_truncation():
             td.string
             for td in table.findAll("td", {"class": "col-neighborhood-b352a7"})
         ]
+        # URLs should be truncated too
+        response2 = client.get("/fixtures/roadside_attractions")
+        assert response2.status == 200
+        table = Soup(response2.body, "html.parser").find("table")
+        tds = table.findAll("td", {"class": "col-url"})
+        assert [str(td) for td in tds] == [
+            '<td class="col-url type-str"><a href="https://www.mysteryspot.com/">http…</a></td>',
+            '<td class="col-url type-str"><a href="https://winchestermysteryhouse.com/">http…</a></td>',
+            '<td class="col-url type-none">\xa0</td>',
+            '<td class="col-url type-str"><a href="https://www.bigfootdiscoveryproject.com/">http…</a></td>',
+        ]
 
 
 def test_add_filter_redirects(app_client):

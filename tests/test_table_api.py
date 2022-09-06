@@ -615,11 +615,12 @@ def test_table_through(app_client):
     response = app_client.get(
         '/fixtures/roadside_attractions.json?_through={"table":"roadside_attraction_characteristics","column":"characteristic_id","value":"1"}'
     )
-    assert [
+    assert response.json["rows"] == [
         [
             3,
             "Burlingame Museum of PEZ Memorabilia",
             "214 California Drive, Burlingame, CA 94010",
+            None,
             37.5793,
             -122.3442,
         ],
@@ -627,13 +628,15 @@ def test_table_through(app_client):
             4,
             "Bigfoot Discovery Museum",
             "5497 Highway 9, Felton, CA 95018",
+            "https://www.bigfootdiscoveryproject.com/",
             37.0414,
             -122.0725,
         ],
-    ] == response.json["rows"]
+    ]
+
     assert (
-        'where roadside_attraction_characteristics.characteristic_id = "1"'
-        == response.json["human_description_en"]
+        response.json["human_description_en"]
+        == 'where roadside_attraction_characteristics.characteristic_id = "1"'
     )
 
 

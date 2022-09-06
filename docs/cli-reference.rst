@@ -14,7 +14,7 @@ Running ``datasette`` without specifying a command runs the default command, ``d
     import textwrap
     def help(args):
         title = "datasette " + " ".join(args)
-        cog.out("::\n\n")
+        cog.out("\n::\n\n")
         result = CliRunner().invoke(cli.cli, args)
         output = result.output.replace("Usage: cli ", "Usage: datasette ")
         cog.out(textwrap.indent(output, '    '))
@@ -32,6 +32,7 @@ Running ``datasette --help`` shows a list of all of the available commands.
 .. [[[cog
     help(["--help"])
 .. ]]]
+
 ::
 
     Usage: datasette [OPTIONS] COMMAND [ARGS]...
@@ -77,6 +78,7 @@ Once started you can access it at ``http://localhost:8001``
 .. [[[cog
     help(["serve", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette serve [OPTIONS] [FILES]...
@@ -202,6 +204,7 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
 .. [[[cog
     help(["--help-settings"])
 .. ]]]
+
 ::
 
     Settings:
@@ -258,6 +261,7 @@ Output JSON showing all currently installed plugins, their versions, whether the
 .. [[[cog
     help(["plugins", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette plugins [OPTIONS]
@@ -326,6 +330,7 @@ Would install the `datasette-cluster-map <https://datasette.io/plugins/datasette
 .. [[[cog
     help(["install", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette install [OPTIONS] PACKAGES...
@@ -349,6 +354,7 @@ Uninstall one or more plugins.
 .. [[[cog
     help(["uninstall", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette uninstall [OPTIONS] PACKAGES...
@@ -374,6 +380,7 @@ Additional deployment targets can be added by plugins that use the :ref:`plugin_
 .. [[[cog
     help(["publish", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette publish [OPTIONS] COMMAND [ARGS]...
@@ -402,6 +409,7 @@ See :ref:`publish_cloud_run`.
 .. [[[cog
     help(["publish", "cloudrun", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette publish cloudrun [OPTIONS] [FILES]...
@@ -459,6 +467,7 @@ See :ref:`publish_heroku`.
 .. [[[cog
     help(["publish", "heroku", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette publish heroku [OPTIONS] [FILES]...
@@ -507,6 +516,7 @@ Package SQLite files into a Datasette Docker container, see :ref:`cli_package`.
 .. [[[cog
     help(["package", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette package [OPTIONS] FILES...
@@ -560,6 +570,7 @@ This performance optimization is used automatically by some of the ``datasette p
 .. [[[cog
     help(["inspect", "--help"])
 .. ]]]
+
 ::
 
     Usage: datasette inspect [OPTIONS] [FILES]...

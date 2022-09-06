@@ -186,6 +186,25 @@ def test_row_page_does_not_truncate():
         ]
 
 
+def test_query_page_truncates():
+    with make_app_client(settings={"truncate_cells_html": 5}) as client:
+        response = client.get(
+            "/fixtures?"
+            + urllib.parse.urlencode(
+                {
+                    "sql": "select 'this is longer than 5' as a, 'https://example.com/' as b"
+                }
+            )
+        )
+        assert response.status == 200
+        table = Soup(response.body, "html.parser").find("table")
+        tds = table.findAll("td")
+        assert [str(td) for td in tds] == [
+            '<td class="col-a">this …</td>',
+            '<td class="col-b"><a href="https://example.com/">http…</a></td>',
+        ]
+
+
 @pytest.mark.parametrize(
     "path,expected_classes",
     [

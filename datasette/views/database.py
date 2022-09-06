@@ -428,7 +428,12 @@ class QueryView(DataView):
                                     "" if len(value) == 1 else "s",
                                 )
                             )
-
+                        else:
+                            display_value = str(value)
+                            if truncate_cells and len(display_value) > truncate_cells:
+                                display_value = (
+                                    display_value[:truncate_cells] + "\u2026"
+                                )
                     display_row.append(display_value)
                 display_rows.append(display_row)
 

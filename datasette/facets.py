@@ -109,12 +109,19 @@ class Facet:
             if table_metadata:
                 table_facet_size = table_metadata.get("facet_size")
         custom_facet_size = self.request.args.get("_facet_size")
-        if custom_facet_size and custom_facet_size.isdigit():
-            facet_size = int(custom_facet_size)
-        elif table_facet_size:
-            facet_size = table_facet_size
-        if facet_size == "max":
-            facet_size = max_returned_rows
+        if custom_facet_size:
+            if custom_facet_size == "max":
+                facet_size = max_returned_rows
+            elif custom_facet_size.isdigit():
+                facet_size = int(custom_facet_size)
+            else:
+                # Invalid value, ignore it
+                custom_facet_size = None
+        if table_facet_size and not custom_facet_size:
+            if table_facet_size == "max":
+                facet_size = max_returned_rows
+            else:
+                facet_size = table_facet_size
         return min(facet_size, max_returned_rows)
 
     async def suggest(self):

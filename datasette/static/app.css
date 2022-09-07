@@ -446,6 +446,7 @@ th {
 }
 table a:link {
     text-decoration: none;
+    word-wrap: anywhere;
 }
 .rows-and-columns td:before {
     display: block;

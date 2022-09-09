@@ -58,7 +58,7 @@ async def test_datasette_constructor():
             "route": "_memory",
             "path": None,
             "size": 0,
-            "is_mutable": False,
+            "is_mutable": True,
             "is_memory": True,
             "hash": None,
         }

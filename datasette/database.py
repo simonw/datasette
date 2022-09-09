@@ -28,7 +28,7 @@ AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
 class Database:
     def __init__(
-        self, ds, path=None, is_mutable=False, is_memory=False, memory_name=None
+        self, ds, path=None, is_mutable=True, is_memory=False, memory_name=None
     ):
         self.name = None
         self.route = None
@@ -39,7 +39,6 @@ class Database:
         self.memory_name = memory_name
         if memory_name is not None:
             self.is_memory = True
-            self.is_mutable = True
         self.hash = None
         self.cached_size = None
         self._cached_table_counts = None

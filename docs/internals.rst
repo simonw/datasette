@@ -426,11 +426,12 @@ The ``db`` parameter should be an instance of the ``datasette.database.Database`
         Database(
             datasette,
             path="path/to/my-new-database.db",
-            is_mutable=True,
         )
     )
 
 This will add a mutable database and serve it at ``/my-new-database``.
+
+Use ``is_mutable=False`` to add an immutable database.
 
 ``.add_database()`` returns the Database instance, with its name set as the ``database.name`` attribute. Any time you are working with a newly added database you should use the return value of ``.add_database()``, for example:
 
@@ -671,8 +672,8 @@ Instances of the ``Database`` class can be used to execute queries against attac
 
 .. _database_constructor:
 
-Database(ds, path=None, is_mutable=False, is_memory=False, memory_name=None)
-----------------------------------------------------------------------------
+Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None)
+---------------------------------------------------------------------------
 
 The ``Database()`` constructor can be used by plugins, in conjunction with :ref:`datasette_add_database`, to create and register new databases.
 
@@ -685,7 +686,7 @@ The arguments are as follows:
     Path to a SQLite database file on disk.
 
 ``is_mutable`` - boolean
-    Set this to ``True`` if it is possible that updates will be made to that database - otherwise Datasette will open it in immutable mode and any changes could cause undesired behavior.
+    Set this to ``False`` to cause Datasette to open the file in immutable mode.
 
 ``is_memory`` - boolean
     Use this to create non-shared memory connections.

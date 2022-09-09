@@ -499,6 +499,7 @@ def test_mtime_ns_is_none_for_memory(app_client):
 
 
 def test_is_mutable(app_client):
+    assert Database(app_client.ds, is_memory=True).is_mutable is True
     assert Database(app_client.ds, is_memory=True, is_mutable=True).is_mutable is True
     assert Database(app_client.ds, is_memory=True, is_mutable=False).is_mutable is False
 

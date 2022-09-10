@@ -48,7 +48,7 @@ This will start a web server on port 8001 - visit http://localhost:8001/ to acce
 
 Use Chrome on OS X? You can run datasette against your browser history like so:
 
-     datasette ~/Library/Application\ Support/Google/Chrome/Default/History
+     datasette ~/Library/Application\ Support/Google/Chrome/Default/History --nolock
 
 Now visiting http://localhost:8001/History/downloads will show you a web interface to browse your downloads data:
 

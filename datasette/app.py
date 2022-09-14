@@ -345,7 +345,7 @@ class Datasette:
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
         # pylint: disable=no-member
-        pm.hook.prepare_jinja2_environment(env=self.jinja_env)
+        pm.hook.prepare_jinja2_environment(env=self.jinja_env, datasette=self)
 
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)

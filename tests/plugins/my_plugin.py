@@ -142,8 +142,9 @@ def extra_template_vars(
 
 
 @hookimpl
-def prepare_jinja2_environment(env):
+def prepare_jinja2_environment(env, datasette):
     env.filters["format_numeric"] = lambda s: f"{float(s):,.0f}"
+    env.filters["to_hello"] = lambda s: datasette._HELLO
 
 
 @hookimpl

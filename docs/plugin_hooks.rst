@@ -61,11 +61,14 @@ Examples: `datasette-jellyfish <https://datasette.io/plugins/datasette-jellyfish
 
 .. _plugin_hook_prepare_jinja2_environment:
 
-prepare_jinja2_environment(env)
--------------------------------
+prepare_jinja2_environment(env, datasette)
+------------------------------------------
 
 ``env`` - jinja2 Environment
     The template environment that is being prepared
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``
 
 This hook is called with the Jinja2 environment that is used to evaluate
 Datasette HTML templates. You can use it to do things like `register custom
@@ -84,6 +87,8 @@ example:
 You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
+
+Examples: `datasette-edit-templates <https://datasette.io/plugins/datasette-edit-templates>`_
 
 .. _plugin_hook_extra_template_vars:
 

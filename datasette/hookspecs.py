@@ -26,7 +26,7 @@ def prepare_connection(conn, database, datasette):
 
 
 @hookspec
-def prepare_jinja2_environment(env):
+def prepare_jinja2_environment(env, datasette):
     """Modify Jinja2 template environment e.g. register custom template tags"""
 
 

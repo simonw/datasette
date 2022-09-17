@@ -546,11 +546,13 @@ def test_hook_register_output_renderer_can_render(app_client):
 @pytest.mark.asyncio
 async def test_hook_prepare_jinja2_environment(app_client):
     app_client.ds._HELLO = "HI"
+    await app_client.ds.invoke_startup()
     template = app_client.ds.jinja_env.from_string(
-        "Hello there, {{ a|format_numeric }}, {{ a|to_hello }}", {"a": 3412341}
+        "Hello there, {{ a|format_numeric }}, {{ a|to_hello }}, {{ b|select_times_three }}",
+        {"a": 3412341, "b": 5},
     )
     rendered = await app_client.ds.render_template(template)
-    assert "Hello there, 3,412,341, HI" == rendered
+    assert "Hello there, 3,412,341, HI, 15" == rendered
 
 
 def test_hook_publish_subcommand():

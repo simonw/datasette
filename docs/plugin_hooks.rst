@@ -88,6 +88,8 @@ You can now use this filter in your custom templates like so::
 
     Table name: {{ table|uppercase }}
 
+This function can return an awaitable function if it needs to run any async code.
+
 Examples: `datasette-edit-templates <https://datasette.io/plugins/datasette-edit-templates>`_
 
 .. _plugin_hook_extra_template_vars:

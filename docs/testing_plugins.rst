@@ -52,6 +52,36 @@ Then run the tests using pytest like so::
 
     pytest
 
+.. _testing_plugins_datasette_test_instance:
+
+Setting up a Datasette test instance
+------------------------------------
+
+The above example shows the easiest way to start writing tests against a Datasette instance:
+
+.. code-block:: python
+
+    from datasette.app import Datasette
+    import pytest
+
+
+    @pytest.mark.asyncio
+    async def test_plugin_is_installed():
+        datasette = Datasette(memory=True)
+        response = await datasette.client.get("/-/plugins.json")
+        assert response.status_code == 200
+
+Creating a ``Datasette()`` instance like this as useful shortcut in tests, but there is one detail you need to be aware of. It's important to ensure that the async method ``.invoke_startup()`` is called on that instance. You can do that like this:
+
+.. code-block:: python
+
+    datasette = Datasette(memory=True)
+    await datasette.invoke_startup()
+
+This method registers any :ref:`plugin_hook_startup` or :ref:`plugin_hook_prepare_jinja2_environment` plugins that might themselves need to make async calls.
+
+If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - those method calls ensure that ``.invoke_startup()`` has been called for you.
+
 .. _testing_plugins_pdb:
 
 Using pdb for errors thrown inside Datasette

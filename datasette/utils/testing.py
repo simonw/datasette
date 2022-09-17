@@ -147,6 +147,7 @@ class TestClient:
         content_type=None,
         if_none_match=None,
     ):
+        await self.ds.invoke_startup()
         headers = headers or {}
         if content_type:
             headers["content-type"] = content_type

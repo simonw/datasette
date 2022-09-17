@@ -143,8 +143,14 @@ def extra_template_vars(
 
 @hookimpl
 def prepare_jinja2_environment(env, datasette):
-    env.filters["format_numeric"] = lambda s: f"{float(s):,.0f}"
-    env.filters["to_hello"] = lambda s: datasette._HELLO
+    async def select_times_three(s):
+        db = datasette.get_database()
+        return (await db.execute("select 3 * ?", [int(s)])).first()[0]
+
+    async def inner():
+        env.filters["select_times_three"] = select_times_three
+
+    return inner
 
 
 @hookimpl

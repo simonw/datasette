@@ -1,10 +1,12 @@
 from .fixtures import app_client
 import httpx
 import pytest
+import pytest_asyncio
 
 
-@pytest.fixture
-def datasette(app_client):
+@pytest_asyncio.fixture
+async def datasette(app_client):
+    await app_client.ds.invoke_startup()
     return app_client.ds
 
 

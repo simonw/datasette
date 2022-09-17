@@ -71,6 +71,7 @@ EXPECTED_PLUGINS = [
             "handle_exception",
             "menu_links",
             "permission_allowed",
+            "prepare_jinja2_environment",
             "register_routes",
             "render_cell",
             "startup",

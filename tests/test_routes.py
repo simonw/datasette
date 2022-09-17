@@ -59,6 +59,7 @@ def test_routes(routes, path, expected_class, expected_matches):
 @pytest_asyncio.fixture
 async def ds_with_route():
     ds = Datasette()
+    await ds.invoke_startup()
     ds.remove_database("_memory")
     db = Database(ds, is_memory=True, memory_name="route-name-db")
     ds.add_database(db, name="original-name", route="custom-route-name")

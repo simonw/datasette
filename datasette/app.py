@@ -208,6 +208,7 @@ class Datasette:
         crossdb=False,
         nolock=False,
     ):
+        self._startup_invoked = False
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
@@ -344,9 +345,6 @@ class Datasette:
         self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
-        # pylint: disable=no-member
-        pm.hook.prepare_jinja2_environment(env=self.jinja_env, datasette=self)
-
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
@@ -389,8 +387,16 @@ class Datasette:
         return Urls(self)
 
     async def invoke_startup(self):
+        # This must be called for Datasette to be in a usable state
+        if self._startup_invoked:
+            return
+        for hook in pm.hook.prepare_jinja2_environment(
+            env=self.jinja_env, datasette=self
+        ):
+            await await_me_maybe(hook)
         for hook in pm.hook.startup(datasette=self):
             await await_me_maybe(hook)
+        self._startup_invoked = True
 
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)
@@ -933,6 +939,8 @@ class Datasette:
     async def render_template(
         self, templates, context=None, request=None, view_name=None
     ):
+        if not self._startup_invoked:
+            raise Exception("render_template() called before await ds.invoke_startup()")
         context = context or {}
         if isinstance(templates, Template):
             template = templates
@@ -1495,34 +1503,42 @@ class DatasetteClient:
         return path
 
     async def get(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.get(self._fix(path), **kwargs)
 
     async def options(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.options(self._fix(path), **kwargs)
 
     async def head(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.head(self._fix(path), **kwargs)
 
     async def post(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.post(self._fix(path), **kwargs)
 
     async def put(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.put(self._fix(path), **kwargs)
 
     async def patch(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.patch(self._fix(path), **kwargs)
 
     async def delete(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.delete(self._fix(path), **kwargs)
 
     async def request(self, method, path, **kwargs):
+        await self.ds.invoke_startup()
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.request(

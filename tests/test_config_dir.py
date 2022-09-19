@@ -5,6 +5,7 @@ import pytest
 from datasette.app import Datasette
 from datasette.cli import cli
 from datasette.utils.sqlite import sqlite3
+from datasette.utils import StartupError
 from .fixtures import TestClient as _TestClient
 from click.testing import CliRunner
 
@@ -27,9 +28,8 @@ body { margin-top: 3em}
 
 
 @pytest.fixture(scope="session")
-def config_dir_client(tmp_path_factory):
+def config_dir(tmp_path_factory):
     config_dir = tmp_path_factory.mktemp("config-dir")
-
     plugins_dir = config_dir / "plugins"
     plugins_dir.mkdir()
     (plugins_dir / "hooray.py").write_text(PLUGIN, "utf-8")
@@ -77,7 +77,23 @@ def config_dir_client(tmp_path_factory):
         ),
         "utf-8",
     )
+    return config_dir
 
+
+def test_invalid_settings(config_dir):
+    previous = (config_dir / "settings.json").read_text("utf-8")
+    (config_dir / "settings.json").write_text(
+        json.dumps({"invalid": "invalid-setting"}), "utf-8"
+    )
+    try:
+        with pytest.raises(StartupError):
+            ds = Datasette([], config_dir=config_dir)
+    finally:
+        (config_dir / "settings.json").write_text(previous, "utf-8")
+
+
+@pytest.fixture(scope="session")
+def config_dir_client(config_dir):
     ds = Datasette([], config_dir=config_dir)
     yield _TestClient(ds)
 

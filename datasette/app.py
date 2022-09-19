@@ -292,6 +292,10 @@ class Datasette:
             raise StartupError("config.json should be renamed to settings.json")
         if config_dir and (config_dir / "settings.json").exists() and not settings:
             settings = json.loads((config_dir / "settings.json").read_text())
+            # Validate those settings
+            for key in settings:
+                if key not in DEFAULT_SETTINGS:
+                    raise StartupError("Invalid setting '{key}' in settings.json")
         self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note

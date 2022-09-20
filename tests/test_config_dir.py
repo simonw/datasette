@@ -86,8 +86,9 @@ def test_invalid_settings(config_dir):
         json.dumps({"invalid": "invalid-setting"}), "utf-8"
     )
     try:
-        with pytest.raises(StartupError):
+        with pytest.raises(StartupError) as ex:
             ds = Datasette([], config_dir=config_dir)
+        assert ex.value.args[0] == "Invalid setting 'invalid' in settings.json"
     finally:
         (config_dir / "settings.json").write_text(previous, "utf-8")
 

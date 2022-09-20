@@ -295,7 +295,9 @@ class Datasette:
             # Validate those settings
             for key in settings:
                 if key not in DEFAULT_SETTINGS:
-                    raise StartupError("Invalid setting '{key}' in settings.json")
+                    raise StartupError(
+                        "Invalid setting '{}' in settings.json".format(key)
+                    )
         self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note

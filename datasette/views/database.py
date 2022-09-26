@@ -30,7 +30,9 @@ from .base import DatasetteError, DataView
 class DatabaseView(DataView):
     name = "database"
 
-    async def data(self, request, database, hash, default_labels=False, _size=None):
+    async def data(
+        self, request, database, hash, default_labels=False, _size=None, **kwargs
+    ):
         await self.check_permissions(
             request,
             [
@@ -45,7 +47,7 @@ class DatabaseView(DataView):
             sql = request.args.get("sql")
             validate_sql_select(sql)
             return await QueryView(self.ds).data(
-                request, database, hash, sql, _size=_size, metadata=metadata
+                request, database, hash, sql, _size=_size, metadata=metadata, **kwargs
             )
 
         db = self.ds.databases[database]

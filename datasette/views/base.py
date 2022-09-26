@@ -169,7 +169,6 @@ class DataView(BaseView):
     async def as_csv(self, request, database):
         kwargs = {}
         stream = request.args.get("_stream")
-        truncate = True
         # Do not calculate facets or counts:
         extra_parameters = [
             "{}=1".format(key)
@@ -199,8 +198,12 @@ class DataView(BaseView):
                 raise BadRequest("_next not allowed for CSV streaming")
             kwargs["_size"] = "max"
         elif not request.args.get("_next"):
+            # If we are not using a pagination method and not streaming,
+            # then we will try to get all the rows, which we indicate by
+            # overloading the _size argument
             _size = 0
 
+        # Fetch the first page
         try:
             response_or_template_contexts = await self.data(request, _size=_size)
             if isinstance(response_or_template_contexts, Response):

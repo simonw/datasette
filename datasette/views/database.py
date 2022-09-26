@@ -210,7 +210,7 @@ class QueryView(DataView):
         metadata=None,
         _size=None,
         named_parameters=None,
-        write=False
+        write=False,
     ):
         database_route = tilde_decode(request.url_vars["database"])
         try:
@@ -224,10 +224,10 @@ class QueryView(DataView):
         if "_shape" in params:
             params.pop("_shape")
 
-        if _size=="full":
-            truncate=False
+        if _size == "full":
+            truncate = False
         else:
-            truncate=True
+            truncate = True
 
         private = False
         if canned_query:

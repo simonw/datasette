@@ -289,6 +289,8 @@ class DataView(BaseView):
             if request.args.get("_next"):
                 raise BadRequest("_next not allowed for CSV streaming")
             kwargs["_size"] = "max"
+        else:
+            kwargs['truncate'] = False
         # Fetch the first page
         try:
             response_or_template_contexts = await self.data(

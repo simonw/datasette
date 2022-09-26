@@ -200,6 +200,7 @@ class QueryView(DataView):
         _size=None,
         named_parameters=None,
         write=False,
+        truncate=True,
     ):
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
@@ -337,7 +338,7 @@ class QueryView(DataView):
                 params_for_query = params
             try:
                 results = await self.ds.execute(
-                    database, sql, params_for_query, truncate=True, **extra_args
+                    database, sql, params_for_query, truncate=truncate, **extra_args
                 )
                 columns = [r[0] for r in results.description]
             except sqlite3.DatabaseError as e:

@@ -3,7 +3,7 @@
 {% block title %}{{ database }}: {{ table }}{% endblock %}
 
 {% block extra_head %}
-{{ super() }}
+{{- super() -}}
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in columns %}

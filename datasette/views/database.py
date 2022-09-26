@@ -10,8 +10,9 @@ import markupsafe
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
-    check_visibility,
     derive_named_parameters,
+    format_bytes,
+    tilde_decode,
     to_css_class,
     validate_sql_select,
     is_url,
@@ -19,9 +20,10 @@ from datasette.utils import (
     path_with_format,
     path_with_removed_args,
     sqlite3,
+    truncate_url,
     InvalidSql,
 )
-from datasette.utils.asgi import AsgiFileDownload, Response, Forbidden
+from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import DatasetteError, DataView
@@ -30,11 +32,16 @@ from .base import DatasetteError, DataView
 class DatabaseView(DataView):
     name = "database"
 
-    async def data(
-        self, request, database, hash, default_labels=False, _size=None, **kwargs
-    ):
-        await self.check_permissions(
-            request,
+    async def data(self, request, default_labels=False, _size=None):
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database_route))
+        database = db.name
+
+        await self.ds.ensure_permissions(
+            request.actor,
             [
                 ("view-database", database),
                 "view-instance",
@@ -47,10 +54,8 @@ class DatabaseView(DataView):
             sql = request.args.get("sql")
             validate_sql_select(sql)
             return await QueryView(self.ds).data(
-                request, database, hash, sql, _size=_size, metadata=metadata, **kwargs
+                request, sql, _size=_size, metadata=metadata
             )
-
-        db = self.ds.databases[database]
 
         table_counts = await db.table_counts(5)
         hidden_table_names = set(await db.hidden_table_names())
@@ -58,8 +63,7 @@ class DatabaseView(DataView):
 
         views = []
         for view_name in await db.view_names():
-            visible, private = await check_visibility(
-                self.ds,
+            visible, private = await self.ds.check_visibility(
                 request.actor,
                 "view-table",
                 (database, view_name),
@@ -74,8 +78,7 @@ class DatabaseView(DataView):
 
         tables = []
         for table in table_counts:
-            visible, private = await check_visibility(
-                self.ds,
+            visible, private = await self.ds.check_visibility(
                 request.actor,
                 "view-table",
                 (database, table),
@@ -101,8 +104,7 @@ class DatabaseView(DataView):
         for query in (
             await self.ds.get_canned_queries(database, request.actor)
         ).values():
-            visible, private = await check_visibility(
-                self.ds,
+            visible, private = await self.ds.check_visibility(
                 request.actor,
                 "view-query",
                 (database, query["name"]),
@@ -158,18 +160,20 @@ class DatabaseView(DataView):
 class DatabaseDownload(DataView):
     name = "database_download"
 
-    async def view_get(self, request, database, hash, correct_hash_present, **kwargs):
-        await self.check_permissions(
-            request,
+    async def get(self, request):
+        database = tilde_decode(request.url_vars["database"])
+        await self.ds.ensure_permissions(
+            request.actor,
             [
                 ("view-database-download", database),
                 ("view-database", database),
                 "view-instance",
             ],
         )
-        if database not in self.ds.databases:
+        try:
+            db = self.ds.get_database(route=database)
+        except KeyError:
             raise DatasetteError("Invalid database", status=404)
-        db = self.ds.databases[database]
         if db.is_memory:
             raise DatasetteError("Cannot download in-memory databases", status=404)
         if not self.ds.setting("allow_download") or db.is_mutable:
@@ -180,6 +184,13 @@ class DatabaseDownload(DataView):
         headers = {}
         if self.ds.cors:
             add_cors_headers(headers)
+        if db.hash:
+            etag = '"{}"'.format(db.hash)
+            headers["Etag"] = etag
+            # Has user seen this already?
+            if_none_match = request.headers.get("if-none-match")
+            if if_none_match and if_none_match == etag:
+                return Response("", status=304)
         headers["Transfer-Encoding"] = "chunked"
         return AsgiFileDownload(
             filepath,
@@ -193,28 +204,36 @@ class QueryView(DataView):
     async def data(
         self,
         request,
-        database,
-        hash,
         sql,
         editable=True,
         canned_query=None,
         metadata=None,
         _size=None,
         named_parameters=None,
-        write=False,
-        truncate=True,
+        write=False
     ):
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database_route))
+        database = db.name
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
             params.pop("sql")
         if "_shape" in params:
             params.pop("_shape")
 
+        if _size=="full":
+            truncate=False
+        else:
+            trunacte=True
+
         private = False
         if canned_query:
             # Respect canned query permissions
-            await self.check_permissions(
-                request,
+            await self.ds.ensure_permissions(
+                request.actor,
                 [
                     ("view-query", (database, canned_query)),
                     ("view-database", database),
@@ -225,7 +244,7 @@ class QueryView(DataView):
                 None, "view-query", (database, canned_query), default=True
             )
         else:
-            await self.check_permission(request, "execute-sql", database)
+            await self.ds.ensure_permissions(request.actor, [("execute-sql", database)])
 
         # Extract any :named parameters
         named_parameters = named_parameters or await derive_named_parameters(
@@ -260,6 +279,9 @@ class QueryView(DataView):
         # Execute query - as write or as read
         if write:
             if request.method == "POST":
+                # If database is immutable, return an error
+                if not db.is_mutable:
+                    raise Forbidden("Database is immutable")
                 body = await request.post_body()
                 body = body.decode("utf-8").strip()
                 if body.startswith("{") and body.endswith("}"):
@@ -313,6 +335,7 @@ class QueryView(DataView):
                 async def extra_template():
                     return {
                         "request": request,
+                        "db_is_immutable": not db.is_mutable,
                         "path_with_added_args": path_with_added_args,
                         "path_with_removed_args": path_with_removed_args,
                         "named_parameter_values": named_parameter_values,
@@ -354,6 +377,7 @@ class QueryView(DataView):
 
         async def extra_template():
             display_rows = []
+            truncate_cells = self.ds.setting("truncate_cells_html")
             for row in results.rows if results else []:
                 display_row = []
                 for column, value in zip(results.columns, row):
@@ -362,6 +386,7 @@ class QueryView(DataView):
                     # pylint: disable=no-member
                     plugin_display_value = None
                     for candidate in pm.hook.render_cell(
+                        row=row,
                         value=value,
                         column=column,
                         table=None,
@@ -378,9 +403,12 @@ class QueryView(DataView):
                         if value in ("", None):
                             display_value = Markup("&nbsp;")
                         elif is_url(str(display_value).strip()):
-                            display_value = Markup(
-                                '<a href="{url}">{url}</a>'.format(
-                                    url=escape(value.strip())
+                            display_value = markupsafe.Markup(
+                                '<a href="{url}">{truncated_url}</a>'.format(
+                                    url=markupsafe.escape(value.strip()),
+                                    truncated_url=markupsafe.escape(
+                                        truncate_url(value.strip(), truncate_cells)
+                                    ),
                                 )
                             )
                         elif isinstance(display_value, bytes):
@@ -394,13 +422,23 @@ class QueryView(DataView):
                                     ).hexdigest(),
                                 },
                             )
-                            display_value = Markup(
-                                '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
+                            formatted = format_bytes(len(value))
+                            display_value = markupsafe.Markup(
+                                '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                                     blob_url,
-                                    len(display_value),
+                                    ' title="{}"'.format(formatted)
+                                    if "bytes" not in formatted
+                                    else "",
+                                    len(value),
                                     "" if len(value) == 1 else "s",
                                 )
                             )
+                        else:
+                            display_value = str(value)
+                            if truncate_cells and len(display_value) > truncate_cells:
+                                display_value = (
+                                    display_value[:truncate_cells] + "\u2026"
+                                )
                     display_row.append(display_value)
                 display_rows.append(display_row)
 

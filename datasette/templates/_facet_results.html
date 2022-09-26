@@ -1,0 +1,28 @@
+<div class="facet-results">
+    {% for facet_info in sorted_facet_results %}
+        <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}" id="facet-{{ facet_info.name|to_css_class }}" data-column="{{ facet_info.name }}">
+            <p class="facet-info-name">
+                <strong>{{ facet_info.name }}{% if facet_info.type != "column" %} ({{ facet_info.type }}){% endif %}
+                    <span class="facet-info-total">{% if facet_info.truncated %}&gt;{% endif %}{{ facet_info.results|length }}</span>
+                </strong>
+                {% if facet_info.hideable %}
+                    <a href="{{ facet_info.toggle_url }}" class="cross">&#x2716;</a>
+                {% endif %}
+            </p>
+            <ul class="tight-bullets">
+                {% for facet_value in facet_info.results %}
+                    {% if not facet_value.selected %}
+                        <li><a href="{{ facet_value.toggle_url }}">{{ (facet_value.label | string()) or "-" }}</a> {{ "{:,}".format(facet_value.count) }}</li>
+                    {% else %}
+                        <li>{{ facet_value.label or "-" }} &middot; {{ "{:,}".format(facet_value.count) }} <a href="{{ facet_value.toggle_url }}" class="cross">&#x2716;</a></li>
+                    {% endif %}
+                {% endfor %}
+                {% if facet_info.truncated %}
+                    <li class="facet-truncated">{% if request.args._facet_size != "max" -%}
+                        <a href="{{ path_with_replaced_args(request, {"_facet_size": "max"}) }}">…</a>{% else -%}…{% endif %}
+                    </li>
+                {% endif %}
+            </ul>
+        </div>
+    {% endfor %}
+</div>

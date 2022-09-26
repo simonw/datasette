@@ -38,11 +38,11 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://la
 
     {
         "datasette": {
-            "version": "0.21"
+            "version": "0.60"
         },
         "python": {
-            "full": "3.6.5 (default, May  5 2018, 03:07:21) \n[GCC 6.3.0 20170516]",
-            "version": "3.6.5"
+            "full": "3.8.12 (default, Dec 21 2021, 10:45:09) \n[GCC 10.2.1 20210110]",
+            "version": "3.8.12"
         },
         "sqlite": {
             "extensions": {
@@ -62,7 +62,7 @@ Shows the version of Datasette, Python and SQLite. `Versions example <https://la
                 "ENABLE_RTREE",
                 "THREADSAFE=1"
             ],
-            "version": "3.16.2"
+            "version": "3.37.0"
         }
     }
 

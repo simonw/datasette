@@ -7,6 +7,7 @@
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](https://docs.datasette.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/main/LICENSE)
 [![docker: datasette](https://img.shields.io/badge/docker-datasette-blue)](https://hub.docker.com/r/datasetteproject/datasette)
+[![discord](https://img.shields.io/discord/823971286308356157?label=discord)](https://discord.gg/ktd74dm5mw)
 
 *An open source multi-tool for exploring and publishing data*
 
@@ -20,10 +21,10 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 * Latest [Datasette News](https://datasette.io/news)
 * Comprehensive documentation: https://docs.datasette.io/
 * Examples: https://datasette.io/examples
-* Live demo of current main: https://latest.datasette.io/
-* Support questions, feedback? Join our [GitHub Discussions forum](https://github.com/simonw/datasette/discussions)
+* Live demo of current `main` branch: https://latest.datasette.io/
+* Questions, feedback or want to talk about the project? Join our [Discord](https://discord.gg/ktd74dm5mw)
 
-Want to stay up-to-date with the project? Subscribe to the [Datasette Weekly newsletter](https://datasette.substack.com/) for tips, tricks and news on what's new in the Datasette ecosystem.
+Want to stay up-to-date with the project? Subscribe to the [Datasette newsletter](https://datasette.substack.com/) for tips, tricks and news on what's new in the Datasette ecosystem.
 
 ## Installation
 
@@ -35,7 +36,7 @@ You can also install it using `pip` or `pipx`:
 
     pip install datasette
 
-Datasette requires Python 3.6 or higher. We also have [detailed installation instructions](https://docs.datasette.io/en/stable/installation.html) covering other options such as Docker.
+Datasette requires Python 3.7 or higher. We also have [detailed installation instructions](https://docs.datasette.io/en/stable/installation.html) covering other options such as Docker.
 
 ## Basic usage
 
@@ -47,7 +48,7 @@ This will start a web server on port 8001 - visit http://localhost:8001/ to acce
 
 Use Chrome on OS X? You can run datasette against your browser history like so:
 
-     datasette ~/Library/Application\ Support/Google/Chrome/Default/History
+     datasette ~/Library/Application\ Support/Google/Chrome/Default/History --nolock
 
 Now visiting http://localhost:8001/History/downloads will show you a web interface to browse your downloads data:
 
@@ -84,3 +85,7 @@ Or:
 This will create a docker image containing both the datasette application and the specified SQLite database files. It will then deploy that image to Heroku or Cloud Run and give you a URL to access the resulting website and API.
 
 See [Publishing data](https://docs.datasette.io/en/stable/publish.html) in the documentation for more details.
+
+## Datasette Lite
+
+[Datasette Lite](https://lite.datasette.io/) is Datasette packaged using WebAssembly so that it runs entirely in your browser, no Python web application server required. Read more about that in the [Datasette Lite documentation](https://github.com/simonw/datasette-lite/blob/main/README.md).

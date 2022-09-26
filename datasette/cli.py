@@ -12,8 +12,16 @@ from subprocess import call
 import sys
 from runpy import run_module
 import webbrowser
-from .app import Datasette, DEFAULT_SETTINGS, SETTINGS, SQLITE_LIMIT_ATTACHED, pm
+from .app import (
+    OBSOLETE_SETTINGS,
+    Datasette,
+    DEFAULT_SETTINGS,
+    SETTINGS,
+    SQLITE_LIMIT_ATTACHED,
+    pm,
+)
 from .utils import (
+    LoadExtension,
     StartupError,
     check_connection,
     find_spatialite,
@@ -50,8 +58,12 @@ class Config(click.ParamType):
             return
         name, value = config.split(":", 1)
         if name not in DEFAULT_SETTINGS:
+            msg = (
+                OBSOLETE_SETTINGS.get(name)
+                or f"{name} is not a valid option (--help-settings to see all)"
+            )
             self.fail(
-                f"{name} is not a valid option (--help-settings to see all)",
+                msg,
                 param,
                 ctx,
             )
@@ -83,8 +95,12 @@ class Setting(CompositeParamType):
     def convert(self, config, param, ctx):
         name, value = config
         if name not in DEFAULT_SETTINGS:
+            msg = (
+                OBSOLETE_SETTINGS.get(name)
+                or f"{name} is not a valid option (--help-settings to see all)"
+            )
             self.fail(
-                f"{name} is not a valid option (--help-settings to see all)",
+                msg,
                 param,
                 ctx,
             )
@@ -113,9 +129,10 @@ def sqlite_extensions(fn):
     return click.option(
         "sqlite_extensions",
         "--load-extension",
+        type=LoadExtension(),
         envvar="SQLITE_EXTENSIONS",
         multiple=True,
-        help="Path to a SQLite extension to load",
+        help="Path to a SQLite extension to load, and optional entrypoint",
     )(fn)
 
 
@@ -136,6 +153,12 @@ def cli():
 @click.option("--inspect-file", default="-")
 @sqlite_extensions
 def inspect(files, inspect_file, sqlite_extensions):
+    """
+    Generate JSON summary of provided database files
+
+    This can then be passed to "datasette --inspect-file" to speed up count
+    operations against immutable database files.
+    """
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     loop = asyncio.get_event_loop()
     inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))
@@ -184,7 +207,7 @@ pm.hook.publish_subcommand(publish=publish)
     help="Path to directory containing custom plugins",
 )
 def plugins(all, plugins_dir):
-    """List currently available plugins"""
+    """List currently installed plugins"""
     app = Datasette([], plugins_dir=plugins_dir)
     click.echo(json.dumps(app._plugins(all=all), indent=4))
 
@@ -261,7 +284,7 @@ def package(
     port,
     **extra_metadata,
 ):
-    """Package specified SQLite files into a new datasette Docker container"""
+    """Package SQLite files into a Datasette Docker container"""
     if not shutil.which("docker"):
         click.secho(
             ' The package command requires "docker" to be installed and configured ',
@@ -301,7 +324,7 @@ def package(
     "-U", "--upgrade", is_flag=True, help="Upgrade packages to latest version"
 )
 def install(packages, upgrade):
-    """Install Python packages - e.g. Datasette plugins - into the same environment as Datasette"""
+    """Install plugins and packages from PyPI into the same environment as Datasette"""
     args = ["pip", "install"]
     if upgrade:
         args += ["--upgrade"]
@@ -314,7 +337,7 @@ def install(packages, upgrade):
 @click.argument("packages", nargs=-1, required=True)
 @click.option("-y", "--yes", is_flag=True, help="Don't ask for confirmation")
 def uninstall(packages, yes):
-    """Uninstall Python packages (e.g. plugins) from the Datasette environment"""
+    """Uninstall plugins and Python packages from the Datasette environment"""
     sys.argv = ["pip", "uninstall"] + list(packages) + (["-y"] if yes else [])
     run_module("pip", run_name="__main__")
 
@@ -394,7 +417,7 @@ def uninstall(packages, yes):
     "--setting",
     "settings",
     type=Setting(),
-    help="Setting, see docs.datasette.io/en/stable/config.html",
+    help="Setting, see docs.datasette.io/en/stable/settings.html",
     multiple=True,
 )
 @click.option(
@@ -432,6 +455,11 @@ def uninstall(packages, yes):
     help="Enable cross-database joins using the /_memory database",
 )
 @click.option(
+    "--nolock",
+    is_flag=True,
+    help="Ignore locking, open locked files in read-only mode",
+)
+@click.option(
     "--ssl-keyfile",
     help="SSL key file",
 )
@@ -465,6 +493,7 @@ def serve(
     open_browser,
     create,
     crossdb,
+    nolock,
     ssl_keyfile,
     ssl_certfile,
     return_instance=False,
@@ -524,6 +553,7 @@ def serve(
         version_note=version_note,
         pdb=pdb,
         crossdb=crossdb,
+        nolock=nolock,
     )
 
     # if files is a single directory, use that as config_dir=
@@ -542,6 +572,9 @@ def serve(
                         file
                     )
                 )
+
+    # De-duplicate files so 'datasette db.db db.db' only attaches one /db
+    files = list(dict.fromkeys(files))
 
     try:
         ds = Datasette(files, **kwargs)

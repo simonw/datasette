@@ -1,4 +1,5 @@
 import asyncio
+from typing import Sequence, Union, Tuple
 import asgi_csrf
 import collections
 import datetime
@@ -15,7 +16,6 @@ import re
 import secrets
 import sys
 import threading
-import traceback
 import urllib.parse
 from concurrent import futures
 from pathlib import Path
@@ -25,9 +25,8 @@ from itsdangerous import URLSafeSerializer
 from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
-import uvicorn
 
-from .views.base import DatasetteError, ureg
+from .views.base import ureg
 from .views.database import DatabaseDownload, DatabaseView
 from .views.index import IndexView
 from .views.special import (
@@ -39,15 +38,16 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import RowView, TableView
+from .views.table import TableView
+from .views.row import RowView
 from .renderer import json_renderer
 from .url_builder import Urls
 from .database import Database, QueryInterrupted
 
 from .utils import (
     PrefixedUrlString,
+    SPATIALITE_FUNCTIONS,
     StartupError,
-    add_cors_headers,
     async_call_with_supported_arguments,
     await_me_maybe,
     call_with_supported_arguments,
@@ -59,6 +59,7 @@ from .utils import (
     module_from_path,
     parse_metadata,
     resolve_env_secrets,
+    resolve_routes,
     to_css_class,
 )
 from .utils.asgi import (
@@ -70,6 +71,7 @@ from .utils.asgi import (
     Response,
     asgi_static,
     asgi_send,
+    asgi_send_file,
     asgi_send_html,
     asgi_send_json,
     asgi_send_redirect,
@@ -82,11 +84,6 @@ from .utils.sqlite import (
 from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
-
-try:
-    import rich
-except ImportError:
-    rich = None
 
 app_root = Path(__file__).parent.parent
 
@@ -117,11 +114,6 @@ SETTINGS = (
         "Time limit for calculating a suggested facet",
     ),
     Setting(
-        "hash_urls",
-        False,
-        "Include DB file contents hash in URLs, for far-future caching",
-    ),
-    Setting(
         "allow_facet",
         True,
         "Allow users to specify columns to facet using ?_facet= parameter",
@@ -136,11 +128,6 @@ SETTINGS = (
         "default_cache_ttl",
         5,
         "Default HTTP cache TTL (used in Cache-Control: max-age= header)",
-    ),
-    Setting(
-        "default_cache_ttl_hashed",
-        365 * 24 * 60 * 60,
-        "Default HTTP cache TTL for hashed URL pages",
     ),
     Setting("cache_size_kb", 0, "SQLite cache size in KB (0 == use SQLite default)"),
     Setting(
@@ -175,12 +162,23 @@ SETTINGS = (
     ),
     Setting("base_url", "/", "Datasette URLs should use this base path"),
 )
-
+_HASH_URLS_REMOVED = "The hash_urls setting has been removed, try the datasette-hashed-urls plugin instead"
+OBSOLETE_SETTINGS = {
+    "hash_urls": _HASH_URLS_REMOVED,
+    "default_cache_ttl_hashed": _HASH_URLS_REMOVED,
+}
 DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
+
+FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 
 
 async def favicon(request, send):
-    await asgi_send(send, "", 200)
+    await asgi_send_file(
+        send,
+        str(FAVICON_PATH),
+        content_type="image/png",
+        headers={"Cache-Control": "max-age=3600, immutable, public"},
+    )
 
 
 class Datasette:
@@ -208,10 +206,13 @@ class Datasette:
         config_dir=None,
         pdb=False,
         crossdb=False,
+        nolock=False,
     ):
+        self._startup_invoked = False
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
+        self.config_dir = config_dir
         self.pdb = pdb
         self._secret = secret or secrets.token_hex(32)
         self.files = tuple(files or []) + tuple(immutables or [])
@@ -231,8 +232,19 @@ class Datasette:
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
-        self._refresh_schemas_lock = asyncio.Lock()
+        try:
+            self._refresh_schemas_lock = asyncio.Lock()
+        except RuntimeError as rex:
+            # Workaround for intermittent test failure, see:
+            # https://github.com/simonw/datasette/issues/1802
+            if "There is no current event loop in thread" in str(rex):
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._refresh_schemas_lock = asyncio.Lock()
+            else:
+                raise
         self.crossdb = crossdb
+        self.nolock = nolock
         if memory or crossdb or not self.files:
             self.add_database(Database(self, is_memory=True), name="_memory")
         # memory_name is a random string so that each Datasette instance gets its own
@@ -280,12 +292,21 @@ class Datasette:
             raise StartupError("config.json should be renamed to settings.json")
         if config_dir and (config_dir / "settings.json").exists() and not settings:
             settings = json.loads((config_dir / "settings.json").read_text())
+            # Validate those settings
+            for key in settings:
+                if key not in DEFAULT_SETTINGS:
+                    raise StartupError(
+                        "Invalid setting '{}' in settings.json".format(key)
+                    )
         self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
-        self.executor = futures.ThreadPoolExecutor(
-            max_workers=self.setting("num_sql_threads")
-        )
+        if self.setting("num_sql_threads") == 0:
+            self.executor = None
+        else:
+            self.executor = futures.ThreadPoolExecutor(
+                max_workers=self.setting("num_sql_threads")
+            )
         self.max_returned_rows = self.setting("max_returned_rows")
         self.sql_time_limit_ms = self.setting("sql_time_limit_ms")
         self.page_size = self.setting("default_page_size")
@@ -330,9 +351,6 @@ class Datasette:
         self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
         self.jinja_env.filters["escape_sqlite"] = escape_sqlite
         self.jinja_env.filters["to_css_class"] = to_css_class
-        # pylint: disable=no-member
-        pm.hook.prepare_jinja2_environment(env=self.jinja_env)
-
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
@@ -375,8 +393,16 @@ class Datasette:
         return Urls(self)
 
     async def invoke_startup(self):
+        # This must be called for Datasette to be in a usable state
+        if self._startup_invoked:
+            return
+        for hook in pm.hook.prepare_jinja2_environment(
+            env=self.jinja_env, datasette=self
+        ):
+            await await_me_maybe(hook)
         for hook in pm.hook.startup(datasette=self):
             await await_me_maybe(hook)
+        self._startup_invoked = True
 
     def sign(self, value, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).dumps(value)
@@ -384,13 +410,18 @@ class Datasette:
     def unsign(self, signed, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).loads(signed)
 
-    def get_database(self, name=None):
+    def get_database(self, name=None, route=None):
+        if route is not None:
+            matches = [db for db in self.databases.values() if db.route == route]
+            if not matches:
+                raise KeyError
+            return matches[0]
         if name is None:
-            # Return first no-_schemas database
+            # Return first database that isn't "_internal"
             name = [key for key in self.databases.keys() if key != "_internal"][0]
         return self.databases[name]
 
-    def add_database(self, db, name=None):
+    def add_database(self, db, name=None, route=None):
         new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
@@ -403,6 +434,7 @@ class Datasette:
             name = "{}_{}".format(suggestion, i)
             i += 1
         db.name = name
+        db.route = route or name
         new_databases[name] = db
         # don't mutate! that causes race conditions with live import
         self.databases = new_databases
@@ -549,7 +581,13 @@ class Datasette:
         if self.sqlite_extensions:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
-                conn.execute("SELECT load_extension(?)", [extension])
+                # "extension" is either a string path to the extension
+                # or a 2-item tuple that specifies which entrypoint to load.
+                if isinstance(extension, tuple):
+                    path, entrypoint = extension
+                    conn.execute("SELECT load_extension(?, ?)", [path, entrypoint])
+                else:
+                    conn.execute("SELECT load_extension(?)", [extension])
         if self.setting("cache_size_kb"):
             conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
         # pylint: disable=no-member
@@ -617,6 +655,59 @@ class Datasette:
             }
         )
         return result
+
+    async def ensure_permissions(
+        self,
+        actor: dict,
+        permissions: Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]],
+    ):
+        """
+        permissions is a list of (action, resource) tuples or 'action' strings
+
+        Raises datasette.Forbidden() if any of the checks fail
+        """
+        assert actor is None or isinstance(actor, dict)
+        for permission in permissions:
+            if isinstance(permission, str):
+                action = permission
+                resource = None
+            elif isinstance(permission, (tuple, list)) and len(permission) == 2:
+                action, resource = permission
+            else:
+                assert (
+                    False
+                ), "permission should be string or tuple of two items: {}".format(
+                    repr(permission)
+                )
+            ok = await self.permission_allowed(
+                actor,
+                action,
+                resource=resource,
+                default=None,
+            )
+            if ok is not None:
+                if ok:
+                    return
+                else:
+                    raise Forbidden(action)
+
+    async def check_visibility(self, actor, action, resource):
+        """Returns (visible, private) - visible = can you see it, private = can others see it too"""
+        visible = await self.permission_allowed(
+            actor,
+            action,
+            resource=resource,
+            default=True,
+        )
+        if not visible:
+            return False, False
+        private = not await self.permission_allowed(
+            None,
+            action,
+            resource=resource,
+            default=True,
+        )
+        return visible, private
 
     async def execute(
         self,
@@ -689,6 +780,7 @@ class Datasette:
         return [
             {
                 "name": d.name,
+                "route": d.route,
                 "path": d.path,
                 "size": d.size,
                 "is_mutable": d.is_mutable,
@@ -716,6 +808,17 @@ class Datasette:
                     sqlite_extensions[extension] = None
             except Exception:
                 pass
+        # More details on SpatiaLite
+        if "spatialite" in sqlite_extensions:
+            spatialite_details = {}
+            for fn in SPATIALITE_FUNCTIONS:
+                try:
+                    result = conn.execute("select {}()".format(fn))
+                    spatialite_details[fn] = result.fetchone()[0]
+                except Exception as e:
+                    spatialite_details[fn] = {"error": str(e)}
+            sqlite_extensions["spatialite"] = spatialite_details
+
         # Figure out supported FTS versions
         fts_versions = []
         for fts in ("FTS5", "FTS4", "FTS3"):
@@ -729,6 +832,15 @@ class Datasette:
         datasette_version = {"version": __version__}
         if self.version_note:
             datasette_version["note"] = self.version_note
+
+        try:
+            # Optional import to avoid breaking Pyodide
+            # https://github.com/simonw/datasette/issues/1733#issuecomment-1115268245
+            import uvicorn
+
+            uvicorn_version = uvicorn.__version__
+        except ImportError:
+            uvicorn_version = None
         info = {
             "python": {
                 "version": ".".join(map(str, sys.version_info[:3])),
@@ -736,7 +848,7 @@ class Datasette:
             },
             "datasette": datasette_version,
             "asgi": "3.0",
-            "uvicorn": uvicorn.__version__,
+            "uvicorn": uvicorn_version,
             "sqlite": {
                 "version": sqlite_version,
                 "fts_versions": fts_versions,
@@ -764,18 +876,21 @@ class Datasette:
             should_show_all = all
         if not should_show_all:
             ps = [p for p in ps if p["name"] not in DEFAULT_PLUGINS]
+        ps.sort(key=lambda p: p["name"])
         return [
             {
                 "name": p["name"],
                 "static": p["static_path"] is not None,
                 "templates": p["templates_path"] is not None,
                 "version": p.get("version"),
-                "hooks": p["hooks"],
+                "hooks": list(sorted(set(p["hooks"]))),
             }
             for p in ps
         ]
 
     def _threads(self):
+        if self.setting("num_sql_threads") == 0:
+            return {"num_threads": 0, "threads": []}
         threads = list(threading.enumerate())
         d = {
             "num_threads": len(threads),
@@ -830,6 +945,8 @@ class Datasette:
     async def render_template(
         self, templates, context=None, request=None, view_name=None
     ):
+        if not self._startup_invoked:
+            raise Exception("render_template() called before await ds.invoke_startup()")
         context = context or {}
         if isinstance(templates, Template):
             template = templates
@@ -959,8 +1076,7 @@ class Datasette:
             output.append(script)
         return output
 
-    def app(self):
-        """Returns an ASGI app function that serves the whole of Datasette"""
+    def _routes(self):
         routes = []
 
         for routes_to_add in pm.hook.register_routes(datasette=self):
@@ -970,10 +1086,7 @@ class Datasette:
         def add_route(view, regex):
             routes.append((regex, view))
 
-        # Generate a regex snippet to match all registered renderer file extensions
-        renderer_regex = "|".join(r"\." + key for key in self.renderers.keys())
-
-        add_route(IndexView.as_view(self), r"/(?P<as_format>(\.jsono?)?$)")
+        add_route(IndexView.as_view(self), r"/(\.(?P<format>jsono?))?$")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         add_route(favicon, "/favicon.ico")
 
@@ -1005,21 +1118,21 @@ class Datasette:
         )
         add_route(
             JsonDataView.as_view(self, "metadata.json", lambda: self.metadata()),
-            r"/-/metadata(?P<as_format>(\.json)?)$",
+            r"/-/metadata(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "versions.json", self._versions),
-            r"/-/versions(?P<as_format>(\.json)?)$",
+            r"/-/versions(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(
                 self, "plugins.json", self._plugins, needs_request=True
             ),
-            r"/-/plugins(?P<as_format>(\.json)?)$",
+            r"/-/plugins(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "settings.json", lambda: self._settings),
-            r"/-/settings(?P<as_format>(\.json)?)$",
+            r"/-/settings(\.(?P<format>json))?$",
         )
         add_route(
             permanent_redirect("/-/settings.json"),
@@ -1031,15 +1144,15 @@ class Datasette:
         )
         add_route(
             JsonDataView.as_view(self, "threads.json", self._threads),
-            r"/-/threads(?P<as_format>(\.json)?)$",
+            r"/-/threads(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "databases.json", self._connected_databases),
-            r"/-/databases(?P<as_format>(\.json)?)$",
+            r"/-/databases(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "actor.json", self._actor, needs_request=True),
-            r"/-/actor(?P<as_format>(\.json)?)$",
+            r"/-/actor(\.(?P<format>json))?$",
         )
         add_route(
             AuthTokenView.as_view(self),
@@ -1065,25 +1178,27 @@ class Datasette:
             PatternPortfolioView.as_view(self),
             r"/-/patterns$",
         )
+        add_route(DatabaseDownload.as_view(self), r"/(?P<database>[^\/\.]+)\.db$")
         add_route(
-            DatabaseDownload.as_view(self), r"/(?P<db_name>[^/]+?)(?P<as_db>\.db)$"
-        )
-        add_route(
-            DatabaseView.as_view(self),
-            r"/(?P<db_name>[^/]+?)(?P<as_format>"
-            + renderer_regex
-            + r"|.jsono|\.csv)?$",
+            DatabaseView.as_view(self), r"/(?P<database>[^\/\.]+)(\.(?P<format>\w+))?$"
         )
         add_route(
             TableView.as_view(self),
-            r"/(?P<db_name>[^/]+)/(?P<table_and_format>[^/]+?$)",
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
         add_route(
             RowView.as_view(self),
-            r"/(?P<db_name>[^/]+)/(?P<table>[^/]+?)/(?P<pk_path>[^/]+?)(?P<as_format>"
-            + renderer_regex
-            + r")?$",
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)(\.(?P<format>\w+))?$",
         )
+        return [
+            # Compile any strings to regular expressions
+            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
+            for pattern, view in routes
+        ]
+
+    def app(self):
+        """Returns an ASGI app function that serves the whole of Datasette"""
+        routes = self._routes()
         self._register_custom_units()
 
         async def setup_db():
@@ -1114,12 +1229,7 @@ class Datasette:
 class DatasetteRouter:
     def __init__(self, datasette, routes):
         self.ds = datasette
-        routes = routes or []
-        self.routes = [
-            # Compile any strings to regular expressions
-            ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
-            for pattern, view in routes
-        ]
+        self.routes = routes or []
         # Build a list of pages/blah/{name}.html matching expressions
         pattern_templates = [
             filepath
@@ -1172,24 +1282,48 @@ class DatasetteRouter:
                 break
         scope_modifications["actor"] = actor or default_actor
         scope = dict(scope, **scope_modifications)
-        for regex, view in self.routes:
-            match = regex.match(path)
-            if match is not None:
-                new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
-                request.scope = new_scope
-                try:
-                    response = await view(request, send)
-                    if response:
-                        self.ds._write_messages_to_response(request, response)
-                        await response.asgi_send(send)
-                    return
-                except NotFound as exception:
-                    return await self.handle_404(request, send, exception)
-                except Exception as exception:
-                    return await self.handle_500(request, send, exception)
-        return await self.handle_404(request, send)
+
+        match, view = resolve_routes(self.routes, path)
+
+        if match is None:
+            return await self.handle_404(request, send)
+
+        new_scope = dict(scope, url_route={"kwargs": match.groupdict()})
+        request.scope = new_scope
+        try:
+            response = await view(request, send)
+            if response:
+                self.ds._write_messages_to_response(request, response)
+                await response.asgi_send(send)
+            return
+        except NotFound as exception:
+            return await self.handle_404(request, send, exception)
+        except Forbidden as exception:
+            # Try the forbidden() plugin hook
+            for custom_response in pm.hook.forbidden(
+                datasette=self.ds, request=request, message=exception.args[0]
+            ):
+                custom_response = await await_me_maybe(custom_response)
+                assert (
+                    custom_response
+                ), "Default forbidden() hook should have been called"
+                return await custom_response.asgi_send(send)
+        except Exception as exception:
+            return await self.handle_exception(request, send, exception)
 
     async def handle_404(self, request, send, exception=None):
+        # If path contains % encoding, redirect to tilde encoding
+        if "%" in request.path:
+            # Try the same path but with "%" replaced by "~"
+            # and "~" replaced with "~7E"
+            # and "." replaced with "~2E"
+            new_path = (
+                request.path.replace("~", "~7E").replace("%", "~").replace(".", "~2E")
+            )
+            if request.query_string:
+                new_path += "?{}".format(request.query_string)
+            await asgi_send_redirect(send, new_path)
+            return
         # If URL has a trailing slash, redirect to URL without it
         path = request.scope.get(
             "raw_path", request.scope["path"].encode("utf8")
@@ -1203,9 +1337,10 @@ class DatasetteRouter:
         else:
             # Is there a pages/* template matching this path?
             route_path = request.scope.get("route_path", request.scope["path"])
-            template_path = os.path.join("pages", *route_path.split("/")) + ".html"
+            # Jinja requires template names to use "/" even on Windows
+            template_name = "pages" + route_path + ".html"
             try:
-                template = self.ds.jinja_env.select_template([template_path])
+                template = self.ds.jinja_env.select_template([template_name])
             except TemplateNotFound:
                 template = None
             if template is None:
@@ -1253,7 +1388,7 @@ class DatasetteRouter:
                         view_name="page",
                     )
                 except NotFoundExplicit as e:
-                    await self.handle_500(request, send, e)
+                    await self.handle_exception(request, send, e)
                     return
                 # Pull content-type out into separate parameter
                 content_type = "text/html; charset=utf-8"
@@ -1268,75 +1403,23 @@ class DatasetteRouter:
                     content_type=content_type,
                 )
             else:
-                await self.handle_500(request, send, exception or NotFound("404"))
+                await self.handle_exception(request, send, exception or NotFound("404"))
 
-    async def handle_500(self, request, send, exception):
-        if self.ds.pdb:
-            import pdb
+    async def handle_exception(self, request, send, exception):
+        responses = []
+        for hook in pm.hook.handle_exception(
+            datasette=self.ds,
+            request=request,
+            exception=exception,
+        ):
+            response = await await_me_maybe(hook)
+            if response is not None:
+                responses.append(response)
 
-            pdb.post_mortem(exception.__traceback__)
-
-        if rich is not None:
-            rich.get_console().print_exception(show_locals=True)
-
-        title = None
-        if isinstance(exception, Forbidden):
-            status = 403
-            info = {}
-            message = exception.args[0]
-            # Try the forbidden() plugin hook
-            for custom_response in pm.hook.forbidden(
-                datasette=self.ds, request=request, message=message
-            ):
-                custom_response = await await_me_maybe(custom_response)
-                if custom_response is not None:
-                    await custom_response.asgi_send(send)
-                    return
-        elif isinstance(exception, Base400):
-            status = exception.status
-            info = {}
-            message = exception.args[0]
-        elif isinstance(exception, DatasetteError):
-            status = exception.status
-            info = exception.error_dict
-            message = exception.message
-            if exception.message_is_html:
-                message = Markup(message)
-            title = exception.title
-        else:
-            status = 500
-            info = {}
-            message = str(exception)
-            traceback.print_exc()
-        templates = [f"{status}.html", "error.html"]
-        info.update(
-            {
-                "ok": False,
-                "error": message,
-                "status": status,
-                "title": title,
-            }
-        )
-        headers = {}
-        if self.ds.cors:
-            add_cors_headers(headers)
-        if request.path.split("?")[0].endswith(".json"):
-            await asgi_send_json(send, info, status=status, headers=headers)
-        else:
-            template = self.ds.jinja_env.select_template(templates)
-            await asgi_send_html(
-                send,
-                await template.render_async(
-                    dict(
-                        info,
-                        urls=self.ds.urls,
-                        app_css_hash=self.ds.app_css_hash(),
-                        menu_links=lambda: [],
-                    )
-                ),
-                status=status,
-                headers=headers,
-            )
+        assert responses, "Default exception handler should have returned something"
+        # Even if there are multiple responses use just the first one
+        response = responses[0]
+        await response.asgi_send(send)
 
 
 _cleaner_task_str_re = re.compile(r"\S*site-packages/")
@@ -1426,34 +1509,42 @@ class DatasetteClient:
         return path
 
     async def get(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.get(self._fix(path), **kwargs)
 
     async def options(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.options(self._fix(path), **kwargs)
 
     async def head(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.head(self._fix(path), **kwargs)
 
     async def post(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.post(self._fix(path), **kwargs)
 
     async def put(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.put(self._fix(path), **kwargs)
 
     async def patch(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.patch(self._fix(path), **kwargs)
 
     async def delete(self, path, **kwargs):
+        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.delete(self._fix(path), **kwargs)
 
     async def request(self, method, path, **kwargs):
+        await self.ds.invoke_startup()
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.request(

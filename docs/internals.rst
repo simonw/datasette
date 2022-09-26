@@ -26,7 +26,7 @@ The request object is passed to various plugin hooks. It represents an incoming 
     The request scheme - usually ``https`` or ``http``.
 
 ``.headers`` - dictionary (str -> str)
-    A dictionary of incoming HTTP request headers.
+    A dictionary of incoming HTTP request headers. Header names have been converted to lowercase.
 
 ``.cookies`` - dictionary (str -> str)
     A dictionary of incoming cookies
@@ -59,6 +59,33 @@ The object also has two awaitable methods:
 
 ``await request.post_body()`` - bytes
     Returns the un-parsed body of a request submitted by ``POST`` - useful for things like incoming JSON data.
+
+And a class method that can be used to create fake request objects for use in tests:
+
+``fake(path_with_query_string, method="GET", scheme="http", url_vars=None)``
+    Returns a ``Request`` instance for the specified path and method. For example:
+
+    .. code-block:: python
+
+        from datasette import Request
+        from pprint import pprint
+
+        request = Request.fake(
+            "/fixtures/facetable/",
+            url_vars={"database": "fixtures", "table": "facetable"},
+        )
+        pprint(request.scope)
+
+    This outputs::
+
+        {'http_version': '1.1',
+         'method': 'GET',
+         'path': '/fixtures/facetable/',
+         'query_string': b'',
+         'raw_path': b'/fixtures/facetable/',
+         'scheme': 'http',
+         'type': 'http',
+         'url_route': {'kwargs': {'database': 'fixtures', 'table': 'facetable'}}}
 
 .. _internals_multiparams:
 
@@ -119,7 +146,7 @@ For example:
 
     response = Response(
         "<xml>This is XML</xml>",
-        content_type="application/xml; charset=utf-8"
+        content_type="application/xml; charset=utf-8",
     )
 
 The quickest way to create responses is using the ``Response.text(...)``, ``Response.html(...)``, ``Response.json(...)`` or ``Response.redirect(...)`` helper methods:
@@ -130,9 +157,13 @@ The quickest way to create responses is using the ``Response.text(...)``, ``Resp
 
     html_response = Response.html("This is HTML")
     json_response = Response.json({"this_is": "json"})
-    text_response = Response.text("This will become utf-8 encoded text")
+    text_response = Response.text(
+        "This will become utf-8 encoded text"
+    )
     # Redirects are served as 302, unless you pass status=301:
-    redirect_response = Response.redirect("https://latest.datasette.io/")
+    redirect_response = Response.redirect(
+        "https://latest.datasette.io/"
+    )
 
 Each of these responses will use the correct corresponding content-type - ``text/html; charset=utf-8``, ``application/json; charset=utf-8`` or ``text/plain; charset=utf-8`` respectively.
 
@@ -180,13 +211,17 @@ To set cookies on the response, use the ``response.set_cookie(...)`` method. The
         httponly=False,
         samesite="lax",
     ):
+        ...
 
 You can use this with :ref:`datasette.sign() <datasette_sign>` to set signed cookies. Here's how you would set the :ref:`ds_actor cookie <authentication_ds_actor>` for use with Datasette :ref:`authentication <authentication>`:
 
 .. code-block:: python
 
     response = Response.redirect("/")
-    response.set_cookie("ds_actor", datasette.sign({"a": {"id": "cleopaws"}}, "actor"))
+    response.set_cookie(
+        "ds_actor",
+        datasette.sign({"a": {"id": "cleopaws"}}, "actor"),
+    )
     return response
 
 .. _internals_datasette:
@@ -209,20 +244,30 @@ You can create your own instance of this - for example to help write tests for a
     datasette = Datasette(files=["/path/to/my-database.db"])
 
     # Pass metadata as a JSON dictionary like this
-    datasette = Datasette(files=["/path/to/my-database.db"], metadata={
-        "databases": {
-            "my-database": {
-                "description": "This is my database"
+    datasette = Datasette(
+        files=["/path/to/my-database.db"],
+        metadata={
+            "databases": {
+                "my-database": {
+                    "description": "This is my database"
+                }
             }
-        }
-    })
+        },
+    )
+
+Constructor parameters include:
+
+- ``files=[...]`` - a list of database files to open
+- ``immutables=[...]`` - a list of database files to open in immutable mode
+- ``metadata={...}`` - a dictionary of :ref:`metadata`
+- ``config_dir=...`` - the :ref:`configuration directory <config_dir>` to use, stored in ``datasette.config_dir``
 
 .. _datasette_databases:
 
 .databases
 ----------
 
-Property exposing an ordered dictionary of databases currently connected to Datasette.
+Property exposing a ``collections.OrderedDict`` of databases currently connected to Datasette.
 
 The dictionary keys are the name of the database that is used in the URL - e.g. ``/fixtures`` would have a key of ``"fixtures"``. The values are :ref:`internals_database` instances.
 
@@ -243,6 +288,10 @@ All databases are listed, irrespective of user permissions. This means that the 
     The table the user is interacting with.
 
 This method lets you read plugin configuration values that were set in ``metadata.json``. See :ref:`writing_plugins_configuration` for full details of how this method should be used.
+
+The return value will be the value from the configuration file - usually a dictionary.
+
+If the plugin is not configured the return value will be ``None``.
 
 .. _datasette_render_template:
 
@@ -289,6 +338,58 @@ If neither ``metadata.json`` nor any of the plugins provide an answer to the per
 
 See :ref:`permissions` for a full list of permission actions included in Datasette core.
 
+.. _datasette_ensure_permissions:
+
+await .ensure_permissions(actor, permissions)
+---------------------------------------------
+
+``actor`` - dictionary
+    The authenticated actor. This is usually ``request.actor``.
+
+``permissions`` - list
+    A list of permissions to check. Each permission in that list can be a string ``action`` name or a 2-tuple of ``(action, resource)``.
+
+This method allows multiple permissions to be checked at onced. It raises a ``datasette.Forbidden`` exception if any of the checks are denied before one of them is explicitly granted.
+
+This is useful when you need to check multiple permissions at once. For example, an actor should be able to view a table if either one of the following checks returns ``True`` or not a single one of them returns ``False``:
+
+.. code-block:: python
+
+    await self.ds.ensure_permissions(
+        request.actor,
+        [
+            ("view-table", (database, table)),
+            ("view-database", database),
+            "view-instance",
+        ],
+    )
+
+.. _datasette_check_visibilty:
+
+await .check_visibility(actor, action, resource=None)
+-----------------------------------------------------
+
+``actor`` - dictionary
+    The authenticated actor. This is usually ``request.actor``.
+
+``action`` - string
+    The name of the action that is being permission checked.
+
+``resource`` - string or tuple, optional
+    The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
+
+This convenience method can be used to answer the question "should this item be considered private, in that it is visible to me but it is not visible to anonymous users?"
+
+It returns a tuple of two booleans, ``(visible, private)``. ``visible`` indicates if the actor can see this resource. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.
+
+This example checks if the user can access a specific table, and sets ``private`` so that a padlock icon can later be displayed:
+
+.. code-block:: python
+
+    visible, private = await self.ds.check_visibility(
+        request.actor, "view-table", (database, table)
+    )
+
 .. _datasette_get_database:
 
 .get_database(name)
@@ -301,14 +402,17 @@ Returns the specified database object. Raises a ``KeyError`` if the database doe
 
 .. _datasette_add_database:
 
-.add_database(db, name=None)
-----------------------------
+.add_database(db, name=None, route=None)
+----------------------------------------
 
 ``db`` - datasette.database.Database instance
     The database to be attached.
 
 ``name`` - string, optional
-    The name to be used for this database - this will be used in the URL path, e.g. ``/dbname``. If not specified Datasette will pick one based on the filename or memory name.
+    The name to be used for this database . If not specified Datasette will pick one based on the filename or memory name.
+
+``route`` - string, optional
+    This will be used in the URL path. If not specified, it will default to the same thing as the ``name``.
 
 The ``datasette.add_database(db)`` method lets you add a new database to the current Datasette instance.
 
@@ -318,20 +422,27 @@ The ``db`` parameter should be an instance of the ``datasette.database.Database`
 
     from datasette.database import Database
 
-    datasette.add_database(Database(
-        datasette,
-        path="path/to/my-new-database.db",
-        is_mutable=True
-    ))
+    datasette.add_database(
+        Database(
+            datasette,
+            path="path/to/my-new-database.db",
+        )
+    )
 
 This will add a mutable database and serve it at ``/my-new-database``.
+
+Use ``is_mutable=False`` to add an immutable database.
 
 ``.add_database()`` returns the Database instance, with its name set as the ``database.name`` attribute. Any time you are working with a newly added database you should use the return value of ``.add_database()``, for example:
 
 .. code-block:: python
 
-    db = datasette.add_database(Database(datasette, memory_name="statistics"))
-    await db.execute_write("CREATE TABLE foo(id integer primary key)")
+    db = datasette.add_database(
+        Database(datasette, memory_name="statistics")
+    )
+    await db.execute_write(
+        "CREATE TABLE foo(id integer primary key)"
+    )
 
 .. _datasette_add_memory_database:
 
@@ -350,10 +461,9 @@ This is a shortcut for the following:
 
     from datasette.database import Database
 
-    datasette.add_database(Database(
-        datasette,
-        memory_name="statistics"
-    ))
+    datasette.add_database(
+        Database(datasette, memory_name="statistics")
+    )
 
 Using either of these pattern will result in the in-memory database being served at ``/statistics``.
 
@@ -365,7 +475,7 @@ Using either of these pattern will result in the in-memory database being served
 ``name`` - string
     The name of the database to be removed.
 
-This removes a database that has been previously added. ``name=`` is the unique name of that database, used in its URL path.
+This removes a database that has been previously added. ``name=`` is the unique name of that database.
 
 .. _datasette_sign:
 
@@ -397,8 +507,8 @@ Returns the original, decoded object that was passed to :ref:`datasette_sign`. I
 
 .. _datasette_add_message:
 
-.add_message(request, message, message_type=datasette.INFO)
------------------------------------------------------------
+.add_message(request, message, type=datasette.INFO)
+---------------------------------------------------
 
 ``request`` - Request
     The current Request object
@@ -406,7 +516,7 @@ Returns the original, decoded object that was passed to :ref:`datasette_sign`. I
 ``message`` - string
     The message string
 
-``message_type`` - constant, optional
+``type`` - constant, optional
     The message type - ``datasette.INFO``, ``datasette.WARNING`` or ``datasette.ERROR``
 
 Datasette's flash messaging mechanism allows you to add a message that will be displayed to the user on the next page that they visit. Messages are persisted in a ``ds_messages`` cookie. This method adds a message to that cookie.
@@ -428,7 +538,9 @@ Returns the absolute URL for the given path, including the protocol and host. Fo
 
 .. code-block:: python
 
-    absolute_url = datasette.absolute_url(request, "/dbname/table.json")
+    absolute_url = datasette.absolute_url(
+        request, "/dbname/table.json"
+    )
     # Would return "http://localhost:8001/dbname/table.json"
 
 The current request object is used to determine the hostname and protocol that should be used for the returned URL. The :ref:`setting_force_https_urls` configuration setting is taken into account.
@@ -490,7 +602,9 @@ These methods can be used with :ref:`internals_datasette_urls` - for example:
 
     table_json = (
         await datasette.client.get(
-            datasette.urls.table("fixtures", "facetable", format="json")
+            datasette.urls.table(
+                "fixtures", "facetable", format="json"
+            )
         )
     ).json()
 
@@ -545,7 +659,7 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
     <a href="{{ urls.table("fixtures", "facetable") }}">facetable table</a>
     <a href="{{ urls.query("fixtures", "pragma_cache_size") }}">pragma_cache_size query</a>
 
-Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is usually the path with ``.json`` added on the end, but it may use ``?_format=json`` in cases where the path already includes ``.json``, for example a URL to a table named ``table.json``.
+Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
 
@@ -558,8 +672,8 @@ Instances of the ``Database`` class can be used to execute queries against attac
 
 .. _database_constructor:
 
-Database(ds, path=None, is_mutable=False, is_memory=False, memory_name=None)
-----------------------------------------------------------------------------
+Database(ds, path=None, is_mutable=True, is_memory=False, memory_name=None)
+---------------------------------------------------------------------------
 
 The ``Database()`` constructor can be used by plugins, in conjunction with :ref:`datasette_add_database`, to create and register new databases.
 
@@ -572,7 +686,7 @@ The arguments are as follows:
     Path to a SQLite database file on disk.
 
 ``is_mutable`` - boolean
-    Set this to ``True`` if it is possible that updates will be made to that database - otherwise Datasette will open it in immutable mode and any changes could cause undesired behavior.
+    Set this to ``False`` to cause Datasette to open the file in immutable mode.
 
 ``is_memory`` - boolean
     Use this to create non-shared memory connections.
@@ -581,6 +695,13 @@ The arguments are as follows:
     Use this to create a named in-memory database. Unlike regular memory databases these can be accessed by multiple threads and will persist an changes made to them for the lifetime of the Datasette server process.
 
 The first argument is the ``datasette`` instance you are attaching to, the second is a ``path=``, then ``is_mutable`` and ``is_memory`` are both optional arguments.
+
+.. _database_hash:
+
+db.hash
+-------
+
+If the database was opened in immutable mode, this property returns the 64 character SHA-256 hash of the database contents as a string. Otherwise it returns ``None``.
 
 .. _database_execute:
 
@@ -659,6 +780,7 @@ Example usage:
             "select sqlite_version()"
         ).fetchall()[0][0]
 
+
     version = await db.execute_fn(get_version)
 
 .. _database_execute_write:
@@ -694,7 +816,7 @@ Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://d
 
     await db.execute_write_many(
         "insert into characters (id, name) values (?, ?)",
-        [(1, "Melanie"), (2, "Selma"), (2, "Viktor")]
+        [(1, "Melanie"), (2, "Selma"), (2, "Viktor")],
     )
 
 .. _database_execute_write_fn:
@@ -716,10 +838,15 @@ For example:
 
     def delete_and_return_count(conn):
         conn.execute("delete from some_table where id > 5")
-        return conn.execute("select count(*) from some_table").fetchone()[0]
+        return conn.execute(
+            "select count(*) from some_table"
+        ).fetchone()[0]
+
 
     try:
-        num_rows_left = await database.execute_write_fn(delete_and_return_count)
+        num_rows_left = await database.execute_write_fn(
+            delete_and_return_count
+        )
     except Exception as e:
         print("An error occurred:", e)
 
@@ -864,3 +991,134 @@ parse_metadata(content)
 This function accepts a string containing either JSON or YAML, expected to be of the format described in :ref:`metadata`. It returns a nested Python dictionary representing the parsed data from that string.
 
 If the metadata cannot be parsed as either JSON or YAML the function will raise a ``utils.BadMetadataError`` exception.
+
+.. autofunction:: datasette.utils.parse_metadata
+
+.. _internals_utils_await_me_maybe:
+
+await_me_maybe(value)
+---------------------
+
+Utility function for calling ``await`` on a return value if it is awaitable, otherwise returning the value. This is used by Datasette to support plugin hooks that can optionally return awaitable functions. Read more about this function in `The “await me maybe” pattern for Python asyncio <https://simonwillison.net/2020/Sep/2/await-me-maybe/>`__.
+
+.. autofunction:: datasette.utils.await_me_maybe
+
+.. _internals_tilde_encoding:
+
+Tilde encoding
+--------------
+
+Datasette uses a custom encoding scheme in some places, called **tilde encoding**. This is primarily used for table names and row primary keys, to avoid any confusion between ``/`` characters in those values and the Datasette URLs that reference them.
+
+Tilde encoding uses the same algorithm as `URL percent-encoding <https://developer.mozilla.org/en-US/docs/Glossary/percent-encoding>`__, but with the ``~`` tilde character used in place of ``%``.
+
+Any character other than ``ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz0123456789_-`` will be replaced by the numeric equivalent preceded by a tilde. For example:
+
+- ``/`` becomes ``~2F``
+- ``.`` becomes ``~2E``
+- ``%`` becomes ``~25``
+- ``~`` becomes ``~7E``
+- Space becomes ``+``
+- ``polls/2022.primary`` becomes ``polls~2F2022~2Eprimary``
+
+Note that the space character is a special case: it will be replaced with a ``+`` symbol.
+
+.. _internals_utils_tilde_encode:
+
+.. autofunction:: datasette.utils.tilde_encode
+
+.. _internals_utils_tilde_decode:
+
+.. autofunction:: datasette.utils.tilde_decode
+
+.. _internals_tracer:
+
+datasette.tracer
+================
+
+Running Datasette with ``--setting trace_debug 1`` enables trace debug output, which can then be viewed by adding ``?_trace=1`` to the query string for any page.
+
+You can see an example of this at the bottom of `latest.datasette.io/fixtures/facetable?_trace=1 <https://latest.datasette.io/fixtures/facetable?_trace=1>`__. The JSON output shows full details of every SQL query that was executed to generate the page.
+
+The `datasette-pretty-traces <https://datasette.io/plugins/datasette-pretty-traces>`__ plugin can be installed to provide a more readable display of this information. You can see `a demo of that here <https://latest-with-plugins.datasette.io/github/commits?_trace=1>`__.
+
+You can add your own custom traces to the JSON output using the ``trace()`` context manager. This takes a string that identifies the type of trace being recorded, and records any keyword arguments as additional JSON keys on the resulting trace object.
+
+The start and end time, duration and a traceback of where the trace was executed will be automatically attached to the JSON object.
+
+This example uses trace to record the start, end and duration of any HTTP GET requests made using the function:
+
+.. code-block:: python
+
+    from datasette.tracer import trace
+    import httpx
+
+
+    async def fetch_url(url):
+        with trace("fetch-url", url=url):
+            async with httpx.AsyncClient() as client:
+                return await client.get(url)
+
+.. _internals_tracer_trace_child_tasks:
+
+Tracing child tasks
+-------------------
+
+If your code uses a mechanism such as ``asyncio.gather()`` to execute code in additional tasks you may find that some of the traces are missing from the display.
+
+You can use the ``trace_child_tasks()`` context manager to ensure these child tasks are correctly handled.
+
+.. code-block:: python
+
+    from datasette import tracer
+
+    with tracer.trace_child_tasks():
+        results = await asyncio.gather(
+            # ... async tasks here
+        )
+
+This example uses the :ref:`register_routes() <plugin_register_routes>` plugin hook to add a page at ``/parallel-queries`` which executes two SQL queries in parallel using ``asyncio.gather()`` and returns their results.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette import tracer
+
+
+    @hookimpl
+    def register_routes():
+        async def parallel_queries(datasette):
+            db = datasette.get_database()
+            with tracer.trace_child_tasks():
+                one, two = await asyncio.gather(
+                    db.execute("select 1"),
+                    db.execute("select 2"),
+                )
+            return Response.json(
+                {
+                    "one": one.single_value(),
+                    "two": two.single_value(),
+                }
+            )
+
+        return [
+            (r"/parallel-queries$", parallel_queries),
+        ]
+
+
+Adding ``?_trace=1`` will show that the trace covers both of those child tasks.
+
+.. _internals_shortcuts:
+
+Import shortcuts
+================
+
+The following commonly used symbols can be imported directly from the ``datasette`` module:
+
+.. code-block:: python
+
+    from datasette import Response
+    from datasette import Forbidden
+    from datasette import NotFound
+    from datasette import hookimpl
+    from datasette import actor_matches_allow

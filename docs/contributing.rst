@@ -19,7 +19,7 @@ General guidelines
 Setting up a development environment
 ------------------------------------
 
-If you have Python 3.6 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
+If you have Python 3.7 or higher installed on your computer (on OS X the quickest way to do this `is using homebrew <https://docs.python-guide.org/starting/install3/osx/>`__) you can install an editable copy of Datasette using the following steps.
 
 If you want to use GitHub to publish your changes, first `create a fork of datasette <https://github.com/simonw/datasette/fork>`__ under your own GitHub account.
 
@@ -144,6 +144,15 @@ If any of your code does not conform to Black you can run this to automatically 
     All done! ✨ 🍰 ✨
     1 file reformatted, 94 files left unchanged.
 
+.. _contributing_formatting_blacken_docs:
+
+blacken-docs
+~~~~~~~~~~~~
+
+The `blacken-docs <https://pypi.org/project/blacken-docs/>`__ command applies Black formatting rules to code examples in the documentation. Run it like this::
+
+    blacken-docs -l 60 docs/*.rst
+
 .. _contributing_formatting_prettier:
 
 Prettier
@@ -201,6 +210,17 @@ For added productivity, you can use use `sphinx-autobuild <https://pypi.org/proj
     make livehtml
 
 Now browse to ``http://localhost:8000/`` to view the documentation. Any edits you make should be instantly reflected in your browser.
+
+.. _contributing_documentation_cog:
+
+Running Cog
+~~~~~~~~~~~
+
+Some pages of documentation (in particular the :ref:`cli_reference`) are automatically updated using `Cog <https://github.com/nedbat/cog>`__.
+
+To update these pages, run the following command::
+
+    cog -r docs/*.rst
 
 .. _contributing_continuous_deployment:
 

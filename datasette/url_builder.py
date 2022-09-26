@@ -1,4 +1,4 @@
-from .utils import path_with_format, HASH_LENGTH, PrefixedUrlString
+from .utils import tilde_encode, path_with_format, HASH_LENGTH, PrefixedUrlString
 import urllib
 
 
@@ -28,23 +28,17 @@ class Urls:
         return self.path("-/logout")
 
     def database(self, database, format=None):
-        db = self.ds.databases[database]
-        if self.ds.setting("hash_urls") and db.hash:
-            path = self.path(
-                f"{urllib.parse.quote(database)}-{db.hash[:HASH_LENGTH]}", format=format
-            )
-        else:
-            path = self.path(urllib.parse.quote(database), format=format)
-        return path
+        db = self.ds.get_database(database)
+        return self.path(tilde_encode(db.route), format=format)
 
     def table(self, database, table, format=None):
-        path = f"{self.database(database)}/{urllib.parse.quote_plus(table)}"
+        path = f"{self.database(database)}/{tilde_encode(table)}"
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)
 
     def query(self, database, query, format=None):
-        path = f"{self.database(database)}/{urllib.parse.quote_plus(query)}"
+        path = f"{self.database(database)}/{tilde_encode(query)}"
         if format is not None:
             path = path_with_format(path=path, format=format)
         return PrefixedUrlString(path)

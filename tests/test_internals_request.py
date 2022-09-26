@@ -75,6 +75,13 @@ def test_request_args():
         request.args["missing"]
 
 
+def test_request_fake_url_vars():
+    request = Request.fake("/")
+    assert request.url_vars == {}
+    request = Request.fake("/", url_vars={"database": "fixtures"})
+    assert request.url_vars == {"database": "fixtures"}
+
+
 def test_request_repr():
     request = Request.fake("/foo?multi=1&multi=2&single=3")
     assert (

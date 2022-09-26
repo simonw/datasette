@@ -1,5 +1,5 @@
 from .fixtures import app_client
-import baseconv
+from datasette.utils import baseconv
 import pytest
 import time
 

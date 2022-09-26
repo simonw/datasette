@@ -42,10 +42,25 @@ def publish_subcommand(publish):
         help="Number of vCPUs to allocate in Cloud Run",
     )
     @click.option(
+        "--timeout",
+        type=int,
+        help="Build timeout in seconds",
+    )
+    @click.option(
         "--apt-get-install",
         "apt_get_extras",
         multiple=True,
         help="Additional packages to apt-get install",
+    )
+    @click.option(
+        "--max-instances",
+        type=int,
+        help="Maximum Cloud Run instances",
+    )
+    @click.option(
+        "--min-instances",
+        type=int,
+        help="Minimum Cloud Run instances",
     )
     def cloudrun(
         files,
@@ -72,8 +87,12 @@ def publish_subcommand(publish):
         show_files,
         memory,
         cpu,
+        timeout,
         apt_get_extras,
+        max_instances,
+        min_instances,
     ):
+        "Publish databases to Datasette running on Cloud Run"
         fail_if_publish_binary_not_installed(
             "gcloud", "Google Cloud", "https://cloud.google.com/sdk/"
         )
@@ -155,13 +174,26 @@ def publish_subcommand(publish):
                 print("\n====================\n")
 
             image_id = f"gcr.io/{project}/{name}"
-            check_call(f"gcloud builds submit --tag {image_id}", shell=True)
+            check_call(
+                "gcloud builds submit --tag {}{}".format(
+                    image_id, " --timeout {}".format(timeout) if timeout else ""
+                ),
+                shell=True,
+            )
+        extra_deploy_options = []
+        for option, value in (
+            ("--memory", memory),
+            ("--cpu", cpu),
+            ("--max-instances", max_instances),
+            ("--min-instances", min_instances),
+        ):
+            if value:
+                extra_deploy_options.append("{} {}".format(option, value))
         check_call(
-            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}{}".format(
+            "gcloud run deploy --allow-unauthenticated --platform=managed --image {} {}{}".format(
                 image_id,
                 service,
-                " --memory {}".format(memory) if memory else "",
-                " --cpu {}".format(cpu) if cpu else "",
+                " " + " ".join(extra_deploy_options) if extra_deploy_options else "",
             ),
             shell=True,
         )

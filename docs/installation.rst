@@ -7,18 +7,25 @@
 .. note::
     If you just want to try Datasette out you don't need to install anything: see :ref:`getting_started_glitch`
 
-There are two main options for installing Datasette. You can install it directly
-on to your machine, or you can install it using Docker.
+There are two main options for installing Datasette. You can install it directly on to your machine, or you can install it using Docker.
 
 If you want to start making contributions to the Datasette project by installing a copy that lets you directly modify the code, take a look at our guide to :ref:`devenvironment`.
 
 .. contents::
    :local:
+   :class: this-will-duplicate-information-and-it-is-still-useful-here
 
 .. _installation_basic:
 
 Basic installation
 ==================
+
+.. _installation_datasette_desktop:
+
+Datasette Desktop for Mac
+-------------------------
+
+`Datasette Desktop <https://datasette.io/desktop>`__ is a packaged Mac application which bundles Datasette together with Python and allows you to install and run Datasette directly on your laptop. This is the best option for local installation if you are not comfortable using the command line.
 
 .. _installation_homebrew:
 
@@ -50,7 +57,7 @@ If the latest packaged release of Datasette has not yet been made available thro
 Using pip
 ---------
 
-Datasette requires Python 3.6 or higher. Visit `InstallPython3.com <https://installpython3.com/>`__ for step-by-step installation guides for your operating system.
+Datasette requires Python 3.7 or higher. Visit `InstallPython3.com <https://installpython3.com/>`__ for step-by-step installation guides for your operating system.
 
 You can install Datasette and its dependencies using ``pip``::
 

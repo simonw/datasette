@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -14,7 +17,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: 3.9
+        python-version: "3.10"
     - uses: actions/cache@v2
       name: Configure pip caching
       with:
@@ -42,8 +45,19 @@ jobs:
         sphinx-build -b xml . _build
         sphinx-to-sqlite ../docs.db _build
         cd ..
+    - name: Set up the alternate-route demo
+      run: |
+        echo '
+        from datasette import hookimpl
+
+        @hookimpl
+        def startup(datasette):
+            db = datasette.get_database("fixtures2")
+            db.route = "alternative-route"
+        ' > plugins/alternative_route.py
+        cp fixtures.db fixtures2.db
     - name: Set up Cloud Run
-      uses: google-github-actions/setup-gcloud@master
+      uses: google-github-actions/setup-gcloud@v0
       with:
         version: '275.0.0'
         service_account_email: ${{ secrets.GCP_SA_EMAIL }}
@@ -54,7 +68,7 @@ jobs:
         gcloud config set project datasette-222320
         export SUFFIX="-${GITHUB_REF#refs/heads/}"
         export SUFFIX=${SUFFIX#-main}
-        datasette publish cloudrun fixtures.db extra_database.db \
+        datasette publish cloudrun fixtures.db fixtures2.db extra_database.db \
             -m fixtures.json \
             --plugins-dir=plugins \
             --branch=$GITHUB_SHA \

@@ -9,6 +9,7 @@ from datasette.app import SETTINGS
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.cli import cli, serve
 from datasette.version import __version__
+from datasette.utils import tilde_encode
 from datasette.utils.sqlite import sqlite3
 from click.testing import CliRunner
 import io
@@ -19,13 +20,6 @@ import sys
 import textwrap
 from unittest import mock
 import urllib
-
-
-@pytest.fixture
-def ensure_eventloop():
-    # Workaround for "Event loop is closed" error
-    if asyncio.get_event_loop().is_closed():
-        asyncio.set_event_loop(asyncio.new_event_loop())
 
 
 def test_inspect_cli(app_client):
@@ -71,7 +65,7 @@ def test_serve_with_inspect_file_prepopulates_table_counts_cache():
     ),
 )
 def test_spatialite_error_if_attempt_to_open_spatialite(
-    ensure_eventloop, spatialite_paths, should_suggest_load_extension
+    spatialite_paths, should_suggest_load_extension
 ):
     with mock.patch("datasette.utils.SPATIALITE_PATHS", spatialite_paths):
         runner = CliRunner()
@@ -106,9 +100,7 @@ def test_spatialite_error_if_cannot_find_load_extension_spatialite():
 def test_plugins_cli(app_client):
     runner = CliRunner()
     result1 = runner.invoke(cli, ["plugins"])
-    assert sorted(EXPECTED_PLUGINS, key=lambda p: p["name"]) == sorted(
-        json.loads(result1.output), key=lambda p: p["name"]
-    )
+    assert json.loads(result1.output) == EXPECTED_PLUGINS
     # Try with --all
     result2 = runner.invoke(cli, ["plugins", "--all"])
     names = [p["name"] for p in json.loads(result2.output)]
@@ -151,6 +143,7 @@ def test_metadata_yaml():
         help_settings=False,
         pdb=False,
         crossdb=False,
+        nolock=False,
         open_browser=False,
         create=False,
         ssl_keyfile=None,
@@ -199,14 +192,14 @@ def test_version():
 
 
 @pytest.mark.parametrize("invalid_port", ["-1", "0.5", "dog", "65536"])
-def test_serve_invalid_ports(ensure_eventloop, invalid_port):
+def test_serve_invalid_ports(invalid_port):
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["--port", invalid_port])
     assert result.exit_code == 2
     assert "Invalid value for '-p'" in result.stderr
 
 
-def test_setting(ensure_eventloop):
+def test_setting():
     runner = CliRunner()
     result = runner.invoke(
         cli, ["--setting", "default_page_size", "5", "--get", "/-/settings.json"]
@@ -215,14 +208,14 @@ def test_setting(ensure_eventloop):
     assert json.loads(result.output)["default_page_size"] == 5
 
 
-def test_setting_type_validation(ensure_eventloop):
+def test_setting_type_validation():
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["--setting", "default_page_size", "dog"])
     assert result.exit_code == 2
     assert '"default_page_size" should be an integer' in result.stderr
 
 
-def test_config_deprecated(ensure_eventloop):
+def test_config_deprecated():
     # The --config option should show a deprecation message
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(
@@ -233,14 +226,14 @@ def test_config_deprecated(ensure_eventloop):
     assert "will be deprecated in" in result.stderr
 
 
-def test_sql_errors_logged_to_stderr(ensure_eventloop):
+def test_sql_errors_logged_to_stderr():
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["--get", "/_memory.json?sql=select+blah"])
     assert result.exit_code == 1
     assert "sql = 'select blah', params = {}: no such column: blah\n" in result.stderr
 
 
-def test_serve_create(ensure_eventloop, tmpdir):
+def test_serve_create(tmpdir):
     runner = CliRunner()
     db_path = tmpdir / "does_not_exist_yet.db"
     assert not db_path.exists()
@@ -258,7 +251,8 @@ def test_serve_create(ensure_eventloop, tmpdir):
     assert db_path.exists()
 
 
-def test_serve_duplicate_database_names(ensure_eventloop, tmpdir):
+def test_serve_duplicate_database_names(tmpdir):
+    "'datasette db.db nested/db.db' should attach two databases, /db and /db_2"
     runner = CliRunner()
     db_1_path = str(tmpdir / "db.db")
     nested = tmpdir / "nested"
@@ -272,10 +266,21 @@ def test_serve_duplicate_database_names(ensure_eventloop, tmpdir):
     assert {db["name"] for db in databases} == {"db", "db_2"}
 
 
+def test_serve_deduplicate_same_database_path(tmpdir):
+    "'datasette db.db db.db' should only attach one database, /db"
+    runner = CliRunner()
+    db_path = str(tmpdir / "db.db")
+    sqlite3.connect(db_path).execute("vacuum")
+    result = runner.invoke(cli, [db_path, db_path, "--get", "/-/databases.json"])
+    assert result.exit_code == 0, result.output
+    databases = json.loads(result.output)
+    assert {db["name"] for db in databases} == {"db"}
+
+
 @pytest.mark.parametrize(
     "filename", ["test-database (1).sqlite", "database (1).sqlite"]
 )
-def test_weird_database_names(ensure_eventloop, tmpdir, filename):
+def test_weird_database_names(tmpdir, filename):
     # https://github.com/simonw/datasette/issues/1181
     runner = CliRunner()
     db_path = str(tmpdir / filename)
@@ -284,12 +289,12 @@ def test_weird_database_names(ensure_eventloop, tmpdir, filename):
     assert result1.exit_code == 0, result1.output
     filename_no_stem = filename.rsplit(".", 1)[0]
     expected_link = '<a href="/{}">{}</a>'.format(
-        urllib.parse.quote(filename_no_stem), filename_no_stem
+        tilde_encode(filename_no_stem), filename_no_stem
     )
     assert expected_link in result1.output
     # Now try hitting that database page
     result2 = runner.invoke(
-        cli, [db_path, "--get", "/{}".format(urllib.parse.quote(filename_no_stem))]
+        cli, [db_path, "--get", "/{}".format(tilde_encode(filename_no_stem))]
     )
     assert result2.exit_code == 0, result2.output
 
@@ -299,3 +304,11 @@ def test_help_settings():
     result = runner.invoke(cli, ["--help-settings"])
     for setting in SETTINGS:
         assert setting.name in result.output
+
+
+@pytest.mark.parametrize("setting", ("hash_urls", "default_cache_ttl_hashed"))
+def test_help_error_on_hash_urls_setting(setting):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--setting", setting, 1])
+    assert result.exit_code == 2
+    assert "The hash_urls setting has been removed" in result.output

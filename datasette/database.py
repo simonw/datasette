@@ -28,9 +28,10 @@ AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
 class Database:
     def __init__(
-        self, ds, path=None, is_mutable=False, is_memory=False, memory_name=None
+        self, ds, path=None, is_mutable=True, is_memory=False, memory_name=None
     ):
         self.name = None
+        self.route = None
         self.ds = ds
         self.path = path
         self.is_mutable = is_mutable
@@ -38,12 +39,14 @@ class Database:
         self.memory_name = memory_name
         if memory_name is not None:
             self.is_memory = True
-            self.is_mutable = True
         self.hash = None
         self.cached_size = None
         self._cached_table_counts = None
         self._write_thread = None
         self._write_queue = None
+        # These are used when in non-threaded mode:
+        self._read_connection = None
+        self._write_connection = None
         if not self.is_mutable and not self.is_memory:
             p = Path(path)
             self.hash = inspect_hash(p)
@@ -85,6 +88,8 @@ class Database:
         # mode=ro or immutable=1?
         if self.is_mutable:
             qs = "?mode=ro"
+            if self.ds.nolock:
+                qs += "&nolock=1"
         else:
             qs = "?immutable=1"
         assert not (write and not self.is_mutable)
@@ -133,6 +138,14 @@ class Database:
         return results
 
     async def execute_write_fn(self, fn, block=True):
+        if self.ds.executor is None:
+            # non-threaded mode
+            if self._write_connection is None:
+                self._write_connection = self.connect(write=True)
+                self.ds._prepare_connection(self._write_connection, self.name)
+            return fn(self._write_connection)
+
+        # threaded mode
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
         if self._write_queue is None:
             self._write_queue = queue.Queue()
@@ -176,6 +189,14 @@ class Database:
             task.reply_queue.sync_q.put(result)
 
     async def execute_fn(self, fn):
+        if self.ds.executor is None:
+            # non-threaded mode
+            if self._read_connection is None:
+                self._read_connection = self.connect()
+                self.ds._prepare_connection(self._read_connection, self.name)
+            return fn(self._read_connection)
+
+        # threaded mode
         def in_thread():
             conn = getattr(connections, self.name, None)
             if not conn:
@@ -345,7 +366,9 @@ class Database:
                     """
                 select name from sqlite_master
                 where rootpage = 0
-                and sql like '%VIRTUAL TABLE%USING FTS%'
+                and (
+                    sql like '%VIRTUAL TABLE%USING FTS%'
+                ) or name in ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
             """
                 )
             ).rows
@@ -363,6 +386,9 @@ class Database:
                 "sqlite_sequence",
                 "views_geometry_columns",
                 "virts_geometry_columns",
+                "data_licenses",
+                "KNN",
+                "KNN2",
             ] + [
                 r[0]
                 for r in (

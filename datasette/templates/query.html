@@ -3,7 +3,7 @@
 {% block title %}{{ database }}{% if query and query.sql %}: {{ query.sql }}{% endif %}{% endblock %}
 
 {% block extra_head %}
-{{ super() }}
+{{- super() -}}
 {% if columns %}
 <style>
 @media only screen and (max-width: 576px) {
@@ -28,6 +28,10 @@
 
 {% block content %}
 
+{% if canned_write and db_is_immutable %}
+    <p class="message-error">This query cannot be executed because the database is immutable.</p>
+{% endif %}
+
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ metadata.title or database }}{% if canned_query and not metadata.title %}: {{ canned_query }}{% endif %}{% if private %} 🔒{% endif %}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
@@ -41,7 +45,8 @@
     {% endif %}
     {% if not hide_sql %}
         {% if editable and allow_execute_sql %}
-            <p><textarea id="sql-editor" name="sql">{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
+            <p><textarea id="sql-editor" name="sql"{% if query and query.sql %} style="height: {{ query.sql.split("\n")|length + 2 }}em"{% endif %}
+            >{% if query and query.sql %}{{ query.sql }}{% else %}select * from {{ tables[0].name|escape_sqlite }}{% endif %}</textarea></p>
         {% else %}
             <pre id="sql-query">{% if query %}{{ query.sql }}{% endif %}</pre>
         {% endif %}
@@ -61,7 +66,7 @@
     <p>
         {% if not hide_sql %}<button id="sql-format" type="button" hidden>Format SQL</button>{% endif %}
         {% if canned_write %}<input type="hidden" name="csrftoken" value="{{ csrftoken() }}">{% endif %}
-        <input type="submit" value="Run SQL">
+        <input type="submit" value="Run SQL"{% if canned_write and db_is_immutable %} disabled{% endif %}>
         {{ show_hide_hidden }}
         {% if canned_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="canned-query-edit-sql">Edit SQL</a>{% endif %}
     </p>

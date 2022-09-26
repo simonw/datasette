@@ -86,6 +86,7 @@ async def test_table_exists(db, tables, exists):
                 "tags",
                 "complex_array",
                 "distinct_some_null",
+                "n",
             ],
         ),
         (
@@ -204,6 +205,15 @@ async def test_table_columns(db, table, expected):
                     is_pk=0,
                     hidden=0,
                 ),
+                Column(
+                    cid=10,
+                    name="n",
+                    type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
             ],
         ),
         (
@@ -279,7 +289,15 @@ async def test_table_columns(db, table, expected):
 @pytest.mark.asyncio
 async def test_table_column_details(db, table, expected):
     columns = await db.table_column_details(table)
-    assert columns == expected
+    # Convert "type" to lowercase before comparison
+    # https://github.com/simonw/datasette/issues/1647
+    compare_columns = [
+        Column(
+            c.cid, c.name, c.type.lower(), c.notnull, c.default_value, c.is_pk, c.hidden
+        )
+        for c in columns
+    ]
+    assert compare_columns == expected
 
 
 @pytest.mark.asyncio
@@ -481,6 +499,7 @@ def test_mtime_ns_is_none_for_memory(app_client):
 
 
 def test_is_mutable(app_client):
+    assert Database(app_client.ds, is_memory=True).is_mutable is True
     assert Database(app_client.ds, is_memory=True, is_mutable=True).is_mutable is True
     assert Database(app_client.ds, is_memory=True, is_mutable=False).is_mutable is False
 

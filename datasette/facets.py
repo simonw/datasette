@@ -102,11 +102,26 @@ class Facet:
     def get_facet_size(self):
         facet_size = self.ds.setting("default_facet_size")
         max_returned_rows = self.ds.setting("max_returned_rows")
+        table_facet_size = None
+        if self.table:
+            tables_metadata = self.ds.metadata("tables", database=self.database) or {}
+            table_metadata = tables_metadata.get(self.table) or {}
+            if table_metadata:
+                table_facet_size = table_metadata.get("facet_size")
         custom_facet_size = self.request.args.get("_facet_size")
-        if custom_facet_size == "max":
-            facet_size = max_returned_rows
-        elif custom_facet_size and custom_facet_size.isdigit():
-            facet_size = int(custom_facet_size)
+        if custom_facet_size:
+            if custom_facet_size == "max":
+                facet_size = max_returned_rows
+            elif custom_facet_size.isdigit():
+                facet_size = int(custom_facet_size)
+            else:
+                # Invalid value, ignore it
+                custom_facet_size = None
+        if table_facet_size and not custom_facet_size:
+            if table_facet_size == "max":
+                facet_size = max_returned_rows
+            else:
+                facet_size = table_facet_size
         return min(facet_size, max_returned_rows)
 
     async def suggest(self):
@@ -151,10 +166,10 @@ class ColumnFacet(Facet):
             if column in already_enabled:
                 continue
             suggested_facet_sql = """
-                select {column}, count(*) as n from (
+                select {column} as value, count(*) as n from (
                     {sql}
-                ) where {column} is not null
-                group by {column}
+                ) where value is not null
+                group by value
                 limit {limit}
             """.format(
                 column=escape_sqlite(column), sql=self.sql, limit=facet_size + 1

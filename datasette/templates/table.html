@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}{{ database }}: {{ table }}: {% if filtered_table_rows_count or filtered_table_rows_count == 0 %}{{ "{:,}".format(filtered_table_rows_count) }} row{% if filtered_table_rows_count == 1 %}{% else %}s{% endif %}{% endif %}
-    {% if human_description_en %}where {{ human_description_en }}{% endif %}{% endblock %}
+{% block title %}{{ database }}: {{ table }}: {% if filtered_table_rows_count or filtered_table_rows_count == 0 %}{{ "{:,}".format(filtered_table_rows_count) }} row{% if filtered_table_rows_count == 1 %}{% else %}s{% endif %}{% endif %}{% if human_description_en %} {{ human_description_en }}{% endif %}{% endblock %}
 
 {% block extra_head %}
-{{ super() }}
+{{- super() -}}
 <script src="{{ urls.static('table.js') }}" defer></script>
+<script>DATASETTE_ALLOW_FACET = {{ datasette_allow_facet }};</script>
 <style>
 @media only screen and (max-width: 576px) {
 {% for column in display_columns -%}
@@ -142,9 +142,7 @@
 <p class="export-links">This data as {% for name, url in renderers.items() %}<a href="{{ url }}">{{ name }}</a>{{ ", " if not loop.last }}{% endfor %}{% if display_rows %}, <a href="{{ url_csv }}">CSV</a> (<a href="#export">advanced</a>){% endif %}</p>
 
 {% if suggested_facets %}
-    <p class="suggested-facets">
-        Suggested facets: {% for facet in suggested_facets %}<a href="{{ facet.toggle_url }}#facet-{{ facet.name|to_css_class }}">{{ facet.name }}</a>{% if facet.type %} ({{ facet.type }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
-    </p>
+    {% include "_suggested_facets.html" %}
 {% endif %}
 
 {% if facets_timed_out %}
@@ -152,34 +150,7 @@
 {% endif %}
 
 {% if facet_results %}
-    <div class="facet-results">
-        {% for facet_info in sorted_facet_results %}
-            <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}" id="facet-{{ facet_info.name|to_css_class }}" data-column="{{ facet_info.name }}">
-                <p class="facet-info-name">
-                    <strong>{{ facet_info.name }}{% if facet_info.type != "column" %} ({{ facet_info.type }}){% endif %}
-                        <span class="facet-info-total">{% if facet_info.truncated %}&gt;{% endif %}{{ facet_info.results|length }}</span>
-                    </strong>
-                    {% if facet_info.hideable %}
-                        <a href="{{ facet_info.toggle_url }}" class="cross">&#x2716;</a>
-                    {% endif %}
-                </p>
-                <ul class="tight-bullets">
-                    {% for facet_value in facet_info.results %}
-                        {% if not facet_value.selected %}
-                            <li><a href="{{ facet_value.toggle_url }}">{{ (facet_value.label | string()) or "-" }}</a> {{ "{:,}".format(facet_value.count) }}</li>
-                        {% else %}
-                            <li>{{ facet_value.label or "-" }} &middot; {{ "{:,}".format(facet_value.count) }} <a href="{{ facet_value.toggle_url }}" class="cross">&#x2716;</a></li>
-                        {% endif %}
-                    {% endfor %}
-                    {% if facet_info.truncated %}
-                        <li class="facet-truncated">{% if request.args._facet_size != "max" -%}
-                            <a href="{{ path_with_replaced_args(request, {"_facet_size": "max"}) }}">…</a>{% else -%}…{% endif %}
-                        </li>
-                    {% endif %}
-                </ul>
-            </div>
-        {% endfor %}
-    </div>
+    {% include "_facet_results.html" %}
 {% endif %}
 
 {% include custom_table_templates %}

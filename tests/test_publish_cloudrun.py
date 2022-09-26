@@ -105,18 +105,36 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
 @mock.patch("datasette.publish.cloudrun.check_output")
 @mock.patch("datasette.publish.cloudrun.check_call")
 @pytest.mark.parametrize(
-    "memory,cpu,expected_gcloud_args",
+    "memory,cpu,timeout,min_instances,max_instances,expected_gcloud_args",
     [
-        ["1Gi", None, "--memory 1Gi"],
-        ["2G", None, "--memory 2G"],
-        ["256Mi", None, "--memory 256Mi"],
-        ["4", None, None],
-        ["GB", None, None],
-        [None, 1, "--cpu 1"],
-        [None, 2, "--cpu 2"],
-        [None, 3, None],
-        [None, 4, "--cpu 4"],
-        ["2G", 4, "--memory 2G --cpu 4"],
+        ["1Gi", None, None, None, None, "--memory 1Gi"],
+        ["2G", None, None, None, None, "--memory 2G"],
+        ["256Mi", None, None, None, None, "--memory 256Mi"],
+        [
+            "4",
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+        [
+            "GB",
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+        [None, 1, None, None, None, "--cpu 1"],
+        [None, 2, None, None, None, "--cpu 2"],
+        [None, 3, None, None, None, None],
+        [None, 4, None, None, None, "--cpu 4"],
+        ["2G", 4, None, None, None, "--memory 2G --cpu 4"],
+        [None, None, 1800, None, None, "--timeout 1800"],
+        [None, None, None, 2, None, "--min-instances 2"],
+        [None, None, None, 2, 4, "--min-instances 2 --max-instances 4"],
+        [None, 2, None, None, 4, "--cpu 2 --max-instances 4"],
     ],
 )
 def test_publish_cloudrun_memory_cpu(
@@ -125,6 +143,9 @@ def test_publish_cloudrun_memory_cpu(
     mock_which,
     memory,
     cpu,
+    timeout,
+    min_instances,
+    max_instances,
     expected_gcloud_args,
     tmp_path_factory,
 ):
@@ -139,6 +160,8 @@ def test_publish_cloudrun_memory_cpu(
         args.extend(["--memory", memory])
     if cpu:
         args.extend(["--cpu", str(cpu)])
+    if timeout:
+        args.extend(["--timeout", str(timeout)])
     result = runner.invoke(cli.cli, args)
     if expected_gcloud_args is None:
         assert 2 == result.exit_code
@@ -149,13 +172,16 @@ def test_publish_cloudrun_memory_cpu(
         "gcloud run deploy --allow-unauthenticated --platform=managed"
         " --image {} test".format(tag)
     )
+    expected_build_call = f"gcloud builds submit --tag {tag}"
     if memory:
         expected_call += " --memory {}".format(memory)
     if cpu:
         expected_call += " --cpu {}".format(cpu)
+    if timeout:
+        expected_build_call += f" --timeout {timeout}"
     mock_call.assert_has_calls(
         [
-            mock.call(f"gcloud builds submit --tag {tag}", shell=True),
+            mock.call(expected_build_call, shell=True),
             mock.call(
                 expected_call,
                 shell=True,
@@ -216,7 +242,7 @@ def test_publish_cloudrun_plugin_secrets(
     )
     expected = textwrap.dedent(
         r"""
-    FROM python:3.8
+    FROM python:3.10.6-slim-bullseye
     COPY . /app
     WORKDIR /app
 
@@ -283,7 +309,7 @@ def test_publish_cloudrun_apt_get_install(
     )
     expected = textwrap.dedent(
         r"""
-    FROM python:3.8
+    FROM python:3.10.6-slim-bullseye
     COPY . /app
     WORKDIR /app
 

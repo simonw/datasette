@@ -321,17 +321,21 @@ def test_permissions_debug(app_client):
     checks = [
         {
             "action": div.select_one(".check-action").text,
-            "result": bool(div.select(".check-result-true")),
+            # True = green tick, False = red cross, None = gray None
+            "result": None
+            if div.select(".check-result-no-opinion")
+            else bool(div.select(".check-result-true")),
             "used_default": bool(div.select(".check-used-default")),
         }
         for div in check_divs
     ]
-    assert [
+    assert checks == [
         {"action": "permissions-debug", "result": True, "used_default": False},
-        {"action": "view-instance", "result": True, "used_default": True},
+        {"action": "view-instance", "result": None, "used_default": True},
+        {"action": "debug-menu", "result": False, "used_default": True},
         {"action": "permissions-debug", "result": False, "used_default": True},
-        {"action": "view-instance", "result": True, "used_default": True},
-    ] == checks
+        {"action": "view-instance", "result": None, "used_default": True},
+    ]
 
 
 @pytest.mark.parametrize(

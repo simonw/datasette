@@ -2,7 +2,7 @@ Datasette
 =========
 
 |PyPI| |Changelog| |Python 3.x| |Tests| |License| |docker:
-datasette|
+datasette| |discord|
 
 .. |PyPI| image:: https://img.shields.io/pypi/v/datasette.svg
    :target: https://pypi.org/project/datasette/
@@ -16,6 +16,8 @@ datasette|
    :target: https://github.com/simonw/datasette/blob/main/LICENSE
 .. |docker: datasette| image:: https://img.shields.io/badge/docker-datasette-blue
    :target: https://hub.docker.com/r/datasetteproject/datasette
+.. |discord| image:: https://img.shields.io/discord/823971286308356157?label=discord
+   :target: https://discord.gg/ktd74dm5mw
 
 *An open source multi-tool for exploring and publishing data*
 
@@ -25,7 +27,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 `Explore a demo <https://fivethirtyeight.datasettes.com/fivethirtyeight>`__, watch `a presentation about the project <https://static.simonwillison.net/static/2018/pybay-datasette/>`__ or :ref:`getting_started_glitch`.
 
-More examples: https://datasette.io/examples
+Interested in learning Datasette? Start with `the official tutorials <https://datasette.io/tutorials>`__.
 
 Support questions, feedback? Join our `GitHub Discussions forum <https://github.com/simonw/datasette/discussions>`__.
 
@@ -38,6 +40,7 @@ Contents
    getting_started
    installation
    ecosystem
+   cli-reference
    pages
    publish
    deploying

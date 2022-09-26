@@ -1,4 +1,4 @@
-import urllib
+import asyncio
 import itertools
 import json
 
@@ -6,20 +6,25 @@ import markupsafe
 
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
+from datasette import tracer
 from datasette.utils import (
     await_me_maybe,
     CustomRow,
-    MultiParams,
     append_querystring,
     compound_keys_after_sql,
+    format_bytes,
+    tilde_decode,
+    tilde_encode,
     escape_sqlite,
     filters_should_redirect,
+    format_bytes,
     is_url,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
     path_with_replaced_args,
     to_css_class,
+    truncate_url,
     urlsafe_components,
     value_as_boolean,
 )
@@ -63,225 +68,48 @@ class Row:
         return json.dumps(d, default=repr, indent=2)
 
 
-class RowTableShared(DataView):
-    async def sortable_columns_for_table(self, database, table, use_rowid):
-        db = self.ds.databases[database]
-        table_metadata = self.ds.table_metadata(database, table)
+class TableView(DataView):
+    name = "table"
+
+    async def sortable_columns_for_table(self, database_name, table_name, use_rowid):
+        db = self.ds.databases[database_name]
+        table_metadata = self.ds.table_metadata(database_name, table_name)
         if "sortable_columns" in table_metadata:
             sortable_columns = set(table_metadata["sortable_columns"])
         else:
-            sortable_columns = set(await db.table_columns(table))
+            sortable_columns = set(await db.table_columns(table_name))
         if use_rowid:
             sortable_columns.add("rowid")
         return sortable_columns
 
-    async def expandable_columns(self, database, table):
+    async def expandable_columns(self, database_name, table_name):
         # Returns list of (fk_dict, label_column-or-None) pairs for that table
         expandables = []
-        db = self.ds.databases[database]
-        for fk in await db.foreign_keys_for_table(table):
+        db = self.ds.databases[database_name]
+        for fk in await db.foreign_keys_for_table(table_name):
             label_column = await db.label_column_for_table(fk["other_table"])
             expandables.append((fk, label_column))
         return expandables
 
-    async def display_columns_and_rows(
-        self, database, table, description, rows, link_column=False, truncate_cells=0
-    ):
-        """Returns columns, rows for specified table - including fancy foreign key treatment"""
-        db = self.ds.databases[database]
-        table_metadata = self.ds.table_metadata(database, table)
-        column_descriptions = table_metadata.get("columns") or {}
-        column_details = {col.name: col for col in await db.table_column_details(table)}
-        sortable_columns = await self.sortable_columns_for_table(database, table, True)
-        pks = await db.primary_keys(table)
-        pks_for_display = pks
-        if not pks_for_display:
-            pks_for_display = ["rowid"]
-
-        columns = []
-        for r in description:
-            if r[0] == "rowid" and "rowid" not in column_details:
-                type_ = "integer"
-                notnull = 0
-            else:
-                type_ = column_details[r[0]].type
-                notnull = column_details[r[0]].notnull
-            columns.append(
-                {
-                    "name": r[0],
-                    "sortable": r[0] in sortable_columns,
-                    "is_pk": r[0] in pks_for_display,
-                    "type": type_,
-                    "notnull": notnull,
-                    "description": column_descriptions.get(r[0]),
-                }
-            )
-
-        column_to_foreign_key_table = {
-            fk["column"]: fk["other_table"]
-            for fk in await db.foreign_keys_for_table(table)
-        }
-
-        cell_rows = []
-        base_url = self.ds.setting("base_url")
-        for row in rows:
-            cells = []
-            # Unless we are a view, the first column is a link - either to the rowid
-            # or to the simple or compound primary key
-            if link_column:
-                is_special_link_column = len(pks) != 1
-                pk_path = path_from_row_pks(row, pks, not pks, False)
-                cells.append(
-                    {
-                        "column": pks[0] if len(pks) == 1 else "Link",
-                        "value_type": "pk",
-                        "is_special_link_column": is_special_link_column,
-                        "raw": pk_path,
-                        "value": markupsafe.Markup(
-                            '<a href="{base_url}{database}/{table}/{flat_pks_quoted}">{flat_pks}</a>'.format(
-                                base_url=base_url,
-                                database=database,
-                                table=urllib.parse.quote_plus(table),
-                                flat_pks=str(markupsafe.escape(pk_path)),
-                                flat_pks_quoted=path_from_row_pks(row, pks, not pks),
-                            )
-                        ),
-                    }
-                )
-
-            for value, column_dict in zip(row, columns):
-                column = column_dict["name"]
-                if link_column and len(pks) == 1 and column == pks[0]:
-                    # If there's a simple primary key, don't repeat the value as it's
-                    # already shown in the link column.
-                    continue
-
-                # First let the plugins have a go
-                # pylint: disable=no-member
-                plugin_display_value = None
-                for candidate in pm.hook.render_cell(
-                    value=value,
-                    column=column,
-                    table=table,
-                    database=database,
-                    datasette=self.ds,
-                ):
-                    candidate = await await_me_maybe(candidate)
-                    if candidate is not None:
-                        plugin_display_value = candidate
-                        break
-                if plugin_display_value:
-                    display_value = plugin_display_value
-                elif isinstance(value, bytes):
-                    display_value = markupsafe.Markup(
-                        '<a class="blob-download" href="{}">&lt;Binary:&nbsp;{}&nbsp;byte{}&gt;</a>'.format(
-                            self.ds.urls.row_blob(
-                                database,
-                                table,
-                                path_from_row_pks(row, pks, not pks),
-                                column,
-                            ),
-                            len(value),
-                            "" if len(value) == 1 else "s",
-                        )
-                    )
-                elif isinstance(value, dict):
-                    # It's an expanded foreign key - display link to other row
-                    label = value["label"]
-                    value = value["value"]
-                    # The table we link to depends on the column
-                    other_table = column_to_foreign_key_table[column]
-                    link_template = (
-                        LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
-                    )
-                    display_value = markupsafe.Markup(
-                        link_template.format(
-                            database=database,
-                            base_url=base_url,
-                            table=urllib.parse.quote_plus(other_table),
-                            link_id=urllib.parse.quote_plus(str(value)),
-                            id=str(markupsafe.escape(value)),
-                            label=str(markupsafe.escape(label)) or "-",
-                        )
-                    )
-                elif value in ("", None):
-                    display_value = markupsafe.Markup("&nbsp;")
-                elif is_url(str(value).strip()):
-                    display_value = markupsafe.Markup(
-                        '<a href="{url}">{url}</a>'.format(
-                            url=markupsafe.escape(value.strip())
-                        )
-                    )
-                elif column in table_metadata.get("units", {}) and value != "":
-                    # Interpret units using pint
-                    value = value * ureg(table_metadata["units"][column])
-                    # Pint uses floating point which sometimes introduces errors in the compact
-                    # representation, which we have to round off to avoid ugliness. In the vast
-                    # majority of cases this rounding will be inconsequential. I hope.
-                    value = round(value.to_compact(), 6)
-                    display_value = markupsafe.Markup(
-                        f"{value:~P}".replace(" ", "&nbsp;")
-                    )
-                else:
-                    display_value = str(value)
-                    if truncate_cells and len(display_value) > truncate_cells:
-                        display_value = display_value[:truncate_cells] + "\u2026"
-
-                cells.append(
-                    {
-                        "column": column,
-                        "value": display_value,
-                        "raw": value,
-                        "value_type": "none"
-                        if value is None
-                        else str(type(value).__name__),
-                    }
-                )
-            cell_rows.append(Row(cells))
-
-        if link_column:
-            # Add the link column header.
-            # If it's a simple primary key, we have to remove and re-add that column name at
-            # the beginning of the header row.
-            first_column = None
-            if len(pks) == 1:
-                columns = [col for col in columns if col["name"] != pks[0]]
-                first_column = {
-                    "name": pks[0],
-                    "sortable": len(pks) == 1,
-                    "is_pk": True,
-                    "type": column_details[pks[0]].type,
-                    "notnull": column_details[pks[0]].notnull,
-                }
-            else:
-                first_column = {
-                    "name": "Link",
-                    "sortable": False,
-                    "is_pk": False,
-                    "type": "",
-                    "notnull": 0,
-                }
-            columns = [first_column] + columns
-        return columns, cell_rows
-
-
-class TableView(RowTableShared):
-    name = "table"
-
-    async def post(self, request, db_name, table_and_format):
+    async def post(self, request):
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database_route))
+        database_name = db.name
+        table_name = tilde_decode(request.url_vars["table"])
         # Handle POST to a canned query
         canned_query = await self.ds.get_canned_query(
-            db_name, table_and_format, request.actor
+            database_name, table_name, request.actor
         )
         assert canned_query, "You may only POST to a canned query"
         return await QueryView(self.ds).data(
             request,
-            db_name,
-            None,
             canned_query["sql"],
             metadata=canned_query,
             editable=False,
-            canned_query=table_and_format,
+            canned_query=table_name,
             named_parameters=canned_query.get("params"),
             write=bool(canned_query.get("write")),
         )
@@ -322,48 +150,80 @@ class TableView(RowTableShared):
     async def data(
         self,
         request,
-        database,
-        hash,
-        table,
         default_labels=False,
         _next=None,
         _size=None,
     ):
+        with tracer.trace_child_tasks():
+            return await self._data_traced(request, default_labels, _next, _size)
+
+    async def _data_traced(
+        self,
+        request,
+        default_labels=False,
+        _next=None,
+        _size=None,
+    ):
+        database_route = tilde_decode(request.url_vars["database"])
+        table_name = tilde_decode(request.url_vars["table"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database_route))
+        database_name = db.name
+
+        # For performance profiling purposes, ?_noparallel=1 turns off asyncio.gather
+        async def _gather_parallel(*args):
+            return await asyncio.gather(*args)
+
+        async def _gather_sequential(*args):
+            results = []
+            for fn in args:
+                results.append(await fn)
+            return results
+
+        gather = (
+            _gather_sequential if request.args.get("_noparallel") else _gather_parallel
+        )
+
         # If this is a canned query, not a table, then dispatch to QueryView instead
-        canned_query = await self.ds.get_canned_query(database, table, request.actor)
+        canned_query = await self.ds.get_canned_query(
+            database_name, table_name, request.actor
+        )
         if canned_query:
             return await QueryView(self.ds).data(
                 request,
-                database,
-                hash,
                 canned_query["sql"],
                 metadata=canned_query,
                 editable=False,
-                canned_query=table,
+                canned_query=table_name,
                 named_parameters=canned_query.get("params"),
                 write=bool(canned_query.get("write")),
             )
 
-        db = self.ds.databases[database]
-        is_view = bool(await db.get_view_definition(table))
-        table_exists = bool(await db.table_exists(table))
+        is_view, table_exists = map(
+            bool,
+            await gather(
+                db.get_view_definition(table_name), db.table_exists(table_name)
+            ),
+        )
 
         # If table or view not found, return 404
         if not is_view and not table_exists:
-            raise NotFound(f"Table not found: {table}")
+            raise NotFound(f"Table not found: {table_name}")
 
         # Ensure user has permission to view this table
-        await self.check_permissions(
-            request,
+        await self.ds.ensure_permissions(
+            request.actor,
             [
-                ("view-table", (database, table)),
-                ("view-database", database),
+                ("view-table", (database_name, table_name)),
+                ("view-database", database_name),
                 "view-instance",
             ],
         )
 
         private = not await self.ds.permission_allowed(
-            None, "view-table", (database, table), default=True
+            None, "view-table", (database_name, table_name), default=True
         )
 
         # Handle ?_filter_column and redirect, if present
@@ -391,8 +251,8 @@ class TableView(RowTableShared):
             )
 
         # Introspect columns and primary keys for table
-        pks = await db.primary_keys(table)
-        table_columns = await db.table_columns(table)
+        pks = await db.primary_keys(table_name)
+        table_columns = await db.table_columns(table_name)
 
         # Take ?_col= and ?_nocol= into account
         specified_columns = await self.columns_to_select(table_columns, pks, request)
@@ -423,7 +283,7 @@ class TableView(RowTableShared):
             nocount = True
             nofacet = True
 
-        table_metadata = self.ds.table_metadata(database, table)
+        table_metadata = self.ds.table_metadata(database_name, table_name)
         units = table_metadata.get("units", {})
 
         # Arguments that start with _ and don't contain a __ are
@@ -437,7 +297,7 @@ class TableView(RowTableShared):
 
         # Build where clauses from query string arguments
         filters = Filters(sorted(filter_args), units, ureg)
-        where_clauses, params = filters.build_where_clauses(table)
+        where_clauses, params = filters.build_where_clauses(table_name)
 
         # Execute filters_from_request plugin hooks - including the default
         # ones that live in datasette/filters.py
@@ -446,8 +306,8 @@ class TableView(RowTableShared):
 
         for hook in pm.hook.filters_from_request(
             request=request,
-            table=table,
-            database=database,
+            table=table_name,
+            database=database_name,
             datasette=self.ds,
         ):
             filter_arguments = await await_me_maybe(hook)
@@ -459,7 +319,7 @@ class TableView(RowTableShared):
 
         # Deal with custom sort orders
         sortable_columns = await self.sortable_columns_for_table(
-            database, table, use_rowid
+            database_name, table_name, use_rowid
         )
         sort = request.args.get("_sort")
         sort_desc = request.args.get("_sort_desc")
@@ -484,7 +344,7 @@ class TableView(RowTableShared):
             order_by = f"{escape_sqlite(sort_desc)} desc"
 
         from_sql = "from {table_name} {where}".format(
-            table_name=escape_sqlite(table),
+            table_name=escape_sqlite(table_name),
             where=("where {} ".format(" and ".join(where_clauses)))
             if where_clauses
             else "",
@@ -597,7 +457,7 @@ class TableView(RowTableShared):
         sql_no_order_no_limit = (
             "select {select_all_columns} from {table_name} {where}".format(
                 select_all_columns=select_all_columns,
-                table_name=escape_sqlite(table),
+                table_name=escape_sqlite(table_name),
                 where=where_clause,
             )
         )
@@ -605,7 +465,7 @@ class TableView(RowTableShared):
         # This is the SQL that populates the main table on the page
         sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(
             select_specified_columns=select_specified_columns,
-            table_name=escape_sqlite(table),
+            table_name=escape_sqlite(table_name),
             where=where_clause,
             order_by=order_by,
             page_size=page_size + 1,
@@ -623,13 +483,13 @@ class TableView(RowTableShared):
         if (
             not db.is_mutable
             and self.ds.inspect_data
-            and count_sql == f"select count(*) from {table} "
+            and count_sql == f"select count(*) from {table_name} "
         ):
             # We can use a previously cached table row count
             try:
-                filtered_table_rows_count = self.ds.inspect_data[database]["tables"][
-                    table
-                ]["count"]
+                filtered_table_rows_count = self.ds.inspect_data[database_name][
+                    "tables"
+                ][table_name]["count"]
             except KeyError:
                 pass
 
@@ -659,42 +519,53 @@ class TableView(RowTableShared):
                 klass(
                     self.ds,
                     request,
-                    database,
+                    database_name,
                     sql=sql_no_order_no_limit,
                     params=params,
-                    table=table,
+                    table=table_name,
                     metadata=table_metadata,
                     row_count=filtered_table_rows_count,
                 )
             )
 
-        if not nofacet:
-            for facet in facet_instances:
-                (
+        async def execute_facets():
+            if not nofacet:
+                # Run them in parallel
+                facet_awaitables = [facet.facet_results() for facet in facet_instances]
+                facet_awaitable_results = await gather(*facet_awaitables)
+                for (
                     instance_facet_results,
                     instance_facets_timed_out,
-                ) = await facet.facet_results()
-                for facet_info in instance_facet_results:
-                    base_key = facet_info["name"]
-                    key = base_key
-                    i = 1
-                    while key in facet_results:
-                        i += 1
-                        key = f"{base_key}_{i}"
-                    facet_results[key] = facet_info
-                facets_timed_out.extend(instance_facets_timed_out)
+                ) in facet_awaitable_results:
+                    for facet_info in instance_facet_results:
+                        base_key = facet_info["name"]
+                        key = base_key
+                        i = 1
+                        while key in facet_results:
+                            i += 1
+                            key = f"{base_key}_{i}"
+                        facet_results[key] = facet_info
+                    facets_timed_out.extend(instance_facets_timed_out)
 
-        # Calculate suggested facets
         suggested_facets = []
-        if (
-            self.ds.setting("suggest_facets")
-            and self.ds.setting("allow_facet")
-            and not _next
-            and not nofacet
-            and not nosuggest
-        ):
-            for facet in facet_instances:
-                suggested_facets.extend(await facet.suggest())
+
+        async def execute_suggested_facets():
+            # Calculate suggested facets
+            if (
+                self.ds.setting("suggest_facets")
+                and self.ds.setting("allow_facet")
+                and not _next
+                and not nofacet
+                and not nosuggest
+            ):
+                # Run them in parallel
+                facet_suggest_awaitables = [
+                    facet.suggest() for facet in facet_instances
+                ]
+                for suggest_result in await gather(*facet_suggest_awaitables):
+                    suggested_facets.extend(suggest_result)
+
+        await gather(execute_facets(), execute_suggested_facets())
 
         # Figure out columns and rows for the query
         columns = [r[0] for r in results.description]
@@ -702,7 +573,7 @@ class TableView(RowTableShared):
 
         # Expand labeled columns if requested
         expanded_columns = []
-        expandable_columns = await self.expandable_columns(database, table)
+        expandable_columns = await self.expandable_columns(database_name, table_name)
         columns_to_expand = None
         try:
             all_labels = value_as_boolean(request.args.get("_labels", ""))
@@ -729,7 +600,9 @@ class TableView(RowTableShared):
                 values = [row[column_index] for row in rows]
                 # Expand them
                 expanded_labels.update(
-                    await self.ds.expand_foreign_keys(database, table, column, values)
+                    await self.ds.expand_foreign_keys(
+                        database_name, table_name, column, values
+                    )
                 )
             if expanded_labels:
                 # Rewrite the rows
@@ -758,13 +631,33 @@ class TableView(RowTableShared):
                 next_value = path_from_row_pks(rows[-2], pks, use_rowid)
             # If there's a sort or sort_desc, add that value as a prefix
             if (sort or sort_desc) and not is_view:
-                prefix = rows[-2][sort or sort_desc]
+                try:
+                    prefix = rows[-2][sort or sort_desc]
+                except IndexError:
+                    # sort/sort_desc column missing from SELECT - look up value by PK instead
+                    prefix_where_clause = " and ".join(
+                        "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)
+                    )
+                    prefix_lookup_sql = "select [{}] from [{}] where {}".format(
+                        sort or sort_desc, table_name, prefix_where_clause
+                    )
+                    prefix = (
+                        await db.execute(
+                            prefix_lookup_sql,
+                            {
+                                **{
+                                    "pk{}".format(i): rows[-2][pk]
+                                    for i, pk in enumerate(pks)
+                                }
+                            },
+                        )
+                    ).single_value()
                 if isinstance(prefix, dict) and "value" in prefix:
                     prefix = prefix["value"]
                 if prefix is None:
                     prefix = "$null"
                 else:
-                    prefix = urllib.parse.quote_plus(str(prefix))
+                    prefix = tilde_encode(str(prefix))
                 next_value = f"{prefix},{next_value}"
                 added_args = {"_next": next_value}
                 if sort:
@@ -794,19 +687,23 @@ class TableView(RowTableShared):
         async def extra_template():
             nonlocal sort
 
-            display_columns, display_rows = await self.display_columns_and_rows(
-                database,
-                table,
+            display_columns, display_rows = await display_columns_and_rows(
+                self.ds,
+                database_name,
+                table_name,
                 results.description,
                 rows,
                 link_column=not is_view,
                 truncate_cells=self.ds.setting("truncate_cells_html"),
+                sortable_columns=await self.sortable_columns_for_table(
+                    database_name, table_name, use_rowid=True
+                ),
             )
             metadata = (
                 (self.ds.metadata("databases") or {})
-                .get(database, {})
+                .get(database_name, {})
                 .get("tables", {})
-                .get(table, {})
+                .get(table_name, {})
             )
             self.ds.update_with_inherited_metadata(metadata)
 
@@ -814,8 +711,8 @@ class TableView(RowTableShared):
             for key in request.args:
                 if (
                     key.startswith("_")
-                    and key not in ("_sort", "_search", "_next")
-                    and not key.endswith("__exact")
+                    and key not in ("_sort", "_sort_desc", "_search", "_next")
+                    and "__" not in key
                 ):
                     for value in request.args.getlist(key):
                         form_hidden_args.append((key, value))
@@ -832,8 +729,8 @@ class TableView(RowTableShared):
                 links = []
                 for hook in pm.hook.table_actions(
                     datasette=self.ds,
-                    table=table,
-                    database=database,
+                    table=table_name,
+                    database=database_name,
                     actor=request.actor,
                     request=request,
                 ):
@@ -874,21 +771,24 @@ class TableView(RowTableShared):
                 "sort_desc": sort_desc,
                 "disable_sort": is_view,
                 "custom_table_templates": [
-                    f"_table-{to_css_class(database)}-{to_css_class(table)}.html",
-                    f"_table-table-{to_css_class(database)}-{to_css_class(table)}.html",
+                    f"_table-{to_css_class(database_name)}-{to_css_class(table_name)}.html",
+                    f"_table-table-{to_css_class(database_name)}-{to_css_class(table_name)}.html",
                     "_table.html",
                 ],
                 "metadata": metadata,
-                "view_definition": await db.get_view_definition(table),
-                "table_definition": await db.get_table_definition(table),
+                "view_definition": await db.get_view_definition(table_name),
+                "table_definition": await db.get_table_definition(table_name),
+                "datasette_allow_facet": "true"
+                if self.ds.setting("allow_facet")
+                else "false",
             }
             d.update(extra_context_from_filters)
             return d
 
         return (
             {
-                "database": database,
-                "table": table,
+                "database": database_name,
+                "table": table_name,
                 "is_view": is_view,
                 "human_description_en": human_description_en,
                 "rows": rows[:page_size],
@@ -906,12 +806,12 @@ class TableView(RowTableShared):
                 "next_url": next_url,
                 "private": private,
                 "allow_execute_sql": await self.ds.permission_allowed(
-                    request.actor, "execute-sql", database, default=True
+                    request.actor, "execute-sql", database_name, default=True
                 ),
             },
             extra_template,
             (
-                f"table-{to_css_class(database)}-{to_css_class(table)}.html",
+                f"table-{to_css_class(database_name)}-{to_css_class(table_name)}.html",
                 "table.html",
             ),
         )
@@ -932,122 +832,194 @@ async def _sql_params_pks(db, table, pk_values):
     return sql, params, pks
 
 
-class RowView(RowTableShared):
-    name = "row"
+async def display_columns_and_rows(
+    datasette,
+    database_name,
+    table_name,
+    description,
+    rows,
+    link_column=False,
+    truncate_cells=0,
+    sortable_columns=None,
+):
+    """Returns columns, rows for specified table - including fancy foreign key treatment"""
+    sortable_columns = sortable_columns or set()
+    db = datasette.databases[database_name]
+    table_metadata = datasette.table_metadata(database_name, table_name)
+    column_descriptions = table_metadata.get("columns") or {}
+    column_details = {
+        col.name: col for col in await db.table_column_details(table_name)
+    }
+    pks = await db.primary_keys(table_name)
+    pks_for_display = pks
+    if not pks_for_display:
+        pks_for_display = ["rowid"]
 
-    async def data(self, request, database, hash, table, pk_path, default_labels=False):
-        await self.check_permissions(
-            request,
-            [
-                ("view-table", (database, table)),
-                ("view-database", database),
-                "view-instance",
-            ],
-        )
-        pk_values = urlsafe_components(pk_path)
-        db = self.ds.databases[database]
-        sql, params, pks = await _sql_params_pks(db, table, pk_values)
-        results = await db.execute(sql, params, truncate=True)
-        columns = [r[0] for r in results.description]
-        rows = list(results.rows)
-        if not rows:
-            raise NotFound(f"Record not found: {pk_values}")
-
-        async def template_data():
-            display_columns, display_rows = await self.display_columns_and_rows(
-                database,
-                table,
-                results.description,
-                rows,
-                link_column=False,
-                truncate_cells=0,
-            )
-            for column in display_columns:
-                column["sortable"] = False
-
-            return {
-                "foreign_key_tables": await self.foreign_key_tables(
-                    database, table, pk_values
-                ),
-                "display_columns": display_columns,
-                "display_rows": display_rows,
-                "custom_table_templates": [
-                    f"_table-{to_css_class(database)}-{to_css_class(table)}.html",
-                    f"_table-row-{to_css_class(database)}-{to_css_class(table)}.html",
-                    "_table.html",
-                ],
-                "metadata": (self.ds.metadata("databases") or {})
-                .get(database, {})
-                .get("tables", {})
-                .get(table, {}),
+    columns = []
+    for r in description:
+        if r[0] == "rowid" and "rowid" not in column_details:
+            type_ = "integer"
+            notnull = 0
+        else:
+            type_ = column_details[r[0]].type
+            notnull = column_details[r[0]].notnull
+        columns.append(
+            {
+                "name": r[0],
+                "sortable": r[0] in sortable_columns,
+                "is_pk": r[0] in pks_for_display,
+                "type": type_,
+                "notnull": notnull,
+                "description": column_descriptions.get(r[0]),
             }
-
-        data = {
-            "database": database,
-            "table": table,
-            "rows": rows,
-            "columns": columns,
-            "primary_keys": pks,
-            "primary_key_values": pk_values,
-            "units": self.ds.table_metadata(database, table).get("units", {}),
-        }
-
-        if "foreign_key_tables" in (request.args.get("_extras") or "").split(","):
-            data["foreign_key_tables"] = await self.foreign_key_tables(
-                database, table, pk_values
-            )
-
-        return (
-            data,
-            template_data,
-            (
-                f"row-{to_css_class(database)}-{to_css_class(table)}.html",
-                "row.html",
-            ),
         )
 
-    async def foreign_key_tables(self, database, table, pk_values):
-        if len(pk_values) != 1:
-            return []
-        db = self.ds.databases[database]
-        all_foreign_keys = await db.get_all_foreign_keys()
-        foreign_keys = all_foreign_keys[table]["incoming"]
-        if len(foreign_keys) == 0:
-            return []
+    column_to_foreign_key_table = {
+        fk["column"]: fk["other_table"]
+        for fk in await db.foreign_keys_for_table(table_name)
+    }
 
-        sql = "select " + ", ".join(
-            [
-                "(select count(*) from {table} where {column}=:id)".format(
-                    table=escape_sqlite(fk["other_table"]),
-                    column=escape_sqlite(fk["other_column"]),
+    cell_rows = []
+    base_url = datasette.setting("base_url")
+    for row in rows:
+        cells = []
+        # Unless we are a view, the first column is a link - either to the rowid
+        # or to the simple or compound primary key
+        if link_column:
+            is_special_link_column = len(pks) != 1
+            pk_path = path_from_row_pks(row, pks, not pks, False)
+            cells.append(
+                {
+                    "column": pks[0] if len(pks) == 1 else "Link",
+                    "value_type": "pk",
+                    "is_special_link_column": is_special_link_column,
+                    "raw": pk_path,
+                    "value": markupsafe.Markup(
+                        '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
+                            base_url=base_url,
+                            table_path=datasette.urls.table(database_name, table_name),
+                            flat_pks=str(markupsafe.escape(pk_path)),
+                            flat_pks_quoted=path_from_row_pks(row, pks, not pks),
+                        )
+                    ),
+                }
+            )
+
+        for value, column_dict in zip(row, columns):
+            column = column_dict["name"]
+            if link_column and len(pks) == 1 and column == pks[0]:
+                # If there's a simple primary key, don't repeat the value as it's
+                # already shown in the link column.
+                continue
+
+            # First let the plugins have a go
+            # pylint: disable=no-member
+            plugin_display_value = None
+            for candidate in pm.hook.render_cell(
+                row=row,
+                value=value,
+                column=column,
+                table=table_name,
+                database=database_name,
+                datasette=datasette,
+            ):
+                candidate = await await_me_maybe(candidate)
+                if candidate is not None:
+                    plugin_display_value = candidate
+                    break
+            if plugin_display_value:
+                display_value = plugin_display_value
+            elif isinstance(value, bytes):
+                formatted = format_bytes(len(value))
+                display_value = markupsafe.Markup(
+                    '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
+                        datasette.urls.row_blob(
+                            database_name,
+                            table_name,
+                            path_from_row_pks(row, pks, not pks),
+                            column,
+                        ),
+                        ' title="{}"'.format(formatted)
+                        if "bytes" not in formatted
+                        else "",
+                        len(value),
+                        "" if len(value) == 1 else "s",
+                    )
                 )
-                for fk in foreign_keys
-            ]
-        )
-        try:
-            rows = list(await db.execute(sql, {"id": pk_values[0]}))
-        except QueryInterrupted:
-            # Almost certainly hit the timeout
-            return []
+            elif isinstance(value, dict):
+                # It's an expanded foreign key - display link to other row
+                label = value["label"]
+                value = value["value"]
+                # The table we link to depends on the column
+                other_table = column_to_foreign_key_table[column]
+                link_template = LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
+                display_value = markupsafe.Markup(
+                    link_template.format(
+                        database=database_name,
+                        base_url=base_url,
+                        table=tilde_encode(other_table),
+                        link_id=tilde_encode(str(value)),
+                        id=str(markupsafe.escape(value)),
+                        label=str(markupsafe.escape(label)) or "-",
+                    )
+                )
+            elif value in ("", None):
+                display_value = markupsafe.Markup("&nbsp;")
+            elif is_url(str(value).strip()):
+                display_value = markupsafe.Markup(
+                    '<a href="{url}">{truncated_url}</a>'.format(
+                        url=markupsafe.escape(value.strip()),
+                        truncated_url=markupsafe.escape(
+                            truncate_url(value.strip(), truncate_cells)
+                        ),
+                    )
+                )
+            elif column in table_metadata.get("units", {}) and value != "":
+                # Interpret units using pint
+                value = value * ureg(table_metadata["units"][column])
+                # Pint uses floating point which sometimes introduces errors in the compact
+                # representation, which we have to round off to avoid ugliness. In the vast
+                # majority of cases this rounding will be inconsequential. I hope.
+                value = round(value.to_compact(), 6)
+                display_value = markupsafe.Markup(f"{value:~P}".replace(" ", "&nbsp;"))
+            else:
+                display_value = str(value)
+                if truncate_cells and len(display_value) > truncate_cells:
+                    display_value = display_value[:truncate_cells] + "\u2026"
 
-        foreign_table_counts = dict(
-            zip(
-                [(fk["other_table"], fk["other_column"]) for fk in foreign_keys],
-                list(rows[0]),
+            cells.append(
+                {
+                    "column": column,
+                    "value": display_value,
+                    "raw": value,
+                    "value_type": "none"
+                    if value is None
+                    else str(type(value).__name__),
+                }
             )
-        )
-        foreign_key_tables = []
-        for fk in foreign_keys:
-            count = (
-                foreign_table_counts.get((fk["other_table"], fk["other_column"])) or 0
-            )
-            key = fk["other_column"]
-            if key.startswith("_"):
-                key += "__exact"
-            link = "{}?{}={}".format(
-                self.ds.urls.table(database, fk["other_table"]),
-                key,
-                ",".join(pk_values),
-            )
-            foreign_key_tables.append({**fk, **{"count": count, "link": link}})
-        return foreign_key_tables
+        cell_rows.append(Row(cells))
+
+    if link_column:
+        # Add the link column header.
+        # If it's a simple primary key, we have to remove and re-add that column name at
+        # the beginning of the header row.
+        first_column = None
+        if len(pks) == 1:
+            columns = [col for col in columns if col["name"] != pks[0]]
+            first_column = {
+                "name": pks[0],
+                "sortable": len(pks) == 1,
+                "is_pk": True,
+                "type": column_details[pks[0]].type,
+                "notnull": column_details[pks[0]].notnull,
+            }
+        else:
+            first_column = {
+                "name": "Link",
+                "sortable": False,
+                "is_pk": False,
+                "type": "",
+                "notnull": 0,
+            }
+        columns = [first_column] + columns
+    return columns, cell_rows

@@ -68,8 +68,10 @@ EXPECTED_PLUGINS = [
             "canned_queries",
             "extra_js_urls",
             "extra_template_vars",
+            "handle_exception",
             "menu_links",
             "permission_allowed",
+            "prepare_jinja2_environment",
             "register_routes",
             "render_cell",
             "startup",
@@ -211,12 +213,6 @@ def app_client_two_attached_databases_one_immutable():
     with make_app_client(
         is_immutable=True, extra_databases={"extra database.db": EXTRA_DATABASE_SQL}
     ) as client:
-        yield client
-
-
-@pytest.fixture(scope="session")
-def app_client_with_hash():
-    with make_app_client(settings={"hash_urls": True}, is_immutable=True) as client:
         yield client
 
 
@@ -406,6 +402,7 @@ CREATE TABLE compound_primary_key (
 );
 
 INSERT INTO compound_primary_key VALUES ('a', 'b', 'c');
+INSERT INTO compound_primary_key VALUES ('a/b', '.c-d', 'c');
 
 CREATE TABLE compound_three_primary_keys (
   pk1 varchar(30),
@@ -569,26 +566,27 @@ CREATE TABLE facetable (
     tags text,
     complex_array text,
     distinct_some_null,
+    n text,
     FOREIGN KEY ("_city_id") REFERENCES [facet_cities](id)
 );
 INSERT INTO facetable
-    (created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null)
+    (created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n)
 VALUES
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]', 'one'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]', 'two'),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]', '[]', null),
-    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]', '[]', null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]', '[]', null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]', '[]', null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]', '[]', null),
-    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]', '[]', null),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]', '[]', null),
-    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]', '[]', null),
-    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]', '[]', null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]', '[]', null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]', '[]', null),
-    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]', '[]', null),
-    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]', '[]', null)
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Mission', '["tag1", "tag2"]', '[{"foo": "bar"}]', 'one', 'n1'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Dogpatch', '["tag1", "tag3"]', '[]', 'two', 'n2'),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'SOMA', '[]', '[]', null, null),
+    ("2019-01-14 08:00:00", 1, 1, 'CA', 1, 'Tenderloin', '[]', '[]', null, null),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Bernal Heights', '[]', '[]', null, null),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 1, 'Hayes Valley', '[]', '[]', null, null),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Hollywood', '[]', '[]', null, null),
+    ("2019-01-15 08:00:00", 1, 1, 'CA', 2, 'Downtown', '[]', '[]', null, null),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Los Feliz', '[]', '[]', null, null),
+    ("2019-01-16 08:00:00", 1, 1, 'CA', 2, 'Koreatown', '[]', '[]', null, null),
+    ("2019-01-16 08:00:00", 1, 1, 'MI', 3, 'Downtown', '[]', '[]', null, null),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Greektown', '[]', '[]', null, null),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Corktown', '[]', '[]', null, null),
+    ("2019-01-17 08:00:00", 1, 1, 'MI', 3, 'Mexicantown', '[]', '[]', null, null),
+    ("2019-01-17 08:00:00", 2, 0, 'MC', 4, 'Arcadia Planitia', '[]', '[]', null, null)
 ;
 
 CREATE TABLE binary_data (
@@ -601,23 +599,24 @@ CREATE TABLE roadside_attractions (
     pk integer primary key,
     name text,
     address text,
+    url text,
     latitude real,
     longitude real
 );
 INSERT INTO roadside_attractions VALUES (
-    1, "The Mystery Spot", "465 Mystery Spot Road, Santa Cruz, CA 95065",
+    1, "The Mystery Spot", "465 Mystery Spot Road, Santa Cruz, CA 95065", "https://www.mysteryspot.com/",
     37.0167, -122.0024
 );
 INSERT INTO roadside_attractions VALUES (
-    2, "Winchester Mystery House", "525 South Winchester Boulevard, San Jose, CA 95128",
+    2, "Winchester Mystery House", "525 South Winchester Boulevard, San Jose, CA 95128", "https://winchestermysteryhouse.com/",
     37.3184, -121.9511
 );
 INSERT INTO roadside_attractions VALUES (
-    3, "Burlingame Museum of PEZ Memorabilia", "214 California Drive, Burlingame, CA 94010",
+    3, "Burlingame Museum of PEZ Memorabilia", "214 California Drive, Burlingame, CA 94010", null,
     37.5793, -122.3442
 );
 INSERT INTO roadside_attractions VALUES (
-    4, "Bigfoot Discovery Museum", "5497 Highway 9, Felton, CA 95018",
+    4, "Bigfoot Discovery Museum", "5497 Highway 9, Felton, CA 95018", "https://www.bigfootdiscoveryproject.com/",
     37.0414, -122.0725
 );
 

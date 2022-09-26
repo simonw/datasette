@@ -3,7 +3,9 @@
 Facets
 ======
 
-Datasette facets can be used to add a faceted browse interface to any database table. With facets, tables are displayed along with a summary showing the most common values in specified columns. These values can be selected to further filter the table.
+Datasette facets can be used to add a faceted browse interface to any database table.
+With facets, tables are displayed along with a summary showing the most common values in specified columns.
+These values can be selected to further filter the table.
 
 .. image:: facets.png
 
@@ -12,11 +14,13 @@ Facets can be specified in two ways: using query string parameters, or in ``meta
 Facets in query strings
 -----------------------
 
-To turn on faceting for specific columns on a Datasette table view, add one or more ``_facet=COLUMN`` parameters to the URL. For example, if you want to turn on facets for the ``city_id`` and ``state`` columns, construct a URL that looks like this::
+To turn on faceting for specific columns on a Datasette table view, add one or more ``_facet=COLUMN`` parameters to the URL.
+For example, if you want to turn on facets for the ``city_id`` and ``state`` columns, construct a URL that looks like this::
 
     /dbname/tablename?_facet=state&_facet=city_id
 
-This works for both the HTML interface and the ``.json`` view. When enabled, facets will cause a ``facet_results`` block to be added to the JSON output, looking something like this:
+This works for both the HTML interface and the ``.json`` view.
+When enabled, facets will cause a ``facet_results`` block to be added to the JSON output, looking something like this:
 
 .. code-block:: json
 
@@ -86,7 +90,8 @@ This works for both the HTML interface and the ``.json`` view. When enabled, fac
 
 If Datasette detects that a column is a foreign key, the ``"label"`` property will be automatically derived from the detected label column on the referenced table.
 
-The default number of facet results returned is 30, controlled by the :ref:`setting_default_facet_size` setting. You can increase this on an individual page by adding ``?_facet_size=100`` to the query string, up to a maximum of :ref:`setting_max_returned_rows` (which defaults to 1000).
+The default number of facet results returned is 30, controlled by the :ref:`setting_default_facet_size` setting.
+You can increase this on an individual page by adding ``?_facet_size=100`` to the query string, up to a maximum of :ref:`setting_max_returned_rows` (which defaults to 1000).
 
 .. _facets_metadata:
 
@@ -124,6 +129,22 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
     ]
   }
 
+You can change the default facet size (the number of results shown for each facet) for a table using ``facet_size``:
+
+.. code-block:: json
+
+    {
+      "databases": {
+        "sf-trees": {
+          "tables": {
+            "Street_Tree_List": {
+              "facets": ["qLegalStatus"],
+              "facet_size": 10
+            }
+          }
+        }
+      }
+    }
 
 Suggested facets
 ----------------
@@ -137,12 +158,14 @@ For the currently filtered data are there any columns which, if applied as a fac
 * Will return less unique options than the total number of filtered rows
 * And the query used to evaluate this criteria can be completed in under 50ms
 
-That last point is particularly important: Datasette runs a query for every column that is displayed on a page, which could get expensive - so to avoid slow load times it sets a time limit of just 50ms for each of those queries. This means suggested facets are unlikely to appear for tables with millions of records in them.
+That last point is particularly important: Datasette runs a query for every column that is displayed on a page, which could get expensive - so to avoid slow load times it sets a time limit of just 50ms for each of those queries.
+This means suggested facets are unlikely to appear for tables with millions of records in them.
 
 Speeding up facets with indexes
 -------------------------------
 
-The performance of facets can be greatly improved by adding indexes on the columns you wish to facet by. Adding indexes can be performed using the ``sqlite3`` command-line utility. Here's how to add an index on the ``state`` column in a table called ``Food_Trucks``::
+The performance of facets can be greatly improved by adding indexes on the columns you wish to facet by.
+Adding indexes can be performed using the ``sqlite3`` command-line utility. Here's how to add an index on the ``state`` column in a table called ``Food_Trucks``::
 
     $ sqlite3 mydatabase.db
     SQLite version 3.19.3 2017-06-27 16:48:08
@@ -169,6 +192,7 @@ Example here: `latest.datasette.io/fixtures/facetable?_facet_array=tags <https:/
 Facet by date
 -------------
 
-If Datasette finds any columns that contain dates in the first 100 values, it will offer a faceting interface against the dates of those values. This works especially well against timestamp values such as ``2019-03-01 12:44:00``.
+If Datasette finds any columns that contain dates in the first 100 values, it will offer a faceting interface against the dates of those values.
+This works especially well against timestamp values such as ``2019-03-01 12:44:00``.
 
 Example here: `latest.datasette.io/fixtures/facetable?_facet_date=created <https://latest.datasette.io/fixtures/facetable?_facet_date=created>`__

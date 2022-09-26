@@ -2,7 +2,7 @@
 Tests to ensure certain things are documented.
 """
 from click.testing import CliRunner
-from datasette import app
+from datasette import app, utils
 from datasette.cli import cli
 from datasette.filters import Filters
 from pathlib import Path
@@ -31,26 +31,6 @@ def settings_headings():
 @pytest.mark.parametrize("setting", app.SETTINGS)
 def test_settings_are_documented(settings_headings, setting):
     assert setting.name in settings_headings
-
-
-@pytest.mark.parametrize(
-    "name,filename",
-    (
-        ("serve", "datasette-serve-help.txt"),
-        ("package", "datasette-package-help.txt"),
-        ("publish heroku", "datasette-publish-heroku-help.txt"),
-        ("publish cloudrun", "datasette-publish-cloudrun-help.txt"),
-    ),
-)
-def test_help_includes(name, filename):
-    expected = (docs_path / filename).read_text()
-    runner = CliRunner()
-    result = runner.invoke(cli, name.split() + ["--help"], terminal_width=88)
-    actual = f"$ datasette {name} --help\n\n{result.output}"
-    # actual has "Usage: cli package [OPTIONS] FILES"
-    # because it doesn't know that cli will be aliased to datasette
-    expected = expected.replace("Usage: datasette", "Usage: cli")
-    assert expected == actual, "Run python update-docs-help.py to fix this"
 
 
 @pytest.fixture(scope="session")
@@ -106,3 +86,19 @@ def documented_table_filters():
 @pytest.mark.parametrize("filter", [f.key for f in Filters._filters])
 def test_table_filters_are_documented(documented_table_filters, filter):
     assert filter in documented_table_filters
+
+
+@pytest.fixture(scope="session")
+def documented_fns():
+    internals_rst = (docs_path / "internals.rst").read_text()
+    # Any line that starts .. _internals_utils_X
+    lines = internals_rst.split("\n")
+    prefix = ".. _internals_utils_"
+    return {
+        line.split(prefix)[1].split(":")[0] for line in lines if line.startswith(prefix)
+    }
+
+
+@pytest.mark.parametrize("fn", utils.functions_marked_as_documented)
+def test_functions_marked_with_documented_are_documented(documented_fns, fn):
+    assert fn.__name__ in documented_fns

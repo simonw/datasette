@@ -50,6 +50,7 @@ def publish_subcommand(publish):
         name,
         tar,
     ):
+        "Publish databases to Datasette running on Heroku"
         fail_if_publish_binary_not_installed(
             "heroku", "Heroku", "https://cli.heroku.com"
         )

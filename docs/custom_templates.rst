@@ -428,7 +428,7 @@ You can use the ``custom_redirect(location)`` function to redirect users to anot
 
 Now requests to ``http://localhost:8001/datasette`` will result in a redirect.
 
-These redirects are served with a ``301 Found`` status code by default. You can send a ``301 Moved Permanently`` code by passing ``301`` as the second argument to the function:
+These redirects are served with a ``302 Found`` status code by default. You can send a ``301 Moved Permanently`` code by passing ``301`` as the second argument to the function:
 
 .. code-block:: jinja
 

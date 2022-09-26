@@ -107,6 +107,8 @@ Maximum number of threads in the thread pool Datasette uses to execute SQLite qu
 
     datasette mydatabase.db --setting num_sql_threads 10
 
+Setting this to 0 turns off threaded SQL queries entirely - useful for environments that do not support threading such as `Pyodide <https://pyodide.org/>`__.
+
 .. _setting_allow_facet:
 
 allow_facet
@@ -178,17 +180,6 @@ Default HTTP caching max-age header in seconds, used for ``Cache-Control: max-ag
 
     datasette mydatabase.db --setting default_cache_ttl 60
 
-.. _setting_default_cache_ttl_hashed:
-
-default_cache_ttl_hashed
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Default HTTP caching max-age for responses served using using the :ref:`hashed-urls mechanism <setting_hash_urls>`. Defaults to 365 days (31536000 seconds).
-
-::
-
-    datasette mydatabase.db --setting default_cache_ttl_hashed 10000
-
 .. _setting_cache_size_kb:
 
 cache_size_kb
@@ -251,22 +242,6 @@ HTTP but is served to the outside world via a proxy that enables HTTPS.
 
     datasette mydatabase.db --setting force_https_urls 1
 
-.. _setting_hash_urls:
-
-hash_urls
-~~~~~~~~~
-
-When enabled, this setting causes Datasette to append a content hash of the
-database file to the URL path for every table and query within that database.
-
-When combined with far-future expire headers this ensures that queries can be
-cached forever, safe in the knowledge that any modifications to the database
-itself will result in new, uncached URL paths.
-
-::
-
-    datasette mydatabase.db --setting hash_urls 1
-
 .. _setting_template_debug:
 
 template_debug
@@ -301,6 +276,8 @@ Some examples:
 
 * https://latest.datasette.io/?_trace=1
 * https://latest.datasette.io/fixtures/roadside_attractions?_trace=1
+
+See :ref:`internals_tracer` for details on how to hook into this mechanism as a plugin author.
 
 .. _setting_base_url:
 

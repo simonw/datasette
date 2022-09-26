@@ -14,8 +14,9 @@ class JsonDataView(BaseView):
         self.data_callback = data_callback
         self.needs_request = needs_request
 
-    async def get(self, request, as_format):
-        await self.check_permission(request, "view-instance")
+    async def get(self, request):
+        as_format = request.url_vars["format"]
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
         if self.needs_request:
             data = self.data_callback(request)
         else:
@@ -43,14 +44,16 @@ class JsonDataView(BaseView):
 
 class PatternPortfolioView(BaseView):
     name = "patterns"
+    has_json_alternate = False
 
     async def get(self, request):
-        await self.check_permission(request, "view-instance")
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
         return await self.render(["patterns.html"], request=request)
 
 
 class AuthTokenView(BaseView):
     name = "auth_token"
+    has_json_alternate = False
 
     async def get(self, request):
         token = request.args.get("token") or ""
@@ -69,6 +72,7 @@ class AuthTokenView(BaseView):
 
 class LogoutView(BaseView):
     name = "logout"
+    has_json_alternate = False
 
     async def get(self, request):
         if not request.actor:
@@ -88,9 +92,10 @@ class LogoutView(BaseView):
 
 class PermissionsDebugView(BaseView):
     name = "permissions_debug"
+    has_json_alternate = False
 
     async def get(self, request):
-        await self.check_permission(request, "view-instance")
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
         if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
             raise Forbidden("Permission denied")
         return await self.render(
@@ -103,6 +108,7 @@ class PermissionsDebugView(BaseView):
 
 class AllowDebugView(BaseView):
     name = "allow_debug"
+    has_json_alternate = False
 
     async def get(self, request):
         errors = []
@@ -137,13 +143,14 @@ class AllowDebugView(BaseView):
 
 class MessagesDebugView(BaseView):
     name = "messages_debug"
+    has_json_alternate = False
 
     async def get(self, request):
-        await self.check_permission(request, "view-instance")
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
         return await self.render(["messages_debug.html"], request)
 
     async def post(self, request):
-        await self.check_permission(request, "view-instance")
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
         post = await request.post_vars()
         message = post.get("message", "")
         message_type = post.get("message_type") or "INFO"

@@ -10,6 +10,9 @@
 .check-result-false {
     color: red;
 }
+.check-result-no-opinion {
+    color: #aaa;
+}
 .check h2 {
     font-size: 1em
 }
@@ -38,6 +41,8 @@
             <span class="check-when">{{ check.when }}</span>
             {% if check.result %}
                 <span class="check-result check-result-true">✓</span>
+            {% elif check.result is none %}
+                <span class="check-result check-result-no-opinion">none</span>
             {% else %}
                 <span class="check-result check-result-false">✗</span>
             {% endif %}

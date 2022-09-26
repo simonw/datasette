@@ -1,13 +1,16 @@
 name: Test
 
-on: [push]
+on: [push, pull_request]
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.6", "3.7", "3.8", "3.9", "3.10"]
+        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11-dev"]
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -21,10 +24,21 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
         restore-keys: |
           ${{ runner.os }}-pip-
+    - name: Build extension for --load-extension test
+      run: |-
+        (cd tests && gcc ext.c -fPIC -shared -o ext.so)
     - name: Install dependencies
       run: |
         pip install -e '.[test]'
+        pip freeze
     - name: Run tests
       run: |
         pytest -n auto -m "not serial"
         pytest -m "serial"
+    - name: Check if cog needs to be run
+      run: |
+        cog --check docs/*.rst
+    - name: Check if blacken-docs needs to be run
+      run: |
+        # This fails on syntax errors, or a diff was applied
+        blacken-docs -l 60 docs/*.rst

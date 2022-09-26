@@ -14,6 +14,7 @@ served with the following additional HTTP headers::
 
     Access-Control-Allow-Origin: *
     Access-Control-Allow-Headers: Authorization
+    Access-Control-Expose-Headers: Link
 
 This means JavaScript running on any domain will be able to make cross-origin
 requests to fetch the data.
@@ -435,3 +436,22 @@ looks like::
 
 The column in the foreign key table that is used for the label can be specified
 in ``metadata.json`` - see :ref:`label_columns`.
+
+.. _json_api_discover_alternate:
+
+Discovering the JSON for a page
+-------------------------------
+
+Most of the HTML pages served by Datasette provide a mechanism for discovering their JSON equivalents using the HTML ``link`` mechanism.
+
+You can find this near the top of the source code of those pages, looking like this:
+
+.. code-block:: html
+
+    <link rel="alternate"
+      type="application/json+datasette"
+      href="https://latest.datasette.io/fixtures/sortable.json">
+
+The JSON URL is also made available in a ``Link`` HTTP header for the page::
+
+    Link: https://latest.datasette.io/fixtures/sortable.json; rel="alternate"; type="application/json+datasette"

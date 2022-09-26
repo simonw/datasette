@@ -26,7 +26,7 @@ def prepare_connection(conn, database, datasette):
 
 
 @hookspec
-def prepare_jinja2_environment(env):
+def prepare_jinja2_environment(env, datasette):
     """Modify Jinja2 template environment e.g. register custom template tags"""
 
 
@@ -60,7 +60,7 @@ def publish_subcommand(publish):
 
 
 @hookspec
-def render_cell(value, column, table, database, datasette):
+def render_cell(row, value, column, table, database, datasette):
     """Customize rendering of HTML table cell values"""
 
 
@@ -138,3 +138,8 @@ def database_actions(datasette, actor, database, request):
 @hookspec
 def skip_csrf(datasette, scope):
     """Mechanism for skipping CSRF checks for certain requests"""
+
+
+@hookspec
+def handle_exception(datasette, request, exception):
+    """Handle an uncaught exception. Can return a Response or None."""

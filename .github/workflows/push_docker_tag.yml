@@ -6,6 +6,9 @@ on:
       version_tag:
         description: Tag to build and push
 
+permissions:
+  contents: read
+
 jobs:
   deploy_docker:
     runs-on: ubuntu-latest

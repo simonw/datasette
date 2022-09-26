@@ -1,6 +1,8 @@
 Getting started
 ===============
 
+.. _getting_started_demo:
+
 Play with a live demo
 ---------------------
 
@@ -8,6 +10,28 @@ The best way to experience Datasette for the first time is with a demo:
 
 * `global-power-plants.datasettes.com <https://global-power-plants.datasettes.com/global-power-plants/global-power-plants>`__ provides a searchable database of power plants around the world, using data from the `World Resources Institude <https://www.wri.org/publication/global-power-plant-database>`__ rendered using the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ plugin.
 * `fivethirtyeight.datasettes.com <https://fivethirtyeight.datasettes.com/fivethirtyeight>`__ shows Datasette running against over 400 datasets imported from the `FiveThirtyEight GitHub repository <https://github.com/fivethirtyeight/data>`__.
+
+.. _getting_started_tutorial:
+
+Follow a tutorial
+-----------------
+
+Datasette has several `tutorials <https://datasette.io/tutorials>`__ to help you get started with the tool. Try one of the following:
+
+- `Exploring a database with Datasette <https://datasette.io/tutorials/explore>`__ shows how to use the Datasette web interface to explore a new database.
+- `Learn SQL with Datasette <https://datasette.io/tutorials/learn-sql>`__ introduces SQL, and shows how to use that query language to ask questions of your data.
+- `Cleaning data with sqlite-utils and Datasette <https://datasette.io/tutorials/clean-data>`__ guides you through using `sqlite-utils <https://sqlite-utils.datasette.io/>`__ to turn a CSV file into a database that you can explore using Datasette.
+
+.. _getting_started_datasette_lite:
+
+Datasette in your browser with Datasette Lite
+---------------------------------------------
+
+`Datasette Lite <https://lite.datasette.io/>`__ is Datasette packaged using WebAssembly so that it runs entirely in your browser, no Python web application server required.
+
+You can pass a URL to a CSV, SQLite or raw SQL file directly to Datasette Lite to explore that data in your browser.
+
+This `example link <https://lite.datasette.io/?url=https%3A%2F%2Fraw.githubusercontent.com%2FNUKnightLab%2Fsql-mysteries%2Fmaster%2Fsql-murder-mystery.db#/sql-murder-mystery>`__ opens Datasette Lite and loads the SQL Murder Mystery example database from `Northwestern University Knight Lab <https://github.com/NUKnightLab/sql-mysteries>`__. 
 
 .. _getting_started_glitch:
 
@@ -56,7 +80,9 @@ like so:
 
 ::
 
-     datasette ~/Library/Application\ Support/Google/Chrome/Default/History
+     datasette ~/Library/Application\ Support/Google/Chrome/Default/History --nolock
+
+The ``--nolock`` option ignores any file locks. This is safe as Datasette will open the file in read-only mode.
 
 Now visiting http://localhost:8001/History/downloads will show you a web
 interface to browse your downloads data:
@@ -112,60 +138,3 @@ JSON in a more convenient format:
             }
         ]
     }
-
-.. _getting_started_datasette_get:
-
-datasette --get
----------------
-
-The ``--get`` option can specify the path to a page within Datasette and cause Datasette to output the content from that path without starting the web server. This means that all of Datasette's functionality can be accessed directly from the command-line. For example::
-
-    $ datasette --get '/-/versions.json' | jq .
-    {
-      "python": {
-        "version": "3.8.5",
-        "full": "3.8.5 (default, Jul 21 2020, 10:48:26) \n[Clang 11.0.3 (clang-1103.0.32.62)]"
-      },
-      "datasette": {
-        "version": "0.46+15.g222a84a.dirty"
-      },
-      "asgi": "3.0",
-      "uvicorn": "0.11.8",
-      "sqlite": {
-        "version": "3.32.3",
-        "fts_versions": [
-          "FTS5",
-          "FTS4",
-          "FTS3"
-        ],
-        "extensions": {
-          "json1": null
-        },
-        "compile_options": [
-          "COMPILER=clang-11.0.3",
-          "ENABLE_COLUMN_METADATA",
-          "ENABLE_FTS3",
-          "ENABLE_FTS3_PARENTHESIS",
-          "ENABLE_FTS4",
-          "ENABLE_FTS5",
-          "ENABLE_GEOPOLY",
-          "ENABLE_JSON1",
-          "ENABLE_PREUPDATE_HOOK",
-          "ENABLE_RTREE",
-          "ENABLE_SESSION",
-          "MAX_VARIABLE_NUMBER=250000",
-          "THREADSAFE=1"
-        ]
-      }
-    }
-
-The exit code will be 0 if the request succeeds and 1 if the request produced an HTTP status code other than 200 - e.g. a 404 or 500 error. This means you can use ``datasette --get /`` to run tests against a Datasette application in a continuous integration environment such as GitHub Actions.
-
-.. _getting_started_serve_help:
-
-datasette serve --help
-----------------------
-
-Running ``datasette downloads.db`` executes the default ``serve`` sub-command, and is equivalent to running ``datasette serve downloads.db``. The full list of options to that command is shown below.
-
-.. literalinclude:: datasette-serve-help.txt

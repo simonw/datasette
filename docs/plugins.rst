@@ -91,35 +91,136 @@ You can also use the ``datasette plugins`` command::
         }
     ]
 
+.. [[[cog
+    from datasette import cli
+    from click.testing import CliRunner
+    import textwrap, json
+    cog.out("\n")
+    result = CliRunner().invoke(cli.cli, ["plugins", "--all"])
+    # cog.out() with text containing newlines was unindenting for some reason
+    cog.outl("If you run ``datasette plugins --all`` it will include default plugins that ship as part of Datasette::\n")
+    plugins = [p for p in json.loads(result.output) if p["name"].startswith("datasette.")]
+    indented = textwrap.indent(json.dumps(plugins, indent=4), "    ")
+    for line in indented.split("\n"):
+        cog.outl(line)
+    cog.out("\n\n")
+.. ]]]
+
 If you run ``datasette plugins --all`` it will include default plugins that ship as part of Datasette::
 
-    $ datasette plugins --all
     [
         {
-            "name": "datasette.sql_functions",
+            "name": "datasette.actor_auth_cookie",
             "static": false,
             "templates": false,
-            "version": null
+            "version": null,
+            "hooks": [
+                "actor_from_request"
+            ]
         },
         {
-            "name": "datasette.publish.cloudrun",
+            "name": "datasette.blob_renderer",
             "static": false,
             "templates": false,
-            "version": null
+            "version": null,
+            "hooks": [
+                "register_output_renderer"
+            ]
+        },
+        {
+            "name": "datasette.default_magic_parameters",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "register_magic_parameters"
+            ]
+        },
+        {
+            "name": "datasette.default_menu_links",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "menu_links"
+            ]
+        },
+        {
+            "name": "datasette.default_permissions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "permission_allowed"
+            ]
         },
         {
             "name": "datasette.facets",
             "static": false,
             "templates": false,
-            "version": null
+            "version": null,
+            "hooks": [
+                "register_facet_classes"
+            ]
+        },
+        {
+            "name": "datasette.filters",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "filters_from_request"
+            ]
+        },
+        {
+            "name": "datasette.forbidden",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "forbidden"
+            ]
+        },
+        {
+            "name": "datasette.handle_exception",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "handle_exception"
+            ]
+        },
+        {
+            "name": "datasette.publish.cloudrun",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "publish_subcommand"
+            ]
         },
         {
             "name": "datasette.publish.heroku",
             "static": false,
             "templates": false,
-            "version": null
+            "version": null,
+            "hooks": [
+                "publish_subcommand"
+            ]
+        },
+        {
+            "name": "datasette.sql_functions",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "prepare_connection"
+            ]
         }
     ]
+
+
+.. [[[end]]]
 
 You can add the ``--plugins-dir=`` option to include any plugins found in that directory.
 

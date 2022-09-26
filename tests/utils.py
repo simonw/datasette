@@ -1,3 +1,6 @@
+from datasette.utils.sqlite import sqlite3
+
+
 def assert_footer_links(soup):
     footer_links = soup.find("footer").findAll("a")
     assert 4 == len(footer_links)
@@ -22,3 +25,8 @@ def inner_html(soup):
     # This includes the parent tag - so remove that
     inner_html = html.split(">", 1)[1].rsplit("<", 1)[0]
     return inner_html.strip()
+
+
+def has_load_extension():
+    conn = sqlite3.connect(":memory:")
+    return hasattr(conn, "enable_load_extension")

@@ -55,10 +55,21 @@ class TestClient:
 
     @async_to_sync
     async def get(
-        self, path, follow_redirects=False, redirect_count=0, method="GET", cookies=None
+        self,
+        path,
+        follow_redirects=False,
+        redirect_count=0,
+        method="GET",
+        cookies=None,
+        if_none_match=None,
     ):
         return await self._request(
-            path, follow_redirects, redirect_count, method, cookies
+            path=path,
+            follow_redirects=follow_redirects,
+            redirect_count=redirect_count,
+            method=method,
+            cookies=cookies,
+            if_none_match=if_none_match,
         )
 
     @async_to_sync
@@ -110,6 +121,7 @@ class TestClient:
         headers=None,
         post_body=None,
         content_type=None,
+        if_none_match=None,
     ):
         return await self._request(
             path,
@@ -120,6 +132,7 @@ class TestClient:
             headers=headers,
             post_body=post_body,
             content_type=content_type,
+            if_none_match=if_none_match,
         )
 
     async def _request(
@@ -132,10 +145,14 @@ class TestClient:
         headers=None,
         post_body=None,
         content_type=None,
+        if_none_match=None,
     ):
+        await self.ds.invoke_startup()
         headers = headers or {}
         if content_type:
             headers["content-type"] = content_type
+        if if_none_match:
+            headers["if-none-match"] = if_none_match
         httpx_response = await self.ds.client.request(
             method,
             path,

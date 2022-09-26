@@ -1,3 +1,4 @@
+from datasette.app import Datasette, Database
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (  # noqa
     app_client,
@@ -67,6 +68,17 @@ def test_table_cell_truncation():
         ] == [
             td.string
             for td in table.findAll("td", {"class": "col-neighborhood-b352a7"})
+        ]
+        # URLs should be truncated too
+        response2 = client.get("/fixtures/roadside_attractions")
+        assert response2.status == 200
+        table = Soup(response2.body, "html.parser").find("table")
+        tds = table.findAll("td", {"class": "col-url"})
+        assert [str(td) for td in tds] == [
+            '<td class="col-url type-str"><a href="https://www.mysteryspot.com/">http…</a></td>',
+            '<td class="col-url type-str"><a href="https://winchestermysteryhouse.com/">http…</a></td>',
+            '<td class="col-url type-none">\xa0</td>',
+            '<td class="col-url type-str"><a href="https://www.bigfootdiscoveryproject.com/">http…</a></td>',
         ]
 
 
@@ -143,17 +155,29 @@ def test_existing_filter_redirects(app_client):
     assert "?" not in response.headers["Location"]
 
 
-def test_exact_parameter_results_in_correct_hidden_fields(app_client):
+@pytest.mark.parametrize(
+    "qs,expected_hidden",
+    (
+        # Things that should be reflected in hidden form fields:
+        ("_facet=_neighborhood", {"_facet": "_neighborhood"}),
+        ("_where=1+=+1&_col=_city_id", {"_where": "1 = 1", "_col": "_city_id"}),
+        # Things that should NOT be reflected in hidden form fields:
+        (
+            "_facet=_neighborhood&_neighborhood__exact=Downtown",
+            {"_facet": "_neighborhood"},
+        ),
+        ("_facet=_neighborhood&_city_id__gt=1", {"_facet": "_neighborhood"}),
+    ),
+)
+def test_reflected_hidden_form_fields(app_client, qs, expected_hidden):
     # https://github.com/simonw/datasette/issues/1527
-    response = app_client.get(
-        "/fixtures/facetable?_facet=_neighborhood&_neighborhood__exact=Downtown"
-    )
+    response = app_client.get("/fixtures/facetable?{}".format(qs))
     # In this case we should NOT have a hidden _neighborhood__exact=Downtown field
     form = Soup(response.body, "html.parser").find("form")
     hidden_inputs = {
         input["name"]: input["value"] for input in form.select("input[type=hidden]")
     }
-    assert hidden_inputs == {"_facet": "_neighborhood"}
+    assert hidden_inputs == expected_hidden
 
 
 def test_empty_search_parameter_gets_removed(app_client):
@@ -551,11 +575,17 @@ def test_table_html_compound_primary_key(app_client):
             '<td class="col-pk1 type-str">a</td>',
             '<td class="col-pk2 type-str">b</td>',
             '<td class="col-content type-str">c</td>',
-        ]
+        ],
+        [
+            '<td class="col-Link type-pk"><a href="/fixtures/compound_primary_key/a~2Fb,~2Ec-d">a/b,.c-d</a></td>',
+            '<td class="col-pk1 type-str">a/b</td>',
+            '<td class="col-pk2 type-str">.c-d</td>',
+            '<td class="col-content type-str">c</td>',
+        ],
     ]
-    assert expected == [
+    assert [
         [str(td) for td in tr.select("td")] for tr in table.select("tbody tr")
-    ]
+    ] == expected
 
 
 def test_table_html_foreign_key_links(app_client):
@@ -809,6 +839,7 @@ def test_other_hidden_form_fields(app_client, path, expected_hidden):
     [
         ("/fixtures/searchable?_search=terry", []),
         ("/fixtures/searchable?_sort=text2", []),
+        ("/fixtures/searchable?_sort_desc=text2", []),
         ("/fixtures/searchable?_sort=text2&_where=1", [("_where", "1")]),
     ],
 )
@@ -1038,3 +1069,61 @@ def test_sort_rowid_with_next(app_client):
 
 def assert_querystring_equal(expected, actual):
     assert sorted(expected.split("&")) == sorted(actual.split("&"))
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    (
+        (
+            "/fixtures/facetable",
+            "fixtures: facetable: 15 rows",
+        ),
+        (
+            "/fixtures/facetable?on_earth__exact=1",
+            "fixtures: facetable: 14 rows where on_earth = 1",
+        ),
+    ),
+)
+def test_table_page_title(app_client, path, expected):
+    response = app_client.get(path)
+    title = Soup(response.text, "html.parser").find("title").text
+    assert title == expected
+
+
+@pytest.mark.parametrize("allow_facet", (True, False))
+def test_allow_facet_off(allow_facet):
+    with make_app_client(settings={"allow_facet": allow_facet}) as client:
+        response = client.get("/fixtures/facetable")
+        expected = "DATASETTE_ALLOW_FACET = {};".format(
+            "true" if allow_facet else "false"
+        )
+        assert expected in response.text
+        if allow_facet:
+            assert "Suggested facets" in response.text
+        else:
+            assert "Suggested facets" not in response.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "size,title,length_bytes",
+    (
+        (2000, ' title="2.0 KB"', "2,000"),
+        (20000, ' title="19.5 KB"', "20,000"),
+        (20, "", "20"),
+    ),
+)
+async def test_format_of_binary_links(size, title, length_bytes):
+    ds = Datasette()
+    db_name = "binary-links-{}".format(size)
+    db = ds.add_memory_database(db_name)
+    sql = "select zeroblob({}) as blob".format(size)
+    await db.execute_write("create table blobs as {}".format(sql))
+    response = await ds.client.get("/{}/blobs".format(db_name))
+    assert response.status_code == 200
+    expected = "{}>&lt;Binary:&nbsp;{}&nbsp;bytes&gt;</a>".format(title, length_bytes)
+    assert expected in response.text
+    # And test with arbitrary SQL query too
+    sql_response = await ds.client.get("/{}".format(db_name), params={"sql": sql})
+    assert sql_response.status_code == 200
+    assert expected in sql_response.text

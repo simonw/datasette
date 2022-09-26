@@ -36,7 +36,7 @@ def test_homepage(app_client):
     # 4 hidden FTS tables + no_primary_key (hidden in metadata)
     assert d["hidden_tables_count"] == 6
     # 201 in no_primary_key, plus 6 in other hidden tables:
-    assert d["hidden_table_rows_sum"] == 207
+    assert d["hidden_table_rows_sum"] == 207, response.json
     assert d["views_count"] == 4
 
 
@@ -143,7 +143,7 @@ def test_database_page(app_client):
             "name": "compound_primary_key",
             "columns": ["pk1", "pk2", "content"],
             "primary_keys": ["pk1", "pk2"],
-            "count": 1,
+            "count": 2,
             "hidden": False,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
@@ -210,6 +210,7 @@ def test_database_page(app_client):
                 "tags",
                 "complex_array",
                 "distinct_some_null",
+                "n",
             ],
             "primary_keys": ["pk"],
             "count": 15,
@@ -338,7 +339,7 @@ def test_database_page(app_client):
         },
         {
             "name": "roadside_attractions",
-            "columns": ["pk", "name", "address", "latitude", "longitude"],
+            "columns": ["pk", "name", "address", "url", "latitude", "longitude"],
             "primary_keys": ["pk"],
             "count": 4,
             "hidden": False,
@@ -628,8 +629,8 @@ def test_old_memory_urls_redirect(app_client_no_files, path, expected_redirect):
 
 
 def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
-    response = app_client_with_dot.get("/fixtures.dot.json")
-    assert 200 == response.status
+    response = app_client_with_dot.get("/fixtures~2Edot.json")
+    assert response.status == 200
 
 
 def test_custom_sql(app_client):
@@ -679,18 +680,9 @@ def test_row(app_client):
     assert [{"id": "1", "content": "hello"}] == response.json["rows"]
 
 
-def test_row_format_in_querystring(app_client):
-    # regression test for https://github.com/simonw/datasette/issues/563
-    response = app_client.get(
-        "/fixtures/simple_primary_key/1?_format=json&_shape=objects"
-    )
-    assert response.status == 200
-    assert [{"id": "1", "content": "hello"}] == response.json["rows"]
-
-
 def test_row_strange_table_name(app_client):
     response = app_client.get(
-        "/fixtures/table%2Fwith%2Fslashes.csv/3.json?_shape=objects"
+        "/fixtures/table~2Fwith~2Fslashes~2Ecsv/3.json?_shape=objects"
     )
     assert response.status == 200
     assert [{"pk": "3", "content": "hey"}] == response.json["rows"]
@@ -807,14 +799,12 @@ def test_settings_json(app_client):
         "allow_facet": True,
         "suggest_facets": True,
         "default_cache_ttl": 5,
-        "default_cache_ttl_hashed": 365 * 24 * 60 * 60,
         "num_sql_threads": 1,
         "cache_size_kb": 0,
         "allow_csv_stream": True,
         "max_csv_mb": 100,
         "truncate_cells_html": 2048,
         "force_https_urls": False,
-        "hash_urls": False,
         "template_debug": False,
         "trace_debug": False,
         "base_url": "/",
@@ -832,35 +822,6 @@ def test_config_redirects_to_settings(app_client, path, expected_redirect):
     response = app_client.get(path)
     assert response.status == 301
     assert response.headers["Location"] == expected_redirect
-
-
-@pytest.mark.parametrize(
-    "path,expected_redirect",
-    [
-        ("/fixtures/facetable.json?_hash=1", "/fixtures-HASH/facetable.json"),
-        (
-            "/fixtures/facetable.json?city_id=1&_hash=1",
-            "/fixtures-HASH/facetable.json?city_id=1",
-        ),
-    ],
-)
-def test_hash_parameter(
-    app_client_two_attached_databases_one_immutable, path, expected_redirect
-):
-    # First get the current hash for the fixtures database
-    current_hash = app_client_two_attached_databases_one_immutable.ds.databases[
-        "fixtures"
-    ].hash[:7]
-    response = app_client_two_attached_databases_one_immutable.get(path)
-    assert response.status == 302
-    location = response.headers["Location"]
-    assert expected_redirect.replace("HASH", current_hash) == location
-
-
-def test_hash_parameter_ignored_for_mutable_databases(app_client):
-    path = "/fixtures/facetable.json?_hash=1"
-    response = app_client.get(path)
-    assert response.status == 200
 
 
 test_json_columns_default_expected = [
@@ -911,57 +872,6 @@ def test_config_force_https_urls():
         assert client.ds._last_request.scheme == "https"
 
 
-@pytest.mark.parametrize("trace_debug", (True, False))
-def test_trace(trace_debug):
-    with make_app_client(settings={"trace_debug": trace_debug}) as client:
-        response = client.get("/fixtures/simple_primary_key.json?_trace=1")
-        assert response.status == 200
-
-    data = response.json
-    if not trace_debug:
-        assert "_trace" not in data
-        return
-
-    assert "_trace" in data
-    trace_info = data["_trace"]
-    assert isinstance(trace_info["request_duration_ms"], float)
-    assert isinstance(trace_info["sum_trace_duration_ms"], float)
-    assert isinstance(trace_info["num_traces"], int)
-    assert isinstance(trace_info["traces"], list)
-    traces = trace_info["traces"]
-    assert len(traces) == trace_info["num_traces"]
-    for trace in traces:
-        assert isinstance(trace["type"], str)
-        assert isinstance(trace["start"], float)
-        assert isinstance(trace["end"], float)
-        assert trace["duration_ms"] == (trace["end"] - trace["start"]) * 1000
-        assert isinstance(trace["traceback"], list)
-        assert isinstance(trace["database"], str)
-        assert isinstance(trace["sql"], str)
-        assert isinstance(trace.get("params"), (list, dict, None.__class__))
-
-    sqls = [trace["sql"] for trace in traces if "sql" in trace]
-    # There should be a mix of different types of SQL statement
-    expected = (
-        "CREATE TABLE ",
-        "PRAGMA ",
-        "INSERT OR REPLACE INTO ",
-        "INSERT INTO",
-        "select ",
-    )
-    for prefix in expected:
-        assert any(
-            sql.startswith(prefix) for sql in sqls
-        ), "No trace beginning with: {}".format(prefix)
-
-    # Should be at least one executescript
-    assert any(trace for trace in traces if trace.get("executescript"))
-    # And at least one executemany
-    execute_manys = [trace for trace in traces if trace.get("executemany")]
-    assert execute_manys
-    assert all(isinstance(trace["count"], int) for trace in execute_manys)
-
-
 @pytest.mark.parametrize(
     "path,status_code",
     [
@@ -977,6 +887,7 @@ def test_cors(app_client_with_cors, path, status_code):
     assert response.status == status_code
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert response.headers["Access-Control-Allow-Headers"] == "Authorization"
+    assert response.headers["Access-Control-Expose-Headers"] == "Link"
 
 
 @pytest.mark.parametrize(
@@ -992,7 +903,7 @@ def test_cors(app_client_with_cors, path, status_code):
 )
 def test_database_with_space_in_name(app_client_two_attached_databases, path):
     response = app_client_two_attached_databases.get(
-        "/extra database" + path, follow_redirects=True
+        "/extra~20database" + path, follow_redirects=True
     )
     assert response.status == 200
 
@@ -1030,3 +941,28 @@ async def test_db_path(app_client):
 
     # Previously this broke if path was a pathlib.Path:
     await datasette.refresh_schemas()
+
+
+@pytest.mark.asyncio
+async def test_hidden_sqlite_stat1_table():
+    ds = Datasette()
+    db = ds.add_memory_database("db")
+    await db.execute_write("create table normal (id integer primary key, name text)")
+    await db.execute_write("create index idx on normal (name)")
+    await db.execute_write("analyze")
+    data = (await ds.client.get("/db.json?_show_hidden=1")).json()
+    tables = [(t["name"], t["hidden"]) for t in data["tables"]]
+    assert tables == [("normal", False), ("sqlite_stat1", True)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("db_name", ("foo", r"fo%o", "f~/c.d"))
+async def test_tilde_encoded_database_names(db_name):
+    ds = Datasette()
+    ds.add_memory_database(db_name)
+    response = await ds.client.get("/.json")
+    assert db_name in response.json().keys()
+    path = response.json()[db_name]["path"]
+    # And the JSON for that database
+    response2 = await ds.client.get(path + ".json")
+    assert response2.status_code == 200

@@ -19,8 +19,8 @@ from unittest.mock import patch
         ("foo", ["foo"]),
         ("foo,bar", ["foo", "bar"]),
         ("123,433,112", ["123", "433", "112"]),
-        ("123%2C433,112", ["123,433", "112"]),
-        ("123%2F433%2F112", ["123/433/112"]),
+        ("123~2C433,112", ["123,433", "112"]),
+        ("123~2F433~2F112", ["123/433/112"]),
     ],
 )
 def test_urlsafe_components(path, expected):
@@ -93,7 +93,7 @@ def test_path_with_replaced_args(path, args, expected):
     "row,pks,expected_path",
     [
         ({"A": "foo", "B": "bar"}, ["A", "B"], "foo,bar"),
-        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f%2Co,bar"),
+        ({"A": "f,o", "B": "bar"}, ["A", "B"], "f~2Co,bar"),
         ({"A": 123}, ["A"], "123"),
         (
             utils.CustomRow(
@@ -157,7 +157,9 @@ def test_validate_sql_select_bad(bad_sql):
         "select '# Hello there\n\n* This is a list\n* of items\n--\n[And a link](https://github.com/simonw/datasette-render-markdown).'\nas demo_markdown",
         "select 1 + 1",
         "explain select 1 + 1",
+        "explain\nselect 1 + 1",
         "explain query plan select 1 + 1",
+        "explain  query  plan\nselect 1 + 1",
         "SELECT\nblah FROM foo",
         "WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt LIMIT 10) SELECT x FROM cnt;",
         "explain WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt LIMIT 10) SELECT x FROM cnt;",
@@ -349,31 +351,6 @@ def test_compound_keys_after_sql():
     )
 
 
-async def table_exists(table):
-    return table == "exists.csv"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "table_and_format,expected_table,expected_format",
-    [
-        ("blah", "blah", None),
-        ("blah.csv", "blah", "csv"),
-        ("blah.json", "blah", "json"),
-        ("blah.baz", "blah.baz", None),
-        ("exists.csv", "exists.csv", None),
-    ],
-)
-async def test_resolve_table_and_format(
-    table_and_format, expected_table, expected_format
-):
-    actual_table, actual_format = await utils.resolve_table_and_format(
-        table_and_format, table_exists, ["json"]
-    )
-    assert expected_table == actual_table
-    assert expected_format == actual_format
-
-
 def test_table_columns():
     conn = sqlite3.connect(":memory:")
     conn.executescript(
@@ -391,9 +368,7 @@ def test_table_columns():
         ("/foo?sql=select+1", "json", {}, "/foo.json?sql=select+1"),
         ("/foo/bar", "json", {}, "/foo/bar.json"),
         ("/foo/bar", "csv", {}, "/foo/bar.csv"),
-        ("/foo/bar.csv", "json", {}, "/foo/bar.csv?_format=json"),
         ("/foo/bar", "csv", {"_dl": 1}, "/foo/bar.csv?_dl=1"),
-        ("/foo/b.csv", "json", {"_dl": 1}, "/foo/b.csv?_dl=1&_format=json"),
         (
             "/sf-trees/Street_Tree_List?_search=cherry&_size=1000",
             "csv",
@@ -406,18 +381,6 @@ def test_path_with_format(path, format, extra_qs, expected):
     request = Request.fake(path)
     actual = utils.path_with_format(request=request, format=format, extra_qs=extra_qs)
     assert expected == actual
-
-
-def test_path_with_format_replace_format():
-    request = Request.fake("/foo/bar.csv")
-    assert (
-        utils.path_with_format(request=request, format="blob")
-        == "/foo/bar.csv?_format=blob"
-    )
-    assert (
-        utils.path_with_format(request=request, format="blob", replace_format="csv")
-        == "/foo/bar.blob"
-    )
 
 
 @pytest.mark.parametrize(
@@ -644,3 +607,42 @@ async def test_derive_named_parameters(sql, expected):
     db = ds.get_database("_memory")
     params = await utils.derive_named_parameters(db, sql)
     assert params == expected
+
+
+@pytest.mark.parametrize(
+    "original,expected",
+    (
+        ("abc", "abc"),
+        ("/foo/bar", "~2Ffoo~2Fbar"),
+        ("/-/bar", "~2F-~2Fbar"),
+        ("-/db-/table.csv", "-~2Fdb-~2Ftable~2Ecsv"),
+        (r"%~-/", "~25~7E-~2F"),
+        ("~25~7E~2D~2F", "~7E25~7E7E~7E2D~7E2F"),
+        ("with space", "with+space"),
+    ),
+)
+def test_tilde_encoding(original, expected):
+    actual = utils.tilde_encode(original)
+    assert actual == expected
+    # And test round-trip
+    assert original == utils.tilde_decode(actual)
+
+
+@pytest.mark.parametrize(
+    "url,length,expected",
+    (
+        ("https://example.com/", 5, "http…"),
+        ("https://example.com/foo/bar", 15, "https://exampl…"),
+        ("https://example.com/foo/bar/baz.jpg", 30, "https://example.com/foo/ba….jpg"),
+        # Extensions longer than 4 characters are not treated specially:
+        ("https://example.com/foo/bar/baz.jpeg2", 30, "https://example.com/foo/bar/b…"),
+        (
+            "https://example.com/foo/bar/baz.jpeg2",
+            None,
+            "https://example.com/foo/bar/baz.jpeg2",
+        ),
+    ),
+)
+def test_truncate_url(url, length, expected):
+    actual = utils.truncate_url(url, length)
+    assert actual == expected

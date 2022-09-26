@@ -10,6 +10,7 @@ import pint
 
 from datasette import __version__
 from datasette.database import QueryInterrupted
+from datasette.utils.asgi import Request
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -17,11 +18,11 @@ from datasette.utils import (
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
+    tilde_decode,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
     path_with_format,
-    resolve_table_and_format,
     sqlite3,
     HASH_LENGTH,
 )
@@ -55,6 +56,7 @@ class DatasetteError(Exception):
 
 class BaseView:
     ds = None
+    has_json_alternate = True
 
     def __init__(self, datasette):
         self.ds = datasette
@@ -63,42 +65,6 @@ class BaseView:
         response = await self.get(*args, **kwargs)
         response.body = b""
         return response
-
-    async def check_permission(self, request, action, resource=None):
-        ok = await self.ds.permission_allowed(
-            request.actor,
-            action,
-            resource=resource,
-            default=True,
-        )
-        if not ok:
-            raise Forbidden(action)
-
-    async def check_permissions(self, request, permissions):
-        """permissions is a list of (action, resource) tuples or 'action' strings"""
-        for permission in permissions:
-            if isinstance(permission, str):
-                action = permission
-                resource = None
-            elif isinstance(permission, (tuple, list)) and len(permission) == 2:
-                action, resource = permission
-            else:
-                assert (
-                    False
-                ), "permission should be string or tuple of two items: {}".format(
-                    repr(permission)
-                )
-            ok = await self.ds.permission_allowed(
-                request.actor,
-                action,
-                resource=resource,
-                default=None,
-            )
-            if ok is not None:
-                if ok:
-                    return
-                else:
-                    raise Forbidden(action)
 
     def database_color(self, database):
         return "ff0000"
@@ -118,11 +84,11 @@ class BaseView:
     async def delete(self, request, *args, **kwargs):
         return Response.text("Method not allowed", status=405)
 
-    async def dispatch_request(self, request, *args, **kwargs):
+    async def dispatch_request(self, request):
         if self.ds:
             await self.ds.refresh_schemas()
         handler = getattr(self, request.method.lower(), None)
-        return await handler(request, *args, **kwargs)
+        return await handler(request)
 
     async def render(self, templates, request, context=None):
         context = context or {}
@@ -137,19 +103,35 @@ class BaseView:
                 ],
             },
         }
+        headers = {}
+        if self.has_json_alternate:
+            alternate_url_json = self.ds.absolute_url(
+                request,
+                self.ds.urls.path(path_with_format(request=request, format="json")),
+            )
+            template_context["alternate_url_json"] = alternate_url_json
+            headers.update(
+                {
+                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                        alternate_url_json
+                    )
+                }
+            )
         return Response.html(
             await self.ds.render_template(
-                template, template_context, request=request, view_name=self.name
-            )
+                template,
+                template_context,
+                request=request,
+                view_name=self.name,
+            ),
+            headers=headers,
         )
 
     @classmethod
     def as_view(cls, *class_args, **class_kwargs):
         async def view(request, send):
             self = view.view_class(*class_args, **class_kwargs)
-            return await self.dispatch_request(
-                request, **request.scope["url_route"]["kwargs"]
-            )
+            return await self.dispatch_request(request)
 
         view.view_class = cls
         view.__doc__ = cls.__doc__
@@ -178,92 +160,14 @@ class DataView(BaseView):
             add_cors_headers(r.headers)
         return r
 
-    async def data(self, request, database, hash, **kwargs):
+    async def data(self, request):
         raise NotImplementedError
-
-    async def resolve_db_name(self, request, db_name, **kwargs):
-        hash = None
-        name = None
-        db_name = urllib.parse.unquote_plus(db_name)
-        if db_name not in self.ds.databases and "-" in db_name:
-            # No matching DB found, maybe it's a name-hash?
-            name_bit, hash_bit = db_name.rsplit("-", 1)
-            if name_bit not in self.ds.databases:
-                raise NotFound(f"Database not found: {name}")
-            else:
-                name = name_bit
-                hash = hash_bit
-        else:
-            name = db_name
-
-        try:
-            db = self.ds.databases[name]
-        except KeyError:
-            raise NotFound(f"Database not found: {name}")
-
-        # Verify the hash
-        expected = "000"
-        if db.hash is not None:
-            expected = db.hash[:HASH_LENGTH]
-        correct_hash_provided = expected == hash
-
-        if not correct_hash_provided:
-            if "table_and_format" in kwargs:
-
-                async def async_table_exists(t):
-                    return await db.table_exists(t)
-
-                table, _format = await resolve_table_and_format(
-                    table_and_format=urllib.parse.unquote_plus(
-                        kwargs["table_and_format"]
-                    ),
-                    table_exists=async_table_exists,
-                    allowed_formats=self.ds.renderers.keys(),
-                )
-                kwargs["table"] = table
-                if _format:
-                    kwargs["as_format"] = f".{_format}"
-            elif kwargs.get("table"):
-                kwargs["table"] = urllib.parse.unquote_plus(kwargs["table"])
-
-            should_redirect = self.ds.urls.path(f"{name}-{expected}")
-            if kwargs.get("table"):
-                should_redirect += "/" + urllib.parse.quote_plus(kwargs["table"])
-            if kwargs.get("pk_path"):
-                should_redirect += "/" + kwargs["pk_path"]
-            if kwargs.get("as_format"):
-                should_redirect += kwargs["as_format"]
-            if kwargs.get("as_db"):
-                should_redirect += kwargs["as_db"]
-
-            if (
-                (self.ds.setting("hash_urls") or "_hash" in request.args)
-                and
-                # Redirect only if database is immutable
-                not self.ds.databases[name].is_mutable
-            ):
-                return name, expected, correct_hash_provided, should_redirect
-
-        return name, expected, correct_hash_provided, None
 
     def get_templates(self, database, table=None):
         assert NotImplemented
 
-    async def get(self, request, db_name, **kwargs):
-        (
-            database,
-            hash,
-            correct_hash_provided,
-            should_redirect,
-        ) = await self.resolve_db_name(request, db_name, **kwargs)
-        if should_redirect:
-            return self.redirect(request, should_redirect, remove_args={"_hash"})
-
-        return await self.view_get(
-            request, database, hash, correct_hash_provided, **kwargs
-        )
-
-    async def as_csv(self, request, database, hash, **kwargs):
+    async def as_csv(self, request, database):
+        kwargs = {}
         stream = request.args.get("_stream")
         # Do not calculate facets or counts:
         extra_parameters = [
@@ -272,6 +176,7 @@ class DataView(BaseView):
             if not request.args.get(key)
         ]
         if extra_parameters:
+            # Replace request object with a new one with modified scope
             if not request.query_string:
                 new_query_string = "&".join(extra_parameters)
             else:
@@ -281,7 +186,8 @@ class DataView(BaseView):
             new_scope = dict(
                 request.scope, query_string=new_query_string.encode("latin-1")
             )
-            request.scope = new_scope
+            receive = request.receive
+            request = Request(new_scope, receive)
         if stream:
             # Some quick soundness checks
             if not self.ds.setting("allow_csv_stream"):
@@ -290,13 +196,10 @@ class DataView(BaseView):
                 raise BadRequest("_next not allowed for CSV streaming")
             kwargs["_size"] = "max"
         else:
-            kwargs["truncate"] = False
+            kwargs["_size"] = "full"
         # Fetch the first page
         try:
-            print(self.data)
-            response_or_template_contexts = await self.data(
-                request, database, hash, **kwargs
-            )
+            response_or_template_contexts = await self.data(request, **kwargs)
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
             elif len(response_or_template_contexts) == 4:
@@ -348,10 +251,11 @@ class DataView(BaseView):
             next = None
             while first or (next and stream):
                 try:
+                    kwargs = {}
                     if next:
                         kwargs["_next"] = next
                     if not first:
-                        data, _, _ = await self.data(request, database, hash, **kwargs)
+                        data, _, _ = await self.data(request, **kwargs)
                     if first:
                         if request.args.get("_header") != "off":
                             await writer.writerow(headings)
@@ -426,60 +330,37 @@ class DataView(BaseView):
             if not trace:
                 content_type = "text/csv; charset=utf-8"
             disposition = 'attachment; filename="{}.csv"'.format(
-                kwargs.get("table", database)
+                request.url_vars.get("table", database)
             )
             headers["content-disposition"] = disposition
 
         return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
-    async def get_format(self, request, database, args):
-        """Determine the format of the response from the request, from URL
-        parameters or from a file extension.
+    async def get(self, request):
+        database_route = tilde_decode(request.url_vars["database"])
 
-        `args` is a dict of the path components parsed from the URL by the router.
-        """
-        # If ?_format= is provided, use that as the format
-        _format = request.args.get("_format", None)
-        if not _format:
-            _format = (args.pop("as_format", None) or "").lstrip(".")
-        else:
-            args.pop("as_format", None)
-        if "table_and_format" in args:
-            db = self.ds.databases[database]
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database_route))
+        database = db.name
 
-            async def async_table_exists(t):
-                return await db.table_exists(t)
-
-            table, _ext_format = await resolve_table_and_format(
-                table_and_format=urllib.parse.unquote_plus(args["table_and_format"]),
-                table_exists=async_table_exists,
-                allowed_formats=self.ds.renderers.keys(),
-            )
-            _format = _format or _ext_format
-            args["table"] = table
-            del args["table_and_format"]
-        elif "table" in args:
-            args["table"] = urllib.parse.unquote_plus(args["table"])
-        return _format, args
-
-    async def view_get(self, request, database, hash, correct_hash_provided, **kwargs):
-        _format, kwargs = await self.get_format(request, database, kwargs)
+        _format = request.url_vars["format"]
+        data_kwargs = {}
 
         if _format == "csv":
-            return await self.as_csv(request, database, hash, **kwargs)
+            return await self.as_csv(request, database_route)
 
         if _format is None:
             # HTML views default to expanding all foreign key labels
-            kwargs["default_labels"] = True
+            data_kwargs["default_labels"] = True
 
         extra_template_data = {}
         start = time.perf_counter()
         status_code = None
         templates = []
         try:
-            response_or_template_contexts = await self.data(
-                request, database, hash, **kwargs
-            )
+            response_or_template_contexts = await self.data(request, **data_kwargs)
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
             # If it has four items, it includes an HTTP status code
@@ -496,7 +377,7 @@ class DataView(BaseView):
             raise DatasetteError(
                 """
                 SQL query took too long. The time limit is controlled by the
-                <a href="https://docs.datasette.io/en/stable/config.html#sql-time-limit-ms">sql_time_limit_ms</a>
+                <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
                 configuration option.
             """,
                 title="SQL Interrupted",
@@ -631,10 +512,7 @@ class DataView(BaseView):
 
         ttl = request.args.get("_ttl", None)
         if ttl is None or not ttl.isdigit():
-            if correct_hash_provided:
-                ttl = self.ds.setting("default_cache_ttl_hashed")
-            else:
-                ttl = self.ds.setting("default_cache_ttl")
+            ttl = self.ds.setting("default_cache_ttl")
 
         return self.set_response_headers(r, ttl)
 

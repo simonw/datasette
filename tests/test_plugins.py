@@ -181,12 +181,13 @@ def test_hook_render_cell_demo(app_client):
     response = app_client.get("/fixtures/simple_primary_key?id=4")
     soup = Soup(response.body, "html.parser")
     td = soup.find("td", {"class": "col-content"})
-    assert {
+    assert json.loads(td.string) == {
+        "row": {"id": "4", "content": "RENDER_CELL_DEMO"},
         "column": "content",
         "table": "simple_primary_key",
         "database": "fixtures",
         "config": {"depth": "table", "special": "this-is-simple_primary_key"},
-    } == json.loads(td.string)
+    }
 
 
 @pytest.mark.parametrize(
@@ -442,6 +443,7 @@ def test_hook_register_output_renderer_all_parameters(app_client):
             "tags",
             "complex_array",
             "distinct_some_null",
+            "n",
         ],
         "rows": [
             "<sqlite3.Row object at 0xXXX>",
@@ -460,7 +462,7 @@ def test_hook_register_output_renderer_all_parameters(app_client):
             "<sqlite3.Row object at 0xXXX>",
             "<sqlite3.Row object at 0xXXX>",
         ],
-        "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null from facetable order by pk limit 51",
+        "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n from facetable order by pk limit 51",
         "query_name": None,
         "database": "fixtures",
         "table": "facetable",
@@ -531,8 +533,9 @@ def test_hook_register_output_renderer_can_render(app_client):
             "tags",
             "complex_array",
             "distinct_some_null",
+            "n",
         ],
-        "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null from facetable order by pk limit 51",
+        "sql": "select pk, created, planet_int, on_earth, state, _city_id, _neighborhood, tags, complex_array, distinct_some_null, n from facetable order by pk limit 51",
         "query_name": None,
         "database": "fixtures",
         "table": "facetable",
@@ -542,11 +545,14 @@ def test_hook_register_output_renderer_can_render(app_client):
 
 @pytest.mark.asyncio
 async def test_hook_prepare_jinja2_environment(app_client):
+    app_client.ds._HELLO = "HI"
+    await app_client.ds.invoke_startup()
     template = app_client.ds.jinja_env.from_string(
-        "Hello there, {{ a|format_numeric }}", {"a": 3412341}
+        "Hello there, {{ a|format_numeric }}, {{ a|to_hello }}, {{ b|select_times_three }}",
+        {"a": 3412341, "b": 5},
     )
     rendered = await app_client.ds.render_template(template)
-    assert "Hello there, 3,412,341" == rendered
+    assert "Hello there, 3,412,341, HI, 15" == rendered
 
 
 def test_hook_publish_subcommand():
@@ -819,6 +825,20 @@ def test_hook_forbidden(restore_working_directory):
         assert 302 == response2.status
         assert "/login?message=view-database" == response2.headers["Location"]
         assert "view-database" == client.ds._last_forbidden_message
+
+
+def test_hook_handle_exception(app_client):
+    app_client.get("/trigger-error?x=123")
+    assert hasattr(app_client.ds, "_exception_hook_fired")
+    request, exception = app_client.ds._exception_hook_fired
+    assert request.url == "http://localhost/trigger-error?x=123"
+    assert isinstance(exception, ZeroDivisionError)
+
+
+@pytest.mark.parametrize("param", ("_custom_error", "_custom_error_async"))
+def test_hook_handle_exception_custom_response(app_client, param):
+    response = app_client.get("/trigger-error?{}=1".format(param))
+    assert response.text == param
 
 
 def test_hook_menu_links(app_client):

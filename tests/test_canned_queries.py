@@ -53,6 +53,26 @@ def canned_write_client(tmpdir):
         yield client
 
 
+@pytest.fixture
+def canned_write_immutable_client():
+    with make_app_client(
+        is_immutable=True,
+        metadata={
+            "databases": {
+                "fixtures": {
+                    "queries": {
+                        "add": {
+                            "sql": "insert into sortable (text) values (:text)",
+                            "write": True,
+                        },
+                    }
+                }
+            }
+        },
+    ) as client:
+        yield client
+
+
 def test_canned_query_with_named_parameter(app_client):
     response = app_client.get("/fixtures/neighborhood_search.json?text=town")
     assert [
@@ -364,3 +384,32 @@ def test_canned_write_custom_template(canned_write_client):
         in response.text
     )
     assert "!!!CUSTOM_UPDATE_NAME_TEMPLATE!!!" in response.text
+    # And test for link rel=alternate while we're here:
+    assert (
+        '<link rel="alternate" type="application/json+datasette" href="http://localhost/data/update_name.json">'
+        in response.text
+    )
+    assert (
+        response.headers["link"]
+        == 'http://localhost/data/update_name.json; rel="alternate"; type="application/json+datasette"'
+    )
+
+
+def test_canned_write_query_disabled_for_immutable_database(
+    canned_write_immutable_client,
+):
+    response = canned_write_immutable_client.get("/fixtures/add")
+    assert response.status == 200
+    assert (
+        "This query cannot be executed because the database is immutable."
+        in response.text
+    )
+    assert '<input type="submit" value="Run SQL" disabled>' in response.text
+    # Submitting form should get a forbidden error
+    response = canned_write_immutable_client.post(
+        "/fixtures/add",
+        {"text": "text"},
+        csrftoken_from=True,
+    )
+    assert response.status == 403
+    assert "Database is immutable" in response.text

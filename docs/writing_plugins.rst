@@ -5,7 +5,7 @@ Writing plugins
 
 You can write one-off plugins that apply to just one Datasette instance, or you can write plugins which can be installed using ``pip`` and can be shipped to the Python Package Index (`PyPI <https://pypi.org/>`__) for other people to install.
 
-Want to start by looking at an example? The `Datasette plugins directory <https://datasette.io/plugins>`__ lists more than 50 open source plugins with code you can explore. The :ref:`plugin hooks <plugin_hooks>` page includes links to example plugins for each of the documented hooks.
+Want to start by looking at an example? The `Datasette plugins directory <https://datasette.io/plugins>`__ lists more than 90 open source plugins with code you can explore. The :ref:`plugin hooks <plugin_hooks>` page includes links to example plugins for each of the documented hooks.
 
 .. _writing_plugins_one_off:
 
@@ -18,9 +18,12 @@ The quickest way to start writing a plugin is to create a ``my_plugin.py`` file 
 
     from datasette import hookimpl
 
+
     @hookimpl
     def prepare_connection(conn):
-        conn.create_function('hello_world', 0, lambda: 'Hello world!')
+        conn.create_function(
+            "hello_world", 0, lambda: "Hello world!"
+        )
 
 If you save this in ``plugins/my_plugin.py`` you can then start Datasette like this::
 
@@ -60,22 +63,22 @@ The example consists of two files: a ``setup.py`` file that defines the plugin:
 
     from setuptools import setup
 
-    VERSION = '0.1'
+    VERSION = "0.1"
 
     setup(
-        name='datasette-plugin-demos',
-        description='Examples of plugins for Datasette',
-        author='Simon Willison',
-        url='https://github.com/simonw/datasette-plugin-demos',
-        license='Apache License, Version 2.0',
+        name="datasette-plugin-demos",
+        description="Examples of plugins for Datasette",
+        author="Simon Willison",
+        url="https://github.com/simonw/datasette-plugin-demos",
+        license="Apache License, Version 2.0",
         version=VERSION,
-        py_modules=['datasette_plugin_demos'],
+        py_modules=["datasette_plugin_demos"],
         entry_points={
-            'datasette': [
-                'plugin_demos = datasette_plugin_demos'
+            "datasette": [
+                "plugin_demos = datasette_plugin_demos"
             ]
         },
-        install_requires=['datasette']
+        install_requires=["datasette"],
     )
 
 And a Python module file, ``datasette_plugin_demos.py``, that implements the plugin:
@@ -88,12 +91,14 @@ And a Python module file, ``datasette_plugin_demos.py``, that implements the plu
 
     @hookimpl
     def prepare_jinja2_environment(env):
-        env.filters['uppercase'] = lambda u: u.upper()
+        env.filters["uppercase"] = lambda u: u.upper()
 
 
     @hookimpl
     def prepare_connection(conn):
-        conn.create_function('random_integer', 2, random.randint)
+        conn.create_function(
+            "random_integer", 2, random.randint
+        )
 
 
 Having built a plugin in this way you can turn it into an installable package using the following command::
@@ -123,11 +128,13 @@ To bundle the static assets for a plugin in the package that you publish to PyPI
 
 .. code-block:: python
 
-        package_data={
-            'datasette_plugin_name': [
-                'static/plugin.js',
-            ],
-        },
+        package_data = (
+            {
+                "datasette_plugin_name": [
+                    "static/plugin.js",
+                ],
+            },
+        )
 
 Where ``datasette_plugin_name`` is the name of the plugin package (note that it uses underscores, not hyphens) and ``static/plugin.js`` is the path within that package to the static file.
 
@@ -152,11 +159,13 @@ Templates should be bundled for distribution using the same ``package_data`` mec
 
 .. code-block:: python
 
-        package_data={
-            'datasette_plugin_name': [
-                'templates/my_template.html',
-            ],
-        },
+        package_data = (
+            {
+                "datasette_plugin_name": [
+                    "templates/my_template.html",
+                ],
+            },
+        )
 
 You can also use wildcards here such as ``templates/*.html``. See `datasette-edit-schema <https://github.com/simonw/datasette-edit-schema>`__ for an example of this pattern.
 
@@ -172,6 +181,8 @@ When you are writing plugins, you can access plugin configuration like this usin
     )
 
 This will return the ``{"latitude_column": "lat", "longitude_column": "lng"}`` in the above example.
+
+If there is no configuration for that plugin, the method will return ``None``.
 
 If it cannot find the requested configuration at the table layer, it will fall back to the database layer and then the root layer. For example, a user may have set the plugin configuration option like so::
 

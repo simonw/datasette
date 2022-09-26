@@ -224,7 +224,7 @@ class QueryView(DataView):
         if "_shape" in params:
             params.pop("_shape")
 
-        if _size == "full":
+        if _size == 0:
             truncate = False
         else:
             truncate = True

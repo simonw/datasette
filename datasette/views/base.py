@@ -169,6 +169,7 @@ class DataView(BaseView):
     async def as_csv(self, request, database):
         kwargs = {}
         stream = request.args.get("_stream")
+        truncate = True
         # Do not calculate facets or counts:
         extra_parameters = [
             "{}=1".format(key)
@@ -188,6 +189,8 @@ class DataView(BaseView):
             )
             receive = request.receive
             request = Request(new_scope, receive)
+
+        _size = None
         if stream:
             # Some quick soundness checks
             if not self.ds.setting("allow_csv_stream"):
@@ -195,11 +198,11 @@ class DataView(BaseView):
             if request.args.get("_next"):
                 raise BadRequest("_next not allowed for CSV streaming")
             kwargs["_size"] = "max"
-        else:
-            kwargs["_size"] = "full"
-        # Fetch the first page
+        elif not request.args.get("_next"):
+            _size = 0
+
         try:
-            response_or_template_contexts = await self.data(request, **kwargs)
+            response_or_template_contexts = await self.data(request, _size=_size)
             if isinstance(response_or_template_contexts, Response):
                 return response_or_template_contexts
             elif len(response_or_template_contexts) == 4:

@@ -227,7 +227,7 @@ class QueryView(DataView):
         if _size=="full":
             truncate=False
         else:
-            trunacte=True
+            truncate=True
 
         private = False
         if canned_query:

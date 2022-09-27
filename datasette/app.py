@@ -190,6 +190,7 @@ class Datasette:
     def __init__(
         self,
         files=None,
+        *,
         immutables=None,
         cache_headers=True,
         cors=False,
@@ -410,7 +411,7 @@ class Datasette:
     def unsign(self, signed, namespace="default"):
         return URLSafeSerializer(self._secret, namespace).loads(signed)
 
-    def get_database(self, name=None, route=None):
+    def get_database(self, name=None, *, route=None):
         if route is not None:
             matches = [db for db in self.databases.values() if db.route == route]
             if not matches:
@@ -421,7 +422,7 @@ class Datasette:
             name = [key for key in self.databases.keys() if key != "_internal"][0]
         return self.databases[name]
 
-    def add_database(self, db, name=None, route=None):
+    def add_database(self, db, name=None, *, route=None):
         new_databases = self.databases.copy()
         if name is None:
             # Pick a unique name for this database
@@ -466,7 +467,7 @@ class Datasette:
                 orig[key] = upd_value
         return orig
 
-    def metadata(self, key=None, database=None, table=None, fallback=True):
+    def metadata(self, key=None, *, database=None, table=None, fallback=True):
         """
         Looks up metadata, cascading backwards from specified level.
         Returns None if metadata value is not found.
@@ -518,7 +519,7 @@ class Datasette:
     def _metadata(self):
         return self.metadata()
 
-    def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
+    def plugin_config(self, plugin_name, *, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
         plugins = self.metadata(
             "plugins", database=database, table=table, fallback=fallback
@@ -714,6 +715,7 @@ class Datasette:
         db_name,
         sql,
         params=None,
+        *,
         truncate=False,
         custom_time_limit=None,
         page_size=None,
@@ -943,7 +945,7 @@ class Datasette:
             )
 
     async def render_template(
-        self, templates, context=None, request=None, view_name=None
+        self, templates, context=None, *, request=None, view_name=None
     ):
         if not self._startup_invoked:
             raise Exception("render_template() called before await ds.invoke_startup()")

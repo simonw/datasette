@@ -74,18 +74,30 @@ Once the service has started you can confirm that Datasette is running on port 8
     curl 127.0.0.1:8000/-/versions.json
     # Should output JSON showing the installed version
 
-Datasette will not be accessible from outside the server because it is listening on ``127.0.0.1``. You can expose it by instead listening on ``0.0.0.0``, but a better way is to set up a proxy such as ``nginx``.
+Datasette will not be accessible from outside the server because it is listening on ``127.0.0.1``. You can expose it by instead listening on ``0.0.0.0``, but a better way is to set up a proxy such as ``nginx`` - see :ref:`deploying_proxy`.
 
-Ubuntu offer `a tutorial on installing nginx <https://ubuntu.com/tutorials/install-and-configure-nginx#1-overview>`__. Once it is installed you can add configuration to proxy traffic through to Datasette that looks like this::
+.. _deploying_openrc:
 
-    server {
-        server_name mysubdomain.myhost.net;
+Running Datasette using OpenRC
+===============================
+OpenRC is the service manager on non-systemd Linux distributions like `Alpine Linux <https://www.alpinelinux.org/>`__ and `Gentoo <https://www.gentoo.org/>`__.
 
-        location / {
-            proxy_pass http://127.0.0.1:8000/;
-            proxy_set_header Host $host;
-        }
-    }
+Create an init script at ``/etc/init.d/datasette`` with the following contents:
+
+.. code-block:: sh
+
+    #!/sbin/openrc-run
+
+    name="datasette"
+    command="datasette"
+    command_args="serve -h 0.0.0.0 /path/to/db.db"
+    command_background=true
+    pidfile="/run/${RC_SVCNAME}.pid"
+
+You then need to configure the service to run at boot and start it::
+
+    rc-update add datasette
+    rc-service datasette start
 
 .. _deploying_buildpacks:
 

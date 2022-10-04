@@ -268,7 +268,7 @@ you have one:
     def extra_js_urls():
         return ["/-/static-plugins/your-plugin/app.js"]
 
-Note that `your-plugin` here should be the hyphenated plugin name - the name that is displayed in the list on the `/-/plugins` debug page.
+Note that ``your-plugin`` here should be the hyphenated plugin name - the name that is displayed in the list on the ``/-/plugins`` debug page.
 
 If your code uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__ you should include the ``"module": True`` key. See :ref:`customization_css_and_javascript` for more details.
 

@@ -1281,7 +1281,7 @@ menu_links(datasette, actor, request)
 ``actor`` - dictionary or None
     The currently authenticated :ref:`actor <authentication_actor>`.
 
-``request`` - :ref:`internals_request`
+``request`` - :ref:`internals_request` or None
     The current HTTP request. This can be ``None`` if the request object is not available.
 
 This hook allows additional items to be included in the menu displayed by Datasette's top right menu icon.
@@ -1330,7 +1330,7 @@ table_actions(datasette, actor, database, table, request)
 ``table`` - string
     The name of the table.
 
-``request`` - :ref:`internals_request`
+``request`` - :ref:`internals_request` or None
     The current HTTP request. This can be ``None`` if the request object is not available.
 
 This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items.

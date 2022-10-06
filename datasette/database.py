@@ -48,9 +48,13 @@ class Database:
         self._read_connection = None
         self._write_connection = None
         if not self.is_mutable and not self.is_memory:
-            p = Path(path)
-            self.hash = inspect_hash(p)
-            self.cached_size = p.stat().st_size
+            if self.ds.inspect_data and self.ds.inspect_data.get(self.name):
+                self.hash = self.ds.inspect_data[self.name]["hash"]
+                self.cached_size = self.ds.inspect_data[self.name]["size"]
+            else:
+                p = Path(path)
+                self.hash = inspect_hash(p)
+                self.cached_size = p.stat().st_size
 
     @property
     def cached_table_counts(self):

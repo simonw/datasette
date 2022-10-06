@@ -4,6 +4,23 @@
 Changelog
 =========
 
+.. _v0_63a0:
+
+0.63a0 (2022-09-26)
+-------------------
+
+- The :ref:`plugin_hook_prepare_jinja2_environment` plugin hook now accepts an optional ``datasette`` argument. Hook implementations can also now return an ``async`` function which will be awaited automatically. (:issue:`1809`)
+- ``--load-extension`` option now supports entrypoints. Thanks, Alex Garcia. (`#1789 <https://github.com/simonw/datasette/pull/1789>`__)
+- New tutorial: `Cleaning data with sqlite-utils and Datasette <https://datasette.io/tutorials/clean-data>`__.
+- Facet size can now be set per-table with the new ``facet_size`` table metadata option. (:issue:`1804`)
+- ``truncate_cells_html`` setting now also affects long URLs in columns. (:issue:`1805`)
+- ``Database(is_mutable=)`` now defaults to ``True``. (:issue:`1808`)
+- Non-JavaScript textarea now increases height to fit the SQL query. (:issue:`1786`)
+- More detailed command descriptions on the :ref:`CLI reference <cli_reference>` page. (:issue:`1787`)
+- Datasette no longer enforces upper bounds on its depenedencies. (:issue:`1800`)
+- Facets are now displayed with better line-breaks in long values. Thanks, Daniel Rech. (`#1794 <https://github.com/simonw/datasette/pull/1794>`__)
+- The ``settings.json`` file used in :ref:`config_dir` is now validated on startup. (:issue:`1816`)
+
 .. _v0_62:
 
 0.62 (2022-08-14)

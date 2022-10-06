@@ -30,6 +30,14 @@ async def test_results_first(db):
     assert isinstance(row, sqlite3.Row)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("expected", (True, False))
+async def test_results_bool(db, expected):
+    where = "" if expected else "where pk = 0"
+    results = await db.execute("select * from facetable {}".format(where))
+    assert bool(results) is expected
+
+
 @pytest.mark.parametrize(
     "query,expected",
     [

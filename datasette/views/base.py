@@ -1,10 +1,12 @@
 import asyncio
 import csv
 import hashlib
-import re
 import sys
+import textwrap
 import time
 import urllib
+from markupsafe import escape
+
 
 import pint
 
@@ -24,11 +26,9 @@ from datasette.utils import (
     path_with_removed_args,
     path_with_format,
     sqlite3,
-    HASH_LENGTH,
 )
 from datasette.utils.asgi import (
     AsgiStream,
-    Forbidden,
     NotFound,
     Response,
     BadRequest,
@@ -371,13 +371,18 @@ class DataView(BaseView):
                 ) = response_or_template_contexts
             else:
                 data, extra_template_data, templates = response_or_template_contexts
-        except QueryInterrupted:
+        except QueryInterrupted as ex:
             raise DatasetteError(
-                """
-                SQL query took too long. The time limit is controlled by the
+                textwrap.dedent(
+                    """
+                <p>SQL query took too long. The time limit is controlled by the
                 <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
-                configuration option.
-            """,
+                configuration option.</p>
+                <pre>{}</pre>
+            """.format(
+                        escape(ex.sql)
+                    )
+                ).strip(),
                 title="SQL Interrupted",
                 status=400,
                 message_is_html=True,

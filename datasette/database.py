@@ -480,7 +480,10 @@ class WriteTask:
 
 
 class QueryInterrupted(Exception):
-    pass
+    def __init__(self, e, sql, params):
+        self.e = e
+        self.sql = sql
+        self.params = params
 
 
 class MultipleValues(Exception):

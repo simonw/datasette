@@ -168,10 +168,14 @@ def test_disallowed_custom_sql_pragma(app_client):
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get("/fixtures?sql=select+sleep(0.5)")
     assert 400 == response.status
-    expected_html_fragment = """
+    expected_html_fragments = [
+        """
         <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
-    """.strip()
-    assert expected_html_fragment in response.text
+    """.strip(),
+        "<pre>select sleep(0.5)</pre>",
+    ]
+    for expected_html_fragment in expected_html_fragments:
+        assert expected_html_fragment in response.text
 
 
 def test_row_page_does_not_truncate():

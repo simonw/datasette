@@ -656,7 +656,17 @@ def test_custom_sql(app_client):
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get("/fixtures.json?sql=select+sleep(0.5)")
     assert 400 == response.status
-    assert "SQL Interrupted" == response.json["title"]
+    assert response.json == {
+        "ok": False,
+        "error": (
+            "<p>SQL query took too long. The time limit is controlled by the\n"
+            '<a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>\n'
+            "configuration option.</p>\n"
+            "<pre>select sleep(0.5)</pre>"
+        ),
+        "status": 400,
+        "title": "SQL Interrupted",
+    }
 
 
 def test_custom_sql_time_limit(app_client):

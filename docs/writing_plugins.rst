@@ -234,7 +234,7 @@ To avoid accidentally conflicting with a database file that may be loaded into D
 
 - ``/-/upload-excel``
 
-Try to avoid registering URLs that clash with other plugins that your users might have installed. There is no central repository of reserved URL paths (yet) but you can review existing plugins by browsing the `datasette-plugin topic <https://github.com/topics/datasette-plugin>`__ on GitHub.
+Try to avoid registering URLs that clash with other plugins that your users might have installed. There is no central repository of reserved URL paths (yet) but you can review existing plugins by browsing the `plugins directory <https://datasette.io/plugins>`.
 
 If your plugin includes functionality that relates to a specific database you could also register a URL route like this:
 

@@ -49,20 +49,6 @@ class Database:
         self._write_connection = None
 
     @property
-    def hash(self):
-        if self.cached_hash is not None:
-            return self.cached_hash
-        elif self.is_mutable or self.is_memory:
-            return None
-        elif self.ds.inspect_data and self.ds.inspect_data.get(self.name):
-            self.cached_hash = self.ds.inspect_data[self.name]["hash"]
-            return self.cached_hash
-        else:
-            p = Path(path)
-            self.cached_hash = inspect_hash(p)
-            return self.cached_hash
-
-    @property
     def cached_table_counts(self):
         if self._cached_table_counts is not None:
             return self._cached_table_counts
@@ -271,6 +257,20 @@ class Database:
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
             results = await self.execute_fn(sql_operation_in_thread)
         return results
+
+    @property
+    def hash(self):
+        if self.cached_hash is not None:
+            return self.cached_hash
+        elif self.is_mutable or self.is_memory:
+            return None
+        elif self.ds.inspect_data and self.ds.inspect_data.get(self.name):
+            self.cached_hash = self.ds.inspect_data[self.name]["hash"]
+            return self.cached_hash
+        else:
+            p = Path(self.path)
+            self.cached_hash = inspect_hash(p)
+            return self.cached_hash
 
     @property
     def size(self):

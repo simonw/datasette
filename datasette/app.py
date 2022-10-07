@@ -217,7 +217,10 @@ class Datasette:
         self._secret = secret or secrets.token_hex(32)
         self.files = tuple(files or []) + tuple(immutables or [])
         if config_dir:
-            self.files += tuple([str(p) for p in config_dir.glob("*.db")])
+            db_files = []
+            for ext in ("db", "sqlite", "sqlite3"):
+                db_files.extend(config_dir.glob("*.{}".format(ext)))
+            self.files += tuple(str(f) for f in db_files)
         if (
             config_dir
             and (config_dir / "inspect-data.json").exists()

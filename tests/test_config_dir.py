@@ -49,7 +49,7 @@ def config_dir(tmp_path_factory):
     (config_dir / "metadata.json").write_text(json.dumps(METADATA), "utf-8")
     (config_dir / "settings.json").write_text(json.dumps(SETTINGS), "utf-8")
 
-    for dbname in ("demo.db", "immutable.db"):
+    for dbname in ("demo.db", "immutable.db", "j.sqlite3", "k.sqlite"):
         db = sqlite3.connect(str(config_dir / dbname))
         db.executescript(
             """
@@ -151,12 +151,11 @@ def test_databases(config_dir_client):
     response = config_dir_client.get("/-/databases.json")
     assert 200 == response.status
     databases = response.json
-    assert 2 == len(databases)
+    assert 4 == len(databases)
     databases.sort(key=lambda d: d["name"])
-    assert "demo" == databases[0]["name"]
-    assert databases[0]["is_mutable"]
-    assert "immutable" == databases[1]["name"]
-    assert not databases[1]["is_mutable"]
+    for db, expected_name in zip(databases, ("demo", "immutable", "j", "k")):
+        assert expected_name == db["name"]
+        assert db["is_mutable"] == (expected_name != "immutable")
 
 
 @pytest.mark.parametrize("filename", ("metadata.yml", "metadata.yaml"))

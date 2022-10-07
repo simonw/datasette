@@ -87,7 +87,7 @@ class Database:
             if self.ds.nolock:
                 qs += "&nolock=1"
         else:
-            qs = "?immutable=1"
+            qs = "?mode=ro"
         assert not (write and not self.is_mutable)
         if write:
             qs = ""

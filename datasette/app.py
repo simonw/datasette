@@ -600,7 +600,7 @@ class Datasette:
                     continue
                 sql = 'ATTACH DATABASE "file:{path}?{qs}" AS [{name}];'.format(
                     path=db.path,
-                    qs="mode=ro"
+                    qs="mode=ro",
                     name=db_name,
                 )
                 conn.execute(sql)

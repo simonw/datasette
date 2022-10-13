@@ -2,13 +2,6 @@
 
 {% block title %}{% if title %}{{ title }}{% else %}Error {{ status }}{% endif %}{% endblock %}
 
-{% block nav %}
-    <p class="crumbs">
-        <a href="{{ urls.instance() }}">home</a>
-    </p>
-    {{ super() }}
-{% endblock %}
-
 {% block content %}
 
 <h1>{% if title %}{{ title }}{% else %}Error {{ status }}{% endif %}</h1>

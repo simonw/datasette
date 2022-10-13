@@ -845,7 +845,7 @@ def test_hook_menu_links(app_client):
     def get_menu_links(html):
         soup = Soup(html, "html.parser")
         return [
-            {"label": a.text, "href": a["href"]} for a in soup.find("nav").select("a")
+            {"label": a.text, "href": a["href"]} for a in soup.select(".nav-menu a")
         ]
 
     response = app_client.get("/")

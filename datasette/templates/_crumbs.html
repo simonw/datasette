@@ -1,0 +1,15 @@
+{% macro nav(request, database=None, table=None) -%}
+{% if crumb_items is defined %}
+  {% set items=crumb_items(request=request, database=database, table=table) %}
+  {% if items %}
+    <p class="crumbs">
+      {% for item in items %}
+        <a href="{{ item.href }}">{{ item.label }}</a>
+        {% if not loop.last %}
+          /
+        {% endif %}
+      {% endfor %}
+    </p>
+  {% endif %}
+{% endif %}
+{%- endmacro %}

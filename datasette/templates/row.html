@@ -15,13 +15,8 @@
 
 {% block body_class %}row db-{{ database|to_css_class }} table-{{ table|to_css_class }}{% endblock %}
 
-{% block nav %}
-    <p class="crumbs">
-        <a href="{{ urls.instance() }}">home</a> /
-        <a href="{{ urls.database(database) }}">{{ database }}</a> /
-        <a href="{{ urls.table(database, table) }}">{{ table }}</a>
-    </p>
-    {{ super() }}
+{% block crumbs %}
+{{ crumbs.nav(request=request, database=database, table=table) }}
 {% endblock %}
 
 {% block content %}

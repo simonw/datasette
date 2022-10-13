@@ -18,12 +18,8 @@
 
 {% block body_class %}query db-{{ database|to_css_class }}{% if canned_query %} query-{{ canned_query|to_css_class }}{% endif %}{% endblock %}
 
-{% block nav %}
-    <p class="crumbs">
-        <a href="{{ urls.instance() }}">home</a> /
-        <a href="{{ urls.database(database) }}">{{ database }}</a>
-    </p>
-    {{ super() }}
+{% block crumbs %}
+{{ crumbs.nav(request=request, database=database) }}
 {% endblock %}
 
 {% block content %}

@@ -9,16 +9,7 @@
 
 {% block body_class %}db db-{{ database|to_css_class }}{% endblock %}
 
-{% block nav %}
-    <p class="crumbs">
-        <a href="{{ urls.instance() }}">home</a>
-    </p>
-    {{ super() }}
-{% endblock %}
-
 {% block content %}
-
-
 <div class="page-header" style="border-color: #{{ database_color(database) }}">
     <h1>{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>
     {% set links = database_actions() %}{% if links %}

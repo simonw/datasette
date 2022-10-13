@@ -631,6 +631,44 @@ class Datasette:
         else:
             return []
 
+    async def _crumb_items(self, request, table=None, database=None):
+        crumbs = []
+        # Top-level link
+        if await self.permission_allowed(
+            actor=request.actor, action="view-instance", default=True
+        ):
+            crumbs.append({"href": self.urls.instance(), "label": "home"})
+        # Database link
+        if database:
+            if await self.permission_allowed(
+                actor=request.actor,
+                action="view-database",
+                resource=database,
+                default=True,
+            ):
+                crumbs.append(
+                    {
+                        "href": self.urls.database(database),
+                        "label": database,
+                    }
+                )
+        # Table link
+        if table:
+            assert database, "table= requires database="
+            if await self.permission_allowed(
+                actor=request.actor,
+                action="view-table",
+                resource=(database, table),
+                default=True,
+            ):
+                crumbs.append(
+                    {
+                        "href": self.urls.table(database, table),
+                        "label": table,
+                    }
+                )
+        return crumbs
+
     async def permission_allowed(self, actor, action, resource=None, default=False):
         """Check permissions using the permissions_allowed plugin hook"""
         result = None
@@ -1009,6 +1047,8 @@ class Datasette:
         template_context = {
             **context,
             **{
+                "request": request,
+                "crumb_items": self._crumb_items,
                 "urls": self.urls,
                 "actor": request.actor if request else None,
                 "menu_links": menu_links,

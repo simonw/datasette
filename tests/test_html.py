@@ -977,3 +977,53 @@ def test_redirect_percent_encoding_to_tilde_encoding(app_client, path, expected)
     response = app_client.get(path)
     assert response.status == 302
     assert response.headers["location"] == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,metadata,expected_links",
+    (
+        ("/fixtures", {}, [("/", "home")]),
+        ("/fixtures", {"allow": False, "databases": {"fixtures": {"allow": True}}}, []),
+        (
+            "/fixtures/facetable",
+            {"allow": False, "databases": {"fixtures": {"allow": True}}},
+            [("/fixtures", "fixtures")],
+        ),
+        (
+            "/fixtures/facetable/1",
+            {},
+            [
+                ("/", "home"),
+                ("/fixtures", "fixtures"),
+                ("/fixtures/facetable", "facetable"),
+            ],
+        ),
+        (
+            "/fixtures/facetable/1",
+            {"allow": False, "databases": {"fixtures": {"allow": True}}},
+            [("/fixtures", "fixtures"), ("/fixtures/facetable", "facetable")],
+        ),
+        (
+            "/fixtures/facetable/1",
+            {
+                "allow": False,
+                "databases": {"fixtures": {"tables": {"facetable": {"allow": True}}}},
+            },
+            [("/fixtures/facetable", "facetable")],
+        ),
+    ),
+)
+async def test_breadcrumbs_respect_permissions(
+    app_client, path, metadata, expected_links
+):
+    orig = app_client.ds._metadata_local
+    app_client.ds._metadata_local = metadata
+    try:
+        response = await app_client.ds.client.get(path)
+        soup = Soup(response.text, "html.parser")
+        breadcrumbs = soup.select("p.crumbs a")
+        actual = [(a["href"], a.text) for a in breadcrumbs]
+        assert actual == expected_links
+    finally:
+        app_client.ds._metadata_local = orig

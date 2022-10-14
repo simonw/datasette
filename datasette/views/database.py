@@ -40,6 +40,16 @@ class DatabaseView(DataView):
             raise NotFound("Database not found: {}".format(database_route))
         database = db.name
 
+        visible, private = await self.ds.check_visibility(
+            request.actor,
+            permissions=[
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this database")
+
         await self.ds.ensure_permissions(
             request.actor,
             [
@@ -63,27 +73,27 @@ class DatabaseView(DataView):
 
         views = []
         for view_name in await db.view_names():
-            visible, private = await self.ds.check_visibility(
+            view_visible, view_private = await self.ds.check_visibility(
                 request.actor,
                 "view-table",
                 (database, view_name),
             )
-            if visible:
+            if view_visible:
                 views.append(
                     {
                         "name": view_name,
-                        "private": private,
+                        "private": view_private,
                     }
                 )
 
         tables = []
         for table in table_counts:
-            visible, private = await self.ds.check_visibility(
+            table_visible, table_private = await self.ds.check_visibility(
                 request.actor,
                 "view-table",
                 (database, table),
             )
-            if not visible:
+            if not table_visible:
                 continue
             table_columns = await db.table_columns(table)
             tables.append(
@@ -95,7 +105,7 @@ class DatabaseView(DataView):
                     "hidden": table in hidden_table_names,
                     "fts_table": await db.fts_table(table),
                     "foreign_keys": all_foreign_keys[table],
-                    "private": private,
+                    "private": table_private,
                 }
             )
 
@@ -104,13 +114,13 @@ class DatabaseView(DataView):
         for query in (
             await self.ds.get_canned_queries(database, request.actor)
         ).values():
-            visible, private = await self.ds.check_visibility(
+            query_visible, query_private = await self.ds.check_visibility(
                 request.actor,
                 "view-query",
                 (database, query["name"]),
             )
-            if visible:
-                canned_queries.append(dict(query, private=private))
+            if query_visible:
+                canned_queries.append(dict(query, private=query_private))
 
         async def database_actions():
             links = []
@@ -130,15 +140,13 @@ class DatabaseView(DataView):
         return (
             {
                 "database": database,
+                "private": private,
                 "path": self.ds.urls.database(database),
                 "size": db.size,
                 "tables": tables,
                 "hidden_count": len([t for t in tables if t["hidden"]]),
                 "views": views,
                 "queries": canned_queries,
-                "private": not await self.ds.permission_allowed(
-                    None, "view-database", database, default=True
-                ),
                 "allow_execute_sql": await self.ds.permission_allowed(
                     request.actor, "execute-sql", database, default=True
                 ),
@@ -227,17 +235,17 @@ class QueryView(DataView):
         private = False
         if canned_query:
             # Respect canned query permissions
-            await self.ds.ensure_permissions(
+            visible, private = await self.ds.check_visibility(
                 request.actor,
-                [
+                permissions=[
                     ("view-query", (database, canned_query)),
                     ("view-database", database),
                     "view-instance",
                 ],
             )
-            private = not await self.ds.permission_allowed(
-                None, "view-query", (database, canned_query), default=True
-            )
+            if not visible:
+                raise Forbidden("You do not have permission to view this query")
+
         else:
             await self.ds.ensure_permissions(request.actor, [("execute-sql", database)])
 

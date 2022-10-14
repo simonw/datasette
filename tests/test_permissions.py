@@ -21,19 +21,20 @@ def test_view_instance(allow, expected_anon, expected_auth):
             "/fixtures/compound_three_primary_keys",
             "/fixtures/compound_three_primary_keys/a,a,a",
         ):
+            fragment = "🔒</h1>"
             anon_response = client.get(path)
             assert expected_anon == anon_response.status
-            if allow and path == "/" and anon_response.status == 200:
+            if allow and anon_response.status == 200:
                 # Should be no padlock
-                assert "<h1>Datasette 🔒</h1>" not in anon_response.text
+                assert fragment not in anon_response.text
             auth_response = client.get(
                 path,
                 cookies={"ds_actor": client.actor_cookie({"id": "root"})},
             )
             assert expected_auth == auth_response.status
             # Check for the padlock
-            if allow and path == "/" and expected_anon == 403 and expected_auth == 200:
-                assert "<h1>Datasette 🔒</h1>" in auth_response.text
+            if allow and expected_anon == 403 and expected_auth == 200:
+                assert fragment in auth_response.text
 
 
 @pytest.mark.parametrize(

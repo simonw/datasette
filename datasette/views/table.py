@@ -28,7 +28,7 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
 )
-from datasette.utils.asgi import BadRequest, NotFound
+from datasette.utils.asgi import BadRequest, Forbidden, NotFound
 from datasette.filters import Filters
 from .base import DataView, DatasetteError, ureg
 from .database import QueryView
@@ -213,18 +213,16 @@ class TableView(DataView):
             raise NotFound(f"Table not found: {table_name}")
 
         # Ensure user has permission to view this table
-        await self.ds.ensure_permissions(
+        visible, private = await self.ds.check_visibility(
             request.actor,
-            [
+            permissions=[
                 ("view-table", (database_name, table_name)),
                 ("view-database", database_name),
                 "view-instance",
             ],
         )
-
-        private = not await self.ds.permission_allowed(
-            None, "view-table", (database_name, table_name), default=True
-        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this table")
 
         # Handle ?_filter_column and redirect, if present
         redirect_params = filters_should_redirect(request.args)

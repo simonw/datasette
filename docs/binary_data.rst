@@ -8,7 +8,7 @@ SQLite tables can contain binary data in ``BLOB`` columns.
 
 Datasette includes special handling for these binary values. The Datasette interface detects binary values and provides a link to download their content, for example on https://latest.datasette.io/fixtures/binary_data
 
-.. image:: binary_data.png
+.. image:: https://raw.githubusercontent.com/simonw/datasette-screenshots/0.62/binary-data.png
    :width: 311px
    :alt: Screenshot showing download links next to binary data in the table view
 

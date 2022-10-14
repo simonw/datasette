@@ -11,7 +11,8 @@ data as CSV" link.
 You can also use the advanced export form for more control over the resulting
 file, which looks like this and has the following options:
 
-.. image:: advanced_export.png
+.. image:: https://github.com/simonw/datasette-screenshots/blob/0.62/advanced-export.png?raw=true
+   :alt: Advanced export form. You can get the data in different JSON shapes, and CSV options are download file, expand labels and stream all rows.
 
 * **download file** - instead of displaying CSV in your browser, this forces
   your browser to download the CSV to your downloads directory.

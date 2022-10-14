@@ -3,9 +3,12 @@
 Full-text search
 ================
 
-SQLite includes `a powerful mechanism for enabling full-text search <https://www.sqlite.org/fts3.html>`_ against SQLite records. Datasette can detect if a table has had full-text search configured for it in the underlying database and       display a search interface for filtering that table.
+SQLite includes `a powerful mechanism for enabling full-text search <https://www.sqlite.org/fts3.html>`_ against SQLite records. Datasette can detect if a table has had full-text search configured for it in the underlying database and display a search interface for filtering that table.
 
-.. image:: full_text_search.png
+Here's `an example search <https://register-of-members-interests.datasettes.com/regmem/items?_search=hamper&_sort_desc=date>`__:
+
+.. image:: https://raw.githubusercontent.com/simonw/datasette-screenshots/0.62/non-retina/regmem-search.png
+   :alt: Screenshot showing a search for hampers against a table full of items - 453 results are returned.
 
 Datasette automatically detects which tables have been configured for full-text search.
 

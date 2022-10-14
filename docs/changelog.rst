@@ -1452,7 +1452,8 @@ CSV export
 
 Any Datasette table, view or custom SQL query can now be exported as CSV.
 
-.. image:: advanced_export.png
+.. image:: https://github.com/simonw/datasette-screenshots/blob/0.62/advanced-export.png?raw=true
+   :alt: Advanced export form. You can get the data in different JSON shapes, and CSV options are download file, expand labels and stream all rows.
 
 Check out the :ref:`CSV export documentation <csv_export>` for more details, or
 try the feature out on

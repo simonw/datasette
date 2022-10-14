@@ -7,7 +7,10 @@ Datasette facets can be used to add a faceted browse interface to any database t
 With facets, tables are displayed along with a summary showing the most common values in specified columns.
 These values can be selected to further filter the table.
 
-.. image:: facets.png
+Here's `an example <https://congress-legislators.datasettes.com/legislators/legislator_terms?_facet=type&_facet=party&_facet=state&_facet_size=10>`__:
+
+.. image:: https://raw.githubusercontent.com/simonw/datasette-screenshots/0.62/non-retina/faceting-details.png
+   :alt: Screenshot showing facets against a table of congressional legislators. Suggested facets include state_rank and start and end dates, and the displayed facets are state, party and type. Each facet lists values along with a count of rows for each value.
 
 Facets can be specified in two ways: using query string parameters, or in ``metadata.json`` configuration for the table.
 

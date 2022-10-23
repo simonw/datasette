@@ -1,6 +1,7 @@
 """
 Tests for the datasette.app.Datasette class
 """
+from datasette import Forbidden
 from datasette.app import Datasette, Database
 from itsdangerous import BadSignature
 from .fixtures import app_client
@@ -75,3 +76,36 @@ async def test_num_sql_threads_zero():
     assert response.json() == {"num_threads": 0, "threads": []}
     response2 = await ds.client.get("/test_num_sql_threads_zero/t.json?_shape=array")
     assert response2.json() == [{"id": 1}]
+
+
+ROOT = {"id": "root"}
+ALLOW_ROOT = {"allow": {"id": "root"}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "actor,metadata,permissions,should_allow",
+    (
+        (None, ALLOW_ROOT, ["view-instance"], False),
+        (ROOT, ALLOW_ROOT, ["view-instance"], True),
+        (
+            None,
+            {"databases": {"_memory": ALLOW_ROOT}},
+            [("view-database", "_memory")],
+            False,
+        ),
+        (
+            ROOT,
+            {"databases": {"_memory": ALLOW_ROOT}},
+            [("view-database", "_memory")],
+            True,
+        ),
+    ),
+)
+async def test_datasette_ensure_permissions(actor, metadata, permissions, should_allow):
+    ds = Datasette([], memory=True, metadata=metadata)
+    if not should_allow:
+        with pytest.raises(Forbidden):
+            await ds.ensure_permissions(actor, permissions)
+    else:
+        await ds.ensure_permissions(actor, permissions)

@@ -163,6 +163,9 @@ def make_app_client(
             crossdb=crossdb,
         )
         yield TestClient(ds)
+        # Close the connection to avoid "too many open files" errors
+        conn.close()
+        os.remove(filepath)
 
 
 @pytest.fixture(scope="session")

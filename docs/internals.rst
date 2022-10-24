@@ -390,7 +390,9 @@ This example checks if the user can access a specific table, and sets ``private`
 .. code-block:: python
 
     visible, private = await self.ds.check_visibility(
-        request.actor, action="view-table", resource=(database, table)
+        request.actor,
+        action="view-table",
+        resource=(database, table),
     )
 
 The following example runs three checks in a row, similar to :ref:`datasette_ensure_permissions`. If any of the checks are denied before one of them is explicitly granted then ``visible`` will be ``False``. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.

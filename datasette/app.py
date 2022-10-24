@@ -736,7 +736,7 @@ class Datasette:
         self,
         actor: dict,
         action: Optional[str] = None,
-        resource: Optional[str] = None,
+        resource: Optional[Union[str, Tuple[str, str]]] = None,
         permissions: Optional[
             Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]]
         ] = None,

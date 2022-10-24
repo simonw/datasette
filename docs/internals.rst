@@ -349,7 +349,7 @@ await .ensure_permissions(actor, permissions)
 ``permissions`` - list
     A list of permissions to check. Each permission in that list can be a string ``action`` name or a 2-tuple of ``(action, resource)``.
 
-This method allows multiple permissions to be checked at onced. It raises a ``datasette.Forbidden`` exception if any of the checks are denied before one of them is explicitly granted.
+This method allows multiple permissions to be checked at once. It raises a ``datasette.Forbidden`` exception if any of the checks are denied before one of them is explicitly granted.
 
 This is useful when you need to check multiple permissions at once. For example, an actor should be able to view a table if either one of the following checks returns ``True`` or not a single one of them returns ``False``:
 
@@ -366,17 +366,20 @@ This is useful when you need to check multiple permissions at once. For example,
 
 .. _datasette_check_visibilty:
 
-await .check_visibility(actor, action, resource=None)
------------------------------------------------------
+await .check_visibility(actor, action=None, resource=None, permissions=None)
+----------------------------------------------------------------------------
 
 ``actor`` - dictionary
     The authenticated actor. This is usually ``request.actor``.
 
-``action`` - string
+``action`` - string, optional
     The name of the action that is being permission checked.
 
 ``resource`` - string or tuple, optional
     The resource, e.g. the name of the database, or a tuple of two strings containing the name of the database and the name of the table. Only some permissions apply to a resource.
+
+``permissions`` - list of ``action`` strings or ``(action, resource)`` tuples, optional
+    Provide this instead of ``action`` and ``resource`` to check multiple permissions at once.
 
 This convenience method can be used to answer the question "should this item be considered private, in that it is visible to me but it is not visible to anonymous users?"
 
@@ -387,7 +390,20 @@ This example checks if the user can access a specific table, and sets ``private`
 .. code-block:: python
 
     visible, private = await self.ds.check_visibility(
-        request.actor, "view-table", (database, table)
+        request.actor, action="view-table", resource=(database, table)
+    )
+
+The following example runs three checks in a row, similar to :ref:`datasette_ensure_permissions`. If any of the checks are denied before one of them is explicitly granted then ``visible`` will be ``False``. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.
+
+.. code-block:: python
+
+    visible, private = await self.ds.check_visibility(
+        request.actor,
+        permissions=[
+            ("view-table", (database, table)),
+            ("view-database", database),
+            "view-instance",
+        ],
     )
 
 .. _datasette_get_database:

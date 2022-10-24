@@ -482,11 +482,15 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
         updated_metadata["databases"]["fixtures"]["queries"]["magic_parameters"][
             "allow"
         ] = (allow if "query" in permissions else deny)
-        cascade_app_client.ds._local_metadata = updated_metadata
+        cascade_app_client.ds._metadata_local = updated_metadata
         response = cascade_app_client.get(
             path,
             cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
         )
-        assert expected_status == response.status
+        assert (
+            response.status == expected_status
+        ), "path: {}, permissions: {}, expected_status: {}, status: {}".format(
+            path, permissions, expected_status, response.status
+        )
     finally:
         cascade_app_client.ds._local_metadata = previous_metadata

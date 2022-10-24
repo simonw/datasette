@@ -84,14 +84,15 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "actor,metadata,permissions,should_allow",
+    "actor,metadata,permissions,should_allow,expected_private",
     (
-        (None, ALLOW_ROOT, ["view-instance"], False),
-        (ROOT, ALLOW_ROOT, ["view-instance"], True),
+        (None, ALLOW_ROOT, ["view-instance"], False, False),
+        (ROOT, ALLOW_ROOT, ["view-instance"], True, True),
         (
             None,
             {"databases": {"_memory": ALLOW_ROOT}},
             [("view-database", "_memory")],
+            False,
             False,
         ),
         (
@@ -99,13 +100,28 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
             {"databases": {"_memory": ALLOW_ROOT}},
             [("view-database", "_memory")],
             True,
+            True,
+        ),
+        # Check private is false for non-protected instance check
+        (
+            ROOT,
+            {"allow": True},
+            ["view-instance"],
+            True,
+            False,
         ),
     ),
 )
-async def test_datasette_ensure_permissions(actor, metadata, permissions, should_allow):
+async def test_datasette_ensure_permissions_check_visibility(
+    actor, metadata, permissions, should_allow, expected_private
+):
     ds = Datasette([], memory=True, metadata=metadata)
     if not should_allow:
         with pytest.raises(Forbidden):
             await ds.ensure_permissions(actor, permissions)
     else:
         await ds.ensure_permissions(actor, permissions)
+    # And try check_visibility too:
+    visible, private = await ds.check_visibility(actor, permissions=permissions)
+    assert visible == should_allow
+    assert private == expected_private

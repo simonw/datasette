@@ -50,13 +50,6 @@ class DatabaseView(DataView):
         if not visible:
             raise Forbidden("You do not have permission to view this database")
 
-        await self.ds.ensure_permissions(
-            request.actor,
-            [
-                ("view-database", database),
-                "view-instance",
-            ],
-        )
         metadata = (self.ds.metadata("databases") or {}).get(database, {})
         self.ds.update_with_inherited_metadata(metadata)
 

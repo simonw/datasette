@@ -68,8 +68,11 @@ class DatabaseView(DataView):
         for view_name in await db.view_names():
             view_visible, view_private = await self.ds.check_visibility(
                 request.actor,
-                "view-table",
-                (database, view_name),
+                permissions=[
+                    ("view-table", (database, view_name)),
+                    ("view-database", database),
+                    "view-instance",
+                ],
             )
             if view_visible:
                 views.append(
@@ -83,8 +86,11 @@ class DatabaseView(DataView):
         for table in table_counts:
             table_visible, table_private = await self.ds.check_visibility(
                 request.actor,
-                "view-table",
-                (database, table),
+                permissions=[
+                    ("view-table", (database, table)),
+                    ("view-database", database),
+                    "view-instance",
+                ],
             )
             if not table_visible:
                 continue
@@ -109,8 +115,11 @@ class DatabaseView(DataView):
         ).values():
             query_visible, query_private = await self.ds.check_visibility(
                 request.actor,
-                "view-query",
-                (database, query["name"]),
+                permissions=[
+                    ("view-query", (database, query["name"])),
+                    ("view-database", database),
+                    "view-instance",
+                ],
             )
             if query_visible:
                 canned_queries.append(dict(query, private=query_private))

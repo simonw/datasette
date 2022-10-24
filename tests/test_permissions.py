@@ -493,4 +493,37 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
             path, permissions, expected_status, response.status
         )
     finally:
-        cascade_app_client.ds._local_metadata = previous_metadata
+        cascade_app_client.ds._metadata_local = previous_metadata
+
+
+def test_padlocks_on_database_page(cascade_app_client):
+    metadata = {
+        "databases": {
+            "fixtures": {
+                "allow": {"id": "test"},
+                "tables": {
+                    "123_starts_with_digits": {"allow": True},
+                    "simple_view": {"allow": True},
+                },
+                "queries": {"query_two": {"allow": True, "sql": "select 2"}},
+            }
+        }
+    }
+    previous_metadata = cascade_app_client.ds._metadata_local
+    try:
+        cascade_app_client.ds._metadata_local = metadata
+        response = cascade_app_client.get(
+            "/fixtures",
+            cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
+        )
+        # Tables
+        assert ">123_starts_with_digits</a></h3>" in response.text
+        assert ">Table With Space In Name</a> 🔒</h3>" in response.text
+        # Queries
+        assert ">from_async_hook</a> 🔒</li>" in response.text
+        assert ">query_two</a></li>" in response.text
+        # Views
+        assert ">paginated_view</a> 🔒</li>" in response.text
+        assert ">simple_view</a></li>" in response.text
+    finally:
+        cascade_app_client.ds._metadata_local = previous_metadata

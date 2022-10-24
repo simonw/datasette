@@ -24,6 +24,8 @@ To open a file in immutable mode pass it to the datasette command using the ``-i
 
 When you open a file in immutable mode like this Datasette will also calculate and cache the row counts for each table in that database when it first starts up, further improving performance.
 
+.. _performance_inspect:
+
 Using "datasette inspect"
 -------------------------
 

@@ -364,7 +364,7 @@ This is useful when you need to check multiple permissions at once. For example,
         ],
     )
 
-.. _datasette_check_visibilty:
+.. _datasette_check_visibility:
 
 await .check_visibility(actor, action=None, resource=None, permissions=None)
 ----------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 import asyncio
-from typing import Sequence, Union, Tuple
+from typing import Sequence, Union, Tuple, Optional
 import asgi_csrf
 import collections
 import datetime
@@ -707,7 +707,7 @@ class Datasette:
 
         Raises datasette.Forbidden() if any of the checks fail
         """
-        assert actor is None or isinstance(actor, dict)
+        assert actor is None or isinstance(actor, dict), "actor must be None or a dict"
         for permission in permissions:
             if isinstance(permission, str):
                 action = permission
@@ -732,23 +732,34 @@ class Datasette:
                 else:
                     raise Forbidden(action)
 
-    async def check_visibility(self, actor, action, resource):
+    async def check_visibility(
+        self,
+        actor: dict,
+        action: Optional[str] = None,
+        resource: Optional[Union[str, Tuple[str, str]]] = None,
+        permissions: Optional[
+            Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]]
+        ] = None,
+    ):
         """Returns (visible, private) - visible = can you see it, private = can others see it too"""
-        visible = await self.permission_allowed(
-            actor,
-            action,
-            resource=resource,
-            default=True,
-        )
-        if not visible:
+        if permissions:
+            assert (
+                not action and not resource
+            ), "Can't use action= or resource= with permissions="
+        else:
+            permissions = [(action, resource)]
+        try:
+            await self.ensure_permissions(actor, permissions)
+        except Forbidden:
             return False, False
-        private = not await self.permission_allowed(
-            None,
-            action,
-            resource=resource,
-            default=True,
-        )
-        return visible, private
+        # User can see it, but can the anonymous user see it?
+        try:
+            await self.ensure_permissions(None, permissions)
+        except Forbidden:
+            # It's visible but private
+            return True, True
+        # It's visible to everyone
+        return True, False
 
     async def execute(
         self,

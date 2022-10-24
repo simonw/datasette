@@ -5,6 +5,20 @@ import pytest
 import urllib
 
 
+@pytest.fixture(scope="module")
+def padlock_client():
+    with make_app_client(
+        metadata={
+            "databases": {
+                "fixtures": {
+                    "queries": {"two": {"sql": "select 1 + 1"}},
+                }
+            }
+        }
+    ) as client:
+        yield client
+
+
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -13,27 +27,33 @@ import urllib
         ({"id": "root"}, 403, 200),
     ],
 )
-def test_view_instance(allow, expected_anon, expected_auth):
-    with make_app_client(metadata={"allow": allow}) as client:
-        for path in (
-            "/",
-            "/fixtures",
-            "/fixtures/compound_three_primary_keys",
-            "/fixtures/compound_three_primary_keys/a,a,a",
-        ):
-            anon_response = client.get(path)
-            assert expected_anon == anon_response.status
-            if allow and path == "/" and anon_response.status == 200:
-                # Should be no padlock
-                assert "<h1>Datasette 🔒</h1>" not in anon_response.text
-            auth_response = client.get(
-                path,
-                cookies={"ds_actor": client.actor_cookie({"id": "root"})},
-            )
-            assert expected_auth == auth_response.status
-            # Check for the padlock
-            if allow and path == "/" and expected_anon == 403 and expected_auth == 200:
-                assert "<h1>Datasette 🔒</h1>" in auth_response.text
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/",
+        "/fixtures",
+        "/fixtures/compound_three_primary_keys",
+        "/fixtures/compound_three_primary_keys/a,a,a",
+        "/fixtures/two",  # Query
+    ),
+)
+def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
+    padlock_client.ds._metadata_local["allow"] = allow
+    fragment = "🔒</h1>"
+    anon_response = padlock_client.get(path)
+    assert expected_anon == anon_response.status
+    if allow and anon_response.status == 200:
+        # Should be no padlock
+        assert fragment not in anon_response.text
+    auth_response = padlock_client.get(
+        path,
+        cookies={"ds_actor": padlock_client.actor_cookie({"id": "root"})},
+    )
+    assert expected_auth == auth_response.status
+    # Check for the padlock
+    if allow and expected_anon == 403 and expected_auth == 200:
+        assert fragment in auth_response.text
+    del padlock_client.ds._metadata_local["allow"]
 
 
 @pytest.mark.parametrize(
@@ -467,6 +487,10 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
             path,
             cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
         )
-        assert expected_status == response.status
+        assert (
+            response.status == expected_status
+        ), "path: {}, permissions: {}, expected_status: {}, status: {}".format(
+            path, permissions, expected_status, response.status
+        )
     finally:
-        cascade_app_client.ds._metadata_local = previous_metadata
+        cascade_app_client.ds._local_metadata = previous_metadata

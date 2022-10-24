@@ -1,4 +1,4 @@
-from datasette.utils.asgi import NotFound
+from datasette.utils.asgi import NotFound, Forbidden
 from datasette.database import QueryInterrupted
 from .base import DataView
 from datasette.utils import (
@@ -21,14 +21,19 @@ class RowView(DataView):
         except KeyError:
             raise NotFound("Database not found: {}".format(database_route))
         database = db.name
-        await self.ds.ensure_permissions(
+
+        # Ensure user has permission to view this row
+        visible, private = await self.ds.check_visibility(
             request.actor,
-            [
+            permissions=[
                 ("view-table", (database, table)),
                 ("view-database", database),
                 "view-instance",
             ],
         )
+        if not visible:
+            raise Forbidden("You do not have permission to view this table")
+
         pk_values = urlsafe_components(request.url_vars["pks"])
         try:
             db = self.ds.get_database(route=database_route)
@@ -55,6 +60,7 @@ class RowView(DataView):
             for column in display_columns:
                 column["sortable"] = False
             return {
+                "private": private,
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
                 ),

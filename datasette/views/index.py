@@ -23,25 +23,25 @@ class IndexView(BaseView):
         await self.ds.ensure_permissions(request.actor, ["view-instance"])
         databases = []
         for name, db in self.ds.databases.items():
-            visible, database_private = await self.ds.check_visibility(
+            database_visible, database_private = await self.ds.check_visibility(
                 request.actor,
                 "view-database",
                 name,
             )
-            if not visible:
+            if not database_visible:
                 continue
             table_names = await db.table_names()
             hidden_table_names = set(await db.hidden_table_names())
 
             views = []
             for view_name in await db.view_names():
-                visible, private = await self.ds.check_visibility(
+                view_visible, view_private = await self.ds.check_visibility(
                     request.actor,
                     "view-table",
                     (name, view_name),
                 )
-                if visible:
-                    views.append({"name": view_name, "private": private})
+                if view_visible:
+                    views.append({"name": view_name, "private": view_private})
 
             # Perform counts only for immutable or DBS with <= COUNT_TABLE_LIMIT tables
             table_counts = {}

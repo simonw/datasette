@@ -31,7 +31,7 @@ Changelog
 - ``Database(is_mutable=)`` now defaults to ``True``. (:issue:`1808`)
 - Non-JavaScript textarea now increases height to fit the SQL query. (:issue:`1786`)
 - More detailed command descriptions on the :ref:`CLI reference <cli_reference>` page. (:issue:`1787`)
-- Datasette no longer enforces upper bounds on its depenedencies. (:issue:`1800`)
+- Datasette no longer enforces upper bounds on its dependencies. (:issue:`1800`)
 - Facets are now displayed with better line-breaks in long values. Thanks, Daniel Rech. (`#1794 <https://github.com/simonw/datasette/pull/1794>`__)
 - The ``settings.json`` file used in :ref:`config_dir` is now validated on startup. (:issue:`1816`)
 

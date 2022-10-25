@@ -1,3 +1,4 @@
+import httpx
 import os
 import pathlib
 import pytest
@@ -110,8 +111,13 @@ def ds_localhost_http_server():
         # Avoid FileNotFoundError: [Errno 2] No such file or directory:
         cwd=tempfile.gettempdir(),
     )
-    # Give the server time to start
-    time.sleep(1.5)
+    # Loop until port 8041 serves traffic
+    while True:
+        try:
+            httpx.get("http://localhost:8041/")
+            break
+        except httpx.ConnectError:
+            time.sleep(0.1)
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
     yield ds_proc
@@ -146,8 +152,12 @@ def ds_localhost_https_server(tmp_path_factory):
         stderr=subprocess.STDOUT,
         cwd=tempfile.gettempdir(),
     )
-    # Give the server time to start
-    time.sleep(1.5)
+    while True:
+        try:
+            httpx.get("https://localhost:8042/", verify=client_cert)
+            break
+        except httpx.ConnectError:
+            time.sleep(0.1)
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
     yield ds_proc, client_cert
@@ -168,8 +178,15 @@ def ds_unix_domain_socket_server(tmp_path_factory):
         stderr=subprocess.STDOUT,
         cwd=tempfile.gettempdir(),
     )
-    # Give the server time to start
-    time.sleep(1.5)
+    # Poll until available
+    transport = httpx.HTTPTransport(uds=uds)
+    client = httpx.Client(transport=transport)
+    while True:
+        try:
+            client.get("http://localhost/_memory.json")
+            break
+        except httpx.ConnectError:
+            time.sleep(0.1)
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
     yield ds_proc, uds

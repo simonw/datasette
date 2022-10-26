@@ -62,6 +62,7 @@ class TestClient:
         method="GET",
         cookies=None,
         if_none_match=None,
+        headers=None,
     ):
         return await self._request(
             path=path,
@@ -70,6 +71,7 @@ class TestClient:
             method=method,
             cookies=cookies,
             if_none_match=if_none_match,
+            headers=headers,
         )
 
     @async_to_sync

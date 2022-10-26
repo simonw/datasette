@@ -178,3 +178,35 @@ def test_auth_create_token(app_client, post_data, errors, expected_duration):
         else:
             about_right = int(time.time()) + expected_duration
             assert about_right - 2 < details["e"] < about_right + 2
+
+
+@pytest.mark.parametrize(
+    "scenario,should_work",
+    (
+        ("no_token", False),
+        ("invalid_token", False),
+        ("expired_token", False),
+        ("valid_unlimited_token", True),
+        ("valid_expiring_token", True),
+    ),
+)
+def test_auth_with_dstok_token(app_client, scenario, should_work):
+    token = None
+    if scenario == "valid_unlimited_token":
+        token = app_client.ds.sign({"a": "test"}, "token")
+    elif scenario == "valid_expiring_token":
+        token = app_client.ds.sign({"a": "test", "e": int(time.time()) + 1000}, "token")
+    elif scenario == "expired_token":
+        token = app_client.ds.sign({"a": "test", "e": int(time.time()) - 1000}, "token")
+    elif scenario == "invalid_token":
+        token = "invalid"
+    if token:
+        token = "dstok_{}".format(token)
+    headers = {}
+    if token:
+        headers["Authorization"] = "Bearer {}".format(token)
+    response = app_client.get("/-/actor.json", headers=headers)
+    if should_work:
+        assert response.json == {"actor": {"id": "test", "dstok": True}}
+    else:
+        assert response.json == {"actor": None}

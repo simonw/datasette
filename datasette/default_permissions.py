@@ -1,5 +1,7 @@
 from datasette import hookimpl
 from datasette.utils import actor_matches_allow
+import itsdangerous
+import time
 
 
 @hookimpl(tryfirst=True)
@@ -45,3 +47,26 @@ def permission_allowed(datasette, actor, action, resource):
             return actor_matches_allow(actor, database_allow_sql)
 
     return inner
+
+
+@hookimpl
+def actor_from_request(datasette, request):
+    prefix = "dstok_"
+    authorization = request.headers.get("authorization")
+    if not authorization:
+        return None
+    if not authorization.startswith("Bearer "):
+        return None
+    token = authorization[len("Bearer ") :]
+    if not token.startswith(prefix):
+        return None
+    token = token[len(prefix) :]
+    try:
+        decoded = datasette.unsign(token, namespace="token")
+    except itsdangerous.BadSignature:
+        return None
+    expires_at = decoded.get("e")
+    if expires_at is not None:
+        if expires_at < time.time():
+            return None
+    return {"id": decoded["a"], "dstok": True}

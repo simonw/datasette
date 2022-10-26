@@ -206,7 +206,7 @@ class CreateTokenView(BaseView):
                 "a": request.actor,
                 "e": (int(time.time()) + expires) if expires else None,
             }
-            token = self.ds.sign(token_bits, "token")
+            token = "dstok_{}".format(self.ds.sign(token_bits, "token"))
         return await self.render(
             ["create_token.html"],
             request,

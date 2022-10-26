@@ -195,20 +195,24 @@ class CreateTokenView(BaseView):
     async def post(self, request):
         self.check_permission(request)
         post = await request.post_vars()
-        expires = None
         errors = []
+        duration = None
         if post.get("expire_type"):
-            duration = post.get("expire_duration")
-            if not duration or not duration.isdigit() or not int(duration) > 0:
+            duration_string = post.get("expire_duration")
+            if (
+                not duration_string
+                or not duration_string.isdigit()
+                or not int(duration_string) > 0
+            ):
                 errors.append("Invalid expire duration")
             else:
                 unit = post["expire_type"]
                 if unit == "minutes":
-                    expires = int(duration) * 60
+                    duration = int(duration_string) * 60
                 elif unit == "hours":
-                    expires = int(duration) * 60 * 60
+                    duration = int(duration_string) * 60 * 60
                 elif unit == "days":
-                    expires = int(duration) * 60 * 60 * 24
+                    duration = int(duration_string) * 60 * 60 * 24
                 else:
                     errors.append("Invalid expire duration unit")
         token_bits = None
@@ -216,8 +220,10 @@ class CreateTokenView(BaseView):
         if not errors:
             token_bits = {
                 "a": request.actor["id"],
-                "e": (int(time.time()) + expires) if expires else None,
+                "t": int(time.time()),
             }
+            if duration:
+                token_bits["d"] = duration
             token = "dstok_{}".format(self.ds.sign(token_bits, "token"))
         return await self.render(
             ["create_token.html"],

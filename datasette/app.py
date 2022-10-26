@@ -129,6 +129,11 @@ SETTINGS = (
         True,
         "Allow users to create and use signed API tokens",
     ),
+    Setting(
+        "max_signed_tokens_ttl",
+        0,
+        "Maximum allowed expiry time for signed API tokens",
+    ),
     Setting("suggest_facets", True, "Calculate and display suggested facets"),
     Setting(
         "default_cache_ttl",

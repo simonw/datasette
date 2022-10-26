@@ -182,6 +182,21 @@ This is turned on by default. Use the following to turn it off::
 
 Turning this setting off will disable the ``/-/create-token`` page, :ref:`described here <CreateTokenView>`. It will also cause any incoming ``Authorization: Bearer dstok_...`` API tokens to be ignored.
 
+.. _setting_max_signed_tokens_ttl:
+
+max_signed_tokens_ttl
+~~~~~~~~~~~~~~~~~~~~~
+
+Maximum allowed expiry time for signed API tokens created by users.
+
+Defaults to ``0`` which means no limit - tokens can be created that will never expire.
+
+Set this to a value in seconds to limit the maximum expiry time. For example, to set that limit to 24 hours you would use::
+
+    datasette mydatabase.db --setting max_signed_tokens_ttl 86400
+
+This setting is enforced when incoming tokens are processed.
+
 .. _setting_default_cache_ttl:
 
 default_cache_ttl

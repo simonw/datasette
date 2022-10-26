@@ -173,13 +173,19 @@ def test_auth_create_token(app_client, post_data, errors, expected_duration):
         # Extract token from page
         token = response2.text.split('value="dstok_')[1].split('"')[0]
         details = app_client.ds.unsign(token, "token")
-        assert details.keys() == {"a", "e"}
+        assert details.keys() == {"a", "t", "d"} or details.keys() == {"a", "t"}
         assert details["a"] == "test"
         if expected_duration is None:
-            assert details["e"] is None
+            assert "d" not in details
         else:
-            about_right = int(time.time()) + expected_duration
-            assert about_right - 2 < details["e"] < about_right + 2
+            assert details["d"] == expected_duration
+        # And test that token
+        response3 = app_client.get(
+            "/-/actor.json",
+            headers={"Authorization": "Bearer {}".format("dstok_{}".format(token))},
+        )
+        assert response3.status == 200
+        assert response3.json["actor"]["id"] == "test"
 
 
 def test_auth_create_token_not_allowed_for_tokens(app_client):
@@ -206,6 +212,7 @@ def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(app_client):
     (
         ("allow_signed_tokens_off", False),
         ("no_token", False),
+        ("no_timestamp", False),
         ("invalid_token", False),
         ("expired_token", False),
         ("valid_unlimited_token", True),
@@ -214,12 +221,15 @@ def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(app_client):
 )
 def test_auth_with_dstok_token(app_client, scenario, should_work):
     token = None
+    _time = int(time.time())
     if scenario in ("valid_unlimited_token", "allow_signed_tokens_off"):
-        token = app_client.ds.sign({"a": "test"}, "token")
+        token = app_client.ds.sign({"a": "test", "t": _time}, "token")
     elif scenario == "valid_expiring_token":
-        token = app_client.ds.sign({"a": "test", "e": int(time.time()) + 1000}, "token")
+        token = app_client.ds.sign({"a": "test", "t": _time - 50, "d": 1000}, "token")
     elif scenario == "expired_token":
-        token = app_client.ds.sign({"a": "test", "e": int(time.time()) - 1000}, "token")
+        token = app_client.ds.sign({"a": "test", "t": _time - 2000, "d": 1000}, "token")
+    elif scenario == "no_timestamp":
+        token = app_client.ds.sign({"a": "test"}, "token")
     elif scenario == "invalid_token":
         token = "invalid"
     if token:
@@ -232,7 +242,16 @@ def test_auth_with_dstok_token(app_client, scenario, should_work):
     response = app_client.get("/-/actor.json", headers=headers)
     try:
         if should_work:
-            assert response.json == {"actor": {"id": "test", "token": "dstok"}}
+            assert response.json.keys() == {"actor"}
+            actor = response.json["actor"]
+            expected_keys = {"id", "token"}
+            if scenario != "valid_unlimited_token":
+                expected_keys.add("token_expires")
+            assert actor.keys() == expected_keys
+            assert actor["id"] == "test"
+            assert actor["token"] == "dstok"
+            if scenario != "valid_unlimited_token":
+                assert isinstance(actor["token_expires"], int)
         else:
             assert response.json == {"actor": None}
     finally:
@@ -251,15 +270,22 @@ def test_cli_create_token(app_client, expires):
     token = result.output.strip()
     assert token.startswith("dstok_")
     details = app_client.ds.unsign(token[len("dstok_") :], "token")
-    expected_keys = {"a", "token"}
+    expected_keys = {"a", "token", "t"}
     if expires:
-        expected_keys.add("e")
+        expected_keys.add("d")
     assert details.keys() == expected_keys
     assert details["a"] == "test"
     response = app_client.get(
         "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
     )
     if expires is None or expires > 0:
-        assert response.json == {"actor": {"id": "test", "token": "dstok"}}
+        expected_actor = {
+            "id": "test",
+            "token": "dstok",
+        }
+        if expires and expires > 0:
+            expected_actor["token_expires"] = details["t"] + expires
+        assert response.json == {"actor": expected_actor}
     else:
-        assert response.json == {"actor": None}
+        expected_actor = None
+    assert response.json == {"actor": expected_actor}

@@ -56,6 +56,7 @@ def actor_from_request(datasette, request):
     prefix = "dstok_"
     if not datasette.setting("allow_signed_tokens"):
         return None
+    max_signed_tokens_ttl = datasette.setting("max_signed_tokens_ttl")
     authorization = request.headers.get("authorization")
     if not authorization:
         return None
@@ -69,11 +70,31 @@ def actor_from_request(datasette, request):
         decoded = datasette.unsign(token, namespace="token")
     except itsdangerous.BadSignature:
         return None
-    expires_at = decoded.get("e")
-    if expires_at is not None:
-        if expires_at < time.time():
+    if "t" not in decoded:
+        # Missing timestamp
+        return None
+    created = decoded["t"]
+    if not isinstance(created, int):
+        # Invalid timestamp
+        return None
+    duration = decoded.get("d")
+    if duration is not None and not isinstance(duration, int):
+        # Invalid duration
+        return None
+    if (duration is None and max_signed_tokens_ttl) or (
+        duration is not None
+        and max_signed_tokens_ttl
+        and duration > max_signed_tokens_ttl
+    ):
+        duration = max_signed_tokens_ttl
+    if duration:
+        if time.time() - created > duration:
+            # Expired
             return None
-    return {"id": decoded["a"], "token": "dstok"}
+    actor = {"id": decoded["a"], "token": "dstok"}
+    if duration:
+        actor["token_expires"] = created + duration
+    return actor
 
 
 @hookimpl
@@ -102,9 +123,9 @@ def register_commands(cli):
     def create_token(id, secret, expires_after, debug):
         "Create a signed API token for the specified actor ID"
         ds = Datasette(secret=secret)
-        bits = {"a": id, "token": "dstok"}
+        bits = {"a": id, "token": "dstok", "t": int(time.time())}
         if expires_after:
-            bits["e"] = int(time.time()) + expires_after
+            bits["d"] = expires_after
         token = ds.sign(bits, namespace="token")
         click.echo("dstok_{}".format(token))
         if debug:

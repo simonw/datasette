@@ -166,6 +166,7 @@ def make_app_client(
         # Close the connection to avoid "too many open files" errors
         conn.close()
         os.remove(filepath)
+        ds.executor.shutdown()
 
 
 @pytest.fixture(scope="session")

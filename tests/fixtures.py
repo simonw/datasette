@@ -131,10 +131,14 @@ def make_app_client(
         for sql, params in TABLE_PARAMETERIZED_SQL:
             with conn:
                 conn.execute(sql, params)
+        # Close the connection to avoid "too many open files" errors
+        conn.close()
         if extra_databases is not None:
             for extra_filename, extra_sql in extra_databases.items():
                 extra_filepath = os.path.join(tmpdir, extra_filename)
-                sqlite3.connect(extra_filepath).executescript(extra_sql)
+                c2 = sqlite3.connect(extra_filepath)
+                c2.executescript(extra_sql)
+                c2.close()
                 # Insert at start to help test /-/databases ordering:
                 files.insert(0, extra_filepath)
         os.chdir(os.path.dirname(filepath))
@@ -163,10 +167,7 @@ def make_app_client(
             crossdb=crossdb,
         )
         yield TestClient(ds)
-        # Close the connection to avoid "too many open files" errors
-        conn.close()
         os.remove(filepath)
-        ds.executor.shutdown()
 
 
 @pytest.fixture(scope="session")

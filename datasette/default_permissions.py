@@ -1,6 +1,8 @@
 from datasette import hookimpl
 from datasette.utils import actor_matches_allow
+import click
 import itsdangerous
+import json
 import time
 
 
@@ -72,3 +74,39 @@ def actor_from_request(datasette, request):
         if expires_at < time.time():
             return None
     return {"id": decoded["a"], "token": "dstok"}
+
+
+@hookimpl
+def register_commands(cli):
+    from datasette.app import Datasette
+
+    @cli.command()
+    @click.argument("id")
+    @click.option(
+        "--secret",
+        help="Secret used for signing the API tokens",
+        envvar="DATASETTE_SECRET",
+        required=True,
+    )
+    @click.option(
+        "-e",
+        "--expires-after",
+        help="Token should expire after this many seconds",
+        type=int,
+    )
+    @click.option(
+        "--debug",
+        help="Show decoded token",
+        is_flag=True,
+    )
+    def create_token(id, secret, expires_after, debug):
+        "Create a signed API token for the specified actor ID"
+        ds = Datasette(secret=secret)
+        bits = {"a": id, "token": "dstok"}
+        if expires_after:
+            bits["e"] = int(time.time()) + expires_after
+        token = ds.sign(bits, namespace="token")
+        click.echo("dstok_{}".format(token))
+        if debug:
+            click.echo("\nDecoded:\n")
+            click.echo(json.dumps(ds.unsign(token, namespace="token"), indent=2))

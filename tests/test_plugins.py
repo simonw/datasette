@@ -971,6 +971,7 @@ def test_hook_register_commands():
         "plugins",
         "publish",
         "uninstall",
+        "create-token",
     }
 
     # Now install a plugin
@@ -1001,6 +1002,7 @@ def test_hook_register_commands():
         "uninstall",
         "verify",
         "unverify",
+        "create-token",
     }
     pm.unregister(name="verify")
     importlib.reload(cli)

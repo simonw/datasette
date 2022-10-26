@@ -1,5 +1,7 @@
 from .fixtures import app_client
+from click.testing import CliRunner
 from datasette.utils import baseconv
+from datasette.cli import cli
 import pytest
 import time
 
@@ -235,3 +237,29 @@ def test_auth_with_dstok_token(app_client, scenario, should_work):
             assert response.json == {"actor": None}
     finally:
         app_client.ds._settings["allow_signed_tokens"] = True
+
+
+@pytest.mark.parametrize("expires", (None, 1000, -1000))
+def test_cli_create_token(app_client, expires):
+    secret = app_client.ds._secret
+    runner = CliRunner(mix_stderr=False)
+    args = ["create-token", "--secret", secret, "test"]
+    if expires:
+        args += ["--expires-after", str(expires)]
+    result = runner.invoke(cli, args)
+    assert result.exit_code == 0
+    token = result.output.strip()
+    assert token.startswith("dstok_")
+    details = app_client.ds.unsign(token[len("dstok_") :], "token")
+    expected_keys = {"a", "token"}
+    if expires:
+        expected_keys.add("e")
+    assert details.keys() == expected_keys
+    assert details["a"] == "test"
+    response = app_client.get(
+        "/-/actor.json", headers={"Authorization": "Bearer {}".format(token)}
+    )
+    if expires is None or expires > 0:
+        assert response.json == {"actor": {"id": "test", "token": "dstok"}}
+    else:
+        assert response.json == {"actor": None}

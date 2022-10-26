@@ -806,6 +806,7 @@ def test_settings_json(app_client):
         "max_returned_rows": 100,
         "sql_time_limit_ms": 200,
         "allow_download": True,
+        "allow_signed_tokens": True,
         "allow_facet": True,
         "suggest_facets": True,
         "default_cache_ttl": 5,

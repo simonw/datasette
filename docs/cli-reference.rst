@@ -47,13 +47,14 @@ Running ``datasette --help`` shows a list of all of the available commands.
       --help     Show this message and exit.
 
     Commands:
-      serve*     Serve up specified SQLite database files with a web UI
-      inspect    Generate JSON summary of provided database files
-      install    Install plugins and packages from PyPI into the same...
-      package    Package SQLite files into a Datasette Docker container
-      plugins    List currently installed plugins
-      publish    Publish specified SQLite database files to the internet along...
-      uninstall  Uninstall plugins and Python packages from the Datasette...
+      serve*        Serve up specified SQLite database files with a web UI
+      create-token  Create a signed API token for the specified actor ID
+      inspect       Generate JSON summary of provided database files
+      install       Install plugins and packages from PyPI into the same...
+      package       Package SQLite files into a Datasette Docker container
+      plugins       List currently installed plugins
+      publish       Publish specified SQLite database files to the internet...
+      uninstall     Uninstall plugins and Python packages from the Datasette...
 
 
 .. [[[end]]]
@@ -588,6 +589,34 @@ This performance optimization is used automatically by some of the ``datasette p
                                       Path to a SQLite extension to load, and
                                       optional entrypoint
       --help                          Show this message and exit.
+
+
+.. [[[end]]]
+
+
+.. _cli_help_create_token___help:
+
+datasette create-token
+======================
+
+Create a signed API token, see :ref:`authentication_cli_create_token`.
+
+.. [[[cog
+    help(["create-token", "--help"])
+.. ]]]
+
+::
+
+    Usage: datasette create-token [OPTIONS] ID
+
+      Create a signed API token for the specified actor ID
+
+    Options:
+      --secret TEXT                Secret used for signing the API tokens
+                                   [required]
+      -e, --expires-after INTEGER  Token should expire after this many seconds
+      --debug                      Show decoded token
+      --help                       Show this message and exit.
 
 
 .. [[[end]]]

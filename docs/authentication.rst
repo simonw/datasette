@@ -352,6 +352,29 @@ This page cannot be accessed by actors with a ``"token": "some-value"`` property
 
 You can disable this feature using the :ref:`allow_signed_tokens <setting_allow_signed_tokens>` setting.
 
+.. _authentication_cli_create_token:
+
+datasette create-token
+----------------------
+
+You can also create tokens on the command line using the ``datasette create-token`` command.
+
+This command takes one required argument - the ID of the actor to be associated with the created token.
+
+You can specify an ``--expires-after`` option in seconds. If omitted, the token will never expire.
+
+The command will sign the token using the ``DATASETTE_SECRET`` environment variable, if available. You can also pass the secret using the ``--secret`` option.
+
+This means you can run the command locally to create tokens for use with a deployed Datasette instance, provided you know that instance's secret.
+
+To create a token for the ``root`` actor that will expire in one hour::
+
+    datasette create-token root --expires-after 3600
+
+To create a secret that never expires using a specific secret::
+
+    datasette create-token root --secret my-secret-goes-here
+
 .. _permissions_plugins:
 
 Checking permissions in plugins

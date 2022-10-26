@@ -350,6 +350,8 @@ Coming soon: a mechanism for creating tokens that can only perform a subset of t
 
 This page cannot be accessed by actors with a ``"token": "some-value"`` property. This is to prevent API tokens from being used to automatically create more tokens. Datasette plugins that implement their own form of API token authentication should follow this convention.
 
+You can disable this feature using the :ref:`allow_signed_tokens <setting_allow_signed_tokens>` setting.
+
 .. _permissions_plugins:
 
 Checking permissions in plugins

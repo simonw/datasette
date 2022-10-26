@@ -124,6 +124,11 @@ SETTINGS = (
         True,
         "Allow users to download the original SQLite database files",
     ),
+    Setting(
+        "allow_signed_tokens",
+        True,
+        "Allow users to create and use signed API tokens",
+    ),
     Setting("suggest_facets", True, "Calculate and display suggested facets"),
     Setting(
         "default_cache_ttl",

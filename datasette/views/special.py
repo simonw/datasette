@@ -171,6 +171,8 @@ class CreateTokenView(BaseView):
     has_json_alternate = False
 
     def check_permission(self, request):
+        if not self.ds.setting("allow_signed_tokens"):
+            raise Forbidden("Signed tokens are not enabled for this Datasette instance")
         if not request.actor:
             raise Forbidden("You must be logged in to create a token")
         if not request.actor.get("id"):

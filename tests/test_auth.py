@@ -189,9 +189,20 @@ def test_auth_create_token_not_allowed_for_tokens(app_client):
     assert response.status == 403
 
 
+def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(app_client):
+    app_client.ds._settings["allow_signed_tokens"] = False
+    try:
+        ds_actor = app_client.actor_cookie({"id": "test"})
+        response = app_client.get("/-/create-token", cookies={"ds_actor": ds_actor})
+        assert response.status == 403
+    finally:
+        app_client.ds._settings["allow_signed_tokens"] = True
+
+
 @pytest.mark.parametrize(
     "scenario,should_work",
     (
+        ("allow_signed_tokens_off", False),
         ("no_token", False),
         ("invalid_token", False),
         ("expired_token", False),
@@ -201,7 +212,7 @@ def test_auth_create_token_not_allowed_for_tokens(app_client):
 )
 def test_auth_with_dstok_token(app_client, scenario, should_work):
     token = None
-    if scenario == "valid_unlimited_token":
+    if scenario in ("valid_unlimited_token", "allow_signed_tokens_off"):
         token = app_client.ds.sign({"a": "test"}, "token")
     elif scenario == "valid_expiring_token":
         token = app_client.ds.sign({"a": "test", "e": int(time.time()) + 1000}, "token")
@@ -211,11 +222,16 @@ def test_auth_with_dstok_token(app_client, scenario, should_work):
         token = "invalid"
     if token:
         token = "dstok_{}".format(token)
+    if scenario == "allow_signed_tokens_off":
+        app_client.ds._settings["allow_signed_tokens"] = False
     headers = {}
     if token:
         headers["Authorization"] = "Bearer {}".format(token)
     response = app_client.get("/-/actor.json", headers=headers)
-    if should_work:
-        assert response.json == {"actor": {"id": "test", "token": "dstok"}}
-    else:
-        assert response.json == {"actor": None}
+    try:
+        if should_work:
+            assert response.json == {"actor": {"id": "test", "token": "dstok"}}
+        else:
+            assert response.json == {"actor": None}
+    finally:
+        app_client.ds._settings["allow_signed_tokens"] = True

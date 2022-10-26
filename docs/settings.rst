@@ -169,6 +169,19 @@ Should users be able to download the original SQLite database using a link on th
 
     datasette mydatabase.db --setting allow_download off
 
+.. _setting_allow_signed_tokens:
+
+allow_signed_tokens
+~~~~~~~~~~~~~~~~~~~
+
+Should users be able to create signed API tokens to access Datasette?
+
+This is turned on by default. Use the following to turn it off::
+
+    datasette mydatabase.db --setting allow_signed_tokens off
+
+Turning this setting off will disable the ``/-/create-token`` page, :ref:`described here <CreateTokenView>`. It will also cause any incoming ``Authorization: Bearer dstok_...`` API tokens to be ignored.
+
 .. _setting_default_cache_ttl:
 
 default_cache_ttl

@@ -52,6 +52,8 @@ def permission_allowed(datasette, actor, action, resource):
 @hookimpl
 def actor_from_request(datasette, request):
     prefix = "dstok_"
+    if not datasette.setting("allow_signed_tokens"):
+        return None
     authorization = request.headers.get("authorization")
     if not authorization:
         return None

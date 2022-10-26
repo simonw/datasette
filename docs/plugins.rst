@@ -151,6 +151,7 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             "templates": false,
             "version": null,
             "hooks": [
+                "actor_from_request",
                 "permission_allowed"
             ]
         },

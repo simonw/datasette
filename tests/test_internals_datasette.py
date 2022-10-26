@@ -125,3 +125,12 @@ async def test_datasette_ensure_permissions_check_visibility(
     visible, private = await ds.check_visibility(actor, permissions=permissions)
     assert visible == should_allow
     assert private == expected_private
+
+
+@pytest.mark.asyncio
+async def test_datasette_render_template_no_request():
+    # https://github.com/simonw/datasette/issues/1849
+    ds = Datasette([], memory=True)
+    await ds.invoke_startup()
+    rendered = await ds.render_template("error.html")
+    assert "Error " in rendered

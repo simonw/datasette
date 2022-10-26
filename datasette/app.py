@@ -633,15 +633,18 @@ class Datasette:
 
     async def _crumb_items(self, request, table=None, database=None):
         crumbs = []
+        actor = None
+        if request:
+            actor = request.actor
         # Top-level link
         if await self.permission_allowed(
-            actor=request.actor, action="view-instance", default=True
+            actor=actor, action="view-instance", default=True
         ):
             crumbs.append({"href": self.urls.instance(), "label": "home"})
         # Database link
         if database:
             if await self.permission_allowed(
-                actor=request.actor,
+                actor=actor,
                 action="view-database",
                 resource=database,
                 default=True,
@@ -656,7 +659,7 @@ class Datasette:
         if table:
             assert database, "table= requires database="
             if await self.permission_allowed(
-                actor=request.actor,
+                actor=actor,
                 action="view-table",
                 resource=(database, table),
                 default=True,

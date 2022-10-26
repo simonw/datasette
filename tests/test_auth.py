@@ -180,6 +180,15 @@ def test_auth_create_token(app_client, post_data, errors, expected_duration):
             assert about_right - 2 < details["e"] < about_right + 2
 
 
+def test_auth_create_token_not_allowed_for_tokens(app_client):
+    ds_tok = app_client.ds.sign({"a": "test", "token": "dstok"}, "token")
+    response = app_client.get(
+        "/-/create-token",
+        headers={"Authorization": "Bearer dstok_{}".format(ds_tok)},
+    )
+    assert response.status == 403
+
+
 @pytest.mark.parametrize(
     "scenario,should_work",
     (
@@ -207,6 +216,6 @@ def test_auth_with_dstok_token(app_client, scenario, should_work):
         headers["Authorization"] = "Bearer {}".format(token)
     response = app_client.get("/-/actor.json", headers=headers)
     if should_work:
-        assert response.json == {"actor": {"id": "test", "dstok": True}}
+        assert response.json == {"actor": {"id": "test", "token": "dstok"}}
     else:
         assert response.json == {"actor": None}

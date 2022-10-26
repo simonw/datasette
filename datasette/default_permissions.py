@@ -69,4 +69,4 @@ def actor_from_request(datasette, request):
     if expires_at is not None:
         if expires_at < time.time():
             return None
-    return {"id": decoded["a"], "dstok": True}
+    return {"id": decoded["a"], "token": "dstok"}

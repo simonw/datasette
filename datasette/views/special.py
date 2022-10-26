@@ -177,6 +177,10 @@ class CreateTokenView(BaseView):
             raise Forbidden(
                 "You must be logged in as an actor with an ID to create a token"
             )
+        if request.actor.get("token"):
+            raise Forbidden(
+                "Token authentication cannot be used to create additional tokens"
+            )
 
     async def get(self, request):
         self.check_permission(request)

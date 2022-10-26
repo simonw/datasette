@@ -348,6 +348,8 @@ A token created by a user will include that user's ``"id"`` in the token payload
 
 Coming soon: a mechanism for creating tokens that can only perform a subset of the actions available to the user who created them.
 
+This page cannot be accessed by actors with a ``"token": "some-value"`` property. This is to prevent API tokens from being used to automatically create more tokens. Datasette plugins that implement their own form of API token authentication should follow this convention.
+
 .. _permissions_plugins:
 
 Checking permissions in plugins

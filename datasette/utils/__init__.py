@@ -205,13 +205,28 @@ class InvalidSql(Exception):
     pass
 
 
+# Allow SQL to start with a /* */ or -- comment
+comment_re = (
+    # Start of string, then any amount of whitespace
+    r"^(\s*"
+    +
+    # Comment that starts with -- and ends at a newline
+    r"(?:\-\-.*?\n\s*)"
+    +
+    # Comment that starts with /* and ends with */
+    r"|(?:/\*[\s\S]*?\*/)"
+    +
+    # Whitespace
+    r")*\s*"
+)
+
 allowed_sql_res = [
-    re.compile(r"^select\b"),
-    re.compile(r"^explain\s+select\b"),
-    re.compile(r"^explain\s+query\s+plan\s+select\b"),
-    re.compile(r"^with\b"),
-    re.compile(r"^explain\s+with\b"),
-    re.compile(r"^explain\s+query\s+plan\s+with\b"),
+    re.compile(comment_re + r"select\b"),
+    re.compile(comment_re + r"explain\s+select\b"),
+    re.compile(comment_re + r"explain\s+query\s+plan\s+select\b"),
+    re.compile(comment_re + r"with\b"),
+    re.compile(comment_re + r"explain\s+with\b"),
+    re.compile(comment_re + r"explain\s+query\s+plan\s+with\b"),
 ]
 allowed_pragmas = (
     "database_list",

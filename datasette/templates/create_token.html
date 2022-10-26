@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Create an API token{% endblock %}
+
+{% block content %}
+
+<h1>Create an API token</h1>
+
+<p>This token will allow API access with the same abilities as your current user.</p>
+
+{% if errors %}
+  {% for error in errors %}
+    <p class="message-error">{{ error }}</p>
+  {% endfor %}
+{% endif %}
+
+<form action="{{ urls.path('-/create-token') }}" method="post">
+  <div>
+    <div class="select-wrapper" style="width: unset">
+      <select name="expire_type">
+        <option value="">Token never expires</option>
+        <option value="minutes">Expires after X minutes</option>
+        <option value="hours">Expires after X hours</option>
+        <option value="days">Expires after X days</option>
+      </select>
+    </div>
+    <input type="text" name="expire_duration" style="width: 10%">
+    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+    <input type="submit" value="Create token">
+  </div>
+</form>
+
+{% if token %}
+  <div>
+    <h2>Your API token</h2>
+    <form>
+      <input type="text" class="copyable" style="width: 40%" value="{{ token }}">
+      <span class="copy-link-wrapper"></span>
+    </form>
+    <!--- show token in a <details> -->
+    <details style="margin-top: 1em">
+      <summary>Token details</summary>
+      <pre>{{ token_bits|tojson }}</pre>
+    </details>
+  </div>
+  {% endif %}
+
+<script>
+var expireDuration = document.querySelector('input[name="expire_duration"]');
+expireDuration.style.display = 'none';
+var expireType = document.querySelector('select[name="expire_type"]');
+function showHideExpireDuration() {
+  if (expireType.value) {
+    expireDuration.style.display = 'inline';
+    expireDuration.setAttribute("placeholder", expireType.value.replace("Expires after X ", ""));
+  } else {
+    expireDuration.style.display = 'none';
+  }
+}
+showHideExpireDuration();
+expireType.addEventListener('change', showHideExpireDuration);
+var copyInput = document.querySelector(".copyable");
+if (copyInput) {
+  var wrapper = document.querySelector(".copy-link-wrapper");
+  var button = document.createElement("button");
+  button.className = "copyable-copy-button";
+  button.setAttribute("type", "button");
+  button.innerHTML = "Copy to clipboard";
+  button.onclick = (ev) => {
+    ev.preventDefault();
+    copyInput.select();
+    document.execCommand("copy");
+    button.innerHTML = "Copied!";
+    setTimeout(() => {
+        button.innerHTML = "Copy to clipboard";
+    }, 1500);
+  };
+  wrapper.appendChild(button);
+  wrapper.insertAdjacentElement("afterbegin", button);
+}
+</script>
+
+{% endblock %}

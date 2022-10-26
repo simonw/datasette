@@ -33,6 +33,7 @@ from .views.special import (
     JsonDataView,
     PatternPortfolioView,
     AuthTokenView,
+    CreateTokenView,
     LogoutView,
     AllowDebugView,
     PermissionsDebugView,
@@ -1211,6 +1212,10 @@ class Datasette:
         add_route(
             AuthTokenView.as_view(self),
             r"/-/auth-token$",
+        )
+        add_route(
+            CreateTokenView.as_view(self),
+            r"/-/create-token$",
         )
         add_route(
             LogoutView.as_view(self),

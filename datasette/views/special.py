@@ -3,6 +3,7 @@ from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import actor_matches_allow, add_cors_headers
 from .base import BaseView
 import secrets
+import time
 
 
 class JsonDataView(BaseView):
@@ -163,3 +164,56 @@ class MessagesDebugView(BaseView):
         else:
             datasette.add_message(request, message, getattr(datasette, message_type))
         return Response.redirect(self.ds.urls.instance())
+
+
+class CreateTokenView(BaseView):
+    name = "create_token"
+    has_json_alternate = False
+
+    async def get(self, request):
+        if not request.actor:
+            raise Forbidden("You must be logged in to create a token")
+        return await self.render(
+            ["create_token.html"],
+            request,
+            {"actor": request.actor},
+        )
+
+    async def post(self, request):
+        if not request.actor:
+            raise Forbidden("You must be logged in to create a token")
+        post = await request.post_vars()
+        expires = None
+        errors = []
+        if post.get("expire_type"):
+            duration = post.get("expire_duration")
+            if not duration or not duration.isdigit() or not int(duration) > 0:
+                errors.append("Invalid expire duration")
+            else:
+                unit = post["expire_type"]
+                if unit == "minutes":
+                    expires = int(duration) * 60
+                elif unit == "hours":
+                    expires = int(duration) * 60 * 60
+                elif unit == "days":
+                    expires = int(duration) * 60 * 60 * 24
+                else:
+                    errors.append("Invalid expire duration unit")
+        token_bits = None
+        token = None
+        if not errors:
+            token_bits = {
+                "a": request.actor,
+                "e": (int(time.time()) + expires) if expires else None,
+            }
+            token = self.ds.sign(token_bits, "token")
+        return await self.render(
+            ["create_token.html"],
+            request,
+            {
+                "actor": request.actor,
+                "errors": errors,
+                "token": token,
+                "token_bits": token_bits,
+            },
+        )

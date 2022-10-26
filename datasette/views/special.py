@@ -170,9 +170,16 @@ class CreateTokenView(BaseView):
     name = "create_token"
     has_json_alternate = False
 
-    async def get(self, request):
+    def check_permission(self, request):
         if not request.actor:
             raise Forbidden("You must be logged in to create a token")
+        if not request.actor.get("id"):
+            raise Forbidden(
+                "You must be logged in as an actor with an ID to create a token"
+            )
+
+    async def get(self, request):
+        self.check_permission(request)
         return await self.render(
             ["create_token.html"],
             request,
@@ -180,8 +187,7 @@ class CreateTokenView(BaseView):
         )
 
     async def post(self, request):
-        if not request.actor:
-            raise Forbidden("You must be logged in to create a token")
+        self.check_permission(request)
         post = await request.post_vars()
         expires = None
         errors = []
@@ -203,7 +209,7 @@ class CreateTokenView(BaseView):
         token = None
         if not errors:
             token_bits = {
-                "a": request.actor,
+                "a": request.actor["id"],
                 "e": (int(time.time()) + expires) if expires else None,
             }
             token = "dstok_{}".format(self.ds.sign(token_bits, "token"))

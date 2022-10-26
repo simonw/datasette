@@ -333,6 +333,21 @@ To limit this ability for just one specific database, use this:
         }
     }
 
+.. _CreateTokenView:
+
+API Tokens
+==========
+
+Datasette includes a default mechanism for generating API tokens that can be used to authenticate requests.
+
+Authenticated users can create new API tokens using a form on the ``/-/create-token`` page.
+
+Created tokens can then be passed in the ``Authorization: Bearer token_here`` header of HTTP requests to Datasette.
+
+A token created by a user will include that user's ``"id"`` in the token payload, so any permissions granted to that user based on their ID will be made available to the token as well.
+
+Coming soon: a mechanism for creating tokens that can only perform a subset of the actions available to the user who created them.
+
 .. _permissions_plugins:
 
 Checking permissions in plugins

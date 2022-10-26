@@ -110,3 +110,71 @@ def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(app_client, path):
     response = app_client.get(path + "?_bot=1")
     assert "<strong>bot</strong>" in response.text
     assert '<form action="/-/logout" method="post">' not in response.text
+
+
+@pytest.mark.parametrize(
+    "post_data,errors,expected_duration",
+    (
+        ({"expire_type": ""}, [], None),
+        ({"expire_type": "x"}, ["Invalid expire duration"], None),
+        ({"expire_type": "minutes"}, ["Invalid expire duration"], None),
+        (
+            {"expire_type": "minutes", "expire_duration": "x"},
+            ["Invalid expire duration"],
+            None,
+        ),
+        (
+            {"expire_type": "minutes", "expire_duration": "-1"},
+            ["Invalid expire duration"],
+            None,
+        ),
+        (
+            {"expire_type": "minutes", "expire_duration": "0"},
+            ["Invalid expire duration"],
+            None,
+        ),
+        (
+            {"expire_type": "minutes", "expire_duration": "10"},
+            [],
+            600,
+        ),
+        (
+            {"expire_type": "hours", "expire_duration": "10"},
+            [],
+            10 * 60 * 60,
+        ),
+        (
+            {"expire_type": "days", "expire_duration": "3"},
+            [],
+            60 * 60 * 24 * 3,
+        ),
+    ),
+)
+def test_auth_create_token(app_client, post_data, errors, expected_duration):
+    assert app_client.get("/-/create-token").status == 403
+    ds_actor = app_client.actor_cookie({"id": "test"})
+    response = app_client.get("/-/create-token", cookies={"ds_actor": ds_actor})
+    assert response.status == 200
+    assert ">Create an API token<" in response.text
+    # Now try actually creating one
+    response2 = app_client.post(
+        "/-/create-token",
+        post_data,
+        csrftoken_from=True,
+        cookies={"ds_actor": ds_actor},
+    )
+    assert response2.status == 200
+    if errors:
+        for error in errors:
+            assert '<p class="message-error">{}</p>'.format(error) in response2.text
+    else:
+        # Extract token from page
+        token = response2.text.split('value="dstok_')[1].split('"')[0]
+        details = app_client.ds.unsign(token, "token")
+        assert details.keys() == {"a", "e"}
+        assert details["a"] == "test"
+        if expected_duration is None:
+            assert details["e"] is None
+        else:
+            about_right = int(time.time()) + expected_duration
+            assert about_right - 2 < details["e"] < about_right + 2

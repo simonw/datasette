@@ -455,3 +455,41 @@ You can find this near the top of the source code of those pages, looking like t
 The JSON URL is also made available in a ``Link`` HTTP header for the page::
 
     Link: https://latest.datasette.io/fixtures/sortable.json; rel="alternate"; type="application/json+datasette"
+
+.. _json_api_write:
+
+The JSON write API
+------------------
+
+Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`.
+
+.. _json_api_write_insert_row:
+
+Inserting a single row
+~~~~~~~~~~~~~~~~~~~~~~
+
+This requires the :ref:`permissions_insert_row` permission.
+
+::
+
+    POST /<database>/<table>
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+    {
+        "row": {
+            "column1": "value1",
+            "column2": "value2"
+        }
+    }
+
+If successful, this will return a ``201`` status code and the newly inserted row, for example:
+
+.. code-block:: json
+
+    {
+        "row": {
+            "id": 1,
+            "column1": "value1",
+            "column2": "value2"
+        }
+    }

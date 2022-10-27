@@ -28,7 +28,7 @@ from datasette.utils import (
     urlsafe_components,
     value_as_boolean,
 )
-from datasette.utils.asgi import BadRequest, Forbidden, NotFound
+from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
 from .base import DataView, DatasetteError, ureg
 from .database import QueryView
@@ -103,15 +103,71 @@ class TableView(DataView):
         canned_query = await self.ds.get_canned_query(
             database_name, table_name, request.actor
         )
-        assert canned_query, "You may only POST to a canned query"
-        return await QueryView(self.ds).data(
-            request,
-            canned_query["sql"],
-            metadata=canned_query,
-            editable=False,
-            canned_query=table_name,
-            named_parameters=canned_query.get("params"),
-            write=bool(canned_query.get("write")),
+        if canned_query:
+            return await QueryView(self.ds).data(
+                request,
+                canned_query["sql"],
+                metadata=canned_query,
+                editable=False,
+                canned_query=table_name,
+                named_parameters=canned_query.get("params"),
+                write=bool(canned_query.get("write")),
+            )
+        else:
+            # Handle POST to a table
+            return await self.table_post(request, database_name, table_name)
+
+    async def table_post(self, request, database_name, table_name):
+        # Table must exist (may handle table creation in the future)
+        db = self.ds.get_database(database_name)
+        if not await db.table_exists(table_name):
+            raise NotFound("Table not found: {}".format(table_name))
+        # Must have insert-row permission
+        if not await self.ds.permission_allowed(
+            request.actor, "insert-row", resource=(database_name, table_name)
+        ):
+            raise Forbidden("Permission denied")
+        if request.headers.get("content-type") != "application/json":
+            # TODO: handle form-encoded data
+            raise BadRequest("Must send JSON data")
+        data = json.loads(await request.post_body())
+        if "row" not in data:
+            raise BadRequest('Must send "row" data')
+        row = data["row"]
+        if not isinstance(row, dict):
+            raise BadRequest("row must be a dictionary")
+        # Verify all columns exist
+        columns = await db.table_columns(table_name)
+        pks = await db.primary_keys(table_name)
+        for key in row:
+            if key not in columns:
+                raise BadRequest("Column not found: {}".format(key))
+            if key in pks:
+                raise BadRequest(
+                    "Cannot insert into primary key column: {}".format(key)
+                )
+        # Perform the insert
+        sql = "INSERT INTO [{table}] ({columns}) VALUES ({values})".format(
+            table=escape_sqlite(table_name),
+            columns=", ".join(escape_sqlite(c) for c in row),
+            values=", ".join("?" for c in row),
+        )
+        cursor = await db.execute_write(sql, list(row.values()))
+        # Return the new row
+        rowid = cursor.lastrowid
+        new_row = (
+            await db.execute(
+                "SELECT * FROM [{table}] WHERE rowid = ?".format(
+                    table=escape_sqlite(table_name)
+                ),
+                [rowid],
+            )
+        ).first()
+        return Response.json(
+            {
+                "row": dict(new_row),
+            },
+            status=201,
         )
 
     async def columns_to_select(self, table_columns, pks, request):

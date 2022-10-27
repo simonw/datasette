@@ -229,6 +229,8 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    database files (default=True)
       allow_signed_tokens          Allow users to create and use signed API tokens
                                    (default=True)
+      max_signed_tokens_ttl        Maximum allowed expiry time for signed API tokens
+                                   (default=0)
       suggest_facets               Calculate and display suggested facets
                                    (default=True)
       default_cache_ttl            Default HTTP cache TTL (used in Cache-Control:

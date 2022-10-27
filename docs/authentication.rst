@@ -547,6 +547,18 @@ Actor is allowed to view (and execute) a :ref:`canned query <canned_queries>` pa
 
 Default *allow*.
 
+.. _permissions_insert_row:
+
+insert-row
+----------
+
+Actor is allowed to insert rows into a table.
+
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+Default *deny*.
+
 .. _permissions_execute_sql:
 
 execute-sql

@@ -142,6 +142,7 @@ def test_custom_json_encoder(obj, expected):
         "PRAGMA case_sensitive_like = true",
         "SELECT * FROM pragma_not_on_allow_list('idx52')",
         "/* This comment is not valid. select 1",
+        "/**/\nupdate foo set bar = 1\n/* test */ select 1",
     ],
 )
 def test_validate_sql_select_bad(bad_sql):

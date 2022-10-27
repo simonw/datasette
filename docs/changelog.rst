@@ -9,6 +9,8 @@ Changelog
 0.63 (2022-10-27)
 -----------------
 
+See `Datasette 0.63: The annotated release notes <https://simonwillison.net/2022/Oct/27/datasette-0-63/>`__ for more background on the changes in this release.
+
 Features
 ~~~~~~~~
 

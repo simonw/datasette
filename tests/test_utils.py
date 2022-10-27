@@ -174,6 +174,7 @@ def test_validate_sql_select_bad(bad_sql):
         "  /* comment */\nselect 1",
         "  /* comment */select 1",
         "/* comment */\n -- another\n /* one more */ select 1",
+        "/* This comment \n has multiple lines */\nselect 1",
     ],
 )
 def test_validate_sql_select_good(good_sql):

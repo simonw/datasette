@@ -24,8 +24,8 @@ async def test_write_row(ds_write):
         )
     )
     response = await ds_write.client.post(
-        "/data/docs",
-        json={"insert": {"title": "Test", "score": 1.0}},
+        "/data/docs/-/insert",
+        json={"row": {"title": "Test", "score": 1.0}},
         headers={
             "Authorization": "Bearer {}".format(token),
             "Content-Type": "application/json",
@@ -33,6 +33,6 @@ async def test_write_row(ds_write):
     )
     expected_row = {"id": 1, "title": "Test", "score": 1.0}
     assert response.status_code == 201
-    assert response.json()["inserted_row"] == expected_row
+    assert response.json()["inserted"] == [expected_row]
     rows = (await ds_write.get_database("data").execute("select * from docs")).rows
     assert dict(rows[0]) == expected_row

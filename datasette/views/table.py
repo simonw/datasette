@@ -30,7 +30,7 @@ from datasette.utils import (
 )
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
-from .base import DataView, DatasetteError, ureg
+from .base import BaseView, DataView, DatasetteError, ureg
 from .database import QueryView
 
 LINK_WITH_LABEL = (
@@ -1077,3 +1077,70 @@ async def display_columns_and_rows(
             }
         columns = [first_column] + columns
     return columns, cell_rows
+
+
+class TableInsertView(BaseView):
+    name = "table-insert"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def post(self, request):
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            raise NotFound("Database not found: {}".format(database_route))
+        database_name = db.name
+        table_name = tilde_decode(request.url_vars["table"])
+        # Table must exist (may handle table creation in the future)
+        db = self.ds.get_database(database_name)
+        if not await db.table_exists(table_name):
+            raise NotFound("Table not found: {}".format(table_name))
+        # Must have insert-row permission
+        if not await self.ds.permission_allowed(
+            request.actor, "insert-row", resource=(database_name, table_name)
+        ):
+            raise Forbidden("Permission denied")
+        if request.headers.get("content-type") != "application/json":
+            # TODO: handle form-encoded data
+            raise BadRequest("Must send JSON data")
+        data = json.loads(await request.post_body())
+        if "row" not in data:
+            raise BadRequest('Must send a "row" key containing a dictionary')
+        row = data["row"]
+        if not isinstance(row, dict):
+            raise BadRequest("row must be a dictionary")
+        # Verify all columns exist
+        columns = await db.table_columns(table_name)
+        pks = await db.primary_keys(table_name)
+        for key in row:
+            if key not in columns:
+                raise BadRequest("Column not found: {}".format(key))
+            if key in pks:
+                raise BadRequest(
+                    "Cannot insert into primary key column: {}".format(key)
+                )
+        # Perform the insert
+        sql = "INSERT INTO [{table}] ({columns}) VALUES ({values})".format(
+            table=escape_sqlite(table_name),
+            columns=", ".join(escape_sqlite(c) for c in row),
+            values=", ".join("?" for c in row),
+        )
+        cursor = await db.execute_write(sql, list(row.values()))
+        # Return the new row
+        rowid = cursor.lastrowid
+        new_row = (
+            await db.execute(
+                "SELECT * FROM [{table}] WHERE rowid = ?".format(
+                    table=escape_sqlite(table_name)
+                ),
+                [rowid],
+            )
+        ).first()
+        return Response.json(
+            {
+                "inserted": [dict(new_row)],
+            },
+            status=201,
+        )

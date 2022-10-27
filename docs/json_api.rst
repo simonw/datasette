@@ -463,7 +463,7 @@ The JSON write API
 
 Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`.
 
-.. _json_api_write_insert_row:
+.. _TableInsertView:
 
 Inserting a single row
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -472,11 +472,11 @@ This requires the :ref:`permissions_insert_row` permission.
 
 ::
 
-    POST /<database>/<table>
+    POST /<database>/<table>/-/insert
     Content-Type: application/json
     Authorization: Bearer dstok_<rest-of-token>
     {
-        "insert": {
+        "row": {
             "column1": "value1",
             "column2": "value2"
         }
@@ -487,9 +487,11 @@ If successful, this will return a ``201`` status code and the newly inserted row
 .. code-block:: json
 
     {
-        "inserted_row": {
-            "id": 1,
-            "column1": "value1",
-            "column2": "value2"
-        }
+        "inserted": [
+            {
+                "id": 1,
+                "column1": "value1",
+                "column2": "value2"
+            }
+        ]
     }

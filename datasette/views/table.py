@@ -131,11 +131,11 @@ class TableView(DataView):
             # TODO: handle form-encoded data
             raise BadRequest("Must send JSON data")
         data = json.loads(await request.post_body())
-        if "row" not in data:
-            raise BadRequest('Must send "row" data')
-        row = data["row"]
+        if "insert" not in data:
+            raise BadRequest('Must send a "insert" key containing a dictionary')
+        row = data["insert"]
         if not isinstance(row, dict):
-            raise BadRequest("row must be a dictionary")
+            raise BadRequest("insert must be a dictionary")
         # Verify all columns exist
         columns = await db.table_columns(table_name)
         pks = await db.primary_keys(table_name)
@@ -165,7 +165,7 @@ class TableView(DataView):
         ).first()
         return Response.json(
             {
-                "row": dict(new_row),
+                "inserted_row": dict(new_row),
             },
             status=201,
         )

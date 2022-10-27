@@ -476,7 +476,7 @@ This requires the :ref:`permissions_insert_row` permission.
     Content-Type: application/json
     Authorization: Bearer dstok_<rest-of-token>
     {
-        "row": {
+        "insert": {
             "column1": "value1",
             "column2": "value2"
         }
@@ -487,7 +487,7 @@ If successful, this will return a ``201`` status code and the newly inserted row
 .. code-block:: json
 
     {
-        "row": {
+        "inserted_row": {
             "id": 1,
             "column1": "value1",
             "column2": "value2"

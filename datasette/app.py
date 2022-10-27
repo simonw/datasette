@@ -603,7 +603,7 @@ class Datasette:
                     continue
                 sql = 'ATTACH DATABASE "file:{path}?{qs}" AS [{name}];'.format(
                     path=db.path,
-                    qs="mode=ro" if db.is_mutable else "immutable=1",
+                    qs="mode=ro",
                     name=db_name,
                 )
                 conn.execute(sql)

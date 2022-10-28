@@ -57,6 +57,7 @@ setup(
         "PyYAML>=5.3",
         "mergedeep>=1.1.1",
         "itsdangerous>=1.1",
+        "sqlite-utils>=3.30",
     ],
     entry_points="""
         [console_scripts]

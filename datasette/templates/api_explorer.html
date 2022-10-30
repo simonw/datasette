@@ -16,15 +16,12 @@
 
 <form method="post" id="api-explorer">
   <div>
-    <label for="auth-token">API token:</label>
-    <input type="text" id="auth-token" name="token" value="" style="width: 40%">
-  </div>
-  <div>
     <label for="path">API path:</label>
-    <input type="text" id="path" name="path" value="/fixtures/searchable/-/insert" style="width: 40%">
+    <input type="text" id="path" name="path" value="/fixtures/searchable/-/insert" style="width: 60%">
   </div>
-  <div>
-    <textarea name="json" style="width: 60%; height: 200px; font-family: monospace; font-size: 0.8em;"></textarea>
+  <div style="margin: 0.5em 0">
+    <label for="apiJson" style="vertical-align: top">JSON:</label>
+    <textarea id="apiJson" name="json" style="width: 60%; height: 200px; font-family: monospace; font-size: 0.8em;"></textarea>
   </div>
   <p><button id="json-format" type="button">Format JSON</button> <input type="submit" value="POST"></p>
 </form>
@@ -46,7 +43,6 @@ form.addEventListener("submit", (ev) => {
   var formData = new FormData(form);
   var json = formData.get('json');
   var path = formData.get('path');
-  var token = formData.get('token');
   // Validate JSON
   try {
     var data = JSON.parse(json);
@@ -60,7 +56,6 @@ form.addEventListener("submit", (ev) => {
     body: json,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
     }
   }).then(r => r.json()).then(r => {
     alert(JSON.stringify(r, null, 2));

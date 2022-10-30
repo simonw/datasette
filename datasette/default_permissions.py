@@ -131,3 +131,12 @@ def register_commands(cli):
         if debug:
             click.echo("\nDecoded:\n")
             click.echo(json.dumps(ds.unsign(token, namespace="token"), indent=2))
+
+
+@hookimpl
+def skip_csrf(scope):
+    # Skip CSRF check for requests with content-type: application/json
+    if scope["type"] == "http":
+        headers = scope.get("headers") or {}
+        if dict(headers).get(b"content-type") == b"application/json":
+            return True

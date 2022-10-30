@@ -26,6 +26,12 @@
   <p><button id="json-format" type="button">Format JSON</button> <input type="submit" value="POST"></p>
 </form>
 
+<div id="output" style="display: none">
+  <h2>API response</h2>
+  <ul class="errors message-error"></ul>
+  <pre></pre>
+</div>
+
 <script>
 document.querySelector('#json-format').addEventListener('click', (ev) => {
   ev.preventDefault();
@@ -38,6 +44,7 @@ document.querySelector('#json-format').addEventListener('click', (ev) => {
   }
 });
 var form = document.getElementById('api-explorer');
+var output = document.getElementById('output');
 form.addEventListener("submit", (ev) => {
   ev.preventDefault();
   var formData = new FormData(form);
@@ -58,7 +65,20 @@ form.addEventListener("submit", (ev) => {
       'Content-Type': 'application/json',
     }
   }).then(r => r.json()).then(r => {
-    alert(JSON.stringify(r, null, 2));
+    var errorList = output.querySelector('.errors');
+    if (r.errors) {
+      errorList.style.display = 'block';
+      errorList.innerHTML = '';
+      r.errors.forEach(error => {
+        var li = document.createElement('li');
+        li.textContent = error;
+        errorList.appendChild(li);
+      });
+    } else {
+      errorList.style.display = 'none';
+    }
+    output.querySelector('pre').innerText = JSON.stringify(r, null, 2);
+    output.style.display = 'block';
   }).catch(err => {
     alert("Error: " + err);
   });

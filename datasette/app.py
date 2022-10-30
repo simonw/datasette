@@ -40,7 +40,7 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import TableView, TableInsertView
+from .views.table import TableView, TableInsertView, TableDropView
 from .views.row import RowView
 from .renderer import json_renderer
 from .url_builder import Urls
@@ -1275,6 +1275,10 @@ class Datasette:
         add_route(
             TableInsertView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/insert$",
+        )
+        add_route(
+            TableDropView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/drop$",
         )
         return [
             # Compile any strings to regular expressions

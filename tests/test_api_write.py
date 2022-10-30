@@ -16,6 +16,14 @@ def ds_write(tmp_path_factory):
     db.close()
 
 
+def write_token(ds, actor_id="root"):
+    return "dstok_{}".format(
+        ds.sign(
+            {"a": actor_id, "token": "dstok", "t": int(time.time())}, namespace="token"
+        )
+    )
+
+
 @pytest.mark.asyncio
 async def test_write_row(ds_write):
     token = write_token(ds_write)
@@ -188,9 +196,39 @@ async def test_write_row_errors(
     assert response.json()["errors"] == expected_errors
 
 
-def write_token(ds):
-    return "dstok_{}".format(
-        ds.sign(
-            {"a": "root", "token": "dstok", "t": int(time.time())}, namespace="token"
-        )
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table", "has_perm"))
+async def test_drop_table(ds_write, scenario):
+    if scenario == "no_token":
+        token = "bad_token"
+    elif scenario == "no_perm":
+        token = write_token(ds_write, actor_id="not-root")
+    else:
+        token = write_token(ds_write)
+    should_work = scenario == "has_perm"
+
+    path = "/data/{}/-/drop".format("docs" if scenario != "bad_table" else "bad_table")
+    response = await ds_write.client.post(
+        path,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
     )
+    if should_work:
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+        assert (await ds_write.client.get("/data/docs")).status_code == 404
+    else:
+        assert (
+            response.status_code == 403
+            if scenario in ("no_token", "bad_token")
+            else 404
+        )
+        assert response.json()["ok"] is False
+        assert (
+            response.json()["errors"] == ["Permission denied"]
+            if scenario == "no_token"
+            else ["Table not found: bad_table"]
+        )
+        assert (await ds_write.client.get("/data/docs")).status_code == 200

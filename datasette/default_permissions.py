@@ -9,7 +9,7 @@ import time
 @hookimpl(tryfirst=True)
 def permission_allowed(datasette, actor, action, resource):
     async def inner():
-        if action in ("permissions-debug", "debug-menu", "insert-row"):
+        if action in ("permissions-debug", "debug-menu", "insert-row", "drop-table"):
             if actor and actor.get("id") == "root":
                 return True
         elif action == "view-instance":

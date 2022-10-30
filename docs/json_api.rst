@@ -539,3 +539,20 @@ To return the newly inserted rows, add the ``"return_rows": true`` key to the re
     }
 
 This will return the same ``"inserted"`` key as the single row example above. There is a small performance penalty for using this option.
+
+.. _TableDropView:
+
+Dropping tables
+~~~~~~~~~~~~~~~
+
+To drop a table, make a ``POST`` to ``/<database>/<table>/-/drop``. This requires the :ref:`permissions_drop_table` permission.
+
+::
+
+    POST /<database>/<table>/-/drop
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.

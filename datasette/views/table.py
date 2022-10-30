@@ -40,6 +40,10 @@ LINK_WITH_LABEL = (
 LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
 
 
+def _error(messages, status=400):
+    return Response.json({"ok": False, "errors": messages}, status=status)
+
+
 class Row:
     def __init__(self, cells):
         self.cells = cells
@@ -1147,9 +1151,6 @@ class TableInsertView(BaseView):
         return rows, errors, extra
 
     async def post(self, request):
-        def _error(messages, status=400):
-            return Response.json({"ok": False, "errors": messages}, status=status)
-
         database_route = tilde_decode(request.url_vars["database"])
         try:
             db = self.ds.get_database(route=database_route)
@@ -1181,7 +1182,8 @@ class TableInsertView(BaseView):
                     rowids.append(table.insert(row).last_rowid)
                 return list(
                     table.rows_where(
-                        "rowid in ({})".format(",".join("?" for _ in rowids)), rowids
+                        "rowid in ({})".format(",".join("?" for _ in rowids)),
+                        rowids,
                     )
                 )
             else:
@@ -1192,3 +1194,33 @@ class TableInsertView(BaseView):
         if should_return:
             result["inserted"] = rows
         return Response.json(result, status=201)
+
+
+class TableDropView(BaseView):
+    name = "table-drop"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def post(self, request):
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            return _error(["Database not found: {}".format(database_route)], 404)
+        database_name = db.name
+        table_name = tilde_decode(request.url_vars["table"])
+        # Table must exist
+        db = self.ds.get_database(database_name)
+        if not await db.table_exists(table_name):
+            return _error(["Table not found: {}".format(table_name)], 404)
+        if not await self.ds.permission_allowed(
+            request.actor, "drop-table", resource=(database_name, table_name)
+        ):
+            return _error(["Permission denied"], 403)
+        # Drop table
+        def drop_table(conn):
+            sqlite_utils.Database(conn)[table_name].drop()
+
+        await db.execute_write_fn(drop_table)
+        return Response.json({"ok": True}, status=200)

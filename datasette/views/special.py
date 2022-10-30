@@ -235,3 +235,11 @@ class CreateTokenView(BaseView):
                 "token_bits": token_bits,
             },
         )
+
+
+class ApiExplorerView(BaseView):
+    name = "api_explorer"
+    has_json_alternate = False
+
+    async def get(self, request):
+        return await self.render(["api_explorer.html"], request)

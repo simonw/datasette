@@ -198,6 +198,60 @@ async def test_write_row_errors(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table", "has_perm"))
+async def test_delete_row(ds_write, scenario):
+    if scenario == "no_token":
+        token = "bad_token"
+    elif scenario == "no_perm":
+        token = write_token(ds_write, actor_id="not-root")
+    else:
+        token = write_token(ds_write)
+    should_work = scenario == "has_perm"
+
+    # Insert a row
+    insert_response = await ds_write.client.post(
+        "/data/docs/-/insert",
+        json={"row": {"title": "Row one", "score": 1.0}, "return_rows": True},
+        headers={
+            "Authorization": "Bearer {}".format(write_token(ds_write)),
+            "Content-Type": "application/json",
+        },
+    )
+    assert insert_response.status_code == 201
+    pk = insert_response.json()["inserted"][0]["id"]
+
+    path = "/data/{}/{}/-/delete".format(
+        "docs" if scenario != "bad_table" else "bad_table", pk
+    )
+    response = await ds_write.client.post(
+        path,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    if should_work:
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+        assert (await ds_write.client.get("/data/docs.json?_shape=array")).json() == []
+    else:
+        assert (
+            response.status_code == 403
+            if scenario in ("no_token", "bad_token")
+            else 404
+        )
+        assert response.json()["ok"] is False
+        assert (
+            response.json()["errors"] == ["Permission denied"]
+            if scenario == "no_token"
+            else ["Table not found: bad_table"]
+        )
+        assert (
+            len((await ds_write.client.get("/data/docs.json?_shape=array")).json()) == 1
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table", "has_perm"))
 async def test_drop_table(ds_write, scenario):
     if scenario == "no_token":
         token = "bad_token"

@@ -559,6 +559,18 @@ Actor is allowed to insert rows into a table.
 
 Default *deny*.
 
+.. _permissions_delete_row:
+
+delete-row
+----------
+
+Actor is allowed to delete rows from a table.
+
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+Default *deny*.
+
 .. _permissions_drop_table:
 
 drop-table

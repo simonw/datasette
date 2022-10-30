@@ -540,6 +540,25 @@ To return the newly inserted rows, add the ``"return_rows": true`` key to the re
 
 This will return the same ``"inserted"`` key as the single row example above. There is a small performance penalty for using this option.
 
+.. _RowDeleteView:
+
+Deleting rows
+~~~~~~~~~~~~~
+
+To delete a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/delete``. This requires the :ref:`permissions_delete_row` permission.
+
+::
+
+    POST /<database>/<table>/<row-pks>/-/delete
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+``<row-pks>`` here is the :ref:`tilde-encoded <internals_tilde_encoding>` primary key value of the row to delete - or a comma-separated list of primary key values if the table has a composite primary key.
+
+If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
 .. _TableDropView:
 
 Dropping tables

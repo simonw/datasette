@@ -1,13 +1,18 @@
-from datasette.utils.asgi import NotFound, Forbidden
+from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
-from .base import DataView
+from .base import DataView, BaseView
 from datasette.utils import (
     tilde_decode,
     urlsafe_components,
     to_css_class,
     escape_sqlite,
 )
+import sqlite_utils
 from .table import _sql_params_pks, display_columns_and_rows
+
+
+def _error(messages, status=400):
+    return Response.json({"ok": False, "errors": messages}, status=status)
 
 
 class RowView(DataView):
@@ -146,3 +151,43 @@ class RowView(DataView):
             )
             foreign_key_tables.append({**fk, **{"count": count, "link": link}})
         return foreign_key_tables
+
+
+class RowDeleteView(BaseView):
+    name = "row-delete"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def post(self, request):
+        database_route = tilde_decode(request.url_vars["database"])
+        table = tilde_decode(request.url_vars["table"])
+        try:
+            db = self.ds.get_database(route=database_route)
+        except KeyError:
+            return _error(["Database not found: {}".format(database_route)], 404)
+
+        database_name = db.name
+        if not await db.table_exists(table):
+            return _error(["Table not found: {}".format(table)], 404)
+
+        pk_values = urlsafe_components(request.url_vars["pks"])
+
+        sql, params, pks = await _sql_params_pks(db, table, pk_values)
+        results = await db.execute(sql, params, truncate=True)
+        rows = list(results.rows)
+        if not rows:
+            return _error([f"Record not found: {pk_values}"], 404)
+
+        # Ensure user has permission to delete this row
+        if not await self.ds.permission_allowed(
+            request.actor, "delete-row", resource=(database_name, table)
+        ):
+            return _error(["Permission denied"], 403)
+
+        # Delete table
+        def delete_row(conn):
+            sqlite_utils.Database(conn)[table].delete(pk_values)
+
+        await db.execute_write_fn(delete_row)
+        return Response.json({"ok": True}, status=200)

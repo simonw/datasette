@@ -465,10 +465,12 @@ Datasette provides a write API for JSON data. This is a POST-only API that requi
 
 .. _TableInsertView:
 
-Inserting a single row
-~~~~~~~~~~~~~~~~~~~~~~
+Inserting rows
+~~~~~~~~~~~~~~
 
 This requires the :ref:`permissions_insert_row` permission.
+
+A single row can be inserted using the ``"row"`` key:
 
 ::
 
@@ -495,3 +497,45 @@ If successful, this will return a ``201`` status code and the newly inserted row
             }
         ]
     }
+
+To insert multiple rows at a time, use the same API method but send a list of dictionaries as the ``"rows"`` key:
+
+::
+
+    POST /<database>/<table>/-/insert
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+    {
+        "rows": [
+            {
+                "column1": "value1",
+                "column2": "value2"
+            },
+            {
+                "column1": "value3",
+                "column2": "value4"
+            }
+        ]
+    }
+
+If successful, this will return a ``201`` status code and an empty ``{}`` response body.
+
+To return the newly inserted rows, add the ``"return_rows": true`` key to the request body:
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "column1": "value1",
+                "column2": "value2"
+            },
+            {
+                "column1": "value3",
+                "column2": "value4"
+            }
+        ],
+        "return_rows": true
+    }
+
+This will return the same ``"inserted"`` key as the single row example above. There is a small performance penalty for using this option.

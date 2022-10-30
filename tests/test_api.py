@@ -804,6 +804,7 @@ def test_settings_json(app_client):
         "facet_suggest_time_limit_ms": 50,
         "facet_time_limit_ms": 200,
         "max_returned_rows": 100,
+        "max_insert_rows": 100,
         "sql_time_limit_ms": 200,
         "allow_download": True,
         "allow_signed_tokens": True,

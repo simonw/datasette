@@ -96,6 +96,17 @@ You can increase or decrease this limit like so::
 
     datasette mydatabase.db --setting max_returned_rows 2000
 
+.. _setting_max_insert_rows:
+
+max_insert_rows
+~~~~~~~~~~~~~~~
+
+Maximum rows that can be inserted at a time using the bulk insert API, see :ref:`TableInsertView`. Defaults to 100.
+
+You can increase or decrease this limit like so::
+
+    datasette mydatabase.db --setting max_insert_rows 1000
+
 .. _setting_num_sql_threads:
 
 num_sql_threads

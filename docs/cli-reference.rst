@@ -213,6 +213,8 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    (default=100)
       max_returned_rows            Maximum rows that can be returned from a table or
                                    custom query (default=1000)
+      max_insert_rows              Maximum rows that can be inserted at a time using
+                                   the bulk insert API (default=1000)
       num_sql_threads              Number of threads in the thread pool for
                                    executing SQLite queries (default=3)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds

@@ -100,6 +100,11 @@ SETTINGS = (
         "Maximum rows that can be returned from a table or custom query",
     ),
     Setting(
+        "max_insert_rows",
+        100,
+        "Maximum rows that can be inserted at a time using the bulk insert API",
+    ),
+    Setting(
         "num_sql_threads",
         3,
         "Number of threads in the thread pool for executing SQLite queries",

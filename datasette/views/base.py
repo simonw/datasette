@@ -378,7 +378,11 @@ class DataView(BaseView):
                 <p>SQL query took too long. The time limit is controlled by the
                 <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
                 configuration option.</p>
-                <pre>{}</pre>
+                <textarea style="width: 90%">{}</textarea>
+                <script>
+                let ta = document.querySelector("textarea");
+                ta.style.height = ta.scrollHeight + "px";
+                </script>
             """.format(
                         escape(ex.sql)
                     )

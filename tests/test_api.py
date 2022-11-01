@@ -662,7 +662,11 @@ def test_sql_time_limit(app_client_shorter_time_limit):
             "<p>SQL query took too long. The time limit is controlled by the\n"
             '<a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>\n'
             "configuration option.</p>\n"
-            "<pre>select sleep(0.5)</pre>"
+            '<textarea style="width: 90%">select sleep(0.5)</textarea>\n'
+            "<script>\n"
+            'let ta = document.querySelector("textarea");\n'
+            'ta.style.height = ta.scrollHeight + "px";\n'
+            "</script>"
         ),
         "status": 400,
         "title": "SQL Interrupted",

@@ -172,7 +172,7 @@ def test_sql_time_limit(app_client_shorter_time_limit):
         """
         <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
     """.strip(),
-        "<pre>select sleep(0.5)</pre>",
+        '<textarea style="width: 90%">select sleep(0.5)</textarea>',
     ]
     for expected_html_fragment in expected_html_fragments:
         assert expected_html_fragment in response.text

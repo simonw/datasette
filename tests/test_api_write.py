@@ -37,7 +37,7 @@ async def test_write_row(ds_write):
     )
     expected_row = {"id": 1, "title": "Test", "score": 1.0}
     assert response.status_code == 201
-    assert response.json()["inserted"] == [expected_row]
+    assert response.json()["rows"] == [expected_row]
     rows = (await ds_write.get_database("data").execute("select * from docs")).rows
     assert dict(rows[0]) == expected_row
 
@@ -70,7 +70,7 @@ async def test_write_rows(ds_write, return_rows):
     ]
     assert response.json()["ok"] is True
     if return_rows:
-        assert response.json()["inserted"] == actual_rows
+        assert response.json()["rows"] == actual_rows
 
 
 @pytest.mark.asyncio
@@ -156,6 +156,27 @@ async def test_write_rows(ds_write, return_rows):
             400,
             ["Too many rows, maximum allowed is 100"],
         ),
+        (
+            "/data/docs/-/insert",
+            {"rows": [{"title": "Test"}], "ignore": True, "replace": True},
+            None,
+            400,
+            ['Cannot use "ignore" and "replace" at the same time'],
+        ),
+        (
+            "/data/docs/-/insert",
+            {"rows": [{"title": "Test"}], "invalid_param": True},
+            None,
+            400,
+            ['Invalid parameter: "invalid_param"'],
+        ),
+        (
+            "/data/docs/-/insert",
+            {"rows": [{"title": "Test"}], "one": True, "two": True},
+            None,
+            400,
+            ['Invalid parameter: "one", "two"'],
+        ),
         # Validate columns of each row
         (
             "/data/docs/-/insert",
@@ -197,6 +218,62 @@ async def test_write_row_errors(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ignore,replace,expected_rows",
+    (
+        (
+            True,
+            False,
+            [
+                {"id": 1, "title": "Exists", "score": None},
+            ],
+        ),
+        (
+            False,
+            True,
+            [
+                {"id": 1, "title": "One", "score": None},
+            ],
+        ),
+    ),
+)
+@pytest.mark.parametrize("should_return", (True, False))
+async def test_insert_ignore_replace(
+    ds_write, ignore, replace, expected_rows, should_return
+):
+    await ds_write.get_database("data").execute_write(
+        "insert into docs (id, title) values (1, 'Exists')"
+    )
+    token = write_token(ds_write)
+    data = {"rows": [{"id": 1, "title": "One"}]}
+    if ignore:
+        data["ignore"] = True
+    if replace:
+        data["replace"] = True
+    if should_return:
+        data["return_rows"] = True
+    response = await ds_write.client.post(
+        "/data/docs/-/insert",
+        json=data,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert response.status_code == 201
+    actual_rows = [
+        dict(r)
+        for r in (
+            await ds_write.get_database("data").execute("select * from docs")
+        ).rows
+    ]
+    assert actual_rows == expected_rows
+    assert response.json()["ok"] is True
+    if should_return:
+        assert response.json()["rows"] == expected_rows
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table", "has_perm"))
 async def test_delete_row(ds_write, scenario):
     if scenario == "no_token":
@@ -217,7 +294,7 @@ async def test_delete_row(ds_write, scenario):
         },
     )
     assert insert_response.status_code == 201
-    pk = insert_response.json()["inserted"][0]["id"]
+    pk = insert_response.json()["rows"][0]["id"]
 
     path = "/data/{}/{}/-/delete".format(
         "docs" if scenario != "bad_table" else "bad_table", pk

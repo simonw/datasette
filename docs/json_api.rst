@@ -489,7 +489,7 @@ If successful, this will return a ``201`` status code and the newly inserted row
 .. code-block:: json
 
     {
-        "inserted": [
+        "rows": [
             {
                 "id": 1,
                 "column1": "value1",
@@ -538,7 +538,7 @@ To return the newly inserted rows, add the ``"return_rows": true`` key to the re
         "return_rows": true
     }
 
-This will return the same ``"inserted"`` key as the single row example above. There is a small performance penalty for using this option.
+This will return the same ``"rows"`` key as the single row example above. There is a small performance penalty for using this option.
 
 .. _RowDeleteView:
 

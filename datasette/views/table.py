@@ -1206,7 +1206,10 @@ class TableInsertView(BaseView):
             else:
                 table.insert_all(rows, ignore=ignore, replace=replace)
 
-        rows = await db.execute_write_fn(insert_rows)
+        try:
+            rows = await db.execute_write_fn(insert_rows)
+        except Exception as e:
+            return _error([str(e)])
         result = {"ok": True}
         if should_return:
             result["rows"] = rows

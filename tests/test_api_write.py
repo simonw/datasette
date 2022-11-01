@@ -158,6 +158,13 @@ async def test_write_rows(ds_write, return_rows):
         ),
         (
             "/data/docs/-/insert",
+            {"rows": [{"id": 1, "title": "Test"}]},
+            "duplicate_id",
+            400,
+            ["UNIQUE constraint failed: docs.id"],
+        ),
+        (
+            "/data/docs/-/insert",
             {"rows": [{"title": "Test"}], "ignore": True, "replace": True},
             None,
             400,
@@ -194,6 +201,10 @@ async def test_write_row_errors(
     ds_write, path, input, special_case, expected_status, expected_errors
 ):
     token = write_token(ds_write)
+    if special_case == "duplicate_id":
+        await ds_write.get_database("data").execute_write(
+            "insert into docs (id) values (1)"
+        )
     if special_case == "bad_token":
         token += "bad"
     kwargs = dict(

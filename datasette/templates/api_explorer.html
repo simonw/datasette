@@ -27,7 +27,8 @@
 </form>
 
 <div id="output" style="display: none">
-  <h2>API response</h2>
+  <h2>API response: HTTP <span id="response-status"></span></h2>
+  </h2>
   <ul class="errors message-error"></ul>
   <pre></pre>
 </div>
@@ -64,12 +65,15 @@ form.addEventListener("submit", (ev) => {
     headers: {
       'Content-Type': 'application/json',
     }
-  }).then(r => r.json()).then(r => {
+  }).then(r => {
+    document.getElementById('response-status').textContent = r.status;
+    return r.json();
+  }).then(data => {
     var errorList = output.querySelector('.errors');
-    if (r.errors) {
+    if (data.errors) {
       errorList.style.display = 'block';
       errorList.innerHTML = '';
-      r.errors.forEach(error => {
+      data.errors.forEach(error => {
         var li = document.createElement('li');
         li.textContent = error;
         errorList.appendChild(li);
@@ -77,7 +81,7 @@ form.addEventListener("submit", (ev) => {
     } else {
       errorList.style.display = 'none';
     }
-    output.querySelector('pre').innerText = JSON.stringify(r, null, 2);
+    output.querySelector('pre').innerText = JSON.stringify(data, null, 2);
     output.style.display = 'block';
   }).catch(err => {
     alert("Error: " + err);

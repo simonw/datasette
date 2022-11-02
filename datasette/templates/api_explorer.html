@@ -2,6 +2,10 @@
 
 {% block title %}API Explorer{% endblock %}
 
+{% block extra_head %}
+<script src="{{ base_url }}-/static/json-format-highlight-1.0.1.js"></script>
+{% endblock %}
+
 {% block content %}
 
 <h1>API Explorer</h1>
@@ -14,17 +18,30 @@
   {% endfor %}
 {% endif %}
 
-<form method="post" id="api-explorer">
-  <div>
-    <label for="path">API path:</label>
-    <input type="text" id="path" name="path" value="/fixtures/searchable/-/insert" style="width: 60%">
-  </div>
-  <div style="margin: 0.5em 0">
-    <label for="apiJson" style="vertical-align: top">JSON:</label>
-    <textarea id="apiJson" name="json" style="width: 60%; height: 200px; font-family: monospace; font-size: 0.8em;"></textarea>
-  </div>
-  <p><button id="json-format" type="button">Format JSON</button> <input type="submit" value="POST"></p>
-</form>
+<details open style="border: 2px solid #ccc; border-bottom: none; padding: 0.5em">
+  <summary style="cursor: pointer;">GET</summary>
+  <form method="get" id="api-explorer-get" style="margin-top: 0.7em">
+    <div>
+      <label for="path">API path:</label>
+      <input type="text" id="path" name="path" value="/data/docs.json" style="width: 60%">
+      <input type="submit" value="GET">
+    </div>
+  </form>
+</details>
+<details style="border: 2px solid #ccc; padding: 0.5em">
+  <summary style="cursor: pointer">POST</summary>
+  <form method="post" id="api-explorer-post" style="margin-top: 0.7em">
+    <div>
+      <label for="path">API path:</label>
+      <input type="text" id="path" name="path" value="/data/docs/-/insert" style="width: 60%">
+    </div>
+    <div style="margin: 0.5em 0">
+      <label for="apiJson" style="vertical-align: top">JSON:</label>
+      <textarea id="apiJson" name="json" style="width: 60%; height: 200px; font-family: monospace; font-size: 0.8em;"></textarea>
+    </div>
+    <p><button id="json-format" type="button">Format JSON</button> <input type="submit" value="POST"></p>
+  </form>
+</details>
 
 <div id="output" style="display: none">
   <h2>API response: HTTP <span id="response-status"></span></h2>
@@ -36,7 +53,7 @@
 <script>
 document.querySelector('#json-format').addEventListener('click', (ev) => {
   ev.preventDefault();
-  const json = document.querySelector('textarea[name="json"]').value;
+  let json = document.querySelector('textarea[name="json"]').value.trim();
   try {
     const parsed = JSON.parse(json);
     document.querySelector('textarea[name="json"]').value = JSON.stringify(parsed, null, 2);
@@ -44,14 +61,41 @@ document.querySelector('#json-format').addEventListener('click', (ev) => {
     alert("Error parsing JSON: " + e);
   }
 });
-var form = document.getElementById('api-explorer');
+var postForm = document.getElementById('api-explorer-post');
+var getForm = document.getElementById('api-explorer-get');
 var output = document.getElementById('output');
-form.addEventListener("submit", (ev) => {
+var errorList = output.querySelector('.errors');
+
+getForm.addEventListener("submit", (ev) => {
   ev.preventDefault();
-  var formData = new FormData(form);
+  var formData = new FormData(getForm);
+  var path = formData.get('path');
+  fetch(path, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    }
+  }).then((response) => {
+    output.style.display = 'block';
+    document.getElementById('response-status').textContent = response.status;
+    return response.json();
+  }).then((data) => {
+    output.querySelector('pre').innerHTML = jsonFormatHighlight(data);
+    errorList.style.display = 'none';
+  }).catch((error) => {
+    alert(error);
+  });
+});
+
+postForm.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  var formData = new FormData(postForm);
   var json = formData.get('json');
   var path = formData.get('path');
   // Validate JSON
+  if (!json.length) {
+    json = '{}';
+  }
   try {
     var data = JSON.parse(json);
   } catch (err) {
@@ -69,7 +113,6 @@ form.addEventListener("submit", (ev) => {
     document.getElementById('response-status').textContent = r.status;
     return r.json();
   }).then(data => {
-    var errorList = output.querySelector('.errors');
     if (data.errors) {
       errorList.style.display = 'block';
       errorList.innerHTML = '';
@@ -81,7 +124,7 @@ form.addEventListener("submit", (ev) => {
     } else {
       errorList.style.display = 'none';
     }
-    output.querySelector('pre').innerText = JSON.stringify(data, null, 2);
+    output.querySelector('pre').innerHTML = jsonFormatHighlight(data);
     output.style.display = 'block';
   }).catch(err => {
     alert("Error: " + err);

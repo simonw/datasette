@@ -507,7 +507,6 @@ class DataView(BaseView):
                         if key not in ("_labels", "_facet", "_size")
                     ]
                     + [("_size", "max")],
-                    "datasette_version": __version__,
                     "settings": self.ds.settings_dict(),
                 },
             }

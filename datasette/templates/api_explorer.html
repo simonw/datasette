@@ -10,14 +10,13 @@
 
 <h1>API Explorer</h1>
 
-<p>Use this tool to try out the Datasette write API.</p>
-
-{% if errors %}
-  {% for error in errors %}
-    <p class="message-error">{{ error }}</p>
-  {% endfor %}
-{% endif %}
-
+<p>Use this tool to try out the
+  {% if datasette_version %}
+    <a href="https://docs.datasette.io/en/{{ datasette_version }}/json_api.html">Datasette API</a>.
+  {% else %}
+    Datasette API.
+  {% endif %}
+</p>
 <details open style="border: 2px solid #ccc; border-bottom: none; padding: 0.5em">
   <summary style="cursor: pointer;">GET</summary>
   <form method="get" id="api-explorer-get" style="margin-top: 0.7em">

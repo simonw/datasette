@@ -1100,6 +1100,7 @@ class Datasette:
                 ),
                 "base_url": self.setting("base_url"),
                 "csrftoken": request.scope["csrftoken"] if request else lambda: "",
+                "datasette_version": __version__,
             },
             **extra_template_vars,
         }

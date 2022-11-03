@@ -546,3 +546,7 @@ class DataView(BaseView):
         if self.ds.cors:
             add_cors_headers(response.headers)
         return response
+
+
+def _error(messages, status=400):
+    return Response.json({"ok": False, "errors": messages}, status=status)

@@ -1,6 +1,6 @@
 from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
-from .base import DataView, BaseView
+from .base import DataView, BaseView, _error
 from datasette.utils import (
     tilde_decode,
     urlsafe_components,
@@ -9,10 +9,6 @@ from datasette.utils import (
 )
 import sqlite_utils
 from .table import _sql_params_pks, display_columns_and_rows
-
-
-def _error(messages, status=400):
-    return Response.json({"ok": False, "errors": messages}, status=status)
 
 
 class RowView(DataView):

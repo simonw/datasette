@@ -31,17 +31,13 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
 import sqlite_utils
-from .base import BaseView, DataView, DatasetteError, ureg
+from .base import BaseView, DataView, DatasetteError, ureg, _error
 from .database import QueryView
 
 LINK_WITH_LABEL = (
     '<a href="{base_url}{database}/{table}/{link_id}">{label}</a>&nbsp;<em>{id}</em>'
 )
 LINK_WITH_VALUE = '<a href="{base_url}{database}/{table}/{link_id}">{id}</a>'
-
-
-def _error(messages, status=400):
-    return Response.json({"ok": False, "errors": messages}, status=status)
 
 
 class Row:

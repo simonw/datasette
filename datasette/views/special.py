@@ -1,6 +1,8 @@
 import json
+from datasette.permissions import PERMISSIONS
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import actor_matches_allow, add_cors_headers
+from datasette.permissions import PERMISSIONS
 from .base import BaseView
 import secrets
 import time
@@ -103,7 +105,37 @@ class PermissionsDebugView(BaseView):
             ["permissions_debug.html"],
             request,
             # list() avoids error if check is performed during template render:
-            {"permission_checks": list(reversed(self.ds._permission_checks))},
+            {
+                "permission_checks": list(reversed(self.ds._permission_checks)),
+                "permissions": PERMISSIONS,
+            },
+        )
+
+    async def post(self, request):
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
+            raise Forbidden("Permission denied")
+        vars = await request.post_vars()
+        actor = json.loads(vars["actor"])
+        permission = vars["permission"]
+        resource_1 = vars["resource_1"]
+        resource_2 = vars["resource_2"]
+        resource = []
+        if resource_1:
+            resource.append(resource_1)
+        if resource_2:
+            resource.append(resource_2)
+        resource = tuple(resource)
+        result = await self.ds.permission_allowed(
+            actor, permission, resource, default="USE_DEFAULT"
+        )
+        return Response.json(
+            {
+                "actor": actor,
+                "permission": permission,
+                "resource": resource,
+                "result": result,
+            }
         )
 
 

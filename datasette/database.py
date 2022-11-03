@@ -47,6 +47,8 @@ class Database:
         # These are used when in non-threaded mode:
         self._read_connection = None
         self._write_connection = None
+        # This is used to track all file connections so they can be closed
+        self._all_file_connections = []
 
     @property
     def cached_table_counts(self):
@@ -91,9 +93,16 @@ class Database:
         assert not (write and not self.is_mutable)
         if write:
             qs = ""
-        return sqlite3.connect(
+        conn = sqlite3.connect(
             f"file:{self.path}{qs}", uri=True, check_same_thread=False
         )
+        self._all_file_connections.append(conn)
+        return conn
+
+    def close(self):
+        # Close all connections - useful to avoid running out of file handles in tests
+        for connection in self._all_file_connections:
+            connection.close()
 
     async def execute_write(self, sql, params=None, block=True):
         def _inner(conn):

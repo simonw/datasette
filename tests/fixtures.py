@@ -1,5 +1,5 @@
 from datasette.app import Datasette
-from datasette.utils.sqlite import sqlite3, sqlite_version
+from datasette.utils.sqlite import sqlite3
 from datasette.utils.testing import TestClient
 import click
 import contextlib
@@ -9,11 +9,9 @@ import os
 import pathlib
 import pytest
 import random
-import sys
 import string
 import tempfile
 import textwrap
-import time
 
 
 # This temp file is used by one of the plugin config tests
@@ -167,7 +165,11 @@ def make_app_client(
             crossdb=crossdb,
         )
         yield TestClient(ds)
-        os.remove(filepath)
+        # Close as many database connections as possible
+        # to try and avoid too many open files error
+        for db in ds.databases.values():
+            if not db.is_memory:
+                db.close()
 
 
 @pytest.fixture(scope="session")

@@ -874,6 +874,13 @@ If your function raises an exception that exception will be propagated up to the
 
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
 
+.. _database_close:
+
+db.close()
+----------
+
+Closes all of the open connections to file-backed databases. This is mainly intended to be used by large test suites, to avoid hitting limits on the number of open files.
+
 .. _internals_database_introspection:
 
 Database introspection

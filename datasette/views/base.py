@@ -71,8 +71,13 @@ class BaseView:
 
     async def method_not_allowed(self, request):
         print(request.headers)
-        if request.path.endswith(".json") or request.headers.get("content-type") == "application/json":
-            return Response.json({"ok": False, "error": "Method not allowed"}, status=405)
+        if (
+            request.path.endswith(".json")
+            or request.headers.get("content-type") == "application/json"
+        ):
+            return Response.json(
+                {"ok": False, "error": "Method not allowed"}, status=405
+            )
         return Response.text("Method not allowed", status=405)
 
     async def options(self, request, *args, **kwargs):

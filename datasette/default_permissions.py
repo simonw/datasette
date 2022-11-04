@@ -6,8 +6,8 @@ import json
 import time
 
 
-@hookimpl(tryfirst=True)
-def permission_allowed(datasette, actor, action, resource):
+@hookimpl(tryfirst=True, specname="permission_allowed")
+def permission_allowed_default(datasette, actor, action, resource):
     async def inner():
         if action in (
             "permissions-debug",
@@ -55,6 +55,44 @@ def permission_allowed(datasette, actor, action, resource):
             return actor_matches_allow(actor, database_allow_sql)
 
     return inner
+
+
+@hookimpl(specname="permission_allowed")
+def permission_allowed_actor_restrictions(actor, action, resource):
+    if actor is None:
+        return None
+    if "_r" not in actor:
+        # No restrictions, so we have no opinion
+        return None
+    _r = actor.get("_r")
+    action_initials = "".join([word[0] for word in action.split("-")])
+    # If _r is defined then we use those to further restrict the actor
+    # Crucially, we only use this to say NO (return False) - we never
+    # use it to return YES (True) because that might over-ride other
+    # restrictions placed on this actor
+    all_allowed = _r.get("a")
+    if all_allowed is not None:
+        assert isinstance(all_allowed, list)
+        if action_initials in all_allowed:
+            return None
+    # How about for the current database?
+    if action in ("view-database", "view-database-download", "execute-sql"):
+        database_allowed = _r.get("d", {}).get(resource)
+        if database_allowed is not None:
+            assert isinstance(database_allowed, list)
+            if action_initials in database_allowed:
+                return None
+    # Or the current table? That's any time the resource is (database, table)
+    if not isinstance(resource, str) and len(resource) == 2:
+        database, table = resource
+        table_allowed = _r.get("t", {}).get(database, {}).get(table)
+        # TODO: What should this do for canned queries?
+        if table_allowed is not None:
+            assert isinstance(table_allowed, list)
+            if action_initials in table_allowed:
+                return None
+    # This action is not specifically allowed, so reject it
+    return False
 
 
 @hookimpl

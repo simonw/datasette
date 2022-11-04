@@ -126,6 +126,8 @@ class PermissionsDebugView(BaseView):
         if resource_2:
             resource.append(resource_2)
         resource = tuple(resource)
+        if len(resource) == 1:
+            resource = resource[0]
         result = await self.ds.permission_allowed(
             actor, permission, resource, default="USE_DEFAULT"
         )

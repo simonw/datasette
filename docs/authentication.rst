@@ -342,15 +342,33 @@ Datasette includes a default mechanism for generating API tokens that can be use
 
 Authenticated users can create new API tokens using a form on the ``/-/create-token`` page.
 
-Created tokens can then be passed in the ``Authorization: Bearer token_here`` header of HTTP requests to Datasette.
+Created tokens can then be passed in the ``Authorization: Bearer $token`` header of HTTP requests to Datasette.
 
-A token created by a user will include that user's ``"id"`` in the token payload, so any permissions granted to that user based on their ID will be made available to the token as well.
+A token created by a user will include that user's ``"id"`` in the token payload, so any permissions granted to that user based on their ID can be made available to the token as well.
 
-Coming soon: a mechanism for creating tokens that can only perform a subset of the actions available to the user who created them.
+Coming soon: a mechanism for creating tokens that can only perform a specified subset of the actions available to the user who created them.
 
-This page cannot be accessed by actors with a ``"token": "some-value"`` property. This is to prevent API tokens from being used to automatically create more tokens. Datasette plugins that implement their own form of API token authentication should follow this convention.
+When one of these a token accompanies a request, the actor for that request will have the following shape:
 
-You can disable this feature using the :ref:`allow_signed_tokens <setting_allow_signed_tokens>` setting.
+.. code-block:: json
+
+    {
+        "id": "user_id",
+        "token": "dstok",
+        "token_expires": 1667717426
+    }
+
+The ``"id"`` field duplicates the ID of the actor who first created the token.
+
+The ``"token"`` field identifies that this actor was authenticated using a Datasette signed token (``dstok``).
+
+The ``"token_expires"`` field, if present, indicates that the token will expire after that integer timestamp.
+
+The ``/-/create-token`` page cannot be accessed by actors that are authenticated with a ``"token": "some-value"`` property. This is to prevent API tokens from being used to create more tokens.
+
+Datasette plugins that implement their own form of API token authentication should follow this convention.
+
+You can disable the signed token feature entirely using the :ref:`allow_signed_tokens <setting_allow_signed_tokens>` setting.
 
 .. _authentication_cli_create_token:
 

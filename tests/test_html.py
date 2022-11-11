@@ -801,6 +801,16 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
             )
 
 
+def test_base_url_affects_filter_redirects(app_client_base_url_prefix):
+    path = "/fixtures/binary_data?_filter_column=rowid&_filter_op=exact&_filter_value=1&_sort=rowid"
+    response = app_client_base_url_prefix.get(path)
+    assert response.status == 302
+    assert (
+        response.headers["location"]
+        == "/prefix/fixtures/binary_data?_sort=rowid&rowid__exact=1"
+    )
+
+
 def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
     html = app_client_base_url_prefix.get("/").text
     assert '<link rel="stylesheet" href="/prefix/static/extra-css-urls.css">' in html

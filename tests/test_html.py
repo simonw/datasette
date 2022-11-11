@@ -765,6 +765,8 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
         path_to_get = "/prefix/" + path.lstrip("/")
     response = client.get(path_to_get)
     soup = Soup(response.body, "html.parser")
+    for form in soup.select("form"):
+        assert form["action"].startswith("/prefix")
     for el in soup.findAll(["a", "link", "script"]):
         if "href" in el.attrs:
             href = el["href"]

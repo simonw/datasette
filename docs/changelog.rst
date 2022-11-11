@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v0_63_1:
+
+0.63.1 (2022-11-10)
+-------------------
+
+- Fixed a bug where Datasette's table filter form would not redirect correctly when run behind a proxy using the :ref:`base_url <setting_base_url>` setting. (:issue:`1883`)
+- SQL query is now shown wrapped in a ``<textarea>`` if a query exceeds a time limit. (:issue:`1876`)
+- Fixed an intermittent "Too many open files" error while running the test suite. (:issue:`1843`)
+- New :ref:`database_close` internal method.
+
 .. _v0_63:
 
 0.63 (2022-10-27)

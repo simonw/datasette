@@ -65,6 +65,20 @@ var getForm = document.getElementById('api-explorer-get');
 var output = document.getElementById('output');
 var errorList = output.querySelector('.errors');
 
+// Cause GET and POST regions to toggle each other
+var getDetails = getForm.closest('details');
+var postDetails = postForm.closest('details');
+getDetails.addEventListener('toggle', (ev) => {
+  if (getDetails.open) {
+    postDetails.open = false;
+  }
+});
+postDetails.addEventListener('toggle', (ev) => {
+  if (postDetails.open) {
+    getDetails.open = false;
+  }
+});
+
 getForm.addEventListener("submit", (ev) => {
   ev.preventDefault();
   var formData = new FormData(getForm);

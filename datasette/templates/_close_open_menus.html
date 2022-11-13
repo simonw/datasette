@@ -9,7 +9,7 @@ document.body.addEventListener('click', (ev) => {
     if (target && target.tagName == 'DETAILS') {
         detailsClickedWithin = target;
     }
-    Array.from(document.getElementsByTagName('details')).filter(
+    Array.from(document.querySelectorAll('details.details-menu')).filter(
         (details) => details.open && details != detailsClickedWithin
     ).forEach(details => details.open = false);
 });

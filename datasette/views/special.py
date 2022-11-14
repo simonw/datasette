@@ -281,8 +281,6 @@ class ApiExplorerView(BaseView):
         for name, db in self.ds.databases.items():
             if name == "_internal":
                 continue
-            if not db.is_mutable:
-                continue
             database_visible, _ = await self.ds.check_visibility(
                 request.actor,
                 "view-database",
@@ -301,6 +299,7 @@ class ApiExplorerView(BaseView):
                 if not visible:
                     continue
                 table_links = []
+                tables.append({"name": table, "links": table_links})
                 table_links.append(
                     {
                         "label": "Get rows for {}".format(table),
@@ -309,6 +308,10 @@ class ApiExplorerView(BaseView):
                         + "?_shape=objects".format(name, table),
                     }
                 )
+                # If not mutable don't show any write APIs
+                if not db.is_mutable:
+                    continue
+
                 if await self.ds.permission_allowed(
                     request.actor, "insert-row", (name, table)
                 ):
@@ -340,9 +343,11 @@ class ApiExplorerView(BaseView):
                             "method": "POST",
                         }
                     )
-                tables.append({"name": table, "links": table_links})
             database_links = []
-            if await self.ds.permission_allowed(request.actor, "create-table", name):
+            if (
+                await self.ds.permission_allowed(request.actor, "create-table", name)
+                and db.is_mutable
+            ):
                 database_links.append(
                     {
                         "path": self.ds.urls.database(name) + "/-/create",

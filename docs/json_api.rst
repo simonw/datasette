@@ -578,6 +578,8 @@ Without a POST body this will return a status ``200`` with a note about how many
 
     {
         "ok": true,
+        "database": "<database>",
+        "table": "<table>",
         "row_count": 5,
         "message": "Pass \"confirm\": true to confirm"
     }

@@ -8,10 +8,15 @@ import time
 def ds_write(tmp_path_factory):
     db_directory = tmp_path_factory.mktemp("dbs")
     db_path = str(db_directory / "data.db")
-    db = sqlite3.connect(str(db_path))
-    db.execute("vacuum")
-    db.execute("create table docs (id integer primary key, title text, score float)")
-    ds = Datasette([db_path])
+    db_path_immutable = str(db_directory / "immutable.db")
+    db1 = sqlite3.connect(str(db_path))
+    db2 = sqlite3.connect(str(db_path_immutable))
+    for db in (db1, db2):
+        db.execute("vacuum")
+        db.execute(
+            "create table docs (id integer primary key, title text, score float)"
+        )
+    ds = Datasette([db_path], immutables=[db_path_immutable])
     yield ds
     db.close()
 
@@ -339,7 +344,9 @@ async def test_delete_row(ds_write, scenario):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table", "has_perm"))
+@pytest.mark.parametrize(
+    "scenario", ("no_token", "no_perm", "bad_table", "has_perm", "immutable")
+)
 async def test_drop_table(ds_write, scenario):
     if scenario == "no_token":
         token = "bad_token"
@@ -351,7 +358,10 @@ async def test_drop_table(ds_write, scenario):
     await ds_write.get_database("data").execute_write(
         "insert into docs (id, title) values (1, 'Row 1')"
     )
-    path = "/data/{}/-/drop".format("docs" if scenario != "bad_table" else "bad_table")
+    path = "/{database}/{table}/-/drop".format(
+        database="immutable" if scenario == "immutable" else "data",
+        table="docs" if scenario != "bad_table" else "bad_table",
+    )
     response = await ds_write.client.post(
         path,
         headers={
@@ -366,17 +376,20 @@ async def test_drop_table(ds_write, scenario):
             else 404
         )
         assert response.json()["ok"] is False
-        assert (
-            response.json()["errors"] == ["Permission denied"]
-            if scenario == "no_token"
-            else ["Table not found: bad_table"]
-        )
+        expected_error = "Permission denied"
+        if scenario == "bad_table":
+            expected_error = "Table not found: bad_table"
+        elif scenario == "immutable":
+            expected_error = "Database is immutable"
+        assert response.json()["errors"] == [expected_error]
         assert (await ds_write.client.get("/data/docs")).status_code == 200
     else:
         # It should show a confirmation page
         assert response.status_code == 200
         assert response.json() == {
             "ok": True,
+            "database": "data",
+            "table": "docs",
             "row_count": 1,
             "message": 'Pass "confirm": true to confirm',
         }

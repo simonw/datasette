@@ -1236,7 +1236,8 @@ class TableDropView(BaseView):
             request.actor, "drop-table", resource=(database_name, table_name)
         ):
             return _error(["Permission denied"], 403)
-
+        if not db.is_mutable:
+            return _error(["Database is immutable"], 403)
         confirm = False
         try:
             data = json.loads(await request.post_body())
@@ -1248,6 +1249,8 @@ class TableDropView(BaseView):
             return Response.json(
                 {
                     "ok": True,
+                    "database": database_name,
+                    "table": table_name,
                     "row_count": (
                         await db.execute("select count(*) from [{}]".format(table_name))
                     ).single_value(),

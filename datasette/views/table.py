@@ -1236,6 +1236,26 @@ class TableDropView(BaseView):
             request.actor, "drop-table", resource=(database_name, table_name)
         ):
             return _error(["Permission denied"], 403)
+
+        confirm = False
+        try:
+            data = json.loads(await request.post_body())
+            confirm = data.get("confirm")
+        except json.JSONDecodeError as e:
+            pass
+
+        if not confirm:
+            return Response.json(
+                {
+                    "ok": True,
+                    "row_count": (
+                        await db.execute("select count(*) from [{}]".format(table_name))
+                    ).single_value(),
+                    "message": 'Pass "confirm": true to confirm',
+                },
+                status=200,
+            )
+
         # Drop table
         def drop_table(conn):
             sqlite_utils.Database(conn)[table_name].drop()

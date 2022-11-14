@@ -572,6 +572,24 @@ To drop a table, make a ``POST`` to ``/<database>/<table>/-/drop``. This require
     Content-Type: application/json
     Authorization: Bearer dstok_<rest-of-token>
 
-If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+Without a POST body this will return a status ``200`` with a note about how many rows will be deleted:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "row_count": 5,
+        "message": "Pass \"confirm\": true to confirm"
+    }
+
+If you pass the following POST body:
+
+.. code-block:: json
+
+    {
+        "confirm": true
+    }
+
+Then the table will be dropped and a status ``200`` response of ``{"ok": true}`` will be returned.
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.

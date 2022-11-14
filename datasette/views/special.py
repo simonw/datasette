@@ -336,7 +336,7 @@ class ApiExplorerView(BaseView):
                         {
                             "path": self.ds.urls.table(name, table) + "/-/drop",
                             "label": "Drop table {}".format(table),
-                            "json": {},
+                            "json": {"confirm": False},
                             "method": "POST",
                         }
                     )

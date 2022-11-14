@@ -348,7 +348,9 @@ async def test_drop_table(ds_write, scenario):
     else:
         token = write_token(ds_write)
     should_work = scenario == "has_perm"
-
+    await ds_write.get_database("data").execute_write(
+        "insert into docs (id, title) values (1, 'Row 1')"
+    )
     path = "/data/{}/-/drop".format("docs" if scenario != "bad_table" else "bad_table")
     response = await ds_write.client.post(
         path,
@@ -357,11 +359,7 @@ async def test_drop_table(ds_write, scenario):
             "Content-Type": "application/json",
         },
     )
-    if should_work:
-        assert response.status_code == 200
-        assert response.json() == {"ok": True}
-        assert (await ds_write.client.get("/data/docs")).status_code == 404
-    else:
+    if not should_work:
         assert (
             response.status_code == 403
             if scenario in ("no_token", "bad_token")
@@ -374,3 +372,23 @@ async def test_drop_table(ds_write, scenario):
             else ["Table not found: bad_table"]
         )
         assert (await ds_write.client.get("/data/docs")).status_code == 200
+    else:
+        # It should show a confirmation page
+        assert response.status_code == 200
+        assert response.json() == {
+            "ok": True,
+            "row_count": 1,
+            "message": 'Pass "confirm": true to confirm',
+        }
+        assert (await ds_write.client.get("/data/docs")).status_code == 200
+        # Now send confirm: true
+        response2 = await ds_write.client.post(
+            path,
+            json={"confirm": True},
+            headers={
+                "Authorization": "Bearer {}".format(token),
+                "Content-Type": "application/json",
+            },
+        )
+        assert response2.json() == {"ok": True}
+        assert (await ds_write.client.get("/data/docs")).status_code == 404

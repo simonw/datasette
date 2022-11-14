@@ -520,7 +520,7 @@ To insert multiple rows at a time, use the same API method but send a list of di
 
 If successful, this will return a ``201`` status code and an empty ``{}`` response body.
 
-To return the newly inserted rows, add the ``"return_rows": true`` key to the request body:
+To return the newly inserted rows, add the ``"return": true`` key to the request body:
 
 .. code-block:: json
 
@@ -535,7 +535,7 @@ To return the newly inserted rows, add the ``"return_rows": true`` key to the re
                 "column2": "value4"
             }
         ],
-        "return_rows": true
+        "return": true
     }
 
 This will return the same ``"rows"`` key as the single row example above. There is a small performance penalty for using this option.

@@ -1117,7 +1117,7 @@ class TableInsertView(BaseView):
             if not isinstance(row, dict):
                 return _errors(['"row" must be a dictionary'])
             rows = [row]
-            data["return_rows"] = True
+            data["return"] = True
         else:
             rows = data["rows"]
         if not isinstance(rows, list):
@@ -1137,7 +1137,7 @@ class TableInsertView(BaseView):
         extras = {
             key: value for key, value in data.items() if key not in ("row", "rows")
         }
-        valid_extras = {"return_rows", "ignore", "replace"}
+        valid_extras = {"return", "ignore", "replace"}
         invalid_extras = extras.keys() - valid_extras
         if invalid_extras:
             return _errors(
@@ -1185,7 +1185,7 @@ class TableInsertView(BaseView):
         ignore = extras.get("ignore")
         replace = extras.get("replace")
 
-        should_return = bool(extras.get("return_rows", False))
+        should_return = bool(extras.get("return", False))
         # Insert rows
         def insert_rows(conn):
             table = sqlite_utils.Database(conn)[table_name]

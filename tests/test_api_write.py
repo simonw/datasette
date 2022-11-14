@@ -53,7 +53,7 @@ async def test_write_rows(ds_write, return_rows):
     token = write_token(ds_write)
     data = {"rows": [{"title": "Test {}".format(i), "score": 1.0} for i in range(20)]}
     if return_rows:
-        data["return_rows"] = True
+        data["return"] = True
     response = await ds_write.client.post(
         "/data/docs/-/insert",
         json=data,
@@ -267,7 +267,7 @@ async def test_insert_ignore_replace(
     if replace:
         data["replace"] = True
     if should_return:
-        data["return_rows"] = True
+        data["return"] = True
     response = await ds_write.client.post(
         "/data/docs/-/insert",
         json=data,
@@ -303,7 +303,7 @@ async def test_delete_row(ds_write, scenario):
     # Insert a row
     insert_response = await ds_write.client.post(
         "/data/docs/-/insert",
-        json={"row": {"title": "Row one", "score": 1.0}, "return_rows": True},
+        json={"row": {"title": "Row one", "score": 1.0}, "return": True},
         headers={
             "Authorization": "Bearer {}".format(write_token(ds_write)),
             "Content-Type": "application/json",

@@ -53,6 +53,9 @@
 document.querySelector('#json-format').addEventListener('click', (ev) => {
   ev.preventDefault();
   let json = document.querySelector('textarea[name="json"]').value.trim();
+  if (!json) {
+    return;
+  }
   try {
     const parsed = JSON.parse(json);
     document.querySelector('textarea[name="json"]').value = JSON.stringify(parsed, null, 2);

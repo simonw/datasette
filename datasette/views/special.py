@@ -6,6 +6,7 @@ from datasette.permissions import PERMISSIONS
 from .base import BaseView
 import secrets
 import time
+import urllib
 
 
 class JsonDataView(BaseView):
@@ -275,5 +276,115 @@ class ApiExplorerView(BaseView):
     name = "api_explorer"
     has_json_alternate = False
 
+    async def example_links(self, request):
+        databases = []
+        for name, db in self.ds.databases.items():
+            if name == "_internal":
+                continue
+            if not db.is_mutable:
+                continue
+            database_visible, _ = await self.ds.check_visibility(
+                request.actor,
+                "view-database",
+                name,
+            )
+            if not database_visible:
+                continue
+            tables = []
+            table_names = await db.table_names()
+            for table in table_names:
+                visible, _ = await self.ds.check_visibility(
+                    request.actor,
+                    "view-table",
+                    (name, table),
+                )
+                if not visible:
+                    continue
+                table_links = []
+                table_links.append(
+                    {
+                        "label": "Get rows for {}".format(table),
+                        "method": "GET",
+                        "path": self.ds.urls.table(name, table, format="json")
+                        + "?_shape=objects".format(name, table),
+                    }
+                )
+                if await self.ds.permission_allowed(
+                    request.actor, "insert-row", (name, table)
+                ):
+                    pks = await db.primary_keys(table)
+                    table_links.append(
+                        {
+                            "path": self.ds.urls.table(name, table) + "/-/insert",
+                            "method": "POST",
+                            "label": "Insert rows into {}".format(table),
+                            "json": {
+                                "rows": [
+                                    {
+                                        column: None
+                                        for column in await db.table_columns(table)
+                                        if column not in pks
+                                    }
+                                ]
+                            },
+                        }
+                    )
+                if await self.ds.permission_allowed(
+                    request.actor, "drop-table", (name, table)
+                ):
+                    table_links.append(
+                        {
+                            "path": self.ds.urls.table(name, table) + "/-/drop",
+                            "label": "Drop table {}".format(table),
+                            "json": {},
+                            "method": "POST",
+                        }
+                    )
+                tables.append({"name": table, "links": table_links})
+            database_links = []
+            if await self.ds.permission_allowed(request.actor, "create-table", name):
+                database_links.append(
+                    {
+                        "path": self.ds.urls.database(name) + "/-/create",
+                        "label": "Create table in {}".format(name),
+                        "json": {
+                            "table": "new_table",
+                            "columns": [
+                                {"name": "id", "type": "integer"},
+                                {"name": "name", "type": "text"},
+                            ],
+                            "pk": "id",
+                        },
+                        "method": "POST",
+                    }
+                )
+            if database_links or tables:
+                databases.append(
+                    {
+                        "name": name,
+                        "links": database_links,
+                        "tables": tables,
+                    }
+                )
+        return databases
+
     async def get(self, request):
-        return await self.render(["api_explorer.html"], request)
+        def api_path(link):
+            return "/-/api#{}".format(
+                urllib.parse.urlencode(
+                    {
+                        key: json.dumps(value, indent=2) if key == "json" else value
+                        for key, value in link.items()
+                        if key in ("path", "method", "json")
+                    }
+                )
+            )
+
+        return await self.render(
+            ["api_explorer.html"],
+            request,
+            {
+                "example_links": await self.example_links(request),
+                "api_path": api_path,
+            },
+        )

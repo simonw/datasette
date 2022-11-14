@@ -22,7 +22,7 @@
   <form method="get" id="api-explorer-get" style="margin-top: 0.7em">
     <div>
       <label for="path">API path:</label>
-      <input type="text" id="path" name="path" value="/data/docs.json" style="width: 60%">
+      <input type="text" id="path" name="path" style="width: 60%">
       <input type="submit" value="GET">
     </div>
   </form>
@@ -32,7 +32,7 @@
   <form method="post" id="api-explorer-post" style="margin-top: 0.7em">
     <div>
       <label for="path">API path:</label>
-      <input type="text" id="path" name="path" value="/data/docs/-/insert" style="width: 60%">
+      <input type="text" id="path" name="path" style="width: 60%">
     </div>
     <div style="margin: 0.5em 0">
       <label for="apiJson" style="vertical-align: top">JSON:</label>
@@ -65,8 +65,11 @@ var getForm = document.getElementById('api-explorer-get');
 var output = document.getElementById('output');
 var errorList = output.querySelector('.errors');
 
-// On first load, populate forms from # in URL, if present
+// On first load or fragment change populate forms from # in URL, if present
 if (window.location.hash) {
+  onFragmentChange();
+}
+function onFragmentChange() {
   var hash = window.location.hash.slice(1);
   // Treat hash as a foo=bar string and parse it:
   var params = new URLSearchParams(hash);
@@ -82,6 +85,11 @@ if (window.location.hash) {
     postForm.querySelector('textarea[name="json"]').value = params.get('json');
   }
 }
+window.addEventListener('hashchange', () => {
+  onFragmentChange();
+  // Animate scroll to top of page
+  window.scrollTo({top: 0, behavior: 'smooth'});
+});
 
 // Cause GET and POST regions to toggle each other
 var getDetails = getForm.closest('details');
@@ -170,5 +178,28 @@ postForm.addEventListener("submit", (ev) => {
   });
 });
 </script>
+
+{% if example_links %}
+<h2>API endpoints</h2>
+<ul class="bullets">
+  {% for database in example_links %}
+    <li>Database: <strong>{{ database.name }}</strong></li>
+    <ul class="bullets">
+      {% for link in database.links %}
+        <li><a href="{{ api_path(link) }}">{{ link.path }}</a> - {{ link.label }} </li>
+      {% endfor %}
+      {% for table in database.tables %}
+        <li><strong>{{ table.name }}</strong>
+          <ul class="bullets">
+            {% for link in table.links %}
+              <li><a href="{{ api_path(link) }}">{{ link.path }}</a> - {{ link.label }} </li>
+            {% endfor %}
+          </ul>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endfor %}
+</ul>
+{% endif %}
 
 {% endblock %}

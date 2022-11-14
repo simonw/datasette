@@ -65,6 +65,24 @@ var getForm = document.getElementById('api-explorer-get');
 var output = document.getElementById('output');
 var errorList = output.querySelector('.errors');
 
+// On first load, populate forms from # in URL, if present
+if (window.location.hash) {
+  var hash = window.location.hash.slice(1);
+  // Treat hash as a foo=bar string and parse it:
+  var params = new URLSearchParams(hash);
+  var method = params.get('method');
+  if (method == 'GET') {
+    getForm.closest('details').open = true;
+    postForm.closest('details').open = false;
+    getForm.querySelector('input[name="path"]').value = params.get('path');
+  } else if (method == 'POST') {
+    postForm.closest('details').open = true;
+    getForm.closest('details').open = false;
+    postForm.querySelector('input[name="path"]').value = params.get('path');
+    postForm.querySelector('textarea[name="json"]').value = params.get('json');
+  }
+}
+
 // Cause GET and POST regions to toggle each other
 var getDetails = getForm.closest('details');
 var postDetails = postForm.closest('details');
@@ -82,6 +100,10 @@ postDetails.addEventListener('toggle', (ev) => {
 getForm.addEventListener("submit", (ev) => {
   ev.preventDefault();
   var formData = new FormData(getForm);
+  // Update URL fragment hash
+  var serialized = new URLSearchParams(formData).toString() + '&method=GET';
+  window.history.pushState({}, "", location.pathname + '#' + serialized);
+  // Send the request
   var path = formData.get('path');
   fetch(path, {
     method: 'GET',
@@ -103,6 +125,10 @@ getForm.addEventListener("submit", (ev) => {
 postForm.addEventListener("submit", (ev) => {
   ev.preventDefault();
   var formData = new FormData(postForm);
+  // Update URL fragment hash
+  var serialized = new URLSearchParams(formData).toString() + '&method=POST';
+  window.history.pushState({}, "", location.pathname + '#' + serialized);
+  // Send the request
   var json = formData.get('json');
   var path = formData.get('path');
   // Validate JSON

@@ -1,38 +1,43 @@
 <script>
-window.onload = () => {
+  window.onload = () => {
     const sqlFormat = document.querySelector("button#sql-format");
     const readOnly = document.querySelector("pre#sql-query");
     const sqlInput = document.querySelector("textarea#sql-editor");
     if (sqlFormat && !readOnly) {
-        sqlFormat.hidden = false;
+      sqlFormat.hidden = false;
     }
     if (sqlInput) {
-        var editor = CodeMirror.fromTextArea(sqlInput, {
-          lineNumbers: true,
-          mode: "text/x-sql",
-          lineWrapping: true,
+      var editor = (window.editor = cm.editorFromTextArea(sqlInput, {
+        lineWrapping: true,
+      }));
+      // editor.setOption("extraKeys", {
+      //   "Shift-Enter": function() {
+      //     document.getElementsByClassName("sql")[0].submit();
+      //   },
+      //   Tab: false
+      // });
+      if (sqlFormat) {
+        sqlFormat.addEventListener("click", (ev) => {
+          const formatted = sqlFormatter.format(editor.state.doc.toString());
+          editor.dispatch({
+            changes: {
+              from: 0,
+              to: editor.state.doc.length,
+              insert: formatted,
+            },
+          });
         });
-        editor.setOption("extraKeys", {
-          "Shift-Enter": function() {
-            document.getElementsByClassName("sql")[0].submit();
-          },
-          Tab: false
-        });
-        if (sqlFormat) {
-            sqlFormat.addEventListener("click", ev => {
-                editor.setValue(sqlFormatter.format(editor.getValue()));
-            })
-        }
-        cmResize(editor, {resizableWidth: false});
+      }
+      // cmResize(editor, {resizableWidth: false});
     }
     if (sqlFormat && readOnly) {
-        const formatted = sqlFormatter.format(readOnly.innerHTML);
-        if (formatted != readOnly.innerHTML) {
-            sqlFormat.hidden = false;
-            sqlFormat.addEventListener("click", ev => {
-                readOnly.innerHTML = formatted;
-            })
-        }
+      const formatted = sqlFormatter.format(readOnly.innerHTML);
+      if (formatted != readOnly.innerHTML) {
+        sqlFormat.hidden = false;
+        sqlFormat.addEventListener("click", (ev) => {
+          readOnly.innerHTML = formatted;
+        });
+      }
     }
-}
+  };
 </script>

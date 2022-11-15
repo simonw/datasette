@@ -38,7 +38,6 @@ export function editorFromTextArea(textarea) {
   textarea.parentNode.insertBefore(view.dom, textarea);
   textarea.style.display = "none";
   if (textarea.form) {
-    console.log("FORM", textarea.form);
     textarea.form.addEventListener("submit", () => {
       textarea.value = view.state.doc.toString();
     });

@@ -325,6 +325,6 @@ Datasette bundles `CodeMirror <https://codemirror.net/>`__ for the SQL editing i
 
 * Install the packages with `npm i codemirror @codemirror/lang-sql`
 * Build the bundle with:
-```
-node_modules/.bin/rollup datasette/static/cm-editor.js -f iife -n cm -o datasette/static/cm-editor.bundle.js -p @rollup/plugin-node-resolve
-```
+
+    node_modules/.bin/rollup datasette/static/cm-editor.js -f iife -n cm -o datasette/static/cm-editor.bundle.js \
+       -p @rollup/plugin-node-resolve -p @rollup/plugin-terser

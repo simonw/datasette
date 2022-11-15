@@ -244,18 +244,17 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     );
     Array.from(facetResults).forEach(function (facetResult) {
       // Use link text from all links in the facet result
-      var linkTexts = Array.from(
+      var links = Array.from(
         facetResult.querySelectorAll("li:not(.facet-truncated) a")
-      ).map(function (link) {
-        return link.textContent;
-      });
+      );
       // Create a datalist element
       var datalist = document.createElement("datalist");
       datalist.id = "datalist-" + facetResult.dataset.column;
       // Create an option element for each link text
-      linkTexts.forEach(function (linkText) {
+      links.forEach(function (link) {
         var option = document.createElement("option");
-        option.value = linkText;
+        option.label = link.innerText;
+        option.value = link.dataset.facetValue;
         datalist.appendChild(option);
       });
       // Add the datalist to the facet result

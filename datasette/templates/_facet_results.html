@@ -12,7 +12,7 @@
             <ul class="tight-bullets">
                 {% for facet_value in facet_info.results %}
                     {% if not facet_value.selected %}
-                        <li><a href="{{ facet_value.toggle_url }}">{{ (facet_value.label | string()) or "-" }}</a> {{ "{:,}".format(facet_value.count) }}</li>
+                        <li><a href="{{ facet_value.toggle_url }}" data-facet-value="{{ facet_value.value }}">{{ (facet_value.label | string()) or "-" }}</a> {{ "{:,}".format(facet_value.count) }}</li>
                     {% else %}
                         <li>{{ facet_value.label or "-" }} &middot; {{ "{:,}".format(facet_value.count) }} <a href="{{ facet_value.toggle_url }}" class="cross">&#x2716;</a></li>
                     {% endif %}

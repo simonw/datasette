@@ -26,6 +26,15 @@ export function editorFromTextArea(textarea) {
       }),
     ],
   });
+
+  // Idea taken from https://discuss.codemirror.net/t/resizing-codemirror-6/3265.
+  // Using CSS resize: both and scheduling a measurement when the element changes.
+  let editorDOM = view.contentDOM.closest(".cm-editor");
+  let observer = new ResizeObserver(function () {
+    view.requestMeasure();
+  });
+  observer.observe(editorDOM, { attributes: true });
+
   textarea.parentNode.insertBefore(view.dom, textarea);
   textarea.style.display = "none";
   if (textarea.form) {

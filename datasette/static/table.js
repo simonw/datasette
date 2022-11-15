@@ -239,7 +239,9 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
 /* Set up datalist autocomplete for filter values */
 (function () {
   function createDataLists() {
-    var facetResults = document.querySelectorAll(".facet-results [data-column]");
+    var facetResults = document.querySelectorAll(
+      ".facet-results [data-column]"
+    );
     Array.from(facetResults).forEach(function (facetResult) {
       // Use link text from all links in the facet result
       var linkTexts = Array.from(

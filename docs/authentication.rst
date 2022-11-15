@@ -589,6 +589,18 @@ Actor is allowed to delete rows from a table.
 
 Default *deny*.
 
+.. _permissions_create_table:
+
+create-table
+------------
+
+Actor is allowed to create a database table.
+
+``resource`` - string
+    The name of the database
+
+Default *deny*.
+
 .. _permissions_drop_table:
 
 drop-table

@@ -415,7 +415,9 @@ column - you can turn that off using ``?_labels=off``.
 
 You can request foreign keys be expanded in JSON using the ``_labels=on`` or
 ``_label=COLUMN`` special query string parameters. Here's what an expanded row
-looks like::
+looks like:
+
+.. code-block:: json
 
     [
         {
@@ -477,6 +479,9 @@ A single row can be inserted using the ``"row"`` key:
     POST /<database>/<table>/-/insert
     Content-Type: application/json
     Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
     {
         "row": {
             "column1": "value1",
@@ -505,6 +510,9 @@ To insert multiple rows at a time, use the same API method but send a list of di
     POST /<database>/<table>/-/insert
     Content-Type: application/json
     Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
     {
         "rows": [
             {
@@ -558,6 +566,107 @@ To delete a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/delete``. 
 If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
+.. _TableCreateView:
+
+Creating a table
+~~~~~~~~~~~~~~~~
+
+To create a table, make a ``POST`` to ``/<database>/-/create``. This requires the :ref:`permissions_create_table` permission.
+
+::
+
+    POST /<database>/-/create
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "table": "name_of_new_table",
+        "columns": [
+            {
+                "name": "id",
+                "type": "integer"
+            },
+            {
+                "name": "title",
+                "type": "text"
+            }
+        ],
+        "pk": "id"
+    }
+
+The JSON here describes the table that will be created:
+
+*   ``table`` is the name of the table to create. This field is required.
+*   ``columns`` is a list of columns to create. Each column is a dictionary with ``name`` and ``type`` keys.
+
+    -   ``name`` is the name of the column. This is required.
+    -   ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
+
+*   ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
+
+    If the primary key is an integer column, it will be configured to automatically increment for each new record.
+
+    If you set this to ``id`` without including an ``id`` column in the list of ``columns``, Datasette will create an integer ID column for you.
+
+If the table is successfully created this will return a ``201`` status code and the following response:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "name_of_new_table",
+        "table_url": "http://127.0.0.1:8001/data/name_of_new_table",
+        "table_api_url": "http://127.0.0.1:8001/data/name_of_new_table.json",
+        "schema": "CREATE TABLE [name_of_new_table] (\n   [id] INTEGER PRIMARY KEY,\n   [title] TEXT\n)"
+    }
+
+.. _TableCreateView_example:
+
+Creating a table from example data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Instead of specifying ``columns`` directly you can instead pass a single example row or a list of rows. Datasette will create a table with a schema that matches those rows and insert them for you:
+
+::
+
+    POST /<database>/-/create
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "table": "creatures",
+        "rows": [
+            {
+                "id": 1,
+                "name": "Tarantula"
+            },
+            {
+                "id": 2,
+                "name": "Kākāpō"
+            }
+        ],
+        "pk": "id"
+    }
+
+The ``201`` response here will be similar to the ``columns`` form, but will also include the number of rows that were inserted as ``row_count``:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "creatures",
+        "table_url": "http://127.0.0.1:8001/data/creatures",
+        "table_api_url": "http://127.0.0.1:8001/data/creatures.json",
+        "schema": "CREATE TABLE [creatures] (\n   [id] INTEGER PRIMARY KEY,\n   [name] TEXT\n)",
+        "row_count": 2
+    }
 
 .. _TableDropView:
 

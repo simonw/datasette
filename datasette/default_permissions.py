@@ -13,6 +13,7 @@ def permission_allowed_default(datasette, actor, action, resource):
             "permissions-debug",
             "debug-menu",
             "insert-row",
+            "create-table",
             "drop-table",
             "delete-row",
         ):

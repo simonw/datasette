@@ -405,3 +405,318 @@ async def test_drop_table(ds_write, scenario):
         )
         assert response2.json() == {"ok": True}
         assert (await ds_write.client.get("/data/docs")).status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input,expected_status,expected_response",
+    (
+        # Permission error with a bad token
+        (
+            {"table": "bad", "row": {"id": 1}},
+            403,
+            {"ok": False, "errors": ["Permission denied"]},
+        ),
+        # Successful creation with columns:
+        (
+            {
+                "table": "one",
+                "columns": [
+                    {
+                        "name": "id",
+                        "type": "integer",
+                    },
+                    {
+                        "name": "title",
+                        "type": "text",
+                    },
+                    {
+                        "name": "score",
+                        "type": "integer",
+                    },
+                    {
+                        "name": "weight",
+                        "type": "float",
+                    },
+                    {
+                        "name": "thumbnail",
+                        "type": "blob",
+                    },
+                ],
+                "pk": "id",
+            },
+            201,
+            {
+                "ok": True,
+                "database": "data",
+                "table": "one",
+                "table_url": "http://localhost/data/one",
+                "table_api_url": "http://localhost/data/one.json",
+                "schema": (
+                    "CREATE TABLE [one] (\n"
+                    "   [id] INTEGER PRIMARY KEY,\n"
+                    "   [title] TEXT,\n"
+                    "   [score] INTEGER,\n"
+                    "   [weight] FLOAT,\n"
+                    "   [thumbnail] BLOB\n"
+                    ")"
+                ),
+            },
+        ),
+        # Successful creation with rows:
+        (
+            {
+                "table": "two",
+                "rows": [
+                    {
+                        "id": 1,
+                        "title": "Row 1",
+                        "score": 1.5,
+                    },
+                    {
+                        "id": 2,
+                        "title": "Row 2",
+                        "score": 1.5,
+                    },
+                ],
+                "pk": "id",
+            },
+            201,
+            {
+                "ok": True,
+                "database": "data",
+                "table": "two",
+                "table_url": "http://localhost/data/two",
+                "table_api_url": "http://localhost/data/two.json",
+                "schema": (
+                    "CREATE TABLE [two] (\n"
+                    "   [id] INTEGER PRIMARY KEY,\n"
+                    "   [title] TEXT,\n"
+                    "   [score] FLOAT\n"
+                    ")"
+                ),
+                "row_count": 2,
+            },
+        ),
+        # Successful creation with row:
+        (
+            {
+                "table": "three",
+                "row": {
+                    "id": 1,
+                    "title": "Row 1",
+                    "score": 1.5,
+                },
+                "pk": "id",
+            },
+            201,
+            {
+                "ok": True,
+                "database": "data",
+                "table": "three",
+                "table_url": "http://localhost/data/three",
+                "table_api_url": "http://localhost/data/three.json",
+                "schema": (
+                    "CREATE TABLE [three] (\n"
+                    "   [id] INTEGER PRIMARY KEY,\n"
+                    "   [title] TEXT,\n"
+                    "   [score] FLOAT\n"
+                    ")"
+                ),
+                "row_count": 1,
+            },
+        ),
+        # Create with row and no primary key
+        (
+            {
+                "table": "four",
+                "row": {
+                    "name": "Row 1",
+                },
+            },
+            201,
+            {
+                "ok": True,
+                "database": "data",
+                "table": "four",
+                "table_url": "http://localhost/data/four",
+                "table_api_url": "http://localhost/data/four.json",
+                "schema": ("CREATE TABLE [four] (\n" "   [name] TEXT\n" ")"),
+                "row_count": 1,
+            },
+        ),
+        # Error: Table is required
+        (
+            {
+                "row": {"id": 1},
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["Table is required"],
+            },
+        ),
+        # Error: Invalid table name
+        (
+            {
+                "table": "sqlite_bad_name",
+                "row": {"id": 1},
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["Invalid table name"],
+            },
+        ),
+        # Error: JSON must be an object
+        (
+            [],
+            400,
+            {
+                "ok": False,
+                "errors": ["JSON must be an object"],
+            },
+        ),
+        # Error: Cannot specify columns with rows or row
+        (
+            {
+                "table": "bad",
+                "columns": [{"name": "id", "type": "integer"}],
+                "rows": [{"id": 1}],
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["Cannot specify columns with rows or row"],
+            },
+        ),
+        # Error: columns, rows or row is required
+        (
+            {
+                "table": "bad",
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["columns, rows or row is required"],
+            },
+        ),
+        # Error: columns must be a list
+        (
+            {
+                "table": "bad",
+                "columns": {"name": "id", "type": "integer"},
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["columns must be a list"],
+            },
+        ),
+        # Error: columns must be a list of objects
+        (
+            {
+                "table": "bad",
+                "columns": ["id"],
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["columns must be a list of objects"],
+            },
+        ),
+        # Error: Column name is required
+        (
+            {
+                "table": "bad",
+                "columns": [{"type": "integer"}],
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["Column name is required"],
+            },
+        ),
+        # Error: Unsupported column type
+        (
+            {
+                "table": "bad",
+                "columns": [{"name": "id", "type": "bad"}],
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["Unsupported column type: bad"],
+            },
+        ),
+        # Error: Duplicate column name
+        (
+            {
+                "table": "bad",
+                "columns": [
+                    {"name": "id", "type": "integer"},
+                    {"name": "id", "type": "integer"},
+                ],
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["Duplicate column name: id"],
+            },
+        ),
+        # Error: rows must be a list
+        (
+            {
+                "table": "bad",
+                "rows": {"id": 1},
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["rows must be a list"],
+            },
+        ),
+        # Error: rows must be a list of objects
+        (
+            {
+                "table": "bad",
+                "rows": ["id"],
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["rows must be a list of objects"],
+            },
+        ),
+        # Error: pk must be a string
+        (
+            {
+                "table": "bad",
+                "row": {"id": 1},
+                "pk": 1,
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["pk must be a string"],
+            },
+        ),
+    ),
+)
+async def test_create_table(ds_write, input, expected_status, expected_response):
+    # Special case for expected status of 403
+    if expected_status == 403:
+        token = "bad_token"
+    else:
+        token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json=input,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert response.status_code == expected_status
+    data = response.json()
+    assert data == expected_response

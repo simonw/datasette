@@ -27,7 +27,7 @@ from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
 from .views.base import ureg
-from .views.database import DatabaseDownload, DatabaseView
+from .views.database import DatabaseDownload, DatabaseView, TableCreateView
 from .views.index import IndexView
 from .views.special import (
     JsonDataView,
@@ -1265,6 +1265,7 @@ class Datasette:
         add_route(
             DatabaseView.as_view(self), r"/(?P<database>[^\/\.]+)(\.(?P<format>\w+))?$"
         )
+        add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
             TableView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$",

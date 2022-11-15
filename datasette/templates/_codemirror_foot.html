@@ -10,12 +10,6 @@
       var editor = (window.editor = cm.editorFromTextArea(sqlInput, {
         lineWrapping: true,
       }));
-      // editor.setOption("extraKeys", {
-      //   "Shift-Enter": function() {
-      //     document.getElementsByClassName("sql")[0].submit();
-      //   },
-      //   Tab: false
-      // });
       if (sqlFormat) {
         sqlFormat.addEventListener("click", (ev) => {
           const formatted = sqlFormatter.format(editor.state.doc.toString());

@@ -1,4 +1,5 @@
 import { EditorView, basicSetup } from "codemirror";
+import { keymap } from "@codemirror/view";
 import { sql, SQLite } from "@codemirror/lang-sql";
 
 // Utility function from https://codemirror.net/docs/migration/
@@ -10,6 +11,16 @@ export function editorFromTextArea(textarea) {
     extensions: [
       basicSetup,
       EditorView.lineWrapping,
+      keymap.of([
+        {
+          key: "Shift-Enter",
+          run: function () {
+            textarea.value = view.state.doc.toString();
+            textarea.form.submit();
+          },
+          preventDefault: true,
+        },
+      ]),
       sql({
         dialect: SQLite,
       }),
@@ -17,9 +28,11 @@ export function editorFromTextArea(textarea) {
   });
   textarea.parentNode.insertBefore(view.dom, textarea);
   textarea.style.display = "none";
-  if (textarea.form)
+  if (textarea.form) {
+    console.log("FORM", textarea.form);
     textarea.form.addEventListener("submit", () => {
       textarea.value = view.state.doc.toString();
     });
+  }
   return view;
 }

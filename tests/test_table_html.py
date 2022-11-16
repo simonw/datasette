@@ -619,8 +619,8 @@ def test_table_html_foreign_key_facets(app_client):
     )
     assert response.status == 200
     assert (
-        '<li><a href="http://localhost/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label&amp;foreign_key_with_blank_label=3">'
-        "-</a> 1</li>"
+        '<li><a href="http://localhost/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label&amp;foreign_key_with_blank_label=3"'
+        ' data-facet-value="3">-</a> 1</li>'
     ) in response.text
 
 

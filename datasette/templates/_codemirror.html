@@ -8,4 +8,10 @@
     width: 80%;
     border: 1px solid #ddd;
   }
+  /* Fix autocomplete icon positioning. The icon element gets border-box sizing set due to
+     the global reset, but this causes overlapping icon and text. Markup:
+     `<div class="cm-completionIcon cm-completionIcon-keyword" aria-hidden="true"></div>` */
+  .cm-completionIcon {
+    box-sizing: content-box;
+  }
 </style>

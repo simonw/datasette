@@ -23,18 +23,28 @@ export function editorFromTextArea(textarea, conf = {}) {
   let view = new EditorView({
     doc: textarea.value,
     extensions: [
-      basicSetup,
-      EditorView.lineWrapping,
       keymap.of([
         {
           key: "Shift-Enter",
           run: function () {
             textarea.value = view.state.doc.toString();
             textarea.form.submit();
+            return true;
           },
-          preventDefault: true,
+        },
+        {
+          key: "Meta-Enter",
+          run: function () {
+            textarea.value = view.state.doc.toString();
+            textarea.form.submit();
+            return true;
+          },
         },
       ]),
+      // This has to be after the keymap or else the basicSetup keys will prevent
+      // Meta-Enter from running
+      basicSetup,
+      EditorView.lineWrapping,
       sql({
         dialect: SQLite,
         schema: conf.schema || {},

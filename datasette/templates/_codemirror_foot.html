@@ -7,9 +7,7 @@
       sqlFormat.hidden = false;
     }
     if (sqlInput) {
-      var editor = (window.editor = cm.editorFromTextArea(sqlInput, {
-        lineWrapping: true,
-      }));
+      var editor = (window.editor = cm.editorFromTextArea(sqlInput));
       if (sqlFormat) {
         sqlFormat.addEventListener("click", (ev) => {
           const formatted = sqlFormatter.format(editor.state.doc.toString());

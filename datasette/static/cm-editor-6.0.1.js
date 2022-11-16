@@ -47,7 +47,10 @@ export function editorFromTextArea(textarea, conf = {}) {
       EditorView.lineWrapping,
       sql({
         dialect: SQLite,
-        schema: conf.schema || {},
+        schema: conf.schema,
+        tables: conf.tables,
+        defaultTableName: conf.defaultTableName,
+        defaultSchemaName: conf.defaultSchemaName,
       }),
     ],
   });

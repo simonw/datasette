@@ -322,20 +322,10 @@ Upgrading CodeMirror
 
 Datasette bundles `CodeMirror <https://codemirror.net/>`__ for the SQL editing interface, e.g. on `this page <https://latest.datasette.io/fixtures>`__. Here are the steps for upgrading to a new version of CodeMirror:
 
-* Download and extract latest CodeMirror zip file from https://codemirror.net/codemirror.zip
-* Rename ``lib/codemirror.js`` to ``codemirror-5.57.0.js`` (using latest version number)
-* Rename ``lib/codemirror.css`` to ``codemirror-5.57.0.css``
-* Rename ``mode/sql/sql.js`` to ``codemirror-5.57.0-sql.js``
-* Edit both JavaScript files to make the top license comment a ``/* */`` block instead of multiple ``//`` lines
-* Minify the JavaScript files like this::
 
-       npx uglify-js codemirror-5.57.0.js -o codemirror-5.57.0.min.js --comments '/LICENSE/'
-       npx uglify-js codemirror-5.57.0-sql.js -o codemirror-5.57.0-sql.min.js --comments '/LICENSE/'
+* Install the packages with `npm i codemirror @codemirror/lang-sql`
+* Build the bundle using the version number from package.json with:
 
-* Check that the LICENSE comment did indeed survive minification
-* Minify the CSS file like this::
+    node_modules/.bin/rollup datasette/static/cm-editor-6.0.1.js -f iife -n cm -o datasette/static/cm-editor-6.0.1.bundle.js -p @rollup/plugin-node-resolve -p @rollup/plugin-terser
 
-       npx clean-css-cli codemirror-5.57.0.css -o codemirror-5.57.0.min.css
-
-* Edit the ``_codemirror.html`` template to reference the new files
-* ``git rm`` the old files, ``git add`` the new files
+* Update version reference in the `codemirror.html` template

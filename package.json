@@ -6,7 +6,7 @@
   },
   "scripts": {
     "fix": "npm run prettier -- --write",
-    "prettier": "prettier 'datasette/static/*[!.min].js'"
+    "prettier": "prettier 'datasette/static/*[!.min|bundle].js'"
   },
   "dependencies": {
     "@codemirror/lang-sql": "^6.3.3",

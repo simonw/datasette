@@ -1,14 +1,17 @@
 <script src="{{ base_url }}-/static/sql-formatter-2.3.3.min.js" defer></script>
-<script src="{{ base_url }}-/static/codemirror-5.57.0.min.js"></script>
-<link rel="stylesheet" href="{{ base_url }}-/static/codemirror-5.57.0.min.css" />
-<script src="{{ base_url }}-/static/codemirror-5.57.0-sql.min.js"></script>
-<script src="{{ base_url }}-/static/cm-resize-1.0.1.min.js"></script>
+<script src="{{ base_url }}-/static/cm-editor-6.0.1.bundle.js"></script>
 <style>
-    .CodeMirror { height: auto; min-height: 70px; width: 80%; border: 1px solid #ddd; }
-    .cm-resize-handle {
-        background: url("data:image/svg+xml,%3Csvg%20aria-labelledby%3D%22cm-drag-to-resize%22%20role%3D%22img%22%20fill%3D%22%23ccc%22%20stroke%3D%22%23ccc%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2016%2016%22%20width%3D%2216%22%20height%3D%2216%22%3E%0A%20%20%3Ctitle%20id%3D%22cm-drag-to-resize%22%3EDrag%20to%20resize%3C%2Ftitle%3E%0A%20%20%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M1%202.75A.75.75%200%20011.75%202h12.5a.75.75%200%20110%201.5H1.75A.75.75%200%20011%202.75zm0%205A.75.75%200%20011.75%207h12.5a.75.75%200%20110%201.5H1.75A.75.75%200%20011%207.75zM1.75%2012a.75.75%200%20100%201.5h12.5a.75.75%200%20100-1.5H1.75z%22%3E%3C%2Fpath%3E%0A%3C%2Fsvg%3E");
-        background-repeat: no-repeat;
-        box-shadow: none;
-        cursor: ns-resize;
-    }
+  .cm-editor {
+    resize: both;
+    overflow: hidden;
+    min-height: 70px;
+    width: 80%;
+    border: 1px solid #ddd;
+  }
+  /* Fix autocomplete icon positioning. The icon element gets border-box sizing set due to
+     the global reset, but this causes overlapping icon and text. Markup:
+     `<div class="cm-completionIcon cm-completionIcon-keyword" aria-hidden="true"></div>` */
+  .cm-completionIcon {
+    box-sizing: content-box;
+  }
 </style>

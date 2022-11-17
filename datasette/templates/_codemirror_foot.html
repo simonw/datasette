@@ -80,7 +80,7 @@
     units: ["distance", "frequency", "pk"],
   };
 
-  window.onload = () => {
+  window.addEventListener("DOMContentLoaded", () => {
     const sqlFormat = document.querySelector("button#sql-format");
     const readOnly = document.querySelector("pre#sql-query");
     const sqlInput = document.querySelector("textarea#sql-editor");
@@ -113,5 +113,5 @@
         });
       }
     }
-  };
+  });
 </script>

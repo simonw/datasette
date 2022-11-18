@@ -25,6 +25,7 @@ async () => {
   let output = await pyodide.runPythonAsync(\`
     import micropip
     await micropip.install('h11==0.12.0')
+    await micropip.install('httpx==0.23')
     await micropip.install('http://localhost:8529/$wheel')
     import ssl
     import setuptools

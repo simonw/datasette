@@ -338,6 +338,12 @@ class Database:
         )
         return bool(results.rows)
 
+    async def view_exists(self, table):
+        results = await self.execute(
+            "select 1 from sqlite_master where type='view' and name=?", params=(table,)
+        )
+        return bool(results.rows)
+
     async def table_names(self):
         results = await self.execute(
             "select name from sqlite_master where type='table'"

@@ -79,6 +79,19 @@ async def test_table_exists(db, tables, exists):
 
 
 @pytest.mark.parametrize(
+    "view,expected",
+    (
+        ("not_a_view", False),
+        ("paginated_view", True),
+    ),
+)
+@pytest.mark.asyncio
+async def test_view_exists(db, view, expected):
+    actual = await db.view_exists(view)
+    assert actual == expected
+
+
+@pytest.mark.parametrize(
     "table,expected",
     (
         (

@@ -909,6 +909,9 @@ The ``Database`` class also provides properties and methods for introspecting th
 ``await db.table_exists(table)`` - boolean
     Check if a table called ``table`` exists.
 
+``await db.view_exists(view)`` - boolean
+    Check if a view called ``view`` exists.
+
 ``await db.table_names()`` - list of strings
     List of names of tables in the database.
 

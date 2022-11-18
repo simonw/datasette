@@ -401,6 +401,17 @@ async def test_table_names(db):
 
 
 @pytest.mark.asyncio
+async def test_view_names(db):
+    view_names = await db.view_names()
+    assert view_names == [
+        "paginated_view",
+        "simple_view",
+        "searchable_view",
+        "searchable_view_configured_by_metadata",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_execute_write_block_true(db):
     await db.execute_write(
         "update roadside_attractions set name = ? where pk = ?", ["Mystery!", 1]

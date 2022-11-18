@@ -274,6 +274,7 @@ def test_execute_sql(metadata):
         schema_json = schema_re.search(response_text).group(1)
         schema = json.loads(schema_json)
         assert set(schema["attraction_characteristic"]) == {"name", "pk"}
+        assert schema["paginated_view"] == []
         assert form_fragment in response_text
         query_response = client.get("/fixtures?sql=select+1", cookies=cookies)
         assert query_response.status == 200

@@ -703,6 +703,10 @@ async def _table_columns(datasette, database_name):
     table_columns = {}
     for row in result.rows:
         table_columns.setdefault(row["table_name"], []).append(row["name"])
+    # Add views
+    db = datasette.get_database(database_name)
+    for view_name in await db.view_names():
+        table_columns[view_name] = []
     return table_columns
 
 

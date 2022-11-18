@@ -1,84 +1,9 @@
 <script>
-  const schema = {
-    "123_starts_with_digits": ["content"],
-    "Table With Space In Name": ["content", "pk"],
-    attraction_characteristic: ["name", "pk"],
-    binary_data: ["data"],
-    complex_foreign_keys: ["f1", "f2", "f3", "pk"],
-    compound_primary_key: ["content", "pk1", "pk2"],
-    compound_three_primary_keys: ["content", "pk1", "pk2", "pk3"],
-    custom_foreign_key_label: ["foreign_key_with_custom_label", "pk"],
-    facet_cities: ["id", "name"],
-    facetable: [
-      "_city_id",
-      "_neighborhood",
-      "complex_array",
-      "created",
-      "distinct_some_null",
-      "n",
-      "on_earth",
-      "pk",
-      "planet_int",
-      "state",
-      "tags",
-    ],
-    foreign_key_references: [
-      "foreign_key_compound_pk1",
-      "foreign_key_compound_pk2",
-      "foreign_key_with_blank_label",
-      "foreign_key_with_label",
-      "foreign_key_with_no_label",
-      "pk",
-    ],
-    infinity: ["value"],
-    no_primary_key: ["a", "b", "c", "content"],
-    primary_key_multiple_columns: ["content", "content2", "id"],
-    primary_key_multiple_columns_explicit_label: ["content", "content2", "id"],
-    roadside_attraction_characteristics: ["attraction_id", "characteristic_id"],
-    roadside_attractions: [
-      "address",
-      "latitude",
-      "longitude",
-      "name",
-      "pk",
-      "url",
-    ],
-    searchable: ["name with . and spaces", "pk", "text1", "text2"],
-    searchable_fts: [
-      "__langid",
-      "docid",
-      "name with . and spaces",
-      "searchable_fts",
-      "text1",
-      "text2",
-    ],
-    searchable_fts_docsize: ["docid", "size"],
-    searchable_fts_segdir: [
-      "end_block",
-      "idx",
-      "leaves_end_block",
-      "level",
-      "root",
-      "start_block",
-    ],
-    searchable_fts_segments: ["block", "blockid"],
-    searchable_fts_stat: ["id", "value"],
-    searchable_tags: ["searchable_id", "tag"],
-    select: ["and", "group", "having", "json"],
-    simple_primary_key: ["content", "id"],
-    sortable: [
-      "content",
-      "pk1",
-      "pk2",
-      "sortable",
-      "sortable_with_nulls",
-      "sortable_with_nulls_2",
-      "text",
-    ],
-    "table/with/slashes.csv": ["content", "pk"],
-    tags: ["tag"],
-    units: ["distance", "frequency", "pk"],
-  };
+  {% if table_columns %}
+  const schema = {{ table_columns|tojson(2) }};
+  {% else %}
+  const schema = {};
+  {% endif %}
 
   window.onload = () => {
     const sqlFormat = document.querySelector("button#sql-format");

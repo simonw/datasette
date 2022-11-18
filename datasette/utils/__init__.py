@@ -1193,3 +1193,18 @@ def truncate_url(url, length):
         rest, ext = bits
         return rest[: length - 1 - len(ext)] + "…." + ext
     return url[: length - 1] + "…"
+
+
+async def row_sql_params_pks(db, table, pk_values):
+    pks = await db.primary_keys(table)
+    use_rowid = not pks
+    select = "*"
+    if use_rowid:
+        select = "rowid, *"
+        pks = ["rowid"]
+    wheres = [f'"{pk}"=:p{i}' for i, pk in enumerate(pks)]
+    sql = f"select {select} from {escape_sqlite(table)} where {' AND '.join(wheres)}"
+    params = {}
+    for i, pk_value in enumerate(pk_values):
+        params[f"p{i}"] = pk_value
+    return sql, params, pks

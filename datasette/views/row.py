@@ -6,22 +6,21 @@ from datasette.utils import (
     urlsafe_components,
     to_css_class,
     escape_sqlite,
+    row_sql_params_pks,
 )
+import json
 import sqlite_utils
-from .table import _sql_params_pks, display_columns_and_rows
+from .table import display_columns_and_rows
 
 
 class RowView(DataView):
     name = "row"
 
     async def data(self, request, default_labels=False):
-        database_route = tilde_decode(request.url_vars["database"])
-        table = tilde_decode(request.url_vars["table"])
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
-        database = db.name
+        resolved = await self.ds.resolve_row(request)
+        database = resolved.db.name
+        table = resolved.table
+        pk_values = resolved.pk_values
 
         # Ensure user has permission to view this row
         visible, private = await self.ds.check_visibility(
@@ -35,14 +34,9 @@ class RowView(DataView):
         if not visible:
             raise Forbidden("You do not have permission to view this table")
 
-        pk_values = urlsafe_components(request.url_vars["pks"])
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
-        database = db.name
-        sql, params, pks = await _sql_params_pks(db, table, pk_values)
-        results = await db.execute(sql, params, truncate=True)
+        results = await resolved.db.execute(
+            resolved.sql, resolved.params, truncate=True
+        )
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
@@ -83,7 +77,7 @@ class RowView(DataView):
             "table": table,
             "rows": rows,
             "columns": columns,
-            "primary_keys": pks,
+            "primary_keys": resolved.pks,
             "primary_key_values": pk_values,
             "units": self.ds.table_metadata(database, table).get("units", {}),
         }
@@ -149,6 +143,11 @@ class RowView(DataView):
         return foreign_key_tables
 
 
+class RowError(Exception):
+    def __init__(self, error):
+        self.error = error
+
+
 class RowDeleteView(BaseView):
     name = "row-delete"
 
@@ -156,24 +155,20 @@ class RowDeleteView(BaseView):
         self.ds = datasette
 
     async def post(self, request):
-        database_route = tilde_decode(request.url_vars["database"])
-        table = tilde_decode(request.url_vars["table"])
+        from datasette.app import DatabaseNotFound, TableNotFound, RowNotFound
+
         try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            return _error(["Database not found: {}".format(database_route)], 404)
-
+            resolved = await self.ds.resolve_row(request)
+        except DatabaseNotFound as e:
+            return _error(["Database not found: {}".format(e.database_name)], 404)
+        except TableNotFound as e:
+            return _error(["Table not found: {}".format(e.table)], 404)
+        except RowNotFound as e:
+            return _error(["Record not found: {}".format(e.pk_values)], 404)
+        db = resolved.db
         database_name = db.name
-        if not await db.table_exists(table):
-            return _error(["Table not found: {}".format(table)], 404)
-
-        pk_values = urlsafe_components(request.url_vars["pks"])
-
-        sql, params, pks = await _sql_params_pks(db, table, pk_values)
-        results = await db.execute(sql, params, truncate=True)
-        rows = list(results.rows)
-        if not rows:
-            return _error([f"Record not found: {pk_values}"], 404)
+        table = resolved.table
+        pk_values = resolved.pk_values
 
         # Ensure user has permission to delete this row
         if not await self.ds.permission_allowed(

@@ -35,11 +35,7 @@ class DatabaseView(DataView):
     name = "database"
 
     async def data(self, request, default_labels=False, _size=None):
-        database_route = tilde_decode(request.url_vars["database"])
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+        db = await self.ds.resolve_database(request)
         database = db.name
 
         visible, private = await self.ds.check_visibility(
@@ -228,11 +224,7 @@ class QueryView(DataView):
         named_parameters=None,
         write=False,
     ):
-        database_route = tilde_decode(request.url_vars["database"])
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+        db = await self.ds.resolve_database(request)
         database = db.name
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
@@ -582,11 +574,7 @@ class TableCreateView(BaseView):
         self.ds = datasette
 
     async def post(self, request):
-        database_route = tilde_decode(request.url_vars["database"])
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            return _error(["Database not found: {}".format(database_route)], 404)
+        db = await self.ds.resolve_database(request)
         database_name = db.name
 
         # Must have create-table permission
@@ -727,11 +715,7 @@ class TableCreateView(BaseView):
         self.ds = datasette
 
     async def post(self, request):
-        database_route = tilde_decode(request.url_vars["database"])
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            return _error(["Database not found: {}".format(database_route)], 404)
+        db = await self.ds.resolve_database(request)
         database_name = db.name
 
         # Must have create-table permission

@@ -20,7 +20,6 @@ from datasette.utils import (
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
-    tilde_decode,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
@@ -346,13 +345,9 @@ class DataView(BaseView):
         return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
     async def get(self, request):
-        database_route = tilde_decode(request.url_vars["database"])
-
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+        db = await self.ds.resolve_database(request)
         database = db.name
+        database_route = db.route
 
         _format = request.url_vars["format"]
         data_kwargs = {}

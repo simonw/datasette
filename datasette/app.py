@@ -62,13 +62,19 @@ from .utils import (
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
+    tilde_decode,
     to_css_class,
+    urlsafe_components,
+    row_sql_params_pks,
 )
 from .utils.asgi import (
     AsgiLifespan,
     Base400,
     Forbidden,
     NotFound,
+    DatabaseNotFound,
+    TableNotFound,
+    RowNotFound,
     Request,
     Response,
     asgi_static,
@@ -196,6 +202,12 @@ async def favicon(request, send):
         content_type="image/png",
         headers={"Cache-Control": "max-age=3600, immutable, public"},
     )
+
+
+ResolvedTable = collections.namedtuple("ResolvedTable", ("db", "table", "is_view"))
+ResolvedRow = collections.namedtuple(
+    "ResolvedRow", ("db", "table", "sql", "params", "pks", "pk_values", "row")
+)
 
 
 class Datasette:
@@ -1291,6 +1303,41 @@ class Datasette:
             ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
             for pattern, view in routes
         ]
+
+    async def resolve_database(self, request):
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            return self.get_database(route=database_route)
+        except KeyError:
+            raise DatabaseNotFound(
+                "Database not found: {}".format(database_route), database_route
+            )
+
+    async def resolve_table(self, request):
+        db = await self.resolve_database(request)
+        table_name = tilde_decode(request.url_vars["table"])
+        # Table must exist
+        is_view = False
+        table_exists = await db.table_exists(table_name)
+        if not table_exists:
+            is_view = await db.view_exists(table_name)
+        if not (table_exists or is_view):
+            raise TableNotFound(
+                "Table not found: {}".format(table_name), db.name, table_name
+            )
+        return ResolvedTable(db, table_name, is_view)
+
+    async def resolve_row(self, request):
+        db, table_name, _ = await self.resolve_table(request)
+        pk_values = urlsafe_components(request.url_vars["pks"])
+        sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
+        results = await db.execute(sql, params, truncate=True)
+        row = results.first()
+        if row is None:
+            raise RowNotFound(
+                "Row not found: {}".format(pk_values), db.name, table_name, pk_values
+            )
+        return ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first())
 
     def app(self):
         """Returns an ASGI app function that serves the whole of Datasette"""

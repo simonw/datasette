@@ -93,36 +93,33 @@ class TableView(DataView):
         return expandables
 
     async def post(self, request):
-        database_route = tilde_decode(request.url_vars["database"])
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
-        database_name = db.name
-        table_name = tilde_decode(request.url_vars["table"])
-        # Handle POST to a canned query
-        canned_query = await self.ds.get_canned_query(
-            database_name, table_name, request.actor
-        )
-        if canned_query:
-            return await QueryView(self.ds).data(
-                request,
-                canned_query["sql"],
-                metadata=canned_query,
-                editable=False,
-                canned_query=table_name,
-                named_parameters=canned_query.get("params"),
-                write=bool(canned_query.get("write")),
-            )
-        else:
-            # Handle POST to a table
-            return await self.table_post(request, database_name, table_name)
+        from datasette.app import TableNotFound
 
-    async def table_post(self, request, database_name, table_name):
-        # Table must exist (may handle table creation in the future)
-        db = self.ds.get_database(database_name)
-        if not await db.table_exists(table_name):
-            raise NotFound("Table not found: {}".format(table_name))
+        try:
+            resolved = await self.ds.resolve_table(request)
+        except TableNotFound as e:
+            # Was this actually a canned query?
+            canned_query = await self.ds.get_canned_query(
+                e.database_name, e.table, request.actor
+            )
+            if canned_query:
+                # Handle POST to a canned query
+                return await QueryView(self.ds).data(
+                    request,
+                    canned_query["sql"],
+                    metadata=canned_query,
+                    editable=False,
+                    canned_query=e.table,
+                    named_parameters=canned_query.get("params"),
+                    write=bool(canned_query.get("write")),
+                )
+
+        # Handle POST to a table
+        return await self.table_post(
+            request, resolved.db, resolved.db.name, resolved.table
+        )
+
+    async def table_post(self, request, db, database_name, table_name):
         # Must have insert-row permission
         if not await self.ds.permission_allowed(
             request.actor, "insert-row", resource=(database_name, table_name)
@@ -221,12 +218,31 @@ class TableView(DataView):
         _next=None,
         _size=None,
     ):
-        database_route = tilde_decode(request.url_vars["database"])
-        table_name = tilde_decode(request.url_vars["table"])
+        from datasette.app import TableNotFound
+
         try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+            resolved = await self.ds.resolve_table(request)
+        except TableNotFound as e:
+            # Was this actually a canned query?
+            canned_query = await self.ds.get_canned_query(
+                e.database_name, e.table, request.actor
+            )
+            # If this is a canned query, not a table, then dispatch to QueryView instead
+            if canned_query:
+                return await QueryView(self.ds).data(
+                    request,
+                    canned_query["sql"],
+                    metadata=canned_query,
+                    editable=False,
+                    canned_query=e.table,
+                    named_parameters=canned_query.get("params"),
+                    write=bool(canned_query.get("write")),
+                )
+            else:
+                raise
+
+        table_name = resolved.table
+        db = resolved.db
         database_name = db.name
 
         # For performance profiling purposes, ?_noparallel=1 turns off asyncio.gather
@@ -242,21 +258,6 @@ class TableView(DataView):
         gather = (
             _gather_sequential if request.args.get("_noparallel") else _gather_parallel
         )
-
-        # If this is a canned query, not a table, then dispatch to QueryView instead
-        canned_query = await self.ds.get_canned_query(
-            database_name, table_name, request.actor
-        )
-        if canned_query:
-            return await QueryView(self.ds).data(
-                request,
-                canned_query["sql"],
-                metadata=canned_query,
-                editable=False,
-                canned_query=table_name,
-                named_parameters=canned_query.get("params"),
-                write=bool(canned_query.get("write")),
-            )
 
         is_view, table_exists = map(
             bool,
@@ -874,21 +875,6 @@ class TableView(DataView):
         )
 
 
-async def _sql_params_pks(db, table, pk_values):
-    pks = await db.primary_keys(table)
-    use_rowid = not pks
-    select = "*"
-    if use_rowid:
-        select = "rowid, *"
-        pks = ["rowid"]
-    wheres = [f'"{pk}"=:p{i}' for i, pk in enumerate(pks)]
-    sql = f"select {select} from {escape_sqlite(table)} where {' AND '.join(wheres)}"
-    params = {}
-    for i, pk_value in enumerate(pk_values):
-        params[f"p{i}"] = pk_value
-    return sql, params, pks
-
-
 async def display_columns_and_rows(
     datasette,
     database_name,
@@ -1161,13 +1147,13 @@ class TableInsertView(BaseView):
         return rows, errors, extras
 
     async def post(self, request):
-        database_route = tilde_decode(request.url_vars["database"])
         try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            return _error(["Database not found: {}".format(database_route)], 404)
+            resolved = await self.ds.resolve_table(request)
+        except NotFound as e:
+            return _error([e.args[0]], 404)
+        db = resolved.db
         database_name = db.name
-        table_name = tilde_decode(request.url_vars["table"])
+        table_name = resolved.table
 
         # Table must exist (may handle table creation in the future)
         db = self.ds.get_database(database_name)
@@ -1221,13 +1207,13 @@ class TableDropView(BaseView):
         self.ds = datasette
 
     async def post(self, request):
-        database_route = tilde_decode(request.url_vars["database"])
         try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            return _error(["Database not found: {}".format(database_route)], 404)
+            resolved = await self.ds.resolve_table(request)
+        except NotFound as e:
+            return _error([e.args[0]], 404)
+        db = resolved.db
         database_name = db.name
-        table_name = tilde_decode(request.url_vars["table"])
+        table_name = resolved.table
         # Table must exist
         db = self.ds.get_database(database_name)
         if not await db.table_exists(table_name):

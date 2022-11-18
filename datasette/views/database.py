@@ -141,6 +141,9 @@ class DatabaseView(DataView):
 
         attached_databases = [d.name for d in await db.attached_databases()]
 
+        allow_execute_sql = await self.ds.permission_allowed(
+            request.actor, "execute-sql", database, default=True
+        )
         return (
             {
                 "database": database,
@@ -151,9 +154,10 @@ class DatabaseView(DataView):
                 "hidden_count": len([t for t in tables if t["hidden"]]),
                 "views": views,
                 "queries": canned_queries,
-                "allow_execute_sql": await self.ds.permission_allowed(
-                    request.actor, "execute-sql", database, default=True
-                ),
+                "allow_execute_sql": allow_execute_sql,
+                "table_columns": await _table_columns(self.ds, database)
+                if allow_execute_sql
+                else {},
             },
             {
                 "database_actions": database_actions,
@@ -510,6 +514,9 @@ class QueryView(DataView):
                 "show_hide_text": show_hide_text,
                 "show_hide_hidden": markupsafe.Markup(show_hide_hidden),
                 "hide_sql": hide_sql,
+                "table_columns": await _table_columns(self.ds, database)
+                if allow_execute_sql
+                else {},
             }
 
         return (
@@ -685,3 +692,15 @@ class TableCreateView(BaseView):
         if rows:
             details["row_count"] = len(rows)
         return Response.json(details, status=201)
+
+
+async def _table_columns(datasette, database_name):
+    internal = datasette.get_database("_internal")
+    result = await internal.execute(
+        "select table_name, name from columns where database_name = ?",
+        [database_name],
+    )
+    table_columns = {}
+    for row in result.rows:
+        table_columns.setdefault(row["table_name"], []).append(row["name"])
+    return table_columns

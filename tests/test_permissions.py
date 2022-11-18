@@ -5,6 +5,7 @@ import copy
 import json
 import pytest_asyncio
 import pytest
+import re
 import urllib
 
 
@@ -252,24 +253,35 @@ def test_view_query(allow, expected_anon, expected_auth):
     ],
 )
 def test_execute_sql(metadata):
+    schema_re = re.compile("const schema = ({.*?});", re.DOTALL)
     with make_app_client(metadata=metadata) as client:
         form_fragment = '<form class="sql" action="/fixtures"'
 
         # Anonymous users - should not display the form:
-        assert form_fragment not in client.get("/fixtures").text
+        anon_html = client.get("/fixtures").text
+        assert form_fragment not in anon_html
+        # And const schema should be an empty object:
+        assert "const schema = {};" in anon_html
         # This should 403:
-        assert 403 == client.get("/fixtures?sql=select+1").status
+        assert client.get("/fixtures?sql=select+1").status == 403
         # ?_where= not allowed on tables:
-        assert 403 == client.get("/fixtures/facet_cities?_where=id=3").status
+        assert client.get("/fixtures/facet_cities?_where=id=3").status == 403
 
         # But for logged in user all of these should work:
         cookies = {"ds_actor": client.actor_cookie({"id": "root"})}
         response_text = client.get("/fixtures", cookies=cookies).text
+        # Extract the schema= portion of the JavaScript
+        schema_json = schema_re.search(response_text).group(1)
+        schema = json.loads(schema_json)
+        assert set(schema["attraction_characteristic"]) == {"name", "pk"}
         assert form_fragment in response_text
-        assert 200 == client.get("/fixtures?sql=select+1", cookies=cookies).status
+        query_response = client.get("/fixtures?sql=select+1", cookies=cookies)
+        assert query_response.status == 200
+        schema2 = json.loads(schema_re.search(query_response.text).group(1))
+        assert set(schema2["attraction_characteristic"]) == {"name", "pk"}
         assert (
-            200
-            == client.get("/fixtures/facet_cities?_where=id=3", cookies=cookies).status
+            client.get("/fixtures/facet_cities?_where=id=3", cookies=cookies).status
+            == 200
         )
 
 

@@ -2,6 +2,7 @@ from click.testing import CliRunner
 from datasette import cli
 from unittest import mock
 import os
+import pathlib
 import pytest
 
 
@@ -128,3 +129,48 @@ def test_publish_heroku_plugin_secrets(
             mock.call(["heroku", "builds:create", "-a", "f", "--include-vcs-ignore"]),
         ]
     )
+
+
+@pytest.mark.serial
+@mock.patch("shutil.which")
+def test_publish_heroku_generate_dir(mock_which, tmp_path_factory):
+    mock_which.return_value = True
+    runner = CliRunner()
+    os.chdir(tmp_path_factory.mktemp("runner"))
+    with open("test.db", "w") as fp:
+        fp.write("data")
+    output = str(tmp_path_factory.mktemp("generate_dir") / "output")
+    result = runner.invoke(
+        cli.cli,
+        [
+            "publish",
+            "heroku",
+            "test.db",
+            "--generate-dir",
+            output,
+        ],
+    )
+    assert result.exit_code == 0
+    path = pathlib.Path(output)
+    assert path.exists()
+    file_names = {str(r.relative_to(path)) for r in path.glob("*")}
+    assert file_names == {
+        "requirements.txt",
+        "bin",
+        "runtime.txt",
+        "Procfile",
+        "test.db",
+    }
+    for name, expected in (
+        ("requirements.txt", "datasette"),
+        ("runtime.txt", "python-3.8.10"),
+        (
+            "Procfile",
+            (
+                "web: datasette serve --host 0.0.0.0 -i test.db "
+                "--cors --port $PORT --inspect-file inspect-data.json"
+            ),
+        ),
+    ):
+        with open(path / name) as fp:
+            assert fp.read().strip() == expected

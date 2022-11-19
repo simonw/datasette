@@ -194,7 +194,7 @@ def temporary_heroku_directory(
                 fp.write(json.dumps(metadata_content, indent=2))
 
         with open("runtime.txt", "w") as fp:
-            fp.write("python-3.8.10")
+            fp.write("python-3.11.0")
 
         if branch:
             install = [

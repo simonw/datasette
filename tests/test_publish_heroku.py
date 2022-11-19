@@ -133,8 +133,15 @@ def test_publish_heroku_plugin_secrets(
 
 @pytest.mark.serial
 @mock.patch("shutil.which")
-def test_publish_heroku_generate_dir(mock_which, tmp_path_factory):
+@mock.patch("datasette.publish.heroku.check_output")
+@mock.patch("datasette.publish.heroku.call")
+def test_publish_heroku_generate_dir(
+    mock_call, mock_check_output, mock_which, tmp_path_factory
+):
     mock_which.return_value = True
+    mock_check_output.side_effect = lambda s: {
+        "['heroku', 'plugins']": b"heroku-builds",
+    }[repr(s)]
     runner = CliRunner()
     os.chdir(tmp_path_factory.mktemp("runner"))
     with open("test.db", "w") as fp:
@@ -163,7 +170,7 @@ def test_publish_heroku_generate_dir(mock_which, tmp_path_factory):
     }
     for name, expected in (
         ("requirements.txt", "datasette"),
-        ("runtime.txt", "python-3.8.10"),
+        ("runtime.txt", "python-3.11.0"),
         (
             "Procfile",
             (

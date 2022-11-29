@@ -333,6 +333,66 @@ To limit this ability for just one specific database, use this:
         }
     }
 
+.. _CreateTokenView:
+
+API Tokens
+==========
+
+Datasette includes a default mechanism for generating API tokens that can be used to authenticate requests.
+
+Authenticated users can create new API tokens using a form on the ``/-/create-token`` page.
+
+Created tokens can then be passed in the ``Authorization: Bearer $token`` header of HTTP requests to Datasette.
+
+A token created by a user will include that user's ``"id"`` in the token payload, so any permissions granted to that user based on their ID can be made available to the token as well.
+
+Coming soon: a mechanism for creating tokens that can only perform a specified subset of the actions available to the user who created them.
+
+When one of these a token accompanies a request, the actor for that request will have the following shape:
+
+.. code-block:: json
+
+    {
+        "id": "user_id",
+        "token": "dstok",
+        "token_expires": 1667717426
+    }
+
+The ``"id"`` field duplicates the ID of the actor who first created the token.
+
+The ``"token"`` field identifies that this actor was authenticated using a Datasette signed token (``dstok``).
+
+The ``"token_expires"`` field, if present, indicates that the token will expire after that integer timestamp.
+
+The ``/-/create-token`` page cannot be accessed by actors that are authenticated with a ``"token": "some-value"`` property. This is to prevent API tokens from being used to create more tokens.
+
+Datasette plugins that implement their own form of API token authentication should follow this convention.
+
+You can disable the signed token feature entirely using the :ref:`allow_signed_tokens <setting_allow_signed_tokens>` setting.
+
+.. _authentication_cli_create_token:
+
+datasette create-token
+----------------------
+
+You can also create tokens on the command line using the ``datasette create-token`` command.
+
+This command takes one required argument - the ID of the actor to be associated with the created token.
+
+You can specify an ``--expires-after`` option in seconds. If omitted, the token will never expire.
+
+The command will sign the token using the ``DATASETTE_SECRET`` environment variable, if available. You can also pass the secret using the ``--secret`` option.
+
+This means you can run the command locally to create tokens for use with a deployed Datasette instance, provided you know that instance's secret.
+
+To create a token for the ``root`` actor that will expire in one hour::
+
+    datasette create-token root --expires-after 3600
+
+To create a secret that never expires using a specific secret::
+
+    datasette create-token root --secret my-secret-goes-here
+
 .. _permissions_plugins:
 
 Checking permissions in plugins
@@ -504,6 +564,66 @@ Actor is allowed to view (and execute) a :ref:`canned query <canned_queries>` pa
     The name of the database, then the name of the canned query
 
 Default *allow*.
+
+.. _permissions_insert_row:
+
+insert-row
+----------
+
+Actor is allowed to insert rows into a table.
+
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+Default *deny*.
+
+.. _permissions_delete_row:
+
+delete-row
+----------
+
+Actor is allowed to delete rows from a table.
+
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+Default *deny*.
+
+.. _permissions_update_row:
+
+update-row
+----------
+
+Actor is allowed to update rows in a table.
+
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+Default *deny*.
+
+.. _permissions_create_table:
+
+create-table
+------------
+
+Actor is allowed to create a database table.
+
+``resource`` - string
+    The name of the database
+
+Default *deny*.
+
+.. _permissions_drop_table:
+
+drop-table
+----------
+
+Actor is allowed to drop a database table.
+
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+Default *deny*.
 
 .. _permissions_execute_sql:
 

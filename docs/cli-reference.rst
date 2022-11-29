@@ -47,13 +47,14 @@ Running ``datasette --help`` shows a list of all of the available commands.
       --help     Show this message and exit.
 
     Commands:
-      serve*     Serve up specified SQLite database files with a web UI
-      inspect    Generate JSON summary of provided database files
-      install    Install plugins and packages from PyPI into the same...
-      package    Package SQLite files into a Datasette Docker container
-      plugins    List currently installed plugins
-      publish    Publish specified SQLite database files to the internet along...
-      uninstall  Uninstall plugins and Python packages from the Datasette...
+      serve*        Serve up specified SQLite database files with a web UI
+      create-token  Create a signed API token for the specified actor ID
+      inspect       Generate JSON summary of provided database files
+      install       Install plugins and packages from PyPI into the same...
+      package       Package SQLite files into a Datasette Docker container
+      plugins       List currently installed plugins
+      publish       Publish specified SQLite database files to the internet...
+      uninstall     Uninstall plugins and Python packages from the Datasette...
 
 
 .. [[[end]]]
@@ -212,6 +213,8 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    (default=100)
       max_returned_rows            Maximum rows that can be returned from a table or
                                    custom query (default=1000)
+      max_insert_rows              Maximum rows that can be inserted at a time using
+                                   the bulk insert API (default=100)
       num_sql_threads              Number of threads in the thread pool for
                                    executing SQLite queries (default=3)
       sql_time_limit_ms            Time limit for a SQL query in milliseconds
@@ -226,6 +229,10 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    ?_facet= parameter (default=True)
       allow_download               Allow users to download the original SQLite
                                    database files (default=True)
+      allow_signed_tokens          Allow users to create and use signed API tokens
+                                   (default=True)
+      max_signed_tokens_ttl        Maximum allowed expiry time for signed API tokens
+                                   (default=0)
       suggest_facets               Calculate and display suggested facets
                                    (default=True)
       default_cache_ttl            Default HTTP cache TTL (used in Cache-Control:
@@ -588,6 +595,34 @@ This performance optimization is used automatically by some of the ``datasette p
                                       Path to a SQLite extension to load, and
                                       optional entrypoint
       --help                          Show this message and exit.
+
+
+.. [[[end]]]
+
+
+.. _cli_help_create_token___help:
+
+datasette create-token
+======================
+
+Create a signed API token, see :ref:`authentication_cli_create_token`.
+
+.. [[[cog
+    help(["create-token", "--help"])
+.. ]]]
+
+::
+
+    Usage: datasette create-token [OPTIONS] ID
+
+      Create a signed API token for the specified actor ID
+
+    Options:
+      --secret TEXT                Secret used for signing the API tokens
+                                   [required]
+      -e, --expires-after INTEGER  Token should expire after this many seconds
+      --debug                      Show decoded token
+      --help                       Show this message and exit.
 
 
 .. [[[end]]]

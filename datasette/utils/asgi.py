@@ -21,6 +21,27 @@ class NotFound(Base400):
     status = 404
 
 
+class DatabaseNotFound(NotFound):
+    def __init__(self, message, database_name):
+        super().__init__(message)
+        self.database_name = database_name
+
+
+class TableNotFound(NotFound):
+    def __init__(self, message, database_name, table):
+        super().__init__(message)
+        self.database_name = database_name
+        self.table = table
+
+
+class RowNotFound(NotFound):
+    def __init__(self, message, database_name, table, pk_values):
+        super().__init__(message)
+        self.database_name = database_name
+        self.table_name = table
+        self.pk_values = pk_values
+
+
 class Forbidden(Base400):
     status = 403
 

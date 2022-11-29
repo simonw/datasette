@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}API Explorer{% endblock %}
+
+{% block extra_head %}
+<script src="{{ base_url }}-/static/json-format-highlight-1.0.1.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<h1>API Explorer</h1>
+
+<p>Use this tool to try out the
+  {% if datasette_version %}
+    <a href="https://docs.datasette.io/en/{{ datasette_version }}/json_api.html">Datasette API</a>.
+  {% else %}
+    Datasette API.
+  {% endif %}
+</p>
+<details open style="border: 2px solid #ccc; border-bottom: none; padding: 0.5em">
+  <summary style="cursor: pointer;">GET</summary>
+  <form method="get" id="api-explorer-get" style="margin-top: 0.7em">
+    <div>
+      <label for="path">API path:</label>
+      <input type="text" id="path" name="path" style="width: 60%">
+      <input type="submit" value="GET">
+    </div>
+  </form>
+</details>
+<details style="border: 2px solid #ccc; padding: 0.5em">
+  <summary style="cursor: pointer">POST</summary>
+  <form method="post" id="api-explorer-post" style="margin-top: 0.7em">
+    <div>
+      <label for="path">API path:</label>
+      <input type="text" id="path" name="path" style="width: 60%">
+    </div>
+    <div style="margin: 0.5em 0">
+      <label for="apiJson" style="vertical-align: top">JSON:</label>
+      <textarea id="apiJson" name="json" style="width: 60%; height: 200px; font-family: monospace; font-size: 0.8em;"></textarea>
+    </div>
+    <p><button id="json-format" type="button">Format JSON</button> <input type="submit" value="POST"></p>
+  </form>
+</details>
+
+<div id="output" style="display: none">
+  <h2>API response: HTTP <span id="response-status"></span></h2>
+  </h2>
+  <ul class="errors message-error"></ul>
+  <pre></pre>
+</div>
+
+<script>
+document.querySelector('#json-format').addEventListener('click', (ev) => {
+  ev.preventDefault();
+  let json = document.querySelector('textarea[name="json"]').value.trim();
+  if (!json) {
+    return;
+  }
+  try {
+    const parsed = JSON.parse(json);
+    document.querySelector('textarea[name="json"]').value = JSON.stringify(parsed, null, 2);
+  } catch (e) {
+    alert("Error parsing JSON: " + e);
+  }
+});
+var postForm = document.getElementById('api-explorer-post');
+var getForm = document.getElementById('api-explorer-get');
+var output = document.getElementById('output');
+var errorList = output.querySelector('.errors');
+
+// On first load or fragment change populate forms from # in URL, if present
+if (window.location.hash) {
+  onFragmentChange();
+}
+function onFragmentChange() {
+  var hash = window.location.hash.slice(1);
+  // Treat hash as a foo=bar string and parse it:
+  var params = new URLSearchParams(hash);
+  var method = params.get('method');
+  if (method == 'GET') {
+    getForm.closest('details').open = true;
+    postForm.closest('details').open = false;
+    getForm.querySelector('input[name="path"]').value = params.get('path');
+  } else if (method == 'POST') {
+    postForm.closest('details').open = true;
+    getForm.closest('details').open = false;
+    postForm.querySelector('input[name="path"]').value = params.get('path');
+    postForm.querySelector('textarea[name="json"]').value = params.get('json');
+  }
+}
+window.addEventListener('hashchange', () => {
+  onFragmentChange();
+  // Animate scroll to top of page
+  window.scrollTo({top: 0, behavior: 'smooth'});
+});
+
+// Cause GET and POST regions to toggle each other
+var getDetails = getForm.closest('details');
+var postDetails = postForm.closest('details');
+getDetails.addEventListener('toggle', (ev) => {
+  if (getDetails.open) {
+    postDetails.open = false;
+  }
+});
+postDetails.addEventListener('toggle', (ev) => {
+  if (postDetails.open) {
+    getDetails.open = false;
+  }
+});
+
+getForm.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  var formData = new FormData(getForm);
+  // Update URL fragment hash
+  var serialized = new URLSearchParams(formData).toString() + '&method=GET';
+  window.history.pushState({}, "", location.pathname + '#' + serialized);
+  // Send the request
+  var path = formData.get('path');
+  fetch(path, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    }
+  }).then((response) => {
+    output.style.display = 'block';
+    document.getElementById('response-status').textContent = response.status;
+    return response.json();
+  }).then((data) => {
+    output.querySelector('pre').innerHTML = jsonFormatHighlight(data);
+    errorList.style.display = 'none';
+  }).catch((error) => {
+    alert(error);
+  });
+});
+
+postForm.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  var formData = new FormData(postForm);
+  // Update URL fragment hash
+  var serialized = new URLSearchParams(formData).toString() + '&method=POST';
+  window.history.pushState({}, "", location.pathname + '#' + serialized);
+  // Send the request
+  var json = formData.get('json');
+  var path = formData.get('path');
+  // Validate JSON
+  if (!json.length) {
+    json = '{}';
+  }
+  try {
+    var data = JSON.parse(json);
+  } catch (err) {
+    alert("Invalid JSON: " + err);
+    return;
+  }
+  // POST JSON to path with content-type application/json
+  fetch(path, {
+    method: 'POST',
+    body: json,
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  }).then(r => {
+    document.getElementById('response-status').textContent = r.status;
+    return r.json();
+  }).then(data => {
+    if (data.errors) {
+      errorList.style.display = 'block';
+      errorList.innerHTML = '';
+      data.errors.forEach(error => {
+        var li = document.createElement('li');
+        li.textContent = error;
+        errorList.appendChild(li);
+      });
+    } else {
+      errorList.style.display = 'none';
+    }
+    output.querySelector('pre').innerHTML = jsonFormatHighlight(data);
+    output.style.display = 'block';
+  }).catch(err => {
+    alert("Error: " + err);
+  });
+});
+</script>
+
+{% if example_links %}
+<h2>API endpoints</h2>
+<ul class="bullets">
+  {% for database in example_links %}
+    <li>Database: <strong>{{ database.name }}</strong></li>
+    <ul class="bullets">
+      {% for link in database.links %}
+        <li><a href="{{ api_path(link) }}">{{ link.path }}</a> - {{ link.label }} </li>
+      {% endfor %}
+      {% for table in database.tables %}
+        <li><strong>{{ table.name }}</strong>
+          <ul class="bullets">
+            {% for link in table.links %}
+              <li><a href="{{ api_path(link) }}">{{ link.path }}</a> - {{ link.label }} </li>
+            {% endfor %}
+          </ul>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endfor %}
+</ul>
+{% endif %}
+
+{% endblock %}

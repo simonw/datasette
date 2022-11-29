@@ -62,7 +62,7 @@ def documented_views():
             if first_word.endswith("View"):
                 view_labels.add(first_word)
     # We deliberately don't document these:
-    view_labels.update(("PatternPortfolioView", "AuthTokenView"))
+    view_labels.update(("PatternPortfolioView", "AuthTokenView", "ApiExplorerView"))
     return view_labels
 
 

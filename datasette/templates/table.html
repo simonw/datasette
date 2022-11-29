@@ -24,7 +24,7 @@
 <div class="page-header" style="border-color: #{{ database_color(database) }}">
     <h1>{{ metadata.title or table }}{% if is_view %} (view){% endif %}{% if private %} 🔒{% endif %}</h1>
     {% set links = table_actions() %}{% if links %}
-    <details class="actions-menu-links">
+    <details class="actions-menu-links details-menu">
         <summary><svg aria-labelledby="actions-menu-links-title" role="img"
                 style="color: #666" xmlns="http://www.w3.org/2000/svg"
                 width="28" height="28" viewBox="0 0 24 24" fill="none"

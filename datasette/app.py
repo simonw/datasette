@@ -27,19 +27,21 @@ from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
 from .views.base import ureg
-from .views.database import DatabaseDownload, DatabaseView
+from .views.database import DatabaseDownload, DatabaseView, TableCreateView
 from .views.index import IndexView
 from .views.special import (
     JsonDataView,
     PatternPortfolioView,
     AuthTokenView,
+    ApiExplorerView,
+    CreateTokenView,
     LogoutView,
     AllowDebugView,
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import TableView
-from .views.row import RowView
+from .views.table import TableView, TableInsertView, TableDropView
+from .views.row import RowView, RowDeleteView, RowUpdateView
 from .renderer import json_renderer
 from .url_builder import Urls
 from .database import Database, QueryInterrupted
@@ -60,13 +62,19 @@ from .utils import (
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
+    tilde_decode,
     to_css_class,
+    urlsafe_components,
+    row_sql_params_pks,
 )
 from .utils.asgi import (
     AsgiLifespan,
     Base400,
     Forbidden,
     NotFound,
+    DatabaseNotFound,
+    TableNotFound,
+    RowNotFound,
     Request,
     Response,
     asgi_static,
@@ -99,6 +107,11 @@ SETTINGS = (
         "Maximum rows that can be returned from a table or custom query",
     ),
     Setting(
+        "max_insert_rows",
+        100,
+        "Maximum rows that can be inserted at a time using the bulk insert API",
+    ),
+    Setting(
         "num_sql_threads",
         3,
         "Number of threads in the thread pool for executing SQLite queries",
@@ -122,6 +135,16 @@ SETTINGS = (
         "allow_download",
         True,
         "Allow users to download the original SQLite database files",
+    ),
+    Setting(
+        "allow_signed_tokens",
+        True,
+        "Allow users to create and use signed API tokens",
+    ),
+    Setting(
+        "max_signed_tokens_ttl",
+        0,
+        "Maximum allowed expiry time for signed API tokens",
     ),
     Setting("suggest_facets", True, "Calculate and display suggested facets"),
     Setting(
@@ -179,6 +202,12 @@ async def favicon(request, send):
         content_type="image/png",
         headers={"Cache-Control": "max-age=3600, immutable, public"},
     )
+
+
+ResolvedTable = collections.namedtuple("ResolvedTable", ("db", "table", "is_view"))
+ResolvedRow = collections.namedtuple(
+    "ResolvedRow", ("db", "table", "sql", "params", "pks", "pk_values", "row")
+)
 
 
 class Datasette:
@@ -1083,6 +1112,7 @@ class Datasette:
                 ),
                 "base_url": self.setting("base_url"),
                 "csrftoken": request.scope["csrftoken"] if request else lambda: "",
+                "datasette_version": __version__,
             },
             **extra_template_vars,
         }
@@ -1216,6 +1246,14 @@ class Datasette:
             r"/-/auth-token$",
         )
         add_route(
+            CreateTokenView.as_view(self),
+            r"/-/create-token$",
+        )
+        add_route(
+            ApiExplorerView.as_view(self),
+            r"/-/api$",
+        )
+        add_route(
             LogoutView.as_view(self),
             r"/-/logout$",
         )
@@ -1239,6 +1277,7 @@ class Datasette:
         add_route(
             DatabaseView.as_view(self), r"/(?P<database>[^\/\.]+)(\.(?P<format>\w+))?$"
         )
+        add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
             TableView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$",
@@ -1247,11 +1286,62 @@ class Datasette:
             RowView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)(\.(?P<format>\w+))?$",
         )
+        add_route(
+            TableInsertView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/insert$",
+        )
+        add_route(
+            TableDropView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/drop$",
+        )
+        add_route(
+            RowDeleteView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)/-/delete$",
+        )
+        add_route(
+            RowUpdateView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)/-/update$",
+        )
         return [
             # Compile any strings to regular expressions
             ((re.compile(pattern) if isinstance(pattern, str) else pattern), view)
             for pattern, view in routes
         ]
+
+    async def resolve_database(self, request):
+        database_route = tilde_decode(request.url_vars["database"])
+        try:
+            return self.get_database(route=database_route)
+        except KeyError:
+            raise DatabaseNotFound(
+                "Database not found: {}".format(database_route), database_route
+            )
+
+    async def resolve_table(self, request):
+        db = await self.resolve_database(request)
+        table_name = tilde_decode(request.url_vars["table"])
+        # Table must exist
+        is_view = False
+        table_exists = await db.table_exists(table_name)
+        if not table_exists:
+            is_view = await db.view_exists(table_name)
+        if not (table_exists or is_view):
+            raise TableNotFound(
+                "Table not found: {}".format(table_name), db.name, table_name
+            )
+        return ResolvedTable(db, table_name, is_view)
+
+    async def resolve_row(self, request):
+        db, table_name, _ = await self.resolve_table(request)
+        pk_values = urlsafe_components(request.url_vars["pks"])
+        sql, params, pks = await row_sql_params_pks(db, table_name, pk_values)
+        results = await db.execute(sql, params, truncate=True)
+        row = results.first()
+        if row is None:
+            raise RowNotFound(
+                "Row not found: {}".format(pk_values), db.name, table_name, pk_values
+            )
+        return ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first())
 
     def app(self):
         """Returns an ASGI app function that serves the whole of Datasette"""

@@ -1,7 +1,9 @@
+from datasette.app import Datasette
 from .fixtures import app_client, assert_permissions_checked, make_app_client
 from bs4 import BeautifulSoup as Soup
 import copy
 import json
+import pytest_asyncio
 import pytest
 import re
 import urllib
@@ -19,6 +21,18 @@ def padlock_client():
         }
     ) as client:
         yield client
+
+
+@pytest_asyncio.fixture
+async def perms_ds():
+    ds = Datasette()
+    await ds.invoke_startup()
+    one = ds.add_memory_database("perms_ds_one")
+    two = ds.add_memory_database("perms_ds_two")
+    await one.execute_write("create table if not exists t1 (id integer primary key)")
+    await one.execute_write("create table if not exists t2 (id integer primary key)")
+    await two.execute_write("create table if not exists t1 (id integer primary key)")
+    return ds
 
 
 @pytest.mark.parametrize(
@@ -260,6 +274,7 @@ def test_execute_sql(metadata):
         schema_json = schema_re.search(response_text).group(1)
         schema = json.loads(schema_json)
         assert set(schema["attraction_characteristic"]) == {"name", "pk"}
+        assert schema["paginated_view"] == []
         assert form_fragment in response_text
         query_response = client.get("/fixtures?sql=select+1", cookies=cookies)
         assert query_response.status == 200
@@ -540,3 +555,88 @@ def test_padlocks_on_database_page(cascade_app_client):
         assert ">simple_view</a></li>" in response.text
     finally:
         cascade_app_client.ds._metadata_local = previous_metadata
+
+
+DEF = "USE_DEFAULT"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "actor,permission,resource_1,resource_2,expected_result",
+    (
+        # Without restrictions the defaults apply
+        ({"id": "t"}, "view-instance", None, None, DEF),
+        ({"id": "t"}, "view-database", "one", None, DEF),
+        ({"id": "t"}, "view-table", "one", "t1", DEF),
+        # If there is an _r block, everything gets denied unless explicitly allowed
+        ({"id": "t", "_r": {}}, "view-instance", None, None, False),
+        ({"id": "t", "_r": {}}, "view-database", "one", None, False),
+        ({"id": "t", "_r": {}}, "view-table", "one", "t1", False),
+        # Explicit allowing works at the "a" for all level:
+        ({"id": "t", "_r": {"a": ["vi"]}}, "view-instance", None, None, DEF),
+        ({"id": "t", "_r": {"a": ["vd"]}}, "view-database", "one", None, DEF),
+        ({"id": "t", "_r": {"a": ["vt"]}}, "view-table", "one", "t1", DEF),
+        # But not if it's the wrong permission
+        ({"id": "t", "_r": {"a": ["vd"]}}, "view-instance", None, None, False),
+        ({"id": "t", "_r": {"a": ["vi"]}}, "view-database", "one", None, False),
+        ({"id": "t", "_r": {"a": ["vd"]}}, "view-table", "one", "t1", False),
+        # Works at the "d" for database level:
+        ({"id": "t", "_r": {"d": {"one": ["vd"]}}}, "view-database", "one", None, DEF),
+        (
+            {"id": "t", "_r": {"d": {"one": ["vdd"]}}},
+            "view-database-download",
+            "one",
+            None,
+            DEF,
+        ),
+        ({"id": "t", "_r": {"d": {"one": ["es"]}}}, "execute-sql", "one", None, DEF),
+        # Works at the "t" for table level:
+        (
+            {"id": "t", "_r": {"t": {"one": {"t1": ["vt"]}}}},
+            "view-table",
+            "one",
+            "t1",
+            DEF,
+        ),
+        (
+            {"id": "t", "_r": {"t": {"one": {"t1": ["vt"]}}}},
+            "view-table",
+            "one",
+            "t2",
+            False,
+        ),
+    ),
+)
+async def test_actor_restricted_permissions(
+    perms_ds, actor, permission, resource_1, resource_2, expected_result
+):
+    cookies = {"ds_actor": perms_ds.sign({"a": {"id": "root"}}, "actor")}
+    csrftoken = (await perms_ds.client.get("/-/permissions", cookies=cookies)).cookies[
+        "ds_csrftoken"
+    ]
+    cookies["ds_csrftoken"] = csrftoken
+    response = await perms_ds.client.post(
+        "/-/permissions",
+        data={
+            "actor": json.dumps(actor),
+            "permission": permission,
+            "resource_1": resource_1,
+            "resource_2": resource_2,
+            "csrftoken": csrftoken,
+        },
+        cookies=cookies,
+    )
+    expected_resource = []
+    if resource_1:
+        expected_resource.append(resource_1)
+    if resource_2:
+        expected_resource.append(resource_2)
+    if len(expected_resource) == 1:
+        expected_resource = expected_resource[0]
+    expected = {
+        "actor": actor,
+        "permission": permission,
+        "resource": expected_resource,
+        "result": expected_result,
+    }
+    assert response.json() == expected

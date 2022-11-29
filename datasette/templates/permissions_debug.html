@@ -19,10 +19,96 @@
 .check-action, .check-when, .check-result {
     font-size: 1.3em;
 }
+textarea {
+    height: 10em;
+    width: 95%;
+    box-sizing: border-box;
+    padding: 0.5em;
+    border: 2px dotted black;
+}
+.two-col {
+    display: inline-block;
+    width: 48%;
+}
+.two-col label {
+    width: 48%;
+}
+@media only screen and (max-width: 576px) {
+    .two-col {
+        width: 100%;
+    }
+}
 </style>
 {% endblock %}
 
 {% block content %}
+
+<h1>Permission check testing tool</h1>
+
+<p>This tool lets you simulate an actor and a permission check for that actor.</p>
+
+<form action="{{ urls.path('-/permissions') }}" id="debug-post" method="post" style="margin-bottom: 1em">
+    <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
+    <div class="two-col">
+        <p><label>Actor</label></p>
+        <textarea name="actor">{% if actor_input %}{{ actor_input }}{% else %}{"id": "root"}{% endif %}</textarea>
+    </div>
+    <div class="two-col" style="vertical-align: top">
+        <p><label for="permission" style="display:block">Permission</label>
+        <select name="permission" id="permission">
+            {% for permission in permissions %}
+                <option value="{{ permission.0 }}">{{ permission.name }} (default {{ permission.default }})</option>
+            {% endfor %}
+        </select>
+        <p><label for="resource_1">Database name</label><input type="text" id="resource_1" name="resource_1"></p>
+        <p><label for="resource_2">Table or query name</label><input type="text" id="resource_2" name="resource_2"></p>
+    </div>
+    <div style="margin-top: 1em;">
+        <input type="submit" value="Simulate permission check">
+    </div>
+    <pre style="margin-top: 1em" id="debugResult"></pre>
+</form>
+
+<script>
+var rawPerms = {{ permissions|tojson }};
+var permissions = Object.fromEntries(rawPerms.map(([label, abbr, needs_resource_1, needs_resource_2, def]) => [label, {needs_resource_1, needs_resource_2, def}]))
+var permissionSelect = document.getElementById('permission');
+var resource1 = document.getElementById('resource_1');
+var resource2 = document.getElementById('resource_2');
+function updateResourceVisibility() {
+    var permission = permissionSelect.value;
+    var {needs_resource_1, needs_resource_2} = permissions[permission];
+    if (needs_resource_1) {
+        resource1.closest('p').style.display = 'block';
+    } else {
+        resource1.closest('p').style.display = 'none';
+    }
+    if (needs_resource_2) {
+        resource2.closest('p').style.display = 'block';
+    } else {
+        resource2.closest('p').style.display = 'none';
+    }
+}
+permissionSelect.addEventListener('change', updateResourceVisibility);
+updateResourceVisibility();
+
+// When #debug-post form is submitted, use fetch() to POST data
+var debugPost = document.getElementById('debug-post');
+var debugResult = document.getElementById('debugResult');
+debugPost.addEventListener('submit', function(ev) {
+    ev.preventDefault();
+    var formData = new FormData(debugPost);
+    console.log(formData);
+    fetch(debugPost.action, {
+        method: 'POST',
+        body: new URLSearchParams(formData),
+    }).then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        debugResult.innerText = JSON.stringify(data, null, 4);
+    });
+});
+</script>
 
 <h1>Recent permissions checks</h1>
 

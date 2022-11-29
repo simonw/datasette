@@ -3,7 +3,8 @@ name: Deploy latest.datasette.io
 on:
   push:
     branches:
-      - main
+    - main
+    - 1.0-dev
 
 permissions:
   contents: read
@@ -68,6 +69,8 @@ jobs:
         gcloud config set project datasette-222320
         export SUFFIX="-${GITHUB_REF#refs/heads/}"
         export SUFFIX=${SUFFIX#-main}
+        # Replace 1.0 with one-dot-zero in SUFFIX
+        export SUFFIX=${SUFFIX//1.0/one-dot-zero}
         datasette publish cloudrun fixtures.db fixtures2.db extra_database.db \
             -m fixtures.json \
             --plugins-dir=plugins \

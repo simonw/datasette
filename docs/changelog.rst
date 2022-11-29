@@ -4,6 +4,35 @@
 Changelog
 =========
 
+.. _v1_0_a0:
+
+1.0a0 (2022-11-29)
+------------------
+
+This first alpha release of Datasette 1.0 introduces a brand new collection of APIs for writing to the database (:issue:`1850`), as well as a new API token mechanism baked into Datasette core. Previously, API tokens have only been supported by installing additional plugins.
+
+This is very much a preview: expect many more backwards incompatible API changes prior to the full 1.0 release.
+
+Feedback enthusiastically welcomed, either through `issue comments <https://github.com/simonw/datasette/issues/1850>`__ or via the `Datasette Discord <https://datasette.io/discord>`__ community.
+
+Signed API tokens
+~~~~~~~~~~~~~~~~~
+
+- New ``/-/create-token`` page allowing authenticated users to create signed API tokens that can act on their behalf, see :ref:`CreateTokenView`. (:issue:`1852`)
+- New ``datasette create-token`` command for creating tokens from the command line: :ref:`authentication_cli_create_token`.
+- New :ref:`setting_allow_signed_tokens` setting which can be used to turn off signed token support. (:issue:`1856`)
+- New :ref:`setting_max_signed_tokens_ttl` setting for restricting the maximum allowed duration of a signed token. (:issue:`1858`)
+
+Write API
+~~~~~~~~~
+
+- New API explorer at ``/-/api`` for trying out the API. (:issue:`1871`)
+- ``/db/-/create`` API for :ref:`TableCreateView`. (:issue:`1882`)
+- ``/db/table/-/insert`` API for :ref:`TableInsertView`. (:issue:`1851`)
+- ``/db/table/-/drop`` API for :ref:`TableDropView`. (:issue:`1874`)
+- ``/db/table/pk/-/update`` API for :ref:`RowUpdateView`. (:issue:`1863`)
+- ``/db/table/pk/-/delete`` API for :ref:`RowDeleteView`. (:issue:`1864`)
+
 .. _v0_63_2:
 
 0.63.2 (2022-11-18)

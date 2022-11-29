@@ -415,7 +415,9 @@ column - you can turn that off using ``?_labels=off``.
 
 You can request foreign keys be expanded in JSON using the ``_labels=on`` or
 ``_label=COLUMN`` special query string parameters. Here's what an expanded row
-looks like::
+looks like:
+
+.. code-block:: json
 
     [
         {
@@ -455,3 +457,307 @@ You can find this near the top of the source code of those pages, looking like t
 The JSON URL is also made available in a ``Link`` HTTP header for the page::
 
     Link: https://latest.datasette.io/fixtures/sortable.json; rel="alternate"; type="application/json+datasette"
+
+.. _json_api_write:
+
+The JSON write API
+------------------
+
+Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`.
+
+.. _TableInsertView:
+
+Inserting rows
+~~~~~~~~~~~~~~
+
+This requires the :ref:`permissions_insert_row` permission.
+
+A single row can be inserted using the ``"row"`` key:
+
+::
+
+    POST /<database>/<table>/-/insert
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "row": {
+            "column1": "value1",
+            "column2": "value2"
+        }
+    }
+
+If successful, this will return a ``201`` status code and the newly inserted row, for example:
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "id": 1,
+                "column1": "value1",
+                "column2": "value2"
+            }
+        ]
+    }
+
+To insert multiple rows at a time, use the same API method but send a list of dictionaries as the ``"rows"`` key:
+
+::
+
+    POST /<database>/<table>/-/insert
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "column1": "value1",
+                "column2": "value2"
+            },
+            {
+                "column1": "value3",
+                "column2": "value4"
+            }
+        ]
+    }
+
+If successful, this will return a ``201`` status code and an empty ``{}`` response body.
+
+To return the newly inserted rows, add the ``"return": true`` key to the request body:
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "column1": "value1",
+                "column2": "value2"
+            },
+            {
+                "column1": "value3",
+                "column2": "value4"
+            }
+        ],
+        "return": true
+    }
+
+This will return the same ``"rows"`` key as the single row example above. There is a small performance penalty for using this option.
+
+.. _RowUpdateView:
+
+Updating a row
+~~~~~~~~~~~~~~
+
+To update a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/update``. This requires the :ref:`permissions_update_row` permission.
+
+::
+
+    POST /<database>/<table>/<row-pks>/-/update
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "update": {
+            "text_column": "New text string",
+            "integer_column": 3,
+            "float_column": 3.14
+        }
+    }
+
+``<row-pks>`` here is the :ref:`tilde-encoded <internals_tilde_encoding>` primary key value of the row to delete - or a comma-separated list of primary key values if the table has a composite primary key.
+
+You only need to pass the columns you want to update. Any other columns will be left unchanged.
+
+If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+
+Add ``"return": true`` to the request body to return the updated row:
+
+.. code-block:: json
+
+    {
+        "update": {
+            "title": "New title"
+        },
+        "return": true
+    }
+
+The returned JSON will look like this:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "row": {
+            "id": 1,
+            "title": "New title",
+            "other_column": "Will be present here too"
+        }
+    }
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
+.. _RowDeleteView:
+
+Deleting a row
+~~~~~~~~~~~~~~
+
+To delete a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/delete``. This requires the :ref:`permissions_delete_row` permission.
+
+::
+
+    POST /<database>/<table>/<row-pks>/-/delete
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+``<row-pks>`` here is the :ref:`tilde-encoded <internals_tilde_encoding>` primary key value of the row to delete - or a comma-separated list of primary key values if the table has a composite primary key.
+
+If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
+.. _TableCreateView:
+
+Creating a table
+~~~~~~~~~~~~~~~~
+
+To create a table, make a ``POST`` to ``/<database>/-/create``. This requires the :ref:`permissions_create_table` permission.
+
+::
+
+    POST /<database>/-/create
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "table": "name_of_new_table",
+        "columns": [
+            {
+                "name": "id",
+                "type": "integer"
+            },
+            {
+                "name": "title",
+                "type": "text"
+            }
+        ],
+        "pk": "id"
+    }
+
+The JSON here describes the table that will be created:
+
+*   ``table`` is the name of the table to create. This field is required.
+*   ``columns`` is a list of columns to create. Each column is a dictionary with ``name`` and ``type`` keys.
+
+    -   ``name`` is the name of the column. This is required.
+    -   ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
+
+*   ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
+
+    If the primary key is an integer column, it will be configured to automatically increment for each new record.
+
+    If you set this to ``id`` without including an ``id`` column in the list of ``columns``, Datasette will create an integer ID column for you.
+
+*   ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
+
+If the table is successfully created this will return a ``201`` status code and the following response:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "name_of_new_table",
+        "table_url": "http://127.0.0.1:8001/data/name_of_new_table",
+        "table_api_url": "http://127.0.0.1:8001/data/name_of_new_table.json",
+        "schema": "CREATE TABLE [name_of_new_table] (\n   [id] INTEGER PRIMARY KEY,\n   [title] TEXT\n)"
+    }
+
+.. _TableCreateView_example:
+
+Creating a table from example data
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Instead of specifying ``columns`` directly you can instead pass a single example row or a list of rows. Datasette will create a table with a schema that matches those rows and insert them for you:
+
+::
+
+    POST /<database>/-/create
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "table": "creatures",
+        "rows": [
+            {
+                "id": 1,
+                "name": "Tarantula"
+            },
+            {
+                "id": 2,
+                "name": "Kākāpō"
+            }
+        ],
+        "pk": "id"
+    }
+
+The ``201`` response here will be similar to the ``columns`` form, but will also include the number of rows that were inserted as ``row_count``:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "data",
+        "table": "creatures",
+        "table_url": "http://127.0.0.1:8001/data/creatures",
+        "table_api_url": "http://127.0.0.1:8001/data/creatures.json",
+        "schema": "CREATE TABLE [creatures] (\n   [id] INTEGER PRIMARY KEY,\n   [name] TEXT\n)",
+        "row_count": 2
+    }
+
+.. _TableDropView:
+
+Dropping tables
+~~~~~~~~~~~~~~~
+
+To drop a table, make a ``POST`` to ``/<database>/<table>/-/drop``. This requires the :ref:`permissions_drop_table` permission.
+
+::
+
+    POST /<database>/<table>/-/drop
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+Without a POST body this will return a status ``200`` with a note about how many rows will be deleted:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "database": "<database>",
+        "table": "<table>",
+        "row_count": 5,
+        "message": "Pass \"confirm\": true to confirm"
+    }
+
+If you pass the following POST body:
+
+.. code-block:: json
+
+    {
+        "confirm": true
+    }
+
+Then the table will be dropped and a status ``200`` response of ``{"ok": true}`` will be returned.
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.

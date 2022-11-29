@@ -96,6 +96,17 @@ You can increase or decrease this limit like so::
 
     datasette mydatabase.db --setting max_returned_rows 2000
 
+.. _setting_max_insert_rows:
+
+max_insert_rows
+~~~~~~~~~~~~~~~
+
+Maximum rows that can be inserted at a time using the bulk insert API, see :ref:`TableInsertView`. Defaults to 100.
+
+You can increase or decrease this limit like so::
+
+    datasette mydatabase.db --setting max_insert_rows 1000
+
 .. _setting_num_sql_threads:
 
 num_sql_threads
@@ -168,6 +179,34 @@ allow_download
 Should users be able to download the original SQLite database using a link on the database index page? This is turned on by default. However, databases can only be downloaded if they are served in immutable mode and not in-memory. If downloading is unavailable for either of these reasons, the download link is hidden even if ``allow_download`` is on. To disable database downloads, use the following::
 
     datasette mydatabase.db --setting allow_download off
+
+.. _setting_allow_signed_tokens:
+
+allow_signed_tokens
+~~~~~~~~~~~~~~~~~~~
+
+Should users be able to create signed API tokens to access Datasette?
+
+This is turned on by default. Use the following to turn it off::
+
+    datasette mydatabase.db --setting allow_signed_tokens off
+
+Turning this setting off will disable the ``/-/create-token`` page, :ref:`described here <CreateTokenView>`. It will also cause any incoming ``Authorization: Bearer dstok_...`` API tokens to be ignored.
+
+.. _setting_max_signed_tokens_ttl:
+
+max_signed_tokens_ttl
+~~~~~~~~~~~~~~~~~~~~~
+
+Maximum allowed expiry time for signed API tokens created by users.
+
+Defaults to ``0`` which means no limit - tokens can be created that will never expire.
+
+Set this to a value in seconds to limit the maximum expiry time. For example, to set that limit to 24 hours you would use::
+
+    datasette mydatabase.db --setting max_signed_tokens_ttl 86400
+
+This setting is enforced when incoming tokens are processed.
 
 .. _setting_default_cache_ttl:
 

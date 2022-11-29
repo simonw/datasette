@@ -20,7 +20,6 @@ from datasette.utils import (
     InvalidSql,
     LimitedWriter,
     call_with_supported_arguments,
-    tilde_decode,
     path_from_row_pks,
     path_with_added_args,
     path_with_removed_args,
@@ -69,20 +68,31 @@ class BaseView:
     def database_color(self, database):
         return "ff0000"
 
-    async def options(self, request, *args, **kwargs):
+    async def method_not_allowed(self, request):
+        print(request.headers)
+        if (
+            request.path.endswith(".json")
+            or request.headers.get("content-type") == "application/json"
+        ):
+            return Response.json(
+                {"ok": False, "error": "Method not allowed"}, status=405
+            )
         return Response.text("Method not allowed", status=405)
+
+    async def options(self, request, *args, **kwargs):
+        return await self.method_not_allowed(request)
 
     async def post(self, request, *args, **kwargs):
-        return Response.text("Method not allowed", status=405)
+        return await self.method_not_allowed(request)
 
     async def put(self, request, *args, **kwargs):
-        return Response.text("Method not allowed", status=405)
+        return await self.method_not_allowed(request)
 
     async def patch(self, request, *args, **kwargs):
-        return Response.text("Method not allowed", status=405)
+        return await self.method_not_allowed(request)
 
     async def delete(self, request, *args, **kwargs):
-        return Response.text("Method not allowed", status=405)
+        return await self.method_not_allowed(request)
 
     async def dispatch_request(self, request):
         if self.ds:
@@ -335,13 +345,9 @@ class DataView(BaseView):
         return AsgiStream(stream_fn, headers=headers, content_type=content_type)
 
     async def get(self, request):
-        database_route = tilde_decode(request.url_vars["database"])
-
-        try:
-            db = self.ds.get_database(route=database_route)
-        except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+        db = await self.ds.resolve_database(request)
         database = db.name
+        database_route = db.route
 
         _format = request.url_vars["format"]
         data_kwargs = {}
@@ -507,7 +513,6 @@ class DataView(BaseView):
                         if key not in ("_labels", "_facet", "_size")
                     ]
                     + [("_size", "max")],
-                    "datasette_version": __version__,
                     "settings": self.ds.settings_dict(),
                 },
             }
@@ -536,3 +541,7 @@ class DataView(BaseView):
         if self.ds.cors:
             add_cors_headers(response.headers)
         return response
+
+
+def _error(messages, status=400):
+    return Response.json({"ok": False, "errors": messages}, status=status)

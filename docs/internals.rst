@@ -579,6 +579,84 @@ For example:
 
     downloads_are_allowed = datasette.setting("allow_download")
 
+.. _datasette_resolve_database:
+
+.resolve_database(request)
+--------------------------
+
+``request`` - :ref:`internals_request`
+    A request object
+
+If you are implementing your own custom views, you may need to resolve the database that the user is requesting based on a URL path. If the regular expression for your route declares a ``database`` named group, you can use this method to resolve the database object.
+
+This returns a :ref:`Database <internals_database>` instance.
+
+If the database cannot be found, it raises a ``datasette.utils.asgi.DatabaseNotFound`` exception - which is a subclass of ``datasette.utils.asgi.NotFound`` with a ``.database_name`` attribute set to the name of the database that was requested.
+
+.. _datasette_resolve_table:
+
+.resolve_table(request)
+-----------------------
+
+``request`` - :ref:`internals_request`
+    A request object
+
+This assumes that the regular expression for your route declares both a ``database`` and a ``table`` named group.
+
+It returns a ``ResolvedTable`` named tuple instance with the following fields:
+
+``db`` - :ref:`Database <internals_database>`
+    The database object
+
+``table`` - string
+    The name of the table (or view)
+
+``is_view`` - boolean
+    ``True`` if this is a view, ``False`` if it is a table
+
+If the database or table cannot be found it raises a ``datasette.utils.asgi.DatabaseNotFound`` exception.
+
+If the table does not exist it raises a ``datasette.utils.asgi.TableNotFound`` exception - a subclass of ``datasette.utils.asgi.NotFound`` with ``.database_name`` and ``.table`` attributes.
+
+.. _datasette_resolve_row:
+
+.resolve_row(request)
+---------------------
+
+``request`` - :ref:`internals_request`
+    A request object
+
+This method assumes your route declares named groups for ``database``, ``table`` and ``pks``.
+
+It returns a ``ResolvedRow`` named tuple instance with the following fields:
+
+``db`` - :ref:`Database <internals_database>`
+    The database object
+
+``table`` - string
+    The name of the table
+
+``sql`` - string
+    SQL snippet that can be used in a ``WHERE`` clause to select the row
+
+``params`` - dict
+    Parameters that should be passed to the SQL query
+
+``pks`` - list
+    List of primary key column names
+
+``pk_values`` - list
+    List of primary key values decoded from the URL
+
+``row`` - ``sqlite3.Row``
+    The row itself
+
+If the database or table cannot be found it raises a ``datasette.utils.asgi.DatabaseNotFound`` exception.
+
+If the table does not exist it raises a ``datasette.utils.asgi.TableNotFound`` exception.
+
+If the row cannot be found it raises a ``datasette.utils.asgi.RowNotFound`` exception. This has ``.database_name``, ``.table`` and ``.pk_values`` attributes, extracted from the request path.
+
 .. _internals_datasette_client:
 
 datasette.client
@@ -770,7 +848,7 @@ The ``Results`` object also has the following properties and methods:
 ``.columns`` - list of strings
     A list of column names returned by the query.
 
-``.rows`` - list of sqlite3.Row
+``.rows`` - list of ``sqlite3.Row``
     This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
 
 ``.first()`` - row or None
@@ -908,6 +986,9 @@ The ``Database`` class also provides properties and methods for introspecting th
 
 ``await db.table_exists(table)`` - boolean
     Check if a table called ``table`` exists.
+
+``await db.view_exists(view)`` - boolean
+    Check if a view called ``view`` exists.
 
 ``await db.table_names()`` - list of strings
     List of names of tables in the database.

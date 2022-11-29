@@ -1,8 +1,12 @@
 import json
+from datasette.permissions import PERMISSIONS
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import actor_matches_allow, add_cors_headers
+from datasette.permissions import PERMISSIONS
 from .base import BaseView
 import secrets
+import time
+import urllib
 
 
 class JsonDataView(BaseView):
@@ -102,7 +106,39 @@ class PermissionsDebugView(BaseView):
             ["permissions_debug.html"],
             request,
             # list() avoids error if check is performed during template render:
-            {"permission_checks": list(reversed(self.ds._permission_checks))},
+            {
+                "permission_checks": list(reversed(self.ds._permission_checks)),
+                "permissions": PERMISSIONS,
+            },
+        )
+
+    async def post(self, request):
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
+            raise Forbidden("Permission denied")
+        vars = await request.post_vars()
+        actor = json.loads(vars["actor"])
+        permission = vars["permission"]
+        resource_1 = vars["resource_1"]
+        resource_2 = vars["resource_2"]
+        resource = []
+        if resource_1:
+            resource.append(resource_1)
+        if resource_2:
+            resource.append(resource_2)
+        resource = tuple(resource)
+        if len(resource) == 1:
+            resource = resource[0]
+        result = await self.ds.permission_allowed(
+            actor, permission, resource, default="USE_DEFAULT"
+        )
+        return Response.json(
+            {
+                "actor": actor,
+                "permission": permission,
+                "resource": resource,
+                "result": result,
+            }
         )
 
 
@@ -163,3 +199,197 @@ class MessagesDebugView(BaseView):
         else:
             datasette.add_message(request, message, getattr(datasette, message_type))
         return Response.redirect(self.ds.urls.instance())
+
+
+class CreateTokenView(BaseView):
+    name = "create_token"
+    has_json_alternate = False
+
+    def check_permission(self, request):
+        if not self.ds.setting("allow_signed_tokens"):
+            raise Forbidden("Signed tokens are not enabled for this Datasette instance")
+        if not request.actor:
+            raise Forbidden("You must be logged in to create a token")
+        if not request.actor.get("id"):
+            raise Forbidden(
+                "You must be logged in as an actor with an ID to create a token"
+            )
+        if request.actor.get("token"):
+            raise Forbidden(
+                "Token authentication cannot be used to create additional tokens"
+            )
+
+    async def get(self, request):
+        self.check_permission(request)
+        return await self.render(
+            ["create_token.html"],
+            request,
+            {"actor": request.actor},
+        )
+
+    async def post(self, request):
+        self.check_permission(request)
+        post = await request.post_vars()
+        errors = []
+        duration = None
+        if post.get("expire_type"):
+            duration_string = post.get("expire_duration")
+            if (
+                not duration_string
+                or not duration_string.isdigit()
+                or not int(duration_string) > 0
+            ):
+                errors.append("Invalid expire duration")
+            else:
+                unit = post["expire_type"]
+                if unit == "minutes":
+                    duration = int(duration_string) * 60
+                elif unit == "hours":
+                    duration = int(duration_string) * 60 * 60
+                elif unit == "days":
+                    duration = int(duration_string) * 60 * 60 * 24
+                else:
+                    errors.append("Invalid expire duration unit")
+        token_bits = None
+        token = None
+        if not errors:
+            token_bits = {
+                "a": request.actor["id"],
+                "t": int(time.time()),
+            }
+            if duration:
+                token_bits["d"] = duration
+            token = "dstok_{}".format(self.ds.sign(token_bits, "token"))
+        return await self.render(
+            ["create_token.html"],
+            request,
+            {
+                "actor": request.actor,
+                "errors": errors,
+                "token": token,
+                "token_bits": token_bits,
+            },
+        )
+
+
+class ApiExplorerView(BaseView):
+    name = "api_explorer"
+    has_json_alternate = False
+
+    async def example_links(self, request):
+        databases = []
+        for name, db in self.ds.databases.items():
+            if name == "_internal":
+                continue
+            database_visible, _ = await self.ds.check_visibility(
+                request.actor,
+                "view-database",
+                name,
+            )
+            if not database_visible:
+                continue
+            tables = []
+            table_names = await db.table_names()
+            for table in table_names:
+                visible, _ = await self.ds.check_visibility(
+                    request.actor,
+                    "view-table",
+                    (name, table),
+                )
+                if not visible:
+                    continue
+                table_links = []
+                tables.append({"name": table, "links": table_links})
+                table_links.append(
+                    {
+                        "label": "Get rows for {}".format(table),
+                        "method": "GET",
+                        "path": self.ds.urls.table(name, table, format="json")
+                        + "?_shape=objects".format(name, table),
+                    }
+                )
+                # If not mutable don't show any write APIs
+                if not db.is_mutable:
+                    continue
+
+                if await self.ds.permission_allowed(
+                    request.actor, "insert-row", (name, table)
+                ):
+                    pks = await db.primary_keys(table)
+                    table_links.append(
+                        {
+                            "path": self.ds.urls.table(name, table) + "/-/insert",
+                            "method": "POST",
+                            "label": "Insert rows into {}".format(table),
+                            "json": {
+                                "rows": [
+                                    {
+                                        column: None
+                                        for column in await db.table_columns(table)
+                                        if column not in pks
+                                    }
+                                ]
+                            },
+                        }
+                    )
+                if await self.ds.permission_allowed(
+                    request.actor, "drop-table", (name, table)
+                ):
+                    table_links.append(
+                        {
+                            "path": self.ds.urls.table(name, table) + "/-/drop",
+                            "label": "Drop table {}".format(table),
+                            "json": {"confirm": False},
+                            "method": "POST",
+                        }
+                    )
+            database_links = []
+            if (
+                await self.ds.permission_allowed(request.actor, "create-table", name)
+                and db.is_mutable
+            ):
+                database_links.append(
+                    {
+                        "path": self.ds.urls.database(name) + "/-/create",
+                        "label": "Create table in {}".format(name),
+                        "json": {
+                            "table": "new_table",
+                            "columns": [
+                                {"name": "id", "type": "integer"},
+                                {"name": "name", "type": "text"},
+                            ],
+                            "pk": "id",
+                        },
+                        "method": "POST",
+                    }
+                )
+            if database_links or tables:
+                databases.append(
+                    {
+                        "name": name,
+                        "links": database_links,
+                        "tables": tables,
+                    }
+                )
+        return databases
+
+    async def get(self, request):
+        def api_path(link):
+            return "/-/api#{}".format(
+                urllib.parse.urlencode(
+                    {
+                        key: json.dumps(value, indent=2) if key == "json" else value
+                        for key, value in link.items()
+                        if key in ("path", "method", "json")
+                    }
+                )
+            )
+
+        return await self.render(
+            ["api_explorer.html"],
+            request,
+            {
+                "example_links": await self.example_links(request),
+                "api_path": api_path,
+            },
+        )

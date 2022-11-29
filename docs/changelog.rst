@@ -33,6 +33,13 @@ Write API
 - ``/db/table/pk/-/update`` API for :ref:`RowUpdateView`. (:issue:`1863`)
 - ``/db/table/pk/-/delete`` API for :ref:`RowDeleteView`. (:issue:`1864`)
 
+.. _v0_63_2:
+
+0.63.2 (2022-11-18)
+-------------------
+
+- Fixed a bug in ``datasette publish heroku`` where deployments failed due to an older version of Python being requested. (:issue:`1905`)
+- New ``datasette publish heroku --generate-dir <dir>`` option for generating a Heroku deployment directory without deploying it.
 
 .. _v0_63_1:
 

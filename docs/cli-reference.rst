@@ -508,6 +508,8 @@ See :ref:`publish_heroku`.
       -n, --name TEXT                 Application name to use when deploying
       --tar TEXT                      --tar option to pass to Heroku, e.g.
                                       --tar=/usr/local/bin/gtar
+      --generate-dir DIRECTORY        Output generated application files and stop
+                                      without deploying
       --help                          Show this message and exit.
 
 

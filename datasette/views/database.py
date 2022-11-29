@@ -682,22 +682,6 @@ class TableCreateView(BaseView):
         return Response.json(details, status=201)
 
 
-async def _table_columns(datasette, database_name):
-    internal = datasette.get_database("_internal")
-    result = await internal.execute(
-        "select table_name, name from columns where database_name = ?",
-        [database_name],
-    )
-    table_columns = {}
-    for row in result.rows:
-        table_columns.setdefault(row["table_name"], []).append(row["name"])
-    # Add views
-    db = datasette.get_database(database_name)
-    for view_name in await db.view_names():
-        table_columns[view_name] = []
-    return table_columns
-
-
 class TableCreateView(BaseView):
     name = "table-create"
 
@@ -831,3 +815,19 @@ class TableCreateView(BaseView):
         if rows:
             details["row_count"] = len(rows)
         return Response.json(details, status=201)
+
+
+async def _table_columns(datasette, database_name):
+    internal = datasette.get_database("_internal")
+    result = await internal.execute(
+        "select table_name, name from columns where database_name = ?",
+        [database_name],
+    )
+    table_columns = {}
+    for row in result.rows:
+        table_columns.setdefault(row["table_name"], []).append(row["name"])
+    # Add views
+    db = datasette.get_database(database_name)
+    for view_name in await db.view_names():
+        table_columns[view_name] = []
+    return table_columns

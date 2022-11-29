@@ -51,6 +51,7 @@ jobs:
           ${{ runner.os }}-publish-pip-
     - name: Install dependencies
       run: |
+        pip install pkginfo==1.8.3
         pip install setuptools wheel twine
     - name: Publish
       env:

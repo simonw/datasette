@@ -57,6 +57,9 @@ jobs:
             db.route = "alternative-route"
         ' > plugins/alternative_route.py
         cp fixtures.db fixtures2.db
+    - name: Make some modifications to metadata.json
+      run: |
+        cat fixtures.json | jq '.databases |= . + {"ephemeral": {"allow": {"id": "root"}}}'> metadata.json
     - name: Set up Cloud Run
       uses: google-github-actions/setup-gcloud@v0
       with:
@@ -72,11 +75,12 @@ jobs:
         # Replace 1.0 with one-dot-zero in SUFFIX
         export SUFFIX=${SUFFIX//1.0/one-dot-zero}
         datasette publish cloudrun fixtures.db fixtures2.db extra_database.db \
-            -m fixtures.json \
+            -m metadata.json \
             --plugins-dir=plugins \
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \
             --extra-options="--setting template_debug 1 --setting trace_debug 1 --crossdb" \
+            --install datasette-ephemeral-tables \
             --service "datasette-latest$SUFFIX"
     - name: Deploy to docs as well (only for main)
       if: ${{ github.ref == 'refs/heads/main' }}

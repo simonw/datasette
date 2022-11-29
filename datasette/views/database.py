@@ -701,7 +701,7 @@ async def _table_columns(datasette, database_name):
 class TableCreateView(BaseView):
     name = "table-create"
 
-    _valid_keys = {"table", "rows", "row", "columns", "pk"}
+    _valid_keys = {"table", "rows", "row", "columns", "pk", "pks"}
     _supported_column_types = {
         "text",
         "integer",
@@ -785,18 +785,28 @@ class TableCreateView(BaseView):
                     return _error(["rows must be a list of objects"])
 
         pk = data.get("pk")
+        pks = data.get("pks")
+
+        if pk and pks:
+            return _error(["Cannot specify both pk and pks"])
         if pk:
             if not isinstance(pk, str):
                 return _error(["pk must be a string"])
+        if pks:
+            if not isinstance(pks, list):
+                return _error(["pks must be a list"])
+            for pk in pks:
+                if not isinstance(pk, str):
+                    return _error(["pks must be a list of strings"])
 
         def create_table(conn):
             table = sqlite_utils.Database(conn)[table_name]
             if rows:
-                table.insert_all(rows, pk=pk)
+                table.insert_all(rows, pk=pks or pk)
             else:
                 table.create(
                     {c["name"]: c["type"] for c in columns},
-                    pk=pk,
+                    pk=pks or pk,
                 )
             return table.schema
 

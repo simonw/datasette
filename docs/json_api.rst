@@ -666,6 +666,8 @@ The JSON here describes the table that will be created:
 
     If you set this to ``id`` without including an ``id`` column in the list of ``columns``, Datasette will create an integer ID column for you.
 
+*   ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
+
 If the table is successfully created this will return a ``201`` status code and the following response:
 
 .. code-block:: json

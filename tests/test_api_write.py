@@ -643,6 +643,27 @@ async def test_drop_table(ds_write, scenario):
                 "row_count": 1,
             },
         ),
+        # Create table with compound primary key
+        (
+            {
+                "table": "five",
+                "row": {"type": "article", "key": 123, "title": "Article 1"},
+                "pks": ["type", "key"],
+            },
+            201,
+            {
+                "ok": True,
+                "database": "data",
+                "table": "five",
+                "table_url": "http://localhost/data/five",
+                "table_api_url": "http://localhost/data/five.json",
+                "schema": (
+                    "CREATE TABLE [five] (\n   [type] TEXT,\n   [key] INTEGER,\n"
+                    "   [title] TEXT,\n   PRIMARY KEY ([type], [key])\n)"
+                ),
+                "row_count": 1,
+            },
+        ),
         # Error: Table is required
         (
             {
@@ -798,6 +819,39 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["pk must be a string"],
             },
+        ),
+        # Error: Cannot specify both pk and pks
+        (
+            {
+                "table": "bad",
+                "row": {"id": 1, "name": "Row 1"},
+                "pk": "id",
+                "pks": ["id", "name"],
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["Cannot specify both pk and pks"],
+            },
+        ),
+        # Error: pks must be a list
+        (
+            {
+                "table": "bad",
+                "row": {"id": 1, "name": "Row 1"},
+                "pks": "id",
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["pks must be a list"],
+            },
+        ),
+        # Error: pks must be a list of strings
+        (
+            {"table": "bad", "row": {"id": 1, "name": "Row 1"}, "pks": [1, 2]},
+            400,
+            {"ok": False, "errors": ["pks must be a list of strings"]},
         ),
     ),
 )

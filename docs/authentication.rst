@@ -589,6 +589,18 @@ Actor is allowed to delete rows from a table.
 
 Default *deny*.
 
+.. _permissions_update_row:
+
+update-row
+----------
+
+Actor is allowed to update rows in a table.
+
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+Default *deny*.
+
 .. _permissions_create_table:
 
 create-table

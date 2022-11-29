@@ -148,6 +148,27 @@ class RowError(Exception):
         self.error = error
 
 
+async def _resolve_row_and_check_permission(datasette, request, permission):
+    from datasette.app import DatabaseNotFound, TableNotFound, RowNotFound
+
+    try:
+        resolved = await datasette.resolve_row(request)
+    except DatabaseNotFound as e:
+        return False, _error(["Database not found: {}".format(e.database_name)], 404)
+    except TableNotFound as e:
+        return False, _error(["Table not found: {}".format(e.table)], 404)
+    except RowNotFound as e:
+        return False, _error(["Record not found: {}".format(e.pk_values)], 404)
+
+    # Ensure user has permission to delete this row
+    if not await datasette.permission_allowed(
+        request.actor, permission, resource=(resolved.db.name, resolved.table)
+    ):
+        return False, _error(["Permission denied"], 403)
+
+    return True, resolved
+
+
 class RowDeleteView(BaseView):
     name = "row-delete"
 
@@ -155,30 +176,65 @@ class RowDeleteView(BaseView):
         self.ds = datasette
 
     async def post(self, request):
-        from datasette.app import DatabaseNotFound, TableNotFound, RowNotFound
-
-        try:
-            resolved = await self.ds.resolve_row(request)
-        except DatabaseNotFound as e:
-            return _error(["Database not found: {}".format(e.database_name)], 404)
-        except TableNotFound as e:
-            return _error(["Table not found: {}".format(e.table)], 404)
-        except RowNotFound as e:
-            return _error(["Record not found: {}".format(e.pk_values)], 404)
-        db = resolved.db
-        database_name = db.name
-        table = resolved.table
-        pk_values = resolved.pk_values
-
-        # Ensure user has permission to delete this row
-        if not await self.ds.permission_allowed(
-            request.actor, "delete-row", resource=(database_name, table)
-        ):
-            return _error(["Permission denied"], 403)
+        ok, resolved = await _resolve_row_and_check_permission(
+            self.ds, request, "delete-row"
+        )
+        if not ok:
+            return resolved
 
         # Delete table
         def delete_row(conn):
-            sqlite_utils.Database(conn)[table].delete(pk_values)
+            sqlite_utils.Database(conn)[resolved.table].delete(resolved.pk_values)
 
-        await db.execute_write_fn(delete_row)
+        try:
+            await resolved.db.execute_write_fn(delete_row)
+        except Exception as e:
+            return _error([str(e)], 500)
+
         return Response.json({"ok": True}, status=200)
+
+
+class RowUpdateView(BaseView):
+    name = "row-update"
+
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def post(self, request):
+        ok, resolved = await _resolve_row_and_check_permission(
+            self.ds, request, "update-row"
+        )
+        if not ok:
+            return resolved
+
+        body = await request.post_body()
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError as e:
+            return _error(["Invalid JSON: {}".format(e)])
+
+        if not isinstance(data, dict):
+            return _error(["JSON must be a dictionary"])
+        if not "update" in data or not isinstance(data["update"], dict):
+            return _error(["JSON must contain an update dictionary"])
+
+        update = data["update"]
+
+        def update_row(conn):
+            sqlite_utils.Database(conn)[resolved.table].update(
+                resolved.pk_values, update
+            )
+
+        try:
+            await resolved.db.execute_write_fn(update_row)
+        except Exception as e:
+            return _error([str(e)], 400)
+
+        result = {"ok": True}
+        if data.get("return"):
+            results = await resolved.db.execute(
+                resolved.sql, resolved.params, truncate=True
+            )
+            rows = list(results.rows)
+            result["row"] = dict(rows[0])
+        return Response.json(result, status=200)

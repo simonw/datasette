@@ -41,7 +41,7 @@ from .views.special import (
     MessagesDebugView,
 )
 from .views.table import TableView, TableInsertView, TableDropView
-from .views.row import RowView, RowDeleteView
+from .views.row import RowView, RowDeleteView, RowUpdateView
 from .renderer import json_renderer
 from .url_builder import Urls
 from .database import Database, QueryInterrupted
@@ -1297,6 +1297,10 @@ class Datasette:
         add_route(
             RowDeleteView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)/-/delete$",
+        )
+        add_route(
+            RowUpdateView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^/]+?)/(?P<pks>[^/]+?)/-/update$",
         )
         return [
             # Compile any strings to regular expressions

@@ -548,10 +548,65 @@ To return the newly inserted rows, add the ``"return": true`` key to the request
 
 This will return the same ``"rows"`` key as the single row example above. There is a small performance penalty for using this option.
 
+.. _RowUpdateView:
+
+Updating a row
+~~~~~~~~~~~~~~
+
+To update a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/update``. This requires the :ref:`permissions_update_row` permission.
+
+::
+
+    POST /<database>/<table>/<row-pks>/-/update
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "update": {
+            "text_column": "New text string",
+            "integer_column": 3,
+            "float_column": 3.14
+        }
+    }
+
+``<row-pks>`` here is the :ref:`tilde-encoded <internals_tilde_encoding>` primary key value of the row to delete - or a comma-separated list of primary key values if the table has a composite primary key.
+
+You only need to pass the columns you want to update. Any other columns will be left unchanged.
+
+If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+
+Add ``"return": true`` to the request body to return the updated row:
+
+.. code-block:: json
+
+    {
+        "update": {
+            "title": "New title"
+        },
+        "return": true
+    }
+
+The returned JSON will look like this:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "row": {
+            "id": 1,
+            "title": "New title",
+            "other_column": "Will be present here too"
+        }
+    }
+
+Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
+
 .. _RowDeleteView:
 
-Deleting rows
-~~~~~~~~~~~~~
+Deleting a row
+~~~~~~~~~~~~~~
 
 To delete a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/delete``. This requires the :ref:`permissions_delete_row` permission.
 

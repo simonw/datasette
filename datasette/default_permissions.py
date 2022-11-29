@@ -16,6 +16,7 @@ def permission_allowed_default(datasette, actor, action, resource):
             "create-table",
             "drop-table",
             "delete-row",
+            "update-row",
         ):
             if actor and actor.get("id") == "root":
                 return True

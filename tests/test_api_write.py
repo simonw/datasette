@@ -308,15 +308,14 @@ async def _insert_row(ds):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table", "has_perm"))
-async def test_delete_row(ds_write, scenario):
+@pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table"))
+async def test_delete_row_errors(ds_write, scenario):
     if scenario == "no_token":
         token = "bad_token"
     elif scenario == "no_perm":
         token = write_token(ds_write, actor_id="not-root")
     else:
         token = write_token(ds_write)
-    should_work = scenario == "has_perm"
 
     pk = await _insert_row(ds_write)
 
@@ -330,25 +329,76 @@ async def test_delete_row(ds_write, scenario):
             "Content-Type": "application/json",
         },
     )
-    if should_work:
-        assert response.status_code == 200
-        assert response.json() == {"ok": True}
-        assert (await ds_write.client.get("/data/docs.json?_shape=array")).json() == []
-    else:
-        assert (
-            response.status_code == 403
-            if scenario in ("no_token", "bad_token")
-            else 404
+    assert response.status_code == 403 if scenario in ("no_token", "bad_token") else 404
+    assert response.json()["ok"] is False
+    assert (
+        response.json()["errors"] == ["Permission denied"]
+        if scenario == "no_token"
+        else ["Table not found: bad_table"]
+    )
+    assert len((await ds_write.client.get("/data/docs.json?_shape=array")).json()) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "table,row_for_create,pks,delete_path",
+    (
+        ("rowid_table", {"name": "rowid row"}, None, None),
+        ("pk_table", {"id": 1, "name": "ID table"}, "id", "1"),
+        (
+            "compound_pk_table",
+            {"type": "article", "key": "k"},
+            ["type", "key"],
+            "article,k",
+        ),
+    ),
+)
+async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
+    # First create the table with that example row
+    create_data = {
+        "table": table,
+        "row": row_for_create,
+    }
+    if pks:
+        if isinstance(pks, str):
+            create_data["pk"] = pks
+        else:
+            create_data["pks"] = pks
+    create_response = await ds_write.client.post(
+        "/data/-/create",
+        json=create_data,
+        headers={
+            "Authorization": "Bearer {}".format(write_token(ds_write)),
+        },
+    )
+    assert create_response.status_code == 201, create_response.json()
+    # Should be a single row
+    assert (
+        await ds_write.client.get(
+            "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)
         )
-        assert response.json()["ok"] is False
-        assert (
-            response.json()["errors"] == ["Permission denied"]
-            if scenario == "no_token"
-            else ["Table not found: bad_table"]
+    ).json() == [1]
+    # Now delete the row
+    if delete_path is None:
+        # Special case for that rowid table
+        delete_path = (
+            await ds_write.client.get(
+                "/data.json?_shape=arrayfirst&sql=select+rowid+from+{}".format(table)
+            )
+        ).json()[0]
+
+    delete_response = await ds_write.client.post(
+        "/data/{}/{}/-/delete".format(table, delete_path),
+        headers={
+            "Authorization": "Bearer {}".format(write_token(ds_write)),
+        },
+    )
+    assert delete_response.status_code == 200
+    assert (
+        await ds_write.client.get(
+            "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)
         )
-        assert (
-            len((await ds_write.client.get("/data/docs.json?_shape=array")).json()) == 1
-        )
+    ).json() == [0]
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,7 @@ served with the following additional HTTP headers::
     Access-Control-Allow-Origin: *
     Access-Control-Allow-Headers: Authorization
     Access-Control-Expose-Headers: Link
+    Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
 
 This means JavaScript running on any domain will be able to make cross-origin
 requests to fetch the data.

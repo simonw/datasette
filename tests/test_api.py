@@ -912,7 +912,10 @@ def test_cors(
     response = app_client_with_cors.get(path)
     assert response.status == status_code
     assert response.headers["Access-Control-Allow-Origin"] == "*"
-    assert response.headers["Access-Control-Allow-Headers"] == "Authorization, Content-Type"
+    assert (
+        response.headers["Access-Control-Allow-Headers"]
+        == "Authorization, Content-Type"
+    )
     assert response.headers["Access-Control-Expose-Headers"] == "Link"
     assert (
         response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"

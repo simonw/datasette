@@ -371,6 +371,8 @@ class ApiExplorerView(BaseView):
                         "tables": tables,
                     }
                 )
+        # Sort so that mutable databases are first
+        databases.sort(key=lambda d: not self.ds.databases[d["name"]].is_mutable)
         return databases
 
     async def get(self, request):

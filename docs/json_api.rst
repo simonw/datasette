@@ -13,7 +13,7 @@ If you started Datasette with the ``--cors`` option, each JSON endpoint will be
 served with the following additional HTTP headers::
 
     Access-Control-Allow-Origin: *
-    Access-Control-Allow-Headers: Authorization
+    Access-Control-Allow-Headers: Authorization, Content-Type
     Access-Control-Expose-Headers: Link
     Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
 

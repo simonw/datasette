@@ -897,14 +897,32 @@ def test_config_force_https_urls():
         ("/fixtures/no_primary_key.json", 200),
         # A 400 invalid SQL query should still have the header:
         ("/fixtures.json?sql=select+blah", 400),
+        # Write APIs
+        ("/fixtures/-/create", 405),
+        ("/fixtures/facetable/-/insert", 405),
+        ("/fixtures/facetable/-/drop", 405),
     ],
 )
-def test_cors(app_client_with_cors, path, status_code):
+def test_cors(
+    app_client_with_cors,
+    app_client_two_attached_databases_one_immutable,
+    path,
+    status_code,
+):
     response = app_client_with_cors.get(path)
     assert response.status == status_code
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert response.headers["Access-Control-Allow-Headers"] == "Authorization"
     assert response.headers["Access-Control-Expose-Headers"] == "Link"
+    # Same request to app_client_two_attached_databases_one_immutable
+    # should not have those headers - I'm using that fixture because
+    # regular app_client doesn't have immutable fixtures.db which means
+    # the test for /fixtures.db returns a 403 error
+    response = app_client_two_attached_databases_one_immutable.get(path)
+    assert response.status == status_code
+    assert "Access-Control-Allow-Origin" not in response.headers
+    assert "Access-Control-Allow-Headers" not in response.headers
+    assert "Access-Control-Expose-Headers" not in response.headers
 
 
 @pytest.mark.parametrize(

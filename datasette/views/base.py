@@ -73,13 +73,20 @@ class BaseView:
             request.path.endswith(".json")
             or request.headers.get("content-type") == "application/json"
         ):
-            return Response.json(
+            response = Response.json(
                 {"ok": False, "error": "Method not allowed"}, status=405
             )
-        return Response.text("Method not allowed", status=405)
+        else:
+            response = Response.text("Method not allowed", status=405)
+        if self.ds.cors:
+            add_cors_headers(response.headers)
+        return response
 
     async def options(self, request, *args, **kwargs):
-        return await self.method_not_allowed(request)
+        r = Response.text("ok")
+        if self.ds.cors:
+            add_cors_headers(r.headers)
+        return r
 
     async def get(self, request, *args, **kwargs):
         return await self.method_not_allowed(request)
@@ -154,12 +161,6 @@ class BaseView:
 
 class DataView(BaseView):
     name = ""
-
-    async def options(self, request, *args, **kwargs):
-        r = Response.text("ok")
-        if self.ds.cors:
-            add_cors_headers(r.headers)
-        return r
 
     def redirect(self, request, path, forward_querystring=True, remove_args=None):
         if request.query_string and "?" not in path and forward_querystring:

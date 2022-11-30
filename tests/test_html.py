@@ -55,8 +55,8 @@ def test_http_head(app_client):
 
 def test_homepage_options(app_client):
     response = app_client.get("/", method="OPTIONS")
-    assert response.status == 405
-    assert response.text == "Method not allowed"
+    assert response.status == 200
+    assert response.text == "ok"
 
 
 def test_favicon(app_client):

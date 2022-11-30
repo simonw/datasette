@@ -15,7 +15,7 @@ async def datasette(app_client):
     "method,path,expected_status",
     [
         ("get", "/", 200),
-        ("options", "/", 405),
+        ("options", "/", 200),
         ("head", "/", 200),
         ("put", "/", 405),
         ("patch", "/", 405),

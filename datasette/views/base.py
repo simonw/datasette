@@ -78,15 +78,10 @@ class BaseView:
             )
         else:
             response = Response.text("Method not allowed", status=405)
-        if self.ds.cors:
-            add_cors_headers(response.headers)
         return response
 
     async def options(self, request, *args, **kwargs):
-        r = Response.text("ok")
-        if self.ds.cors:
-            add_cors_headers(r.headers)
-        return r
+        return Response.text("ok")
 
     async def get(self, request, *args, **kwargs):
         return await self.method_not_allowed(request)
@@ -107,7 +102,10 @@ class BaseView:
         if self.ds:
             await self.ds.refresh_schemas()
         handler = getattr(self, request.method.lower(), None)
-        return await handler(request)
+        response = await handler(request)
+        if self.ds.cors:
+            add_cors_headers(response.headers)
+        return response
 
     async def render(self, templates, request, context=None):
         context = context or {}

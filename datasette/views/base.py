@@ -69,7 +69,6 @@ class BaseView:
         return "ff0000"
 
     async def method_not_allowed(self, request):
-        print(request.headers)
         if (
             request.path.endswith(".json")
             or request.headers.get("content-type") == "application/json"
@@ -80,6 +79,9 @@ class BaseView:
         return Response.text("Method not allowed", status=405)
 
     async def options(self, request, *args, **kwargs):
+        return await self.method_not_allowed(request)
+
+    async def get(self, request, *args, **kwargs):
         return await self.method_not_allowed(request)
 
     async def post(self, request, *args, **kwargs):

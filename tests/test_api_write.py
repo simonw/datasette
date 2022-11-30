@@ -922,3 +922,26 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
     assert response.status_code == expected_status
     data = response.json()
     assert data == expected_response
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/data/-/create",
+        "/data/docs/-/drop",
+        "/data/docs/-/insert",
+    ),
+)
+async def test_method_not_allowed(ds_write, path):
+    response = await ds_write.client.get(
+        path,
+        headers={
+            "Content-Type": "application/json",
+        },
+    )
+    assert response.status_code == 405
+    assert response.json() == {
+        "ok": False,
+        "error": "Method not allowed",
+    }

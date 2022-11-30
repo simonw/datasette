@@ -278,7 +278,9 @@ class Datasette:
         self.crossdb = crossdb
         self.nolock = nolock
         if memory or crossdb or not self.files:
-            self.add_database(Database(self, is_memory=True), name="_memory")
+            self.add_database(
+                Database(self, is_mutable=False, is_memory=True), name="_memory"
+            )
         # memory_name is a random string so that each Datasette instance gets its own
         # unique in-memory named database - otherwise unit tests can fail with weird
         # errors when different instances accidentally share an in-memory database

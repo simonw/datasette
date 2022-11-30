@@ -914,7 +914,9 @@ def test_cors(
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert response.headers["Access-Control-Allow-Headers"] == "Authorization"
     assert response.headers["Access-Control-Expose-Headers"] == "Link"
-    assert response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
+    assert (
+        response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
+    )
     # Same request to app_client_two_attached_databases_one_immutable
     # should not have those headers - I'm using that fixture because
     # regular app_client doesn't have immutable fixtures.db which means

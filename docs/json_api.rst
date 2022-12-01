@@ -560,6 +560,28 @@ If any of your rows have a primary key that is already in use, you will get an e
         ]
     }
 
+Pass ``"ignore": true`` to ignore these errors and insert the other rows:
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "id": 1,
+                "column1": "value1",
+                "column2": "value2"
+            },
+            {
+                "id": 2,
+                "column1": "value3",
+                "column2": "value4"
+            }
+        ],
+        "ignore": true
+    }
+
+Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values.
+
 .. _RowUpdateView:
 
 Updating a row

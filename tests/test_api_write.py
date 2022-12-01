@@ -168,7 +168,7 @@ async def test_write_rows(ds_write, return_rows):
         ),
         (
             "/data/docs/-/insert",
-            {"rows": [{"id": 1, "title": "Test"}]},
+            {"rows": [{"id": 1, "title": "Test"}, {"id": 2, "title": "Test"}]},
             "duplicate_id",
             400,
             ["UNIQUE constraint failed: docs.id"],
@@ -229,6 +229,9 @@ async def test_write_row_errors(
     if special_case == "invalid_json":
         del kwargs["json"]
         kwargs["content"] = "{bad json"
+    before_count = (
+        await ds_write.get_database("data").execute("select count(*) from docs")
+    ).rows[0][0] == 0
     response = await ds_write.client.post(
         path,
         **kwargs,
@@ -236,6 +239,11 @@ async def test_write_row_errors(
     assert response.status_code == expected_status
     assert response.json()["ok"] is False
     assert response.json()["errors"] == expected_errors
+    # Check that no rows were inserted
+    after_count = (
+        await ds_write.get_database("data").execute("select count(*) from docs")
+    ).rows[0][0] == 0
+    assert before_count == after_count
 
 
 @pytest.mark.asyncio

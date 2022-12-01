@@ -549,6 +549,17 @@ To return the newly inserted rows, add the ``"return": true`` key to the request
 
 This will return the same ``"rows"`` key as the single row example above. There is a small performance penalty for using this option.
 
+If any of your rows have a primary key that is already in use, you will get an error and none of the rows will be inserted:
+
+.. code-block:: json
+
+    {
+        "ok": false,
+        "errors": [
+            "UNIQUE constraint failed: new_table.id"
+        ]
+    }
+
 .. _RowUpdateView:
 
 Updating a row

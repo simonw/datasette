@@ -59,7 +59,11 @@ jobs:
         cp fixtures.db fixtures2.db
     - name: Make some modifications to metadata.json
       run: |
-        cat fixtures.json | jq '.databases |= . + {"ephemeral": {"allow": {"id": "root"}}}'> metadata.json
+        cat fixtures.json | \
+          jq '.databases |= . + {"ephemeral": {"allow": {"id": "root"}}}' | \
+          jq '.plugins |= . + {"datasette-ephemeral-tables": {"table_ttl": 900}}' \
+          > metadata.json
+        cat metadata.json
     - name: Set up Cloud Run
       uses: google-github-actions/setup-gcloud@v0
       with:

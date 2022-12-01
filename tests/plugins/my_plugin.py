@@ -270,7 +270,10 @@ def register_routes():
             <form action="{}" method="POST">
                 <p>
                     <input type="hidden" name="csrftoken" value="{}">
-                    <input type="submit" value="Sign in as root user"></p>
+                    <input type="submit"
+                      value="Sign in as root user"
+                      style="font-size: 2em; padding: 0.1em 0.5em;">
+                </p>
             </form>
         """.format(
                 request.path, request.scope["csrftoken"]()

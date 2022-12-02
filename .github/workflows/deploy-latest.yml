@@ -84,7 +84,7 @@ jobs:
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \
             --extra-options="--setting template_debug 1 --setting trace_debug 1 --crossdb" \
-            --install 'datasette-ephemeral-tables>=0.2.1' \
+            --install 'datasette-ephemeral-tables>=0.2.2' \
             --service "datasette-latest$SUFFIX"
     - name: Deploy to docs as well (only for main)
       if: ${{ github.ref == 'refs/heads/main' }}

@@ -217,7 +217,10 @@ def permission_allowed(actor, action):
         return actor.get("can_download") if actor else None
     # Special permissions for latest.datasette.io demos
     # See https://github.com/simonw/todomvc-datasette/issues/2
-    if actor == "todomvc" and action in (
+    actor_id = None
+    if actor:
+        actor_id = actor.get("id")
+    if actor_id == "todomvc" and action in (
         "insert-row",
         "create-table",
         "drop-table",

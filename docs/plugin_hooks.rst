@@ -1010,7 +1010,7 @@ Instead of returning a dictionary, this function can return an awaitable functio
 
         return inner
 
-Example: `datasette-auth-tokens <https://datasette.io/plugins/datasette-auth-tokens>`_
+Examples: `datasette-auth-tokens <https://datasette.io/plugins/datasette-auth-tokens>`_, `datasette-auth-passwords <https://datasette.io/plugins/datasette-auth-passwords>`_
 
 .. _plugin_hook_filters_from_request:
 

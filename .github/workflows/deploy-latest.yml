@@ -60,7 +60,7 @@ jobs:
     - name: Make some modifications to metadata.json
       run: |
         cat fixtures.json | \
-          jq '.databases |= . + {"ephemeral": {"allow": {"id": "root"}}}' | \
+          jq '.databases |= . + {"ephemeral": {"allow": {"id": "*"}}}' | \
           jq '.plugins |= . + {"datasette-ephemeral-tables": {"table_ttl": 900}}' \
           > metadata.json
         cat metadata.json
@@ -71,6 +71,8 @@ jobs:
         service_account_email: ${{ secrets.GCP_SA_EMAIL }}
         service_account_key: ${{ secrets.GCP_SA_KEY }}
     - name: Deploy to Cloud Run
+      env:
+        LATEST_DATASETTE_SECRET: ${{ secrets.LATEST_DATASETTE_SECRET }}
       run: |-
         gcloud config set run/region us-central1
         gcloud config set project datasette-222320
@@ -85,7 +87,8 @@ jobs:
             --version-note=$GITHUB_SHA \
             --extra-options="--setting template_debug 1 --setting trace_debug 1 --crossdb" \
             --install 'datasette-ephemeral-tables>=0.2.2' \
-            --service "datasette-latest$SUFFIX"
+            --service "datasette-latest$SUFFIX" \
+            --secret $LATEST_DATASETTE_SECRET
     - name: Deploy to docs as well (only for main)
       if: ${{ github.ref == 'refs/heads/main' }}
       run: |-

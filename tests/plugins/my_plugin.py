@@ -215,6 +215,16 @@ def permission_allowed(actor, action):
         return False
     elif action == "view-database-download":
         return actor.get("can_download") if actor else None
+    # Special permissions for latest.datasette.io demos
+    # See https://github.com/simonw/todomvc-datasette/issues/2
+    if actor == "todomvc" and action in (
+        "insert-row",
+        "create-table",
+        "drop-table",
+        "delete-row",
+        "update-row",
+    ):
+        return True
 
 
 @hookimpl

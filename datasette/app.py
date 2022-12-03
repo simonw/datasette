@@ -40,7 +40,7 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import TableView, TableInsertView, TableDropView
+from .views.table import TableView, TableInsertView, TableUpsertView, TableDropView
 from .views.row import RowView, RowDeleteView, RowUpdateView
 from .renderer import json_renderer
 from .url_builder import Urls
@@ -1291,6 +1291,10 @@ class Datasette:
         add_route(
             TableInsertView.as_view(self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/insert$",
+        )
+        add_route(
+            TableUpsertView.as_view(self),
+            r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)/-/upsert$",
         )
         add_route(
             TableDropView.as_view(self),

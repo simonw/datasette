@@ -911,6 +911,34 @@ async def test_drop_table(ds_write, scenario):
             400,
             {"ok": False, "errors": ["pks must be a list of strings"]},
         ),
+        # Error: ignore and replace are mutually exclusive
+        (
+            {
+                "table": "bad",
+                "row": {"id": 1, "name": "Row 1"},
+                "pk": "id",
+                "ignore": True,
+                "replace": True,
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["ignore and replace are mutually exclusive"],
+            },
+        ),
+        # ignore and replace require row or rows
+        (
+            {
+                "table": "bad",
+                "columns": [{"name": "id", "type": "integer"}],
+                "ignore": True,
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["ignore and replace require row or rows"],
+            },
+        ),
     ),
 )
 async def test_create_table(ds_write, input, expected_status, expected_response):
@@ -930,6 +958,74 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
     assert response.status_code == expected_status
     data = response.json()
     assert data == expected_response
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "input,expected_rows_after",
+    (
+        (
+            {
+                "table": "test_insert_replace",
+                "rows": [
+                    {"id": 1, "name": "Row 1 new"},
+                    {"id": 3, "name": "Row 3 new"},
+                ],
+                "ignore": True,
+            },
+            [
+                {"id": 1, "name": "Row 1"},
+                {"id": 2, "name": "Row 2"},
+                {"id": 3, "name": "Row 3 new"},
+            ],
+        ),
+        (
+            {
+                "table": "test_insert_replace",
+                "rows": [
+                    {"id": 1, "name": "Row 1 new"},
+                    {"id": 3, "name": "Row 3 new"},
+                ],
+                "replace": True,
+            },
+            [
+                {"id": 1, "name": "Row 1 new"},
+                {"id": 2, "name": "Row 2"},
+                {"id": 3, "name": "Row 3 new"},
+            ],
+        ),
+    ),
+)
+async def test_create_table_ignore_replace(ds_write, input, expected_rows_after):
+    # Create table with two rows
+    token = write_token(ds_write)
+    first_response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "rows": [{"id": 1, "name": "Row 1"}, {"id": 2, "name": "Row 2"}],
+            "table": "test_insert_replace",
+            "pk": "id",
+        },
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert first_response.status_code == 201
+
+    # Try a second time
+    second_response = await ds_write.client.post(
+        "/data/-/create",
+        json=input,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert second_response.status_code == 201
+    # Check that the rows are as expected
+    rows = await ds_write.client.get("/data/test_insert_replace.json?_shape=array")
+    assert rows.json() == expected_rows_after
 
 
 @pytest.mark.asyncio

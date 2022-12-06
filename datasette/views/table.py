@@ -1174,11 +1174,27 @@ class TableInsertView(BaseView):
         db = self.ds.get_database(database_name)
         if not await db.table_exists(table_name):
             return _error(["Table not found: {}".format(table_name)], 404)
-        # Must have insert-row permission
-        if not await self.ds.permission_allowed(
-            request.actor, "insert-row", resource=(database_name, table_name)
-        ):
-            return _error(["Permission denied"], 403)
+
+        if upsert:
+            # Must have insert-row AND upsert-row permissions
+            if not (
+                await self.ds.permission_allowed(
+                    request.actor, "insert-row", database_name, table_name
+                )
+                and await self.ds.permission_allowed(
+                    request.actor, "update-row", database_name, table_name
+                )
+            ):
+                return _error(
+                    ["Permission denied: need both insert-row and update-row"], 403
+                )
+        else:
+            # Must have insert-row permission
+            if not await self.ds.permission_allowed(
+                request.actor, "insert-row", resource=(database_name, table_name)
+            ):
+                return _error(["Permission denied"], 403)
+
         if not db.is_mutable:
             return _error(["Database is immutable"], 403)
 
@@ -1227,7 +1243,7 @@ class TableInsertView(BaseView):
         result = {"ok": True}
         if should_return:
             result["rows"] = rows
-        return Response.json(result, status=201)
+        return Response.json(result, status=200 if upsert else 201)
 
 
 class TableUpsertView(TableInsertView):

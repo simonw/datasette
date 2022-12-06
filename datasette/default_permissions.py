@@ -85,7 +85,7 @@ def permission_allowed_actor_restrictions(actor, action, resource):
             if action_initials in database_allowed:
                 return None
     # Or the current table? That's any time the resource is (database, table)
-    if not isinstance(resource, str) and len(resource) == 2:
+    if resource is not None and not isinstance(resource, str) and len(resource) == 2:
         database, table = resource
         table_allowed = _r.get("t", {}).get(database, {}).get(table)
         # TODO: What should this do for canned queries?
@@ -138,6 +138,8 @@ def actor_from_request(datasette, request):
             # Expired
             return None
     actor = {"id": decoded["a"], "token": "dstok"}
+    if "_r" in decoded:
+        actor["_r"] = decoded["_r"]
     if duration:
         actor["token_expires"] = created + duration
     return actor

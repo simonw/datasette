@@ -21,12 +21,11 @@ def ds_write(tmp_path_factory):
     db.close()
 
 
-def write_token(ds, actor_id="root"):
-    return "dstok_{}".format(
-        ds.sign(
-            {"a": actor_id, "token": "dstok", "t": int(time.time())}, namespace="token"
-        )
-    )
+def write_token(ds, actor_id="root", permissions=None):
+    to_sign = {"a": actor_id, "token": "dstok", "t": int(time.time())}
+    if permissions:
+        to_sign["_r"] = {"a": permissions}
+    return "dstok_{}".format(ds.sign(to_sign, namespace="token"))
 
 
 @pytest.mark.asyncio
@@ -244,12 +243,31 @@ async def test_insert_rows(ds_write, return_rows):
             400,
             ["Upsert does not support ignore or replace"],
         ),
+        # Upsert permissions
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": 1, "title": "Disallowed"}]},
+            "insert-but-not-update",
+            403,
+            ["Permission denied: need both insert-row and update-row"],
+        ),
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": 1, "title": "Disallowed"}]},
+            "update-but-not-insert",
+            403,
+            ["Permission denied: need both insert-row and update-row"],
+        ),
     ),
 )
 async def test_insert_or_upsert_row_errors(
     ds_write, path, input, special_case, expected_status, expected_errors
 ):
     token = write_token(ds_write)
+    if special_case == "insert-but-not-update":
+        token = write_token(ds_write, permissions=["ir", "vi"])
+    if special_case == "update-but-not-insert":
+        token = write_token(ds_write, permissions=["ur", "vi"])
     if special_case == "duplicate_id":
         await ds_write.get_database("data").execute_write(
             "insert into docs (id) values (1)"
@@ -265,6 +283,12 @@ async def test_insert_or_upsert_row_errors(
             else "application/json",
         },
     )
+
+    actor_response = (
+        await ds_write.client.get("/-/actor.json", headers=kwargs["headers"])
+    ).json()
+    print(actor_response)
+
     if special_case == "invalid_json":
         del kwargs["json"]
         kwargs["content"] = "{bad json"

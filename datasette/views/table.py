@@ -1179,6 +1179,8 @@ class TableInsertView(BaseView):
             request.actor, "insert-row", resource=(database_name, table_name)
         ):
             return _error(["Permission denied"], 403)
+        if not db.is_mutable:
+            return _error(["Database is immutable"], 403)
 
         pks = await db.primary_keys(table_name)
 

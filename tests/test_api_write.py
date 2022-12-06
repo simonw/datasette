@@ -195,6 +195,13 @@ async def test_insert_rows(ds_write, return_rows):
             400,
             ['Invalid parameter: "one", "two"'],
         ),
+        (
+            "/immutable/docs/-/insert",
+            {"rows": [{"title": "Test"}]},
+            None,
+            403,
+            ['Database is immutable'],
+        ),
         # Validate columns of each row
         (
             "/data/docs/-/insert",

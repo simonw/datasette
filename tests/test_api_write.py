@@ -30,7 +30,7 @@ def write_token(ds, actor_id="root"):
 
 
 @pytest.mark.asyncio
-async def test_write_row(ds_write):
+async def test_insert_row(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
         "/data/docs/-/insert",
@@ -50,7 +50,7 @@ async def test_write_row(ds_write):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("return_rows", (True, False))
-async def test_write_rows(ds_write, return_rows):
+async def test_insert_rows(ds_write, return_rows):
     token = write_token(ds_write)
     data = {
         "rows": [
@@ -208,7 +208,7 @@ async def test_write_rows(ds_write, return_rows):
         ),
     ),
 )
-async def test_write_row_errors(
+async def test_insert_row_errors(
     ds_write, path, input, special_case, expected_status, expected_errors
 ):
     token = write_token(ds_write)

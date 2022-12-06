@@ -615,7 +615,7 @@ The upsert API is mostly the same shape as the :ref:`insert API <TableInsertView
                 "title": "Item 3",
                 "description": "Description for 3"
             }
-        }
+        ]
     }
 
 Imagine a table with a primary key of ``id`` and which already has rows with ``id`` values of ``1`` and ``2``.

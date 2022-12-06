@@ -1193,6 +1193,9 @@ class TableInsertView(BaseView):
         ignore = extras.get("ignore")
         replace = extras.get("replace")
 
+        if upsert and (ignore or replace):
+            return _error(["Upsert does not support ignore or replace"], 400)
+
         should_return = bool(extras.get("return", False))
 
         def insert_or_upsert_rows(conn):

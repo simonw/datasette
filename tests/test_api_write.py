@@ -200,7 +200,7 @@ async def test_insert_rows(ds_write, return_rows):
             {"rows": [{"title": "Test"}]},
             None,
             403,
-            ['Database is immutable'],
+            ["Database is immutable"],
         ),
         # Validate columns of each row
         (
@@ -213,9 +213,40 @@ async def test_insert_rows(ds_write, return_rows):
                 "Row 1 has invalid columns: bad, worse",
             ],
         ),
+        ## UPSERT ERRORS:
+        (
+            "/immutable/docs/-/upsert",
+            {"rows": [{"title": "Test"}]},
+            None,
+            403,
+            ["Database is immutable"],
+        ),
+        (
+            "/data/badtable/-/upsert",
+            {"rows": [{"title": "Test"}]},
+            None,
+            404,
+            ["Table not found: badtable"],
+        ),
+        # missing primary key
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"title": "Missing PK"}]},
+            None,
+            400,
+            ['Row 0 is missing primary key column(s): "id"'],
+        ),
+        # Upsert does not support ignore or replace
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": 1, "title": "Bad"}], "ignore": True},
+            None,
+            400,
+            ["Upsert does not support ignore or replace"],
+        ),
     ),
 )
-async def test_insert_row_errors(
+async def test_insert_or_upsert_row_errors(
     ds_write, path, input, special_case, expected_status, expected_errors
 ):
     token = write_token(ds_write)

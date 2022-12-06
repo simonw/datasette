@@ -527,7 +527,7 @@ To insert multiple rows at a time, use the same API method but send a list of di
         ]
     }
 
-If successful, this will return a ``201`` status code and an empty ``{}`` response body.
+If successful, this will return a ``201`` status code and a ``{"ok": true}`` response body.
 
 To return the newly inserted rows, add the ``"return": true`` key to the request body:
 

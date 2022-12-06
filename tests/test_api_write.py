@@ -42,6 +42,7 @@ async def test_write_row(ds_write):
     )
     expected_row = {"id": 1, "title": "Test", "score": 1.2, "age": 5}
     assert response.status_code == 201
+    assert response.json()["ok"] is True
     assert response.json()["rows"] == [expected_row]
     rows = (await ds_write.get_database("data").execute("select * from docs")).rows
     assert dict(rows[0]) == expected_row

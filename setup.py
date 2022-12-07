@@ -66,7 +66,7 @@ setup(
     setup_requires=["pytest-runner"],
     extras_require={
         "docs": [
-            "furo==2022.9.29",
+            "furo==2022.12.7",
             "sphinx-autobuild",
             "codespell",
             "blacken-docs",

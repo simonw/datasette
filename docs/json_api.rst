@@ -715,7 +715,7 @@ To update a row, make a ``POST`` to ``/<database>/<table>/<row-pks>/-/update``. 
         }
     }
 
-``<row-pks>`` here is the :ref:`tilde-encoded <internals_tilde_encoding>` primary key value of the row to delete - or a comma-separated list of primary key values if the table has a composite primary key.
+``<row-pks>`` here is the :ref:`tilde-encoded <internals_tilde_encoding>` primary key value of the row to update - or a comma-separated list of primary key values if the table has a composite primary key.
 
 You only need to pass the columns you want to update. Any other columns will be left unchanged.
 

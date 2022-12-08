@@ -1224,7 +1224,7 @@ class TableInsertView(BaseView):
 
         should_return = bool(extras.get("return", False))
         row_pk_values_for_later = []
-        if should_return:
+        if should_return and upsert:
             row_pk_values_for_later = [tuple(row[pk] for pk in pks) for row in rows]
 
         def insert_or_upsert_rows(conn):

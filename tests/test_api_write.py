@@ -28,16 +28,20 @@ def write_token(ds, actor_id="root", permissions=None):
     return "dstok_{}".format(ds.sign(to_sign, namespace="token"))
 
 
+def _headers(token):
+    return {
+        "Authorization": "Bearer {}".format(token),
+        "Content-Type": "application/json",
+    }
+
+
 @pytest.mark.asyncio
 async def test_insert_row(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
         "/data/docs/-/insert",
         json={"row": {"title": "Test", "score": 1.2, "age": 5}},
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     expected_row = {"id": 1, "title": "Test", "score": 1.2, "age": 5}
     assert response.status_code == 201
@@ -61,10 +65,7 @@ async def test_insert_rows(ds_write, return_rows):
     response = await ds_write.client.post(
         "/data/docs/-/insert",
         json=data,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert response.status_code == 201
     actual_rows = [
@@ -347,10 +348,7 @@ async def test_insert_ignore_replace(
     response = await ds_write.client.post(
         "/data/docs/-/insert",
         json=data,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert response.status_code == 201
     actual_rows = [
@@ -415,10 +413,7 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
     create_response = await ds_write.client.post(
         "/data/-/create",
         json=initial,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert create_response.status_code == 201
     if should_return:
@@ -426,10 +421,7 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
     response = await ds_write.client.post(
         "/data/upsert_test/-/upsert",
         json=input,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert response.status_code == 200
     assert response.json()["ok"] is True
@@ -450,10 +442,7 @@ async def _insert_row(ds):
     insert_response = await ds.client.post(
         "/data/docs/-/insert",
         json={"row": {"title": "Row one", "score": 1.2, "age": 5}, "return": True},
-        headers={
-            "Authorization": "Bearer {}".format(write_token(ds)),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(write_token(ds)),
     )
     assert insert_response.status_code == 201
     return insert_response.json()["rows"][0]["id"]
@@ -476,10 +465,7 @@ async def test_delete_row_errors(ds_write, scenario):
     )
     response = await ds_write.client.post(
         path,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert response.status_code == 403 if scenario in ("no_token", "bad_token") else 404
     assert response.json()["ok"] is False
@@ -519,9 +505,7 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     create_response = await ds_write.client.post(
         "/data/-/create",
         json=create_data,
-        headers={
-            "Authorization": "Bearer {}".format(write_token(ds_write)),
-        },
+        headers=_headers(write_token(ds_write)),
     )
     assert create_response.status_code == 201, create_response.json()
     # Should be a single row
@@ -541,9 +525,7 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
 
     delete_response = await ds_write.client.post(
         "/data/{}/{}/-/delete".format(table, delete_path),
-        headers={
-            "Authorization": "Bearer {}".format(write_token(ds_write)),
-        },
+        headers=_headers(write_token(ds_write)),
     )
     assert delete_response.status_code == 200
     assert (
@@ -572,10 +554,7 @@ async def test_update_row_check_permission(ds_write, scenario):
     response = await ds_write.client.post(
         path,
         json={"update": {"title": "New title"}},
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert response.status_code == 403 if scenario in ("no_token", "bad_token") else 404
     assert response.json()["ok"] is False
@@ -612,10 +591,7 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
     response = await ds_write.client.post(
         path,
         json=data,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     if expected_errors:
         assert response.status_code == 400
@@ -664,10 +640,7 @@ async def test_drop_table(ds_write, scenario):
     )
     response = await ds_write.client.post(
         path,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     if not should_work:
         assert (
@@ -698,10 +671,7 @@ async def test_drop_table(ds_write, scenario):
         response2 = await ds_write.client.post(
             path,
             json={"confirm": True},
-            headers={
-                "Authorization": "Bearer {}".format(token),
-                "Content-Type": "application/json",
-            },
+            headers=_headers(token),
         )
         assert response2.json() == {"ok": True}
         assert (await ds_write.client.get("/data/docs")).status_code == 404
@@ -1119,10 +1089,7 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
     response = await ds_write.client.post(
         "/data/-/create",
         json=input,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert response.status_code == expected_status
     data = response.json()
@@ -1177,10 +1144,7 @@ async def test_create_table_ignore_replace(ds_write, input, expected_rows_after)
             "table": "test_insert_replace",
             "pk": "id",
         },
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert first_response.status_code == 201
 
@@ -1188,10 +1152,7 @@ async def test_create_table_ignore_replace(ds_write, input, expected_rows_after)
     second_response = await ds_write.client.post(
         "/data/-/create",
         json=input,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert second_response.status_code == 201
     # Check that the rows are as expected
@@ -1209,10 +1170,7 @@ async def test_create_table_error_if_pk_changed(ds_write):
             "table": "test_insert_replace",
             "pk": "id",
         },
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert first_response.status_code == 201
     # Try a second time with a different pk
@@ -1224,10 +1182,7 @@ async def test_create_table_error_if_pk_changed(ds_write):
             "pk": "name",
             "replace": True,
         },
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert second_response.status_code == 400
     assert second_response.json() == {
@@ -1248,19 +1203,13 @@ async def test_create_table_error_rows_twice_with_duplicates(ds_write):
     first_response = await ds_write.client.post(
         "/data/-/create",
         json=input,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert first_response.status_code == 201
     second_response = await ds_write.client.post(
         "/data/-/create",
         json=input,
-        headers={
-            "Authorization": "Bearer {}".format(token),
-            "Content-Type": "application/json",
-        },
+        headers=_headers(token),
     )
     assert second_response.status_code == 400
     assert second_response.json() == {

@@ -185,8 +185,14 @@ The ``/-/allow-debug`` tool lets you try out different  ``"action"`` blocks agai
 
 .. _authentication_permissions_metadata:
 
-Configuring permissions in metadata.json
-========================================
+Access permissions in metadata
+==============================
+
+There are two ways to configure permissions using ``metadata.json`` (or ``metadata.yaml``).
+
+For simple visibility permissions you can use ``"allow"`` blocks in the root, database, table and query sections.
+
+For other permissions you can use a ``"permissions"`` block, described :ref:`in the next section <blah>`.
 
 You can limit who is allowed to view different parts of your Datasette instance using ``"allow"`` keys in your :ref:`metadata` configuration.
 
@@ -201,8 +207,8 @@ If a user cannot access a specific database, they will not be able to access tab
 
 .. _authentication_permissions_instance:
 
-Controlling access to an instance
----------------------------------
+Access to an instance
+---------------------
 
 Here's how to restrict access to your entire Datasette instance to just the ``"id": "root"`` user:
 
@@ -228,8 +234,8 @@ One reason to do this is if you are using a Datasette plugin - such as `datasett
 
 .. _authentication_permissions_database:
 
-Controlling access to specific databases
-----------------------------------------
+Access to specific databases
+----------------------------
 
 To limit access to a specific ``private.db`` database to just authenticated users, use the ``"allow"`` block like this:
 
@@ -247,8 +253,8 @@ To limit access to a specific ``private.db`` database to just authenticated user
 
 .. _authentication_permissions_table:
 
-Controlling access to specific tables and views
------------------------------------------------
+Access to specific tables and views
+-----------------------------------
 
 To limit access to the ``users`` table in your ``bakery.db`` database:
 
@@ -277,8 +283,8 @@ This works for SQL views as well - you can list their names in the ``"tables"`` 
 
 .. _authentication_permissions_query:
 
-Controlling access to specific canned queries
----------------------------------------------
+Access to specific canned queries
+---------------------------------
 
 :ref:`canned_queries` allow you to configure named SQL queries in your ``metadata.json`` that can be executed by users. These queries can be set up to both read and write to the database, so controlling who can execute them can be important.
 
@@ -332,6 +338,63 @@ To limit this ability for just one specific database, use this:
             }
         }
     }
+
+.. _authentication_permissions_other:
+
+Other permissions in metadata
+=============================
+
+For all other permissions, you can use one or more ``"permissions"`` blocks in your metadata.
+
+To grant access to the :ref:`permissions debug tool <PermissionsDebugView>` to all signed in users you can grant ``permissions-debug`` to any actor with an ``id`` matching the wildcard ``*`` by adding this a the root of your metadata:
+
+.. code-block:: json
+
+    {
+        "permissions": {
+            "debug-menu": {
+                "id": "*"
+            }
+        }
+    }
+
+To grant ``create-table`` to the user with ``id`` of ``editor`` for the ``docs`` database:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "docs": {
+                "permissions": {
+                    "create-table": {
+                        "id": "editor"
+                    }
+                }
+            }
+        }
+    }
+
+And for ``insert-row`` against the ``reports`` table in that ``docs`` database:
+
+.. code-block:: json
+
+    {
+        "databases": {
+            "docs": {
+                "tables": {
+                    "reports": {
+                        "permissions": {
+                            "insert-row": {
+                                "id": "editor"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+The :ref:`PermissionsDebugView` can be useful for helping test permissions that you have configured in this way.
 
 .. _CreateTokenView:
 
@@ -423,9 +486,11 @@ The currently authenticated actor is made available to plugins as ``request.acto
 The permissions debug tool
 ==========================
 
-The debug tool at ``/-/permissions`` is only available to the :ref:`authenticated root user <authentication_root>` (or any actor granted the ``permissions-debug`` action according to a plugin).
+The debug tool at ``/-/permissions`` is only available to the :ref:`authenticated root user <authentication_root>` (or any actor granted the ``permissions-debug`` action).
 
 It shows the thirty most recent permission checks that have been carried out by the Datasette instance.
+
+It also provides an interface for running hypothetical permission checks against a hypothetical actor. This is a useful way of confirming that your configured permissions work in the way you expect.
 
 This is designed to help administrators and plugin authors understand exactly how permission checks are being carried out, in order to effectively configure Datasette's permission system.
 

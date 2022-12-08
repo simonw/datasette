@@ -830,7 +830,7 @@ If the table is successfully created this will return a ``201`` status code and 
 Creating a table from example data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Instead of specifying ``columns`` directly you can instead pass a single example row or a list of rows. Datasette will create a table with a schema that matches those rows and insert them for you:
+Instead of specifying ``columns`` directly you can instead pass a single example ``row`` or a list of ``rows``. Datasette will create a table with a schema that matches those rows and insert them for you:
 
 ::
 
@@ -868,6 +868,21 @@ The ``201`` response here will be similar to the ``columns`` form, but will also
         "schema": "CREATE TABLE [creatures] (\n   [id] INTEGER PRIMARY KEY,\n   [name] TEXT\n)",
         "row_count": 2
     }
+
+You can call the create endpoint multiple times for the same table provided you are specifying the table using the ``rows`` or ``row`` option. New rows will be inserted into the table each time. This means you can use this API if you are unsure if the relevant table has been created yet.
+
+If you pass a row to the create endpoint with a primary key that already exists you will get an error that looks like this:
+
+.. code-block:: json
+
+    {
+        "ok": false,
+        "errors": [
+            "UNIQUE constraint failed: creatures.id"
+        ]
+    }
+
+You can avoid this error by passing the same ``"ignore": true`` or ``"replace": true`` options to the create endpoint as you can to the :ref:`insert endpoint <TableInsertView>`.
 
 .. _TableDropView:
 

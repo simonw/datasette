@@ -365,6 +365,85 @@ async def test_insert_ignore_replace(
         assert response.json()["rows"] == expected_rows
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "initial,input,expected_rows",
+    (
+        (
+            # Simple primary key update
+            {"rows": [{"id": 1, "title": "One"}], "pk": "id"},
+            {"rows": [{"id": 1, "title": "Two"}]},
+            [
+                {"id": 1, "title": "Two"},
+            ],
+        ),
+        (
+            # Multiple rows update one of them
+            {
+                "rows": [{"id": 1, "title": "One"}, {"id": 2, "title": "Two"}],
+                "pk": "id",
+            },
+            {"rows": [{"id": 1, "title": "Three"}]},
+            [
+                {"id": 1, "title": "Three"},
+                {"id": 2, "title": "Two"},
+            ],
+        ),
+        (
+            # rowid update
+            {"rows": [{"title": "One"}]},
+            {"rows": [{"rowid": 1, "title": "Two"}]},
+            [
+                {"rowid": 1, "title": "Two"},
+            ],
+        ),
+        (
+            # Compound primary key update
+            {"rows": [{"id": 1, "title": "One", "score": 1}], "pks": ["id", "score"]},
+            {"rows": [{"id": 1, "title": "Two", "score": 1}]},
+            [
+                {"id": 1, "title": "Two", "score": 1},
+            ],
+        ),
+    ),
+)
+@pytest.mark.parametrize("should_return", (False,))
+async def test_upsert(ds_write, initial, input, expected_rows, should_return):
+    token = write_token(ds_write)
+    # Insert initial data
+    initial["table"] = "upsert_test"
+    create_response = await ds_write.client.post(
+        "/data/-/create",
+        json=initial,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert create_response.status_code == 201
+    if should_return:
+        input["return"] = True
+    response = await ds_write.client.post(
+        "/data/upsert_test/-/upsert",
+        json=input,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    if should_return:
+        assert response.json()["rows"] == expected_rows
+    # Check the database too
+    actual_rows = (
+        await ds_write.client.get("/data/upsert_test.json?_shape=array")
+    ).json()
+    assert actual_rows == expected_rows
+    # Drop the upsert_test table
+    await ds_write.get_database("data").execute_write("drop table upsert_test")
+
+
 async def _insert_row(ds):
     insert_response = await ds.client.post(
         "/data/docs/-/insert",

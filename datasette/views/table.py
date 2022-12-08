@@ -1083,6 +1083,9 @@ class TableInsertView(BaseView):
         else:
             pks_list = list(pks)
 
+        if not pks_list:
+            pks_list = ["rowid"]
+
         def _errors(errors):
             return None, errors, {}
 
@@ -1140,6 +1143,8 @@ class TableInsertView(BaseView):
 
         # Validate columns of each row
         columns = set(await db.table_columns(table_name))
+        columns.update(pks_list)
+
         for i, row in enumerate(rows):
             if upsert:
                 # It MUST have the primary key
@@ -1218,7 +1223,7 @@ class TableInsertView(BaseView):
             table = sqlite_utils.Database(conn)[table_name]
             kwargs = {}
             if upsert:
-                kwargs["pk"] = pks[0] if len(pks) == 1 else pks
+                kwargs["pk"] = (pks[0] if len(pks) == 1 else pks) or "rowid"
             else:
                 kwargs = {"ignore": ignore, "replace": replace}
             if should_return:

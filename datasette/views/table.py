@@ -1211,6 +1211,11 @@ class TableInsertView(BaseView):
         if errors:
             return _error(errors, 400)
 
+        # No that we've passed pks to _validate_data it's safe to
+        # fix the rowids case:
+        if not pks:
+            pks = ["rowid"]
+
         ignore = extras.get("ignore")
         replace = extras.get("replace")
 
@@ -1218,15 +1223,18 @@ class TableInsertView(BaseView):
             return _error(["Upsert does not support ignore or replace"], 400)
 
         should_return = bool(extras.get("return", False))
+        row_pk_values_for_later = []
+        if should_return:
+            row_pk_values_for_later = [tuple(row[pk] for pk in pks) for row in rows]
 
         def insert_or_upsert_rows(conn):
             table = sqlite_utils.Database(conn)[table_name]
             kwargs = {}
             if upsert:
-                kwargs["pk"] = (pks[0] if len(pks) == 1 else pks) or "rowid"
+                kwargs["pk"] = pks[0] if len(pks) == 1 else pks
             else:
                 kwargs = {"ignore": ignore, "replace": replace}
-            if should_return:
+            if should_return and not upsert:
                 rowids = []
                 method = table.upsert if upsert else table.insert
                 for row in rows:
@@ -1247,7 +1255,22 @@ class TableInsertView(BaseView):
             return _error([str(e)])
         result = {"ok": True}
         if should_return:
-            result["rows"] = rows
+            if upsert:
+                # Fetch based on initial input IDs
+                where_clause = " OR ".join(
+                    ["({})".format(" AND ".join("{} = ?".format(pk) for pk in pks))]
+                    * len(row_pk_values_for_later)
+                )
+                args = list(itertools.chain.from_iterable(row_pk_values_for_later))
+                fetched_rows = await db.execute(
+                    "select {}* from [{}] where {}".format(
+                        "rowid, " if pks == ["rowid"] else "", table_name, where_clause
+                    ),
+                    args,
+                )
+                result["rows"] = [dict(r) for r in fetched_rows.rows]
+            else:
+                result["rows"] = rows
         return Response.json(result, status=200 if upsert else 201)
 
 

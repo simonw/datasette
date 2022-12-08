@@ -407,7 +407,7 @@ async def test_insert_ignore_replace(
         ),
     ),
 )
-@pytest.mark.parametrize("should_return", (False,))
+@pytest.mark.parametrize("should_return", (False, True))
 async def test_upsert(ds_write, initial, input, expected_rows, should_return):
     token = write_token(ds_write)
     # Insert initial data
@@ -434,7 +434,9 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
     assert response.status_code == 200
     assert response.json()["ok"] is True
     if should_return:
-        assert response.json()["rows"] == expected_rows
+        # We only expect it to return rows corresponding to those we sent
+        expected_returned_rows = expected_rows[: len(input["rows"])]
+        assert response.json()["rows"] == expected_returned_rows
     # Check the database too
     actual_rows = (
         await ds_write.client.get("/data/upsert_test.json?_shape=array")

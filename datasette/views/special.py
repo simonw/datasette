@@ -316,21 +316,37 @@ class ApiExplorerView(BaseView):
                     request.actor, "insert-row", (name, table)
                 ):
                     pks = await db.primary_keys(table)
-                    table_links.append(
-                        {
-                            "path": self.ds.urls.table(name, table) + "/-/insert",
-                            "method": "POST",
-                            "label": "Insert rows into {}".format(table),
-                            "json": {
-                                "rows": [
-                                    {
-                                        column: None
-                                        for column in await db.table_columns(table)
-                                        if column not in pks
-                                    }
-                                ]
+                    table_links.extend(
+                        [
+                            {
+                                "path": self.ds.urls.table(name, table) + "/-/insert",
+                                "method": "POST",
+                                "label": "Insert rows into {}".format(table),
+                                "json": {
+                                    "rows": [
+                                        {
+                                            column: None
+                                            for column in await db.table_columns(table)
+                                            if column not in pks
+                                        }
+                                    ]
+                                },
                             },
-                        }
+                            {
+                                "path": self.ds.urls.table(name, table) + "/-/upsert",
+                                "method": "POST",
+                                "label": "Upsert rows into {}".format(table),
+                                "json": {
+                                    "rows": [
+                                        {
+                                            column: None
+                                            for column in await db.table_columns(table)
+                                            if column not in pks
+                                        }
+                                    ]
+                                },
+                            },
+                        ]
                     )
                 if await self.ds.permission_allowed(
                     request.actor, "drop-table", (name, table)

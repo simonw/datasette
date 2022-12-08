@@ -21,16 +21,15 @@ def ds_write(tmp_path_factory):
     db.close()
 
 
-def write_token(ds, actor_id="root"):
-    return "dstok_{}".format(
-        ds.sign(
-            {"a": actor_id, "token": "dstok", "t": int(time.time())}, namespace="token"
-        )
-    )
+def write_token(ds, actor_id="root", permissions=None):
+    to_sign = {"a": actor_id, "token": "dstok", "t": int(time.time())}
+    if permissions:
+        to_sign["_r"] = {"a": permissions}
+    return "dstok_{}".format(ds.sign(to_sign, namespace="token"))
 
 
 @pytest.mark.asyncio
-async def test_write_row(ds_write):
+async def test_insert_row(ds_write):
     token = write_token(ds_write)
     response = await ds_write.client.post(
         "/data/docs/-/insert",
@@ -42,6 +41,7 @@ async def test_write_row(ds_write):
     )
     expected_row = {"id": 1, "title": "Test", "score": 1.2, "age": 5}
     assert response.status_code == 201
+    assert response.json()["ok"] is True
     assert response.json()["rows"] == [expected_row]
     rows = (await ds_write.get_database("data").execute("select * from docs")).rows
     assert dict(rows[0]) == expected_row
@@ -49,7 +49,7 @@ async def test_write_row(ds_write):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("return_rows", (True, False))
-async def test_write_rows(ds_write, return_rows):
+async def test_insert_rows(ds_write, return_rows):
     token = write_token(ds_write)
     data = {
         "rows": [
@@ -194,6 +194,13 @@ async def test_write_rows(ds_write, return_rows):
             400,
             ['Invalid parameter: "one", "two"'],
         ),
+        (
+            "/immutable/docs/-/insert",
+            {"rows": [{"title": "Test"}]},
+            None,
+            403,
+            ["Database is immutable"],
+        ),
         # Validate columns of each row
         (
             "/data/docs/-/insert",
@@ -205,12 +212,62 @@ async def test_write_rows(ds_write, return_rows):
                 "Row 1 has invalid columns: bad, worse",
             ],
         ),
+        ## UPSERT ERRORS:
+        (
+            "/immutable/docs/-/upsert",
+            {"rows": [{"title": "Test"}]},
+            None,
+            403,
+            ["Database is immutable"],
+        ),
+        (
+            "/data/badtable/-/upsert",
+            {"rows": [{"title": "Test"}]},
+            None,
+            404,
+            ["Table not found: badtable"],
+        ),
+        # missing primary key
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"title": "Missing PK"}]},
+            None,
+            400,
+            ['Row 0 is missing primary key column(s): "id"'],
+        ),
+        # Upsert does not support ignore or replace
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": 1, "title": "Bad"}], "ignore": True},
+            None,
+            400,
+            ["Upsert does not support ignore or replace"],
+        ),
+        # Upsert permissions
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": 1, "title": "Disallowed"}]},
+            "insert-but-not-update",
+            403,
+            ["Permission denied: need both insert-row and update-row"],
+        ),
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": 1, "title": "Disallowed"}]},
+            "update-but-not-insert",
+            403,
+            ["Permission denied: need both insert-row and update-row"],
+        ),
     ),
 )
-async def test_write_row_errors(
+async def test_insert_or_upsert_row_errors(
     ds_write, path, input, special_case, expected_status, expected_errors
 ):
     token = write_token(ds_write)
+    if special_case == "insert-but-not-update":
+        token = write_token(ds_write, permissions=["ir", "vi"])
+    if special_case == "update-but-not-insert":
+        token = write_token(ds_write, permissions=["ur", "vi"])
     if special_case == "duplicate_id":
         await ds_write.get_database("data").execute_write(
             "insert into docs (id) values (1)"
@@ -226,6 +283,12 @@ async def test_write_row_errors(
             else "application/json",
         },
     )
+
+    actor_response = (
+        await ds_write.client.get("/-/actor.json", headers=kwargs["headers"])
+    ).json()
+    print(actor_response)
+
     if special_case == "invalid_json":
         del kwargs["json"]
         kwargs["content"] = "{bad json"
@@ -300,6 +363,87 @@ async def test_insert_ignore_replace(
     assert response.json()["ok"] is True
     if should_return:
         assert response.json()["rows"] == expected_rows
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "initial,input,expected_rows",
+    (
+        (
+            # Simple primary key update
+            {"rows": [{"id": 1, "title": "One"}], "pk": "id"},
+            {"rows": [{"id": 1, "title": "Two"}]},
+            [
+                {"id": 1, "title": "Two"},
+            ],
+        ),
+        (
+            # Multiple rows update one of them
+            {
+                "rows": [{"id": 1, "title": "One"}, {"id": 2, "title": "Two"}],
+                "pk": "id",
+            },
+            {"rows": [{"id": 1, "title": "Three"}]},
+            [
+                {"id": 1, "title": "Three"},
+                {"id": 2, "title": "Two"},
+            ],
+        ),
+        (
+            # rowid update
+            {"rows": [{"title": "One"}]},
+            {"rows": [{"rowid": 1, "title": "Two"}]},
+            [
+                {"rowid": 1, "title": "Two"},
+            ],
+        ),
+        (
+            # Compound primary key update
+            {"rows": [{"id": 1, "title": "One", "score": 1}], "pks": ["id", "score"]},
+            {"rows": [{"id": 1, "title": "Two", "score": 1}]},
+            [
+                {"id": 1, "title": "Two", "score": 1},
+            ],
+        ),
+    ),
+)
+@pytest.mark.parametrize("should_return", (False, True))
+async def test_upsert(ds_write, initial, input, expected_rows, should_return):
+    token = write_token(ds_write)
+    # Insert initial data
+    initial["table"] = "upsert_test"
+    create_response = await ds_write.client.post(
+        "/data/-/create",
+        json=initial,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert create_response.status_code == 201
+    if should_return:
+        input["return"] = True
+    response = await ds_write.client.post(
+        "/data/upsert_test/-/upsert",
+        json=input,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    if should_return:
+        # We only expect it to return rows corresponding to those we sent
+        expected_returned_rows = expected_rows[: len(input["rows"])]
+        assert response.json()["rows"] == expected_returned_rows
+    # Check the database too
+    actual_rows = (
+        await ds_write.client.get("/data/upsert_test.json?_shape=array")
+    ).json()
+    assert actual_rows == expected_rows
+    # Drop the upsert_test table
+    await ds_write.get_database("data").execute_write("drop table upsert_test")
 
 
 async def _insert_row(ds):

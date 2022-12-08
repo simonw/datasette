@@ -527,7 +527,7 @@ To insert multiple rows at a time, use the same API method but send a list of di
         ]
     }
 
-If successful, this will return a ``201`` status code and an empty ``{}`` response body.
+If successful, this will return a ``201`` status code and a ``{"ok": true}`` response body.
 
 To return the newly inserted rows, add the ``"return": true`` key to the request body:
 
@@ -581,6 +581,116 @@ Pass ``"ignore": true`` to ignore these errors and insert the other rows:
     }
 
 Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values.
+
+.. _TableUpsertView:
+
+Upserting rows
+~~~~~~~~~~~~~~
+
+An upsert is an insert or update operation. If a row with a matching primary key already exists it will be updated - otherwise a new row will be inserted.
+
+The upsert API is mostly the same shape as the :ref:`insert API <TableInsertView>`. It requires both the :ref:`permissions_insert_row` and :ref:`permissions_update_row` permissions.
+
+::
+
+    POST /<database>/<table>/-/upsert
+    Content-Type: application/json
+    Authorization: Bearer dstok_<rest-of-token>
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "id": 1,
+                "title": "Updated title for 1",
+                "description": "Updated description for 1"
+            },
+            {
+                "id": 2,
+                "description": "Updated description for 2",
+            },
+            {
+                "id": 3,
+                "title": "Item 3",
+                "description": "Description for 3"
+            }
+        ]
+    }
+
+Imagine a table with a primary key of ``id`` and which already has rows with ``id`` values of ``1`` and ``2``.
+
+The above example will:
+
+- Update the row with ``id`` of ``1`` to set both ``title`` and ``description`` to the new values
+- Update the row with ``id`` of ``2`` to set ``title`` to the new value - ``description`` will be left unchanged
+- Insert a new row with ``id`` of ``3`` and both ``title`` and ``description`` set to the new values
+
+Similar to ``/-/insert``, a ``row`` key with an object can be used instead of a ``rows`` array to upsert a single row.
+
+If successful, this will return a ``200`` status code and a ``{"ok": true}`` response body.
+
+Add ``"return": true`` to the request body to return full copies of the affected rows after they have been inserted or updated:
+
+.. code-block:: json
+
+    {
+        "rows": [
+            {
+                "id": 1,
+                "title": "Updated title for 1",
+                "description": "Updated description for 1"
+            },
+            {
+                "id": 2,
+                "description": "Updated description for 2",
+            },
+            {
+                "id": 3,
+                "title": "Item 3",
+                "description": "Description for 3"
+            }
+        ],
+        "return": true
+    }
+
+This will return the following:
+
+.. code-block:: json
+
+    {
+        "ok": true,
+        "rows": [
+            {
+                "id": 1,
+                "title": "Updated title for 1",
+                "description": "Updated description for 1"
+            },
+            {
+                "id": 2,
+                "title": "Item 2",
+                "description": "Updated description for 2"
+            },
+            {
+                "id": 3,
+                "title": "Item 3",
+                "description": "Description for 3"
+            }
+        ]
+    }
+
+When using upsert you must provide the primary key column (or columns if the table has a compound primary key) for every row, or you will get a ``400`` error:
+
+.. code-block:: json
+
+    {
+        "ok": false,
+        "errors": [
+            "Row 0 is missing primary key column(s): \"id\""
+        ]
+    }
+
+If your table does not have an explicit primary key you should pass the SQLite ``rowid`` key instead.
 
 .. _RowUpdateView:
 

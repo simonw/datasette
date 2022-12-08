@@ -1083,6 +1083,31 @@ async def test_drop_table(ds_write, scenario):
                 "errors": ["ignore and replace require row or rows"],
             },
         ),
+        # ignore and replace require pk or pks
+        (
+            {
+                "table": "bad",
+                "row": {"id": 1},
+                "ignore": True,
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["ignore and replace require pk or pks"],
+            },
+        ),
+        (
+            {
+                "table": "bad",
+                "row": {"id": 1},
+                "replace": True,
+            },
+            400,
+            {
+                "ok": False,
+                "errors": ["ignore and replace require pk or pks"],
+            },
+        ),
     ),
 )
 async def test_create_table(ds_write, input, expected_status, expected_response):
@@ -1115,6 +1140,7 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
                     {"id": 1, "name": "Row 1 new"},
                     {"id": 3, "name": "Row 3 new"},
                 ],
+                "pk": "id",
                 "ignore": True,
             },
             [
@@ -1130,6 +1156,7 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
                     {"id": 1, "name": "Row 1 new"},
                     {"id": 3, "name": "Row 3 new"},
                 ],
+                "pk": "id",
                 "replace": True,
             },
             [

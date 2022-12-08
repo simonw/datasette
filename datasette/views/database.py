@@ -605,6 +605,11 @@ class TableCreateView(BaseView):
             if not data.get("row") and not data.get("rows"):
                 return _error(["ignore and replace require row or rows"])
 
+        # ignore and replace require pk or pks
+        if "ignore" in data or "replace" in data:
+            if not data.get("pk") and not data.get("pks"):
+                return _error(["ignore and replace require pk or pks"])
+
         ignore = data.get("ignore")
         replace = data.get("replace")
 

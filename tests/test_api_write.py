@@ -1237,6 +1237,39 @@ async def test_create_table_error_if_pk_changed(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_create_table_error_rows_twice_with_duplicates(ds_write):
+    # Error if you don't send ignore: True or replace: True
+    token = write_token(ds_write)
+    input = {
+        "rows": [{"id": 1, "name": "Row 1"}, {"id": 2, "name": "Row 2"}],
+        "table": "test_create_twice",
+        "pk": "id",
+    }
+    first_response = await ds_write.client.post(
+        "/data/-/create",
+        json=input,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert first_response.status_code == 201
+    second_response = await ds_write.client.post(
+        "/data/-/create",
+        json=input,
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert second_response.status_code == 400
+    assert second_response.json() == {
+        "ok": False,
+        "errors": ["UNIQUE constraint failed: test_create_twice.id"],
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (

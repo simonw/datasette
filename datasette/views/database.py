@@ -683,7 +683,11 @@ class TableCreateView(BaseView):
             bad_pks = False
             if len(actual_pks) == 1 and data.get("pk") and data["pk"] != actual_pks[0]:
                 bad_pks = True
-            elif len(actual_pks) > 1 and data.get("pks") and set(data["pks"]) != set(actual_pks):
+            elif (
+                len(actual_pks) > 1
+                and data.get("pks")
+                and set(data["pks"]) != set(actual_pks)
+            ):
                 bad_pks = True
             if bad_pks:
                 return _error(["pk cannot be changed for existing table"])

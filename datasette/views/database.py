@@ -620,6 +620,7 @@ class TableCreateView(BaseView):
         if not self._table_name_re.match(table_name):
             return _error(["Invalid table name"])
 
+        table_exists = await db.table_exists(data["table"])
         columns = data.get("columns")
         rows = data.get("rows")
         row = data.get("row")
@@ -676,8 +677,17 @@ class TableCreateView(BaseView):
                     return _error(["pks must be a list of strings"])
 
         # If table exists already, read pks from that instead
-        if await db.table_exists(table_name):
-            pks = await db.primary_keys(table_name)
+        if table_exists:
+            actual_pks = await db.primary_keys(table_name)
+            # if pk passed and table already exists check it does not change
+            bad_pks = False
+            if len(actual_pks) == 1 and data.get("pk") and data["pk"] != actual_pks[0]:
+                bad_pks = True
+            elif len(actual_pks) > 1 and data.get("pks") and set(data["pks"]) != set(actual_pks):
+                bad_pks = True
+            if bad_pks:
+                return _error(["pk cannot be changed for existing table"])
+            pks = actual_pks
 
         def create_table(conn):
             table = sqlite_utils.Database(conn)[table_name]

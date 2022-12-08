@@ -1200,6 +1200,43 @@ async def test_create_table_ignore_replace(ds_write, input, expected_rows_after)
 
 
 @pytest.mark.asyncio
+async def test_create_table_error_if_pk_changed(ds_write):
+    token = write_token(ds_write)
+    first_response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "rows": [{"id": 1, "name": "Row 1"}, {"id": 2, "name": "Row 2"}],
+            "table": "test_insert_replace",
+            "pk": "id",
+        },
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert first_response.status_code == 201
+    # Try a second time with a different pk
+    second_response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "rows": [{"id": 1, "name": "Row 1"}, {"id": 2, "name": "Row 2"}],
+            "table": "test_insert_replace",
+            "pk": "name",
+            "replace": True,
+        },
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": "application/json",
+        },
+    )
+    assert second_response.status_code == 400
+    assert second_response.json() == {
+        "ok": False,
+        "errors": ["pk cannot be changed for existing table"],
+    }
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     (

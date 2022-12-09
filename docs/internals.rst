@@ -273,6 +273,15 @@ The dictionary keys are the name of the database that is used in the URL - e.g. 
 
 All databases are listed, irrespective of user permissions. This means that the ``_internal`` database will always be listed here.
 
+.. _datasette_permissions:
+
+.permissions
+------------
+
+Property exposing a dictionary of permissions that have been registered using the :ref:`plugin_register_permissions` plugin hook.
+
+The dictionary keys are the permission names - e.g. ``view-instance`` - and the values are ``Permission()`` named tuples describing the permission. Here is a :ref:`description of that tuple <plugin_register_permissions>`.
+
 .. _datasette_plugin_config:
 
 .plugin_config(plugin_name, database=None, table=None)

@@ -1,9 +1,26 @@
-from datasette import hookimpl
+from datasette import hookimpl, Permission
 from datasette.utils import actor_matches_allow
 import click
 import itsdangerous
 import json
 import time
+
+
+@hookimpl
+def register_permissions():
+    return (
+        Permission("view-instance", "vi", False, False, True),
+        Permission("view-database", "vd", True, False, True),
+        Permission("view-database-download", "vdd", True, False, True),
+        Permission("view-table", "vt", True, True, True),
+        Permission("view-query", "vq", True, True, True),
+        Permission("insert-row", "ir", True, True, False),
+        Permission("delete-row", "dr", True, True, False),
+        Permission("drop-table", "dt", True, True, False),
+        Permission("execute-sql", "es", True, False, True),
+        Permission("permissions-debug", "pd", False, False, False),
+        Permission("debug-menu", "dm", False, False, False),
+    )
 
 
 @hookimpl(tryfirst=True, specname="permission_allowed")

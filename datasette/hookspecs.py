@@ -75,6 +75,11 @@ def register_facet_classes():
 
 
 @hookspec
+def register_permissions(datasette):
+    """Register permissions: returns a list of datasette.permission.Permission named tuples"""
+
+
+@hookspec
 def register_routes(datasette):
     """Register URL routes: return a list of (regex, view_function) pairs"""
 

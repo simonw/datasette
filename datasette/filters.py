@@ -17,7 +17,6 @@ def where_filters(request, database, datasette):
                 request.actor,
                 "execute-sql",
                 resource=database,
-                default=True,
             ):
                 raise DatasetteError("_where= is not allowed", status=403)
             else:

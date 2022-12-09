@@ -10,13 +10,26 @@ import time
 def register_permissions():
     return (
         # name, abbr, description, takes_database, takes_resource, default
-        Permission("view-instance", "vi", "View Datasette instance", False, False, True),
+        Permission(
+            "view-instance", "vi", "View Datasette instance", False, False, True
+        ),
         Permission("view-database", "vd", "View database", True, False, True),
-        Permission("view-database-download", "vdd", "Download database file", True, False, True),
+        Permission(
+            "view-database-download", "vdd", "Download database file", True, False, True
+        ),
         Permission("view-table", "vt", "View table", True, True, True),
-        Permission("view-query", "vq","View named query results",  True, True, True),
-        Permission("execute-sql", "es", "Execute read-only SQL queries", True, False, True),
-        Permission("permissions-debug", "pd", "Access permission debug tool", False, False, False),
+        Permission("view-query", "vq", "View named query results", True, True, True),
+        Permission(
+            "execute-sql", "es", "Execute read-only SQL queries", True, False, True
+        ),
+        Permission(
+            "permissions-debug",
+            "pd",
+            "Access permission debug tool",
+            False,
+            False,
+            False,
+        ),
         Permission("debug-menu", "dm", "View debug menu items", False, False, False),
         # Write API permissions
         Permission("insert-row", "ir", "Insert rows", True, True, False),

@@ -138,7 +138,7 @@ class DatabaseView(DataView):
         attached_databases = [d.name for d in await db.attached_databases()]
 
         allow_execute_sql = await self.ds.permission_allowed(
-            request.actor, "execute-sql", database, default=True
+            request.actor, "execute-sql", database
         )
         return (
             {
@@ -375,7 +375,7 @@ class QueryView(DataView):
                 columns = []
 
         allow_execute_sql = await self.ds.permission_allowed(
-            request.actor, "execute-sql", database, default=True
+            request.actor, "execute-sql", database
         )
 
         async def extra_template():

@@ -864,7 +864,7 @@ class TableView(DataView):
                 "next_url": next_url,
                 "private": private,
                 "allow_execute_sql": await self.ds.permission_allowed(
-                    request.actor, "execute-sql", database_name, default=True
+                    request.actor, "execute-sql", database_name
                 ),
             },
             extra_template,

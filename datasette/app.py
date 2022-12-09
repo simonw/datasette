@@ -672,17 +672,12 @@ class Datasette:
         if request:
             actor = request.actor
         # Top-level link
-        if await self.permission_allowed(
-            actor=actor, action="view-instance", default=True
-        ):
+        if await self.permission_allowed(actor=actor, action="view-instance"):
             crumbs.append({"href": self.urls.instance(), "label": "home"})
         # Database link
         if database:
             if await self.permission_allowed(
-                actor=actor,
-                action="view-database",
-                resource=database,
-                default=True,
+                actor=actor, action="view-database", resource=database
             ):
                 crumbs.append(
                     {
@@ -697,7 +692,6 @@ class Datasette:
                 actor=actor,
                 action="view-table",
                 resource=(database, table),
-                default=True,
             ):
                 crumbs.append(
                     {
@@ -707,9 +701,12 @@ class Datasette:
                 )
         return crumbs
 
-    async def permission_allowed(self, actor, action, resource=None, default=False):
+    async def permission_allowed(self, actor, action, resource=None, default=None):
         """Check permissions using the permissions_allowed plugin hook"""
         result = None
+        # Use default from registered permission, if available
+        if default is None and action in self.permissions:
+            default = self.permissions[action].default
         for check in pm.hook.permission_allowed(
             datasette=self,
             actor=actor,

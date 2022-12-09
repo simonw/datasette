@@ -778,6 +778,7 @@ If your plugin needs to register additional permissions unique to that plugin - 
             Permission(
                 name="upload-csvs",
                 abbr=None,
+                description="Upload CSV files",
                 takes_database=True,
                 takes_resource=False,
                 default=False,
@@ -791,6 +792,9 @@ The fields of the ``Permission`` named tuple are as follows:
 
 ``abbr``
     An abbreviation of the permission, e.g. ``uc``. This is optional - you can set it to ``None`` if you do not want to pick an abbreviation. Since this needs to be unique across all installed plugins it's best not to specify an abbreviation at all. If an abbreviation is provided it will be used when creating restricted signed API tokens.
+
+``description``
+    A human-readable description of what the permission lets you do. Should make sense as the second part of a sentence that starts "A user with this permission can ...".
 
 ``takes_database``
     ``True`` if this permission can be granted on a per-database basis, ``False`` if it is only valid at the overall Datasette instance level.

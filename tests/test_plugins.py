@@ -1037,6 +1037,7 @@ async def test_hook_register_permissions(extra_metadata):
                         {
                             "name": "extra-from-metadata",
                             "abbr": "efm",
+                            "description": "Extra from metadata",
                             "takes_database": False,
                             "takes_resource": False,
                             "default": True,
@@ -1053,6 +1054,7 @@ async def test_hook_register_permissions(extra_metadata):
     assert ds.permissions["new-permission"] == Permission(
         name="new-permission",
         abbr="np",
+        description="New permission",
         takes_database=True,
         takes_resource=False,
         default=False,
@@ -1061,6 +1063,7 @@ async def test_hook_register_permissions(extra_metadata):
         assert ds.permissions["extra-from-metadata"] == Permission(
             name="extra-from-metadata",
             abbr="efm",
+            description="Extra from metadata",
             takes_database=False,
             takes_resource=False,
             default=True,

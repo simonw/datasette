@@ -116,6 +116,7 @@ async def test_datasette_ensure_permissions_check_visibility(
     actor, metadata, permissions, should_allow, expected_private
 ):
     ds = Datasette([], memory=True, metadata=metadata)
+    await ds.invoke_startup()
     if not should_allow:
         with pytest.raises(Forbidden):
             await ds.ensure_permissions(actor, permissions)

@@ -48,6 +48,7 @@ EXPECTED_PLUGINS = [
             "prepare_jinja2_environment",
             "register_facet_classes",
             "register_magic_parameters",
+            "register_permissions",
             "register_routes",
             "render_cell",
             "skip_csrf",

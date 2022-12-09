@@ -415,6 +415,7 @@ def register_permissions(datasette):
         Permission(
             name="new-permission",
             abbr="np",
+            description="New permission",
             takes_database=True,
             takes_resource=False,
             default=False,
@@ -425,6 +426,7 @@ def register_permissions(datasette):
             Permission(
                 name=p["name"],
                 abbr=p["abbr"],
+                description=p["description"],
                 takes_database=p["takes_database"],
                 takes_resource=p["takes_resource"],
                 default=p["default"],

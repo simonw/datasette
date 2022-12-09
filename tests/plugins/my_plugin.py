@@ -1,5 +1,5 @@
 import asyncio
-from datasette import hookimpl
+from datasette import hookimpl, Permission
 from datasette.facets import Facet
 from datasette import tracer
 from datasette.utils import path_with_added_args
@@ -406,3 +406,29 @@ def database_actions(datasette, database, actor, request):
 @hookimpl
 def skip_csrf(scope):
     return scope["path"] == "/skip-csrf"
+
+
+@hookimpl
+def register_permissions(datasette):
+    extras = datasette.plugin_config("datasette-register-permissions") or {}
+    permissions = [
+        Permission(
+            name="new-permission",
+            abbr="np",
+            takes_database=True,
+            takes_resource=False,
+            default=False,
+        )
+    ]
+    if extras:
+        permissions.extend(
+            Permission(
+                name=p["name"],
+                abbr=p["abbr"],
+                takes_database=p["takes_database"],
+                takes_resource=p["takes_resource"],
+                default=p["default"],
+            )
+            for p in extras["permissions"]
+        )
+    return permissions

@@ -4,11 +4,12 @@ from .fixtures import (
     make_app_client,
     TABLES,
     TEMP_PLUGIN_SECRET_FILE,
+    PLUGINS_DIR,
     TestClient as _TestClient,
 )  # noqa
 from click.testing import CliRunner
 from datasette.app import Datasette
-from datasette import cli, hookimpl
+from datasette import cli, hookimpl, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
@@ -1023,3 +1024,46 @@ def test_hook_filters_from_request(app_client):
     json_response = app_client.get("/fixtures/facetable.json?_nothing=1")
     assert json_response.json["rows"] == []
     pm.unregister(name="ReturnNothingPlugin")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extra_metadata", (False, True))
+async def test_hook_register_permissions(extra_metadata):
+    ds = Datasette(
+        metadata={
+            "plugins": {
+                "datasette-register-permissions": {
+                    "permissions": [
+                        {
+                            "name": "extra-from-metadata",
+                            "abbr": "efm",
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        }
+                    ]
+                }
+            }
+        }
+        if extra_metadata
+        else None,
+        plugins_dir=PLUGINS_DIR,
+    )
+    await ds.invoke_startup()
+    assert ds.permissions["new-permission"] == Permission(
+        name="new-permission",
+        abbr="np",
+        takes_database=True,
+        takes_resource=False,
+        default=False,
+    )
+    if extra_metadata:
+        assert ds.permissions["extra-from-metadata"] == Permission(
+            name="extra-from-metadata",
+            abbr="efm",
+            takes_database=False,
+            takes_resource=False,
+            default=True,
+        )
+    else:
+        assert "extra-from-metadata" not in ds.permissions

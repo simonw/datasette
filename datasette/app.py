@@ -264,7 +264,7 @@ class Datasette:
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
-        self.permissions = []  # .invoke_startup() will populate this
+        self.permissions = {}  # .invoke_startup() will populate this
         try:
             self._refresh_schemas_lock = asyncio.Lock()
         except RuntimeError as rex:
@@ -433,7 +433,7 @@ class Datasette:
             return
         for hook in pm.hook.register_permissions(datasette=self):
             if hook:
-                self.permissions.extend(hook)
+                self.permissions.update({p.name: p for p in hook})
         for hook in pm.hook.prepare_jinja2_environment(
             env=self.jinja_env, datasette=self
         ):

@@ -1130,3 +1130,37 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
     with pytest.raises(StartupError) as ex:
         await ds.invoke_startup()
         assert "Duplicate permission {}".format(duplicate) in str(ex.value)
+
+
+@pytest.mark.asyncio
+async def test_hook_register_permissions_allows_identical_duplicates():
+    ds = Datasette(
+        metadata={
+            "plugins": {
+                "datasette-register-permissions": {
+                    "permissions": [
+                        {
+                            "name": "name1",
+                            "abbr": "abbr1",
+                            "description": None,
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        },
+                        {
+                            "name": "name1",
+                            "abbr": "abbr1",
+                            "description": None,
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        },
+                    ]
+                }
+            }
+        },
+        plugins_dir=PLUGINS_DIR,
+    )
+    await ds.invoke_startup()
+    # Check that ds.permissions has only one of each
+    assert len([p for p in ds.permissions.values() if p.abbr == "abbr1"]) == 1

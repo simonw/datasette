@@ -194,6 +194,8 @@ DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 
 FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 
+DEFAULT_NOT_SET = object()
+
 
 async def favicon(request, send):
     await asgi_send_file(
@@ -707,9 +709,14 @@ class Datasette:
                 )
         return crumbs
 
-    async def permission_allowed(self, actor, action, resource=None, default=False):
+    async def permission_allowed(
+        self, actor, action, resource=None, default=DEFAULT_NOT_SET
+    ):
         """Check permissions using the permissions_allowed plugin hook"""
         result = None
+        # Use default from registered permission, if available
+        if default is DEFAULT_NOT_SET and action in self.permissions:
+            default = self.permissions[action].default
         for check in pm.hook.permission_allowed(
             datasette=self,
             actor=actor,

@@ -439,7 +439,6 @@ def view_instance_client():
         "/-/settings",
         "/-/threads",
         "/-/databases",
-        "/-/actor",
         "/-/permissions",
         "/-/messages",
         "/-/patterns",

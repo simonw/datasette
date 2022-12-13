@@ -443,12 +443,13 @@ class Datasette:
                         raise StartupError(
                             "Duplicate permission name: {}".format(p.name)
                         )
-                    if p.abbr in abbrs and p != abbrs[p.abbr]:
+                    if p.abbr and p.abbr in abbrs and p != abbrs[p.abbr]:
                         raise StartupError(
                             "Duplicate permission abbr: {}".format(p.abbr)
                         )
                     names[p.name] = p
-                    abbrs[p.abbr] = p
+                    if p.abbr:
+                        abbrs[p.abbr] = p
                     self.permissions[p.name] = p
         for hook in pm.hook.prepare_jinja2_environment(
             env=self.jinja_env, datasette=self

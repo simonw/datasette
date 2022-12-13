@@ -433,9 +433,23 @@ class Datasette:
         # This must be called for Datasette to be in a usable state
         if self._startup_invoked:
             return
+        # Register permissions, but watch out for duplicate name/abbr
+        names = set()
+        abbrs = set()
         for hook in pm.hook.register_permissions(datasette=self):
             if hook:
-                self.permissions.update({p.name: p for p in hook})
+                for p in hook:
+                    if p.name in names:
+                        raise StartupError(
+                            "Duplicate permission name: {}".format(p.name)
+                        )
+                    if p.abbr in abbrs:
+                        raise StartupError(
+                            "Duplicate permission abbr: {}".format(p.abbr)
+                        )
+                    names.add(p.name)
+                    abbrs.add(p.abbr)
+                    self.permissions[p.name] = p
         for hook in pm.hook.prepare_jinja2_environment(
             env=self.jinja_env, datasette=self
         ):

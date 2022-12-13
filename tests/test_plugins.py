@@ -13,7 +13,7 @@ from datasette import cli, hookimpl, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
-from datasette.utils import CustomRow
+from datasette.utils import CustomRow, StartupError
 from jinja2.environment import Template
 import base64
 import importlib
@@ -1088,3 +1088,45 @@ async def test_hook_register_permissions(extra_metadata):
         )
     else:
         assert "extra-from-metadata" not in ds.permissions
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("duplicate", ("name", "abbr"))
+async def test_hook_register_permissions_no_duplicates(duplicate):
+    name1, name2 = "name1", "name2"
+    abbr1, abbr2 = "abbr1", "abbr2"
+    if duplicate == "name":
+        name2 = "name1"
+    if duplicate == "abbr":
+        abbr2 = "abbr1"
+    ds = Datasette(
+        metadata={
+            "plugins": {
+                "datasette-register-permissions": {
+                    "permissions": [
+                        {
+                            "name": name1,
+                            "abbr": abbr1,
+                            "description": None,
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        },
+                        {
+                            "name": name2,
+                            "abbr": abbr2,
+                            "description": None,
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        },
+                    ]
+                }
+            }
+        },
+        plugins_dir=PLUGINS_DIR,
+    )
+    # This should error:
+    with pytest.raises(StartupError) as ex:
+        await ds.invoke_startup()
+        assert "Duplicate permission {}".format(duplicate) in str(ex.value)

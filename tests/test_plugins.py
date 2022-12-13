@@ -636,32 +636,14 @@ def test_existing_scope_actor_respected(app_client):
         ("this_is_denied", False),
         ("this_is_allowed_async", True),
         ("this_is_denied_async", False),
+        ("no_match", None),
     ],
 )
-async def test_hook_permission_allowed(action, expected):
-    class TestPlugin:
-        __name__ = "TestPlugin"
-
-        @hookimpl
-        def register_permissions(self):
-            return [
-                Permission(name, None, None, False, False, False)
-                for name in (
-                    "this_is_allowed",
-                    "this_is_denied",
-                    "this_is_allowed_async",
-                    "this_is_denied_async",
-                )
-            ]
-
-    pm.register(TestPlugin(), name="undo_register_extras")
-    try:
-        ds = Datasette(plugins_dir=PLUGINS_DIR)
-        await ds.invoke_startup()
-        actual = await ds.permission_allowed({"id": "actor"}, action)
-        assert expected == actual
-    finally:
-        pm.unregister(name="undo_register_extras")
+async def test_hook_permission_allowed(app_client, action, expected):
+    actual = await app_client.ds.permission_allowed(
+        {"id": "actor"}, action, default=None
+    )
+    assert expected == actual
 
 
 def test_actor_json(app_client):

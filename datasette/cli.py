@@ -701,13 +701,19 @@ def create_token(
 
         datasette create-token root --secret mysecret
 
-    To only allow create-table:
+    To allow only "view-database-download" for all databases:
 
     \b
         datasette create-token root --secret mysecret \\
-            --all create-table
+            --all view-database-download
 
-    Or to only allow insert-row against a specific table:
+    To allow "create-table" against a specific database:
+
+    \b
+        datasette create-token root --secret mysecret \\
+            --database mydb create-table
+
+    To allow "insert-row" against a specific table:
 
     \b
         datasette create-token root --secret myscret \\

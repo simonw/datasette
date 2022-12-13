@@ -624,12 +624,17 @@ Create a signed API token, see :ref:`authentication_cli_create_token`.
 
           datasette create-token root --secret mysecret
 
-      To only allow create-table:
+      To allow only "view-database-download" for all databases:
 
           datasette create-token root --secret mysecret \
-              --all create-table
+              --all view-database-download
 
-      Or to only allow insert-row against a specific table:
+      To allow "create-table" against a specific database:
+
+          datasette create-token root --secret mysecret \
+              --database mydb create-table
+
+      To allow "insert-row" against a specific table:
 
           datasette create-token root --secret myscret \
               --resource mydb mytable insert-row

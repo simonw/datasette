@@ -126,6 +126,7 @@ async def test_through_filters_from_request(app_client):
 
 @pytest.mark.asyncio
 async def test_where_filters_from_request(app_client):
+    await app_client.ds.invoke_startup()
     request = Request.fake("/?_where=pk+>+3")
     filter_args = await (
         where_filters(

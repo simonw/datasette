@@ -891,6 +891,36 @@ def test_custom_table_include():
         ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
 
 
+@pytest.mark.parametrize("json", (True, False))
+@pytest.mark.parametrize(
+    "params,error",
+    (
+        ("?_sort=bad", "Cannot sort table by bad"),
+        ("?_sort_desc=bad", "Cannot sort table by bad"),
+        (
+            "?_sort=state&_sort_desc=state",
+            "Cannot use _sort and _sort_desc at the same time",
+        ),
+    ),
+)
+def test_sort_errors(app_client, json, params, error):
+    path = "/fixtures/facetable{}{}".format(
+        ".json" if json else "",
+        params,
+    )
+    response = app_client.get(path)
+    assert response.status == 400
+    if json:
+        assert response.json == {
+            "ok": False,
+            "error": error,
+            "status": 400,
+            "title": None,
+        }
+    else:
+        assert error in response.text
+
+
 def test_metadata_sort(app_client):
     response = app_client.get("/fixtures/facet_cities")
     assert response.status == 200

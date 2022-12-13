@@ -387,17 +387,19 @@ class TableView(DataView):
             sort_desc = table_metadata.get("sort_desc")
 
         if sort and sort_desc:
-            raise DatasetteError("Cannot use _sort and _sort_desc at the same time")
+            raise DatasetteError(
+                "Cannot use _sort and _sort_desc at the same time", status=400
+            )
 
         if sort:
             if sort not in sortable_columns:
-                raise DatasetteError(f"Cannot sort table by {sort}")
+                raise DatasetteError(f"Cannot sort table by {sort}", status=400)
 
             order_by = escape_sqlite(sort)
 
         if sort_desc:
             if sort_desc not in sortable_columns:
-                raise DatasetteError(f"Cannot sort table by {sort_desc}")
+                raise DatasetteError(f"Cannot sort table by {sort_desc}", status=400)
 
             order_by = f"{escape_sqlite(sort_desc)} desc"
 

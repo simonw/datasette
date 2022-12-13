@@ -52,6 +52,34 @@ def test_serve_with_get(tmp_path_factory):
     pm.unregister(to_unregister)
 
 
+def test_serve_with_get_and_token():
+    runner = CliRunner()
+    result1 = runner.invoke(
+        cli,
+        [
+            "create-token",
+            "--secret",
+            "sekrit",
+            "root",
+        ],
+    )
+    token = result1.output.strip()
+    result2 = runner.invoke(
+        cli,
+        [
+            "serve",
+            "--secret",
+            "sekrit",
+            "--get",
+            "/-/actor.json",
+            "--token",
+            token,
+        ],
+    )
+    assert 0 == result2.exit_code, result2.output
+    assert json.loads(result2.output) == {"actor": {"id": "root", "token": "dstok"}}
+
+
 def test_serve_with_get_exit_code_for_error(tmp_path_factory):
     runner = CliRunner()
     result = runner.invoke(

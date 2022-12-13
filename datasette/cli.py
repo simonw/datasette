@@ -435,6 +435,10 @@ def uninstall(packages, yes):
     "--get",
     help="Run an HTTP GET request against this path, print results and exit",
 )
+@click.option(
+    "--token",
+    help="API token to send with --get requests",
+)
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-settings", is_flag=True, help="Show available settings")
 @click.option("--pdb", is_flag=True, help="Launch debugger on any errors")
@@ -488,6 +492,7 @@ def serve(
     secret,
     root,
     get,
+    token,
     version_note,
     help_settings,
     pdb,
@@ -594,9 +599,15 @@ def serve(
     # Run async soundness checks - but only if we're not under pytest
     asyncio.get_event_loop().run_until_complete(check_databases(ds))
 
+    if token and not get:
+        raise click.ClickException("--token can only be used with --get")
+
     if get:
         client = TestClient(ds)
-        response = client.get(get)
+        headers = {}
+        if token:
+            headers["Authorization"] = "Bearer {}".format(token)
+        response = client.get(get, headers=headers)
         click.echo(response.text)
         exit_code = 0 if response.status == 200 else 1
         sys.exit(exit_code)

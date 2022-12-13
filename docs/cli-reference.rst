@@ -122,6 +122,7 @@ Once started you can access it at ``http://localhost:8001``
                                       the root user
       --get TEXT                      Run an HTTP GET request against this path,
                                       print results and exit
+      --token TEXT                    API token to send with --get requests
       --version-note TEXT             Additional note to show on /-/versions
       --help-settings                 Show available settings
       --pdb                           Launch debugger on any errors
@@ -188,6 +189,8 @@ For example::
         ]
       }
     }
+
+You can use the ``--token TOKEN`` option to send an :ref:`API token <CreateTokenView>` with the simulated request.
 
 The exit code will be 0 if the request succeeds and 1 if the request produced an HTTP status code other than 200 - e.g. a 404 or 500 error.
 

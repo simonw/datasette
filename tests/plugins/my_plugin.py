@@ -413,9 +413,9 @@ def register_permissions(datasette):
     extras = datasette.plugin_config("datasette-register-permissions") or {}
     permissions = [
         Permission(
-            name="new-permission",
+            name="permission-from-plugin",
             abbr="np",
-            description="New permission",
+            description="New permission added by a plugin",
             takes_database=True,
             takes_resource=False,
             default=False,

@@ -1069,10 +1069,10 @@ async def test_hook_register_permissions(extra_metadata):
         plugins_dir=PLUGINS_DIR,
     )
     await ds.invoke_startup()
-    assert ds.permissions["new-permission"] == Permission(
-        name="new-permission",
+    assert ds.permissions["permission-from-plugin"] == Permission(
+        name="permission-from-plugin",
         abbr="np",
-        description="New permission",
+        description="New permission added by a plugin",
         takes_database=True,
         takes_resource=False,
         default=False,

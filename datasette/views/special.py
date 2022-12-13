@@ -10,15 +10,24 @@ import urllib
 class JsonDataView(BaseView):
     name = "json_data"
 
-    def __init__(self, datasette, filename, data_callback, needs_request=False):
+    def __init__(
+        self,
+        datasette,
+        filename,
+        data_callback,
+        needs_request=False,
+        permission="view-instance",
+    ):
         self.ds = datasette
         self.filename = filename
         self.data_callback = data_callback
         self.needs_request = needs_request
+        self.permission = permission
 
     async def get(self, request):
         as_format = request.url_vars["format"]
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if self.permission:
+            await self.ds.ensure_permissions(request.actor, [self.permission])
         if self.needs_request:
             data = self.data_callback(request)
         else:

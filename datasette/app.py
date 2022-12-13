@@ -1262,7 +1262,9 @@ class Datasette:
             r"/-/databases(\.(?P<format>json))?$",
         )
         add_route(
-            JsonDataView.as_view(self, "actor.json", self._actor, needs_request=True),
+            JsonDataView.as_view(
+                self, "actor.json", self._actor, needs_request=True, permission=None
+            ),
             r"/-/actor(\.(?P<format>json))?$",
         )
         add_route(

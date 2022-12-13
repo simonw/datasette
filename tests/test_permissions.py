@@ -8,6 +8,7 @@ from pprint import pprint
 import pytest_asyncio
 import pytest
 import re
+import time
 import urllib
 
 
@@ -818,3 +819,26 @@ async def test_permissions_in_metadata(
             assert result == expected_result
     finally:
         perms_ds._metadata_local = previous_metadata
+
+
+@pytest.mark.asyncio
+async def test_actor_endpoint_allows_any_token():
+    ds = Datasette()
+    token = ds.sign(
+        {
+            "a": "root",
+            "token": "dstok",
+            "t": int(time.time()),
+            "_r": {"a": ["debug-menu"]},
+        },
+        namespace="token",
+    )
+    response = await ds.client.get(
+        "/-/actor.json", headers={"Authorization": f"Bearer dstok_{token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["actor"] == {
+        "id": "root",
+        "token": "dstok",
+        "_r": {"a": ["debug-menu"]},
+    }

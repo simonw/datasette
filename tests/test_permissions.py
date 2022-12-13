@@ -692,7 +692,9 @@ PermMetadataTestCase = collections.namedtuple(
         # create-table on database - no resource specified
         PermMetadataTestCase(
             metadata={
-                "databases": {"db1": {"permissions": {"create-table": {"id": "user"}}}}
+                "databases": {
+                    "perms_ds_one": {"permissions": {"create-table": {"id": "user"}}}
+                }
             },
             actor={"id": "user"},
             action="create-table",
@@ -702,11 +704,13 @@ PermMetadataTestCase = collections.namedtuple(
         # create-table on database
         PermMetadataTestCase(
             metadata={
-                "databases": {"db1": {"permissions": {"create-table": {"id": "user"}}}}
+                "databases": {
+                    "perms_ds_one": {"permissions": {"create-table": {"id": "user"}}}
+                }
             },
             actor={"id": "user"},
             action="create-table",
-            resource="db1",
+            resource="perms_ds_one",
             expected_result=True,
         ),
         # insert-row on root, wrong actor
@@ -714,7 +718,7 @@ PermMetadataTestCase = collections.namedtuple(
             metadata={"permissions": {"insert-row": {"id": "user"}}},
             actor={"id": "user2"},
             action="insert-row",
-            resource=("db1", "t1"),
+            resource=("perms_ds_one", "t1"),
             expected_result=False,
         ),
         # insert-row on root, right actor
@@ -722,24 +726,26 @@ PermMetadataTestCase = collections.namedtuple(
             metadata={"permissions": {"insert-row": {"id": "user"}}},
             actor={"id": "user"},
             action="insert-row",
-            resource=("db1", "t1"),
+            resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
         # insert-row on database
         PermMetadataTestCase(
             metadata={
-                "databases": {"db1": {"permissions": {"insert-row": {"id": "user"}}}}
+                "databases": {
+                    "perms_ds_one": {"permissions": {"insert-row": {"id": "user"}}}
+                }
             },
             actor={"id": "user"},
             action="insert-row",
-            resource="db1",
+            resource="perms_ds_one",
             expected_result=True,
         ),
         # insert-row on table, wrong table
         PermMetadataTestCase(
             metadata={
                 "databases": {
-                    "db1": {
+                    "perms_ds_one": {
                         "tables": {
                             "t1": {"permissions": {"insert-row": {"id": "user"}}}
                         }
@@ -748,14 +754,14 @@ PermMetadataTestCase = collections.namedtuple(
             },
             actor={"id": "user"},
             action="insert-row",
-            resource=("db1", "t2"),
+            resource=("perms_ds_one", "t2"),
             expected_result=False,
         ),
         # insert-row on table, right table
         PermMetadataTestCase(
             metadata={
                 "databases": {
-                    "db1": {
+                    "perms_ds_one": {
                         "tables": {
                             "t1": {"permissions": {"insert-row": {"id": "user"}}}
                         }
@@ -764,14 +770,14 @@ PermMetadataTestCase = collections.namedtuple(
             },
             actor={"id": "user"},
             action="insert-row",
-            resource=("db1", "t1"),
+            resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
         # view-query on canned query, wrong actor
         PermMetadataTestCase(
             metadata={
                 "databases": {
-                    "db1": {
+                    "perms_ds_one": {
                         "queries": {
                             "q1": {
                                 "sql": "select 1 + 1",
@@ -783,14 +789,14 @@ PermMetadataTestCase = collections.namedtuple(
             },
             actor={"id": "user2"},
             action="view-query",
-            resource=("db1", "q1"),
+            resource=("perms_ds_one", "q1"),
             expected_result=False,
         ),
         # view-query on canned query, right actor
         PermMetadataTestCase(
             metadata={
                 "databases": {
-                    "db1": {
+                    "perms_ds_one": {
                         "queries": {
                             "q1": {
                                 "sql": "select 1 + 1",
@@ -802,7 +808,7 @@ PermMetadataTestCase = collections.namedtuple(
             },
             actor={"id": "user"},
             action="view-query",
-            resource=("db1", "q1"),
+            resource=("perms_ds_one", "q1"),
             expected_result=True,
         ),
     ),

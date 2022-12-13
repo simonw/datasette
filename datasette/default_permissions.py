@@ -191,7 +191,7 @@ def permission_allowed_actor_restrictions(actor, action, resource):
         if action_initials in all_allowed:
             return None
     # How about for the current database?
-    if action in ("view-database", "view-database-download", "execute-sql"):
+    if isinstance(resource, str):
         database_allowed = _r.get("d", {}).get(resource)
         if database_allowed is not None:
             assert isinstance(database_allowed, list)

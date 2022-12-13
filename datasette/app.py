@@ -674,9 +674,7 @@ class Datasette:
         if request:
             actor = request.actor
         # Top-level link
-        if await self.permission_allowed(
-            actor=actor, action="view-instance", default=True
-        ):
+        if await self.permission_allowed(actor=actor, action="view-instance"):
             crumbs.append({"href": self.urls.instance(), "label": "home"})
         # Database link
         if database:
@@ -684,7 +682,6 @@ class Datasette:
                 actor=actor,
                 action="view-database",
                 resource=database,
-                default=True,
             ):
                 crumbs.append(
                     {
@@ -699,7 +696,6 @@ class Datasette:
                 actor=actor,
                 action="view-table",
                 resource=(database, table),
-                default=True,
             ):
                 crumbs.append(
                     {

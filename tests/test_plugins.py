@@ -4,15 +4,16 @@ from .fixtures import (
     make_app_client,
     TABLES,
     TEMP_PLUGIN_SECRET_FILE,
+    PLUGINS_DIR,
     TestClient as _TestClient,
 )  # noqa
 from click.testing import CliRunner
 from datasette.app import Datasette
-from datasette import cli, hookimpl
+from datasette import cli, hookimpl, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
-from datasette.utils import CustomRow
+from datasette.utils import CustomRow, StartupError
 from jinja2.environment import Template
 import base64
 import importlib
@@ -635,14 +636,32 @@ def test_existing_scope_actor_respected(app_client):
         ("this_is_denied", False),
         ("this_is_allowed_async", True),
         ("this_is_denied_async", False),
-        ("no_match", None),
     ],
 )
-async def test_hook_permission_allowed(app_client, action, expected):
-    actual = await app_client.ds.permission_allowed(
-        {"id": "actor"}, action, default=None
-    )
-    assert expected == actual
+async def test_hook_permission_allowed(action, expected):
+    class TestPlugin:
+        __name__ = "TestPlugin"
+
+        @hookimpl
+        def register_permissions(self):
+            return [
+                Permission(name, None, None, False, False, False)
+                for name in (
+                    "this_is_allowed",
+                    "this_is_denied",
+                    "this_is_allowed_async",
+                    "this_is_denied_async",
+                )
+            ]
+
+    pm.register(TestPlugin(), name="undo_register_extras")
+    try:
+        ds = Datasette(plugins_dir=PLUGINS_DIR)
+        await ds.invoke_startup()
+        actual = await ds.permission_allowed({"id": "actor"}, action)
+        assert expected == actual
+    finally:
+        pm.unregister(name="undo_register_extras")
 
 
 def test_actor_json(app_client):
@@ -1023,3 +1042,125 @@ def test_hook_filters_from_request(app_client):
     json_response = app_client.get("/fixtures/facetable.json?_nothing=1")
     assert json_response.json["rows"] == []
     pm.unregister(name="ReturnNothingPlugin")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extra_metadata", (False, True))
+async def test_hook_register_permissions(extra_metadata):
+    ds = Datasette(
+        metadata={
+            "plugins": {
+                "datasette-register-permissions": {
+                    "permissions": [
+                        {
+                            "name": "extra-from-metadata",
+                            "abbr": "efm",
+                            "description": "Extra from metadata",
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        }
+                    ]
+                }
+            }
+        }
+        if extra_metadata
+        else None,
+        plugins_dir=PLUGINS_DIR,
+    )
+    await ds.invoke_startup()
+    assert ds.permissions["new-permission"] == Permission(
+        name="new-permission",
+        abbr="np",
+        description="New permission",
+        takes_database=True,
+        takes_resource=False,
+        default=False,
+    )
+    if extra_metadata:
+        assert ds.permissions["extra-from-metadata"] == Permission(
+            name="extra-from-metadata",
+            abbr="efm",
+            description="Extra from metadata",
+            takes_database=False,
+            takes_resource=False,
+            default=True,
+        )
+    else:
+        assert "extra-from-metadata" not in ds.permissions
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("duplicate", ("name", "abbr"))
+async def test_hook_register_permissions_no_duplicates(duplicate):
+    name1, name2 = "name1", "name2"
+    abbr1, abbr2 = "abbr1", "abbr2"
+    if duplicate == "name":
+        name2 = "name1"
+    if duplicate == "abbr":
+        abbr2 = "abbr1"
+    ds = Datasette(
+        metadata={
+            "plugins": {
+                "datasette-register-permissions": {
+                    "permissions": [
+                        {
+                            "name": name1,
+                            "abbr": abbr1,
+                            "description": None,
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        },
+                        {
+                            "name": name2,
+                            "abbr": abbr2,
+                            "description": None,
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        },
+                    ]
+                }
+            }
+        },
+        plugins_dir=PLUGINS_DIR,
+    )
+    # This should error:
+    with pytest.raises(StartupError) as ex:
+        await ds.invoke_startup()
+        assert "Duplicate permission {}".format(duplicate) in str(ex.value)
+
+
+@pytest.mark.asyncio
+async def test_hook_register_permissions_allows_identical_duplicates():
+    ds = Datasette(
+        metadata={
+            "plugins": {
+                "datasette-register-permissions": {
+                    "permissions": [
+                        {
+                            "name": "name1",
+                            "abbr": "abbr1",
+                            "description": None,
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        },
+                        {
+                            "name": "name1",
+                            "abbr": "abbr1",
+                            "description": None,
+                            "takes_database": False,
+                            "takes_resource": False,
+                            "default": True,
+                        },
+                    ]
+                }
+            }
+        },
+        plugins_dir=PLUGINS_DIR,
+    )
+    await ds.invoke_startup()
+    # Check that ds.permissions has only one of each
+    assert len([p for p in ds.permissions.values() if p.abbr == "abbr1"]) == 1

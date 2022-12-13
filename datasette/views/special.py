@@ -1,8 +1,6 @@
 import json
-from datasette.permissions import PERMISSIONS
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import actor_matches_allow, add_cors_headers
-from datasette.permissions import PERMISSIONS
 from .base import BaseView
 import secrets
 import time
@@ -108,7 +106,7 @@ class PermissionsDebugView(BaseView):
             # list() avoids error if check is performed during template render:
             {
                 "permission_checks": list(reversed(self.ds._permission_checks)),
-                "permissions": PERMISSIONS,
+                "permissions": list(self.ds.permissions.values()),
             },
         )
 

@@ -1,3 +1,4 @@
+import collections
 from datasette.app import Datasette
 from .fixtures import app_client, assert_permissions_checked, make_app_client
 from bs4 import BeautifulSoup as Soup
@@ -640,3 +641,49 @@ async def test_actor_restricted_permissions(
         "result": expected_result,
     }
     assert response.json() == expected
+
+
+PermMetadataTestCase = collections.namedtuple(
+    "PermMetadataTestCase",
+    "metadata,actor,action,resource,default,expected_result",
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.xfail(reason="Not implemented yet")
+@pytest.mark.parametrize(
+    "metadata,actor,action,resource,default,expected_result",
+    (
+        # Simple view-instance default=True example
+        PermMetadataTestCase(
+            metadata={},
+            actor=None,
+            action="view-instance",
+            resource=None,
+            default=True,
+            expected_result=True,
+        ),
+        # debug-menu on root
+        PermMetadataTestCase(
+            metadata={"permissions": {"debug-menu": {"id": "user"}}},
+            actor={"id": "user"},
+            action="debug-menu",
+            resource=None,
+            default=False,
+            expected_result=True,
+        ),
+    ),
+)
+async def test_permissions_in_metadata(
+    perms_ds, metadata, actor, action, resource, default, expected_result
+):
+    previous_metadata = perms_ds.metadata()
+    updated_metadata = copy.deepcopy(previous_metadata)
+    updated_metadata.update(metadata)
+    try:
+        result = await perms_ds.permission_allowed(
+            actor, action, resource, default=default
+        )
+        assert result == expected_result
+    finally:
+        perms_ds._metadata_local = previous_metadata

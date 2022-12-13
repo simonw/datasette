@@ -194,6 +194,8 @@ DEFAULT_SETTINGS = {option.name: option.default for option in SETTINGS}
 
 FAVICON_PATH = app_root / "datasette" / "static" / "favicon.png"
 
+DEFAULT_NOT_SET = object()
+
 
 async def favicon(request, send):
     await asgi_send_file(
@@ -264,6 +266,7 @@ class Datasette:
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
+        self.permissions = {}  # .invoke_startup() will populate this
         try:
             self._refresh_schemas_lock = asyncio.Lock()
         except RuntimeError as rex:
@@ -430,6 +433,24 @@ class Datasette:
         # This must be called for Datasette to be in a usable state
         if self._startup_invoked:
             return
+        # Register permissions, but watch out for duplicate name/abbr
+        names = {}
+        abbrs = {}
+        for hook in pm.hook.register_permissions(datasette=self):
+            if hook:
+                for p in hook:
+                    if p.name in names and p != names[p.name]:
+                        raise StartupError(
+                            "Duplicate permission name: {}".format(p.name)
+                        )
+                    if p.abbr and p.abbr in abbrs and p != abbrs[p.abbr]:
+                        raise StartupError(
+                            "Duplicate permission abbr: {}".format(p.abbr)
+                        )
+                    names[p.name] = p
+                    if p.abbr:
+                        abbrs[p.abbr] = p
+                    self.permissions[p.name] = p
         for hook in pm.hook.prepare_jinja2_environment(
             env=self.jinja_env, datasette=self
         ):
@@ -668,9 +689,7 @@ class Datasette:
         if request:
             actor = request.actor
         # Top-level link
-        if await self.permission_allowed(
-            actor=actor, action="view-instance", default=True
-        ):
+        if await self.permission_allowed(actor=actor, action="view-instance"):
             crumbs.append({"href": self.urls.instance(), "label": "home"})
         # Database link
         if database:
@@ -678,7 +697,6 @@ class Datasette:
                 actor=actor,
                 action="view-database",
                 resource=database,
-                default=True,
             ):
                 crumbs.append(
                     {
@@ -693,7 +711,6 @@ class Datasette:
                 actor=actor,
                 action="view-table",
                 resource=(database, table),
-                default=True,
             ):
                 crumbs.append(
                     {
@@ -703,9 +720,14 @@ class Datasette:
                 )
         return crumbs
 
-    async def permission_allowed(self, actor, action, resource=None, default=False):
+    async def permission_allowed(
+        self, actor, action, resource=None, default=DEFAULT_NOT_SET
+    ):
         """Check permissions using the permissions_allowed plugin hook"""
         result = None
+        # Use default from registered permission, if available
+        if default is DEFAULT_NOT_SET and action in self.permissions:
+            default = self.permissions[action].default
         for check in pm.hook.permission_allowed(
             datasette=self,
             actor=actor,

@@ -1,4 +1,4 @@
-from datasette import hookimpl
+from datasette import hookimpl, Permission
 from datasette.utils import actor_matches_allow
 import click
 import itsdangerous
@@ -6,9 +6,44 @@ import json
 import time
 
 
+@hookimpl
+def register_permissions():
+    return (
+        # name, abbr, description, takes_database, takes_resource, default
+        Permission(
+            "view-instance", "vi", "View Datasette instance", False, False, True
+        ),
+        Permission("view-database", "vd", "View database", True, False, True),
+        Permission(
+            "view-database-download", "vdd", "Download database file", True, False, True
+        ),
+        Permission("view-table", "vt", "View table", True, True, True),
+        Permission("view-query", "vq", "View named query results", True, True, True),
+        Permission(
+            "execute-sql", "es", "Execute read-only SQL queries", True, False, True
+        ),
+        Permission(
+            "permissions-debug",
+            "pd",
+            "Access permission debug tool",
+            False,
+            False,
+            False,
+        ),
+        Permission("debug-menu", "dm", "View debug menu items", False, False, False),
+        # Write API permissions
+        Permission("insert-row", "ir", "Insert rows", True, True, False),
+        Permission("delete-row", "dr", "Delete rows", True, True, False),
+        Permission("update-row", "ur", "Update rows", True, True, False),
+        Permission("create-table", "ct", "Create tables", True, False, False),
+        Permission("drop-table", "dt", "Drop tables", True, True, False),
+    )
+
+
 @hookimpl(tryfirst=True, specname="permission_allowed")
 def permission_allowed_default(datasette, actor, action, resource):
     async def inner():
+        # id=root gets some special permissions:
         if action in (
             "permissions-debug",
             "debug-menu",
@@ -20,43 +55,70 @@ def permission_allowed_default(datasette, actor, action, resource):
         ):
             if actor and actor.get("id") == "root":
                 return True
-        elif action == "view-instance":
-            allow = datasette.metadata("allow")
-            if allow is not None:
-                return actor_matches_allow(actor, allow)
-        elif action == "view-database":
-            if resource == "_internal" and (actor is None or actor.get("id") != "root"):
-                return False
-            database_allow = datasette.metadata("allow", database=resource)
-            if database_allow is None:
-                return None
-            return actor_matches_allow(actor, database_allow)
-        elif action == "view-table":
-            database, table = resource
-            tables = datasette.metadata("tables", database=database) or {}
-            table_allow = (tables.get(table) or {}).get("allow")
-            if table_allow is None:
-                return None
-            return actor_matches_allow(actor, table_allow)
-        elif action == "view-query":
-            # Check if this query has a "allow" block in metadata
-            database, query_name = resource
-            query = await datasette.get_canned_query(database, query_name, actor)
-            assert query is not None
-            allow = query.get("allow")
-            if allow is None:
-                return None
-            return actor_matches_allow(actor, allow)
-        elif action == "execute-sql":
-            # Use allow_sql block from database block, or from top-level
-            database_allow_sql = datasette.metadata("allow_sql", database=resource)
-            if database_allow_sql is None:
-                database_allow_sql = datasette.metadata("allow_sql")
-            if database_allow_sql is None:
-                return None
-            return actor_matches_allow(actor, database_allow_sql)
+
+        # Resolve metadata view permissions
+        if action in (
+            "view-instance",
+            "view-database",
+            "view-table",
+            "view-query",
+            "execute-sql",
+        ):
+            result = await _resolve_metadata_view_permissions(
+                datasette, actor, action, resource
+            )
+            if result is not None:
+                return result
+
+        # Check custom permissions: blocks
+        return await _resolve_metadata_permissions_blocks(
+            datasette, actor, action, resource
+        )
 
     return inner
+
+
+async def _resolve_metadata_permissions_blocks(datasette, actor, action, resource):
+    # Check custom permissions: blocks - not yet implemented
+    return None
+
+
+async def _resolve_metadata_view_permissions(datasette, actor, action, resource):
+    if action == "view-instance":
+        allow = datasette.metadata("allow")
+        if allow is not None:
+            return actor_matches_allow(actor, allow)
+    elif action == "view-database":
+        if resource == "_internal" and (actor is None or actor.get("id") != "root"):
+            return False
+        database_allow = datasette.metadata("allow", database=resource)
+        if database_allow is None:
+            return None
+        return actor_matches_allow(actor, database_allow)
+    elif action == "view-table":
+        database, table = resource
+        tables = datasette.metadata("tables", database=database) or {}
+        table_allow = (tables.get(table) or {}).get("allow")
+        if table_allow is None:
+            return None
+        return actor_matches_allow(actor, table_allow)
+    elif action == "view-query":
+        # Check if this query has a "allow" block in metadata
+        database, query_name = resource
+        query = await datasette.get_canned_query(database, query_name, actor)
+        assert query is not None
+        allow = query.get("allow")
+        if allow is None:
+            return None
+        return actor_matches_allow(actor, allow)
+    elif action == "execute-sql":
+        # Use allow_sql block from database block, or from top-level
+        database_allow_sql = datasette.metadata("allow_sql", database=resource)
+        if database_allow_sql is None:
+            database_allow_sql = datasette.metadata("allow_sql")
+        if database_allow_sql is None:
+            return None
+        return actor_matches_allow(actor, database_allow_sql)
 
 
 @hookimpl(specname="permission_allowed")

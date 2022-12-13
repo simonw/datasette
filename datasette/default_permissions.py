@@ -202,7 +202,7 @@ def permission_allowed_actor_restrictions(actor, action, resource):
     # Or the current table? That's any time the resource is (database, table)
     if resource is not None and not isinstance(resource, str) and len(resource) == 2:
         database, table = resource
-        table_allowed = _r.get("t", {}).get(database, {}).get(table)
+        table_allowed = _r.get("r", {}).get(database, {}).get(table)
         # TODO: What should this do for canned queries?
         if table_allowed is not None:
             assert isinstance(table_allowed, list)

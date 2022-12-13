@@ -592,16 +592,16 @@ DEF = "USE_DEFAULT"
             DEF,
         ),
         ({"id": "t", "_r": {"d": {"one": ["es"]}}}, "execute-sql", "one", None, DEF),
-        # Works at the "t" for table level:
+        # Works at the "r" for table level:
         (
-            {"id": "t", "_r": {"t": {"one": {"t1": ["vt"]}}}},
+            {"id": "t", "_r": {"r": {"one": {"t1": ["vt"]}}}},
             "view-table",
             "one",
             "t1",
             DEF,
         ),
         (
-            {"id": "t", "_r": {"t": {"one": {"t1": ["vt"]}}}},
+            {"id": "t", "_r": {"r": {"one": {"t1": ["vt"]}}}},
             "view-table",
             "one",
             "t2",

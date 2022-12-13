@@ -1,6 +1,8 @@
 import collections
 from datasette.app import Datasette
+from datasette.cli import cli
 from .fixtures import app_client, assert_permissions_checked, make_app_client
+from click.testing import CliRunner
 from bs4 import BeautifulSoup as Soup
 import copy
 import json
@@ -842,3 +844,86 @@ async def test_actor_endpoint_allows_any_token():
         "token": "dstok",
         "_r": {"a": ["debug-menu"]},
     }
+
+
+@pytest.mark.parametrize(
+    "options,expected",
+    (
+        ([], {"id": "root", "token": "dstok"}),
+        (
+            ["--all", "debug-menu"],
+            {"_r": {"a": ["dm"]}, "id": "root", "token": "dstok"},
+        ),
+        (
+            ["-a", "debug-menu", "--all", "create-table"],
+            {"_r": {"a": ["dm", "ct"]}, "id": "root", "token": "dstok"},
+        ),
+        (
+            ["-r", "db1", "t1", "insert-row"],
+            {"_r": {"r": {"db1": {"t1": ["ir"]}}}, "id": "root", "token": "dstok"},
+        ),
+        (
+            ["-d", "db1", "create-table"],
+            {"_r": {"d": {"db1": ["ct"]}}, "id": "root", "token": "dstok"},
+        ),
+        # And one with all of them multiple times using all the names
+        (
+            [
+                "-a",
+                "debug-menu",
+                "--all",
+                "create-table",
+                "-r",
+                "db1",
+                "t1",
+                "insert-row",
+                "--resource",
+                "db1",
+                "t2",
+                "update-row",
+                "-d",
+                "db1",
+                "create-table",
+                "--database",
+                "db2",
+                "drop-table",
+            ],
+            {
+                "_r": {
+                    "a": ["dm", "ct"],
+                    "d": {"db1": ["ct"], "db2": ["dt"]},
+                    "r": {"db1": {"t1": ["ir"], "t2": ["ur"]}},
+                },
+                "id": "root",
+                "token": "dstok",
+            },
+        ),
+    ),
+)
+def test_cli_create_token(options, expected):
+    runner = CliRunner()
+    result1 = runner.invoke(
+        cli,
+        [
+            "create-token",
+            "--secret",
+            "sekrit",
+            "root",
+        ]
+        + options,
+    )
+    token = result1.output.strip()
+    result2 = runner.invoke(
+        cli,
+        [
+            "serve",
+            "--secret",
+            "sekrit",
+            "--get",
+            "/-/actor.json",
+            "--token",
+            token,
+        ],
+    )
+    assert 0 == result2.exit_code, result2.output
+    assert json.loads(result2.output) == {"actor": expected}

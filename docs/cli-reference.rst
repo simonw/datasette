@@ -617,12 +617,37 @@ Create a signed API token, see :ref:`authentication_cli_create_token`.
 
       Create a signed API token for the specified actor ID
 
+      Example:
+
+          datasette create-token root --secret mysecret
+
+      To only allow create-table:
+
+          datasette create-token root --secret mysecret \
+              --all create-table
+
+      Or to only allow insert-row against a specific table:
+
+          datasette create-token root --secret myscret \
+              --resource mydb mytable insert-row
+
+      Restricted actions can be specified multiple times using multiple --all,
+      --database, and --resource options.
+
+      Add --debug to see a decoded version of the token.
+
     Options:
-      --secret TEXT                Secret used for signing the API tokens
-                                   [required]
-      -e, --expires-after INTEGER  Token should expire after this many seconds
-      --debug                      Show decoded token
-      --help                       Show this message and exit.
+      --secret TEXT                   Secret used for signing the API tokens
+                                      [required]
+      -e, --expires-after INTEGER     Token should expire after this many seconds
+      -a, --all ACTION                Restrict token to this action
+      -d, --database DB ACTION        Restrict token to this action on this database
+      -r, --resource DB RESOURCE ACTION
+                                      Restrict token to this action on this database
+                                      resource (a table, SQL view or named query)
+      --debug                         Show decoded token
+      --plugins-dir DIRECTORY         Path to directory containing custom plugins
+      --help                          Show this message and exit.
 
 
 .. [[[end]]]

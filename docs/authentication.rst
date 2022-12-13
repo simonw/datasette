@@ -192,7 +192,7 @@ There are two ways to configure permissions using ``metadata.json`` (or ``metada
 
 For simple visibility permissions you can use ``"allow"`` blocks in the root, database, table and query sections.
 
-For other permissions you can use a ``"permissions"`` block, described :ref:`in the next section <blah>`.
+For other permissions you can use a ``"permissions"`` block, described :ref:`in the next section <authentication_permissions_other>`.
 
 You can limit who is allowed to view different parts of your Datasette instance using ``"allow"`` keys in your :ref:`metadata` configuration.
 

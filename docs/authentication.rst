@@ -409,8 +409,6 @@ Created tokens can then be passed in the ``Authorization: Bearer $token`` header
 
 A token created by a user will include that user's ``"id"`` in the token payload, so any permissions granted to that user based on their ID can be made available to the token as well.
 
-Coming soon: a mechanism for creating tokens that can only perform a specified subset of the actions available to the user who created them.
-
 When one of these a token accompanies a request, the actor for that request will have the following shape:
 
 .. code-block:: json
@@ -452,9 +450,79 @@ To create a token for the ``root`` actor that will expire in one hour::
 
     datasette create-token root --expires-after 3600
 
-To create a secret that never expires using a specific secret::
+To create a token that never expires using a specific secret::
 
     datasette create-token root --secret my-secret-goes-here
+
+.. _authentication_cli_create_token_restrict:
+
+Restricting the actions that a token can perform
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tokens created using ``datasette create-token ACTOR_ID`` will inherit all of the permissions of the actor that they are associated with.
+
+You can pass additional options to create tokens that are restricted to a subset of that actor's permissions.
+
+To restrict the token to just specific permissions against all available databases, use the ``--all`` option::
+
+    datasette create-token root --all insert-row --all update-row
+
+This option can be passed as many times as you like. In the above example the token will only be allowed to insert and update rows.
+
+You can also restrict permissions such that they can only be used within specific databases::
+
+    datasette create-token root --database mydatabase insert-row
+
+The resulting token will only be able to insert rows, and only to tables in the ``mydatabase`` database.
+
+Finally, you can restrict permissions to individual resources - tables, SQL views and :ref:`named queries <canned_queries>` - within a specific database::
+
+    datasette create-token root --resource mydatabase mytable insert-row
+
+These options have short versions: ``-a`` for ``--all``, ``-d`` for ``--database`` and ``-r`` for ``--resource``.
+
+You can add ``--debug`` to see a JSON representation of the token that has been created. Here's a full example::
+
+    datasette create-token root \
+        --secret mysecret \
+        --all view-instance \
+        --all view-table \
+        --database docs view-query \
+        --resource docs documents insert-row \
+        --resource docs documents update-row \
+        --debug
+
+This example outputs the following::
+
+    dstok_.eJxFizEKgDAMRe_y5w4qYrFXERGxDkVsMI0uxbubdjFL8l_ez1jhwEQCA6Fjjxp90qtkuHawzdjYrh8MFobLxZ_wBH0_gtnAF-hpS5VfmF8D_lnd97lHqUJgLd6sls4H1qwlhA.nH_7RecYHj5qSzvjhMU95iy0Xlc
+
+    Decoded:
+
+    {
+      "a": "root",
+      "token": "dstok",
+      "t": 1670907246,
+      "_r": {
+        "a": [
+          "vi",
+          "vt"
+        ],
+        "d": {
+          "docs": [
+            "vq"
+          ]
+        },
+        "r": {
+          "docs": {
+            "documents": [
+              "ir",
+              "ur"
+            ]
+          }
+        }
+      }
+    }
+
 
 .. _permissions_plugins:
 

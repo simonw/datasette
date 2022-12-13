@@ -79,7 +79,60 @@ def permission_allowed_default(datasette, actor, action, resource):
 
 
 async def _resolve_metadata_permissions_blocks(datasette, actor, action, resource):
-    # Check custom permissions: blocks - not yet implemented
+    # Check custom permissions: blocks
+    metadata = datasette.metadata()
+    root_block = (metadata.get("permissions", None) or {}).get(action)
+    if root_block:
+        root_result = actor_matches_allow(actor, root_block)
+        if root_result is not None:
+            return root_result
+    # Now try database-specific blocks
+    if not resource:
+        return None
+    if isinstance(resource, str):
+        database = resource
+    else:
+        database = resource[0]
+    database_block = (
+        (metadata.get("databases", {}).get(database, {}).get("permissions", None)) or {}
+    ).get(action)
+    if database_block:
+        database_result = actor_matches_allow(actor, database_block)
+        if database_result is not None:
+            return database_result
+    # Finally try table/query specific blocks
+    if not isinstance(resource, tuple):
+        return None
+    database, table_or_query = resource
+    table_block = (
+        (
+            metadata.get("databases", {})
+            .get(database, {})
+            .get("tables", {})
+            .get(table_or_query, {})
+            .get("permissions", None)
+        )
+        or {}
+    ).get(action)
+    if table_block:
+        table_result = actor_matches_allow(actor, table_block)
+        if table_result is not None:
+            return table_result
+    # Finally the canned queries
+    query_block = (
+        (
+            metadata.get("databases", {})
+            .get(database, {})
+            .get("queries", {})
+            .get(table_or_query, {})
+            .get("permissions", None)
+        )
+        or {}
+    ).get(action)
+    if query_block:
+        query_result = actor_matches_allow(actor, query_block)
+        if query_result is not None:
+            return query_result
     return None
 
 

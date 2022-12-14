@@ -830,7 +830,8 @@ If the table is successfully created this will return a ``201`` status code and 
 Creating a table from example data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Instead of specifying ``columns`` directly you can instead pass a single example ``row`` or a list of ``rows``. Datasette will create a table with a schema that matches those rows and insert them for you:
+Instead of specifying ``columns`` directly you can instead pass a single example ``row`` or a list of ``rows``.
+Datasette will create a table with a schema that matches those rows and insert them for you:
 
 ::
 
@@ -854,6 +855,8 @@ Instead of specifying ``columns`` directly you can instead pass a single example
         ],
         "pk": "id"
     }
+
+Doing this requires both the :ref:`permissions_create_table` and :ref:`permissions_insert_row` permissions.
 
 The ``201`` response here will be similar to the ``columns`` form, but will also include the number of rows that were inserted as ``row_count``:
 
@@ -883,6 +886,8 @@ If you pass a row to the create endpoint with a primary key that already exists 
     }
 
 You can avoid this error by passing the same ``"ignore": true`` or ``"replace": true`` options to the create endpoint as you can to the :ref:`insert endpoint <TableInsertView>`.
+
+To use the ``"replace": true`` option you will also need the :ref:`permissions_update_row` permission.
 
 .. _TableDropView:
 

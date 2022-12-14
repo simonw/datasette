@@ -1098,6 +1098,50 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "permissions,body,expected_status,expected_errors",
+    (
+        (["create-table"], {"table": "t", "columns": [{"name": "c"}]}, 201, None),
+        # Need insert-row too if you use "rows":
+        (
+            ["create-table"],
+            {"table": "t", "rows": [{"name": "c"}]},
+            403,
+            ["Permission denied - need insert-row"],
+        ),
+        # This should work:
+        (
+            ["create-table", "insert-row"],
+            {"table": "t", "rows": [{"name": "c"}]},
+            201,
+            None,
+        ),
+        # If you use replace: true you need update-row too:
+        (
+            ["create-table", "insert-row"],
+            {"table": "t", "rows": [{"id": 1}], "pk": "id", "replace": True},
+            403,
+            ["Permission denied - need update-row"],
+        ),
+    ),
+)
+async def test_create_table_permissions(
+    ds_write, permissions, body, expected_status, expected_errors
+):
+    token = ds_write.create_token("root", restrict_all=["view-instance"] + permissions)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json=body,
+        headers=_headers(token),
+    )
+    assert response.status_code == expected_status
+    if expected_errors:
+        data = response.json()
+        assert data["ok"] is False
+        assert data["errors"] == expected_errors
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "input,expected_rows_after",
     (
         (

@@ -460,7 +460,11 @@ The following example creates a token that can access ``view-instance`` and ``vi
         actor_id="user1",
         restrict_all=("view-instance", "view-table"),
         restrict_database={"docs": ("view-query",)},
-        restrict_resource={"docs": {"attachments": ("insert-row", "update-row")}},
+        restrict_resource={
+            "docs": {
+                "attachments": ("insert-row", "update-row")
+            }
+        },
     )
 
 .. _datasette_get_database:

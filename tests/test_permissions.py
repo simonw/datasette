@@ -609,6 +609,22 @@ DEF = "USE_DEFAULT"
             "t2",
             False,
         ),
+        # non-abbreviations should work too
+        ({"id": "t", "_r": {"a": ["view-instance"]}}, "view-instance", None, None, DEF),
+        (
+            {"id": "t", "_r": {"d": {"one": ["view-database"]}}},
+            "view-database",
+            "one",
+            None,
+            DEF,
+        ),
+        (
+            {"id": "t", "_r": {"r": {"one": {"t1": ["view-table"]}}}},
+            "view-table",
+            "one",
+            "t1",
+            DEF,
+        ),
     ),
 )
 async def test_actor_restricted_permissions(

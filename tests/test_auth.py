@@ -115,44 +115,46 @@ def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(app_client, path):
 
 
 @pytest.mark.parametrize(
-    "post_data,errors,expected_duration",
+    "post_data,errors,expected_duration,expected_r",
     (
-        ({"expire_type": ""}, [], None),
-        ({"expire_type": "x"}, ["Invalid expire duration"], None),
-        ({"expire_type": "minutes"}, ["Invalid expire duration"], None),
+        ({"expire_type": ""}, [], None, None),
+        ({"expire_type": "x"}, ["Invalid expire duration"], None, None),
+        ({"expire_type": "minutes"}, ["Invalid expire duration"], None, None),
         (
             {"expire_type": "minutes", "expire_duration": "x"},
             ["Invalid expire duration"],
+            None,
             None,
         ),
         (
             {"expire_type": "minutes", "expire_duration": "-1"},
             ["Invalid expire duration"],
             None,
+            None,
         ),
         (
             {"expire_type": "minutes", "expire_duration": "0"},
             ["Invalid expire duration"],
             None,
+            None,
         ),
+        ({"expire_type": "minutes", "expire_duration": "10"}, [], 600, None),
+        ({"expire_type": "hours", "expire_duration": "10"}, [], 10 * 60 * 60, None),
+        ({"expire_type": "days", "expire_duration": "3"}, [], 60 * 60 * 24 * 3, None),
+        # Token restrictions
+        ({"all:view-instance": "on"}, [], None, {"a": ["vi"]}),
+        ({"database:fixtures:view-query": "on"}, [], None, {"d": {"fixtures": ["vq"]}}),
         (
-            {"expire_type": "minutes", "expire_duration": "10"},
+            {"resource:fixtures:facetable:insert-row": "on"},
             [],
-            600,
-        ),
-        (
-            {"expire_type": "hours", "expire_duration": "10"},
-            [],
-            10 * 60 * 60,
-        ),
-        (
-            {"expire_type": "days", "expire_duration": "3"},
-            [],
-            60 * 60 * 24 * 3,
+            None,
+            {"r": {"fixtures": {"facetable": ["ir"]}}},
         ),
     ),
 )
-def test_auth_create_token(app_client, post_data, errors, expected_duration):
+def test_auth_create_token(
+    app_client, post_data, errors, expected_duration, expected_r
+):
     assert app_client.get("/-/create-token").status == 403
     ds_actor = app_client.actor_cookie({"id": "test"})
     response = app_client.get("/-/create-token", cookies={"ds_actor": ds_actor})
@@ -173,6 +175,9 @@ def test_auth_create_token(app_client, post_data, errors, expected_duration):
         # Extract token from page
         token = response2.text.split('value="dstok_')[1].split('"')[0]
         details = app_client.ds.unsign(token, "token")
+        if expected_r:
+            r = details.pop("_r")
+            assert r == expected_r
         assert details.keys() == {"a", "t", "d"} or details.keys() == {"a", "t"}
         assert details["a"] == "test"
         if expected_duration is None:

@@ -1,3 +1,4 @@
+from bs4 import BeautifulSoup as Soup
 from .fixtures import app_client
 from click.testing import CliRunner
 from datasette.utils import baseconv
@@ -160,6 +161,17 @@ def test_auth_create_token(
     response = app_client.get("/-/create-token", cookies={"ds_actor": ds_actor})
     assert response.status == 200
     assert ">Create an API token<" in response.text
+    # Confirm some aspects of expected set of checkboxes
+    soup = Soup(response.text, "html.parser")
+    checkbox_names = {el["name"] for el in soup.select('input[type="checkbox"]')}
+    assert checkbox_names.issuperset(
+        {
+            "all:view-instance",
+            "all:view-query",
+            "database:fixtures:drop-table",
+            "resource:fixtures:foreign_key_references:insert-row",
+        }
+    )
     # Now try actually creating one
     response2 = app_client.post(
         "/-/create-token",

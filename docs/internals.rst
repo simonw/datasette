@@ -419,6 +419,50 @@ The following example runs three checks in a row, similar to :ref:`datasette_ens
         ],
     )
 
+.create_token(actor_id, expires_after=None, restrict_all=None, restrict_database=None, restrict_resource=None)
+--------------------------------------------------------------------------------------------------------------
+
+``actor_id`` - string
+    The ID of the actor to create a token for.
+
+``expires_after`` - int, optional
+    The number of seconds after which the token should expire.
+
+``restrict_all`` - iterable, optional
+    A list of actions that this token should be restricted to across all databases and resources.
+
+``restrict_database`` - dict, optional
+    For restricting actions within specific databases, e.g. ``{"mydb": ["view-table", "view-query"]}``.
+
+``restrict_resource`` - dict, optional
+    For restricting actions to specific resources (tables, SQL views and :ref:`canned_queries`) within a database. For example: ``{"mydb": {"mytable": ["insert-row", "update-row"]}}``.
+
+This method returns a signed :ref:`API token <CreateTokenView>` of the format ``dstok_...`` which can be used to authenticate requests to the Datasette API.
+
+All tokens must have an ``actor_id`` string indicating the ID of the actor which the token will act on behalf of.
+
+Tokens default to lasting forever, but can be set to expire after a given number of seconds using the ``expires_after`` argument. The following code creates a token for ``user1`` that will expire after an hour:
+
+.. code-block:: python
+
+    token = datasette.create_token(
+        actor_id="user1",
+        expires_after=3600,
+    )
+
+The three ``restrict_*`` arguments can be used to create a token that has additional restrictions beyond what the associated actor is allowed to do.
+
+The following example creates a token that can access ``view-instance`` and ``view-table`` across everything, can additionally use ``view-query`` for anything in the ``docs`` database and is allowed to execute ``insert-row`` and ``update-row`` in the ``attachments`` table in that database:
+
+.. code-block:: python
+
+    token = datasette.create_token(
+        actor_id="user1",
+        restrict_all=("view-instance", "view-table"),
+        restrict_database={"docs": ("view-query",)},
+        restrict_resource={"docs": {"attachments": ("insert-row", "update-row")}},
+    )
+
 .. _datasette_get_database:
 
 .get_database(name)

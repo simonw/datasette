@@ -11,7 +11,6 @@ from runpy import run_module
 import shutil
 from subprocess import call
 import sys
-import time
 import webbrowser
 from .app import (
     OBSOLETE_SETTINGS,
@@ -730,41 +729,40 @@ def create_token(
     loop = asyncio.get_event_loop()
     loop.run_until_complete(ds.invoke_startup())
 
-    def fix_action(action):
-        # Warn if invalid, rename to abbr if possible
-        permission = ds.permissions.get(action)
-        if not permission:
-            # Output red message
+    # Warn about any unknown actions
+    actions = []
+    actions.extend(alls)
+    actions.extend([p[1] for p in databases])
+    actions.extend([p[2] for p in resources])
+    for action in actions:
+        if not ds.permissions.get(action):
             click.secho(
-                f" Unknown permission: {action} ",
+                f"  Unknown permission: {action} ",
                 fg="red",
                 err=True,
             )
-            return action
-        return permission.abbr or action
 
-    bits = {"a": id, "token": "dstok", "t": int(time.time())}
-    if expires_after:
-        bits["d"] = expires_after
-    if alls or databases or resources:
-        bits["_r"] = {}
-        if alls:
-            bits["_r"]["a"] = [fix_action(a) for a in alls]
-        if databases:
-            bits["_r"]["d"] = {}
-            for database, action in databases:
-                bits["_r"]["d"].setdefault(database, []).append(fix_action(action))
-        if resources:
-            bits["_r"]["r"] = {}
-            for database, table, action in resources:
-                bits["_r"]["r"].setdefault(database, {}).setdefault(table, []).append(
-                    fix_action(action)
-                )
-    token = ds.sign(bits, namespace="token")
-    click.echo("dstok_{}".format(token))
+    restrict_database = {}
+    for database, action in databases:
+        restrict_database.setdefault(database, []).append(action)
+    restrict_resource = {}
+    for database, resource, action in resources:
+        restrict_resource.setdefault(database, {}).setdefault(resource, []).append(
+            action
+        )
+
+    token = ds.create_token(
+        id,
+        expires_after=expires_after,
+        restrict_all=alls,
+        restrict_database=restrict_database,
+        restrict_resource=restrict_resource,
+    )
+    click.echo(token)
     if debug:
+        encoded = token[len("dstok_") :]
         click.echo("\nDecoded:\n")
-        click.echo(json.dumps(ds.unsign(token, namespace="token"), indent=2))
+        click.echo(json.dumps(ds.unsign(encoded, namespace="token"), indent=2))
 
 
 pm.hook.register_commands(cli=cli)

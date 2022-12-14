@@ -405,6 +405,8 @@ Datasette includes a default mechanism for generating API tokens that can be use
 
 Authenticated users can create new API tokens using a form on the ``/-/create-token`` page.
 
+Tokens created in this way can be further restricted to only allow access to specific actions, or to limit those actions to specific databases, tables or queries.
+
 Created tokens can then be passed in the ``Authorization: Bearer $token`` header of HTTP requests to Datasette.
 
 A token created by a user will include that user's ``"id"`` in the token payload, so any permissions granted to that user based on their ID can be made available to the token as well.

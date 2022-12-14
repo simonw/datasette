@@ -270,7 +270,7 @@ def test_cli_create_token(app_client, expires):
     token = result.output.strip()
     assert token.startswith("dstok_")
     details = app_client.ds.unsign(token[len("dstok_") :], "token")
-    expected_keys = {"a", "token", "t"}
+    expected_keys = {"a", "t"}
     if expires:
         expected_keys.add("d")
     assert details.keys() == expected_keys

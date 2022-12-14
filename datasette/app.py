@@ -475,7 +475,7 @@ class Datasette:
         restrict_database: Optional[Dict[str, Iterable[str]]] = None,
         restrict_resource: Optional[Dict[str, Dict[str, Iterable[str]]]] = None,
     ):
-        token = {"a": actor_id, "token": "dstok", "t": int(time.time())}
+        token = {"a": actor_id, "t": int(time.time())}
         if expires_after:
             token["d"] = expires_after
 

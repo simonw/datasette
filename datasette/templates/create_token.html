@@ -2,11 +2,36 @@
 
 {% block title %}Create an API token{% endblock %}
 
+{% block extra_head %}
+<style type="text/css">
+#restrict-permissions label {
+  display: inline;
+  width: 90%;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 
 <h1>Create an API token</h1>
 
-<p>This token will allow API access with the same abilities as your current user.</p>
+<p>This token will allow API access with the same abilities as your current user, <strong>{{ request.actor.id }}</strong></p>
+
+{% if token %}
+  <div>
+    <h2>Your API token</h2>
+    <form>
+      <input type="text" class="copyable" style="width: 40%" value="{{ token }}">
+      <span class="copy-link-wrapper"></span>
+    </form>
+    <!--- show token in a <details> -->
+    <details style="margin-top: 1em">
+      <summary>Token details</summary>
+      <pre>{{ token_bits|tojson(4) }}</pre>
+    </details>
+  </div>
+  <h2>Create another token</h2>
+{% endif %}
 
 {% if errors %}
   {% for error in errors %}
@@ -27,23 +52,39 @@
     <input type="text" name="expire_duration" style="width: 10%">
     <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
     <input type="submit" value="Create token">
-  </div>
-</form>
 
-{% if token %}
-  <div>
-    <h2>Your API token</h2>
-    <form>
-      <input type="text" class="copyable" style="width: 40%" value="{{ token }}">
-      <span class="copy-link-wrapper"></span>
-    </form>
-    <!--- show token in a <details> -->
-    <details style="margin-top: 1em">
-      <summary>Token details</summary>
-      <pre>{{ token_bits|tojson }}</pre>
-    </details>
-  </div>
-  {% endif %}
+  <details style="margin-top: 1em" id="restrict-permissions">
+    <summary style="cursor: pointer;">Restrict actions that can be performed using this token</summary>
+    <h2>All databases and tables</h2>
+    <ul>
+      {% for permission in all_permissions %}
+        <li><label><input type="checkbox" name="all:{{ permission }}"> {{ permission }}</label></li>
+      {% endfor %}
+    </ul>
+
+    {% for database in database_with_tables %}
+      <h2>All tables in "{{ database.name }}"</h2>
+      <ul>
+        {% for permission in database_permissions %}
+          <li><label><input type="checkbox" name="db:{{ database.encoded }}:{{ permission }}"> {{ permission }}</label></li>
+        {% endfor %}
+      </ul>
+    {% endfor %}
+    <h2>Specific tables</h2>
+    {% for database in database_with_tables %}
+      {% for table in database.tables %}
+        <h3>{{ database.name }}: {{ table.name }}</h3>
+        <ul>
+          {% for permission in resource_permissions %}
+            <li><label><input type="checkbox" name="resource:{{ database.encoded }}:{{ table.encoded }}:{{ permission }}"> {{ permission }}</label></li>
+          {% endfor %}
+        </ul>
+      {% endfor %}
+    {% endfor %}
+  </details>
+
+</form>
+</div>
 
 <script>
 var expireDuration = document.querySelector('input[name="expire_duration"]');

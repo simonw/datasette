@@ -1,9 +1,13 @@
 import json
 from datasette.utils.asgi import Response, Forbidden
-from datasette.utils import actor_matches_allow, add_cors_headers
+from datasette.utils import (
+    actor_matches_allow,
+    add_cors_headers,
+    tilde_encode,
+    tilde_decode,
+)
 from .base import BaseView
 import secrets
-import time
 import urllib
 
 
@@ -226,19 +230,63 @@ class CreateTokenView(BaseView):
                 "Token authentication cannot be used to create additional tokens"
             )
 
+    async def shared(self, request):
+        self.check_permission(request)
+        # Build list of databases and tables the user has permission to view
+        database_with_tables = []
+        for database in self.ds.databases.values():
+            if database.name == "_internal":
+                continue
+            if not await self.ds.permission_allowed(
+                request.actor, "view-database", database.name
+            ):
+                continue
+            hidden_tables = await database.hidden_table_names()
+            tables = []
+            for table in await database.table_names():
+                if table in hidden_tables:
+                    continue
+                if not await self.ds.permission_allowed(
+                    request.actor,
+                    "view-table",
+                    resource=(database.name, table),
+                ):
+                    continue
+                tables.append({"name": table, "encoded": tilde_encode(table)})
+            database_with_tables.append(
+                {
+                    "name": database.name,
+                    "encoded": tilde_encode(database.name),
+                    "tables": tables,
+                }
+            )
+        return {
+            "actor": request.actor,
+            "all_permissions": self.ds.permissions.keys(),
+            "database_permissions": [
+                key
+                for key, value in self.ds.permissions.items()
+                if value.takes_database
+            ],
+            "resource_permissions": [
+                key
+                for key, value in self.ds.permissions.items()
+                if value.takes_resource
+            ],
+            "database_with_tables": database_with_tables,
+        }
+
     async def get(self, request):
         self.check_permission(request)
         return await self.render(
-            ["create_token.html"],
-            request,
-            {"actor": request.actor},
+            ["create_token.html"], request, await self.shared(request)
         )
 
     async def post(self, request):
         self.check_permission(request)
         post = await request.post_vars()
         errors = []
-        duration = None
+        expires_after = None
         if post.get("expire_type"):
             duration_string = post.get("expire_duration")
             if (
@@ -250,33 +298,47 @@ class CreateTokenView(BaseView):
             else:
                 unit = post["expire_type"]
                 if unit == "minutes":
-                    duration = int(duration_string) * 60
+                    expires_after = int(duration_string) * 60
                 elif unit == "hours":
-                    duration = int(duration_string) * 60 * 60
+                    expires_after = int(duration_string) * 60 * 60
                 elif unit == "days":
-                    duration = int(duration_string) * 60 * 60 * 24
+                    expires_after = int(duration_string) * 60 * 60 * 24
                 else:
                     errors.append("Invalid expire duration unit")
-        token_bits = None
-        token = None
-        if not errors:
-            token_bits = {
-                "a": request.actor["id"],
-                "t": int(time.time()),
-            }
-            if duration:
-                token_bits["d"] = duration
-            token = "dstok_{}".format(self.ds.sign(token_bits, "token"))
-        return await self.render(
-            ["create_token.html"],
-            request,
-            {
-                "actor": request.actor,
-                "errors": errors,
-                "token": token,
-                "token_bits": token_bits,
-            },
+
+        # Are there any restrictions?
+        restrict_all = []
+        restrict_database = {}
+        restrict_resource = {}
+
+        for key in post:
+            if key.startswith("all:") and key.count(":") == 1:
+                restrict_all.append(key.split(":")[1])
+            elif key.startswith("database:") and key.count(":") == 2:
+                bits = key.split(":")
+                database = tilde_decode(bits[1])
+                action = bits[2]
+                restrict_database.setdefault(database, []).append(action)
+            elif key.startswith("resource:") and key.count(":") == 3:
+                bits = key.split(":")
+                database = tilde_decode(bits[1])
+                resource = tilde_decode(bits[2])
+                action = bits[3]
+                restrict_resource.setdefault(database, {}).setdefault(
+                    resource, []
+                ).append(action)
+
+        token = self.ds.create_token(
+            request.actor["id"],
+            expires_after=expires_after,
+            restrict_all=restrict_all,
+            restrict_database=restrict_database,
+            restrict_resource=restrict_resource,
         )
+        token_bits = self.ds.unsign(token[len("dstok_") :], namespace="token")
+        context = await self.shared(request)
+        context.update({"errors": errors, "token": token, "token_bits": token_bits})
+        return await self.render(["create_token.html"], request, context)
 
 
 class ApiExplorerView(BaseView):

@@ -4,6 +4,22 @@
 Changelog
 =========
 
+.. _v1_0_a2:
+
+1.0a2 (2022-12-14)
+------------------
+
+The third Datasette 1.0 alpha release adds upsert support to the JSON API, plus the ability to specify finely grained permissions when creating an API token.
+
+- New ``/db/table/-/upsert`` API, :ref:`documented here <TableUpsertView>`. upsert is an update-or-replace: existing rows will have specified keys updated, but if no row matches the incoming primary key a brand new row will be inserted instead. (:issue:`1878`)
+- New :ref:`plugin_register_permissions` plugin hook. Plugins can now register named permissions, which will then be listed in various interfaces that show available permissions. (:issue:`1940`)
+- The ``/db/-/create`` API for :ref:`creating a table <TableCreateView>` now accepts ``"ignore": true`` and ``"replace": true`` options when called with the ``"rows"`` property that creates a new table based on an example set of rows. This means the API can be called multiple times with different rows, setting rules for what should happen if a primary key collides with an existing row. (:issue:`1927`)
+- Arbitrary permissions can now be configured at the instance, database and resource (table, SQL view or canned query) level in Datasette's :ref:`metadata` JSON and YAML files. The new ``"permissions"`` key can be used to specify which actors should have which permissions. See :ref:`authentication_permissions_other` for details. (:issue:`1636`)
+- The ``/-/create-token`` page can now be used to create API tokens which are restricted to just a subset of actions, including against specific databases or resources. See :ref:`CreateTokenView` for details. (:issue:`1947`)
+- Likewise, the ``datasette create-token`` CLI command can now create tokens with :ref:`a subset of permissions <authentication_cli_create_token_restrict>`. (:issue:`1855`)
+- New :ref:`datasette.create_token() API method <datasette_create_token>`` for programmatically creating signed API tokens. (:issue:`1951`)
+- ``/db//-/create`` API now requires actor to have ``insert-row`` permission in order to use the ``"row"`` or ``"rows"`` properties. (:issue:`1937`)
+
 .. _v1_0_a1:
 
 1.0a1 (2022-12-01)

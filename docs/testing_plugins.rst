@@ -80,7 +80,7 @@ Creating a ``Datasette()`` instance like this as useful shortcut in tests, but t
 
 This method registers any :ref:`plugin_hook_startup` or :ref:`plugin_hook_prepare_jinja2_environment` plugins that might themselves need to make async calls.
 
-If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - those method calls ensure that ``.invoke_startup()`` has been called for you.
+If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - Datasette automatically calls ``invoke_startup()`` the first time it handles a request.
 
 .. _testing_plugins_pdb:
 

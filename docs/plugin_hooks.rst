@@ -855,13 +855,14 @@ Potential use-cases:
 
 .. note::
 
-   If you are writing :ref:`unit tests <testing_plugins>` for a plugin that uses this hook you will need to explicitly call ``await ds.invoke_startup()`` in your tests. An example:
+   If you are writing :ref:`unit tests <testing_plugins>` for a plugin that uses this hook and doesn't exercise Datasette by sending
+   any simulated requests through it you will need to explicitly call ``await ds.invoke_startup()`` in your tests. An example:
 
    .. code-block:: python
 
         @pytest.mark.asyncio
         async def test_my_plugin():
-            ds = Datasette([], metadata={})
+            ds = Datasette()
             await ds.invoke_startup()
             # Rest of test goes here
 

@@ -63,17 +63,14 @@ from .utils import (
     to_css_class,
 )
 from .utils.asgi import (
-    AsgiLifespan,
-    Base400,
     Forbidden,
     NotFound,
     Request,
     Response,
+    AsgiRunOnFirstRequest,
     asgi_static,
     asgi_send,
     asgi_send_file,
-    asgi_send_html,
-    asgi_send_json,
     asgi_send_redirect,
 )
 from .utils.internal_db import init_internal_db, populate_schema_tables
@@ -1260,7 +1257,7 @@ class Datasette:
 
         async def setup_db():
             # First time server starts up, calculate table counts for immutable databases
-            for dbname, database in self.databases.items():
+            for database in self.databases.values():
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
@@ -1274,10 +1271,7 @@ class Datasette:
         )
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
-        asgi = AsgiLifespan(
-            asgi,
-            on_startup=setup_db,
-        )
+        asgi = AsgiRunOnFirstRequest(asgi, on_startup=[setup_db, self.invoke_startup])
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)
         return asgi
@@ -1566,42 +1560,34 @@ class DatasetteClient:
         return path
 
     async def get(self, path, **kwargs):
-        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.get(self._fix(path), **kwargs)
 
     async def options(self, path, **kwargs):
-        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.options(self._fix(path), **kwargs)
 
     async def head(self, path, **kwargs):
-        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.head(self._fix(path), **kwargs)
 
     async def post(self, path, **kwargs):
-        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.post(self._fix(path), **kwargs)
 
     async def put(self, path, **kwargs):
-        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.put(self._fix(path), **kwargs)
 
     async def patch(self, path, **kwargs):
-        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.patch(self._fix(path), **kwargs)
 
     async def delete(self, path, **kwargs):
-        await self.ds.invoke_startup()
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.delete(self._fix(path), **kwargs)
 
     async def request(self, method, path, **kwargs):
-        await self.ds.invoke_startup()
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
         async with httpx.AsyncClient(app=self.app) as client:
             return await client.request(

@@ -28,13 +28,6 @@ class TestResponse:
     def cookies(self):
         return dict(self.httpx_response.cookies)
 
-    def cookie_was_deleted(self, cookie):
-        return any(
-            h
-            for h in self.httpx_response.headers.get_list("set-cookie")
-            if h.startswith(f'{cookie}="";')
-        )
-
     @property
     def json(self):
         return json.loads(self.text)

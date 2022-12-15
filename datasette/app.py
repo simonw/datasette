@@ -1718,6 +1718,10 @@ class DatasetteClient:
         self.ds = ds
         self.app = ds.app()
 
+    def actor_cookie(self, actor):
+        # Utility method, mainly for tests
+        return self.ds.sign({"a": actor}, "actor")
+
     def _fix(self, path, avoid_path_rewrites=False):
         if not isinstance(path, PrefixedUrlString) and not avoid_path_rewrites:
             path = self.ds.urls.path(path)

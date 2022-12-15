@@ -419,6 +419,8 @@ The following example runs three checks in a row, similar to :ref:`datasette_ens
         ],
     )
 
+.. _datasette_create_token:
+
 .create_token(actor_id, expires_after=None, restrict_all=None, restrict_database=None, restrict_resource=None)
 --------------------------------------------------------------------------------------------------------------
 

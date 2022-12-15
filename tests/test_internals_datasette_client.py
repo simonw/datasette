@@ -6,6 +6,7 @@ import pytest_asyncio
 
 @pytest_asyncio.fixture
 async def datasette(app_client):
+    await app_client.ds.invoke_startup()
     return app_client.ds
 
 

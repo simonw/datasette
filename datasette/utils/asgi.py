@@ -156,6 +156,35 @@ class Request:
         return cls(scope, None)
 
 
+class AsgiLifespan:
+    def __init__(self, app, on_startup=None, on_shutdown=None):
+        self.app = app
+        on_startup = on_startup or []
+        on_shutdown = on_shutdown or []
+        if not isinstance(on_startup or [], list):
+            on_startup = [on_startup]
+        if not isinstance(on_shutdown or [], list):
+            on_shutdown = [on_shutdown]
+        self.on_startup = on_startup
+        self.on_shutdown = on_shutdown
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    for fn in self.on_startup:
+                        await fn()
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    for fn in self.on_shutdown:
+                        await fn()
+                    await send({"type": "lifespan.shutdown.complete"})
+                    return
+        else:
+            await self.app(scope, receive, send)
+
+
 class AsgiStream:
     def __init__(self, stream_fn, status=200, headers=None, content_type="text/plain"):
         self.stream_fn = stream_fn
@@ -420,18 +449,3 @@ class AsgiFileDownload:
             content_type=self.content_type,
             headers=self.headers,
         )
-
-
-class AsgiRunOnFirstRequest:
-    def __init__(self, asgi, on_startup):
-        assert isinstance(on_startup, list)
-        self.asgi = asgi
-        self.on_startup = on_startup
-        self._started = False
-
-    async def __call__(self, scope, receive, send):
-        if not self._started:
-            self._started = True
-            for hook in self.on_startup:
-                await hook()
-        return await self.asgi(scope, receive, send)

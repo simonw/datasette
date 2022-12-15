@@ -16,6 +16,11 @@ class TestResponse:
     def status(self):
         return self.httpx_response.status_code
 
+    # Supports both for test-writing convenience
+    @property
+    def status_code(self):
+        return self.status
+
     @property
     def headers(self):
         return self.httpx_response.headers
@@ -23,6 +28,10 @@ class TestResponse:
     @property
     def body(self):
         return self.httpx_response.content
+
+    @property
+    def content(self):
+        return self.body
 
     @property
     def cookies(self):

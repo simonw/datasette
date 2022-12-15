@@ -18,9 +18,9 @@ import urllib.parse
 
 def test_homepage(app_client_two_attached_databases):
     response = app_client_two_attached_databases.get("/")
-    assert response.status == 200
+    assert response.status_code == 200
     assert "text/html; charset=utf-8" == response.headers["content-type"]
-    soup = Soup(response.body, "html.parser")
+    soup = Soup(response.content, "html.parser")
     assert "Datasette Fixtures" == soup.find("h1").text
     assert (
         "An example SQLite database demonstrating Datasette. Sign in as root user"
@@ -48,30 +48,38 @@ def test_homepage(app_client_two_attached_databases):
     ] == table_links
 
 
-def test_http_head(app_client):
-    response = app_client.get("/", method="HEAD")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_http_head(ds_client):
+    response = await ds_client.head("/")
+    assert response.status_code == 200
 
 
-def test_homepage_options(app_client):
-    response = app_client.get("/", method="OPTIONS")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_homepage_options(ds_client):
+    response = await ds_client.options("/")
+    assert response.status_code == 200
     assert response.text == "ok"
 
 
-def test_favicon(app_client):
-    response = app_client.get("/favicon.ico")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_favicon(ds_client):
+    response = await ds_client.get("/favicon.ico")
+    assert response.status_code == 200
     assert response.headers["cache-control"] == "max-age=3600, immutable, public"
     assert int(response.headers["content-length"]) > 100
     assert response.headers["content-type"] == "image/png"
 
 
-def test_static(app_client):
-    response = app_client.get("/-/static/app2.css")
-    assert response.status == 404
-    response = app_client.get("/-/static/app.css")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_static(ds_client):
+    response = await ds_client.get("/-/static/app2.css")
+    assert response.status_code == 404
+    response = await ds_client.get("/-/static/app.css")
+    assert response.status_code == 200
     assert "text/css" == response.headers["content-type"]
 
 
@@ -80,29 +88,31 @@ def test_static_mounts():
         static_mounts=[("custom-static", str(pathlib.Path(__file__).parent))]
     ) as client:
         response = client.get("/custom-static/test_html.py")
-        assert response.status == 200
+        assert response.status_code == 200
         response = client.get("/custom-static/not_exists.py")
-        assert response.status == 404
+        assert response.status_code == 404
         response = client.get("/custom-static/../LICENSE")
-        assert response.status == 404
+        assert response.status_code == 404
 
 
 def test_memory_database_page():
     with make_app_client(memory=True) as client:
         response = client.get("/_memory")
-        assert response.status == 200
+        assert response.status_code == 200
 
 
 def test_not_allowed_methods():
     with make_app_client(memory=True) as client:
         for method in ("post", "put", "patch", "delete"):
             response = client.request(path="/_memory", method=method.upper())
-            assert response.status == 405
+            assert response.status_code == 405
 
 
-def test_database_page(app_client):
-    response = app_client.get("/fixtures")
-    soup = Soup(response.body, "html.parser")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_database_page(ds_client):
+    response = await ds_client.get("/fixtures")
+    soup = Soup(response.text, "html.parser")
     # Should have a <textarea> for executing SQL
     assert "<textarea" in response.text
 
@@ -145,17 +155,21 @@ def test_database_page(app_client):
     )
 
 
-def test_invalid_custom_sql(app_client):
-    response = app_client.get("/fixtures?sql=.schema")
-    assert response.status == 400
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_invalid_custom_sql(ds_client):
+    response = await ds_client.get("/fixtures?sql=.schema")
+    assert response.status_code == 400
     assert "Statement must be a SELECT" in response.text
 
 
-def test_disallowed_custom_sql_pragma(app_client):
-    response = app_client.get(
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_disallowed_custom_sql_pragma(ds_client):
+    response = await ds_client.get(
         "/fixtures?sql=SELECT+*+FROM+pragma_not_on_allow_list('idx52')"
     )
-    assert response.status == 400
+    assert response.status_code == 400
     pragmas = ", ".join("pragma_{}()".format(pragma) for pragma in allowed_pragmas)
     assert (
         "Statement contained a disallowed PRAGMA. Allowed pragma functions are {}".format(
@@ -181,8 +195,8 @@ def test_sql_time_limit(app_client_shorter_time_limit):
 def test_row_page_does_not_truncate():
     with make_app_client(settings={"truncate_cells_html": 5}) as client:
         response = client.get("/fixtures/facetable/1")
-        assert response.status == 200
-        table = Soup(response.body, "html.parser").find("table")
+        assert response.status_code == 200
+        table = Soup(response.content, "html.parser").find("table")
         assert table["class"] == ["rows-and-columns"]
         assert ["Mission"] == [
             td.string
@@ -200,8 +214,8 @@ def test_query_page_truncates():
                 }
             )
         )
-        assert response.status == 200
-        table = Soup(response.body, "html.parser").find("table")
+        assert response.status_code == 200
+        table = Soup(response.content, "html.parser").find("table")
         tds = table.findAll("td")
         assert [str(td) for td in tds] == [
             '<td class="col-a">this …</td>',
@@ -209,6 +223,8 @@ def test_query_page_truncates():
         ]
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_classes",
     [
@@ -233,13 +249,15 @@ def test_query_page_truncates():
         ),
     ],
 )
-def test_css_classes_on_body(app_client, path, expected_classes):
-    response = app_client.get(path)
-    assert response.status == 200
+async def test_css_classes_on_body(ds_client, path, expected_classes):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
     classes = re.search(r'<body class="(.*)">', response.text).group(1).split()
     assert classes == expected_classes
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_considered",
     [
@@ -259,29 +277,35 @@ def test_css_classes_on_body(app_client, path, expected_classes):
         ),
     ],
 )
-def test_templates_considered(app_client, path, expected_considered):
-    response = app_client.get(path)
-    assert response.status == 200
+async def test_templates_considered(ds_client, path, expected_considered):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
     assert f"<!-- Templates considered: {expected_considered} -->" in response.text
 
 
-def test_row_json_export_link(app_client):
-    response = app_client.get("/fixtures/simple_primary_key/1")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_row_json_export_link(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/1")
+    assert response.status_code == 200
     assert '<a href="/fixtures/simple_primary_key/1.json">json</a>' in response.text
 
 
-def test_query_json_csv_export_links(app_client):
-    response = app_client.get("/fixtures?sql=select+1")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_query_json_csv_export_links(ds_client):
+    response = await ds_client.get("/fixtures?sql=select+1")
+    assert response.status_code == 200
     assert '<a href="/fixtures.json?sql=select+1">json</a>' in response.text
     assert '<a href="/fixtures.csv?sql=select+1&amp;_size=max">CSV</a>' in response.text
 
 
-def test_row_html_simple_primary_key(app_client):
-    response = app_client.get("/fixtures/simple_primary_key/1")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_row_html_simple_primary_key(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key/1")
+    assert response.status_code == 200
+    table = Soup(response.content, "html.parser").find("table")
     assert ["id", "content"] == [th.string.strip() for th in table.select("thead th")]
     assert [
         [
@@ -291,10 +315,12 @@ def test_row_html_simple_primary_key(app_client):
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
 
 
-def test_row_html_no_primary_key(app_client):
-    response = app_client.get("/fixtures/no_primary_key/1")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_row_html_no_primary_key(ds_client):
+    response = await ds_client.get("/fixtures/no_primary_key/1")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     assert ["rowid", "content", "a", "b", "c"] == [
         th.string.strip() for th in table.select("thead th")
     ]
@@ -312,6 +338,8 @@ def test_row_html_no_primary_key(app_client):
     ]
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_text,expected_link",
     (
@@ -327,10 +355,12 @@ def test_row_html_no_primary_key(app_client):
         ),
     ),
 )
-def test_row_links_from_other_tables(app_client, path, expected_text, expected_link):
-    response = app_client.get(path)
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+async def test_row_links_from_other_tables(
+    ds_client, path, expected_text, expected_link
+):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
     h2 = soup.find("h2")
     assert h2.text == "Links from other tables"
     li = h2.findNext("ul").find("li")
@@ -340,6 +370,8 @@ def test_row_links_from_other_tables(app_client, path, expected_text, expected_l
     assert link == expected_link
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -365,10 +397,10 @@ def test_row_links_from_other_tables(app_client, path, expected_text, expected_l
         ),
     ),
 )
-def test_row_html_compound_primary_key(app_client, path, expected):
-    response = app_client.get(path)
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+async def test_row_html_compound_primary_key(ds_client, path, expected):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     assert ["pk1", "pk2", "content"] == [
         th.string.strip() for th in table.select("thead th")
     ]
@@ -377,10 +409,12 @@ def test_row_html_compound_primary_key(app_client, path, expected):
     ]
 
 
-def test_index_metadata(app_client):
-    response = app_client.get("/")
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_index_metadata(ds_client):
+    response = await ds_client.get("/")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
     assert "Datasette Fixtures" == soup.find("h1").text
     assert (
         'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>'
@@ -389,10 +423,12 @@ def test_index_metadata(app_client):
     assert_footer_links(soup)
 
 
-def test_database_metadata(app_client):
-    response = app_client.get("/fixtures")
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_database_metadata(ds_client):
+    response = await ds_client.get("/fixtures")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
     # Page title should be the default
     assert "fixtures" == soup.find("h1").text
     # Description should be custom
@@ -403,10 +439,12 @@ def test_database_metadata(app_client):
     assert_footer_links(soup)
 
 
-def test_database_metadata_with_custom_sql(app_client):
-    response = app_client.get("/fixtures?sql=select+*+from+simple_primary_key")
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_database_metadata_with_custom_sql(ds_client):
+    response = await ds_client.get("/fixtures?sql=select+*+from+simple_primary_key")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
     # Page title should be the default
     assert "fixtures" == soup.find("h1").text
     # Description should be custom
@@ -420,11 +458,11 @@ def test_database_download_for_immutable():
         assert not client.ds.databases["fixtures"].is_mutable
         # Regular page should have a download link
         response = client.get("/fixtures")
-        soup = Soup(response.body, "html.parser")
+        soup = Soup(response.content, "html.parser")
         assert len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
         # Check we can actually download it
         download_response = client.get("/fixtures.db")
-        assert download_response.status == 200
+        assert download_response.status_code == 200
         # Check the content-length header exists
         assert "content-length" in download_response.headers
         content_length = download_response.headers["content-length"]
@@ -448,16 +486,16 @@ def test_database_download_for_immutable():
 
 def test_database_download_disallowed_for_mutable(app_client):
     response = app_client.get("/fixtures")
-    soup = Soup(response.body, "html.parser")
-    assert 0 == len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
-    assert 403 == app_client.get("/fixtures.db").status
+    soup = Soup(response.content, "html.parser")
+    assert len(soup.findAll("a", {"href": re.compile(r"\.db$")})) == 0
+    assert app_client.get("/fixtures.db").status_code == 403
 
 
 def test_database_download_disallowed_for_memory():
     with make_app_client(memory=True) as client:
         # Memory page should NOT have a download link
         response = client.get("/_memory")
-        soup = Soup(response.body, "html.parser")
+        soup = Soup(response.content, "html.parser")
         assert 0 == len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
         assert 404 == client.get("/_memory.db").status
 
@@ -467,7 +505,7 @@ def test_allow_download_off():
         is_immutable=True, settings={"allow_download": False}
     ) as client:
         response = client.get("/fixtures")
-        soup = Soup(response.body, "html.parser")
+        soup = Soup(response.content, "html.parser")
         assert not len(soup.findAll("a", {"href": re.compile(r"\.db$")}))
         # Accessing URL directly should 403
         response = client.get("/fixtures.db")
@@ -477,50 +515,60 @@ def test_allow_download_off():
 def test_allow_sql_off():
     with make_app_client(metadata={"allow_sql": {}}) as client:
         response = client.get("/fixtures")
-        soup = Soup(response.body, "html.parser")
+        soup = Soup(response.content, "html.parser")
         assert not len(soup.findAll("textarea", {"name": "sql"}))
         # The table page should no longer show "View and edit SQL"
         response = client.get("/fixtures/sortable")
-        assert b"View and edit SQL" not in response.body
+        assert b"View and edit SQL" not in response.content
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/404", "/fixtures/404"])
-def test_404(app_client, path):
-    response = app_client.get(path)
-    assert 404 == response.status
+async def test_404(ds_client, path):
+    response = await ds_client.get(path)
+    assert response.status_code == 404
     assert (
-        f'<link rel="stylesheet" href="/-/static/app.css?{app_client.ds.app_css_hash()}'
+        f'<link rel="stylesheet" href="/-/static/app.css?{ds_client.ds.app_css_hash()}'
         in response.text
     )
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_redirect",
     [("/fixtures/", "/fixtures"), ("/fixtures/simple_view/", "/fixtures/simple_view")],
 )
-def test_404_trailing_slash_redirect(app_client, path, expected_redirect):
-    response = app_client.get(path)
-    assert 302 == response.status
-    assert expected_redirect == response.headers["Location"]
+async def test_404_trailing_slash_redirect(ds_client, path, expected_redirect):
+    response = await ds_client.get(path)
+    assert response.status_code == 302
+    assert response.headers["Location"] == expected_redirect
 
 
-def test_404_content_type(app_client):
-    response = app_client.get("/404")
-    assert 404 == response.status
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_404_content_type(ds_client):
+    response = await ds_client.get("/404")
+    assert response.status_code == 404
     assert "text/html; charset=utf-8" == response.headers["content-type"]
 
 
-def test_canned_query_default_title(app_client):
-    response = app_client.get("/fixtures/magic_parameters")
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_canned_query_default_title(ds_client):
+    response = await ds_client.get("/fixtures/magic_parameters")
+    assert response.status_code == 200
+    soup = Soup(response.content, "html.parser")
     assert "fixtures: magic_parameters" == soup.find("h1").text
 
 
-def test_canned_query_with_custom_metadata(app_client):
-    response = app_client.get("/fixtures/neighborhood_search?text=town")
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_canned_query_with_custom_metadata(ds_client):
+    response = await ds_client.get("/fixtures/neighborhood_search?text=town")
+    assert response.status_code == 200
+    soup = Soup(response.content, "html.parser")
     assert "Search neighborhoods" == soup.find("h1").text
     assert (
         """
@@ -534,13 +582,15 @@ def test_canned_query_with_custom_metadata(app_client):
     )
 
 
-def test_urlify_custom_queries(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_urlify_custom_queries(ds_client):
     path = "/fixtures?" + urllib.parse.urlencode(
         {"sql": "select ('https://twitter.com/' || 'simonw') as user_url;"}
     )
-    response = app_client.get(path)
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.content, "html.parser")
     assert (
         """<td class="col-user_url">
  <a href="https://twitter.com/simonw">
@@ -551,19 +601,21 @@ def test_urlify_custom_queries(app_client):
     )
 
 
-def test_show_hide_sql_query(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_show_hide_sql_query(ds_client):
     path = "/fixtures?" + urllib.parse.urlencode(
         {"sql": "select ('https://twitter.com/' || 'simonw') as user_url;"}
     )
-    response = app_client.get(path)
-    soup = Soup(response.body, "html.parser")
+    response = await ds_client.get(path)
+    soup = Soup(response.content, "html.parser")
     span = soup.select(".show-hide-sql")[0]
     assert span.find("a")["href"].endswith("&_hide_sql=1")
     assert "(hide)" == span.getText()
     assert soup.find("textarea") is not None
     # Now follow the link to hide it
-    response = app_client.get(span.find("a")["href"])
-    soup = Soup(response.body, "html.parser")
+    response = await ds_client.get(span.find("a")["href"])
+    soup = Soup(response.content, "html.parser")
     span = soup.select(".show-hide-sql")[0]
     assert not span.find("a")["href"].endswith("&_hide_sql=1")
     assert "(show)" == span.getText()
@@ -576,11 +628,13 @@ def test_show_hide_sql_query(app_client):
     ] == [(hidden["name"], hidden["value"]) for hidden in hiddens]
 
 
-def test_canned_query_with_hide_has_no_hidden_sql(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
     # For a canned query the show/hide should NOT have a hidden SQL field
     # https://github.com/simonw/datasette/issues/1411
-    response = app_client.get("/fixtures/pragma_cache_size?_hide_sql=1")
-    soup = Soup(response.body, "html.parser")
+    response = await ds_client.get("/fixtures/pragma_cache_size?_hide_sql=1")
+    soup = Soup(response.content, "html.parser")
     hiddens = soup.find("form").select("input[type=hidden]")
     assert [
         ("_hide_sql", "1"),
@@ -636,10 +690,12 @@ def test_canned_query_show_hide_metadata_option(
             assert '<input type="hidden" ' not in html
 
 
-def test_binary_data_display_in_query(app_client):
-    response = app_client.get("/fixtures?sql=select+*+from+binary_data")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_binary_data_display_in_query(ds_client):
+    response = await ds_client.get("/fixtures?sql=select+*+from+binary_data")
+    assert response.status_code == 200
+    table = Soup(response.content, "html.parser").find("table")
     expected_tds = [
         [
             '<td class="col-data"><a class="blob-download" href="/fixtures.blob?sql=select+*+from+binary_data&amp;_blob_column=data&amp;_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d">&lt;Binary:\xa07\xa0bytes&gt;</a></td>'
@@ -654,6 +710,8 @@ def test_binary_data_display_in_query(app_client):
     ]
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_filename",
     [
@@ -664,10 +722,10 @@ def test_binary_data_display_in_query(app_client):
         ),
     ],
 )
-def test_blob_download(app_client, path, expected_filename):
-    response = app_client.get(path)
-    assert response.status == 200
-    assert response.body == b"\x15\x1c\x02\xc7\xad\x05\xfe"
+async def test_blob_download(ds_client, path, expected_filename):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    assert response.content == b"\x15\x1c\x02\xc7\xad\x05\xfe"
     assert response.headers["x-content-type-options"] == "nosniff"
     assert (
         response.headers["content-disposition"]
@@ -676,6 +734,8 @@ def test_blob_download(app_client, path, expected_filename):
     assert response.headers["content-type"] == "application/binary"
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_message",
     [
@@ -687,19 +747,23 @@ def test_blob_download(app_client, path, expected_filename):
         ),
     ],
 )
-def test_blob_download_invalid_messages(app_client, path, expected_message):
-    response = app_client.get(path)
-    assert response.status == 400
+async def test_blob_download_invalid_messages(ds_client, path, expected_message):
+    response = await ds_client.get(path)
+    assert response.status_code == 400
     assert expected_message in response.text
 
 
-def test_metadata_json_html(app_client):
-    response = app_client.get("/-/metadata")
-    assert response.status == 200
-    pre = Soup(response.body, "html.parser").find("pre")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_metadata_json_html(ds_client):
+    response = await ds_client.get("/-/metadata")
+    assert response.status_code == 200
+    pre = Soup(response.content, "html.parser").find("pre")
     assert METADATA == json.loads(pre.text)
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     [
@@ -707,15 +771,17 @@ def test_metadata_json_html(app_client):
         "/fixtures/123_starts_with_digits",
     ],
 )
-def test_zero_results(app_client, path):
-    response = app_client.get(path)
+async def test_zero_results(ds_client, path):
+    response = await ds_client.get(path)
     soup = Soup(response.text, "html.parser")
     assert 0 == len(soup.select("table"))
     assert 1 == len(soup.select("p.zero-results"))
 
 
-def test_query_error(app_client):
-    response = app_client.get("/fixtures?sql=select+*+from+notatable")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_query_error(ds_client):
+    response = await ds_client.get("/fixtures?sql=select+*+from+notatable")
     html = response.text
     assert '<p class="message-error">no such table: notatable</p>' in html
     assert '<textarea id="sql-editor" name="sql" style="height: 3em' in html
@@ -726,13 +792,15 @@ def test_query_error(app_client):
 def test_config_template_debug_on():
     with make_app_client(settings={"template_debug": True}) as client:
         response = client.get("/fixtures/facetable?_context=1")
-        assert response.status == 200
+        assert response.status_code == 200
         assert response.text.startswith("<pre>{")
 
 
-def test_config_template_debug_off(app_client):
-    response = app_client.get("/fixtures/facetable?_context=1")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_config_template_debug_off(ds_client):
+    response = await ds_client.get("/fixtures/facetable?_context=1")
+    assert response.status_code == 200
     assert not response.text.startswith("<pre>{")
 
 
@@ -764,7 +832,7 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
     if use_prefix:
         path_to_get = "/prefix/" + path.lstrip("/")
     response = client.get(path_to_get)
-    soup = Soup(response.body, "html.parser")
+    soup = Soup(response.content, "html.parser")
     for form in soup.select("form"):
         assert form["action"].startswith("/prefix")
     for el in soup.findAll(["a", "link", "script"]):
@@ -804,7 +872,7 @@ def test_base_url_config(app_client_base_url_prefix, path, use_prefix):
 def test_base_url_affects_filter_redirects(app_client_base_url_prefix):
     path = "/fixtures/binary_data?_filter_column=rowid&_filter_op=exact&_filter_value=1&_sort=rowid"
     response = app_client_base_url_prefix.get(path)
-    assert response.status == 302
+    assert response.status_code == 302
     assert (
         response.headers["location"]
         == "/prefix/fixtures/binary_data?_sort=rowid&rowid__exact=1"
@@ -816,6 +884,8 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
     assert '<link rel="stylesheet" href="/prefix/static/extra-css-urls.css">' in html
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     [
@@ -836,9 +906,9 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
         ("/fixtures/magic_parameters", None),
     ],
 )
-def test_edit_sql_link_on_canned_queries(app_client, path, expected):
-    response = app_client.get(path)
-    assert response.status == 200
+async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
     expected_link = f'<a href="{expected}" class="canned-query-edit-sql">Edit SQL</a>'
     if expected:
         assert expected_link in response.text
@@ -861,6 +931,8 @@ def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
             assert "Edit SQL" not in response.text
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor_id,should_have_links,should_not_have_links",
     [
@@ -869,13 +941,13 @@ def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
         ("root", ["/-/permissions", "/-/allow-debug", "/-/metadata"], None),
     ],
 )
-def test_navigation_menu_links(
-    app_client, actor_id, should_have_links, should_not_have_links
+async def test_navigation_menu_links(
+    ds_client, actor_id, should_have_links, should_not_have_links
 ):
     cookies = {}
     if actor_id:
-        cookies = {"ds_actor": app_client.actor_cookie({"id": actor_id})}
-    html = app_client.get("/", cookies=cookies).text
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": actor_id})}
+    html = (await ds_client.get("/", cookies=cookies)).text
     soup = Soup(html, "html.parser")
     details = soup.find("nav").find("details")
     if not actor_id:
@@ -884,7 +956,7 @@ def test_navigation_menu_links(
         return
     # They are logged in: should show a menu
     assert details is not None
-    # And a rogout form
+    # And a logout form
     assert details.find("form") is not None
     if should_have_links:
         for link in should_have_links:
@@ -899,12 +971,16 @@ def test_navigation_menu_links(
             ), f"{link} found but should not have been in nav menu"
 
 
-def test_trace_correctly_escaped(app_client):
-    response = app_client.get("/fixtures?sql=select+'<h1>Hello'&_trace=1")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_trace_correctly_escaped(ds_client):
+    response = await ds_client.get("/fixtures?sql=select+'<h1>Hello'&_trace=1")
     assert "select '<h1>Hello" not in response.text
     assert "select &#39;&lt;h1&gt;Hello" in response.text
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -943,9 +1019,9 @@ def test_trace_correctly_escaped(app_client):
         ),
     ),
 )
-def test_alternate_url_json(app_client, path, expected):
-    response = app_client.get(path)
-    assert response.status == 200
+async def test_alternate_url_json(ds_client, path, expected):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
     link = response.headers["link"]
     assert link == '{}; rel="alternate"; type="application/json+datasette"'.format(
         expected
@@ -958,18 +1034,22 @@ def test_alternate_url_json(app_client, path, expected):
     )
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     ("/-/patterns", "/-/messages", "/-/allow-debug", "/fixtures.db"),
 )
-def test_no_alternate_url_json(app_client, path):
-    response = app_client.get(path)
+async def test_no_alternate_url_json(ds_client, path):
+    response = await ds_client.get(path)
     assert "link" not in response.headers
     assert (
         '<link rel="alternate" type="application/json+datasette"' not in response.text
     )
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -985,12 +1065,13 @@ def test_no_alternate_url_json(app_client, path):
         ("/foo/bar%2Fbaz?id=5", "/foo/bar~2Fbaz?id=5"),
     ),
 )
-def test_redirect_percent_encoding_to_tilde_encoding(app_client, path, expected):
-    response = app_client.get(path)
-    assert response.status == 302
+async def test_redirect_percent_encoding_to_tilde_encoding(ds_client, path, expected):
+    response = await ds_client.get(path)
+    assert response.status_code == 302
     assert response.headers["location"] == expected
 
 
+@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,metadata,expected_links",
@@ -1027,15 +1108,15 @@ def test_redirect_percent_encoding_to_tilde_encoding(app_client, path, expected)
     ),
 )
 async def test_breadcrumbs_respect_permissions(
-    app_client, path, metadata, expected_links
+    ds_client, path, metadata, expected_links
 ):
-    orig = app_client.ds._metadata_local
-    app_client.ds._metadata_local = metadata
+    orig = ds_client.ds._metadata_local
+    ds_client.ds._metadata_local = metadata
     try:
-        response = await app_client.ds.client.get(path)
+        response = await ds_client.ds.client.get(path)
         soup = Soup(response.text, "html.parser")
         breadcrumbs = soup.select("p.crumbs a")
         actual = [(a["href"], a.text) for a in breadcrumbs]
         assert actual == expected_links
     finally:
-        app_client.ds._metadata_local = orig
+        ds_client.ds._metadata_local = orig

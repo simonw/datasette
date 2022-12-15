@@ -33,8 +33,9 @@ jobs:
         pip freeze
     - name: Run tests
       run: |
-        pytest -n auto -m "not serial"
-        pytest -m "serial"
+        # pytest -n auto -m "not serial"
+        # pytest -m "serial"
+        pytest -n auto
     - name: Check if cog needs to be run
       run: |
         cog --check docs/*.rst

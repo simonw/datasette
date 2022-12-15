@@ -30,3 +30,11 @@ def inner_html(soup):
 def has_load_extension():
     conn = sqlite3.connect(":memory:")
     return hasattr(conn, "enable_load_extension")
+
+
+def cookie_was_deleted(response, cookie):
+    return any(
+        h
+        for h in response.headers.get_list("set-cookie")
+        if h.startswith(f'{cookie}="";')
+    )

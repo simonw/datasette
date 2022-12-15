@@ -135,7 +135,9 @@ def prepare_jinja2_environment(env, datasette):
 @hookimpl
 def startup(datasette):
     async def inner():
-        result = await datasette.get_database().execute("select 1 + 1")
+        # Run against _internal so tests that use the ds_client fixture
+        # (which has no databases yet on startup) do not fail:
+        result = await datasette.get_database("_internal").execute("select 1 + 1")
         datasette._startup_hook_calculation = result.first()[0]
 
     return inner

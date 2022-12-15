@@ -1,7 +1,9 @@
+import asyncio
 import httpx
 import os
 import pathlib
 import pytest
+import pytest_asyncio
 import re
 import subprocess
 import tempfile
@@ -21,6 +23,43 @@ UNDOCUMENTED_PERMISSIONS = {
     "this_is_denied_async",
     "no_match",
 }
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    return asyncio.get_event_loop()
+
+
+@pytest_asyncio.fixture(scope="session")
+async def ds_client():
+    from datasette.app import Datasette
+    from .fixtures import METADATA, PLUGINS_DIR
+
+    ds = Datasette(
+        memory=False,
+        metadata=METADATA,
+        plugins_dir=PLUGINS_DIR,
+        settings={
+            "default_page_size": 50,
+            "max_returned_rows": 100,
+            "sql_time_limit_ms": 200,
+            # Default is 3 but this results in "too many open files"
+            # errors when running the full test suite:
+            "num_sql_threads": 1,
+        },
+    )
+    from .fixtures import TABLES, TABLE_PARAMETERIZED_SQL
+
+    db = ds.add_memory_database("fixtures")
+
+    def prepare(conn):
+        conn.executescript(TABLES)
+        for sql, params in TABLE_PARAMETERIZED_SQL:
+            with conn:
+                conn.execute(sql, params)
+
+    await db.execute_write_fn(prepare)
+    return ds.client
 
 
 def pytest_report_header(config):

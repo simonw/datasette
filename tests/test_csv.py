@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup as Soup
+import pytest
 from .fixtures import (  # noqa
     app_client,
     app_client_csv_max_mb_one,
@@ -53,9 +54,11 @@ pk,foreign_key_with_label,foreign_key_with_label_label,foreign_key_with_blank_la
 )
 
 
-def test_table_csv(app_client):
-    response = app_client.get("/fixtures/simple_primary_key.csv?_oh=1")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_csv(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key.csv?_oh=1")
+    assert response.status_code == 200
     assert not response.headers.get("Access-Control-Allow-Origin")
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_TABLE_CSV
@@ -67,31 +70,39 @@ def test_table_csv_cors_headers(app_client_with_cors):
     assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
-def test_table_csv_no_header(app_client):
-    response = app_client.get("/fixtures/simple_primary_key.csv?_header=off")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_csv_no_header(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key.csv?_header=off")
+    assert response.status_code == 200
     assert not response.headers.get("Access-Control-Allow-Origin")
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_TABLE_CSV.split("\r\n", 1)[1]
 
 
-def test_table_csv_with_labels(app_client):
-    response = app_client.get("/fixtures/facetable.csv?_labels=1")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_csv_with_labels(ds_client):
+    response = await ds_client.get("/fixtures/facetable.csv?_labels=1")
+    assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_TABLE_WITH_LABELS_CSV
 
 
-def test_table_csv_with_nullable_labels(app_client):
-    response = app_client.get("/fixtures/foreign_key_references.csv?_labels=1")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_csv_with_nullable_labels(ds_client):
+    response = await ds_client.get("/fixtures/foreign_key_references.csv?_labels=1")
+    assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV
 
 
-def test_table_csv_blob_columns(app_client):
-    response = app_client.get("/fixtures/binary_data.csv")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_csv_blob_columns(ds_client):
+    response = await ds_client.get("/fixtures/binary_data.csv")
+    assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == (
         "rowid,data\r\n"
@@ -101,9 +112,13 @@ def test_table_csv_blob_columns(app_client):
     )
 
 
-def test_custom_sql_csv_blob_columns(app_client):
-    response = app_client.get("/fixtures.csv?sql=select+rowid,+data+from+binary_data")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_custom_sql_csv_blob_columns(ds_client):
+    response = await ds_client.get(
+        "/fixtures.csv?sql=select+rowid,+data+from+binary_data"
+    )
+    assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == (
         "rowid,data\r\n"
@@ -113,18 +128,22 @@ def test_custom_sql_csv_blob_columns(app_client):
     )
 
 
-def test_custom_sql_csv(app_client):
-    response = app_client.get(
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_custom_sql_csv(ds_client):
+    response = await ds_client.get(
         "/fixtures.csv?sql=select+content+from+simple_primary_key+limit+2"
     )
-    assert response.status == 200
+    assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_CUSTOM_CSV
 
 
-def test_table_csv_download(app_client):
-    response = app_client.get("/fixtures/simple_primary_key.csv?_dl=1")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_csv_download(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key.csv?_dl=1")
+    assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
     assert (
         response.headers["content-disposition"]
@@ -132,11 +151,13 @@ def test_table_csv_download(app_client):
     )
 
 
-def test_csv_with_non_ascii_characters(app_client):
-    response = app_client.get(
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_csv_with_non_ascii_characters(ds_client):
+    response = await ds_client.get(
         "/fixtures.csv?sql=select%0D%0A++%27%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC%27+as+text%2C%0D%0A++1+as+number%0D%0Aunion%0D%0Aselect%0D%0A++%27bob%27+as+text%2C%0D%0A++2+as+number%0D%0Aorder+by%0D%0A++number"
     )
-    assert response.status == 200
+    assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n"
 
@@ -155,13 +176,19 @@ def test_max_csv_mb(app_client_csv_max_mb_one):
     assert last_line.startswith(b"CSV contains more than")
 
 
-def test_table_csv_stream(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_csv_stream(ds_client):
     # Without _stream should return header + 100 rows:
-    response = app_client.get("/fixtures/compound_three_primary_keys.csv?_size=max")
-    assert len([b for b in response.body.split(b"\r\n") if b]) == 101
+    response = await ds_client.get(
+        "/fixtures/compound_three_primary_keys.csv?_size=max"
+    )
+    assert len([b for b in response.content.split(b"\r\n") if b]) == 101
     # With _stream=1 should return header + 1001 rows
-    response = app_client.get("/fixtures/compound_three_primary_keys.csv?_stream=1")
-    assert len([b for b in response.body.split(b"\r\n") if b]) == 1002
+    response = await ds_client.get(
+        "/fixtures/compound_three_primary_keys.csv?_stream=1"
+    )
+    assert len([b for b in response.content.split(b"\r\n") if b]) == 1002
 
 
 def test_csv_trace(app_client_with_trace):

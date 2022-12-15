@@ -73,16 +73,18 @@ def canned_write_immutable_client():
         yield client
 
 
-def test_canned_query_with_named_parameter(app_client):
-    response = app_client.get("/fixtures/neighborhood_search.json?text=town")
-    assert [
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_canned_query_with_named_parameter(ds_client):
+    response = await ds_client.get("/fixtures/neighborhood_search.json?text=town")
+    assert response.json()["rows"] == [
         ["Corktown", "Detroit", "MI"],
         ["Downtown", "Los Angeles", "CA"],
         ["Downtown", "Detroit", "MI"],
         ["Greektown", "Detroit", "MI"],
         ["Koreatown", "Los Angeles", "CA"],
         ["Mexicantown", "Detroit", "MI"],
-    ] == response.json["rows"]
+    ]
 
 
 def test_insert(canned_write_client):

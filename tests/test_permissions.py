@@ -362,7 +362,6 @@ def test_permissions_checked(app_client, path, permissions):
     assert_permissions_checked(app_client.ds, permissions)
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_permissions_debug(ds_client):
     ds_client.ds._permission_checks.clear()
@@ -395,7 +394,6 @@ async def test_permissions_debug(ds_client):
     ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor,allow,expected_fragment",

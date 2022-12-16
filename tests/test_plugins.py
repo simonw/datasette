@@ -42,7 +42,6 @@ def test_plugin_hooks_have_tests(plugin_hook):
     assert ok, f"Plugin hook is missing tests: {plugin_hook}"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
     response = await ds_client.get(
@@ -51,7 +50,6 @@ async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
     assert pytest.approx(328.0839) == response.json()["rows"][0][0]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_plugin_prepare_connection_arguments(ds_client):
     response = await ds_client.get(
@@ -62,7 +60,6 @@ async def test_hook_plugin_prepare_connection_arguments(ds_client):
     ] == response.json()
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_decoded_object",
@@ -127,7 +124,6 @@ async def test_hook_extra_css_urls(ds_client, path, expected_decoded_object):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_extra_js_urls(ds_client):
     response = await ds_client.get("/")
@@ -147,7 +143,6 @@ async def test_hook_extra_js_urls(ds_client):
         assert any(s == attrs for s in script_attrs), "Expected: {}".format(attrs)
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_plugins_with_duplicate_js_urls(ds_client):
     # If two plugins both require jQuery, jQuery should be loaded only once
@@ -175,7 +170,6 @@ async def test_plugins_with_duplicate_js_urls(ds_client):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_render_cell_link_from_json(ds_client):
     sql = """
@@ -191,7 +185,6 @@ async def test_hook_render_cell_link_from_json(ds_client):
     assert a.text == "Example"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_render_cell_demo(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key?id=4")
@@ -206,7 +199,6 @@ async def test_hook_render_cell_demo(ds_client):
     }
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path", ("/fixtures?sql=select+'RENDER_CELL_ASYNC'", "/fixtures/simple_primary_key")
@@ -216,7 +208,6 @@ async def test_hook_render_cell_async(ds_client, path):
     assert b"RENDER_CELL_ASYNC_RESULT" in response.content
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_plugin_config(ds_client):
     assert {"depth": "table"} == ds_client.ds.plugin_config(
@@ -235,7 +226,6 @@ async def test_plugin_config(ds_client):
     assert None is ds_client.ds.plugin_config("unknown-plugin")
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_plugin_config_env(ds_client):
     os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
@@ -246,7 +236,6 @@ async def test_plugin_config_env(ds_client):
     del os.environ["FOO_ENV"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_plugin_config_env_from_list(ds_client):
     os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
@@ -261,7 +250,6 @@ async def test_plugin_config_env_from_list(ds_client):
     del os.environ["FOO_ENV"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_plugin_config_file(ds_client):
     with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:
@@ -334,7 +322,6 @@ def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
     assert expected_extra_body_script == actual_data
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_asgi_wrapper(ds_client):
     response = await ds_client.get("/fixtures")
@@ -446,7 +433,6 @@ def test_view_names(view_names_client, path, view_name):
     assert f"view_name:{view_name}" == response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_output_renderer_no_parameters(ds_client):
     response = await ds_client.get("/fixtures/facetable.testnone")
@@ -454,7 +440,6 @@ async def test_hook_register_output_renderer_no_parameters(ds_client):
     assert b"Hello" == response.content
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_output_renderer_all_parameters(ds_client):
     response = await ds_client.get("/fixtures/facetable.testall")
@@ -507,7 +492,6 @@ async def test_hook_register_output_renderer_all_parameters(ds_client):
     assert query_response.json()["query_name"] == "pragma_cache_size"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_output_renderer_custom_status_code(ds_client):
     response = await ds_client.get(
@@ -516,7 +500,6 @@ async def test_hook_register_output_renderer_custom_status_code(ds_client):
     assert response.status_code == 202
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_output_renderer_custom_content_type(ds_client):
     response = await ds_client.get(
@@ -525,7 +508,6 @@ async def test_hook_register_output_renderer_custom_content_type(ds_client):
     assert "text/blah" == response.headers["content-type"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_output_renderer_custom_headers(ds_client):
     response = await ds_client.get(
@@ -535,7 +517,6 @@ async def test_hook_register_output_renderer_custom_headers(ds_client):
     assert "2" == response.headers["x-gosh"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_output_renderer_returning_response(ds_client):
     response = await ds_client.get("/fixtures/facetable.testresponse")
@@ -543,7 +524,6 @@ async def test_hook_register_output_renderer_returning_response(ds_client):
     assert response.json() == {"this_is": "json"}
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_output_renderer_returning_broken_value(ds_client):
     response = await ds_client.get("/fixtures/facetable.testresponse?_broken=1")
@@ -551,7 +531,6 @@ async def test_hook_register_output_renderer_returning_broken_value(ds_client):
     assert "this should break should be dict or Response" in response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_output_renderer_can_render(ds_client):
     response = await ds_client.get("/fixtures/facetable?_no_can_render=1")
@@ -589,7 +568,6 @@ async def test_hook_register_output_renderer_can_render(ds_client):
     }.items() <= ds_client.ds._can_render_saw.items()
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_prepare_jinja2_environment(ds_client):
     ds_client.ds._HELLO = "HI"
@@ -611,7 +589,6 @@ def test_hook_publish_subcommand():
     assert ["cloudrun", "heroku"] == cli.publish.list_commands({})
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_facet_classes(ds_client):
     response = await ds_client.get(
@@ -653,7 +630,6 @@ async def test_hook_register_facet_classes(ds_client):
     ] == response.json()["suggested_facets"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_actor_from_request(ds_client):
     await ds_client.get("/")
@@ -664,7 +640,6 @@ async def test_hook_actor_from_request(ds_client):
     assert ds_client.ds._last_request.scope["actor"] == {"id": "bot"}
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_actor_from_request_async(ds_client):
     await ds_client.get("/")
@@ -675,7 +650,6 @@ async def test_hook_actor_from_request_async(ds_client):
     assert ds_client.ds._last_request.scope["actor"] == {"id": "bot2", "1+1": 2}
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_existing_scope_actor_respected(ds_client):
     await ds_client.get("/?_actor_in_scope=1")
@@ -718,7 +692,6 @@ async def test_hook_permission_allowed(action, expected):
         pm.unregister(name="undo_register_extras")
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_actor_json(ds_client):
     assert (await ds_client.get("/-/actor.json")).json() == {"actor": None}
@@ -727,7 +700,6 @@ async def test_actor_json(ds_client):
     }
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,body",
@@ -799,7 +771,6 @@ def test_hook_register_routes_csrftoken(restore_working_directory, tmpdir_factor
         assert f"CSRFTOKEN: {expected_token}" == response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_routes_asgi(ds_client):
     response = await ds_client.get("/three/")
@@ -807,7 +778,6 @@ async def test_hook_register_routes_asgi(ds_client):
     assert "1" == response.headers["x-three"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_register_routes_add_message(ds_client):
     response = await ds_client.get("/add-message/")
@@ -827,7 +797,6 @@ def test_hook_register_routes_render_message(restore_working_directory, tmpdir_f
         assert "Hello from messages" in response2.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_startup(ds_client):
     await ds_client.ds.invoke_startup()
@@ -835,7 +804,6 @@ async def test_hook_startup(ds_client):
     assert 2 == ds_client.ds._startup_hook_calculation
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_canned_queries(ds_client):
     queries = (await ds_client.get("/fixtures.json")).json()["queries"]
@@ -852,21 +820,18 @@ async def test_hook_canned_queries(ds_client):
     } == queries_by_name["from_hook"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_canned_queries_non_async(ds_client):
     response = await ds_client.get("/fixtures/from_hook.json?_shape=array")
     assert [{"1": 1, "actor_id": "null"}] == response.json()
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_canned_queries_async(ds_client):
     response = await ds_client.get("/fixtures/from_async_hook.json?_shape=array")
     assert [{"2": 2}] == response.json()
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_canned_queries_actor(ds_client):
     assert (
@@ -923,7 +888,6 @@ def test_hook_forbidden(restore_working_directory):
         )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_handle_exception(ds_client):
     await ds_client.get("/trigger-error?x=123")
@@ -933,7 +897,6 @@ async def test_hook_handle_exception(ds_client):
     assert isinstance(exception, ZeroDivisionError)
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize("param", ("_custom_error", "_custom_error_async"))
 async def test_hook_handle_exception_custom_response(ds_client, param):
@@ -941,7 +904,6 @@ async def test_hook_handle_exception_custom_response(ds_client, param):
     assert response.text == param
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_menu_links(ds_client):
     def get_menu_links(html):
@@ -960,7 +922,6 @@ async def test_hook_menu_links(ds_client):
     ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize("table_or_view", ["facetable", "simple_view"])
 async def test_hook_table_actions(ds_client, table_or_view):
@@ -984,7 +945,6 @@ async def test_hook_table_actions(ds_client, table_or_view):
     ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_database_actions(ds_client):
     def get_table_actions_links(html):
@@ -1028,7 +988,6 @@ def test_hook_skip_csrf(app_client):
     assert second_missing_csrf_response.status_code == 403
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_get_metadata(ds_client):
     ds_client.ds._metadata_local = {
@@ -1110,7 +1069,6 @@ def test_hook_register_commands():
     importlib.reload(cli)
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_hook_filters_from_request(ds_client):
     class ReturnNothingPlugin:

@@ -485,6 +485,7 @@ def test_database_download_for_immutable():
 
 
 def test_database_download_disallowed_for_mutable(app_client):
+    # Use app_client because we need a file database, not in-memory
     response = app_client.get("/fixtures")
     soup = Soup(response.content, "html.parser")
     assert len(soup.findAll("a", {"href": re.compile(r"\.db$")})) == 0

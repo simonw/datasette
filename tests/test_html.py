@@ -48,14 +48,12 @@ def test_homepage(app_client_two_attached_databases):
     ] == table_links
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_http_head(ds_client):
     response = await ds_client.head("/")
     assert response.status_code == 200
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_homepage_options(ds_client):
     response = await ds_client.options("/")
@@ -63,7 +61,6 @@ async def test_homepage_options(ds_client):
     assert response.text == "ok"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_favicon(ds_client):
     response = await ds_client.get("/favicon.ico")
@@ -73,7 +70,6 @@ async def test_favicon(ds_client):
     assert response.headers["content-type"] == "image/png"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_static(ds_client):
     response = await ds_client.get("/-/static/app2.css")
@@ -108,7 +104,6 @@ def test_not_allowed_methods():
             assert response.status_code == 405
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures")
@@ -155,7 +150,6 @@ async def test_database_page(ds_client):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_invalid_custom_sql(ds_client):
     response = await ds_client.get("/fixtures?sql=.schema")
@@ -163,7 +157,6 @@ async def test_invalid_custom_sql(ds_client):
     assert "Statement must be a SELECT" in response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_disallowed_custom_sql_pragma(ds_client):
     response = await ds_client.get(
@@ -223,7 +216,6 @@ def test_query_page_truncates():
         ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_classes",
@@ -256,7 +248,6 @@ async def test_css_classes_on_body(ds_client, path, expected_classes):
     assert classes == expected_classes
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_considered",
@@ -283,7 +274,6 @@ async def test_templates_considered(ds_client, path, expected_considered):
     assert f"<!-- Templates considered: {expected_considered} -->" in response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_row_json_export_link(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
@@ -291,7 +281,6 @@ async def test_row_json_export_link(ds_client):
     assert '<a href="/fixtures/simple_primary_key/1.json">json</a>' in response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_query_json_csv_export_links(ds_client):
     response = await ds_client.get("/fixtures?sql=select+1")
@@ -300,7 +289,6 @@ async def test_query_json_csv_export_links(ds_client):
     assert '<a href="/fixtures.csv?sql=select+1&amp;_size=max">CSV</a>' in response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_row_html_simple_primary_key(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
@@ -315,7 +303,6 @@ async def test_row_html_simple_primary_key(ds_client):
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_row_html_no_primary_key(ds_client):
     response = await ds_client.get("/fixtures/no_primary_key/1")
@@ -338,7 +325,6 @@ async def test_row_html_no_primary_key(ds_client):
     ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_text,expected_link",
@@ -370,7 +356,6 @@ async def test_row_links_from_other_tables(
     assert link == expected_link
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
@@ -409,7 +394,6 @@ async def test_row_html_compound_primary_key(ds_client, path, expected):
     ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_index_metadata(ds_client):
     response = await ds_client.get("/")
@@ -423,7 +407,6 @@ async def test_index_metadata(ds_client):
     assert_footer_links(soup)
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_database_metadata(ds_client):
     response = await ds_client.get("/fixtures")
@@ -439,7 +422,6 @@ async def test_database_metadata(ds_client):
     assert_footer_links(soup)
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_database_metadata_with_custom_sql(ds_client):
     response = await ds_client.get("/fixtures?sql=select+*+from+simple_primary_key")
@@ -523,7 +505,6 @@ def test_allow_sql_off():
         assert b"View and edit SQL" not in response.content
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/404", "/fixtures/404"])
 async def test_404(ds_client, path):
@@ -535,7 +516,6 @@ async def test_404(ds_client, path):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_redirect",
@@ -547,7 +527,6 @@ async def test_404_trailing_slash_redirect(ds_client, path, expected_redirect):
     assert response.headers["Location"] == expected_redirect
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_404_content_type(ds_client):
     response = await ds_client.get("/404")
@@ -555,7 +534,6 @@ async def test_404_content_type(ds_client):
     assert "text/html; charset=utf-8" == response.headers["content-type"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_canned_query_default_title(ds_client):
     response = await ds_client.get("/fixtures/magic_parameters")
@@ -564,7 +542,6 @@ async def test_canned_query_default_title(ds_client):
     assert "fixtures: magic_parameters" == soup.find("h1").text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_canned_query_with_custom_metadata(ds_client):
     response = await ds_client.get("/fixtures/neighborhood_search?text=town")
@@ -583,7 +560,6 @@ async def test_canned_query_with_custom_metadata(ds_client):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_urlify_custom_queries(ds_client):
     path = "/fixtures?" + urllib.parse.urlencode(
@@ -602,7 +578,6 @@ async def test_urlify_custom_queries(ds_client):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_show_hide_sql_query(ds_client):
     path = "/fixtures?" + urllib.parse.urlencode(
@@ -629,7 +604,6 @@ async def test_show_hide_sql_query(ds_client):
     ] == [(hidden["name"], hidden["value"]) for hidden in hiddens]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
     # For a canned query the show/hide should NOT have a hidden SQL field
@@ -691,7 +665,6 @@ def test_canned_query_show_hide_metadata_option(
             assert '<input type="hidden" ' not in html
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_binary_data_display_in_query(ds_client):
     response = await ds_client.get("/fixtures?sql=select+*+from+binary_data")
@@ -711,7 +684,6 @@ async def test_binary_data_display_in_query(ds_client):
     ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_filename",
@@ -735,7 +707,6 @@ async def test_blob_download(ds_client, path, expected_filename):
     assert response.headers["content-type"] == "application/binary"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_message",
@@ -754,7 +725,6 @@ async def test_blob_download_invalid_messages(ds_client, path, expected_message)
     assert expected_message in response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_metadata_json_html(ds_client):
     response = await ds_client.get("/-/metadata")
@@ -763,7 +733,6 @@ async def test_metadata_json_html(ds_client):
     assert METADATA == json.loads(pre.text)
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
@@ -779,7 +748,6 @@ async def test_zero_results(ds_client, path):
     assert 1 == len(soup.select("p.zero-results"))
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_query_error(ds_client):
     response = await ds_client.get("/fixtures?sql=select+*+from+notatable")
@@ -797,7 +765,6 @@ def test_config_template_debug_on():
         assert response.text.startswith("<pre>{")
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_config_template_debug_off(ds_client):
     response = await ds_client.get("/fixtures/facetable?_context=1")
@@ -885,7 +852,6 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
     assert '<link rel="stylesheet" href="/prefix/static/extra-css-urls.css">' in html
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
@@ -932,7 +898,6 @@ def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
             assert "Edit SQL" not in response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor_id,should_have_links,should_not_have_links",
@@ -972,7 +937,6 @@ async def test_navigation_menu_links(
             ), f"{link} found but should not have been in nav menu"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_trace_correctly_escaped(ds_client):
     response = await ds_client.get("/fixtures?sql=select+'<h1>Hello'&_trace=1")
@@ -980,7 +944,6 @@ async def test_trace_correctly_escaped(ds_client):
     assert "select &#39;&lt;h1&gt;Hello" in response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
@@ -1035,7 +998,6 @@ async def test_alternate_url_json(ds_client, path, expected):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
@@ -1049,7 +1011,6 @@ async def test_no_alternate_url_json(ds_client, path):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
@@ -1072,7 +1033,6 @@ async def test_redirect_percent_encoding_to_tilde_encoding(ds_client, path, expe
     assert response.headers["location"] == expected
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,metadata,expected_links",

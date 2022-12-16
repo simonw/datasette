@@ -23,7 +23,6 @@ import sys
 import urllib
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_homepage(ds_client):
     response = await ds_client.get("/.json")
@@ -43,7 +42,6 @@ async def test_homepage(ds_client):
     assert d["views_count"] == 4
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_homepage_sort_by_relationships(ds_client):
     response = await ds_client.get("/.json?_sort=relationships")
@@ -60,7 +58,6 @@ async def test_homepage_sort_by_relationships(ds_client):
     ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures.json")
@@ -640,7 +637,6 @@ def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
     assert response.status == 200
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_custom_sql(ds_client):
     response = await ds_client.get(
@@ -682,7 +678,6 @@ def test_sql_time_limit(app_client_shorter_time_limit):
     }
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_custom_sql_time_limit(ds_client):
     response = await ds_client.get("/fixtures.json?sql=select+sleep(0.01)")
@@ -692,7 +687,6 @@ async def test_custom_sql_time_limit(ds_client):
     assert response.json()["title"] == "SQL Interrupted"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_invalid_custom_sql(ds_client):
     response = await ds_client.get("/fixtures.json?sql=.schema")
@@ -701,7 +695,6 @@ async def test_invalid_custom_sql(ds_client):
     assert "Statement must be a SELECT" == response.json()["error"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_row(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1.json?_shape=objects")
@@ -709,7 +702,6 @@ async def test_row(ds_client):
     assert response.json()["rows"] == [{"id": "1", "content": "hello"}]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_row_strange_table_name(ds_client):
     response = await ds_client.get(
@@ -719,7 +711,6 @@ async def test_row_strange_table_name(ds_client):
     assert response.json()["rows"] == [{"pk": "3", "content": "hey"}]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_row_foreign_key_tables(ds_client):
     response = await ds_client.get(
@@ -781,14 +772,12 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
     assert False == fixtures_database["is_memory"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_metadata_json(ds_client):
     response = await ds_client.get("/-/metadata.json")
     assert response.json() == METADATA
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_threads_json(ds_client):
     response = await ds_client.get("/-/threads.json")
@@ -798,7 +787,6 @@ async def test_threads_json(ds_client):
     assert set(response.json().keys()) == expected_keys
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_plugins_json(ds_client):
     response = await ds_client.get("/-/plugins.json")
@@ -810,7 +798,6 @@ async def test_plugins_json(ds_client):
     assert names.issuperset(DEFAULT_PLUGINS)
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_versions_json(ds_client):
     response = await ds_client.get("/-/versions.json")
@@ -828,7 +815,6 @@ async def test_versions_json(ds_client):
     assert "compile_options" in data["sqlite"]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_settings_json(ds_client):
     response = await ds_client.get("/-/settings.json")
@@ -858,7 +844,6 @@ async def test_settings_json(ds_client):
     }
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_redirect",
@@ -878,7 +863,6 @@ test_json_columns_default_expected = [
 ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "extra_args,expected",
@@ -1000,7 +984,6 @@ def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
     assert response.json["filtered_table_rows_count"] == 100
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_http_options_request(ds_client):
     response = await ds_client.options("/fixtures")

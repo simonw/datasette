@@ -73,7 +73,6 @@ def canned_write_immutable_client():
         yield client
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_canned_query_with_named_parameter(ds_client):
     response = await ds_client.get("/fixtures/neighborhood_search.json?text=town")

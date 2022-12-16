@@ -2,7 +2,6 @@ from .utils import cookie_was_deleted
 import pytest
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "qs,expected",
@@ -19,7 +18,6 @@ async def test_add_message_sets_cookie(ds_client, qs, expected):
     assert expected == decoded
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_messages_are_displayed_and_cleared(ds_client):
     # First set the message cookie

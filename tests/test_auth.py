@@ -8,7 +8,6 @@ import pytest
 import time
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_auth_token(ds_client):
     """The /-/auth-token endpoint sets the correct cookie"""
@@ -25,7 +24,6 @@ async def test_auth_token(ds_client):
     assert (await ds_client.get(path)).status_code == 403
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_actor_cookie(ds_client):
     """A valid actor cookie sets request.scope['actor']"""
@@ -34,7 +32,6 @@ async def test_actor_cookie(ds_client):
     assert ds_client.ds._last_request.scope["actor"] == {"id": "test"}
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_actor_cookie_invalid(ds_client):
     cookie = ds_client.actor_cookie({"id": "test"})
@@ -47,7 +44,6 @@ async def test_actor_cookie_invalid(ds_client):
     assert ds_client.ds._last_request.scope["actor"] is None
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "offset,expected",
@@ -97,7 +93,6 @@ def test_logout(app_client):
     assert [["You are now logged out", 2]] == messages
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])
 async def test_logout_button_in_navigation(ds_client, path):
@@ -113,7 +108,6 @@ async def test_logout_button_in_navigation(ds_client, path):
         assert fragment not in anon_response.text
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize("path", ["/", "/fixtures", "/fixtures/facetable"])
 async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, path):
@@ -212,7 +206,6 @@ def test_auth_create_token(
         assert response3.json["actor"]["id"] == "test"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_auth_create_token_not_allowed_for_tokens(ds_client):
     ds_tok = ds_client.ds.sign({"a": "test", "token": "dstok"}, "token")
@@ -223,7 +216,6 @@ async def test_auth_create_token_not_allowed_for_tokens(ds_client):
     assert response.status_code == 403
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(ds_client):
     ds_client.ds._settings["allow_signed_tokens"] = False
@@ -237,7 +229,6 @@ async def test_auth_create_token_not_allowed_if_allow_signed_tokens_off(ds_clien
         ds_client.ds._settings["allow_signed_tokens"] = True
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "scenario,should_work",

@@ -8,7 +8,6 @@ import json
 import pytest
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_column_facet_suggest(ds_client):
     facet = ColumnFacet(
@@ -37,7 +36,6 @@ async def test_column_facet_suggest(ds_client):
     ] == suggestions
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_column_facet_suggest_skip_if_already_selected(ds_client):
     facet = ColumnFacet(
@@ -76,7 +74,6 @@ async def test_column_facet_suggest_skip_if_already_selected(ds_client):
     ] == suggestions
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_column_facet_suggest_skip_if_enabled_by_metadata(ds_client):
     facet = ColumnFacet(
@@ -99,7 +96,6 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(ds_client):
     ] == suggestions
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_column_facet_results(ds_client):
     facet = ColumnFacet(
@@ -152,7 +148,6 @@ async def test_column_facet_results(ds_client):
     ] == buckets
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_column_facet_results_column_starts_with_underscore(ds_client):
     facet = ColumnFacet(
@@ -275,7 +270,6 @@ async def test_column_facet_results_column_starts_with_underscore(ds_client):
     ]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_column_facet_from_metadata_cannot_be_hidden(ds_client):
     facet = ColumnFacet(
@@ -329,7 +323,6 @@ async def test_column_facet_from_metadata_cannot_be_hidden(ds_client):
     ] == buckets
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_suggest(ds_client):
@@ -350,7 +343,6 @@ async def test_array_facet_suggest(ds_client):
     ] == suggestions
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_suggest_not_if_all_empty_arrays(ds_client):
@@ -365,7 +357,6 @@ async def test_array_facet_suggest_not_if_all_empty_arrays(ds_client):
     assert [] == suggestions
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_results(ds_client):
@@ -412,7 +403,6 @@ async def test_array_facet_results(ds_client):
     ] == buckets
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 async def test_array_facet_handle_duplicate_tags():
@@ -468,7 +458,6 @@ async def test_array_facet_handle_duplicate_tags():
     }
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_date_facet_results(ds_client):
     facet = DateFacet(
@@ -634,8 +623,6 @@ def test_other_types_of_facet_in_metadata():
             assert fragment in response.text
 
 
-@pytest.mark.ds_client
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_conflicting_facet_names_json(ds_client):
     response = await ds_client.get(

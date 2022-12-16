@@ -1,7 +1,6 @@
 import pytest
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_internal_only_available_to_root(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
@@ -11,7 +10,6 @@ async def test_internal_only_available_to_root(ds_client):
     ).status_code == 200
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_internal_databases(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
@@ -25,7 +23,6 @@ async def test_internal_databases(ds_client):
     assert databases[1]["database_name"] == "fixtures"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_internal_tables(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
@@ -39,7 +36,6 @@ async def test_internal_tables(ds_client):
     assert set(table.keys()) == {"rootpage", "table_name", "database_name", "sql"}
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_internal_indexes(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
@@ -61,7 +57,6 @@ async def test_internal_indexes(ds_client):
     }
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_internal_foreign_keys(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})

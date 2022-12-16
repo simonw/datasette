@@ -77,7 +77,6 @@ def test_build_where(args, expected_where, expected_params):
     assert {f"p{i}": param for i, param in enumerate(expected_params)} == actual_params
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_through_filters_from_request(ds_client):
     request = Request.fake(
@@ -101,7 +100,6 @@ async def test_through_filters_from_request(ds_client):
     assert filter_args.extra_context == {}
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_through_filters_from_request(ds_client):
     request = Request.fake(
@@ -125,7 +123,6 @@ async def test_through_filters_from_request(ds_client):
     assert filter_args.extra_context == {}
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_where_filters_from_request(ds_client):
     await ds_client.ds.invoke_startup()
@@ -145,7 +142,6 @@ async def test_where_filters_from_request(ds_client):
     }
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_search_filters_from_request(ds_client):
     request = Request.fake("/?_search=bobcat")

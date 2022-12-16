@@ -54,7 +54,6 @@ pk,foreign_key_with_label,foreign_key_with_label_label,foreign_key_with_blank_la
 )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_table_csv(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.csv?_oh=1")
@@ -70,7 +69,6 @@ def test_table_csv_cors_headers(app_client_with_cors):
     assert response.headers["Access-Control-Allow-Origin"] == "*"
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_table_csv_no_header(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.csv?_header=off")
@@ -80,7 +78,6 @@ async def test_table_csv_no_header(ds_client):
     assert response.text == EXPECTED_TABLE_CSV.split("\r\n", 1)[1]
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_table_csv_with_labels(ds_client):
     response = await ds_client.get("/fixtures/facetable.csv?_labels=1")
@@ -89,7 +86,6 @@ async def test_table_csv_with_labels(ds_client):
     assert response.text == EXPECTED_TABLE_WITH_LABELS_CSV
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_table_csv_with_nullable_labels(ds_client):
     response = await ds_client.get("/fixtures/foreign_key_references.csv?_labels=1")
@@ -98,7 +94,6 @@ async def test_table_csv_with_nullable_labels(ds_client):
     assert response.text == EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_table_csv_blob_columns(ds_client):
     response = await ds_client.get("/fixtures/binary_data.csv")
@@ -112,7 +107,6 @@ async def test_table_csv_blob_columns(ds_client):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_custom_sql_csv_blob_columns(ds_client):
     response = await ds_client.get(
@@ -128,7 +122,6 @@ async def test_custom_sql_csv_blob_columns(ds_client):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_custom_sql_csv(ds_client):
     response = await ds_client.get(
@@ -139,7 +132,6 @@ async def test_custom_sql_csv(ds_client):
     assert response.text == EXPECTED_CUSTOM_CSV
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_table_csv_download(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.csv?_dl=1")
@@ -151,7 +143,6 @@ async def test_table_csv_download(ds_client):
     )
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_csv_with_non_ascii_characters(ds_client):
     response = await ds_client.get(
@@ -176,7 +167,6 @@ def test_max_csv_mb(app_client_csv_max_mb_one):
     assert last_line.startswith(b"CSV contains more than")
 
 
-@pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_table_csv_stream(ds_client):
     # Without _stream should return header + 100 rows:

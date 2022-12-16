@@ -1010,6 +1010,7 @@ async def test_http_options_request(ds_client):
 
 @pytest.mark.asyncio
 async def test_db_path(app_client):
+    # Needs app_client because needs file based database
     db = app_client.ds.get_database()
     path = pathlib.Path(db.path)
 

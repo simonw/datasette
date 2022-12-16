@@ -4,13 +4,12 @@ Tests for the datasette.app.Datasette class
 from datasette import Forbidden
 from datasette.app import Datasette, Database
 from itsdangerous import BadSignature
-from .fixtures import app_client
 import pytest
 
 
 @pytest.fixture
-def datasette(app_client):
-    return app_client.ds
+def datasette(ds_client):
+    return ds_client.ds
 
 
 def test_get_database(datasette):

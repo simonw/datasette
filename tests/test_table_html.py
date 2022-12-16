@@ -10,6 +10,8 @@ import urllib.parse
 from .utils import assert_footer_links, inner_html
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_definition_sql",
     [
@@ -37,9 +39,9 @@ CREATE INDEX idx_compound_three_primary_keys_content ON compound_three_primary_k
         ),
     ],
 )
-def test_table_definition_sql(path, expected_definition_sql, app_client):
-    response = app_client.get(path)
-    pre = Soup(response.body, "html.parser").select_one("pre.wrapped-sql")
+async def test_table_definition_sql(path, expected_definition_sql, ds_client):
+    response = await ds_client.get(path)
+    pre = Soup(response.text, "html.parser").select_one("pre.wrapped-sql")
     assert expected_definition_sql == pre.string
 
 
@@ -82,20 +84,22 @@ def test_table_cell_truncation():
         ]
 
 
-def test_add_filter_redirects(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_add_filter_redirects(ds_client):
     filter_args = urllib.parse.urlencode(
         {"_filter_column": "content", "_filter_op": "startswith", "_filter_value": "x"}
     )
     path_base = "/fixtures/simple_primary_key"
     path = path_base + "?" + filter_args
-    response = app_client.get(path)
-    assert response.status == 302
+    response = await ds_client.get(path)
+    assert response.status_code == 302
     assert response.headers["Location"].endswith("?content__startswith=x")
 
     # Adding a redirect to an existing query string:
     path = path_base + "?foo=bar&" + filter_args
-    response = app_client.get(path)
-    assert response.status == 302
+    response = await ds_client.get(path)
+    assert response.status_code == 302
     assert response.headers["Location"].endswith("?foo=bar&content__startswith=x")
 
     # Test that op with a __x suffix overrides the filter value
@@ -110,12 +114,14 @@ def test_add_filter_redirects(app_client):
             }
         )
     )
-    response = app_client.get(path)
-    assert response.status == 302
+    response = await ds_client.get(path)
+    assert response.status_code == 302
     assert response.headers["Location"].endswith("?content__isnull=5")
 
 
-def test_existing_filter_redirects(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_existing_filter_redirects(ds_client):
     filter_args = {
         "_filter_column_1": "name",
         "_filter_op_1": "contains",
@@ -132,8 +138,8 @@ def test_existing_filter_redirects(app_client):
     }
     path_base = "/fixtures/simple_primary_key"
     path = path_base + "?" + urllib.parse.urlencode(filter_args)
-    response = app_client.get(path)
-    assert response.status == 302
+    response = await ds_client.get(path)
+    assert response.status_code == 302
     assert_querystring_equal(
         "name__contains=hello&age__gte=22&age__lt=30&name__contains=world",
         response.headers["Location"].split("?")[1],
@@ -142,19 +148,21 @@ def test_existing_filter_redirects(app_client):
     # Setting _filter_column_3 to empty string should remove *_3 entirely
     filter_args["_filter_column_3"] = ""
     path = path_base + "?" + urllib.parse.urlencode(filter_args)
-    response = app_client.get(path)
-    assert response.status == 302
+    response = await ds_client.get(path)
+    assert response.status_code == 302
     assert_querystring_equal(
         "name__contains=hello&age__gte=22&name__contains=world",
         response.headers["Location"].split("?")[1],
     )
 
     # ?_filter_op=exact should be removed if unaccompanied by _fiter_column
-    response = app_client.get(path_base + "?_filter_op=exact")
-    assert response.status == 302
+    response = await ds_client.get(path_base + "?_filter_op=exact")
+    assert response.status_code == 302
     assert "?" not in response.headers["Location"]
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "qs,expected_hidden",
     (
@@ -169,18 +177,20 @@ def test_existing_filter_redirects(app_client):
         ("_facet=_neighborhood&_city_id__gt=1", {"_facet": "_neighborhood"}),
     ),
 )
-def test_reflected_hidden_form_fields(app_client, qs, expected_hidden):
+async def test_reflected_hidden_form_fields(ds_client, qs, expected_hidden):
     # https://github.com/simonw/datasette/issues/1527
-    response = app_client.get("/fixtures/facetable?{}".format(qs))
+    response = await ds_client.get("/fixtures/facetable?{}".format(qs))
     # In this case we should NOT have a hidden _neighborhood__exact=Downtown field
-    form = Soup(response.body, "html.parser").find("form")
+    form = Soup(response.text, "html.parser").find("form")
     hidden_inputs = {
         input["name"]: input["value"] for input in form.select("input[type=hidden]")
     }
     assert hidden_inputs == expected_hidden
 
 
-def test_empty_search_parameter_gets_removed(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_empty_search_parameter_gets_removed(ds_client):
     path_base = "/fixtures/simple_primary_key"
     path = (
         path_base
@@ -194,39 +204,45 @@ def test_empty_search_parameter_gets_removed(app_client):
             }
         )
     )
-    response = app_client.get(path)
-    assert response.status == 302
+    response = await ds_client.get(path)
+    assert response.status_code == 302
     assert response.headers["Location"].endswith("?name__exact=chidi")
 
 
-def test_searchable_view_persists_fts_table(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_searchable_view_persists_fts_table(ds_client):
     # The search form should persist ?_fts_table as a hidden field
-    response = app_client.get(
+    response = await ds_client.get(
         "/fixtures/searchable_view?_fts_table=searchable_fts&_fts_pk=pk"
     )
-    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+    inputs = Soup(response.text, "html.parser").find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [("_fts_table", "searchable_fts"), ("_fts_pk", "pk")] == [
         (hidden["name"], hidden["value"]) for hidden in hiddens
     ]
 
 
-def test_sort_by_desc_redirects(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_sort_by_desc_redirects(ds_client):
     path_base = "/fixtures/sortable"
     path = (
         path_base
         + "?"
         + urllib.parse.urlencode({"_sort": "sortable", "_sort_by_desc": "1"})
     )
-    response = app_client.get(path)
-    assert response.status == 302
+    response = await ds_client.get(path)
+    assert response.status_code == 302
     assert response.headers["Location"].endswith("?_sort_desc=sortable")
 
 
-def test_sort_links(app_client):
-    response = app_client.get("/fixtures/sortable?_sort=sortable")
-    assert response.status == 200
-    ths = Soup(response.body, "html.parser").findAll("th")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_sort_links(ds_client):
+    response = await ds_client.get("/fixtures/sortable?_sort=sortable")
+    assert response.status_code == 200
+    ths = Soup(response.text, "html.parser").findAll("th")
     attrs_and_link_attrs = [
         {
             "attrs": th.attrs,
@@ -326,12 +342,14 @@ def test_sort_links(app_client):
     ]
 
 
-def test_facet_display(app_client):
-    response = app_client.get(
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_facet_display(ds_client):
+    response = await ds_client.get(
         "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet=on_earth"
     )
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
     divs = soup.find("div", {"class": "facet-results"}).findAll("div")
     actual = []
     for div in divs:
@@ -407,12 +425,14 @@ def test_facet_display(app_client):
     ]
 
 
-def test_facets_persist_through_filter_form(app_client):
-    response = app_client.get(
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_facets_persist_through_filter_form(ds_client):
+    response = await ds_client.get(
         "/fixtures/facetable?_facet=planet_int&_facet=_city_id&_facet_array=tags"
     )
-    assert response.status == 200
-    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+    assert response.status_code == 200
+    inputs = Soup(response.text, "html.parser").find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
         ("_facet", "planet_int"),
@@ -421,20 +441,24 @@ def test_facets_persist_through_filter_form(app_client):
     ]
 
 
-def test_next_does_not_persist_in_hidden_field(app_client):
-    response = app_client.get("/fixtures/searchable?_size=1&_next=1")
-    assert response.status == 200
-    inputs = Soup(response.body, "html.parser").find("form").findAll("input")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_next_does_not_persist_in_hidden_field(ds_client):
+    response = await ds_client.get("/fixtures/searchable?_size=1&_next=1")
+    assert response.status_code == 200
+    inputs = Soup(response.text, "html.parser").find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == [
         ("_size", "1"),
     ]
 
 
-def test_table_html_simple_primary_key(app_client):
-    response = app_client.get("/fixtures/simple_primary_key?_size=3")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_html_simple_primary_key(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key?_size=3")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.findAll("th")
     assert "id\xa0▼" == ths[0].find("a").string.strip()
@@ -459,12 +483,14 @@ def test_table_html_simple_primary_key(app_client):
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
 
 
-def test_table_csv_json_export_interface(app_client):
-    response = app_client.get("/fixtures/simple_primary_key?id__gt=2")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_csv_json_export_interface(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key?id__gt=2")
+    assert response.status_code == 200
     # The links at the top of the page
     links = (
-        Soup(response.body, "html.parser")
+        Soup(response.text, "html.parser")
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
@@ -478,8 +504,8 @@ def test_table_csv_json_export_interface(app_client):
         "#export",
     ]
     assert expected == actual
-    # And the advaced export box at the bottom:
-    div = Soup(response.body, "html.parser").find("div", {"class": "advanced-export"})
+    # And the advanced export box at the bottom:
+    div = Soup(response.text, "html.parser").find("div", {"class": "advanced-export"})
     json_links = [a["href"] for a in div.find("p").findAll("a")]
     assert [
         "/fixtures/simple_primary_key.json?id__gt=2",
@@ -499,11 +525,13 @@ def test_table_csv_json_export_interface(app_client):
     ] == inputs
 
 
-def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
-    response = app_client.get("/fixtures/facetable")
-    assert response.status == 200
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
+    response = await ds_client.get("/fixtures/facetable")
+    assert response.status_code == 200
     links = (
-        Soup(response.body, "html.parser")
+        Soup(response.text, "html.parser")
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
@@ -519,14 +547,18 @@ def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
     assert expected == actual
 
 
-def test_table_not_exists(app_client):
-    assert "Table not found: blah" in app_client.get("/fixtures/blah").text
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_not_exists(ds_client):
+    assert "Table not found: blah" in (await ds_client.get("/fixtures/blah")).text
 
 
-def test_table_html_no_primary_key(app_client):
-    response = app_client.get("/fixtures/no_primary_key")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_html_no_primary_key(ds_client):
+    response = await ds_client.get("/fixtures/no_primary_key")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     # We have disabled sorting for this table using metadata.json
     assert ["content", "a", "b", "c"] == [
         th.string.strip() for th in table.select("thead th")[2:]
@@ -549,19 +581,23 @@ def test_table_html_no_primary_key(app_client):
     ]
 
 
-def test_rowid_sortable_no_primary_key(app_client):
-    response = app_client.get("/fixtures/no_primary_key")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_rowid_sortable_no_primary_key(ds_client):
+    response = await ds_client.get("/fixtures/no_primary_key")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.findAll("th")
     assert "rowid\xa0▼" == ths[1].find("a").string.strip()
 
 
-def test_table_html_compound_primary_key(app_client):
-    response = app_client.get("/fixtures/compound_primary_key")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_html_compound_primary_key(ds_client):
+    response = await ds_client.get("/fixtures/compound_primary_key")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     ths = table.findAll("th")
     assert "Link" == ths[0].string.strip()
     for expected_col, th in zip(("pk1", "pk2", "content"), ths[1:]):
@@ -588,10 +624,12 @@ def test_table_html_compound_primary_key(app_client):
     ] == expected
 
 
-def test_table_html_foreign_key_links(app_client):
-    response = app_client.get("/fixtures/foreign_key_references")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_html_foreign_key_links(ds_client):
+    response = await ds_client.get("/fixtures/foreign_key_references")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     actual = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     assert actual == [
         [
@@ -613,21 +651,27 @@ def test_table_html_foreign_key_links(app_client):
     ]
 
 
-def test_table_html_foreign_key_facets(app_client):
-    response = app_client.get(
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_html_foreign_key_facets(ds_client):
+    response = await ds_client.get(
         "/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label"
     )
-    assert response.status == 200
+    assert response.status_code == 200
     assert (
         '<li><a href="http://localhost/fixtures/foreign_key_references?_facet=foreign_key_with_blank_label&amp;foreign_key_with_blank_label=3"'
         ' data-facet-value="3">-</a> 1</li>'
     ) in response.text
 
 
-def test_table_html_disable_foreign_key_links_with_labels(app_client):
-    response = app_client.get("/fixtures/foreign_key_references?_labels=off&_size=1")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_html_disable_foreign_key_links_with_labels(ds_client):
+    response = await ds_client.get(
+        "/fixtures/foreign_key_references?_labels=off&_size=1"
+    )
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     actual = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     assert actual == [
         [
@@ -641,10 +685,12 @@ def test_table_html_disable_foreign_key_links_with_labels(app_client):
     ]
 
 
-def test_table_html_foreign_key_custom_label_column(app_client):
-    response = app_client.get("/fixtures/custom_foreign_key_label")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_html_foreign_key_custom_label_column(ds_client):
+    response = await ds_client.get("/fixtures/custom_foreign_key_label")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     expected = [
         [
             '<td class="col-pk type-pk"><a href="/fixtures/custom_foreign_key_label/1">1</a></td>',
@@ -656,6 +702,8 @@ def test_table_html_foreign_key_custom_label_column(app_client):
     ]
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_column_options",
     [
@@ -667,12 +715,12 @@ def test_table_html_foreign_key_custom_label_column(app_client):
         ("/fixtures/compound_primary_key", ["- column -", "pk1", "pk2", "content"]),
     ],
 )
-def test_table_html_filter_form_column_options(
-    path, expected_column_options, app_client
+async def test_table_html_filter_form_column_options(
+    path, expected_column_options, ds_client
 ):
-    response = app_client.get(path)
-    assert response.status == 200
-    form = Soup(response.body, "html.parser").find("form")
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    form = Soup(response.text, "html.parser").find("form")
     column_options = [
         o.attrs.get("value") or o.string
         for o in form.select("select[name=_filter_column] option")
@@ -680,11 +728,13 @@ def test_table_html_filter_form_column_options(
     assert expected_column_options == column_options
 
 
-def test_table_html_filter_form_still_shows_nocol_columns(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_html_filter_form_still_shows_nocol_columns(ds_client):
     # https://github.com/simonw/datasette/issues/1503
-    response = app_client.get("/fixtures/sortable?_nocol=sortable")
-    assert response.status == 200
-    form = Soup(response.body, "html.parser").find("form")
+    response = await ds_client.get("/fixtures/sortable?_nocol=sortable")
+    assert response.status_code == 200
+    form = Soup(response.text, "html.parser").find("form")
     assert [
         o.string
         for o in form.select("select[name='_filter_column']")[0].select("option")
@@ -701,11 +751,13 @@ def test_table_html_filter_form_still_shows_nocol_columns(app_client):
     ]
 
 
-def test_compound_primary_key_with_foreign_key_references(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_compound_primary_key_with_foreign_key_references(ds_client):
     # e.g. a many-to-many table with a compound primary key on the two columns
-    response = app_client.get("/fixtures/searchable_tags")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+    response = await ds_client.get("/fixtures/searchable_tags")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     expected = [
         [
             '<td class="col-Link type-pk"><a href="/fixtures/searchable_tags/1,feline">1,feline</a></td>',
@@ -723,10 +775,12 @@ def test_compound_primary_key_with_foreign_key_references(app_client):
     ]
 
 
-def test_view_html(app_client):
-    response = app_client.get("/fixtures/simple_view?_size=3")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_view_html(ds_client):
+    response = await ds_client.get("/fixtures/simple_view?_size=3")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     ths = table.select("thead th")
     assert 2 == len(ths)
     assert ths[0].find("a") is not None
@@ -753,10 +807,12 @@ def test_view_html(app_client):
     ]
 
 
-def test_table_metadata(app_client):
-    response = app_client.get("/fixtures/simple_primary_key")
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_table_metadata(ds_client):
+    response = await ds_client.get("/fixtures/simple_primary_key")
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
     # Page title should be custom and should be HTML escaped
     assert "This &lt;em&gt;HTML&lt;/em&gt; is escaped" == inner_html(soup.find("h1"))
     # Description should be custom and NOT escaped (we used description_html)
@@ -767,6 +823,8 @@ def test_table_metadata(app_client):
     assert_footer_links(soup)
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,has_object,has_stream,has_expand",
     [
@@ -774,10 +832,10 @@ def test_table_metadata(app_client):
         ("/fixtures/complex_foreign_keys", True, False, True),
     ],
 )
-def test_advanced_export_box(app_client, path, has_object, has_stream, has_expand):
-    response = app_client.get(path)
-    assert response.status == 200
-    soup = Soup(response.body, "html.parser")
+async def test_advanced_export_box(ds_client, path, has_object, has_stream, has_expand):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    soup = Soup(response.text, "html.parser")
     # JSON shape options
     expected_json_shapes = ["default", "array", "newline-delimited"]
     if has_object:
@@ -792,11 +850,13 @@ def test_advanced_export_box(app_client, path, has_object, has_stream, has_expan
         assert "expand labels" in str(div)
 
 
-def test_extra_where_clauses(app_client):
-    response = app_client.get(
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_extra_where_clauses(ds_client):
+    response = await ds_client.get(
         "/fixtures/facetable?_where=_neighborhood='Dogpatch'&_where=_city_id=1"
     )
-    soup = Soup(response.body, "html.parser")
+    soup = Soup(response.text, "html.parser")
     div = soup.select(".extra-wheres")[0]
     assert "2 extra where clauses" == div.find("h3").text
     hrefs = [a["href"] for a in div.findAll("a")]
@@ -812,6 +872,8 @@ def test_extra_where_clauses(app_client):
     ]
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_hidden",
     [
@@ -826,14 +888,16 @@ def test_extra_where_clauses(app_client):
         ),
     ],
 )
-def test_other_hidden_form_fields(app_client, path, expected_hidden):
-    response = app_client.get(path)
-    soup = Soup(response.body, "html.parser")
+async def test_other_hidden_form_fields(ds_client, path, expected_hidden):
+    response = await ds_client.get(path)
+    soup = Soup(response.text, "html.parser")
     inputs = soup.find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_hidden",
     [
@@ -843,19 +907,21 @@ def test_other_hidden_form_fields(app_client, path, expected_hidden):
         ("/fixtures/searchable?_sort=text2&_where=1", [("_where", "1")]),
     ],
 )
-def test_search_and_sort_fields_not_duplicated(app_client, path, expected_hidden):
+async def test_search_and_sort_fields_not_duplicated(ds_client, path, expected_hidden):
     # https://github.com/simonw/datasette/issues/1214
-    response = app_client.get(path)
-    soup = Soup(response.body, "html.parser")
+    response = await ds_client.get(path)
+    soup = Soup(response.text, "html.parser")
     inputs = soup.find("form").findAll("input")
     hiddens = [i for i in inputs if i["type"] == "hidden"]
     assert [(hidden["name"], hidden["value"]) for hidden in hiddens] == expected_hidden
 
 
-def test_binary_data_display_in_table(app_client):
-    response = app_client.get("/fixtures/binary_data")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_binary_data_display_in_table(ds_client):
+    response = await ds_client.get("/fixtures/binary_data")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     expected_tds = [
         [
             '<td class="col-Link type-pk"><a href="/fixtures/binary_data/1">1</a></td>',
@@ -891,6 +957,8 @@ def test_custom_table_include():
         ) == str(Soup(response.text, "html.parser").select_one("div.custom-table-row"))
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize("json", (True, False))
 @pytest.mark.parametrize(
     "params,error",
@@ -903,15 +971,15 @@ def test_custom_table_include():
         ),
     ),
 )
-def test_sort_errors(app_client, json, params, error):
+async def test_sort_errors(ds_client, json, params, error):
     path = "/fixtures/facetable{}{}".format(
         ".json" if json else "",
         params,
     )
-    response = app_client.get(path)
-    assert response.status == 400
+    response = await ds_client.get(path)
+    assert response.status_code == 400
     if json:
-        assert response.json == {
+        assert response.json() == {
             "ok": False,
             "error": error,
             "status": 400,
@@ -921,10 +989,12 @@ def test_sort_errors(app_client, json, params, error):
         assert error in response.text
 
 
-def test_metadata_sort(app_client):
-    response = app_client.get("/fixtures/facet_cities")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_metadata_sort(ds_client):
+    response = await ds_client.get("/fixtures/facet_cities")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.findAll("th")
     assert ["id", "name\xa0▼"] == [th.find("a").string.strip() for th in ths]
@@ -949,17 +1019,19 @@ def test_metadata_sort(app_client):
     ]
     assert expected == rows
     # Make sure you can reverse that sort order
-    response = app_client.get("/fixtures/facet_cities?_sort_desc=name")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+    response = await ds_client.get("/fixtures/facet_cities?_sort_desc=name")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     assert list(reversed(expected)) == rows
 
 
-def test_metadata_sort_desc(app_client):
-    response = app_client.get("/fixtures/attraction_characteristic")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_metadata_sort_desc(ds_client):
+    response = await ds_client.get("/fixtures/attraction_characteristic")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     assert table["class"] == ["rows-and-columns"]
     ths = table.findAll("th")
     assert ["pk\xa0▲", "name"] == [th.find("a").string.strip() for th in ths]
@@ -976,9 +1048,9 @@ def test_metadata_sort_desc(app_client):
     ]
     assert expected == rows
     # Make sure you can reverse that sort order
-    response = app_client.get("/fixtures/attraction_characteristic?_sort=pk")
-    assert response.status == 200
-    table = Soup(response.body, "html.parser").find("table")
+    response = await ds_client.get("/fixtures/attraction_characteristic?_sort=pk")
+    assert response.status_code == 200
+    table = Soup(response.text, "html.parser").find("table")
     rows = [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]
     assert list(reversed(expected)) == rows
 
@@ -1058,9 +1130,11 @@ def test_unavailable_table_does_not_break_sort_relationships():
         assert response.status == 200
 
 
-def test_column_metadata(app_client):
-    response = app_client.get("/fixtures/roadside_attractions")
-    soup = Soup(response.body, "html.parser")
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_column_metadata(ds_client):
+    response = await ds_client.get("/fixtures/roadside_attractions")
+    soup = Soup(response.text, "html.parser")
     dl = soup.find("dl")
     assert [(dt.text, dt.nextSibling.text) for dt in dl.findAll("dt")] == [
         ("name", "The name of the attraction"),
@@ -1091,16 +1165,20 @@ def test_facet_total():
         assert fragment in response.text
 
 
-def test_sort_rowid_with_next(app_client):
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_sort_rowid_with_next(ds_client):
     # https://github.com/simonw/datasette/issues/1470
-    response = app_client.get("/fixtures/binary_data?_size=1&_next=1&_sort=rowid")
-    assert response.status == 200
+    response = await ds_client.get("/fixtures/binary_data?_size=1&_next=1&_sort=rowid")
+    assert response.status_code == 200
 
 
 def assert_querystring_equal(expected, actual):
     assert sorted(expected.split("&")) == sorted(actual.split("&"))
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected",
     (
@@ -1114,8 +1192,8 @@ def assert_querystring_equal(expected, actual):
         ),
     ),
 )
-def test_table_page_title(app_client, path, expected):
-    response = app_client.get(path)
+async def test_table_page_title(ds_client, path, expected):
+    response = await ds_client.get(path)
     title = Soup(response.text, "html.parser").find("title").text
     assert title == expected
 

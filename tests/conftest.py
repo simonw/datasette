@@ -25,18 +25,12 @@ UNDOCUMENTED_PERMISSIONS = {
 }
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    return asyncio.get_event_loop()
-
-
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette
     from .fixtures import METADATA, PLUGINS_DIR
 
     ds = Datasette(
-        memory=False,
         metadata=METADATA,
         plugins_dir=PLUGINS_DIR,
         settings={
@@ -51,12 +45,14 @@ async def ds_client():
     from .fixtures import TABLES, TABLE_PARAMETERIZED_SQL
 
     db = ds.add_memory_database("fixtures")
+    ds.remove_database("_memory")
 
     def prepare(conn):
-        conn.executescript(TABLES)
-        for sql, params in TABLE_PARAMETERIZED_SQL:
-            with conn:
-                conn.execute(sql, params)
+        if not conn.execute("select count(*) from sqlite_master").fetchone()[0]:
+            conn.executescript(TABLES)
+            for sql, params in TABLE_PARAMETERIZED_SQL:
+                with conn:
+                    conn.execute(sql, params)
 
     await db.execute_write_fn(prepare)
     return ds.client

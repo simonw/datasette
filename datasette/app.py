@@ -281,7 +281,7 @@ class Datasette:
                 raise
         self.crossdb = crossdb
         self.nolock = nolock
-        if memory or crossdb or (not self.files and memory is not False):
+        if memory or crossdb or not self.files:
             self.add_database(
                 Database(self, is_mutable=False, is_memory=True), name="_memory"
             )

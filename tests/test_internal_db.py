@@ -6,16 +6,20 @@ import pytest
 async def test_internal_only_available_to_root(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
     assert (await ds_client.get("/_internal")).status_code == 403
-    assert (await ds_client.get("/_internal", cookies={"ds_actor": cookie})).status_code == 200
+    assert (
+        await ds_client.get("/_internal", cookies={"ds_actor": cookie})
+    ).status_code == 200
 
 
 @pytest.mark.ds_client
 @pytest.mark.asyncio
 async def test_internal_databases(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
-    databases = (await ds_client.get(
-        "/_internal/databases.json?_shape=array", cookies={"ds_actor": cookie}
-    )).json()
+    databases = (
+        await ds_client.get(
+            "/_internal/databases.json?_shape=array", cookies={"ds_actor": cookie}
+        )
+    ).json()
     assert len(databases) == 2
     assert databases[0]["database_name"] == "_internal"
     assert databases[1]["database_name"] == "fixtures"
@@ -25,9 +29,11 @@ async def test_internal_databases(ds_client):
 @pytest.mark.asyncio
 async def test_internal_tables(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
-    tables = (await ds_client.get(
-        "/_internal/tables.json?_shape=array", cookies={"ds_actor": cookie}
-    )).json()
+    tables = (
+        await ds_client.get(
+            "/_internal/tables.json?_shape=array", cookies={"ds_actor": cookie}
+        )
+    ).json()
     assert len(tables) > 5
     table = tables[0]
     assert set(table.keys()) == {"rootpage", "table_name", "database_name", "sql"}
@@ -37,9 +43,11 @@ async def test_internal_tables(ds_client):
 @pytest.mark.asyncio
 async def test_internal_indexes(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
-    indexes = (await ds_client.get(
-        "/_internal/indexes.json?_shape=array", cookies={"ds_actor": cookie}
-    )).json()
+    indexes = (
+        await ds_client.get(
+            "/_internal/indexes.json?_shape=array", cookies={"ds_actor": cookie}
+        )
+    ).json()
     assert len(indexes) > 5
     index = indexes[0]
     assert set(index.keys()) == {
@@ -57,9 +65,11 @@ async def test_internal_indexes(ds_client):
 @pytest.mark.asyncio
 async def test_internal_foreign_keys(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
-    foreign_keys = (await ds_client.get(
-        "/_internal/foreign_keys.json?_shape=array", cookies={"ds_actor": cookie}
-    )).json()
+    foreign_keys = (
+        await ds_client.get(
+            "/_internal/foreign_keys.json?_shape=array", cookies={"ds_actor": cookie}
+        )
+    ).json()
     assert len(foreign_keys) > 5
     foreign_key = foreign_keys[0]
     assert set(foreign_key.keys()) == {

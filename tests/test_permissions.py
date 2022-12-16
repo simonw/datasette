@@ -355,21 +355,24 @@ def test_query_list_respects_view_query():
     ],
 )
 def test_permissions_checked(app_client, path, permissions):
+    # Needs file-backed app_client for /fixtures.db
     app_client.ds._permission_checks.clear()
     response = app_client.get(path)
-    assert response.status in (200, 403)
+    assert response.status_code in (200, 403)
     assert_permissions_checked(app_client.ds, permissions)
 
 
-def test_permissions_debug(app_client):
-    app_client.ds._permission_checks.clear()
-    assert app_client.get("/-/permissions").status == 403
+@pytest.mark.ds_client
+@pytest.mark.asyncio
+async def test_permissions_debug(ds_client):
+    ds_client.ds._permission_checks.clear()
+    assert (await ds_client.get("/-/permissions")).status_code == 403
     # With the cookie it should work
-    cookie = app_client.actor_cookie({"id": "root"})
-    response = app_client.get("/-/permissions", cookies={"ds_actor": cookie})
-    assert response.status == 200
+    cookie = ds_client.actor_cookie({"id": "root"})
+    response = await ds_client.get("/-/permissions", cookies={"ds_actor": cookie})
+    assert response.status_code == 200
     # Should show one failure and one success
-    soup = Soup(response.body, "html.parser")
+    soup = Soup(response.text, "html.parser")
     check_divs = soup.findAll("div", {"class": "check"})
     checks = [
         {
@@ -392,6 +395,8 @@ def test_permissions_debug(app_client):
     ]
 
 
+@pytest.mark.ds_client
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "actor,allow,expected_fragment",
     [
@@ -401,11 +406,11 @@ def test_permissions_debug(app_client):
         ('{"id":"root"}', '"*"}', "Allow JSON error"),
     ],
 )
-def test_allow_debug(app_client, actor, allow, expected_fragment):
-    response = app_client.get(
+async def test_allow_debug(ds_client, actor, allow, expected_fragment):
+    response = await  ds_client.get(
         "/-/allow-debug?" + urllib.parse.urlencode({"actor": actor, "allow": allow})
     )
-    assert 200 == response.status
+    assert response.status_code == 200
     assert expected_fragment in response.text
 
 

@@ -24,11 +24,17 @@ UNDOCUMENTED_PERMISSIONS = {
     "no_match",
 }
 
+_ds_client = None
+
 
 @pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette
     from .fixtures import METADATA, PLUGINS_DIR
+
+    global _ds_client
+    if _ds_client is not None:
+        return _ds_client
 
     ds = Datasette(
         metadata=METADATA,
@@ -55,7 +61,8 @@ async def ds_client():
                     conn.execute(sql, params)
 
     await db.execute_write_fn(prepare)
-    return ds.client
+    _ds_client = ds.client
+    return _ds_client
 
 
 def pytest_report_header(config):

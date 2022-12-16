@@ -607,7 +607,7 @@ def serve(
         url = "http://{}:{}{}?token={}".format(
             host, port, ds.urls.path("-/auth-token"), ds._root_token
         )
-        print(url)
+        click.echo(url)
     if open_browser:
         if url is None:
             # Figure out most convenient URL - to table, database or homepage

@@ -1,6 +1,5 @@
 from datasette.filters import Filters, through_filters, where_filters, search_filters
 from datasette.utils.asgi import Request
-from .fixtures import app_client
 import pytest
 
 
@@ -78,15 +77,16 @@ def test_build_where(args, expected_where, expected_params):
     assert {f"p{i}": param for i, param in enumerate(expected_params)} == actual_params
 
 
+@pytest.mark.ds_client
 @pytest.mark.asyncio
-async def test_through_filters_from_request(app_client):
+async def test_through_filters_from_request(ds_client):
     request = Request.fake(
         '/?_through={"table":"roadside_attraction_characteristics","column":"characteristic_id","value":"1"}'
     )
     filter_args = await (
         through_filters(
             request=request,
-            datasette=app_client.ds,
+            datasette=ds_client.ds,
             table="roadside_attractions",
             database="fixtures",
         )
@@ -101,15 +101,16 @@ async def test_through_filters_from_request(app_client):
     assert filter_args.extra_context == {}
 
 
+@pytest.mark.ds_client
 @pytest.mark.asyncio
-async def test_through_filters_from_request(app_client):
+async def test_through_filters_from_request(ds_client):
     request = Request.fake(
         '/?_through={"table":"roadside_attraction_characteristics","column":"characteristic_id","value":"1"}'
     )
     filter_args = await (
         through_filters(
             request=request,
-            datasette=app_client.ds,
+            datasette=ds_client.ds,
             table="roadside_attractions",
             database="fixtures",
         )
@@ -124,14 +125,15 @@ async def test_through_filters_from_request(app_client):
     assert filter_args.extra_context == {}
 
 
+@pytest.mark.ds_client
 @pytest.mark.asyncio
-async def test_where_filters_from_request(app_client):
-    await app_client.ds.invoke_startup()
+async def test_where_filters_from_request(ds_client):
+    await ds_client.ds.invoke_startup()
     request = Request.fake("/?_where=pk+>+3")
     filter_args = await (
         where_filters(
             request=request,
-            datasette=app_client.ds,
+            datasette=ds_client.ds,
             database="fixtures",
         )
     )()
@@ -143,13 +145,14 @@ async def test_where_filters_from_request(app_client):
     }
 
 
+@pytest.mark.ds_client
 @pytest.mark.asyncio
-async def test_search_filters_from_request(app_client):
+async def test_search_filters_from_request(ds_client):
     request = Request.fake("/?_search=bobcat")
     filter_args = await (
         search_filters(
             request=request,
-            datasette=app_client.ds,
+            datasette=ds_client.ds,
             database="fixtures",
             table="searchable",
         )

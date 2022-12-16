@@ -407,7 +407,7 @@ async def test_permissions_debug(ds_client):
     ],
 )
 async def test_allow_debug(ds_client, actor, allow, expected_fragment):
-    response = await  ds_client.get(
+    response = await ds_client.get(
         "/-/allow-debug?" + urllib.parse.urlencode({"actor": actor, "allow": allow})
     )
     assert response.status_code == 200

@@ -61,6 +61,7 @@ async def ds_client():
                     conn.execute(sql, params)
 
     await db.execute_write_fn(prepare)
+    await ds.invoke_startup()
     _ds_client = ds.client
     return _ds_client
 

@@ -990,28 +990,32 @@ def test_hook_skip_csrf(app_client):
 
 @pytest.mark.asyncio
 async def test_hook_get_metadata(ds_client):
-    ds_client.ds._metadata_local = {
-        "title": "Testing get_metadata hook!",
-        "databases": {"from-local": {"title": "Hello from local metadata"}},
-    }
-    og_pm_hook_get_metadata = pm.hook.get_metadata
+    try:
+        orig_metadata = ds_client.ds._metadata_local
+        ds_client.ds._metadata_local = {
+            "title": "Testing get_metadata hook!",
+            "databases": {"from-local": {"title": "Hello from local metadata"}},
+        }
+        og_pm_hook_get_metadata = pm.hook.get_metadata
 
-    def get_metadata_mock(*args, **kwargs):
-        return [
-            {
-                "databases": {
-                    "from-hook": {"title": "Hello from the plugin hook"},
-                    "from-local": {"title": "This will be overwritten!"},
+        def get_metadata_mock(*args, **kwargs):
+            return [
+                {
+                    "databases": {
+                        "from-hook": {"title": "Hello from the plugin hook"},
+                        "from-local": {"title": "This will be overwritten!"},
+                    }
                 }
-            }
-        ]
+            ]
 
-    pm.hook.get_metadata = get_metadata_mock
-    meta = ds_client.ds.metadata()
-    assert "Testing get_metadata hook!" == meta["title"]
-    assert "Hello from local metadata" == meta["databases"]["from-local"]["title"]
-    assert "Hello from the plugin hook" == meta["databases"]["from-hook"]["title"]
-    pm.hook.get_metadata = og_pm_hook_get_metadata
+        pm.hook.get_metadata = get_metadata_mock
+        meta = ds_client.ds.metadata()
+        assert "Testing get_metadata hook!" == meta["title"]
+        assert "Hello from local metadata" == meta["databases"]["from-local"]["title"]
+        assert "Hello from the plugin hook" == meta["databases"]["from-hook"]["title"]
+        pm.hook.get_metadata = og_pm_hook_get_metadata
+    finally:
+        ds_client.ds._metadata_local = orig_metadata
 
 
 def _extract_commands(output):

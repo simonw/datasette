@@ -582,22 +582,28 @@ async def test_facet_size():
     data5 = response5.json()
     assert len(data5["facet_results"]["city"]["results"]) == 20
     # Now try messing with facet_size in the table metadata
-    ds._metadata_local = {
-        "databases": {
-            "test_facet_size": {"tables": {"neighbourhoods": {"facet_size": 6}}}
+    orig_metadata = ds._metadata_local
+    try:
+        ds._metadata_local = {
+            "databases": {
+                "test_facet_size": {"tables": {"neighbourhoods": {"facet_size": 6}}}
+            }
         }
-    }
-    response6 = await ds.client.get("/test_facet_size/neighbourhoods.json?_facet=city")
-    data6 = response6.json()
-    assert len(data6["facet_results"]["city"]["results"]) == 6
-    # Setting it to max bumps it up to 50 again
-    ds._metadata_local["databases"]["test_facet_size"]["tables"]["neighbourhoods"][
-        "facet_size"
-    ] = "max"
-    data7 = (
-        await ds.client.get("/test_facet_size/neighbourhoods.json?_facet=city")
-    ).json()
-    assert len(data7["facet_results"]["city"]["results"]) == 20
+        response6 = await ds.client.get(
+            "/test_facet_size/neighbourhoods.json?_facet=city"
+        )
+        data6 = response6.json()
+        assert len(data6["facet_results"]["city"]["results"]) == 6
+        # Setting it to max bumps it up to 50 again
+        ds._metadata_local["databases"]["test_facet_size"]["tables"]["neighbourhoods"][
+            "facet_size"
+        ] = "max"
+        data7 = (
+            await ds.client.get("/test_facet_size/neighbourhoods.json?_facet=city")
+        ).json()
+        assert len(data7["facet_results"]["city"]["results"]) == 20
+    finally:
+        ds._metadata_local = orig_metadata
 
 
 def test_other_types_of_facet_in_metadata():

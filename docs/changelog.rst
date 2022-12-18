@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_63_3:
+
+0.63.3 (2022-12-17)
+-------------------
+
+- Fixed a bug where ``datasette --root``, when running in Docker, would only output the URL to sign in root when the server shut down, not when it started up. (:issue:`1958`)
+- You no longer need to ensure ``await datasette.invoke_startup()`` has been called in order for Datasette to start correctly serving requests - this is now handled automatically the first time the server receives a request. This fixes a bug experienced when Datasette is served directly by an ASGI application server such as Uvicorn or Gunicorn. It also fixes a bug with the `datasette-gunicorn <https://datasette.io/plugins/datasette-gunicorn>`__ plugin. (:issue:`1955`)
+
 .. _v0_63_2:
 
 0.63.2 (2022-11-18)

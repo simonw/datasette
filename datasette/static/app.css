@@ -573,6 +573,9 @@ form button[type=button] {
     display: inline-block;
     margin-right: 0.3em;
 }
+.select-wrapper:focus-within {
+    border: 1px solid black;
+}
 .select-wrapper.filter-op {
     width: 80px;
 }

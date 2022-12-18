@@ -69,6 +69,7 @@ from .utils import (
     row_sql_params_pks,
 )
 from .utils.asgi import (
+    AsgiLifespan,
     Forbidden,
     NotFound,
     DatabaseNotFound,
@@ -1431,6 +1432,7 @@ class Datasette:
         )
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
+        asgi = AsgiLifespan(asgi)
         asgi = AsgiRunOnFirstRequest(asgi, on_startup=[setup_db, self.invoke_startup])
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)

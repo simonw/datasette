@@ -27,6 +27,17 @@ UNDOCUMENTED_PERMISSIONS = {
 _ds_client = None
 
 
+def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            client.get(url, **kwargs)
+            return
+        except httpx.ConnectError:
+            time.sleep(0.1)
+    raise AssertionError("Timed out waiting for {} to respond".format(url))
+
+
 @pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette
@@ -161,13 +172,7 @@ def ds_localhost_http_server():
         # Avoid FileNotFoundError: [Errno 2] No such file or directory:
         cwd=tempfile.gettempdir(),
     )
-    # Loop until port 8041 serves traffic
-    while True:
-        try:
-            httpx.get("http://localhost:8041/")
-            break
-        except httpx.ConnectError:
-            time.sleep(0.1)
+    wait_until_responds("http://localhost:8041/")
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
     yield ds_proc
@@ -202,12 +207,7 @@ def ds_localhost_https_server(tmp_path_factory):
         stderr=subprocess.STDOUT,
         cwd=tempfile.gettempdir(),
     )
-    while True:
-        try:
-            httpx.get("https://localhost:8042/", verify=client_cert)
-            break
-        except httpx.ConnectError:
-            time.sleep(0.1)
+    wait_until_responds("http://localhost:8042/", verify=client_cert)
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
     yield ds_proc, client_cert
@@ -231,12 +231,7 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     # Poll until available
     transport = httpx.HTTPTransport(uds=uds)
     client = httpx.Client(transport=transport)
-    while True:
-        try:
-            client.get("http://localhost/_memory.json")
-            break
-        except httpx.ConnectError:
-            time.sleep(0.1)
+    wait_until_responds("http://localhost/_memory.json", client=client)
     # Check it started successfully
     assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
     yield ds_proc, uds

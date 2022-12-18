@@ -181,41 +181,6 @@ def ds_localhost_http_server():
 
 
 @pytest.fixture(scope="session")
-def ds_localhost_https_server(tmp_path_factory):
-    cert_directory = tmp_path_factory.mktemp("certs")
-    ca = trustme.CA()
-    server_cert = ca.issue_cert("localhost")
-    keyfile = str(cert_directory / "server.key")
-    certfile = str(cert_directory / "server.pem")
-    client_cert = str(cert_directory / "client.pem")
-    server_cert.private_key_pem.write_to_path(path=keyfile)
-    for blob in server_cert.cert_chain_pems:
-        blob.write_to_path(path=certfile, append=True)
-    ca.cert_pem.write_to_path(path=client_cert)
-    ds_proc = subprocess.Popen(
-        [
-            "datasette",
-            "--memory",
-            "-p",
-            "8042",
-            "--ssl-keyfile",
-            keyfile,
-            "--ssl-certfile",
-            certfile,
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        cwd=tempfile.gettempdir(),
-    )
-    wait_until_responds("http://localhost:8042/", verify=client_cert)
-    # Check it started successfully
-    assert not ds_proc.poll(), ds_proc.stdout.read().decode("utf-8")
-    yield ds_proc, client_cert
-    # Shut it down at the end of the pytest session
-    ds_proc.terminate()
-
-
-@pytest.fixture(scope="session")
 def ds_unix_domain_socket_server(tmp_path_factory):
     # This used to use tmp_path_factory.mktemp("uds") but that turned out to
     # produce paths that were too long to use as UDS on macOS, see

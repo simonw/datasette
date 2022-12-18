@@ -14,17 +14,6 @@ def test_serve_localhost_http(ds_localhost_http_server):
 
 
 @pytest.mark.serial
-def test_serve_localhost_https(ds_localhost_https_server):
-    _, client_cert = ds_localhost_https_server
-    response = httpx.get("https://localhost:8042/_memory.json", verify=client_cert)
-    assert {
-        "database": "_memory",
-        "path": "/_memory",
-        "tables": [],
-    }.items() <= response.json().items()
-
-
-@pytest.mark.serial
 @pytest.mark.skipif(
     not hasattr(socket, "AF_UNIX"), reason="Requires socket.AF_UNIX support"
 )

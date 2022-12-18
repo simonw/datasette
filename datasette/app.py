@@ -63,6 +63,7 @@ from .utils import (
     to_css_class,
 )
 from .utils.asgi import (
+    AsgiLifespan,
     Forbidden,
     NotFound,
     Request,
@@ -1271,6 +1272,7 @@ class Datasette:
         )
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)
+        asgi = AsgiLifespan(asgi)
         asgi = AsgiRunOnFirstRequest(asgi, on_startup=[setup_db, self.invoke_startup])
         for wrapper in pm.hook.asgi_wrapper(datasette=self):
             asgi = wrapper(asgi)

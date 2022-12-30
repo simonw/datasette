@@ -9,20 +9,6 @@ through the Datasette user interface can also be accessed as JSON via the API.
 To access the API for a page, either click on the ``.json`` link on that page or
 edit the URL and add a ``.json`` extension to it.
 
-If you started Datasette with the ``--cors`` option, each JSON endpoint will be
-served with the following additional HTTP headers::
-
-    Access-Control-Allow-Origin: *
-    Access-Control-Allow-Headers: Authorization, Content-Type
-    Access-Control-Expose-Headers: Link
-    Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
-
-This means JavaScript running on any domain will be able to make cross-origin
-requests to fetch the data.
-
-If you start Datasette without the ``--cors`` option only JavaScript running on
-the same domain as Datasette will be able to access the API.
-
 .. _json_api_shapes:
 
 Different shapes
@@ -458,6 +444,29 @@ You can find this near the top of the source code of those pages, looking like t
 The JSON URL is also made available in a ``Link`` HTTP header for the page::
 
     Link: https://latest.datasette.io/fixtures/sortable.json; rel="alternate"; type="application/json+datasette"
+
+.. _json_api_cors:
+
+Enabling CORS
+-------------
+
+If you start Datasette with the ``--cors`` option, each JSON endpoint will be
+served with the following additional HTTP headers::
+
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Headers: Authorization, Content-Type
+    Access-Control-Expose-Headers: Link
+    Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
+
+This allows JavaScript running on any domain to make cross-origin
+requests to interact with the Datasette API.
+
+If you start Datasette without the ``--cors`` option only JavaScript running on
+the same domain as Datasette will be able to access the API.
+
+Here's how to serve ``data.db`` with CORS enabled::
+
+    datasette data.db --cors
 
 .. _json_api_write:
 

@@ -27,7 +27,7 @@ See `Datasette 1.0a2: Upserts and finely grained permissions <https://simonwilli
 - Arbitrary permissions can now be configured at the instance, database and resource (table, SQL view or canned query) level in Datasette's :ref:`metadata` JSON and YAML files. The new ``"permissions"`` key can be used to specify which actors should have which permissions. See :ref:`authentication_permissions_other` for details. (:issue:`1636`)
 - The ``/-/create-token`` page can now be used to create API tokens which are restricted to just a subset of actions, including against specific databases or resources. See :ref:`CreateTokenView` for details. (:issue:`1947`)
 - Likewise, the ``datasette create-token`` CLI command can now create tokens with :ref:`a subset of permissions <authentication_cli_create_token_restrict>`. (:issue:`1855`)
-- New :ref:`datasette.create_token() API method <datasette_create_token>`` for programmatically creating signed API tokens. (:issue:`1951`)
+- New :ref:`datasette.create_token() API method <datasette_create_token>` for programmatically creating signed API tokens. (:issue:`1951`)
 - ``/db/-/create`` API now requires actor to have ``insert-row`` permission in order to use the ``"row"`` or ``"rows"`` properties. (:issue:`1937`)
 
 .. _v1_0_a1:

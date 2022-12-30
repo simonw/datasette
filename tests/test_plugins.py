@@ -45,9 +45,9 @@ def test_plugin_hooks_have_tests(plugin_hook):
 @pytest.mark.asyncio
 async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?sql=select+convert_units(100%2C+'m'%2C+'ft')"
+        "/fixtures.json?_shape=arrayfirst&sql=select+convert_units(100%2C+'m'%2C+'ft')"
     )
-    assert pytest.approx(328.0839) == response.json()["rows"][0][0]
+    assert response.json()[0] == pytest.approx(328.0839)
 
 
 @pytest.mark.asyncio

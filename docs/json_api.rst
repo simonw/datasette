@@ -25,46 +25,6 @@ looks like this::
             "value"
         ],
         "rows": [
-            [
-                1,
-                "Myoporum laetum :: Myoporum"
-            ],
-            [
-                2,
-                "Metrosideros excelsa :: New Zealand Xmas Tree"
-            ],
-            [
-                3,
-                "Pinus radiata :: Monterey Pine"
-            ]
-        ],
-        "truncated": false,
-        "next": "100",
-        "next_url": "http://127.0.0.1:8001/sf-trees-02c8ef1/qSpecies.json?_next=100",
-        "query_ms": 1.9571781158447266
-    }
-
-The ``columns`` key lists the columns that are being returned, and the ``rows``
-key then returns a list of lists, each one representing a row. The order of the
-values in each row corresponds to the columns.
-
-The ``_shape`` parameter can be used to access alternative formats for the
-``rows`` key which may be more convenient for your application. There are three
-options:
-
-* ``?_shape=arrays`` - ``"rows"`` is the default option, shown above
-* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects
-* ``?_shape=array`` - an JSON array of objects
-* ``?_shape=array&_nl=on`` - a newline-separated list of JSON objects
-* ``?_shape=arrayfirst`` - a flat JSON array containing just the first value from each row
-* ``?_shape=object`` - a JSON object keyed using the primary keys of the rows
-
-``_shape=objects`` looks like this::
-
-    {
-        "database": "sf-trees",
-        ...
-        "rows": [
             {
                 "id": 1,
                 "value": "Myoporum laetum :: Myoporum"
@@ -77,6 +37,45 @@ options:
                 "id": 3,
                 "value": "Pinus radiata :: Monterey Pine"
             }
+        ],
+        "truncated": false,
+        "next": "100",
+        "next_url": "http://127.0.0.1:8001/sf-trees-02c8ef1/qSpecies.json?_next=100",
+        "query_ms": 1.9571781158447266
+    }
+
+The ``columns`` key lists the columns that are being returned, and the ``rows``
+key then returns a list of objets, each one representing a row.
+
+The ``_shape`` parameter can be used to access alternative formats for the
+``rows`` key which may be more convenient for your application. There are three
+options:
+
+* ``?_shape=objects`` - ``"rows"`` is a list of JSON key/value objects - the default
+* ``?_shape=arrays`` - ``"rows"`` is a list of lists, where the order of values in each list matches the order of the columns
+* ``?_shape=array`` - a JSON array of objects - effectively just the ``"rows"`` key from the default representation
+* ``?_shape=array&_nl=on`` - a newline-separated list of JSON objects
+* ``?_shape=arrayfirst`` - a flat JSON array containing just the first value from each row
+* ``?_shape=object`` - a JSON object keyed using the primary keys of the rows
+
+``_shape=arrays`` looks like this::
+
+    {
+        "database": "sf-trees",
+        ...
+        "rows": [
+            [
+                1,
+                "Myoporum laetum :: Myoporum"
+            ],
+            [
+                2,
+                "Metrosideros excelsa :: New Zealand Xmas Tree"
+            ],
+            [
+                3,
+                "Pinus radiata :: Monterey Pine"
+            ]
         ]
     }
 

@@ -380,7 +380,7 @@ async def test_sortable_columns_metadata(ds_client):
     "path,expected_rows",
     [
         (
-            "/fixtures/searchable.json?_search=dog",
+            "/fixtures/searchable.json?_shape=arrays&_search=dog",
             [
                 [1, "barry cat", "terry dog", "panther"],
                 [2, "terry dog", "sara weasel", "puma"],
@@ -388,17 +388,17 @@ async def test_sortable_columns_metadata(ds_client):
         ),
         (
             # Special keyword shouldn't break FTS query
-            "/fixtures/searchable.json?_search=AND",
+            "/fixtures/searchable.json?_shape=arrays&_search=AND",
             [],
         ),
         (
             # Without _searchmode=raw this should return no results
-            "/fixtures/searchable.json?_search=te*+AND+do*",
+            "/fixtures/searchable.json?_shape=arrays&_search=te*+AND+do*",
             [],
         ),
         (
             # _searchmode=raw
-            "/fixtures/searchable.json?_search=te*+AND+do*&_searchmode=raw",
+            "/fixtures/searchable.json?_shape=arrays&_search=te*+AND+do*&_searchmode=raw",
             [
                 [1, "barry cat", "terry dog", "panther"],
                 [2, "terry dog", "sara weasel", "puma"],
@@ -406,21 +406,21 @@ async def test_sortable_columns_metadata(ds_client):
         ),
         (
             # _searchmode=raw combined with _search_COLUMN
-            "/fixtures/searchable.json?_search_text2=te*&_searchmode=raw",
+            "/fixtures/searchable.json?_shape=arrays&_search_text2=te*&_searchmode=raw",
             [
                 [1, "barry cat", "terry dog", "panther"],
             ],
         ),
         (
-            "/fixtures/searchable.json?_search=weasel",
+            "/fixtures/searchable.json?_shape=arrays&_search=weasel",
             [[2, "terry dog", "sara weasel", "puma"]],
         ),
         (
-            "/fixtures/searchable.json?_search_text2=dog",
+            "/fixtures/searchable.json?_shape=arrays&_search_text2=dog",
             [[1, "barry cat", "terry dog", "panther"]],
         ),
         (
-            "/fixtures/searchable.json?_search_name%20with%20.%20and%20spaces=panther",
+            "/fixtures/searchable.json?_shape=arrays&_search_name%20with%20.%20and%20spaces=panther",
             [[1, "barry cat", "terry dog", "panther"]],
         ),
     ],
@@ -466,7 +466,7 @@ def test_searchmode(table_metadata, querystring, expected_rows):
     with make_app_client(
         metadata={"databases": {"fixtures": {"tables": {"searchable": table_metadata}}}}
     ) as client:
-        response = client.get("/fixtures/searchable.json?" + querystring)
+        response = client.get("/fixtures/searchable.json?_shape=arrays&" + querystring)
         assert expected_rows == response.json["rows"]
 
 
@@ -475,26 +475,26 @@ def test_searchmode(table_metadata, querystring, expected_rows):
     "path,expected_rows",
     [
         (
-            "/fixtures/searchable_view_configured_by_metadata.json?_search=weasel",
+            "/fixtures/searchable_view_configured_by_metadata.json?_shape=arrays&_search=weasel",
             [[2, "terry dog", "sara weasel", "puma"]],
         ),
         # This should return all results because search is not configured:
         (
-            "/fixtures/searchable_view.json?_search=weasel",
+            "/fixtures/searchable_view.json?_shape=arrays&_search=weasel",
             [
                 [1, "barry cat", "terry dog", "panther"],
                 [2, "terry dog", "sara weasel", "puma"],
             ],
         ),
         (
-            "/fixtures/searchable_view.json?_search=weasel&_fts_table=searchable_fts&_fts_pk=pk",
+            "/fixtures/searchable_view.json?_shape=arrays&_search=weasel&_fts_table=searchable_fts&_fts_pk=pk",
             [[2, "terry dog", "sara weasel", "puma"]],
         ),
     ],
 )
 async def test_searchable_views(ds_client, path, expected_rows):
     response = await ds_client.get(path)
-    assert expected_rows == response.json()["rows"]
+    assert response.json()["rows"] == expected_rows
 
 
 @pytest.mark.asyncio
@@ -513,18 +513,24 @@ async def test_searchable_invalid_column(ds_client):
 @pytest.mark.parametrize(
     "path,expected_rows",
     [
-        ("/fixtures/simple_primary_key.json?content=hello", [["1", "hello"]]),
         (
-            "/fixtures/simple_primary_key.json?content__contains=o",
+            "/fixtures/simple_primary_key.json?_shape=arrays&content=hello",
+            [["1", "hello"]],
+        ),
+        (
+            "/fixtures/simple_primary_key.json?_shape=arrays&content__contains=o",
             [
                 ["1", "hello"],
                 ["2", "world"],
                 ["4", "RENDER_CELL_DEMO"],
             ],
         ),
-        ("/fixtures/simple_primary_key.json?content__exact=", [["3", ""]]),
         (
-            "/fixtures/simple_primary_key.json?content__not=world",
+            "/fixtures/simple_primary_key.json?_shape=arrays&content__exact=",
+            [["3", ""]],
+        ),
+        (
+            "/fixtures/simple_primary_key.json?_shape=arrays&content__not=world",
             [
                 ["1", "hello"],
                 ["3", ""],
@@ -536,13 +542,13 @@ async def test_searchable_invalid_column(ds_client):
 )
 async def test_table_filter_queries(ds_client, path, expected_rows):
     response = await ds_client.get(path)
-    assert expected_rows == response.json()["rows"]
+    assert response.json()["rows"] == expected_rows
 
 
 @pytest.mark.asyncio
 async def test_table_filter_queries_multiple_of_same_type(ds_client):
     response = await ds_client.get(
-        "/fixtures/simple_primary_key.json?content__not=world&content__not=hello"
+        "/fixtures/simple_primary_key.json?_shape=arrays&content__not=world&content__not=hello"
     )
     assert [
         ["3", ""],
@@ -554,7 +560,9 @@ async def test_table_filter_queries_multiple_of_same_type(ds_client):
 @pytest.mark.skipif(not detect_json1(), reason="Requires the SQLite json1 module")
 @pytest.mark.asyncio
 async def test_table_filter_json_arraycontains(ds_client):
-    response = await ds_client.get("/fixtures/facetable.json?tags__arraycontains=tag1")
+    response = await ds_client.get(
+        "/fixtures/facetable.json?_shape=arrays&tags__arraycontains=tag1"
+    )
     assert response.json()["rows"] == [
         [
             1,
@@ -589,7 +597,7 @@ async def test_table_filter_json_arraycontains(ds_client):
 @pytest.mark.asyncio
 async def test_table_filter_json_arraynotcontains(ds_client):
     response = await ds_client.get(
-        "/fixtures/facetable.json?tags__arraynotcontains=tag3&tags__not=[]"
+        "/fixtures/facetable.json?_shape=arrays&tags__arraynotcontains=tag3&tags__not=[]"
     )
     assert response.json()["rows"] == [
         [
@@ -611,7 +619,7 @@ async def test_table_filter_json_arraynotcontains(ds_client):
 @pytest.mark.asyncio
 async def test_table_filter_extra_where(ds_client):
     response = await ds_client.get(
-        "/fixtures/facetable.json?_where=_neighborhood='Dogpatch'"
+        "/fixtures/facetable.json?_shape=arrays&_where=_neighborhood='Dogpatch'"
     )
     assert [
         [
@@ -652,7 +660,7 @@ def test_table_filter_extra_where_disabled_if_no_sql_allowed():
 async def test_table_through(ds_client):
     # Just the museums:
     response = await ds_client.get(
-        '/fixtures/roadside_attractions.json?_through={"table":"roadside_attraction_characteristics","column":"characteristic_id","value":"1"}'
+        '/fixtures/roadside_attractions.json?_shape=arrays&_through={"table":"roadside_attraction_characteristics","column":"characteristic_id","value":"1"}'
     )
     assert response.json()["rows"] == [
         [
@@ -707,7 +715,7 @@ async def test_view(ds_client):
 @pytest.mark.asyncio
 async def test_unit_filters(ds_client):
     response = await ds_client.get(
-        "/fixtures/units.json?distance__lt=75km&frequency__gt=1kHz"
+        "/fixtures/units.json?_shape=arrays&distance__lt=75km&frequency__gt=1kHz"
     )
     assert response.status_code == 200
     data = response.json()

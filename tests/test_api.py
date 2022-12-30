@@ -890,7 +890,7 @@ async def test_json_columns(ds_client, extra_args, expected):
 
 def test_config_cache_size(app_client_larger_cache_size):
     response = app_client_larger_cache_size.get("/fixtures/pragma_cache_size.json")
-    assert [[-2500]] == response.json["rows"]
+    assert response.json["rows"] == [{"cache_size": -2500}]
 
 
 def test_config_force_https_urls():

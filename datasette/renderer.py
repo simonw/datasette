@@ -44,10 +44,10 @@ def json_renderer(args, data, view_name):
         data["rows"] = [remove_infinites(row) for row in data["rows"]]
 
     # Deal with the _shape option
-    shape = args.get("_shape", "arrays")
+    shape = args.get("_shape", "objects")
     # if there's an error, ignore the shape entirely
     if data.get("error"):
-        shape = "arrays"
+        shape = "objects"
 
     next_url = data.get("next_url")
 

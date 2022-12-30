@@ -473,7 +473,7 @@ Here's how to serve ``data.db`` with CORS enabled::
 The JSON write API
 ------------------
 
-Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`.
+Datasette provides a write API for JSON data. This is a POST-only API that requires an authenticated API token, see :ref:`CreateTokenView`. The token will need to have the specified :ref:`authentication_permissions`.
 
 .. _TableInsertView:
 

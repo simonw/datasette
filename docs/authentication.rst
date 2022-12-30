@@ -442,7 +442,7 @@ You can also create tokens on the command line using the ``datasette create-toke
 
 This command takes one required argument - the ID of the actor to be associated with the created token.
 
-You can specify an ``--expires-after`` option in seconds. If omitted, the token will never expire.
+You can specify a ``-e/--expires-after`` option in seconds. If omitted, the token will never expire.
 
 The command will sign the token using the ``DATASETTE_SECRET`` environment variable, if available. You can also pass the secret using the ``--secret`` option.
 

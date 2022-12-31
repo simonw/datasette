@@ -547,9 +547,9 @@ class TableView(DataView):
         ):
             # We can use a previously cached table row count
             try:
-                count = self.ds.inspect_data[database_name][
-                    "tables"
-                ][table_name]["count"]
+                count = self.ds.inspect_data[database_name]["tables"][table_name][
+                    "count"
+                ]
             except KeyError:
                 pass
 

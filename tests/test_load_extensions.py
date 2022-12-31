@@ -25,15 +25,15 @@ async def test_load_extension_default_entrypoint():
     # should fail.
     ds = Datasette(sqlite_extensions=[COMPILED_EXTENSION_PATH])
 
-    response = await ds.client.get("/_memory.json?sql=select+a()")
+    response = await ds.client.get("/_memory.json?_shape=arrays&sql=select+a()")
     assert response.status_code == 200
     assert response.json()["rows"][0][0] == "a"
 
-    response = await ds.client.get("/_memory.json?sql=select+b()")
+    response = await ds.client.get("/_memory.json?_shape=arrays&sql=select+b()")
     assert response.status_code == 400
     assert response.json()["error"] == "no such function: b"
 
-    response = await ds.client.get("/_memory.json?sql=select+c()")
+    response = await ds.client.get("/_memory.json?_shape=arrays&sql=select+c()")
     assert response.status_code == 400
     assert response.json()["error"] == "no such function: c"
 
@@ -52,14 +52,14 @@ async def test_load_extension_multiple_entrypoints():
         ]
     )
 
-    response = await ds.client.get("/_memory.json?sql=select+a()")
+    response = await ds.client.get("/_memory.json?_shape=arrays&sql=select+a()")
     assert response.status_code == 200
     assert response.json()["rows"][0][0] == "a"
 
-    response = await ds.client.get("/_memory.json?sql=select+b()")
+    response = await ds.client.get("/_memory.json?_shape=arrays&sql=select+b()")
     assert response.status_code == 200
     assert response.json()["rows"][0][0] == "b"
 
-    response = await ds.client.get("/_memory.json?sql=select+c()")
+    response = await ds.client.get("/_memory.json?_shape=arrays&sql=select+c()")
     assert response.status_code == 200
     assert response.json()["rows"][0][0] == "c"

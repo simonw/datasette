@@ -19,8 +19,12 @@ async def test_internal_databases(ds_client):
         )
     ).json()
     assert len(databases) == 2
-    assert databases[0]["database_name"] == "_internal"
-    assert databases[1]["database_name"] == "fixtures"
+    internal, fixtures = databases
+    assert internal["database_name"] == "_internal"
+    assert internal["is_memory"] == 1
+    assert internal["path"] is None
+    assert isinstance(internal["schema_version"], int)
+    assert fixtures["database_name"] == "fixtures"
 
 
 @pytest.mark.asyncio

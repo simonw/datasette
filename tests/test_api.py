@@ -981,7 +981,7 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
 
 def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
     response = app_client_immutable_and_inspect_file.get("/fixtures/sortable.json")
-    assert response.json["filtered_table_rows_count"] == 100
+    assert response.json["count"] == 100
 
 
 @pytest.mark.asyncio

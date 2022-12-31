@@ -233,7 +233,7 @@ async def test_page_size_zero(ds_client):
     response = await ds_client.get("/fixtures/no_primary_key.json?_size=0")
     assert response.status_code == 200
     assert [] == response.json()["rows"]
-    assert 201 == response.json()["filtered_table_rows_count"]
+    assert 201 == response.json()["count"]
     assert None is response.json()["next"]
     assert None is response.json()["next_url"]
 
@@ -346,7 +346,7 @@ async def test_sortable_and_filtered(ds_client):
         == response.json()["human_description_en"]
     )
     expected = [row for row in generate_sortable_rows(201) if "d" in row["content"]]
-    assert len(expected) == response.json()["filtered_table_rows_count"]
+    assert len(expected) == response.json()["count"]
     expected.sort(key=lambda row: -row["sortable"])
     assert [r["content"] for r in expected] == [r["content"] for r in fetched]
 
@@ -997,7 +997,7 @@ async def test_nocount(ds_client, nocount, expected_count):
     if nocount:
         path += "?_nocount=1"
     response = await ds_client.get(path)
-    assert response.json()["filtered_table_rows_count"] == expected_count
+    assert response.json()["count"] == expected_count
 
 
 def test_nocount_nofacet_if_shape_is_object(app_client_with_trace):

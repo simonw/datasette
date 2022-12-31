@@ -38,6 +38,7 @@ looks like this::
                 "value": "Pinus radiata :: Monterey Pine"
             }
         ],
+        "count": 195002,
         "truncated": false,
         "next": "100",
         "next_url": "http://127.0.0.1:8001/sf-trees-02c8ef1/qSpecies.json?_next=100",

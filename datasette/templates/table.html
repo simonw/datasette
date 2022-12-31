@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ database }}: {{ table }}: {% if filtered_table_rows_count or filtered_table_rows_count == 0 %}{{ "{:,}".format(filtered_table_rows_count) }} row{% if filtered_table_rows_count == 1 %}{% else %}s{% endif %}{% endif %}{% if human_description_en %} {{ human_description_en }}{% endif %}{% endblock %}
+{% block title %}{{ database }}: {{ table }}: {% if count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}{% if human_description_en %} {{ human_description_en }}{% endif %}{% endblock %}
 
 {% block extra_head %}
 {{- super() -}}
@@ -55,8 +55,8 @@
 </dl>
 {% endif %}
 
-{% if filtered_table_rows_count or human_description_en %}
-    <h3>{% if filtered_table_rows_count or filtered_table_rows_count == 0 %}{{ "{:,}".format(filtered_table_rows_count) }} row{% if filtered_table_rows_count == 1 %}{% else %}s{% endif %}{% endif %}
+{% if count or human_description_en %}
+    <h3>{% if count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
         {% if human_description_en %}{{ human_description_en }}{% endif %}
     </h3>
 {% endif %}

@@ -45,7 +45,7 @@ looks like this::
     }
 
 The ``columns`` key lists the columns that are being returned, and the ``rows``
-key then returns a list of objets, each one representing a row.
+key then returns a list of objects, each one representing a row.
 
 The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three

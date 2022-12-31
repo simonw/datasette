@@ -105,6 +105,7 @@ html_theme_options = {
 html_static_path = ["_static"]
 
 html_logo = "datasette-logo.svg"
+html_favicon = "_static/datasette-favicon.png"
 
 html_css_files = [
     "css/custom.css",

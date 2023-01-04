@@ -1393,7 +1393,7 @@ This example adds a new table action if the signed in user is ``"root"``:
 
 
     @hookimpl
-    def table_actions(datasette, actor):
+    def table_actions(datasette, actor, database, table):
         if actor and actor.get("id") == "root":
             return [
                 {

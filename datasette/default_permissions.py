@@ -69,9 +69,15 @@ def permission_allowed_default(datasette, actor, action, resource):
                 return result
 
         # Check custom permissions: blocks
-        return await _resolve_metadata_permissions_blocks(
+        result = await _resolve_metadata_permissions_blocks(
             datasette, actor, action, resource
         )
+        if result is not None:
+            return result
+
+        # --setting default_allow_sql
+        if action == "execute-sql" and not datasette.setting("default_allow_sql"):
+            return False
 
     return inner
 

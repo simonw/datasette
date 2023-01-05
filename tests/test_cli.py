@@ -216,6 +216,28 @@ def test_setting_type_validation():
     assert '"default_page_size" should be an integer' in result.stderr
 
 
+@pytest.mark.parametrize("default_allow_sql", (True, False))
+def test_setting_default_allow_sql(default_allow_sql):
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--setting",
+            "default_allow_sql",
+            "on" if default_allow_sql else "off",
+            "--get",
+            "/_memory.json?sql=select+21&_shape=objects",
+        ],
+    )
+    if default_allow_sql:
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["rows"][0] == {"21": 21}
+    else:
+        assert result.exit_code == 1, result.output
+        # This isn't JSON at the moment, maybe it should be though
+        assert "Forbidden" in result.output
+
+
 def test_config_deprecated():
     # The --config option should show a deprecation message
     runner = CliRunner(mix_stderr=False)

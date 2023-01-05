@@ -142,6 +142,11 @@ SETTINGS = (
         "Allow users to create and use signed API tokens",
     ),
     Setting(
+        "default_allow_sql",
+        True,
+        "Allow anyone to run arbitrary SQL queries",
+    ),
+    Setting(
         "max_signed_tokens_ttl",
         0,
         "Maximum allowed expiry time for signed API tokens",

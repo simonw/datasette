@@ -36,12 +36,16 @@ def permission_allowed(datasette, actor, action, resource):
                 return None
             return actor_matches_allow(actor, allow)
         elif action == "execute-sql":
+            # Only use default_allow_sql setting if it is set to False:
+            default_allow_sql = (
+                None if datasette.setting("default_allow_sql") else False
+            )
             # Use allow_sql block from database block, or from top-level
             database_allow_sql = datasette.metadata("allow_sql", database=resource)
             if database_allow_sql is None:
                 database_allow_sql = datasette.metadata("allow_sql")
             if database_allow_sql is None:
-                return None
+                return default_allow_sql
             return actor_matches_allow(actor, database_allow_sql)
 
     return inner

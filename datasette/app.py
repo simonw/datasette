@@ -117,6 +117,11 @@ SETTINGS = (
         "Allow users to specify columns to facet using ?_facet= parameter",
     ),
     Setting(
+        "default_allow_sql",
+        True,
+        "Allow anyone to run arbitrary SQL queries",
+    ),
+    Setting(
         "allow_download",
         True,
         "Allow users to download the original SQLite database files",

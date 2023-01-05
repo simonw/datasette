@@ -805,6 +805,7 @@ def test_settings_json(app_client):
     assert {
         "default_page_size": 50,
         "default_facet_size": 30,
+        "default_allow_sql": True,
         "facet_suggest_time_limit_ms": 50,
         "facet_time_limit_ms": 200,
         "max_returned_rows": 100,

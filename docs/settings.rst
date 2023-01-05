@@ -59,6 +59,21 @@ Settings
 
 The following options can be set using ``--setting name value``, or by storing them in the ``settings.json`` file for use with :ref:`config_dir`.
 
+.. _setting_default_allow_sql:
+
+default_allow_sql
+~~~~~~~~~~~~~~~~~
+
+Should users be able to execute arbitrary SQL queries by default?
+
+Setting this to ``off`` causes permission checks for :ref:`permissions_execute_sql` to fail by default.
+
+::
+
+    datasette mydatabase.db --setting default_allow_sql off
+
+There are two ways to achieve this: the other is to add ``"allow_sql": false`` to your ``metadata.json`` file, as described in :ref:`authentication_permissions_execute_sql`. This setting offers a more convenient way to do this.
+
 .. _setting_default_page_size:
 
 default_page_size

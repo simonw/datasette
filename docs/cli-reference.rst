@@ -224,6 +224,8 @@ These can be passed to ``datasette serve`` using ``datasette serve --setting nam
                                    (default=50)
       allow_facet                  Allow users to specify columns to facet using
                                    ?_facet= parameter (default=True)
+      default_allow_sql            Allow anyone to run arbitrary SQL queries
+                                   (default=True)
       allow_download               Allow users to download the original SQLite
                                    database files (default=True)
       suggest_facets               Calculate and display suggested facets

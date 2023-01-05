@@ -319,7 +319,7 @@ Access to this ability is controlled by the :ref:`permissions_execute_sql` permi
 
 The easiest way to disable arbitrary SQL queries is using the :ref:`default_allow_sql setting <setting_default_allow_sql>` when you first start Datasette running.
 
-You can alternatively use the ``"allow_sql"`` to control who is allowed to execute arbitrary SQL queries.
+You can alternatively use an ``"allow_sql"`` block to control who is allowed to execute arbitrary SQL queries.
 
 To enable just the :ref:`root user<authentication_root>` to execute SQL for all databases in your instance, use the following:
 

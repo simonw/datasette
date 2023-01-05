@@ -357,8 +357,8 @@ Special table arguments
 
     Some examples:
 
-    * `facetable?_where=neighborhood like "%c%"&_where=city_id=3 <https://latest.datasette.io/fixtures/facetable?_where=neighborhood%20like%20%22%c%%22&_where=city_id=3>`__
-    * `facetable?_where=city_id in (select id from facet_cities where name != "Detroit") <https://latest.datasette.io/fixtures/facetable?_where=city_id%20in%20(select%20id%20from%20facet_cities%20where%20name%20!=%20%22Detroit%22)>`__
+    * `facetable?_where=_neighborhood like "%c%"&_where=_city_id=3 <https://latest.datasette.io/fixtures/facetable?_where=_neighborhood%20like%20%22%c%%22&_where=_city_id=3>`__
+    * `facetable?_where=_city_id in (select id from facet_cities where name != "Detroit") <https://latest.datasette.io/fixtures/facetable?_where=_city_id%20in%20(select%20id%20from%20facet_cities%20where%20name%20!=%20%22Detroit%22)>`__
 
 ``?_through={json}``
     This can be used to filter rows via a join against another table.

@@ -4,6 +4,7 @@ import click
 from click import formatting
 from click.types import CompositeParamType
 from click_default_group import DefaultGroup
+import functools
 import json
 import os
 import pathlib
@@ -11,6 +12,7 @@ from runpy import run_module
 import shutil
 from subprocess import call
 import sys
+import textwrap
 import webbrowser
 from .app import (
     OBSOLETE_SETTINGS,
@@ -126,7 +128,7 @@ class Setting(CompositeParamType):
 
 
 def sqlite_extensions(fn):
-    return click.option(
+    fn = click.option(
         "sqlite_extensions",
         "--load-extension",
         type=LoadExtension(),
@@ -134,6 +136,25 @@ def sqlite_extensions(fn):
         multiple=True,
         help="Path to a SQLite extension to load, and optional entrypoint",
     )(fn)
+    # Wrap it in a custom error handler
+    @functools.wraps(fn)
+    def wrapped(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except AttributeError as e:
+            if "enable_load_extension" in str(e):
+                raise click.ClickException(
+                    textwrap.dedent(
+                        """
+                    Your Python installation does not have the ability to load SQLite extensions.
+
+                    More information: https://datasette.io/help/extensions
+                    """
+                    ).strip()
+                )
+            raise
+
+    return wrapped
 
 
 @click.group(cls=DefaultGroup, default="serve", default_if_no_args=True)

@@ -321,6 +321,14 @@ The easiest way to disable arbitrary SQL queries is using the :ref:`default_allo
 
 You can alternatively use an ``"allow_sql"`` block to control who is allowed to execute arbitrary SQL queries.
 
+To prevent any user from executing arbitrary SQL queries, use this:
+
+.. code-block:: json
+
+    {
+        "allow_sql": false
+    }
+
 To enable just the :ref:`root user<authentication_root>` to execute SQL for all databases in your instance, use the following:
 
 .. code-block:: json

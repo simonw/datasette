@@ -4,17 +4,37 @@
  SpatiaLite
 ============
 
-The `SpatiaLite module <https://www.gaia-gis.it/fossil/libspatialite/index>`_ for SQLite adds features for handling geographic and spatial data. For an example of what you can do with it, see the tutorial `Building a location to time zone API with SpatiaLite, OpenStreetMap and Datasette <https://simonwillison.net/2017/Dec/12/location-time-zone-api/>`_.
+The `SpatiaLite module <https://www.gaia-gis.it/fossil/libspatialite/index>`_ for SQLite adds features for handling geographic and spatial data. For an example of what you can do with it, see the tutorial `Building a location to time zone API with SpatiaLite <https://datasette.io/tutorials/spatialite>`__.
 
 To use it with Datasette, you need to install the ``mod_spatialite`` dynamic library. This can then be loaded into Datasette using the ``--load-extension`` command-line option.
 
 Datasette can look for SpatiaLite in common installation locations if you run it like this::
 
-    datasette --load-extension=spatialite
+    datasette --load-extension=spatialite --setting default_allow_sql off
 
 If SpatiaLite is in another location, use the full path to the extension instead::
 
-    datasette --load-extension=/usr/local/lib/mod_spatialite.dylib
+    datasette --setting default_allow_sql off \
+      --load-extension=/usr/local/lib/mod_spatialite.dylib
+
+.. _spatialite_warning:
+
+Warning
+=======
+
+.. warning::
+    The SpatiaLite extension adds `a large number of additional SQL functions <https://www.gaia-gis.it/gaia-sins/spatialite-sql-5.0.1.html>`__, some of which are not be safe for untrusted users to execute: they may cause the Datasette server to crash.
+
+    You should not expose a SpatiaLite-enabled Datasette instance to the public internet without taking extra measures to secure it against potentially harmful SQL queries.
+
+    The following steps are recommended:
+
+    - Disable arbitrary SQL queries by untrusted users. See :ref:`authentication_permissions_execute_sql` for ways to do this. The easiest is to start Datasette with the ``datasette --setting default_allow_sql off`` option.
+    - Define :ref:`canned_queries` with the SQL queries that use SpatiaLite functions that you want people to be able to execute.
+
+    The `Datasette SpatiaLite tutorial <https://datasette.io/tutorials/spatialite>`__ includes detailed instructions for running SpatiaLite safely using these techniques
+
+.. _spatialite_installation:
 
 Installation
 ============

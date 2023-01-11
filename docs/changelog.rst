@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_64_1:
+
+0.64.1 (2023-01-11)
+-------------------
+
+- Documentation now links to a current source of information for installing Python 3. (:issue:`1987`)
+- Incorrectly calling the Datasette constructor using ``Datasette("path/to/data.db")`` instead of ``Datasette(["path/to/data.db"])`` now returns a useful error message. (:issue:`1985`)
+
 .. _v0_64:
 
 0.64 (2023-01-09)

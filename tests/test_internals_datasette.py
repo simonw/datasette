@@ -130,7 +130,14 @@ async def test_datasette_ensure_permissions_check_visibility(
 @pytest.mark.asyncio
 async def test_datasette_render_template_no_request():
     # https://github.com/simonw/datasette/issues/1849
-    ds = Datasette([], memory=True)
+    ds = Datasette(memory=True)
     await ds.invoke_startup()
     rendered = await ds.render_template("error.html")
     assert "Error " in rendered
+
+
+def test_datasette_error_if_string_not_list(tmpdir):
+    # https://github.com/simonw/datasette/issues/1985
+    db_path = str(tmpdir / "data.db")
+    with pytest.raises(ValueError):
+        ds = Datasette(db_path)

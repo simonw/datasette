@@ -251,6 +251,8 @@ class Datasette:
         self.config_dir = config_dir
         self.pdb = pdb
         self._secret = secret or secrets.token_hex(32)
+        if files is not None and isinstance(files, str):
+            raise ValueError("files= must be a list of paths, not a string")
         self.files = tuple(files or []) + tuple(immutables or [])
         if config_dir:
             db_files = []

@@ -1201,6 +1201,7 @@ This example registers two new magic parameters: ``:_request_http_version`` retu
 
 .. code-block:: python
 
+    from datasette import hookimpl
     from uuid import uuid4
 
 

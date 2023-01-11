@@ -34,7 +34,7 @@
 extensions = ["sphinx.ext.extlinks", "sphinx.ext.autodoc", "sphinx_copybutton"]
 
 extlinks = {
-    "issue": ("https://github.com/simonw/datasette/issues/%s", "#"),
+    "issue": ("https://github.com/simonw/datasette/issues/%s", "#%s"),
 }
 
 # Add any paths that contain templates here, relative to this directory.

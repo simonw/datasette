@@ -1203,6 +1203,8 @@ Note that the space character is a special case: it will be replaced with a ``+`
 JSON encoding
 -------------
 
+.. _internals_utils_CustomJSONEncoder:
+
 .. autoclass:: datasette.utils.CustomJSONEncoder
 
 datasette.tracer

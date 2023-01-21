@@ -2,6 +2,7 @@ import asyncio
 import itertools
 import json
 
+from asyncinject import Registry
 import markupsafe
 
 from datasette.plugins import pm
@@ -538,57 +539,60 @@ class TableView(DataView):
         # Execute the main query!
         results = await db.execute(sql, params, truncate=True, **extra_args)
 
-        # Calculate the total count for this query
-        count = None
-        if (
-            not db.is_mutable
-            and self.ds.inspect_data
-            and count_sql == f"select count(*) from {table_name} "
-        ):
-            # We can use a previously cached table row count
-            try:
-                count = self.ds.inspect_data[database_name]["tables"][table_name][
-                    "count"
-                ]
-            except KeyError:
-                pass
+        # Resolve extras
+        extras = _get_extras(request)
+        if request.args.getlist("_facet"):
+            extras.add("facet_results")
 
-        # Otherwise run a select count(*) ...
-        if count_sql and count is None and not nocount:
-            try:
-                count_rows = list(await db.execute(count_sql, from_sql_params))
-                count = count_rows[0][0]
-            except QueryInterrupted:
-                pass
+        async def extra_count():
+            # Calculate the total count for this query
+            count = None
+            if (
+                not db.is_mutable
+                and self.ds.inspect_data
+                and count_sql == f"select count(*) from {table_name} "
+            ):
+                # We can use a previously cached table row count
+                try:
+                    count = self.ds.inspect_data[database_name]["tables"][table_name][
+                        "count"
+                    ]
+                except KeyError:
+                    pass
 
-        # Faceting
-        if not self.ds.setting("allow_facet") and any(
-            arg.startswith("_facet") for arg in request.args
-        ):
-            raise BadRequest("_facet= is not allowed")
+            # Otherwise run a select count(*) ...
+            if count_sql and count is None and not nocount:
+                try:
+                    count_rows = list(await db.execute(count_sql, from_sql_params))
+                    count = count_rows[0][0]
+                except QueryInterrupted:
+                    pass
+            return count
 
-        # pylint: disable=no-member
-        facet_classes = list(
-            itertools.chain.from_iterable(pm.hook.register_facet_classes())
-        )
-        facet_results = {}
-        facets_timed_out = []
-        facet_instances = []
-        for klass in facet_classes:
-            facet_instances.append(
-                klass(
-                    self.ds,
-                    request,
-                    database_name,
-                    sql=sql_no_order_no_limit,
-                    params=params,
-                    table=table_name,
-                    metadata=table_metadata,
-                    row_count=count,
-                )
+        async def facet_instances(extra_count):
+            facet_instances = []
+            facet_classes = list(
+                itertools.chain.from_iterable(pm.hook.register_facet_classes())
             )
+            for facet_class in facet_classes:
+                facet_instances.append(
+                    facet_class(
+                        self.ds,
+                        request,
+                        database_name,
+                        sql=sql_no_order_no_limit,
+                        params=params,
+                        table=table_name,
+                        metadata=table_metadata,
+                        row_count=extra_count,
+                    )
+                )
+            return facet_instances
 
-        async def execute_facets():
+        async def extra_facet_results(facet_instances):
+            facet_results = {}
+            facets_timed_out = []
+
             if not nofacet:
                 # Run them in parallel
                 facet_awaitables = [facet.facet_results() for facet in facet_instances]
@@ -607,9 +611,13 @@ class TableView(DataView):
                         facet_results[key] = facet_info
                     facets_timed_out.extend(instance_facets_timed_out)
 
-        suggested_facets = []
+            return {
+                "results": facet_results,
+                "timed_out": facets_timed_out,
+            }
 
-        async def execute_suggested_facets():
+        async def extra_suggested_facets(facet_instances):
+            suggested_facets = []
             # Calculate suggested facets
             if (
                 self.ds.setting("suggest_facets")
@@ -624,8 +632,15 @@ class TableView(DataView):
                 ]
                 for suggest_result in await gather(*facet_suggest_awaitables):
                     suggested_facets.extend(suggest_result)
+            return suggested_facets
 
-        await gather(execute_facets(), execute_suggested_facets())
+        # Faceting
+        if not self.ds.setting("allow_facet") and any(
+            arg.startswith("_facet") for arg in request.args
+        ):
+            raise BadRequest("_facet= is not allowed")
+
+        # pylint: disable=no-member
 
         # Figure out columns and rows for the query
         columns = [r[0] for r in results.description]
@@ -732,17 +747,56 @@ class TableView(DataView):
             rows = rows[:page_size]
 
         # human_description_en combines filters AND search, if provided
-        human_description_en = filters.human_description_en(
-            extra=extra_human_descriptions
-        )
+        async def extra_human_description_en():
+            human_description_en = filters.human_description_en(
+                extra=extra_human_descriptions
+            )
+            if sort or sort_desc:
+                human_description_en = " ".join(
+                    [b for b in [human_description_en, sorted_by] if b]
+                )
+            return human_description_en
 
         if sort or sort_desc:
             sorted_by = "sorted by {}{}".format(
                 (sort or sort_desc), " descending" if sort_desc else ""
             )
-            human_description_en = " ".join(
-                [b for b in [human_description_en, sorted_by] if b]
-            )
+
+        async def extra_next_url():
+            return next_url
+
+        async def extra_columns():
+            return columns
+
+        async def extra_primary_keys():
+            return pks
+
+        registry = Registry(
+            extra_count,
+            extra_facet_results,
+            extra_suggested_facets,
+            facet_instances,
+            extra_human_description_en,
+            extra_next_url,
+            extra_columns,
+            extra_primary_keys,
+        )
+
+        results = await registry.resolve_multi(
+            ["extra_{}".format(extra) for extra in extras]
+        )
+        data = {
+            "ok": True,
+            "rows": rows[:page_size],
+            "next": next_value and str(next_value) or None,
+        }
+        data.update({
+            key.replace("extra_", ""): value
+            for key, value in results.items()
+            if key.startswith("extra_")
+            and key.replace("extra_", "") in extras
+        })
+        return Response.json(data, default=repr)
 
         async def extra_template():
             nonlocal sort
@@ -1334,3 +1388,11 @@ class TableDropView(BaseView):
 
         await db.execute_write_fn(drop_table)
         return Response.json({"ok": True}, status=200)
+
+
+def _get_extras(request):
+    extra_bits = request.args.getlist("_extra")
+    extras = set()
+    for bit in extra_bits:
+        extras.update(bit.split(","))
+    return extras

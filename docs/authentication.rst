@@ -408,7 +408,7 @@ And for ``insert-row`` against the ``reports`` table in that ``docs`` database:
         }
     }
 
-The :ref:`PermissionsDebugView` can be useful for helping test permissions that you have configured in this way.
+The :ref:`permissions debug tool <PermissionsDebugView>` can be useful for helping test permissions that you have configured in this way.
 
 .. _CreateTokenView:
 

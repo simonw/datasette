@@ -899,8 +899,10 @@ class Datasette:
             fk = [
                 foreign_key
                 for foreign_key in foreign_keys
-                if foreign_key["column"] == column
+                if foreign_key["columns"][0] == column and len(foreign_keys) == 1
             ][0]
+            fk["column"] = fk["columns"][0]
+            fk["other_column"] = fk["other_columns"][0]
         except IndexError:
             return {}
         label_column = await db.label_column_for_table(fk["other_table"])

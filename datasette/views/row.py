@@ -144,7 +144,20 @@ class RowView(DataView):
             link = "{}?{}".format(
                 self.ds.urls.table(database, fk["other_table"]), query
             )
-            foreign_key_tables.append({**fk, **{"count": count, "link": link}})
+            if len(pk_values) == 1:
+                other_columns_reference = fk["other_columns"][0]
+            else:
+                other_columns_reference = "({})".format(", ".join(fk["other_columns"]))
+            foreign_key_tables.append(
+                {
+                    **fk,
+                    **{
+                        "count": count,
+                        "link": link,
+                        "other_columns_reference": other_columns_reference,
+                    },
+                }
+            )
         return foreign_key_tables
 
 

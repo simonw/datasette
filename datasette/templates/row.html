@@ -35,7 +35,7 @@
             <li>
                 <a href="{{ other.link }}">
                     {{ "{:,}".format(other.count) }} row{% if other.count == 1 %}{% else %}s{% endif %}</a>
-                from {{ other.other_column }} in {{ other.other_table }}
+                from {{ other.other_columns_reference }} in {{ other.other_table }}
             </li>
         {% endfor %}
     </ul>

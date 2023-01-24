@@ -88,8 +88,15 @@ class TableView(DataView):
         expandables = []
         db = self.ds.databases[database_name]
         for fk in await db.foreign_keys_for_table(table_name):
+            if len(fk["other_columns"]) > 1:
+                continue
             label_column = await db.label_column_for_table(fk["other_table"])
-            expandables.append((fk, label_column))
+            singleton_fk = {
+                "other_table": fk["other_table"],
+                "other_column": fk["other_columns"][0],
+                "column": fk["columns"][0],
+            }
+            expandables.append((singleton_fk, label_column))
         return expandables
 
     async def post(self, request):
@@ -644,11 +651,7 @@ class TableView(DataView):
             columns_to_expand = request.args.getlist("_label")
         if columns_to_expand is None and all_labels:
             # expand all columns with foreign keys
-            columns_to_expand = [
-                fk["columns"][0]
-                for fk, _ in expandable_columns
-                if len(fk["columns"]) == 1
-            ]
+            columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
 
         if columns_to_expand:
             expanded_labels = {}

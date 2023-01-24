@@ -644,7 +644,11 @@ class TableView(DataView):
             columns_to_expand = request.args.getlist("_label")
         if columns_to_expand is None and all_labels:
             # expand all columns with foreign keys
-            columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
+            columns_to_expand = [
+                fk["columns"][0]
+                for fk, _ in expandable_columns
+                if len(fk["columns"]) == 1
+            ]
 
         if columns_to_expand:
             expanded_labels = {}
@@ -920,8 +924,9 @@ async def display_columns_and_rows(
         )
 
     column_to_foreign_key_table = {
-        fk["column"]: fk["other_table"]
+        fk["columns"][0]: fk["other_table"]
         for fk in await db.foreign_keys_for_table(table_name)
+        if len(fk["columns"]) == 1
     }
 
     cell_rows = []

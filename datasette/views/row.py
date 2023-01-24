@@ -97,8 +97,6 @@ class RowView(DataView):
         )
 
     async def foreign_key_tables(self, database, table, pk_values):
-        if len(pk_values) != 1:
-            return []
         db = self.ds.databases[database]
         all_foreign_keys = await db.get_all_foreign_keys()
         foreign_keys = all_foreign_keys[table]["incoming"]
@@ -107,37 +105,44 @@ class RowView(DataView):
 
         sql = "select " + ", ".join(
             [
-                "(select count(*) from {table} where {column}=:id)".format(
+                "(select count(*) from {table} where {condition})".format(
                     table=escape_sqlite(fk["other_table"]),
-                    column=escape_sqlite(fk["other_column"]),
+                    condition=" and ".join(
+                        "{column}=:id{i}".format(column=column, i=i)
+                        for i, column in enumerate(fk["other_columns"])
+                    ),
                 )
                 for fk in foreign_keys
             ]
         )
         try:
-            rows = list(await db.execute(sql, {"id": pk_values[0]}))
+            rows = list(
+                await db.execute(
+                    sql, {"id{i}".format(i=i): pk for i, pk in enumerate(pk_values)}
+                )
+            )
         except QueryInterrupted:
             # Almost certainly hit the timeout
             return []
 
         foreign_table_counts = dict(
             zip(
-                [(fk["other_table"], fk["other_column"]) for fk in foreign_keys],
+                [(fk["other_table"], fk["other_columns"]) for fk in foreign_keys],
                 list(rows[0]),
             )
         )
         foreign_key_tables = []
         for fk in foreign_keys:
             count = (
-                foreign_table_counts.get((fk["other_table"], fk["other_column"])) or 0
+                foreign_table_counts.get((fk["other_table"], fk["other_columns"])) or 0
             )
-            key = fk["other_column"]
-            if key.startswith("_"):
-                key += "__exact"
-            link = "{}?{}={}".format(
-                self.ds.urls.table(database, fk["other_table"]),
-                key,
-                ",".join(pk_values),
+            query_pairs = zip(fk["other_columns"], pk_values)
+            query = "&".join(
+                "{}={}".format(col + "__exact" if col.startswith("_") else col, pk)
+                for col, pk in query_pairs
+            )
+            link = "{}?{}".format(
+                self.ds.urls.table(database, fk["other_table"]), query
             )
             foreign_key_tables.append({**fk, **{"count": count, "link": link}})
         return foreign_key_tables

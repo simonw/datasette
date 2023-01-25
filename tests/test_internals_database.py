@@ -329,13 +329,13 @@ async def test_get_all_foreign_keys(db):
         "outgoing": [
             {
                 "other_table": "attraction_characteristic",
-                "column": "characteristic_id",
-                "other_column": "pk",
+                "columns": ("characteristic_id",),
+                "other_columns": ("pk",),
             },
             {
                 "other_table": "roadside_attractions",
-                "column": "attraction_id",
-                "other_column": "pk",
+                "columns": ("attraction_id",),
+                "other_columns": ("pk",),
             },
         ],
     }
@@ -343,34 +343,47 @@ async def test_get_all_foreign_keys(db):
         "incoming": [
             {
                 "other_table": "roadside_attraction_characteristics",
-                "column": "pk",
-                "other_column": "characteristic_id",
+                "columns": ("pk",),
+                "other_columns": ("characteristic_id",),
             }
         ],
         "outgoing": [],
     }
     assert all_foreign_keys["compound_primary_key"] == {
-        # No incoming because these are compound foreign keys, which we currently ignore
-        "incoming": [],
+        "incoming": [
+            {
+                "other_table": "foreign_key_references",
+                "columns": ("pk1", "pk2"),
+                "other_columns": (
+                    "foreign_key_compound_pk1",
+                    "foreign_key_compound_pk2",
+                ),
+            }
+        ],
         "outgoing": [],
     }
     assert all_foreign_keys["foreign_key_references"] == {
         "incoming": [],
         "outgoing": [
             {
+                "other_table": "compound_primary_key",
+                "columns": ("foreign_key_compound_pk1", "foreign_key_compound_pk2"),
+                "other_columns": ("pk1", "pk2"),
+            },
+            {
                 "other_table": "primary_key_multiple_columns",
-                "column": "foreign_key_with_no_label",
-                "other_column": "id",
+                "columns": ("foreign_key_with_no_label",),
+                "other_columns": ("id",),
             },
             {
                 "other_table": "simple_primary_key",
-                "column": "foreign_key_with_blank_label",
-                "other_column": "id",
+                "columns": ("foreign_key_with_blank_label",),
+                "other_columns": ("id",),
             },
             {
                 "other_table": "simple_primary_key",
-                "column": "foreign_key_with_label",
-                "other_column": "id",
+                "columns": ("foreign_key_with_label",),
+                "other_columns": ("id",),
             },
         ],
     }

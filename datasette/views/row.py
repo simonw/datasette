@@ -108,7 +108,7 @@ class RowView(DataView):
                 "(select count(*) from {table} where {condition})".format(
                     table=escape_sqlite(fk["other_table"]),
                     condition=" and ".join(
-                        "{column}=:id{i}".format(column=column, i=i)
+                        "{column}=:id{i}".format(column=escape_sqlite(column), i=i)
                         for i, column in enumerate(fk["other_columns"])
                     ),
                 )

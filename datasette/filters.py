@@ -135,8 +135,12 @@ def through_filters(request, database, table, datasette):
                 outgoing_foreign_keys = await db.foreign_keys_for_table(through_table)
                 try:
                     fk_to_us = [
-                        fk for fk in outgoing_foreign_keys if fk["other_table"] == table
+                        fk
+                        for fk in outgoing_foreign_keys
+                        if fk["other_table"] == table and len(fk["other_columns"]) == 1
                     ][0]
+                    fk_to_us["column"] = fk_to_us["columns"][0]
+                    fk_to_us["other_column"] = fk_to_us["other_columns"][0]
                 except IndexError:
                     raise DatasetteError(
                         "Invalid _through - could not find corresponding foreign key"

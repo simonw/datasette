@@ -396,6 +396,7 @@ class QueryView(DataView):
                         table=None,
                         database=database,
                         datasette=self.ds,
+                        request=request,
                     ):
                         candidate = await await_me_maybe(candidate)
                         if candidate is not None:

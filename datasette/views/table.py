@@ -783,6 +783,7 @@ class TableView(DataView):
                 sortable_columns=await self.sortable_columns_for_table(
                     database_name, table_name, use_rowid=True
                 ),
+                request=request,
             )
             metadata = (
                 (self.ds.metadata("databases") or {})
@@ -911,6 +912,7 @@ async def display_columns_and_rows(
     link_column=False,
     truncate_cells=0,
     sortable_columns=None,
+    request=None,
 ):
     """Returns columns, rows for specified table - including fancy foreign key treatment"""
     sortable_columns = sortable_columns or set()
@@ -992,6 +994,7 @@ async def display_columns_and_rows(
                 table=table_name,
                 database=database_name,
                 datasette=datasette,
+                request=request,
             ):
                 candidate = await await_me_maybe(candidate)
                 if candidate is not None:

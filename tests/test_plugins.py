@@ -187,7 +187,9 @@ async def test_hook_render_cell_link_from_json(ds_client):
 
 @pytest.mark.asyncio
 async def test_hook_render_cell_demo(ds_client):
-    response = await ds_client.get("/fixtures/simple_primary_key?id=4")
+    response = await ds_client.get(
+        "/fixtures/simple_primary_key?id=4&_render_cell_extra=1"
+    )
     soup = Soup(response.text, "html.parser")
     td = soup.find("td", {"class": "col-content"})
     assert json.loads(td.string) == {
@@ -196,6 +198,7 @@ async def test_hook_render_cell_demo(ds_client):
         "table": "simple_primary_key",
         "database": "fixtures",
         "config": {"depth": "table", "special": "this-is-simple_primary_key"},
+        "render_cell_extra": 1,
     }
 
 

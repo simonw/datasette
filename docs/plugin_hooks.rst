@@ -380,8 +380,8 @@ Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish
 
 .. _plugin_hook_render_cell:
 
-render_cell(row, value, column, table, database, datasette)
------------------------------------------------------------
+render_cell(row, value, column, table, database, datasette, request)
+--------------------------------------------------------------------
 
 Lets you customize the display of values within table cells in the HTML table view.
 
@@ -402,6 +402,9 @@ Lets you customize the display of values within table cells in the HTML table vi
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``request`` - :ref:`internals_request`
+    The current request object
 
 If your hook returns ``None``, it will be ignored. Use this to indicate that your hook is not able to custom render this particular value.
 

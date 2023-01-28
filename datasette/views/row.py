@@ -51,6 +51,7 @@ class RowView(DataView):
                 rows,
                 link_column=False,
                 truncate_cells=0,
+                request=request,
             )
             for column in display_columns:
                 column["sortable"] = False

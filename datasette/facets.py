@@ -383,7 +383,7 @@ class ArrayFacet(Facet):
                 deduped_array_items as (
                     select
                         distinct j.value,
-                        inner.*
+                        inner.{col}
                     from
                         json_each([inner].{col}) j
                         join inner

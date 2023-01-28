@@ -790,12 +790,13 @@ class TableView(DataView):
             "rows": rows[:page_size],
             "next": next_value and str(next_value) or None,
         }
-        data.update({
-            key.replace("extra_", ""): value
-            for key, value in results.items()
-            if key.startswith("extra_")
-            and key.replace("extra_", "") in extras
-        })
+        data.update(
+            {
+                key.replace("extra_", ""): value
+                for key, value in results.items()
+                if key.startswith("extra_") and key.replace("extra_", "") in extras
+            }
+        )
         return Response.json(data, default=repr)
 
         async def extra_template():
@@ -1396,3 +1397,37 @@ def _get_extras(request):
     for bit in extra_bits:
         extras.update(bit.split(","))
     return extras
+
+
+async def table_view(datasette, request):
+    from datasette.app import TableNotFound
+
+    try:
+        resolved = await datasette.resolve_table(request)
+    except TableNotFound as not_found:
+        # Was this actually a canned query?
+        canned_query = await datasette.get_canned_query(
+            not_found.database_name, not_found.table, request.actor
+        )
+        # If this is a canned query, not a table, then dispatch to QueryView instead
+        if canned_query:
+            # TODO: This doesn't work yet
+            return await QueryView(datasette).get(request)
+        else:
+            raise
+
+    # We have a table or view
+    # TODO: check permissions, construct query, execute extras, etc
+    # If it's a POST, do something entirely different
+    # Maybe first figure out if the format is valid?
+    # I really do want some kind of abstraction for handling streaming results
+
+    return Response.json(
+        {
+            "resolved": repr(resolved),
+            "Hello": "world",
+            "datasette": str(datasette),
+            "url_vars": request.url_vars,
+        },
+        default=repr,
+    )

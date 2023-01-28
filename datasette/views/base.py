@@ -174,9 +174,6 @@ class DataView(BaseView):
     async def data(self, request):
         raise NotImplementedError
 
-    def get_templates(self, database, table=None):
-        assert NotImplemented
-
     async def as_csv(self, request, database):
         kwargs = {}
         stream = request.args.get("_stream")

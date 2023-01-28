@@ -42,7 +42,13 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import TableView, TableInsertView, TableUpsertView, TableDropView
+from .views.table import (
+    TableView,
+    TableInsertView,
+    TableUpsertView,
+    TableDropView,
+    table_view,
+)
 from .views.row import RowView, RowDeleteView, RowUpdateView
 from .renderer import json_renderer
 from .url_builder import Urls
@@ -1358,7 +1364,7 @@ class Datasette:
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
-            TableView.as_view(self),
+            wrap_view(table_view, self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
         add_route(

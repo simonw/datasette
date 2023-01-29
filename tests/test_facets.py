@@ -408,21 +408,33 @@ async def test_array_facet_results(ds_client):
 async def test_array_facet_handle_duplicate_tags():
     ds = Datasette([], memory=True)
     db = ds.add_database(Database(ds, memory_name="test_array_facet"))
-    await db.execute_write("create table otters(name text, tags text)")
-    for name, tags in (
-        ("Charles", ["friendly", "cunning", "friendly"]),
-        ("Shaun", ["cunning", "empathetic", "friendly"]),
-        ("Tracy", ["empathetic", "eager"]),
+    await db.execute_write("create table otters(tags text)")
+    for tags in (
+        ["friendly", "cunning", "friendly"],
+        ["cunning", "empathetic", "friendly"],
+        ["empathetic", "eager"],
+        ["placid"],
+        ["placid"],
+        ["placid"],
     ):
         await db.execute_write(
-            "insert into otters (name, tags) values (?, ?)", [name, json.dumps(tags)]
+            "insert into otters (tags) values (?)", [json.dumps(tags)]
         )
 
     response = await ds.client.get("/test_array_facet/otters.json?_facet_array=tags")
+
+    print(response.json()["facet_results"]["tags"])
     assert response.json()["facet_results"]["tags"] == {
         "name": "tags",
         "type": "array",
         "results": [
+            {
+                "value": "placid",
+                "label": "placid",
+                "count": 3,
+                "toggle_url": "http://localhost/test_array_facet/otters.json?_facet_array=tags&tags__arraycontains=placid",
+                "selected": False,
+            },
             {
                 "value": "cunning",
                 "label": "cunning",

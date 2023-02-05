@@ -9,6 +9,7 @@ from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette import tracer
 from datasette.utils import (
+    add_cors_headers,
     await_me_maybe,
     CustomRow,
     append_querystring,
@@ -68,6 +69,59 @@ class Row:
             ]
         }
         return json.dumps(d, default=repr, indent=2)
+
+
+async def _gather_parallel(*args):
+    return await asyncio.gather(*args)
+
+
+async def _gather_sequential(*args):
+    results = []
+    for fn in args:
+        results.append(await fn)
+    return results
+
+
+def _redirect(datasette, request, path, forward_querystring=True, remove_args=None):
+    if request.query_string and "?" not in path and forward_querystring:
+        path = f"{path}?{request.query_string}"
+    if remove_args:
+        path = path_with_removed_args(request, remove_args, path=path)
+    r = Response.redirect(path)
+    r.headers["Link"] = f"<{path}>; rel=preload"
+    if datasette.cors:
+        add_cors_headers(r.headers)
+    return r
+
+
+async def _redirect_if_needed(datasette, request, resolved):
+    # Handle ?_filter_column
+    redirect_params = filters_should_redirect(request.args)
+    if redirect_params:
+        return _redirect(
+            datasette,
+            request,
+            datasette.urls.path(path_with_added_args(request, redirect_params)),
+            forward_querystring=False,
+        )
+
+    # If ?_sort_by_desc=on (from checkbox) redirect to _sort_desc=(_sort)
+    if "_sort_by_desc" in request.args:
+        return _redirect(
+            datasette,
+            request,
+            datasette.urls.path(
+                path_with_added_args(
+                    request,
+                    {
+                        "_sort_desc": request.args.get("_sort"),
+                        "_sort_by_desc": None,
+                        "_sort": None,
+                    },
+                )
+            ),
+            forward_querystring=False,
+        )
 
 
 class TableView(DataView):
@@ -247,15 +301,6 @@ class TableView(DataView):
         database_name = db.name
 
         # For performance profiling purposes, ?_noparallel=1 turns off asyncio.gather
-        async def _gather_parallel(*args):
-            return await asyncio.gather(*args)
-
-        async def _gather_sequential(*args):
-            results = []
-            for fn in args:
-                results.append(await fn)
-            return results
-
         gather = (
             _gather_sequential if request.args.get("_noparallel") else _gather_parallel
         )
@@ -1399,6 +1444,50 @@ def _get_extras(request):
     return extras
 
 
+async def _columns_to_select(table_columns, pks, request):
+    columns = list(table_columns)
+    if "_col" in request.args:
+        columns = list(pks)
+        _cols = request.args.getlist("_col")
+        bad_columns = [column for column in _cols if column not in table_columns]
+        if bad_columns:
+            raise DatasetteError(
+                "_col={} - invalid columns".format(", ".join(bad_columns)),
+                status=400,
+            )
+        # De-duplicate maintaining order:
+        columns.extend(dict.fromkeys(_cols))
+    if "_nocol" in request.args:
+        # Return all columns EXCEPT these
+        bad_columns = [
+            column
+            for column in request.args.getlist("_nocol")
+            if (column not in table_columns) or (column in pks)
+        ]
+        if bad_columns:
+            raise DatasetteError(
+                "_nocol={} - invalid columns".format(", ".join(bad_columns)),
+                status=400,
+            )
+        tmp_columns = [
+            column for column in columns if column not in request.args.getlist("_nocol")
+        ]
+        columns = tmp_columns
+    return columns
+
+
+async def _sortable_columns_for_table(datasette, database_name, table_name, use_rowid):
+    db = datasette.databases[database_name]
+    table_metadata = datasette.table_metadata(database_name, table_name)
+    if "sortable_columns" in table_metadata:
+        sortable_columns = set(table_metadata["sortable_columns"])
+    else:
+        sortable_columns = set(await db.table_columns(table_name))
+    if use_rowid:
+        sortable_columns.add("rowid")
+    return sortable_columns
+
+
 async def table_view(datasette, request):
     from datasette.app import TableNotFound
 
@@ -1417,7 +1506,196 @@ async def table_view(datasette, request):
             raise
 
     # We have a table or view
-    # TODO: check permissions, construct query, execute extras, etc
+    db = resolved.db
+    database_name = resolved.db.name
+    table_name = resolved.table
+    is_view = resolved.is_view
+
+    # Can this user view it?
+    visible, private = await datasette.check_visibility(
+        request.actor,
+        permissions=[
+            ("view-table", (database_name, table_name)),
+            ("view-database", database_name),
+            "view-instance",
+        ],
+    )
+    if not visible:
+        raise Forbidden("You do not have permission to view this table")
+
+    # Redirect based on request.args, if necessary
+    redirect_response = await _redirect_if_needed(datasette, request, resolved)
+    if redirect_response:
+        return redirect_response
+
+    # Introspect columns and primary keys for table
+    pks = await db.primary_keys(table_name)
+    table_columns = await db.table_columns(table_name)
+
+    # Take ?_col= and ?_nocol= into account
+    specified_columns = await _columns_to_select(table_columns, pks, request)
+    select_specified_columns = ", ".join(escape_sqlite(t) for t in specified_columns)
+    select_all_columns = ", ".join(escape_sqlite(t) for t in table_columns)
+
+    # rowid tables (no specified primary key) need a different SELECT
+    use_rowid = not pks and not is_view
+    order_by = ""
+    if use_rowid:
+        select_specified_columns = f"rowid, {select_specified_columns}"
+        select_all_columns = f"rowid, {select_all_columns}"
+        order_by = "rowid"
+        order_by_pks = "rowid"
+    else:
+        order_by_pks = ", ".join([escape_sqlite(pk) for pk in pks])
+        order_by = order_by_pks
+
+    if is_view:
+        order_by = ""
+
+    # TODO: This logic should turn into logic about which ?_extras get
+    # executed instead:
+    # nocount = request.args.get("_nocount")
+    # nofacet = request.args.get("_nofacet")
+    # nosuggest = request.args.get("_nosuggest")
+
+    # if request.args.get("_shape") in ("array", "object"):
+    #     nocount = True
+    #     nofacet = True
+
+    table_metadata = datasette.table_metadata(database_name, table_name)
+    units = table_metadata.get("units", {})
+
+    # Arguments that start with _ and don't contain a __ are
+    # special - things like ?_search= - and should not be
+    # treated as filters.
+    filter_args = []
+    for key in request.args:
+        if not (key.startswith("_") and "__" not in key):
+            for v in request.args.getlist(key):
+                filter_args.append((key, v))
+
+    # Build where clauses from query string arguments
+    filters = Filters(sorted(filter_args), units, ureg)
+    where_clauses, params = filters.build_where_clauses(table_name)
+
+    # Execute filters_from_request plugin hooks - including the default
+    # ones that live in datasette/filters.py
+    extra_context_from_filters = {}
+    extra_human_descriptions = []
+
+    for hook in pm.hook.filters_from_request(
+        request=request,
+        table=table_name,
+        database=database_name,
+        datasette=datasette,
+    ):
+        filter_arguments = await await_me_maybe(hook)
+        if filter_arguments:
+            where_clauses.extend(filter_arguments.where_clauses)
+            params.update(filter_arguments.params)
+            extra_human_descriptions.extend(filter_arguments.human_descriptions)
+            extra_context_from_filters.update(filter_arguments.extra_context)
+
+    # Deal with custom sort orders
+    sortable_columns = await _sortable_columns_for_table(
+        datasette, database_name, table_name, use_rowid
+    )
+    sort = request.args.get("_sort")
+    sort_desc = request.args.get("_sort_desc")
+
+    if not sort and not sort_desc:
+        sort = table_metadata.get("sort")
+        sort_desc = table_metadata.get("sort_desc")
+
+    if sort and sort_desc:
+        raise DatasetteError(
+            "Cannot use _sort and _sort_desc at the same time", status=400
+        )
+
+    if sort:
+        if sort not in sortable_columns:
+            raise DatasetteError(f"Cannot sort table by {sort}", status=400)
+
+        order_by = escape_sqlite(sort)
+
+    if sort_desc:
+        if sort_desc not in sortable_columns:
+            raise DatasetteError(f"Cannot sort table by {sort_desc}", status=400)
+
+        order_by = f"{escape_sqlite(sort_desc)} desc"
+
+    from_sql = "from {table_name} {where}".format(
+        table_name=escape_sqlite(table_name),
+        where=("where {} ".format(" and ".join(where_clauses)))
+        if where_clauses
+        else "",
+    )
+    # Copy of params so we can mutate them later:
+    from_sql_params = dict(**params)
+
+    count_sql = f"select count(*) {from_sql}"
+
+    # TODO: Handle pagination driven by ?_next=
+
+    where_clause = ""
+    if where_clauses:
+        where_clause = f"where {' and '.join(where_clauses)} "
+
+    if order_by:
+        order_by = f"order by {order_by}"
+
+    extra_args = {}
+    # Handle ?_size=500
+    # TODO: This was:
+    # page_size = _size or request.args.get("_size") or table_metadata.get("size")
+    page_size = request.args.get("_size") or table_metadata.get("size")
+    if page_size:
+        if page_size == "max":
+            page_size = datasette.max_returned_rows
+        try:
+            page_size = int(page_size)
+            if page_size < 0:
+                raise ValueError
+
+        except ValueError:
+            raise BadRequest("_size must be a positive integer")
+
+        if page_size > datasette.max_returned_rows:
+            raise BadRequest(f"_size must be <= {datasette.max_returned_rows}")
+
+        extra_args["page_size"] = page_size
+    else:
+        page_size = datasette.page_size
+
+    # Facets are calculated against SQL without order by or limit
+    sql_no_order_no_limit = (
+        "select {select_all_columns} from {table_name} {where}".format(
+            select_all_columns=select_all_columns,
+            table_name=escape_sqlite(table_name),
+            where=where_clause,
+        )
+    )
+
+    # TODO: Figure out where this came from originally:
+    offset = ""
+
+    # This is the SQL that populates the main table on the page
+    sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(
+        select_specified_columns=select_specified_columns,
+        table_name=escape_sqlite(table_name),
+        where=where_clause,
+        order_by=order_by,
+        page_size=page_size + 1,
+        offset=offset,
+    )
+
+    if request.args.get("_timelimit"):
+        extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
+
+    # Execute the main query!
+    results = await db.execute(sql, params, truncate=True, **extra_args)
+
+    # TODO:
     # If it's a POST, do something entirely different
     # Maybe first figure out if the format is valid?
     # I really do want some kind of abstraction for handling streaming results
@@ -1428,6 +1706,8 @@ async def table_view(datasette, request):
             "Hello": "world",
             "datasette": str(datasette),
             "url_vars": request.url_vars,
+            "sql": sql,
+            "rows": [dict(r) for r in results.rows],
         },
         default=repr,
     )

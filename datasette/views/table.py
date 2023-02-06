@@ -1702,10 +1702,10 @@ async def table_view(datasette, request):
 
     return Response.json(
         {
-            "resolved": repr(resolved),
-            "Hello": "world",
-            "datasette": str(datasette),
-            "url_vars": request.url_vars,
+            "debug": {
+                "resolved": repr(resolved),
+                "url_vars": request.url_vars,
+            },
             "sql": sql,
             "rows": [dict(r) for r in results.rows],
         },

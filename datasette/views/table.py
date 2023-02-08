@@ -88,8 +88,15 @@ class TableView(DataView):
         expandables = []
         db = self.ds.databases[database_name]
         for fk in await db.foreign_keys_for_table(table_name):
+            if len(fk["other_columns"]) > 1:
+                continue
             label_column = await db.label_column_for_table(fk["other_table"])
-            expandables.append((fk, label_column))
+            singleton_fk = {
+                "other_table": fk["other_table"],
+                "other_column": fk["other_columns"][0],
+                "column": fk["columns"][0],
+            }
+            expandables.append((singleton_fk, label_column))
         return expandables
 
     async def post(self, request):
@@ -922,8 +929,9 @@ async def display_columns_and_rows(
         )
 
     column_to_foreign_key_table = {
-        fk["column"]: fk["other_table"]
+        fk["columns"][0]: fk["other_table"]
         for fk in await db.foreign_keys_for_table(table_name)
+        if len(fk["columns"]) == 1
     }
 
     cell_rows = []

@@ -96,8 +96,8 @@ async def test_database_page(ds_client):
                 "incoming": [
                     {
                         "other_table": "roadside_attraction_characteristics",
-                        "column": "pk",
-                        "other_column": "characteristic_id",
+                        "columns": ["pk"],
+                        "other_columns": ["characteristic_id"],
                     }
                 ],
                 "outgoing": [],
@@ -126,18 +126,18 @@ async def test_database_page(ds_client):
                 "outgoing": [
                     {
                         "other_table": "simple_primary_key",
-                        "column": "f3",
-                        "other_column": "id",
+                        "columns": ["f3"],
+                        "other_columns": ["id"],
                     },
                     {
                         "other_table": "simple_primary_key",
-                        "column": "f2",
-                        "other_column": "id",
+                        "columns": ["f2"],
+                        "other_columns": ["id"],
                     },
                     {
                         "other_table": "simple_primary_key",
-                        "column": "f1",
-                        "other_column": "id",
+                        "columns": ["f1"],
+                        "other_columns": ["id"],
                     },
                 ],
             },
@@ -150,7 +150,19 @@ async def test_database_page(ds_client):
             "count": 2,
             "hidden": False,
             "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
+            "foreign_keys": {
+                "incoming": [
+                    {
+                        "other_table": "foreign_key_references",
+                        "columns": ["pk1", "pk2"],
+                        "other_columns": [
+                            "foreign_key_compound_pk1",
+                            "foreign_key_compound_pk2",
+                        ],
+                    }
+                ],
+                "outgoing": [],
+            },
             "private": False,
         },
         {
@@ -175,8 +187,8 @@ async def test_database_page(ds_client):
                 "outgoing": [
                     {
                         "other_table": "primary_key_multiple_columns_explicit_label",
-                        "column": "foreign_key_with_custom_label",
-                        "other_column": "id",
+                        "columns": ["foreign_key_with_custom_label"],
+                        "other_columns": ["id"],
                     }
                 ],
             },
@@ -193,8 +205,8 @@ async def test_database_page(ds_client):
                 "incoming": [
                     {
                         "other_table": "facetable",
-                        "column": "id",
-                        "other_column": "_city_id",
+                        "columns": ["id"],
+                        "other_columns": ["_city_id"],
                     }
                 ],
                 "outgoing": [],
@@ -225,8 +237,8 @@ async def test_database_page(ds_client):
                 "outgoing": [
                     {
                         "other_table": "facet_cities",
-                        "column": "_city_id",
-                        "other_column": "id",
+                        "columns": ["_city_id"],
+                        "other_columns": ["id"],
                     }
                 ],
             },
@@ -250,19 +262,27 @@ async def test_database_page(ds_client):
                 "incoming": [],
                 "outgoing": [
                     {
+                        "other_table": "compound_primary_key",
+                        "columns": [
+                            "foreign_key_compound_pk1",
+                            "foreign_key_compound_pk2",
+                        ],
+                        "other_columns": ["pk1", "pk2"],
+                    },
+                    {
                         "other_table": "primary_key_multiple_columns",
-                        "column": "foreign_key_with_no_label",
-                        "other_column": "id",
+                        "columns": ["foreign_key_with_no_label"],
+                        "other_columns": ["id"],
                     },
                     {
                         "other_table": "simple_primary_key",
-                        "column": "foreign_key_with_blank_label",
-                        "other_column": "id",
+                        "columns": ["foreign_key_with_blank_label"],
+                        "other_columns": ["id"],
                     },
                     {
                         "other_table": "simple_primary_key",
-                        "column": "foreign_key_with_label",
-                        "other_column": "id",
+                        "columns": ["foreign_key_with_label"],
+                        "other_columns": ["id"],
                     },
                 ],
             },
@@ -290,8 +310,8 @@ async def test_database_page(ds_client):
                 "incoming": [
                     {
                         "other_table": "foreign_key_references",
-                        "column": "id",
-                        "other_column": "foreign_key_with_no_label",
+                        "columns": ["id"],
+                        "other_columns": ["foreign_key_with_no_label"],
                     }
                 ],
                 "outgoing": [],
@@ -309,8 +329,8 @@ async def test_database_page(ds_client):
                 "incoming": [
                     {
                         "other_table": "custom_foreign_key_label",
-                        "column": "id",
-                        "other_column": "foreign_key_with_custom_label",
+                        "columns": ["id"],
+                        "other_columns": ["foreign_key_with_custom_label"],
                     }
                 ],
                 "outgoing": [],
@@ -329,13 +349,13 @@ async def test_database_page(ds_client):
                 "outgoing": [
                     {
                         "other_table": "attraction_characteristic",
-                        "column": "characteristic_id",
-                        "other_column": "pk",
+                        "columns": ["characteristic_id"],
+                        "other_columns": ["pk"],
                     },
                     {
                         "other_table": "roadside_attractions",
-                        "column": "attraction_id",
-                        "other_column": "pk",
+                        "columns": ["attraction_id"],
+                        "other_columns": ["pk"],
                     },
                 ],
             },
@@ -352,8 +372,8 @@ async def test_database_page(ds_client):
                 "incoming": [
                     {
                         "other_table": "roadside_attraction_characteristics",
-                        "column": "pk",
-                        "other_column": "attraction_id",
+                        "columns": ["pk"],
+                        "other_columns": ["attraction_id"],
                     }
                 ],
                 "outgoing": [],
@@ -371,8 +391,8 @@ async def test_database_page(ds_client):
                 "incoming": [
                     {
                         "other_table": "searchable_tags",
-                        "column": "pk",
-                        "other_column": "searchable_id",
+                        "columns": ["pk"],
+                        "other_columns": ["searchable_id"],
                     }
                 ],
                 "outgoing": [],
@@ -389,11 +409,15 @@ async def test_database_page(ds_client):
             "foreign_keys": {
                 "incoming": [],
                 "outgoing": [
-                    {"other_table": "tags", "column": "tag", "other_column": "tag"},
+                    {
+                        "other_table": "tags",
+                        "columns": ["tag"],
+                        "other_columns": ["tag"],
+                    },
                     {
                         "other_table": "searchable",
-                        "column": "searchable_id",
-                        "other_column": "pk",
+                        "columns": ["searchable_id"],
+                        "other_columns": ["pk"],
                     },
                 ],
             },
@@ -420,28 +444,28 @@ async def test_database_page(ds_client):
                 "incoming": [
                     {
                         "other_table": "foreign_key_references",
-                        "column": "id",
-                        "other_column": "foreign_key_with_blank_label",
+                        "columns": ["id"],
+                        "other_columns": ["foreign_key_with_blank_label"],
                     },
                     {
                         "other_table": "foreign_key_references",
-                        "column": "id",
-                        "other_column": "foreign_key_with_label",
+                        "columns": ["id"],
+                        "other_columns": ["foreign_key_with_label"],
                     },
                     {
                         "other_table": "complex_foreign_keys",
-                        "column": "id",
-                        "other_column": "f3",
+                        "columns": ["id"],
+                        "other_columns": ["f3"],
                     },
                     {
                         "other_table": "complex_foreign_keys",
-                        "column": "id",
-                        "other_column": "f2",
+                        "columns": ["id"],
+                        "other_columns": ["f2"],
                     },
                     {
                         "other_table": "complex_foreign_keys",
-                        "column": "id",
-                        "other_column": "f1",
+                        "columns": ["id"],
+                        "other_columns": ["f1"],
                     },
                 ],
                 "outgoing": [],
@@ -487,8 +511,8 @@ async def test_database_page(ds_client):
                 "incoming": [
                     {
                         "other_table": "searchable_tags",
-                        "column": "tag",
-                        "other_column": "tag",
+                        "columns": ["tag"],
+                        "other_columns": ["tag"],
                     }
                 ],
                 "outgoing": [],
@@ -517,11 +541,7 @@ async def test_database_page(ds_client):
         },
         {
             "name": "searchable_fts",
-            "columns": [
-                "text1",
-                "text2",
-                "name with . and spaces",
-            ]
+            "columns": ["text1", "text2", "name with . and spaces"]
             + (
                 [
                     "searchable_fts",
@@ -720,38 +740,43 @@ async def test_row_foreign_key_tables(ds_client):
     assert response.json()["foreign_key_tables"] == [
         {
             "other_table": "foreign_key_references",
-            "column": "id",
-            "other_column": "foreign_key_with_blank_label",
+            "columns": ["id"],
+            "other_columns": ["foreign_key_with_blank_label"],
             "count": 0,
             "link": "/fixtures/foreign_key_references?foreign_key_with_blank_label=1",
+            "other_columns_reference": "foreign_key_with_blank_label",
         },
         {
             "other_table": "foreign_key_references",
-            "column": "id",
-            "other_column": "foreign_key_with_label",
+            "columns": ["id"],
+            "other_columns": ["foreign_key_with_label"],
             "count": 1,
             "link": "/fixtures/foreign_key_references?foreign_key_with_label=1",
+            "other_columns_reference": "foreign_key_with_label",
         },
         {
             "other_table": "complex_foreign_keys",
-            "column": "id",
-            "other_column": "f3",
+            "columns": ["id"],
+            "other_columns": ["f3"],
             "count": 1,
             "link": "/fixtures/complex_foreign_keys?f3=1",
+            "other_columns_reference": "f3",
         },
         {
             "other_table": "complex_foreign_keys",
-            "column": "id",
-            "other_column": "f2",
+            "columns": ["id"],
+            "other_columns": ["f2"],
             "count": 0,
             "link": "/fixtures/complex_foreign_keys?f2=1",
+            "other_columns_reference": "f2",
         },
         {
             "other_table": "complex_foreign_keys",
-            "column": "id",
-            "other_column": "f1",
+            "columns": ["id"],
+            "other_columns": ["f1"],
             "count": 1,
             "link": "/fixtures/complex_foreign_keys?f1=1",
+            "other_columns_reference": "f1",
         },
     ]
 

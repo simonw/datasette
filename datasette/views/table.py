@@ -1850,11 +1850,17 @@ async def table_view_traced(datasette, request):
 
     async def extra_extras():
         "Available ?_extra= blocks"
-        return [{
-            "name": key[len("extra_"):],
-            "doc": fn.__doc__,
-        } for key, fn in registry._registry.items()
-        if key.startswith("extra_")]
+        return {
+            "available": [
+                {
+                    "name": key[len("extra_") :],
+                    "doc": fn.__doc__,
+                }
+                for key, fn in registry._registry.items()
+                if key.startswith("extra_")
+            ],
+            "selected": list(extras),
+        }
 
     registry = Registry(
         extra_count,
@@ -1887,18 +1893,6 @@ async def table_view_traced(datasette, request):
     data["rows"] = [dict(r) for r in rows[:page_size]]
 
     return Response.json(data)
-
-    return Response.json(
-        {
-            "debug": {
-                
-            },
-            "sql": sql,
-            "next": next_value,
-            "rows": [dict(r) for r in results.rows],
-        },
-        default=repr,
-    )
 
 
 async def _next_value_and_url(

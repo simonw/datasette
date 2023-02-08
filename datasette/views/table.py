@@ -742,54 +742,20 @@ class TableView(DataView):
                 rows = new_rows
 
         # Pagination next link
-        next_value = None
-        next_url = None
-        if 0 < page_size < len(rows):
-            if is_view:
-                next_value = int(_next or 0) + page_size
-            else:
-                next_value = path_from_row_pks(rows[-2], pks, use_rowid)
-            # If there's a sort or sort_desc, add that value as a prefix
-            if (sort or sort_desc) and not is_view:
-                try:
-                    prefix = rows[-2][sort or sort_desc]
-                except IndexError:
-                    # sort/sort_desc column missing from SELECT - look up value by PK instead
-                    prefix_where_clause = " and ".join(
-                        "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)
-                    )
-                    prefix_lookup_sql = "select [{}] from [{}] where {}".format(
-                        sort or sort_desc, table_name, prefix_where_clause
-                    )
-                    prefix = (
-                        await db.execute(
-                            prefix_lookup_sql,
-                            {
-                                **{
-                                    "pk{}".format(i): rows[-2][pk]
-                                    for i, pk in enumerate(pks)
-                                }
-                            },
-                        )
-                    ).single_value()
-                if isinstance(prefix, dict) and "value" in prefix:
-                    prefix = prefix["value"]
-                if prefix is None:
-                    prefix = "$null"
-                else:
-                    prefix = tilde_encode(str(prefix))
-                next_value = f"{prefix},{next_value}"
-                added_args = {"_next": next_value}
-                if sort:
-                    added_args["_sort"] = sort
-                else:
-                    added_args["_sort_desc"] = sort_desc
-            else:
-                added_args = {"_next": next_value}
-            next_url = self.ds.absolute_url(
-                request, self.ds.urls.path(path_with_replaced_args(request, added_args))
-            )
-            rows = rows[:page_size]
+        next_value, next_url = await _next_value_and_url(
+            datasette,
+            request,
+            table_name,
+            _next,
+            rows,
+            pks,
+            use_rowid,
+            sort,
+            sort_desc,
+            page_size,
+            is_view,
+        )
+        rows = rows[:page_size]
 
         # human_description_en combines filters AND search, if provided
         async def extra_human_description_en():
@@ -832,8 +798,8 @@ class TableView(DataView):
         )
         data = {
             "ok": True,
-            "rows": rows[:page_size],
             "next": next_value and str(next_value) or None,
+            "rows": rows[:page_size],
         }
         data.update(
             {
@@ -1488,6 +1454,34 @@ async def _sortable_columns_for_table(datasette, database_name, table_name, use_
     return sortable_columns
 
 
+async def _sort_order(table_metadata, sortable_columns, request, order_by):
+    sort = request.args.get("_sort")
+    sort_desc = request.args.get("_sort_desc")
+
+    if not sort and not sort_desc:
+        sort = table_metadata.get("sort")
+        sort_desc = table_metadata.get("sort_desc")
+
+    if sort and sort_desc:
+        raise DatasetteError(
+            "Cannot use _sort and _sort_desc at the same time", status=400
+        )
+
+    if sort:
+        if sort not in sortable_columns:
+            raise DatasetteError(f"Cannot sort table by {sort}", status=400)
+
+        order_by = escape_sqlite(sort)
+
+    if sort_desc:
+        if sort_desc not in sortable_columns:
+            raise DatasetteError(f"Cannot sort table by {sort_desc}", status=400)
+
+        order_by = f"{escape_sqlite(sort_desc)} desc"
+
+    return sort, sort_desc, order_by
+
+
 async def table_view(datasette, request):
     from datasette.app import TableNotFound
 
@@ -1554,13 +1548,12 @@ async def table_view(datasette, request):
 
     # TODO: This logic should turn into logic about which ?_extras get
     # executed instead:
-    # nocount = request.args.get("_nocount")
-    # nofacet = request.args.get("_nofacet")
-    # nosuggest = request.args.get("_nosuggest")
-
-    # if request.args.get("_shape") in ("array", "object"):
-    #     nocount = True
-    #     nofacet = True
+    nocount = request.args.get("_nocount")
+    nofacet = request.args.get("_nofacet")
+    nosuggest = request.args.get("_nosuggest")
+    if request.args.get("_shape") in ("array", "object"):
+        nocount = True
+        nofacet = True
 
     table_metadata = datasette.table_metadata(database_name, table_name)
     units = table_metadata.get("units", {})
@@ -1600,29 +1593,10 @@ async def table_view(datasette, request):
     sortable_columns = await _sortable_columns_for_table(
         datasette, database_name, table_name, use_rowid
     )
-    sort = request.args.get("_sort")
-    sort_desc = request.args.get("_sort_desc")
 
-    if not sort and not sort_desc:
-        sort = table_metadata.get("sort")
-        sort_desc = table_metadata.get("sort_desc")
-
-    if sort and sort_desc:
-        raise DatasetteError(
-            "Cannot use _sort and _sort_desc at the same time", status=400
-        )
-
-    if sort:
-        if sort not in sortable_columns:
-            raise DatasetteError(f"Cannot sort table by {sort}", status=400)
-
-        order_by = escape_sqlite(sort)
-
-    if sort_desc:
-        if sort_desc not in sortable_columns:
-            raise DatasetteError(f"Cannot sort table by {sort_desc}", status=400)
-
-        order_by = f"{escape_sqlite(sort_desc)} desc"
+    sort, sort_desc, order_by = await _sort_order(
+        table_metadata, sortable_columns, request, order_by
+    )
 
     from_sql = "from {table_name} {where}".format(
         table_name=escape_sqlite(table_name),
@@ -1694,11 +1668,183 @@ async def table_view(datasette, request):
 
     # Execute the main query!
     results = await db.execute(sql, params, truncate=True, **extra_args)
+    columns = [r[0] for r in results.description]
+    rows = list(results.rows)
 
-    # TODO:
-    # If it's a POST, do something entirely different
-    # Maybe first figure out if the format is valid?
-    # I really do want some kind of abstraction for handling streaming results
+    _next = request.args.get("_next")
+
+    # Pagination next link
+    next_value, next_url = await _next_value_and_url(
+        datasette,
+        db,
+        request,
+        table_name,
+        _next,
+        rows,
+        pks,
+        use_rowid,
+        sort,
+        sort_desc,
+        page_size,
+        is_view,
+    )
+    rows = rows[:page_size]
+
+    # For performance profiling purposes, ?_noparallel=1 turns off asyncio.gather
+    gather = _gather_sequential if request.args.get("_noparallel") else _gather_parallel
+
+    # Resolve extras
+    extras = _get_extras(request)
+    if request.args.getlist("_facet"):
+        extras.add("facet_results")
+
+    async def extra_count():
+        # Calculate the total count for this query
+        count = None
+        if (
+            not db.is_mutable
+            and datasette.inspect_data
+            and count_sql == f"select count(*) from {table_name} "
+        ):
+            # We can use a previously cached table row count
+            try:
+                count = datasette.inspect_data[database_name]["tables"][table_name][
+                    "count"
+                ]
+            except KeyError:
+                pass
+
+        # Otherwise run a select count(*) ...
+        if count_sql and count is None and not nocount:
+            try:
+                count_rows = list(await db.execute(count_sql, from_sql_params))
+                count = count_rows[0][0]
+            except QueryInterrupted:
+                pass
+        return count
+
+    async def facet_instances(extra_count):
+        facet_instances = []
+        facet_classes = list(
+            itertools.chain.from_iterable(pm.hook.register_facet_classes())
+        )
+        for facet_class in facet_classes:
+            facet_instances.append(
+                facet_class(
+                    datasette,
+                    request,
+                    database_name,
+                    sql=sql_no_order_no_limit,
+                    params=params,
+                    table=table_name,
+                    metadata=table_metadata,
+                    row_count=extra_count,
+                )
+            )
+        return facet_instances
+
+    async def extra_facet_results(facet_instances):
+        facet_results = {}
+        facets_timed_out = []
+
+        if not nofacet:
+            # Run them in parallel
+            facet_awaitables = [facet.facet_results() for facet in facet_instances]
+            facet_awaitable_results = await gather(*facet_awaitables)
+            for (
+                instance_facet_results,
+                instance_facets_timed_out,
+            ) in facet_awaitable_results:
+                for facet_info in instance_facet_results:
+                    base_key = facet_info["name"]
+                    key = base_key
+                    i = 1
+                    while key in facet_results:
+                        i += 1
+                        key = f"{base_key}_{i}"
+                    facet_results[key] = facet_info
+                facets_timed_out.extend(instance_facets_timed_out)
+
+        return {
+            "results": facet_results,
+            "timed_out": facets_timed_out,
+        }
+
+    async def extra_suggested_facets(facet_instances):
+        suggested_facets = []
+        # Calculate suggested facets
+        if (
+            datasette.setting("suggest_facets")
+            and datasette.setting("allow_facet")
+            and not _next
+            and not nofacet
+            and not nosuggest
+        ):
+            # Run them in parallel
+            facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
+            for suggest_result in await gather(*facet_suggest_awaitables):
+                suggested_facets.extend(suggest_result)
+        return suggested_facets
+
+    # Faceting
+    if not datasette.setting("allow_facet") and any(
+        arg.startswith("_facet") for arg in request.args
+    ):
+        raise BadRequest("_facet= is not allowed")
+
+    # human_description_en combines filters AND search, if provided
+    async def extra_human_description_en():
+        human_description_en = filters.human_description_en(
+            extra=extra_human_descriptions
+        )
+        if sort or sort_desc:
+            human_description_en = " ".join(
+                [b for b in [human_description_en, sorted_by] if b]
+            )
+        return human_description_en
+
+    if sort or sort_desc:
+        sorted_by = "sorted by {}{}".format(
+            (sort or sort_desc), " descending" if sort_desc else ""
+        )
+
+    async def extra_next_url():
+        return next_url
+
+    async def extra_columns():
+        return columns
+
+    async def extra_primary_keys():
+        return pks
+
+    registry = Registry(
+        extra_count,
+        extra_facet_results,
+        extra_suggested_facets,
+        facet_instances,
+        extra_human_description_en,
+        extra_next_url,
+        extra_columns,
+        extra_primary_keys,
+    )
+
+    results = await registry.resolve_multi(
+        ["extra_{}".format(extra) for extra in extras]
+    )
+    data = {
+        "ok": True,
+        "next": next_value and str(next_value) or None,
+    }
+    data.update(
+        {
+            key.replace("extra_", ""): value
+            for key, value in results.items()
+            if key.startswith("extra_") and key.replace("extra_", "") in extras
+        }
+    )
+    data["rows"] = [dict(r) for r in rows[:page_size]]
+
+    return Response.json(data)
 
     return Response.json(
         {
@@ -1707,7 +1853,72 @@ async def table_view(datasette, request):
                 "url_vars": request.url_vars,
             },
             "sql": sql,
+            "next": next_value,
             "rows": [dict(r) for r in results.rows],
         },
         default=repr,
     )
+
+
+async def _next_value_and_url(
+    datasette,
+    db,
+    request,
+    table_name,
+    _next,
+    rows,
+    pks,
+    use_rowid,
+    sort,
+    sort_desc,
+    page_size,
+    is_view,
+):
+    next_value = None
+    next_url = None
+    if 0 < page_size < len(rows):
+        if is_view:
+            next_value = int(_next or 0) + page_size
+        else:
+            next_value = path_from_row_pks(rows[-2], pks, use_rowid)
+        # If there's a sort or sort_desc, add that value as a prefix
+        if (sort or sort_desc) and not is_view:
+            try:
+                prefix = rows[-2][sort or sort_desc]
+            except IndexError:
+                # sort/sort_desc column missing from SELECT - look up value by PK instead
+                prefix_where_clause = " and ".join(
+                    "[{}] = :pk{}".format(pk, i) for i, pk in enumerate(pks)
+                )
+                prefix_lookup_sql = "select [{}] from [{}] where {}".format(
+                    sort or sort_desc, table_name, prefix_where_clause
+                )
+                prefix = (
+                    await db.execute(
+                        prefix_lookup_sql,
+                        {
+                            **{
+                                "pk{}".format(i): rows[-2][pk]
+                                for i, pk in enumerate(pks)
+                            }
+                        },
+                    )
+                ).single_value()
+            if isinstance(prefix, dict) and "value" in prefix:
+                prefix = prefix["value"]
+            if prefix is None:
+                prefix = "$null"
+            else:
+                prefix = tilde_encode(str(prefix))
+            next_value = f"{prefix},{next_value}"
+            added_args = {"_next": next_value}
+            if sort:
+                added_args["_sort"] = sort
+            else:
+                added_args["_sort_desc"] = sort_desc
+        else:
+            added_args = {"_next": next_value}
+        next_url = datasette.absolute_url(
+            request, datasette.urls.path(path_with_replaced_args(request, added_args))
+        )
+    return next_value, next_url

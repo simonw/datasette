@@ -1483,6 +1483,11 @@ async def _sort_order(table_metadata, sortable_columns, request, order_by):
 
 
 async def table_view(datasette, request):
+    with tracer.trace_child_tasks():
+        return await table_view_traced(datasette, request)
+
+
+async def table_view_traced(datasette, request):
     from datasette.app import TableNotFound
 
     try:
@@ -1699,6 +1704,7 @@ async def table_view(datasette, request):
         extras.add("facet_results")
 
     async def extra_count():
+        "Total count of rows matching these filters"
         # Calculate the total count for this query
         count = None
         if (
@@ -1744,6 +1750,7 @@ async def table_view(datasette, request):
         return facet_instances
 
     async def extra_facet_results(facet_instances):
+        "Results of facets calculated against this data"
         facet_results = {}
         facets_timed_out = []
 
@@ -1771,6 +1778,7 @@ async def table_view(datasette, request):
         }
 
     async def extra_suggested_facets(facet_instances):
+        "Suggestions for facets that might return interesting results"
         suggested_facets = []
         # Calculate suggested facets
         if (
@@ -1794,6 +1802,7 @@ async def table_view(datasette, request):
 
     # human_description_en combines filters AND search, if provided
     async def extra_human_description_en():
+        "Human-readable description of the filters"
         human_description_en = filters.human_description_en(
             extra=extra_human_descriptions
         )
@@ -1809,13 +1818,43 @@ async def table_view(datasette, request):
         )
 
     async def extra_next_url():
+        "Full URL for the next page of results"
         return next_url
 
     async def extra_columns():
+        "Column names returned by this query"
         return columns
 
     async def extra_primary_keys():
+        "Primary keys for this table"
         return pks
+
+    async def extra_debug():
+        "Extra debug information"
+        return {
+            "resolved": repr(resolved),
+            "url_vars": request.url_vars,
+            "nofacet": nofacet,
+            "nosuggest": nosuggest,
+        }
+
+    async def extra_request():
+        "Full information about the request"
+        return {
+            "url": request.url,
+            "path": request.path,
+            "full_path": request.full_path,
+            "host": request.host,
+            "args": request.args._data,
+        }
+
+    async def extra_extras():
+        "Available ?_extra= blocks"
+        return [{
+            "name": key[len("extra_"):],
+            "doc": fn.__doc__,
+        } for key, fn in registry._registry.items()
+        if key.startswith("extra_")]
 
     registry = Registry(
         extra_count,
@@ -1826,6 +1865,9 @@ async def table_view(datasette, request):
         extra_next_url,
         extra_columns,
         extra_primary_keys,
+        extra_debug,
+        extra_request,
+        extra_extras,
     )
 
     results = await registry.resolve_multi(
@@ -1849,8 +1891,7 @@ async def table_view(datasette, request):
     return Response.json(
         {
             "debug": {
-                "resolved": repr(resolved),
-                "url_vars": request.url_vars,
+                
             },
             "sql": sql,
             "next": next_value,

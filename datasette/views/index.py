@@ -21,6 +21,7 @@ class IndexView(BaseView):
     async def get(self, request):
         as_format = request.url_vars["format"]
         await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        metadata = (self.ds.metadata("databases") or {})
         databases = []
         for name, db in self.ds.databases.items():
             database_visible, database_private = await self.ds.check_visibility(
@@ -121,6 +122,7 @@ class IndexView(BaseView):
                     "hidden_tables_count": len(hidden_tables),
                     "views_count": len(views),
                     "private": database_private,
+                    "metadata": metadata.get(name, {}),
                 }
             )
 

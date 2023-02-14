@@ -1,5 +1,4 @@
 import asyncio
-from pydoc import plain
 from typing import Sequence, Union, Tuple, Optional, Dict, Iterable
 import asgi_csrf
 import collections

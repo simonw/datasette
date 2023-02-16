@@ -171,8 +171,8 @@ class TableView(DataView):
     async def columns_to_select(self, table_columns, pks, request):
         columns = list(table_columns)
         if "_col" in request.args:
-            columns = list(pks)
             _cols = request.args.getlist("_col")
+            columns = [pk for pk in pks if pk not in _cols]
             bad_columns = [column for column in _cols if column not in table_columns]
             if bad_columns:
                 raise DatasetteError(

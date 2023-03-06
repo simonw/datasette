@@ -345,13 +345,14 @@ Would install the `datasette-cluster-map <https://datasette.io/plugins/datasette
 
 ::
 
-    Usage: datasette install [OPTIONS] PACKAGES...
+    Usage: datasette install [OPTIONS] [PACKAGES]...
 
       Install plugins and packages from PyPI into the same environment as Datasette
 
     Options:
-      -U, --upgrade  Upgrade packages to latest version
-      --help         Show this message and exit.
+      -U, --upgrade           Upgrade packages to latest version
+      -r, --requirement PATH  Install from requirements file
+      --help                  Show this message and exit.
 
 
 .. [[[end]]]

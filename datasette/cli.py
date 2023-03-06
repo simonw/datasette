@@ -341,15 +341,25 @@ def package(
 
 
 @cli.command()
-@click.argument("packages", nargs=-1, required=True)
+@click.argument("packages", nargs=-1)
 @click.option(
     "-U", "--upgrade", is_flag=True, help="Upgrade packages to latest version"
 )
-def install(packages, upgrade):
+@click.option(
+    "-r",
+    "--requirement",
+    type=click.Path(exists=True),
+    help="Install from requirements file",
+)
+def install(packages, upgrade, requirement):
     """Install plugins and packages from PyPI into the same environment as Datasette"""
+    if not packages and not requirement:
+        raise click.UsageError("Please specify at least one package to install")
     args = ["pip", "install"]
     if upgrade:
         args += ["--upgrade"]
+    if requirement:
+        args += ["-r", requirement]
     args += list(packages)
     sys.argv = args
     run_module("pip", run_name="__main__")

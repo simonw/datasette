@@ -51,7 +51,16 @@ This command can also be used to upgrade Datasette itself to the latest released
 
     datasette install -U datasette
 
-These commands are thin wrappers around ``pip install`` and ``pip uninstall``, which ensure they run ``pip`` in the same virtual environment as Datasette itself.
+You can install multiple plugins at once by listing them as lines in a ``requirements.txt`` file like this::
+
+    datasette-vega
+    datasette-cluster-map
+
+Then pass that file to ``datasette install -r``::
+
+    datasette install -r requirements.txt
+
+The ``install`` and ``uninstall`` commands are thin wrappers around ``pip install`` and ``pip uninstall``, which ensure that they run ``pip`` in the same virtual environment as Datasette itself.
 
 One-off plugins using --plugins-dir
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

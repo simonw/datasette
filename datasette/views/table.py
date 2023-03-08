@@ -1616,6 +1616,7 @@ async def table_view_traced(datasette, request):
 
     # Handle pagination driven by ?_next=
     _next = request.args.get("_next")
+
     offset = ""
     if _next:
         sort_value = None
@@ -1721,9 +1722,6 @@ async def table_view_traced(datasette, request):
             where=where_clause,
         )
     )
-
-    # TODO: Figure out where this came from originally:
-    offset = ""
 
     # This is the SQL that populates the main table on the page
     sql = "select {select_specified_columns} from {table_name} {where}{order_by} limit {page_size}{offset}".format(

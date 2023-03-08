@@ -226,6 +226,12 @@ class QueryView(DataView):
     ):
         db = await self.ds.resolve_database(request)
         database = db.name
+        # Disallow x__list query string parameters
+        invalid_params = [k for k in request.args if k.endswith("__list")]
+        if invalid_params:
+            raise DatasetteError(
+                "Invalid query string parameters: {}".format(", ".join(invalid_params))
+            )
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:
             params.pop("sql")
@@ -258,6 +264,11 @@ class QueryView(DataView):
             for named_parameter in named_parameters
             if not named_parameter.startswith("_")
         }
+        # Handle any __list parameters
+        for named_parameter in named_parameters:
+            if named_parameter.endswith("__list"):
+                list_values = request.args.getlist(named_parameter[:-6])
+                params[named_parameter] = json.dumps(list_values)
 
         # Set to blank string if missing from params
         for named_parameter in named_parameters:

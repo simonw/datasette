@@ -1614,7 +1614,74 @@ async def table_view_traced(datasette, request):
 
     count_sql = f"select count(*) {from_sql}"
 
-    # TODO: Handle pagination driven by ?_next=
+    # Handle pagination driven by ?_next=
+    _next = request.args.get("_next")
+    offset = ""
+    if _next:
+        sort_value = None
+        if is_view:
+            # _next is an offset
+            offset = f" offset {int(_next)}"
+        else:
+            components = urlsafe_components(_next)
+            # If a sort order is applied and there are multiple components,
+            # the first of these is the sort value
+            if (sort or sort_desc) and (len(components) > 1):
+                sort_value = components[0]
+                # Special case for if non-urlencoded first token was $null
+                if _next.split(",")[0] == "$null":
+                    sort_value = None
+                components = components[1:]
+
+            # Figure out the SQL for next-based-on-primary-key first
+            next_by_pk_clauses = []
+            if use_rowid:
+                next_by_pk_clauses.append(f"rowid > :p{len(params)}")
+                params[f"p{len(params)}"] = components[0]
+            else:
+                # Apply the tie-breaker based on primary keys
+                if len(components) == len(pks):
+                    param_len = len(params)
+                    next_by_pk_clauses.append(compound_keys_after_sql(pks, param_len))
+                    for i, pk_value in enumerate(components):
+                        params[f"p{param_len + i}"] = pk_value
+
+            # Now add the sort SQL, which may incorporate next_by_pk_clauses
+            if sort or sort_desc:
+                if sort_value is None:
+                    if sort_desc:
+                        # Just items where column is null ordered by pk
+                        where_clauses.append(
+                            "({column} is null and {next_clauses})".format(
+                                column=escape_sqlite(sort_desc),
+                                next_clauses=" and ".join(next_by_pk_clauses),
+                            )
+                        )
+                    else:
+                        where_clauses.append(
+                            "({column} is not null or ({column} is null and {next_clauses}))".format(
+                                column=escape_sqlite(sort),
+                                next_clauses=" and ".join(next_by_pk_clauses),
+                            )
+                        )
+                else:
+                    where_clauses.append(
+                        "({column} {op} :p{p}{extra_desc_only} or ({column} = :p{p} and {next_clauses}))".format(
+                            column=escape_sqlite(sort or sort_desc),
+                            op=">" if sort else "<",
+                            p=len(params),
+                            extra_desc_only=""
+                            if sort
+                            else " or {column2} is null".format(
+                                column2=escape_sqlite(sort or sort_desc)
+                            ),
+                            next_clauses=" and ".join(next_by_pk_clauses),
+                        )
+                    )
+                    params[f"p{len(params)}"] = sort_value
+                order_by = f"{order_by}, {order_by_pks}"
+            else:
+                where_clauses.extend(next_by_pk_clauses)
 
     where_clause = ""
     if where_clauses:

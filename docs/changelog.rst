@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_64_2:
+
+0.64.2 (2023-03-08)
+-------------------
+
+- Fixed a bug with ``datasette publish cloudrun`` where deploys all used the same Docker image tag. This was mostly inconsequential as the service is deployed as soon as the image has been pushed to the registry, but could result in the incorrect image being deployed if two different deploys for two separate services ran at exactly the same time. (:issue:`2036`)
+
 .. _v0_64_1:
 
 0.64.1 (2023-01-11)

@@ -1971,6 +1971,24 @@ async def table_view_json(datasette, request, resolved):
             "selected": list(extras),
         }
 
+    bundles = {
+        "html": [
+            "suggested_facets",
+            "count",
+            "human_description_en",
+            "next_url",
+            "metadata",
+            "query",
+            "display_columns",
+            "display_rows",
+        ]
+    }
+
+    for key, values in bundles.items():
+        if f"_{key}" in extras:
+            extras.update(values)
+        extras.discard(f"_{key}")
+
     registry = Registry(
         extra_count,
         extra_facet_results,

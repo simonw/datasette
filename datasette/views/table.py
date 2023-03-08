@@ -1913,6 +1913,13 @@ async def table_view_traced(datasette, request):
             "args": request.args._data,
         }
 
+    async def extra_query():
+        "Details of the underlying SQL query"
+        return {
+            "sql": sql,
+            "params": params,
+        }
+
     async def extra_extras():
         "Available ?_extra= blocks"
         return {
@@ -1938,6 +1945,7 @@ async def table_view_traced(datasette, request):
         extra_primary_keys,
         extra_debug,
         extra_request,
+        extra_query,
         extra_extras,
     )
 

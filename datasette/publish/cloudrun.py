@@ -173,7 +173,7 @@ def publish_subcommand(publish):
                     print(fp.read())
                 print("\n====================\n")
 
-            image_id = f"gcr.io/{project}/{name}"
+            image_id = f"gcr.io/{project}/datasette-{service}"
             check_call(
                 "gcloud builds submit --tag {}{}".format(
                     image_id, " --timeout {}".format(timeout) if timeout else ""

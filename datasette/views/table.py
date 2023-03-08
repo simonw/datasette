@@ -1504,6 +1504,10 @@ async def table_view_traced(datasette, request):
         else:
             raise
 
+    return await table_view_json(datasette, request, resolved)
+
+
+async def table_view_json(datasette, request, resolved):
     # We have a table or view
     db = resolved.db
     database_name = resolved.db.name
@@ -1913,12 +1917,45 @@ async def table_view_traced(datasette, request):
             "args": request.args._data,
         }
 
+    async def run_display_columns_and_rows():
+        display_columns, display_rows = await display_columns_and_rows(
+            datasette,
+            database_name,
+            table_name,
+            results.description,
+            rows,
+            link_column=False,
+            truncate_cells=0,
+            sortable_columns=None,
+        )
+        return {
+            "columns": display_columns,
+            "rows": display_rows,
+        }
+
+    async def extra_display_columns(run_display_columns_and_rows):
+        return run_display_columns_and_rows["columns"]
+
+    async def extra_display_rows(run_display_columns_and_rows):
+        return run_display_columns_and_rows["rows"]
+
     async def extra_query():
         "Details of the underlying SQL query"
         return {
             "sql": sql,
             "params": params,
         }
+
+    async def extra_metadata():
+        "Metadata about the table and database"
+        metadata = (
+            (datasette.metadata("databases") or {})
+            .get(database_name, {})
+            .get("tables", {})
+            .get(table_name, {})
+        )
+        datasette.update_with_inherited_metadata(metadata)
+        return metadata
 
     async def extra_extras():
         "Available ?_extra= blocks"
@@ -1943,9 +1980,13 @@ async def table_view_traced(datasette, request):
         extra_next_url,
         extra_columns,
         extra_primary_keys,
+        run_display_columns_and_rows,
+        extra_display_columns,
+        extra_display_rows,
         extra_debug,
         extra_request,
         extra_query,
+        extra_metadata,
         extra_extras,
     )
 
@@ -1965,7 +2006,7 @@ async def table_view_traced(datasette, request):
     )
     data["rows"] = [dict(r) for r in rows[:page_size]]
 
-    return Response.json(data)
+    return Response.json(data, default=repr)
 
 
 async def _next_value_and_url(

@@ -57,7 +57,7 @@ def test_publish_cloudrun_prompts_for_service(
         "Service name: input-service"
     ) == result.output.strip()
     assert 0 == result.exit_code
-    tag = "gcr.io/myproject/datasette"
+    tag = "gcr.io/myproject/datasette-input-service"
     mock_call.assert_has_calls(
         [
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
@@ -86,7 +86,7 @@ def test_publish_cloudrun(mock_call, mock_output, mock_which, tmp_path_factory):
         cli.cli, ["publish", "cloudrun", "test.db", "--service", "test"]
     )
     assert 0 == result.exit_code
-    tag = f"gcr.io/{mock_output.return_value}/datasette"
+    tag = f"gcr.io/{mock_output.return_value}/datasette-test"
     mock_call.assert_has_calls(
         [
             mock.call(f"gcloud builds submit --tag {tag}", shell=True),
@@ -167,7 +167,7 @@ def test_publish_cloudrun_memory_cpu(
         assert 2 == result.exit_code
         return
     assert 0 == result.exit_code
-    tag = f"gcr.io/{mock_output.return_value}/datasette"
+    tag = f"gcr.io/{mock_output.return_value}/datasette-test"
     expected_call = (
         "gcloud run deploy --allow-unauthenticated --platform=managed"
         " --image {} test".format(tag)

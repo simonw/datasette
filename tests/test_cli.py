@@ -179,14 +179,13 @@ def test_install_upgrade(run_module, flag):
 
 
 @mock.patch("datasette.cli.run_module")
-def test_install_requirements(run_module):
+def test_install_requirements(run_module, tmpdir):
+    path = tmpdir.join("requirements.txt")
+    path.write("datasette-mock-plugin\ndatasette-plugin-2")
     runner = CliRunner()
-    with runner.isolated_filesystem():
-        with open("requirements.txt", "w") as fp:
-            fp.write("datasette-mock-plugin\ndatasette-plugin-2")
-        runner.invoke(cli, ["install", "-r", "requirements.txt"])
+    runner.invoke(cli, ["install", "-r", str(path)])
     run_module.assert_called_once_with("pip", run_name="__main__")
-    assert sys.argv == ["pip", "install", "-r", "requirements.txt"]
+    assert sys.argv == ["pip", "install", "-r", str(path)]
 
 
 def test_install_error_if_no_packages():

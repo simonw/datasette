@@ -1504,10 +1504,34 @@ async def table_view_traced(datasette, request):
         else:
             raise
 
-    return await table_view_json(datasette, request, resolved)
+    format = request.url_vars.get("format") or "html"
+    extra_extras = None
+    if format == "html":
+        extra_extras = {"_html"}
+
+    data = await table_view_data(
+        datasette, request, resolved, extra_extras=extra_extras
+    )
+    if format == "html":
+        return Response.html(
+            await datasette.render_template(
+                "table.html",
+                dict(
+                    data,
+                    append_querystring=append_querystring,
+                    settings=datasette.settings_dict(),
+                ),
+                request=request,
+                view_name="table",
+            ),
+            # headers=headers,
+        )
+    else:
+        return Response.json(data, default=repr)
 
 
-async def table_view_json(datasette, request, resolved):
+async def table_view_data(datasette, request, resolved, extra_extras=None):
+    extra_extras = extra_extras or set()
     # We have a table or view
     db = resolved.db
     database_name = resolved.db.name
@@ -1771,6 +1795,8 @@ async def table_view_json(datasette, request, resolved):
     extras = _get_extras(request)
     if request.args.getlist("_facet"):
         extras.add("facet_results")
+    if extra_extras:
+        extras.update(extra_extras)
 
     async def extra_count():
         "Total count of rows matching these filters"
@@ -1898,6 +1924,23 @@ async def table_view_json(datasette, request, resolved):
         "Primary keys for this table"
         return pks
 
+    async def extra_table_actions():
+        async def table_actions():
+            links = []
+            for hook in pm.hook.table_actions(
+                datasette=datasette,
+                table=table_name,
+                database=database_name,
+                actor=request.actor,
+                request=request,
+            ):
+                extra_links = await await_me_maybe(hook)
+                if extra_links:
+                    links.extend(extra_links)
+            return links
+
+        return table_actions
+
     async def extra_debug():
         "Extra debug information"
         return {
@@ -1957,6 +2000,35 @@ async def table_view_json(datasette, request, resolved):
         datasette.update_with_inherited_metadata(metadata)
         return metadata
 
+    async def extra_database():
+        return database_name
+
+    async def extra_table():
+        return table_name
+
+    async def extra_database_color():
+        return lambda _: "ff0000"
+
+    async def extra_filters():
+        return filters
+
+    async def extra_custom_table_templates():
+        return [
+            f"_table-{to_css_class(database_name)}-{to_css_class(table_name)}.html",
+            f"_table-table-{to_css_class(database_name)}-{to_css_class(table_name)}.html",
+            "_table.html",
+        ]
+
+    async def extra_sorted_facet_results(extra_facet_results):
+        return sorted(
+            extra_facet_results["results"].values(),
+            key=lambda f: (len(f["results"]), f["name"]),
+            reverse=True,
+        )
+
+    async def extra_renderers():
+        return {}
+
     async def extra_extras():
         "Available ?_extra= blocks"
         return {
@@ -1981,6 +2053,14 @@ async def table_view_json(datasette, request, resolved):
             "query",
             "display_columns",
             "display_rows",
+            "database",
+            "table",
+            "database_color",
+            "table_actions",
+            "filters",
+            "renderers",
+            "custom_table_templates",
+            "sorted_facet_results",
         ]
     }
 
@@ -2006,6 +2086,14 @@ async def table_view_json(datasette, request, resolved):
         extra_query,
         extra_metadata,
         extra_extras,
+        extra_database,
+        extra_table,
+        extra_database_color,
+        extra_table_actions,
+        extra_filters,
+        extra_renderers,
+        extra_custom_table_templates,
+        extra_sorted_facet_results,
     )
 
     results = await registry.resolve_multi(
@@ -2024,7 +2112,7 @@ async def table_view_json(datasette, request, resolved):
     )
     data["rows"] = [dict(r) for r in rows[:page_size]]
 
-    return Response.json(data, default=repr)
+    return data
 
 
 async def _next_value_and_url(

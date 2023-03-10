@@ -1483,8 +1483,39 @@ async def _sort_order(table_metadata, sortable_columns, request, order_by):
 
 
 async def table_view(datasette, request):
+    await datasette.refresh_schemas()
     with tracer.trace_child_tasks():
         return await table_view_traced(datasette, request)
+
+
+class CannedQueryView(DataView):
+    def __init__(self, datasette):
+        self.ds = datasette
+
+    async def data(self, request, **kwargs):
+        from datasette.app import TableNotFound
+
+        try:
+            await self.ds.resolve_table(request)
+        except TableNotFound as not_found:
+            canned_query = await self.ds.get_canned_query(
+                not_found.database_name, not_found.table, request.actor
+            )
+            print("not_found", not_found)
+            print("canned_query", canned_query)
+            print("type(canned_query)", type(canned_query))
+            if canned_query:
+                return await QueryView(self.ds).data(
+                    request,
+                    canned_query["sql"],
+                    metadata=canned_query,
+                    editable=False,
+                    canned_query=not_found.table,
+                    named_parameters=canned_query.get("params"),
+                    write=bool(canned_query.get("write")),
+                )
+            else:
+                raise
 
 
 async def table_view_traced(datasette, request):
@@ -1499,19 +1530,26 @@ async def table_view_traced(datasette, request):
         )
         # If this is a canned query, not a table, then dispatch to QueryView instead
         if canned_query:
-            # TODO: This doesn't work yet
-            return await QueryView(datasette).get(request)
+            return await CannedQueryView(datasette).get(request)
         else:
             raise
 
     format = request.url_vars.get("format") or "html"
     extra_extras = None
+    context_for_html_hack = False
     if format == "html":
         extra_extras = {"_html"}
+        context_for_html_hack = True
 
     data = await table_view_data(
-        datasette, request, resolved, extra_extras=extra_extras
+        datasette,
+        request,
+        resolved,
+        extra_extras=extra_extras,
+        context_for_html_hack=context_for_html_hack,
     )
+    if isinstance(data, Response):
+        return data
     if format == "html":
         return Response.html(
             await datasette.render_template(
@@ -1520,6 +1558,20 @@ async def table_view_traced(datasette, request):
                     data,
                     append_querystring=append_querystring,
                     settings=datasette.settings_dict(),
+                    # TODO: clean up all of these hacks:
+                    alternate_url_json=None,
+                    datasette_allow_facet=(
+                        "true" if datasette.setting("allow_facet") else "false"
+                    ),
+                    is_sortable=any(c["sortable"] for c in data["display_columns"]),
+                    allow_execute_sql=await datasette.permission_allowed(
+                        request.actor, "execute-sql", resolved.db.name
+                    ),
+                    url_csv="",  # TODO: This is in base.py
+                    renderers={"json": "/"},
+                    url_csv_path="",
+                    query_ms=1.2,
+                    select_templates=[],
                 ),
                 request=request,
                 view_name="table",
@@ -1530,7 +1582,9 @@ async def table_view_traced(datasette, request):
         return Response.json(data, default=repr)
 
 
-async def table_view_data(datasette, request, resolved, extra_extras=None):
+async def table_view_data(
+    datasette, request, resolved, extra_extras=None, context_for_html_hack=False
+):
     extra_extras = extra_extras or set()
     # We have a table or view
     db = resolved.db
@@ -1941,6 +1995,9 @@ async def table_view_data(datasette, request, resolved, extra_extras=None):
 
         return table_actions
 
+    async def extra_is_view():
+        return is_view
+
     async def extra_debug():
         "Extra debug information"
         return {
@@ -1968,7 +2025,7 @@ async def table_view_data(datasette, request, resolved, extra_extras=None):
             results.description,
             rows,
             link_column=False,
-            truncate_cells=0,
+            truncate_cells=datasette.setting("truncate_cells_html"),
             sortable_columns=None,
         )
         return {
@@ -2026,8 +2083,25 @@ async def table_view_data(datasette, request, resolved, extra_extras=None):
             reverse=True,
         )
 
+    async def extra_table_definition():
+        return await db.get_table_definition(table_name)
+
+    async def extra_view_definition():
+        return await db.get_view_definition(table_name)
+
     async def extra_renderers():
         return {}
+
+    async def extra_private():
+        return private
+
+    async def extra_expandable_columns():
+        expandables = []
+        db = datasette.databases[database_name]
+        for fk in await db.foreign_keys_for_table(table_name):
+            label_column = await db.label_column_for_table(fk["other_table"])
+            expandables.append((fk, label_column))
+        return expandables
 
     async def extra_extras():
         "Available ?_extra= blocks"
@@ -2043,9 +2117,13 @@ async def table_view_data(datasette, request, resolved, extra_extras=None):
             "selected": list(extras),
         }
 
+    async def extra_facets_timed_out(extra_facet_results):
+        return extra_facet_results["timed_out"]
+
     bundles = {
         "html": [
             "suggested_facets",
+            "facets_timed_out",
             "count",
             "human_description_en",
             "next_url",
@@ -2061,6 +2139,12 @@ async def table_view_data(datasette, request, resolved, extra_extras=None):
             "renderers",
             "custom_table_templates",
             "sorted_facet_results",
+            "table_definition",
+            "view_definition",
+            "is_view",
+            "private",
+            "primary_keys",
+            "expandable_columns",
         ]
     }
 
@@ -2072,6 +2156,7 @@ async def table_view_data(datasette, request, resolved, extra_extras=None):
     registry = Registry(
         extra_count,
         extra_facet_results,
+        extra_facets_timed_out,
         extra_suggested_facets,
         facet_instances,
         extra_human_description_en,
@@ -2094,6 +2179,11 @@ async def table_view_data(datasette, request, resolved, extra_extras=None):
         extra_renderers,
         extra_custom_table_templates,
         extra_sorted_facet_results,
+        extra_table_definition,
+        extra_view_definition,
+        extra_is_view,
+        extra_private,
+        extra_expandable_columns,
     )
 
     results = await registry.resolve_multi(
@@ -2111,6 +2201,9 @@ async def table_view_data(datasette, request, resolved, extra_extras=None):
         }
     )
     data["rows"] = [dict(r) for r in rows[:page_size]]
+
+    if context_for_html_hack:
+        data.update(extra_context_from_filters)
 
     return data
 

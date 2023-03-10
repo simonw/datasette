@@ -223,6 +223,7 @@ class QueryView(DataView):
         _size=None,
         named_parameters=None,
         write=False,
+        default_labels=None,
     ):
         db = await self.ds.resolve_database(request)
         database = db.name

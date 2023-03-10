@@ -23,7 +23,13 @@ from pathlib import Path
 
 from markupsafe import Markup, escape
 from itsdangerous import URLSafeSerializer
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+from jinja2 import (
+    ChoiceLoader,
+    Environment,
+    FileSystemLoader,
+    PrefixLoader,
+    StrictUndefined,
+)
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
@@ -394,7 +400,10 @@ class Datasette:
             ]
         )
         self.jinja_env = Environment(
-            loader=template_loader, autoescape=True, enable_async=True
+            loader=template_loader,
+            autoescape=True,
+            enable_async=True,
+            undefined=StrictUndefined,
         )
         self.jinja_env.filters["escape_css_string"] = escape_css_string
         self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus

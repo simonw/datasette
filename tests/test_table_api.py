@@ -934,27 +934,48 @@ async def test_suggested_facets(ds_client):
             "name": suggestion["name"],
             "querystring": suggestion["toggle_url"].split("?")[-1],
         }
-        for suggestion in (await ds_client.get("/fixtures/facetable.json?_extra=suggested_facets")).json()["suggested_facets"]
+        for suggestion in (
+            await ds_client.get("/fixtures/facetable.json?_extra=suggested_facets")
+        ).json()["suggested_facets"]
     ]
     expected = [
         {"name": "created", "querystring": "_extra=suggested_facets&_facet=created"},
-        {"name": "planet_int", "querystring": "_extra=suggested_facets&_facet=planet_int"},
+        {
+            "name": "planet_int",
+            "querystring": "_extra=suggested_facets&_facet=planet_int",
+        },
         {"name": "on_earth", "querystring": "_extra=suggested_facets&_facet=on_earth"},
         {"name": "state", "querystring": "_extra=suggested_facets&_facet=state"},
         {"name": "_city_id", "querystring": "_extra=suggested_facets&_facet=_city_id"},
-        {"name": "_neighborhood", "querystring": "_extra=suggested_facets&_facet=_neighborhood"},
+        {
+            "name": "_neighborhood",
+            "querystring": "_extra=suggested_facets&_facet=_neighborhood",
+        },
         {"name": "tags", "querystring": "_extra=suggested_facets&_facet=tags"},
-        {"name": "complex_array", "querystring": "_extra=suggested_facets&_facet=complex_array"},
-        {"name": "created", "querystring": "_extra=suggested_facets&_facet_date=created"},
+        {
+            "name": "complex_array",
+            "querystring": "_extra=suggested_facets&_facet=complex_array",
+        },
+        {
+            "name": "created",
+            "querystring": "_extra=suggested_facets&_facet_date=created",
+        },
     ]
     if detect_json1():
-        expected.append({"name": "tags", "querystring": "_extra=suggested_facets&_facet_array=tags"})
+        expected.append(
+            {"name": "tags", "querystring": "_extra=suggested_facets&_facet_array=tags"}
+        )
     assert expected == suggestions
 
 
 def test_allow_facet_off():
     with make_app_client(settings={"allow_facet": False}) as client:
-        assert client.get("/fixtures/facetable.json?_facet=planet_int&_extra=suggested_facets").status == 400
+        assert (
+            client.get(
+                "/fixtures/facetable.json?_facet=planet_int&_extra=suggested_facets"
+            ).status
+            == 400
+        )
         data = client.get("/fixtures/facetable.json?_extra=suggested_facets").json
         # Should not suggest any facets either:
         assert [] == data["suggested_facets"]
@@ -963,7 +984,12 @@ def test_allow_facet_off():
 def test_suggest_facets_off():
     with make_app_client(settings={"suggest_facets": False}) as client:
         # Now suggested_facets should be []
-        assert [] == client.get("/fixtures/facetable.json?_extra=suggested_facets").json["suggested_facets"]
+        assert (
+            []
+            == client.get("/fixtures/facetable.json?_extra=suggested_facets").json[
+                "suggested_facets"
+            ]
+        )
 
 
 @pytest.mark.asyncio
@@ -1287,7 +1313,7 @@ def test_generated_columns_are_visible_in_datasette():
     ),
 )
 async def test_col_nocol(ds_client, path, expected_columns):
-    response = await ds_client.get(path)
+    response = await ds_client.get(path + "&_extra=columns")
     assert response.status_code == 200
     columns = response.json()["columns"]
     assert columns == expected_columns

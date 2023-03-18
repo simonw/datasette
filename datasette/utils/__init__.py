@@ -828,9 +828,18 @@ _infinities = {float("inf"), float("-inf")}
 
 
 def remove_infinites(row):
-    if any((c in _infinities) if isinstance(c, float) else 0 for c in row):
+    to_check = row
+    if isinstance(row, dict):
+        to_check = row.values()
+    if not any((c in _infinities) if isinstance(c, float) else 0 for c in to_check):
+        return row
+    if isinstance(row, dict):
+        return {
+            k: (None if (isinstance(v, float) and v in _infinities) else v)
+            for k, v in row.items()
+        }
+    else:
         return [None if (isinstance(c, float) and c in _infinities) else c for c in row]
-    return row
 
 
 class StaticMount(click.ParamType):

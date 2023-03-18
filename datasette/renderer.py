@@ -80,7 +80,7 @@ def json_renderer(args, data, view_name):
             data = data["rows"]
 
     elif shape == "arrays":
-        pass
+        data["rows"] = [list(row.values()) for row in data["rows"]]
     else:
         status_code = 400
         data = {

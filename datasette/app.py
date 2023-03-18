@@ -28,7 +28,6 @@ from jinja2 import (
     Environment,
     FileSystemLoader,
     PrefixLoader,
-    StrictUndefined,
 )
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
@@ -403,7 +402,7 @@ class Datasette:
             loader=template_loader,
             autoescape=True,
             enable_async=True,
-            undefined=StrictUndefined,
+            # undefined=StrictUndefined,
         )
         self.jinja_env.filters["escape_css_string"] = escape_css_string
         self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus

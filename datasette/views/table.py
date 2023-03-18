@@ -1485,7 +1485,10 @@ async def _sort_order(table_metadata, sortable_columns, request, order_by):
 async def table_view(datasette, request):
     await datasette.refresh_schemas()
     with tracer.trace_child_tasks():
-        return await table_view_traced(datasette, request)
+        response = await table_view_traced(datasette, request)
+    if datasette.cors:
+        add_cors_headers(response.headers)
+    return response
 
 
 class CannedQueryView(DataView):

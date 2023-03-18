@@ -15,7 +15,6 @@ from datasette.utils import (
     append_querystring,
     compound_keys_after_sql,
     format_bytes,
-    tilde_decode,
     tilde_encode,
     escape_sqlite,
     filters_should_redirect,
@@ -29,6 +28,8 @@ from datasette.utils import (
     truncate_url,
     urlsafe_components,
     value_as_boolean,
+    InvalidSql,
+    sqlite3,
 )
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
@@ -1582,7 +1583,49 @@ async def table_view_traced(datasette, request):
             # headers=headers,
         )
     else:
-        return Response.json(data, default=repr)
+        return response_with_shape(data, request)
+
+
+def response_with_shape(data, request):
+    shape = request.args.get("_shape") or "objects"
+    if shape == "arrays":
+        data["rows"] = [list(row.values()) for row in data["rows"]]
+
+    if shape == "array":
+        data = data["rows"]
+
+    if request.args.get("_nl"):
+        return Response.text("\n".join(json.dumps(row) for row in data))
+
+    if shape == "object":
+        error = None
+        if "primary_keys" not in data:
+            error = "_shape=object is only available on tables"
+        else:
+            pks = data["primary_keys"]
+            if not pks:
+                error = "_shape=object not available for tables with no primary keys"
+            else:
+                object_rows = {}
+                for row in data["rows"]:
+                    pk_string = path_from_row_pks(row, pks, not pks)
+                    object_rows[pk_string] = row
+                data = object_rows
+        if error:
+            data = {"ok": False, "error": error}
+
+    if shape not in ("object", "objects", "array", "arrays"):
+        return Response.json(
+            {
+                "ok": False,
+                "error": f"Invalid _shape: {shape}",
+                "status": 400,
+                "title": None,
+            },
+            status=400,
+        )
+
+    return Response.json(data, default=repr)
 
 
 async def table_view_data(
@@ -1822,7 +1865,14 @@ async def table_view_data(
         extra_args["custom_time_limit"] = int(request.args.get("_timelimit"))
 
     # Execute the main query!
-    results = await db.execute(sql, params, truncate=True, **extra_args)
+    try:
+        results = await db.execute(sql, params, truncate=True, **extra_args)
+    except (sqlite3.OperationalError, InvalidSql) as e:
+        raise DatasetteError(str(e), title="Invalid SQL", status=400)
+
+    except sqlite3.OperationalError as e:
+        raise DatasetteError(str(e))
+
     columns = [r[0] for r in results.description]
     rows = list(results.rows)
 
@@ -1852,6 +1902,8 @@ async def table_view_data(
     extras = _get_extras(request)
     if request.args.getlist("_facet"):
         extras.add("facet_results")
+    if request.args.get("_shape") == "object":
+        extras.add("primary_keys")
     if extra_extras:
         extras.update(extra_extras)
 

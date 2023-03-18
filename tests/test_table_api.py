@@ -919,12 +919,12 @@ async def test_facets(ds_client, path, expected_facet_results):
     response = await ds_client.get(path)
     facet_results = response.json()["facet_results"]
     # We only compare the querystring portion of the taggle_url
-    for facet_name, facet_info in facet_results.items():
+    for facet_name, facet_info in facet_results["results"].items():
         assert facet_name == facet_info["name"]
         assert False is facet_info["truncated"]
         for facet_value in facet_info["results"]:
             facet_value["toggle_url"] = facet_value["toggle_url"].split("?")[1]
-    assert expected_facet_results == facet_results
+    assert expected_facet_results == facet_results["results"]
 
 
 @pytest.mark.asyncio
@@ -934,58 +934,57 @@ async def test_suggested_facets(ds_client):
             "name": suggestion["name"],
             "querystring": suggestion["toggle_url"].split("?")[-1],
         }
-        for suggestion in (await ds_client.get("/fixtures/facetable.json")).json()[
-            "suggested_facets"
-        ]
+        for suggestion in (await ds_client.get("/fixtures/facetable.json?_extra=suggested_facets")).json()["suggested_facets"]
     ]
     expected = [
-        {"name": "created", "querystring": "_facet=created"},
-        {"name": "planet_int", "querystring": "_facet=planet_int"},
-        {"name": "on_earth", "querystring": "_facet=on_earth"},
-        {"name": "state", "querystring": "_facet=state"},
-        {"name": "_city_id", "querystring": "_facet=_city_id"},
-        {"name": "_neighborhood", "querystring": "_facet=_neighborhood"},
-        {"name": "tags", "querystring": "_facet=tags"},
-        {"name": "complex_array", "querystring": "_facet=complex_array"},
-        {"name": "created", "querystring": "_facet_date=created"},
+        {"name": "created", "querystring": "_extra=suggested_facets&_facet=created"},
+        {"name": "planet_int", "querystring": "_extra=suggested_facets&_facet=planet_int"},
+        {"name": "on_earth", "querystring": "_extra=suggested_facets&_facet=on_earth"},
+        {"name": "state", "querystring": "_extra=suggested_facets&_facet=state"},
+        {"name": "_city_id", "querystring": "_extra=suggested_facets&_facet=_city_id"},
+        {"name": "_neighborhood", "querystring": "_extra=suggested_facets&_facet=_neighborhood"},
+        {"name": "tags", "querystring": "_extra=suggested_facets&_facet=tags"},
+        {"name": "complex_array", "querystring": "_extra=suggested_facets&_facet=complex_array"},
+        {"name": "created", "querystring": "_extra=suggested_facets&_facet_date=created"},
     ]
     if detect_json1():
-        expected.append({"name": "tags", "querystring": "_facet_array=tags"})
+        expected.append({"name": "tags", "querystring": "_extra=suggested_facets&_facet_array=tags"})
     assert expected == suggestions
 
 
 def test_allow_facet_off():
     with make_app_client(settings={"allow_facet": False}) as client:
-        assert 400 == client.get("/fixtures/facetable.json?_facet=planet_int").status
+        assert client.get("/fixtures/facetable.json?_facet=planet_int&_extra=suggested_facets").status == 400
+        data = client.get("/fixtures/facetable.json?_extra=suggested_facets").json
         # Should not suggest any facets either:
-        assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
+        assert [] == data["suggested_facets"]
 
 
 def test_suggest_facets_off():
     with make_app_client(settings={"suggest_facets": False}) as client:
         # Now suggested_facets should be []
-        assert [] == client.get("/fixtures/facetable.json").json["suggested_facets"]
+        assert [] == client.get("/fixtures/facetable.json?_extra=suggested_facets").json["suggested_facets"]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("nofacet", (True, False))
 async def test_nofacet(ds_client, nofacet):
-    path = "/fixtures/facetable.json?_facet=state"
+    path = "/fixtures/facetable.json?_facet=state&_extra=suggested_facets"
     if nofacet:
         path += "&_nofacet=1"
     response = await ds_client.get(path)
     if nofacet:
         assert response.json()["suggested_facets"] == []
-        assert response.json()["facet_results"] == {}
+        assert response.json()["facet_results"]["results"] == {}
     else:
         assert response.json()["suggested_facets"] != []
-        assert response.json()["facet_results"] != {}
+        assert response.json()["facet_results"]["results"] != {}
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("nosuggest", (True, False))
 async def test_nosuggest(ds_client, nosuggest):
-    path = "/fixtures/facetable.json?_facet=state"
+    path = "/fixtures/facetable.json?_facet=state&_extra=suggested_facets"
     if nosuggest:
         path += "&_nosuggest=1"
     response = await ds_client.get(path)
@@ -1001,9 +1000,9 @@ async def test_nosuggest(ds_client, nosuggest):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("nocount,expected_count", ((True, None), (False, 15)))
 async def test_nocount(ds_client, nocount, expected_count):
-    path = "/fixtures/facetable.json"
+    path = "/fixtures/facetable.json?_extra=count"
     if nocount:
-        path += "?_nocount=1"
+        path += "&_nocount=1"
     response = await ds_client.get(path)
     assert response.json()["count"] == expected_count
 

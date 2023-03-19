@@ -1546,7 +1546,7 @@ async def table_view_traced(datasette, request):
         extra_extras = {"_html"}
         context_for_html_hack = True
 
-    data = await table_view_data(
+    data, next_url = await table_view_data(
         datasette,
         request,
         resolved,
@@ -1584,7 +1584,10 @@ async def table_view_traced(datasette, request):
             # headers=headers,
         )
     else:
-        return json_renderer(request.args, data, None)
+        response = json_renderer(request.args, data, None)
+        if next_url:
+            response.headers["link"] = f'<{next_url}>; rel="next"'
+        return response
 
 
 async def table_view_data(
@@ -2219,7 +2222,7 @@ async def table_view_data(
     if context_for_html_hack:
         data.update(extra_context_from_filters)
 
-    return data
+    return data, next_url
 
 
 async def _next_value_and_url(

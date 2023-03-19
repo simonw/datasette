@@ -695,7 +695,13 @@ class TableView(DataView):
 
         # Expand labeled columns if requested
         expanded_columns = []
-        expandable_columns = await self.expandable_columns(database_name, table_name)
+
+        # List of (fk_dict, label_column-or-None) pairs for that table
+        expandable_columns = []
+        for fk in await db.foreign_keys_for_table(table_name):
+            label_column = await db.label_column_for_table(fk["other_table"])
+            expandable_columns.append((fk, label_column))
+
         columns_to_expand = None
         try:
             all_labels = value_as_boolean(request.args.get("_labels", ""))
@@ -1488,8 +1494,27 @@ async def table_view(datasette, request):
     await datasette.refresh_schemas()
     with tracer.trace_child_tasks():
         response = await table_view_traced(datasette, request)
+
+    # CORS
     if datasette.cors:
         add_cors_headers(response.headers)
+
+    # Cache TTL header
+    ttl = request.args.get("_ttl", None)
+    if ttl is None or not ttl.isdigit():
+        ttl = datasette.setting("default_cache_ttl")
+
+    if datasette.cache_headers and response.status == 200:
+        ttl = int(ttl)
+        if ttl == 0:
+            ttl_header = "no-cache"
+        else:
+            ttl_header = f"max-age={ttl}"
+        response.headers["Cache-Control"] = ttl_header
+
+    # Referrer policy
+    response.headers["Referrer-Policy"] = "no-referrer"
+
     return response
 
 
@@ -1542,9 +1567,11 @@ async def table_view_traced(datasette, request):
     format = request.url_vars.get("format") or "html"
     extra_extras = None
     context_for_html_hack = False
+    default_labels = False
     if format == "html":
         extra_extras = {"_html"}
         context_for_html_hack = True
+        default_labels = True
 
     data, next_url = await table_view_data(
         datasette,
@@ -1552,6 +1579,7 @@ async def table_view_traced(datasette, request):
         resolved,
         extra_extras=extra_extras,
         context_for_html_hack=context_for_html_hack,
+        default_labels=default_labels,
     )
     if isinstance(data, Response):
         return data
@@ -1591,7 +1619,12 @@ async def table_view_traced(datasette, request):
 
 
 async def table_view_data(
-    datasette, request, resolved, extra_extras=None, context_for_html_hack=False
+    datasette,
+    request,
+    resolved,
+    extra_extras=None,
+    context_for_html_hack=False,
+    default_labels=False,
 ):
     extra_extras = extra_extras or set()
     # We have a table or view
@@ -1837,6 +1870,61 @@ async def table_view_data(
 
     columns = [r[0] for r in results.description]
     rows = list(results.rows)
+
+    # Expand labeled columns if requested
+    expanded_columns = []
+    # List of (fk_dict, label_column-or-None) pairs for that table
+    expandable_columns = []
+    for fk in await db.foreign_keys_for_table(table_name):
+        label_column = await db.label_column_for_table(fk["other_table"])
+        expandable_columns.append((fk, label_column))
+
+    columns_to_expand = None
+    try:
+        all_labels = value_as_boolean(request.args.get("_labels", ""))
+    except ValueError:
+        all_labels = default_labels
+    # Check for explicit _label=
+    if "_label" in request.args:
+        columns_to_expand = request.args.getlist("_label")
+    if columns_to_expand is None and all_labels:
+        # expand all columns with foreign keys
+        columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
+
+    if columns_to_expand:
+        expanded_labels = {}
+        for fk, _ in expandable_columns:
+            column = fk["column"]
+            if column not in columns_to_expand:
+                continue
+            if column not in columns:
+                continue
+            expanded_columns.append(column)
+            # Gather the values
+            column_index = columns.index(column)
+            values = [row[column_index] for row in rows]
+            # Expand them
+            expanded_labels.update(
+                await datasette.expand_foreign_keys(
+                    database_name, table_name, column, values
+                )
+            )
+        if expanded_labels:
+            # Rewrite the rows
+            new_rows = []
+            for row in rows:
+                new_row = CustomRow(columns)
+                for column in row.keys():
+                    value = row[column]
+                    if (column, value) in expanded_labels and value is not None:
+                        new_row[column] = {
+                            "value": value,
+                            "label": expanded_labels[(column, value)],
+                        }
+                    else:
+                        new_row[column] = value
+                new_rows.append(new_row)
+            rows = new_rows
 
     _next = request.args.get("_next")
 

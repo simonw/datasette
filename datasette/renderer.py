@@ -4,7 +4,7 @@ from datasette.utils import (
     remove_infinites,
     CustomJSONEncoder,
     path_from_row_pks,
-    sqlite3
+    sqlite3,
 )
 from datasette.utils.asgi import Response
 
@@ -56,7 +56,7 @@ def json_renderer(args, data, view_name):
         elif isinstance(data["rows"][0], sqlite3.Row):
             data = [row[0] for row in data["rows"]]
         else:
-            assert isinstance(row[0], dict)
+            assert isinstance(data["rows"][0], dict)
             data = [next(iter(row.values())) for row in data["rows"]]
     elif shape in ("objects", "object", "array"):
         columns = data.get("columns")

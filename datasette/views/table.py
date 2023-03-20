@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import json
+import urllib
 
 from asyncinject import Registry
 import markupsafe
@@ -12,6 +13,7 @@ from datasette.renderer import json_renderer
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
+    call_with_supported_arguments,
     CustomRow,
     append_querystring,
     compound_keys_after_sql,
@@ -23,6 +25,7 @@ from datasette.utils import (
     is_url,
     path_from_row_pks,
     path_with_added_args,
+    path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
     to_css_class,
@@ -1604,9 +1607,6 @@ async def table_view_traced(datasette, request):
                     allow_execute_sql=await datasette.permission_allowed(
                         request.actor, "execute-sql", resolved.db.name
                     ),
-                    url_csv="",  # TODO: This is in base.py
-                    renderers={"json": "/"},
-                    url_csv_path="",
                     query_ms=1.2,
                     select_templates=[],
                 ),
@@ -2210,8 +2210,32 @@ async def table_view_data(
     async def extra_view_definition():
         return await db.get_view_definition(table_name)
 
-    async def extra_renderers():
-        return {}
+    async def extra_renderers(extra_expandable_columns, extra_query):
+        renderers = {}
+        url_labels_extra = {}
+        if extra_expandable_columns:
+            url_labels_extra = {"_labels": "on"}
+        for key, (_, can_render) in datasette.renderers.items():
+            it_can_render = call_with_supported_arguments(
+                can_render,
+                datasette=datasette,
+                columns=columns or [],
+                rows=rows or [],
+                sql=extra_query.get("sql", None),
+                query_name=None,
+                database=database_name,
+                table=table_name,
+                request=request,
+                view_name="table",
+            )
+            it_can_render = await await_me_maybe(it_can_render)
+            if it_can_render:
+                renderers[key] = datasette.urls.path(
+                    path_with_format(
+                        request=request, format=key, extra_qs={**url_labels_extra}
+                    )
+                )
+        return renderers
 
     async def extra_private():
         return private
@@ -2335,6 +2359,26 @@ async def table_view_data(
             for table_column in table_columns
             if table_column not in columns
         ]
+        url_labels_extra = {}
+        if data.get("expandable_columns"):
+            url_labels_extra = {"_labels": "on"}
+        url_csv_args = {"_size": "max", **url_labels_extra}
+        url_csv = datasette.urls.path(
+            path_with_format(request=request, format="csv", extra_qs=url_csv_args)
+        )
+        url_csv_path = url_csv.split("?")[0]
+        data.update(
+            {
+                "url_csv": url_csv,
+                "url_csv_path": url_csv_path,
+                "url_csv_hidden_args": [
+                    (key, value)
+                    for key, value in urllib.parse.parse_qsl(request.query_string)
+                    if key not in ("_labels", "_facet", "_size")
+                ]
+                + [("_size", "max")],
+            }
+        )
         # if no sort specified AND table has a single primary key,
         # set sort to that so arrow is displayed
         if not sort and not sort_desc:

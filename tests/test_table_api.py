@@ -928,6 +928,36 @@ async def test_facets(ds_client, path, expected_facet_results):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(not detect_json1(), reason="requires JSON1 extension")
+async def test_facets_array(ds_client):
+    response = await ds_client.get("/fixtures/facetable.json?_facet_array=tags")
+    facet_results = response.json()["facet_results"]
+    assert facet_results["results"]["tags"]["results"] == [
+        {
+            "value": "tag1",
+            "label": "tag1",
+            "count": 2,
+            "toggle_url": "http://localhost/fixtures/facetable.json?_facet_array=tags&tags__arraycontains=tag1",
+            "selected": False,
+        },
+        {
+            "value": "tag2",
+            "label": "tag2",
+            "count": 1,
+            "toggle_url": "http://localhost/fixtures/facetable.json?_facet_array=tags&tags__arraycontains=tag2",
+            "selected": False,
+        },
+        {
+            "value": "tag3",
+            "label": "tag3",
+            "count": 1,
+            "toggle_url": "http://localhost/fixtures/facetable.json?_facet_array=tags&tags__arraycontains=tag3",
+            "selected": False,
+        },
+    ]
+
+
+@pytest.mark.asyncio
 async def test_suggested_facets(ds_client):
     suggestions = [
         {

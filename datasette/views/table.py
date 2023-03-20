@@ -1954,7 +1954,7 @@ async def table_view_data(
 
     # Resolve extras
     extras = _get_extras(request)
-    if request.args.getlist("_facet"):
+    if any(k for k in request.args.keys() if k == "_facet" or k.startswith("_facet_")):
         extras.add("facet_results")
     if request.args.get("_shape") == "object":
         extras.add("primary_keys")

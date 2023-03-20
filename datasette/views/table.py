@@ -2327,6 +2327,23 @@ async def table_view_data(
 
     if context_for_html_hack:
         data.update(extra_context_from_filters)
+        # filter_columns combine the columns we know are available
+        # in the table with any additional columns (such as rowid)
+        # which are available in the query
+        data["filter_columns"] = list(columns) + [
+            table_column
+            for table_column in table_columns
+            if table_column not in columns
+        ]
+        # if no sort specified AND table has a single primary key,
+        # set sort to that so arrow is displayed
+        if not sort and not sort_desc:
+            if 1 == len(pks):
+                sort = pks[0]
+            elif use_rowid:
+                sort = "rowid"
+        data["sort"] = sort
+        data["sort_desc"] = sort_desc
 
     return data, next_url
 

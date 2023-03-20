@@ -1573,7 +1573,7 @@ async def table_view_traced(datasette, request):
         context_for_html_hack = True
         default_labels = True
 
-    data, next_url = await table_view_data(
+    view_data = await table_view_data(
         datasette,
         request,
         resolved,
@@ -1581,8 +1581,10 @@ async def table_view_traced(datasette, request):
         context_for_html_hack=context_for_html_hack,
         default_labels=default_labels,
     )
-    if isinstance(data, Response):
-        return data
+    if isinstance(view_data, Response):
+        return view_data
+    data, next_url = view_data
+
     if format == "html":
         return Response.html(
             await datasette.render_template(
@@ -1590,6 +1592,7 @@ async def table_view_traced(datasette, request):
                 dict(
                     data,
                     append_querystring=append_querystring,
+                    path_with_replaced_args=path_with_replaced_args,
                     settings=datasette.settings_dict(),
                     # TODO: clean up all of these hacks:
                     alternate_url_json=None,
@@ -2171,6 +2174,18 @@ async def table_view_data(
     async def extra_database_color():
         return lambda _: "ff0000"
 
+    async def extra_form_hidden_args():
+        form_hidden_args = []
+        for key in request.args:
+            if (
+                key.startswith("_")
+                and key not in ("_sort", "_sort_desc", "_search", "_next")
+                and "__" not in key
+            ):
+                for value in request.args.getlist(key):
+                    form_hidden_args.append((key, value))
+        return form_hidden_args
+
     async def extra_filters():
         return filters
 
@@ -2250,6 +2265,7 @@ async def table_view_data(
             "private",
             "primary_keys",
             "expandable_columns",
+            "form_hidden_args",
         ]
     }
 
@@ -2289,6 +2305,7 @@ async def table_view_data(
         extra_is_view,
         extra_private,
         extra_expandable_columns,
+        extra_form_hidden_args,
     )
 
     results = await registry.resolve_multi(

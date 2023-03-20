@@ -1593,6 +1593,7 @@ async def table_view_traced(datasette, request):
                     data,
                     append_querystring=append_querystring,
                     path_with_replaced_args=path_with_replaced_args,
+                    fix_path=datasette.urls.path,
                     settings=datasette.settings_dict(),
                     # TODO: clean up all of these hacks:
                     alternate_url_json=None,
@@ -2132,9 +2133,9 @@ async def table_view_data(
             table_name,
             results.description,
             rows,
-            link_column=False,
+            link_column=not is_view,
             truncate_cells=datasette.setting("truncate_cells_html"),
-            sortable_columns=None,
+            sortable_columns=sortable_columns,
         )
         return {
             "columns": display_columns,

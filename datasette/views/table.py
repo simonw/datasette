@@ -1473,6 +1473,30 @@ class CannedQueryView(DataView):
     def __init__(self, datasette):
         self.ds = datasette
 
+    async def post(self, request):
+        from datasette.app import TableNotFound
+
+        try:
+            await self.ds.resolve_table(request)
+        except TableNotFound as e:
+            # Was this actually a canned query?
+            canned_query = await self.ds.get_canned_query(
+                e.database_name, e.table, request.actor
+            )
+            if canned_query:
+                # Handle POST to a canned query
+                return await QueryView(self.ds).data(
+                    request,
+                    canned_query["sql"],
+                    metadata=canned_query,
+                    editable=False,
+                    canned_query=e.table,
+                    named_parameters=canned_query.get("params"),
+                    write=bool(canned_query.get("write")),
+                )
+
+        return Response.text("Method not allowed", status=405)
+
     async def data(self, request, **kwargs):
         from datasette.app import TableNotFound
 
@@ -1482,9 +1506,6 @@ class CannedQueryView(DataView):
             canned_query = await self.ds.get_canned_query(
                 not_found.database_name, not_found.table, request.actor
             )
-            print("not_found", not_found)
-            print("canned_query", canned_query)
-            print("type(canned_query)", type(canned_query))
             if canned_query:
                 return await QueryView(self.ds).data(
                     request,

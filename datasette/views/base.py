@@ -515,7 +515,7 @@ class DataView(BaseView):
                 },
             }
             if "metadata" not in context:
-                context["metadata"] = self.ds.metadata
+                context["metadata"] = self.ds.metadata()
             r = await self.render(templates, request=request, context=context)
             if status_code is not None:
                 r.status = status_code

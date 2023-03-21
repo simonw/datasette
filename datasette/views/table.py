@@ -156,7 +156,7 @@ class TableView(DataView):
         from datasette.app import TableNotFound
 
         try:
-            resolved = await self.ds.resolve_table(request)
+            await self.ds.resolve_table(request)
         except TableNotFound as e:
             # Was this actually a canned query?
             canned_query = await self.ds.get_canned_query(
@@ -174,59 +174,7 @@ class TableView(DataView):
                     write=bool(canned_query.get("write")),
                 )
 
-        # Handle POST to a table
-        return await self.table_post(
-            request, resolved.db, resolved.db.name, resolved.table
-        )
-
-    async def table_post(self, request, db, database_name, table_name):
-        # Must have insert-row permission
-        if not await self.ds.permission_allowed(
-            request.actor, "insert-row", resource=(database_name, table_name)
-        ):
-            raise Forbidden("Permission denied")
-        if request.headers.get("content-type") != "application/json":
-            # TODO: handle form-encoded data
-            raise BadRequest("Must send JSON data")
-        data = json.loads(await request.post_body())
-        if "insert" not in data:
-            raise BadRequest('Must send a "insert" key containing a dictionary')
-        row = data["insert"]
-        if not isinstance(row, dict):
-            raise BadRequest("insert must be a dictionary")
-        # Verify all columns exist
-        columns = await db.table_columns(table_name)
-        pks = await db.primary_keys(table_name)
-        for key in row:
-            if key not in columns:
-                raise BadRequest("Column not found: {}".format(key))
-            if key in pks:
-                raise BadRequest(
-                    "Cannot insert into primary key column: {}".format(key)
-                )
-        # Perform the insert
-        sql = "INSERT INTO [{table}] ({columns}) VALUES ({values})".format(
-            table=escape_sqlite(table_name),
-            columns=", ".join(escape_sqlite(c) for c in row),
-            values=", ".join("?" for c in row),
-        )
-        cursor = await db.execute_write(sql, list(row.values()))
-        # Return the new row
-        rowid = cursor.lastrowid
-        new_row = (
-            await db.execute(
-                "SELECT * FROM [{table}] WHERE rowid = ?".format(
-                    table=escape_sqlite(table_name)
-                ),
-                [rowid],
-            )
-        ).first()
-        return Response.json(
-            {
-                "inserted_row": dict(new_row),
-            },
-            status=201,
-        )
+        return Response.text("Method not allowed", status=405)
 
     async def columns_to_select(self, table_columns, pks, request):
         columns = list(table_columns)
@@ -1563,15 +1511,21 @@ async def table_view_traced(datasette, request):
         )
         # If this is a canned query, not a table, then dispatch to QueryView instead
         if canned_query:
-            return await CannedQueryView(datasette).get(request)
+            if request.method == "POST":
+                return await CannedQueryView(datasette).post(request)
+            else:
+                return await CannedQueryView(datasette).get(request)
         else:
             raise
 
-    format = request.url_vars.get("format") or "html"
+    if request.method == "POST":
+        return Response.text("Method not allowed", status=405)
+
+    format_ = request.url_vars.get("format") or "html"
     extra_extras = None
     context_for_html_hack = False
     default_labels = False
-    if format == "html":
+    if format_ == "html":
         extra_extras = {"_html"}
         context_for_html_hack = True
         default_labels = True
@@ -1588,7 +1542,48 @@ async def table_view_traced(datasette, request):
         return view_data
     data, next_url = view_data
 
-    if format == "html":
+    # Handle formats from plugins
+    if format_ == "csv":
+        pass
+    elif format_ in datasette.renderers.keys():
+        # Dispatch request to the correct output format renderer
+        # (CSV is not handled here due to streaming)
+        result = call_with_supported_arguments(
+            datasette.renderers[format_][0],
+            datasette=datasette,
+            columns=data.get("columns") or [],
+            rows=data.get("rows") or [],
+            sql=data.get("query", {}).get("sql", None),
+            query_name=None,
+            database=resolved.db.name,
+            table=resolved.table,
+            request=request,
+            view_name="table",
+            # These will be deprecated in Datasette 1.0:
+            args=request.args,
+            data=data,
+        )
+        if asyncio.iscoroutine(result):
+            result = await result
+        if result is None:
+            raise NotFound("No data")
+        if isinstance(result, dict):
+            r = Response(
+                body=result.get("body"),
+                status=result.get("status_code", status_code or 200),
+                content_type=result.get("content_type", "text/plain"),
+                headers=result.get("headers"),
+            )
+        elif isinstance(result, Response):
+            r = result
+            # if status_code is not None:
+            #     # Over-ride the status code
+            #     r.status = status_code
+        else:
+            assert False, f"{result} should be dict or Response"
+        return r
+
+    if format_ == "html":
         return Response.html(
             await datasette.render_template(
                 "table.html",
@@ -2164,6 +2159,7 @@ async def table_view_data(
             .get(table_name, {})
         )
         datasette.update_with_inherited_metadata(metadata)
+        print("metadata", metadata)
         return metadata
 
     async def extra_database():

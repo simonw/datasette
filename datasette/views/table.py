@@ -2268,6 +2268,7 @@ async def table_view_data(
     bundles = {
         "html": [
             "suggested_facets",
+            "facet_results",
             "facets_timed_out",
             "count",
             "human_description_en",

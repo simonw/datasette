@@ -419,7 +419,7 @@ async def test_array_facet_handle_duplicate_tags():
         )
 
     response = await ds.client.get("/test_array_facet/otters.json?_facet_array=tags")
-    assert response.json()["facet_results"]["tags"] == {
+    assert response.json()["facet_results"]["results"]["tags"] == {
         "name": "tags",
         "type": "array",
         "results": [
@@ -517,13 +517,13 @@ async def test_json_array_with_blanks_and_nulls():
     await db.execute_write("create table foo(json_column text)")
     for value in ('["a", "b", "c"]', '["a", "b"]', "", None):
         await db.execute_write("insert into foo (json_column) values (?)", [value])
-    response = await ds.client.get("/test_json_array/foo.json")
+    response = await ds.client.get("/test_json_array/foo.json?_extra=suggested_facets")
     data = response.json()
     assert data["suggested_facets"] == [
         {
             "name": "json_column",
             "type": "array",
-            "toggle_url": "http://localhost/test_json_array/foo.json?_facet_array=json_column",
+            "toggle_url": "http://localhost/test_json_array/foo.json?_extra=suggested_facets&_facet_array=json_column",
         }
     ]
 
@@ -539,27 +539,29 @@ async def test_facet_size():
                 "insert into neighbourhoods (city, neighbourhood) values (?, ?)",
                 ["City {}".format(i), "Neighbourhood {}".format(j)],
             )
-    response = await ds.client.get("/test_facet_size/neighbourhoods.json")
+    response = await ds.client.get(
+        "/test_facet_size/neighbourhoods.json?_extra=suggested_facets"
+    )
     data = response.json()
     assert data["suggested_facets"] == [
         {
             "name": "neighbourhood",
-            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet=neighbourhood",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_extra=suggested_facets&_facet=neighbourhood",
         }
     ]
     # Bump up _facet_size= to suggest city too
     response2 = await ds.client.get(
-        "/test_facet_size/neighbourhoods.json?_facet_size=50"
+        "/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets"
     )
     data2 = response2.json()
     assert sorted(data2["suggested_facets"], key=lambda f: f["name"]) == [
         {
             "name": "city",
-            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets&_facet=city",
         },
         {
             "name": "neighbourhood",
-            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=neighbourhood",
+            "toggle_url": "http://localhost/test_facet_size/neighbourhoods.json?_facet_size=50&_extra=suggested_facets&_facet=neighbourhood",
         },
     ]
     # Facet by city should return expected number of results
@@ -567,20 +569,20 @@ async def test_facet_size():
         "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
     )
     data3 = response3.json()
-    assert len(data3["facet_results"]["city"]["results"]) == 50
+    assert len(data3["facet_results"]["results"]["city"]["results"]) == 50
     # Reduce max_returned_rows and check that it's respected
     ds._settings["max_returned_rows"] = 20
     response4 = await ds.client.get(
         "/test_facet_size/neighbourhoods.json?_facet_size=50&_facet=city"
     )
     data4 = response4.json()
-    assert len(data4["facet_results"]["city"]["results"]) == 20
+    assert len(data4["facet_results"]["results"]["city"]["results"]) == 20
     # Test _facet_size=max
     response5 = await ds.client.get(
         "/test_facet_size/neighbourhoods.json?_facet_size=max&_facet=city"
     )
     data5 = response5.json()
-    assert len(data5["facet_results"]["city"]["results"]) == 20
+    assert len(data5["facet_results"]["results"]["city"]["results"]) == 20
     # Now try messing with facet_size in the table metadata
     orig_metadata = ds._metadata_local
     try:
@@ -593,7 +595,7 @@ async def test_facet_size():
             "/test_facet_size/neighbourhoods.json?_facet=city"
         )
         data6 = response6.json()
-        assert len(data6["facet_results"]["city"]["results"]) == 6
+        assert len(data6["facet_results"]["results"]["city"]["results"]) == 6
         # Setting it to max bumps it up to 50 again
         ds._metadata_local["databases"]["test_facet_size"]["tables"]["neighbourhoods"][
             "facet_size"
@@ -601,7 +603,7 @@ async def test_facet_size():
         data7 = (
             await ds.client.get("/test_facet_size/neighbourhoods.json?_facet=city")
         ).json()
-        assert len(data7["facet_results"]["city"]["results"]) == 20
+        assert len(data7["facet_results"]["results"]["city"]["results"]) == 20
     finally:
         ds._metadata_local = orig_metadata
 
@@ -635,7 +637,7 @@ async def test_conflicting_facet_names_json(ds_client):
         "/fixtures/facetable.json?_facet=created&_facet_date=created"
         "&_facet=tags&_facet_array=tags"
     )
-    assert set(response.json()["facet_results"].keys()) == {
+    assert set(response.json()["facet_results"]["results"].keys()) == {
         "created",
         "tags",
         "created_2",

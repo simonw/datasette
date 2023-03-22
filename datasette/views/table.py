@@ -1591,7 +1591,7 @@ async def table_view_traced(datasette, request):
         if isinstance(result, dict):
             r = Response(
                 body=result.get("body"),
-                status=result.get("status_code", status_code or 200),
+                status=result.get("status_code") or 200,
                 content_type=result.get("content_type", "text/plain"),
                 headers=result.get("headers"),
             )
@@ -1603,17 +1603,34 @@ async def table_view_traced(datasette, request):
         else:
             assert False, f"{result} should be dict or Response"
     elif format_ == "html":
+        headers = {}
+        templates = [
+            f"table-{to_css_class(resolved.db.name)}-{to_css_class(resolved.table)}.html",
+            "table.html",
+        ]
+        template = datasette.jinja_env.select_template(templates)
+        alternate_url_json = datasette.absolute_url(
+            request,
+            datasette.urls.path(path_with_format(request=request, format="json")),
+        )
+        headers.update(
+            {
+                "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                    alternate_url_json
+                )
+            }
+        )
         r = Response.html(
             await datasette.render_template(
-                "table.html",
+                template,
                 dict(
                     data,
                     append_querystring=append_querystring,
                     path_with_replaced_args=path_with_replaced_args,
                     fix_path=datasette.urls.path,
                     settings=datasette.settings_dict(),
-                    # TODO: clean up all of these hacks:
-                    alternate_url_json=None,
+                    # TODO: review up all of these hacks:
+                    alternate_url_json=alternate_url_json,
                     datasette_allow_facet=(
                         "true" if datasette.setting("allow_facet") else "false"
                     ),
@@ -1622,12 +1639,15 @@ async def table_view_traced(datasette, request):
                         request.actor, "execute-sql", resolved.db.name
                     ),
                     query_ms=1.2,
-                    select_templates=[],
+                    select_templates=[
+                        f"{'*' if template_name == template.name else ''}{template_name}"
+                        for template_name in templates
+                    ],
                 ),
                 request=request,
                 view_name="table",
             ),
-            # headers=headers,
+            headers=headers,
         )
     else:
         assert False, "Invalid format: {}".format(format_)

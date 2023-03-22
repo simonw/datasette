@@ -1,6 +1,6 @@
-{% if metadata.description_html or metadata.description %}
+{% if metadata.get("description_html") or metadata.get("description") %}
     <div class="metadata-description">
-        {% if metadata.description_html %}
+        {% if metadata.get("description_html") %}
             {{ metadata.description_html|safe }}
         {% else %}
             {{ metadata.description }}

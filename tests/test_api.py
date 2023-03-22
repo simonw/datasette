@@ -896,9 +896,11 @@ def test_config_cache_size(app_client_larger_cache_size):
 
 def test_config_force_https_urls():
     with make_app_client(settings={"force_https_urls": True}) as client:
-        response = client.get("/fixtures/facetable.json?_size=3&_facet=state")
+        response = client.get(
+            "/fixtures/facetable.json?_size=3&_facet=state&_extra=next_url,suggested_facets"
+        )
         assert response.json["next_url"].startswith("https://")
-        assert response.json["facet_results"]["state"]["results"][0][
+        assert response.json["facet_results"]["results"]["state"]["results"][0][
             "toggle_url"
         ].startswith("https://")
         assert response.json["suggested_facets"][0]["toggle_url"].startswith("https://")
@@ -981,7 +983,9 @@ def test_common_prefix_database_names(app_client_conflicting_database_names):
 
 
 def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
-    response = app_client_immutable_and_inspect_file.get("/fixtures/sortable.json")
+    response = app_client_immutable_and_inspect_file.get(
+        "/fixtures/sortable.json?_extra=count"
+    )
     assert response.json["count"] == 100
 
 

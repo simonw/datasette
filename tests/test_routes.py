@@ -11,7 +11,7 @@ def routes():
 
 
 @pytest.mark.parametrize(
-    "path,expected_class,expected_matches",
+    "path,expected_name,expected_matches",
     (
         ("/", "IndexView", {"format": None}),
         ("/foo", "DatabaseView", {"format": None, "database": "foo"}),
@@ -20,17 +20,17 @@ def routes():
         ("/foo.humbug", "DatabaseView", {"format": "humbug", "database": "foo"}),
         (
             "/foo/humbug",
-            "TableView",
+            "table_view",
             {"database": "foo", "table": "humbug", "format": None},
         ),
         (
             "/foo/humbug.json",
-            "TableView",
+            "table_view",
             {"database": "foo", "table": "humbug", "format": "json"},
         ),
         (
             "/foo/humbug.blah",
-            "TableView",
+            "table_view",
             {"database": "foo", "table": "humbug", "format": "blah"},
         ),
         (
@@ -47,12 +47,14 @@ def routes():
         ("/-/metadata", "JsonDataView", {"format": None}),
     ),
 )
-def test_routes(routes, path, expected_class, expected_matches):
+def test_routes(routes, path, expected_name, expected_matches):
     match, view = resolve_routes(routes, path)
-    if expected_class is None:
+    if expected_name is None:
         assert match is None
     else:
-        assert view.view_class.__name__ == expected_class
+        assert (
+            view.__name__ == expected_name or view.view_class.__name__ == expected_name
+        )
         assert match.groupdict() == expected_matches
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 # this resolves to "./ext", which is enough for SQLite to calculate the rest
 COMPILED_EXTENSION_PATH = str(Path(__file__).parent / "ext")
 
+
 # See if ext.c has been compiled, based off the different possible suffixes.
 def has_compiled_ext():
     for ext in ["dylib", "so", "dll"]:
@@ -20,7 +21,6 @@ def has_compiled_ext():
 @pytest.mark.asyncio
 @pytest.mark.skipif(not has_compiled_ext(), reason="Requires compiled ext.c")
 async def test_load_extension_default_entrypoint():
-
     # The default entrypoint only loads a() and NOT b() or c(), so those
     # should fail.
     ds = Datasette(sqlite_extensions=[COMPILED_EXTENSION_PATH])
@@ -41,7 +41,6 @@ async def test_load_extension_default_entrypoint():
 @pytest.mark.asyncio
 @pytest.mark.skipif(not has_compiled_ext(), reason="Requires compiled ext.c")
 async def test_load_extension_multiple_entrypoints():
-
     # Load in the default entrypoint and the other 2 custom entrypoints, now
     # all a(), b(), and c() should run successfully.
     ds = Datasette(

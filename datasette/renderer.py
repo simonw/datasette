@@ -4,6 +4,7 @@ from datasette.utils import (
     remove_infinites,
     CustomJSONEncoder,
     path_from_row_pks,
+    sqlite3,
 )
 from datasette.utils.asgi import Response
 
@@ -49,10 +50,14 @@ def json_renderer(args, data, view_name):
     if data.get("error"):
         shape = "objects"
 
-    next_url = data.get("next_url")
-
     if shape == "arrayfirst":
-        data = [row[0] for row in data["rows"]]
+        if not data["rows"]:
+            data = []
+        elif isinstance(data["rows"][0], sqlite3.Row):
+            data = [row[0] for row in data["rows"]]
+        else:
+            assert isinstance(data["rows"][0], dict)
+            data = [next(iter(row.values())) for row in data["rows"]]
     elif shape in ("objects", "object", "array"):
         columns = data.get("columns")
         rows = data.get("rows")
@@ -80,7 +85,12 @@ def json_renderer(args, data, view_name):
             data = data["rows"]
 
     elif shape == "arrays":
-        pass
+        if not data["rows"]:
+            pass
+        elif isinstance(data["rows"][0], sqlite3.Row):
+            data["rows"] = [list(row) for row in data["rows"]]
+        else:
+            data["rows"] = [list(row.values()) for row in data["rows"]]
     else:
         status_code = 400
         data = {
@@ -98,8 +108,6 @@ def json_renderer(args, data, view_name):
         body = json.dumps(data, cls=CustomJSONEncoder)
         content_type = "application/json; charset=utf-8"
     headers = {}
-    if next_url:
-        headers["link"] = f'<{next_url}>; rel="next"'
     return Response(
         body, status=status_code, headers=headers, content_type=content_type
     )

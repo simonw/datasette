@@ -595,42 +595,42 @@ def test_hook_publish_subcommand():
 @pytest.mark.asyncio
 async def test_hook_register_facet_classes(ds_client):
     response = await ds_client.get(
-        "/fixtures/compound_three_primary_keys.json?_dummy_facet=1"
+        "/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets"
     )
-    assert [
+    assert response.json()["suggested_facets"] == [
         {
             "name": "pk1",
-            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet_dummy=pk1",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets&_facet_dummy=pk1",
             "type": "dummy",
         },
         {
             "name": "pk2",
-            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet_dummy=pk2",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets&_facet_dummy=pk2",
             "type": "dummy",
         },
         {
             "name": "pk3",
-            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet_dummy=pk3",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets&_facet_dummy=pk3",
             "type": "dummy",
         },
         {
             "name": "content",
-            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet_dummy=content",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets&_facet_dummy=content",
             "type": "dummy",
         },
         {
             "name": "pk1",
-            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet=pk1",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets&_facet=pk1",
         },
         {
             "name": "pk2",
-            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet=pk2",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets&_facet=pk2",
         },
         {
             "name": "pk3",
-            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_facet=pk3",
+            "toggle_url": "http://localhost/fixtures/compound_three_primary_keys.json?_dummy_facet=1&_extra=suggested_facets&_facet=pk3",
         },
-    ] == response.json()["suggested_facets"]
+    ]
 
 
 @pytest.mark.asyncio

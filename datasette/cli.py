@@ -136,6 +136,7 @@ def sqlite_extensions(fn):
         multiple=True,
         help="Path to a SQLite extension to load, and optional entrypoint",
     )(fn)
+
     # Wrap it in a custom error handler
     @functools.wraps(fn)
     def wrapped(*args, **kwargs):

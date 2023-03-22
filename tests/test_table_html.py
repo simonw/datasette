@@ -1160,6 +1160,13 @@ async def test_table_page_title(ds_client, path, expected):
     assert title == expected
 
 
+@pytest.mark.asyncio
+async def test_table_post_method_not_allowed(ds_client):
+    response = await ds_client.post("/fixtures/facetable")
+    assert response.status_code == 405
+    assert "Method not allowed" in response.text
+
+
 @pytest.mark.parametrize("allow_facet", (True, False))
 def test_allow_facet_off(allow_facet):
     with make_app_client(settings={"allow_facet": allow_facet}) as client:

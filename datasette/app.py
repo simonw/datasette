@@ -1,5 +1,4 @@
 import asyncio
-from pydoc import plain
 from typing import Sequence, Union, Tuple, Optional, Dict, Iterable
 import asgi_csrf
 import collections
@@ -24,7 +23,12 @@ from pathlib import Path
 
 from markupsafe import Markup, escape
 from itsdangerous import URLSafeSerializer
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
+from jinja2 import (
+    ChoiceLoader,
+    Environment,
+    FileSystemLoader,
+    PrefixLoader,
+)
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
@@ -42,7 +46,12 @@ from .views.special import (
     PermissionsDebugView,
     MessagesDebugView,
 )
-from .views.table import TableView, TableInsertView, TableUpsertView, TableDropView
+from .views.table import (
+    TableInsertView,
+    TableUpsertView,
+    TableDropView,
+    table_view,
+)
 from .views.row import RowView, RowDeleteView, RowUpdateView
 from .renderer import json_renderer
 from .url_builder import Urls
@@ -389,7 +398,10 @@ class Datasette:
             ]
         )
         self.jinja_env = Environment(
-            loader=template_loader, autoescape=True, enable_async=True
+            loader=template_loader,
+            autoescape=True,
+            enable_async=True,
+            # undefined=StrictUndefined,
         )
         self.jinja_env.filters["escape_css_string"] = escape_css_string
         self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
@@ -1358,7 +1370,7 @@ class Datasette:
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
-            TableView.as_view(self),
+            wrap_view(table_view, self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
         add_route(

@@ -38,7 +38,7 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
 import sqlite_utils
-from .base import BaseView, DataView, DatasetteError, ureg, _error
+from .base import BaseView, DataView, DatasetteError, ureg, _error, stream_csv
 from .database import QueryView
 
 LINK_WITH_LABEL = (
@@ -1564,11 +1564,35 @@ async def table_view_traced(datasette, request):
     )
     if isinstance(view_data, Response):
         return view_data
-    data, rows, columns, sql, next_url = view_data
+    data, rows, columns, expanded_columns, sql, next_url = view_data
 
     # Handle formats from plugins
     if format_ == "csv":
-        assert False, "CSV not implemented yet"
+
+        async def fetch_data(request, _next=None):
+            (
+                data,
+                rows,
+                columns,
+                expanded_columns,
+                sql,
+                next_url,
+            ) = await table_view_data(
+                datasette,
+                request,
+                resolved,
+                extra_extras=extra_extras,
+                context_for_html_hack=context_for_html_hack,
+                default_labels=default_labels,
+                _next=_next,
+            )
+            data["rows"] = rows
+            data["table"] = resolved.table
+            data["columns"] = columns
+            data["expanded_columns"] = expanded_columns
+            return data, None, None
+
+        return await stream_csv(datasette, fetch_data, request, resolved.db.name)
     elif format_ in datasette.renderers.keys():
         # Dispatch request to the correct output format renderer
         # (CSV is not handled here due to streaming)
@@ -1666,6 +1690,7 @@ async def table_view_data(
     extra_extras=None,
     context_for_html_hack=False,
     default_labels=False,
+    _next=None,
 ):
     extra_extras = extra_extras or set()
     # We have a table or view
@@ -1779,7 +1804,7 @@ async def table_view_data(
     count_sql = f"select count(*) {from_sql}"
 
     # Handle pagination driven by ?_next=
-    _next = request.args.get("_next")
+    _next = _next or request.args.get("_next")
 
     offset = ""
     if _next:
@@ -2430,7 +2455,7 @@ async def table_view_data(
         data["sort"] = sort
         data["sort_desc"] = sort_desc
 
-    return data, rows[:page_size], columns, sql, next_url
+    return data, rows[:page_size], columns, expanded_columns, sql, next_url
 
 
 async def _next_value_and_url(

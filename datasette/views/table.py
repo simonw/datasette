@@ -1564,20 +1564,20 @@ async def table_view_traced(datasette, request):
     )
     if isinstance(view_data, Response):
         return view_data
-    data, next_url = view_data
+    data, rows, columns, sql, next_url = view_data
 
     # Handle formats from plugins
     if format_ == "csv":
-        pass
+        assert False, "CSV not implemented yet"
     elif format_ in datasette.renderers.keys():
         # Dispatch request to the correct output format renderer
         # (CSV is not handled here due to streaming)
         result = call_with_supported_arguments(
             datasette.renderers[format_][0],
             datasette=datasette,
-            columns=data.get("columns") or [],
-            rows=data.get("rows") or [],
-            sql=data.get("query", {}).get("sql", None),
+            columns=columns,
+            rows=rows,
+            sql=sql,
             query_name=None,
             database=resolved.db.name,
             table=resolved.table,
@@ -2173,6 +2173,7 @@ async def table_view_data(
             link_column=not is_view,
             truncate_cells=datasette.setting("truncate_cells_html"),
             sortable_columns=sortable_columns,
+            request=request,
         )
         return {
             "columns": display_columns,
@@ -2386,7 +2387,8 @@ async def table_view_data(
             if key.startswith("extra_") and key.replace("extra_", "") in extras
         }
     )
-    data["rows"] = [dict(r) for r in rows[:page_size]]
+    raw_sqlite_rows = rows[:page_size]
+    data["rows"] = [dict(r) for r in raw_sqlite_rows]
 
     if context_for_html_hack:
         data.update(extra_context_from_filters)
@@ -2428,7 +2430,7 @@ async def table_view_data(
         data["sort"] = sort
         data["sort_desc"] = sort_desc
 
-    return data, next_url
+    return data, rows[:page_size], columns, sql, next_url
 
 
 async def _next_value_and_url(

@@ -2198,7 +2198,6 @@ async def table_view_data(
             .get(table_name, {})
         )
         datasette.update_with_inherited_metadata(metadata)
-        print("metadata", metadata)
         return metadata
 
     async def extra_database():

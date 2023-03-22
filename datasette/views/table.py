@@ -2312,6 +2312,7 @@ async def table_view_data(
             "next_url",
             "metadata",
             "query",
+            "columns",
             "display_columns",
             "display_rows",
             "database",

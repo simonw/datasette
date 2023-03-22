@@ -85,8 +85,12 @@ def json_renderer(args, data, view_name):
             data = data["rows"]
 
     elif shape == "arrays":
-        if isinstance(data["rows"][0], sqlite3.Row):
+        if not data["rows"]:
+            pass
+        elif isinstance(data["rows"][0], sqlite3.Row):
             data["rows"] = [list(row) for row in data["rows"]]
+        else:
+            data["rows"] = [list(row.values()) for row in data["rows"]]
     else:
         status_code = 400
         data = {

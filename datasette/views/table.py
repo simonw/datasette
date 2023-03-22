@@ -1602,10 +1602,8 @@ async def table_view_traced(datasette, request):
             #     r.status = status_code
         else:
             assert False, f"{result} should be dict or Response"
-        return r
-
-    if format_ == "html":
-        return Response.html(
+    elif format_ == "html":
+        r = Response.html(
             await datasette.render_template(
                 "table.html",
                 dict(
@@ -1632,10 +1630,10 @@ async def table_view_traced(datasette, request):
             # headers=headers,
         )
     else:
-        response = json_renderer(request.args, data, None)
-        if next_url:
-            response.headers["link"] = f'<{next_url}>; rel="next"'
-        return response
+        assert False, "Invalid format: {}".format(format_)
+    if next_url:
+        r.headers["link"] = f'<{next_url}>; rel="next"'
+    return r
 
 
 async def table_view_data(

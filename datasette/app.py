@@ -47,7 +47,6 @@ from .views.special import (
     MessagesDebugView,
 )
 from .views.table import (
-    TableView,
     TableInsertView,
     TableUpsertView,
     TableDropView,

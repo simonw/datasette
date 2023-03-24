@@ -272,3 +272,14 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     }
   });
 })();
+
+
+// TODO: plugins need to wait for a custom event
+// TODO: document what events they can listen for
+document.addEventListener("InitDatasette", function (evt) {
+
+  // Manager is in event.detail
+  console.log(evt.detail);
+  evt.detail.registerPlugin('table', { version: 12, myCoolHello: () => console.log('hello') });
+
+});

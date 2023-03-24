@@ -21,6 +21,8 @@ const datasetteManager = {
   // Does pluginMetadata need to be serializable, or can we let it be stateful / have functions?
   // Should we notify plugins that have dependencies
   // when all dependencies were fulfilled? (leaflet, codemirror, etc)
+  // https://github.com/simonw/datasette-leaflet -> this way
+  // multiple plugins can all request the same copy of leaflet.
   plugins: new Map(),
   registerPlugin: (name, pluginMetadata) => {
     if (datasetteManager.plugins.get(name)) {
@@ -29,6 +31,8 @@ const datasetteManager = {
     datasetteManager.plugins.set(name, pluginMetadata);
   },
 
+  /** State helpers */
+  // https://github.com/simonw/datasette/issues/1144
 
   // Datasette "core" -> Methods/APIs that are so core, we don't store them as a plugin
   /** Selectors for significant DOM elements. Store identifier rather than addresses rather than immediate references in case they haven't loaded yet  */
@@ -42,7 +46,6 @@ const datasetteManager = {
   // Have knowledge of what datasette APIs are available
 
 };
-
 
 /**
  * Fire AFTER the document has been parsed

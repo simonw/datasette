@@ -3,6 +3,10 @@
 {% block site_meta %}
 {{ super() }}
 <script defer data-domain="docs.datasette.io" src="https://plausible.io/js/plausible.js"></script>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
 <script>
 jQuery(function ($) {
   // Show banner linking to /stable/ if this is a /latest/ page

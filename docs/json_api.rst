@@ -15,38 +15,37 @@ Different shapes
 ----------------
 
 The default JSON representation of data from a SQLite table or custom query
-looks like this::
+looks like this:
+
+.. code-block:: json
 
     {
-        "database": "sf-trees",
-        "table": "qSpecies",
-        "columns": [
-            "id",
-            "value"
-        ],
-        "rows": [
-            {
-                "id": 1,
-                "value": "Myoporum laetum :: Myoporum"
-            },
-            {
-                "id": 2,
-                "value": "Metrosideros excelsa :: New Zealand Xmas Tree"
-            },
-            {
-                "id": 3,
-                "value": "Pinus radiata :: Monterey Pine"
-            }
-        ],
-        "count": 195002,
-        "truncated": false,
-        "next": "100",
-        "next_url": "http://127.0.0.1:8001/sf-trees-02c8ef1/qSpecies.json?_next=100",
-        "query_ms": 1.9571781158447266
+      "ok": true,
+      "next": null,
+      "rows": [
+        {
+          "id": 3,
+          "name": "Detroit"
+        },
+        {
+          "id": 2,
+          "name": "Los Angeles"
+        },
+        {
+          "id": 4,
+          "name": "Memnonia"
+        },
+        {
+          "id": 1,
+          "name": "San Francisco"
+        }
+      ]
     }
 
-The ``columns`` key lists the columns that are being returned, and the ``rows``
-key then returns a list of objects, each one representing a row.
+The ``rows`` key is a list of objects, each one representing a row. ``next`` indicates if
+there is another page, and ``ok`` is always ``true`` if an error did not occur.
+
+If ``next`` is present then the next page in the pagination set can be retrieved using ``?_next=VALUE``.
 
 The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three
@@ -59,42 +58,42 @@ options:
 * ``?_shape=arrayfirst`` - a flat JSON array containing just the first value from each row
 * ``?_shape=object`` - a JSON object keyed using the primary keys of the rows
 
-``_shape=arrays`` looks like this::
+``_shape=arrays`` looks like this:
+
+.. code-block:: json
 
     {
-        "database": "sf-trees",
-        ...
-        "rows": [
-            [
-                1,
-                "Myoporum laetum :: Myoporum"
-            ],
-            [
-                2,
-                "Metrosideros excelsa :: New Zealand Xmas Tree"
-            ],
-            [
-                3,
-                "Pinus radiata :: Monterey Pine"
-            ]
-        ]
+      "ok": true,
+      "next": null,
+      "rows": [
+        [3, "Detroit"],
+        [2, "Los Angeles"],
+        [4, "Memnonia"],
+        [1, "San Francisco"]
+      ]
     }
 
-``_shape=array`` looks like this::
+``_shape=array`` looks like this:
+
+.. code-block:: json
 
     [
-        {
-            "id": 1,
-            "value": "Myoporum laetum :: Myoporum"
-        },
-        {
-            "id": 2,
-            "value": "Metrosideros excelsa :: New Zealand Xmas Tree"
-        },
-        {
-            "id": 3,
-            "value": "Pinus radiata :: Monterey Pine"
-        }
+      {
+        "id": 3,
+        "name": "Detroit"
+      },
+      {
+        "id": 2,
+        "name": "Los Angeles"
+      },
+      {
+        "id": 4,
+        "name": "Memnonia"
+      },
+      {
+        "id": 1,
+        "name": "San Francisco"
+      }
     ]
 
 ``_shape=array&_nl=on`` looks like this::
@@ -103,25 +102,29 @@ options:
     {"id": 2, "value": "Metrosideros excelsa :: New Zealand Xmas Tree"}
     {"id": 3, "value": "Pinus radiata :: Monterey Pine"}
 
-``_shape=arrayfirst`` looks like this::
+``_shape=arrayfirst`` looks like this:
+
+.. code-block:: json
 
     [1, 2, 3]
 
-``_shape=object`` looks like this::
+``_shape=object`` looks like this:
+
+.. code-block:: json
 
     {
-        "1": {
-            "id": 1,
-            "value": "Myoporum laetum :: Myoporum"
-        },
-        "2": {
-            "id": 2,
-            "value": "Metrosideros excelsa :: New Zealand Xmas Tree"
-        },
-        "3": {
-            "id": 3,
-            "value": "Pinus radiata :: Monterey Pine"
-        }
+      "1": {
+        "id": 1,
+        "value": "Myoporum laetum :: Myoporum"
+      },
+      "2": {
+        "id": 2,
+        "value": "Metrosideros excelsa :: New Zealand Xmas Tree"
+      },
+      "3": {
+        "id": 3,
+        "value": "Pinus radiata :: Monterey Pine"
+      }
     ]
 
 The ``object`` shape is only available for queries against tables - custom SQL

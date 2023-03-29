@@ -1539,17 +1539,27 @@ async def table_view_data(
 
     async def extra_extras():
         "Available ?_extra= blocks"
-        return {
-            "available": [
-                {
-                    "name": key[len("extra_") :],
-                    "doc": fn.__doc__,
-                }
-                for key, fn in registry._registry.items()
-                if key.startswith("extra_")
-            ],
-            "selected": list(extras),
-        }
+        all_extras = [
+            (key[len("extra_") :], fn.__doc__)
+            for key, fn in registry._registry.items()
+            if key.startswith("extra_")
+        ]
+        return [
+            {
+                "name": name,
+                "description": doc,
+                "toggle_url": datasette.absolute_url(
+                    request,
+                    datasette.urls.path(
+                        path_with_added_args(request, {"_extra": name})
+                        if name not in extras
+                        else path_with_removed_args(request, {"_extra": name})
+                    ),
+                ),
+                "selected": name in extras,
+            }
+            for name, doc in all_extras
+        ]
 
     async def extra_facets_timed_out(extra_facet_results):
         return extra_facet_results["timed_out"]

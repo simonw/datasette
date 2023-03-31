@@ -353,7 +353,7 @@ Configuring the secret
 
 Datasette uses a secret string to sign secure values such as cookies.
 
-If you do not provide a secret, Datasette will create one when it starts up. This secret will reset every time the Datasette server restarts though, so things like authentication cookies will not stay valid between restarts.
+If you do not provide a secret, Datasette will create one when it starts up. This secret will reset every time the Datasette server restarts though, so things like authentication cookies and :ref:`API tokens <CreateTokenView>` will not stay valid between restarts.
 
 You can pass a secret to Datasette in two ways: with the ``--secret`` command-line option or by setting a ``DATASETTE_SECRET`` environment variable.
 

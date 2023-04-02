@@ -33,23 +33,33 @@ const datasetteManager = {
     // Check which commands to include!
   },
 
-  /** Loop across plugins... note no control over item order
-   * Items must have a label (text), may have an href or an onclick.
+  /**
+   * New DOM elements are created each time the button is clicked so the data is not stale.
+   * Items
+   *  - must provide label (text)
+   *  - might provide href (string) or an onclick ((evt) => void)
+   *
+   * columnMeta is metadata stored on the column header (TH) as a DOMStringMap
+   * - column: string
+   * - columnNotNull: 0 or 1
+   * - columnType: sqlite datatype enum (text, number, etc)
+   * - isPk: 0 or 1
    */
-  getColumnHeaderItems: (columnName) => {
+  getColumnHeaderItems: (columnMeta) => {
     let items = [];
 
     datasetteManager.plugins.forEach(plugin => {
       // Accept function that returns list of items with keys
-      // Must have: text label (for now, no custom DOM node renderprop)
-      // One of these: onClick or href
+      // Must have: text label
+      // Optional: onClick or href
       if (plugin.getColumnHeaderItems) {
-        items.push(...plugin.getColumnHeaderItems(columnName));
+        // Plugins can provide multiple items if they want
+        // Note: If multiple plugins try to create entry with same label, the last one wins
+        items.push(...plugin.getColumnHeaderItems(columnMeta));
       }
     });
 
-    // TODO: validate item configs
-
+    // TODO: We could validate item configs and give an informative error message if something is missing.
     return items;
   },
 

@@ -190,7 +190,10 @@ const initDatasetteTable = function (manager) {
     // Custom menu items on each render
     // Plugin hook: allow adding JS-based additional menu items
     const menuList = menu.querySelector('ul');
-    const columnItemConfigs = manager.getColumnHeaderItems(column);
+
+    // Pass datasette column configs! Record<string,string>
+
+    const columnItemConfigs = manager.getColumnHeaderItems({ ...th.dataset });
 
     columnItemConfigs.forEach(itemConfig => {
       // Remove items from previous render. We assume entries have unique labels.
@@ -199,12 +202,12 @@ const initDatasetteTable = function (manager) {
         node.remove();
       });
 
-      // Create a new items for each config.
+      // Create new items for each config.
       const newLink = document.createElement('a');
       newLink.textContent = itemConfig.label;
       newLink.href = itemConfig.href ?? '#';
       if (itemConfig.onClick) {
-        newLink.onclick = itemConfig.onClick(ev);
+        newLink.onclick = itemConfig.onClick;
       }
 
       // Attach new elements to DOM
@@ -320,22 +323,26 @@ document.addEventListener("InitDatasette", function (evt) {
   initAutocompleteForFilterValues();
 
 
-  // Then add your plugins
-
-  // Test plugins:
-  manager.registerPlugin('copy-column-name-to-clipboard', {
+  // Test area: demo plugins
+  // Future: dispatch message to some other part of the page with CustomEvent APi
+  // Could use to drive filter/sort query builder actions without  page refresh.
+  manager.registerPlugin("column-name-plugin-demo", {
     version: 0.1,
-    getColumnHeaderItems: (columnName) => {
-      return [{
-        label: "Copy name to clipboard",
-        onClick: (evt) => copyToClipboard(columnName)
-      }]
-    }
+    getColumnHeaderItems: (columnMeta) => {
+      const { column } = columnMeta;
+
+      return [
+        {
+          label: "Copy name to clipboard",
+          onClick: (evt) => copyToClipboard(column),
+        },
+        {
+          label: "Log column metadata to console",
+          onClick: (evt) => console.log(column),
+        },
+      ];
+    },
   });
-
-  // Future: dispatch message to parent plugin with name of clicked column
-  // Could use to drive filter/sort etc query builder actions without a page refresh.
-
 });
 
 

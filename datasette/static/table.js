@@ -217,10 +217,11 @@ const initDatasetteTable = function (manager) {
     });
 
   }
-  var svg = document.createElement("div");
-  svg.innerHTML = DROPDOWN_ICON_SVG;
-  svg = svg.querySelector("*");
-  svg.classList.add("dropdown-menu-icon");
+
+  var dropdownIcon = document.createElement("div");
+  dropdownIcon.innerHTML = DROPDOWN_ICON_SVG;
+  dropdownIcon = dropdownIcon.querySelector("*");
+  dropdownIcon.classList.add("dropdown-menu-icon");
   var menu = document.createElement("div");
   menu.innerHTML = DROPDOWN_HTML;
   menu = menu.querySelector("*");
@@ -233,7 +234,7 @@ const initDatasetteTable = function (manager) {
     if (!th.querySelector("a")) {
       return;
     }
-    var icon = svg.cloneNode(true);
+    var icon = dropdownIcon.cloneNode(true);
     icon.addEventListener("click", onTableHeaderClick);
     th.appendChild(icon);
   });

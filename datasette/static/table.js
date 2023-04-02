@@ -315,11 +315,19 @@ document.addEventListener("InitDatasette", function (evt) {
   // Main table
   initDatasetteTable(manager);
 
-  // Other UI functions that need interactivity
+  // Other UI functions with interactive JS needs
   addButtonsToFilterRows(manager);
   initAutocompleteForFilterValues(manager);
 
-  // === Demo plugins ===
+  // === Demo plugins: remove before merge===
+  addPlugins(manager);
+
+});
+
+/**
+ * Examples for to test a datasette JS api
+ */
+const addPlugins = (manager) => {
 
   manager.registerPlugin("column-name-plugin-demo", {
     version: 0.1,
@@ -339,13 +347,52 @@ document.addEventListener("InitDatasette", function (evt) {
     },
   });
 
+  manager.registerPlugin("panel-plugin-graphs", {
+    version: 0.1,
+    getAboveTablePanelConfigs: () => {
+      return [
+        {
+          id: 'first-panel',
+          label: "First",
+          render: node => node.innerHTML = "Initial description",
+        },
+        {
+          id: 'second-panel',
+          label: "Second",
+          render: node => node.innerText = "Space for a Graph",
+        },
+      ];
+    },
+  });
+
+  manager.registerPlugin("panel-plugin-maps", {
+    version: 0.1,
+    getAboveTablePanelConfigs: () => {
+      return [
+        {
+          id: 'first-panel', // ID only has to be unique within a plugin, manager namespaces for you
+          label: "Map plugin",
+          render: node => node.innerHTML = "Let's add a map",
+        },
+        {
+          id: 'second-panel',
+          label: "Image plugin",
+          render: node => {
+            const img = document.createElement('img');
+            img.src = 'https://datasette.io/static/datasette-logo.svg'
+            node.appendChild(img);
+          },
+        }
+      ];
+    },
+  });
+
   // Future: dispatch message to some other part of the page with CustomEvent API
   // Could use to drive filter/sort query builder actions without  page refresh.
 
+  // Next: panel manager example
+}
 
-
-
-});
 
 
 async function copyToClipboard(str) {

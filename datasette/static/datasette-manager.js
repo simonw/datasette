@@ -17,6 +17,7 @@ const DOM_SELECTORS = {
   /** Event listeners that go outside of the main table, e.g. existing scroll lisetner */
   tableWrapper: ".table-wrapper",
   table: "table.rows-and-columns",
+  aboveTablePanel: '.above-table-panel',
 
   // These could have multiple matches
   /** Used for selecting table headers. Use getColumnHeaderItems if you want to add menu items. */
@@ -52,10 +53,15 @@ const datasetteManager = {
       console.warn(`Warning -> plugin ${name} was redefined`);
     }
     datasetteManager.plugins.set(name, pluginMetadata);
+
+    // If the plugin partipates in the panel... update the panel.
+    if (pluginMetadata.getAboveTablePanelConfigs) {
+      datasetteManager.renderAboveTablePanel();
+    }
   },
 
   /**
-   * New DOM elements are created each time the button is clicked so the data is not stale.
+   * New DOM elements created each time the button is clicked so the data is not stale.
    * Items
    *  - must provide label (text)
    *  - might provide href (string) or an onclick ((evt) => void)
@@ -68,21 +74,103 @@ const datasetteManager = {
    */
   getColumnHeaderItems: (columnMeta) => {
     let items = [];
-
+    // Accept function that returns list of items with keys
+    // Required: label (text)
+    // Optional: onClick or href
     datasetteManager.plugins.forEach(plugin => {
-      // Accept function that returns list of items with keys
-      // Must have: text label
-      // Optional: onClick or href
       if (plugin.getColumnHeaderItems) {
         // Plugins can provide multiple items if they want
-        // Note: If multiple plugins try to create entry with same label, the last one wins
+        // If multiple try to create entry with same label, the last one deletes the others
         items.push(...plugin.getColumnHeaderItems(columnMeta));
       }
     });
-
-    // TODO: Validate item configs and give an informative error message if something is missing.
+    // TODO: Validate item configs and give informative error message if missing keys.
     return items;
   },
+
+  /**
+   * In MVP, each plugin can only have 1 instance.
+   * In future, panels could be repeated. We omit that for now since so many plugins depend on
+   * shared URL state, so having multiple instances of plugin at same time is problematic.
+   * Currently, we never destroy any panels, we just hide them.
+   *
+   * TODO: nicer panel css, show panel selection state.
+   * TODO: does this hook need to have any arguments inside?
+   */
+  renderAboveTablePanel: () => {
+
+    const aboveTablePanel = document.querySelector(DOM_SELECTORS.aboveTablePanel);
+    let aboveTablePanelWrapper = aboveTablePanel.querySelector('.panels');
+
+    // First render: create wrappers. Otherwise, reuse previous.
+    if (!aboveTablePanelWrapper) {
+      aboveTablePanelWrapper = document.createElement('div');
+      aboveTablePanelWrapper.classList.add('tab-contents');
+      const panelNav = document.createElement('div');
+      panelNav.classList.add('tab-controls');
+
+      // Temporary: css for minimal amount of breathing room.
+      panelNav.style.display = 'flex';
+      panelNav.style.gap = '8px';
+      panelNav.style.marginTop = '4px';
+      panelNav.style.marginBottom = '20px';
+
+      aboveTablePanel.appendChild(panelNav);
+      aboveTablePanel.appendChild(aboveTablePanelWrapper);
+    }
+
+    datasetteManager.plugins.forEach((plugin, pluginName) => {
+      const { getAboveTablePanelConfigs: getPanelConfigs } = plugin;
+
+      if (getPanelConfigs) {
+        // TODO: prevent repeats - as backup, select
+        const controls = aboveTablePanel.querySelector('.tab-controls');
+        const contents = aboveTablePanel.querySelector('.tab-contents');
+
+        // Each plugin could register multiple plugins...
+        const configs = getPanelConfigs();
+
+        configs.forEach((config, i) => {
+          const nodeContentId = `${pluginName}_${config.id}_panel-content`;
+
+          // quit if we've already registerd this plugin
+          if (document.getElementById(nodeContentId)) {
+            return;
+          }
+
+          // Add tab control button
+          const pluginControl = document.createElement('button');
+          pluginControl.textContent = config.label;
+          pluginControl.onclick = () => {
+
+            contents.childNodes.forEach(node => {
+              if (node.id === nodeContentId) {
+                node.style.display = 'block'
+              } else {
+                node.style.display = 'none'
+              }
+            });
+          }
+          controls.appendChild(pluginControl);
+
+          // Add plugin content area
+          const pluginNode = document.createElement('div');
+          pluginNode.id = nodeContentId;
+          config.render(pluginNode);
+          pluginNode.style.display = 'none'; // Default to hidden unless you're ifrst
+
+          contents.appendChild(pluginNode);
+        });
+
+        // Let first node be selected by default
+        if (contents.childNodes.length) {
+          controls.childNodes[0].focus();
+          // contents.childNodes[0].style.display = 'block';
+        }
+      }
+    });
+  },
+
 
   /** Selectors for document (DOM) elements. Store identifier instead of immediate references in case they haven't loaded when Manager starts. */
   selectors: DOM_SELECTORS,

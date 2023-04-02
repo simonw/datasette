@@ -67,11 +67,14 @@ const datasetteManager = {
   // https://github.com/simonw/datasette/issues/1144
 
   // Datasette "core" -> Methods/APIs that are so core, we don't store them as a plugin
-  /** Selectors for significant DOM elements. Store identifier rather than addresses rather than immediate references in case they haven't loaded yet  */
-  domSelectors: {
+  /** Selectors for DOM elements. Store identifier rather than addresses/immediate references in case they haven't loaded yet  */
+  selectors: {
     // aboveTableBar: 'div#plugin-bar',
     jsonUrlLink: '.export-links a[href*=json]',
-    dataTable: 'table.rows-and-columns"',
+    dataTable: 'table.rows-and-columns',
+
+    /** Used to  */
+    filterRows: '.filter-row',
   },
 
   // Fetch page's data in array format and store

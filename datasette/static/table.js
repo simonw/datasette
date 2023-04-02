@@ -241,9 +241,9 @@ const initDatasetteTable = function (manager) {
 };
 
 /* Add x buttons to the filter rows */
-function addButtonsToFilterRows() {
+function addButtonsToFilterRows(manager) {
   var x = "✖";
-  var rows = Array.from(document.querySelectorAll(".filter-row")).filter((el) =>
+  var rows = Array.from(document.querySelectorAll(manager.selectors.filterRow)).filter((el) =>
     el.querySelector(".filter-op")
   );
   rows.forEach((row) => {
@@ -269,7 +269,7 @@ function addButtonsToFilterRows() {
 };
 
 /* Set up datalist autocomplete for filter values */
-function initAutocompleteForFilterValues() {
+function initAutocompleteForFilterValues(manager) {
   function createDataLists() {
     var facetResults = document.querySelectorAll(
       ".facet-results [data-column]"
@@ -298,7 +298,7 @@ function initAutocompleteForFilterValues() {
   document.body.addEventListener("change", function (event) {
     if (event.target.name === "_filter_column") {
       event.target
-        .closest(".filter-row")
+        .closest(manager.selectors.filterRow)
         .querySelector(".filter-value")
         .setAttribute("list", "datalist-" + event.target.value);
     }
@@ -307,21 +307,18 @@ function initAutocompleteForFilterValues() {
 
 
 // TODO: plugins need to wait for a custom event
-// TODO: document what events they can listen for
+// TODO: document what events can be listened for
 document.addEventListener("InitDatasette", function (evt) {
 
 
-  // Manager is in event.detail
-  // console.log();
-
-  const {detail: manager} = evt;
+  const { detail: manager } = evt;
 
   // Main table
   initDatasetteTable(manager);
 
   // Other UI functions that need interactivity
-  addButtonsToFilterRows();
-  initAutocompleteForFilterValues();
+  addButtonsToFilterRows(manager);
+  initAutocompleteForFilterValues(manager);
 
 
   // Test area: demo plugins
@@ -351,7 +348,7 @@ async function copyToClipboard(str) {
   try {
     await navigator.clipboard.writeText(str);
   } catch (err) {
-    /* Rejected - text failed to copy to the clipboard. Browsers didn't give permission*/
+    /** Rejected - text failed to copy to the clipboard. Browsers didn't give permission */
     console.error('Failed to copy: ', err);
   }
 }

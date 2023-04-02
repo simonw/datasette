@@ -164,8 +164,7 @@ const datasetteManager = {
 
         // Let first node be selected by default
         if (contents.childNodes.length) {
-          controls.childNodes[0].focus();
-          // contents.childNodes[0].style.display = 'block';
+          contents.childNodes[0].style.display = 'block';
         }
       }
     });

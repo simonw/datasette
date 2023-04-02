@@ -305,11 +305,8 @@ function initAutocompleteForFilterValues(manager) {
   });
 };
 
-
-// TODO: plugins need to wait for a custom event
-// TODO: document what events can be listened for
+// Main function: registers everything after datasette-manager is done
 document.addEventListener("InitDatasette", function (evt) {
-
   const { detail: manager } = evt;
 
   // Main table
@@ -318,88 +315,4 @@ document.addEventListener("InitDatasette", function (evt) {
   // Other UI functions with interactive JS needs
   addButtonsToFilterRows(manager);
   initAutocompleteForFilterValues(manager);
-
-  // === Demo plugins: remove before merge===
-  addPlugins(manager);
-
 });
-
-/**
- * Examples for to test a datasette JS api
- */
-const addPlugins = (manager) => {
-
-  manager.registerPlugin("column-name-plugin-demo", {
-    version: 0.1,
-    getColumnHeaderItems: (columnMeta) => {
-      const { column } = columnMeta;
-
-      return [
-        {
-          label: "Copy name to clipboard",
-          onClick: (evt) => copyToClipboard(column),
-        },
-        {
-          label: "Log column metadata to console",
-          onClick: (evt) => console.log(column),
-        },
-      ];
-    },
-  });
-
-  manager.registerPlugin("panel-plugin-graphs", {
-    version: 0.1,
-    getAboveTablePanelConfigs: () => {
-      return [
-        {
-          id: 'first-panel',
-          label: "First",
-          render: node => node.innerHTML = "Initial description",
-        },
-        {
-          id: 'second-panel',
-          label: "Second",
-          render: node => node.innerText = "Space for a Graph",
-        },
-      ];
-    },
-  });
-
-  manager.registerPlugin("panel-plugin-maps", {
-    version: 0.1,
-    getAboveTablePanelConfigs: () => {
-      return [
-        {
-          id: 'first-panel', // ID only has to be unique within a plugin, manager namespaces for you
-          label: "Map plugin",
-          render: node => node.innerHTML = "Let's add a map",
-        },
-        {
-          id: 'second-panel',
-          label: "Image plugin",
-          render: node => {
-            const img = document.createElement('img');
-            img.src = 'https://datasette.io/static/datasette-logo.svg'
-            node.appendChild(img);
-          },
-        }
-      ];
-    },
-  });
-
-  // Future: dispatch message to some other part of the page with CustomEvent API
-  // Could use to drive filter/sort query builder actions without  page refresh.
-
-  // Next: panel manager example
-}
-
-
-
-async function copyToClipboard(str) {
-  try {
-    await navigator.clipboard.writeText(str);
-  } catch (err) {
-    /** Rejected - text failed to copy to the clipboard. Browsers didn't give permission */
-    console.error('Failed to copy: ', err);
-  }
-}

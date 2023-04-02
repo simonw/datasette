@@ -17,7 +17,8 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 </svg>`;
 
-(function () {
+/** Initialize the Datasette startup! */
+const initDatasetteTable = function (manager) {
   // Feature detection
   if (!window.URLSearchParams) {
     return;
@@ -68,13 +69,11 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     menu.style.display = "none";
     menu.classList.remove("anim-scale-in");
   }
-  // When page loads, add scroll listener on .table-wrapper
-  document.addEventListener("DOMContentLoaded", () => {
-    var tableWrapper = document.querySelector(".table-wrapper");
-    if (tableWrapper) {
-      tableWrapper.addEventListener("scroll", closeMenu);
-    }
-  });
+
+  const tableWrapper = document.querySelector(".table-wrapper");
+  if (tableWrapper) {
+    tableWrapper.addEventListener("scroll", closeMenu);
+  }
   document.body.addEventListener("click", (ev) => {
     /* was this click outside the menu? */
     var target = ev.target;
@@ -85,7 +84,9 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       closeMenu();
     }
   });
-  function iconClicked(ev) {
+
+  /** Table header  */
+  function onTableHeaderClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
     var th = ev.target;
@@ -185,6 +186,33 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     menu.style.left = menuLeft + "px";
     menu.style.display = "block";
     menu.classList.add("anim-scale-in");
+
+    // Custom menu items on each render
+    // Plugin hook: allow adding JS-based additional menu items
+    const menuList = menu.querySelector('ul');
+    const columnItemConfigs = manager.getColumnHeaderItems(column);
+
+    columnItemConfigs.forEach(itemConfig => {
+      // Remove items from previous render. We assume entries have unique labels.
+      const existingItems = menuList.querySelectorAll(`li`);
+      Array.from(existingItems).filter(item => item.innerText === itemConfig.label).forEach(node => {
+        node.remove();
+      });
+
+      // Create a new items for each config.
+      const newLink = document.createElement('a');
+      newLink.textContent = itemConfig.label;
+      newLink.href = itemConfig.href ?? '#';
+      if (itemConfig.onClick) {
+        newLink.onclick = itemConfig.onClick(ev);
+      }
+
+      // Attach new elements to DOM
+      const menuItem = document.createElement('li');
+      menuItem.appendChild(newLink);
+      menuList.appendChild(menuItem);
+    });
+
   }
   var svg = document.createElement("div");
   svg.innerHTML = DROPDOWN_ICON_SVG;
@@ -203,13 +231,13 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       return;
     }
     var icon = svg.cloneNode(true);
-    icon.addEventListener("click", iconClicked);
+    icon.addEventListener("click", onTableHeaderClick);
     th.appendChild(icon);
   });
-})();
+};
 
 /* Add x buttons to the filter rows */
-(function () {
+function addButtonsToFilterRows() {
   var x = "✖";
   var rows = Array.from(document.querySelectorAll(".filter-row")).filter((el) =>
     el.querySelector(".filter-op")
@@ -234,10 +262,10 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       a.style.display = "none";
     }
   });
-})();
+};
 
 /* Set up datalist autocomplete for filter values */
-(function () {
+function initAutocompleteForFilterValues() {
   function createDataLists() {
     var facetResults = document.querySelectorAll(
       ".facet-results [data-column]"
@@ -271,15 +299,51 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
         .setAttribute("list", "datalist-" + event.target.value);
     }
   });
-})();
+};
 
 
 // TODO: plugins need to wait for a custom event
 // TODO: document what events they can listen for
 document.addEventListener("InitDatasette", function (evt) {
 
+
   // Manager is in event.detail
-  console.log(evt.detail);
-  evt.detail.registerPlugin('table', { version: 12, myCoolHello: () => console.log('hello') });
+  // console.log();
+
+  const {detail: manager} = evt;
+
+  // Main table
+  initDatasetteTable(manager);
+
+  // Other UI functions that need interactivity
+  addButtonsToFilterRows();
+  initAutocompleteForFilterValues();
+
+
+  // Then add your plugins
+
+  // Test plugins:
+  manager.registerPlugin('copy-column-name-to-clipboard', {
+    version: 0.1,
+    getColumnHeaderItems: (columnName) => {
+      return [{
+        label: "Copy name to clipboard",
+        onClick: (evt) => copyToClipboard(columnName)
+      }]
+    }
+  });
+
+  // Future: dispatch message to parent plugin with name of clicked column
+  // Could use to drive filter/sort etc query builder actions without a page refresh.
 
 });
+
+
+async function copyToClipboard(str) {
+  try {
+    await navigator.clipboard.writeText(str);
+  } catch (err) {
+    /* Rejected - text failed to copy to the clipboard. Browsers didn't give permission*/
+    console.error('Failed to copy: ', err);
+  }
+}

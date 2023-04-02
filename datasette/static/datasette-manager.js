@@ -29,6 +29,28 @@ const datasetteManager = {
       console.warn(`Warning -> plugin ${name} is redefined`);
     }
     datasetteManager.plugins.set(name, pluginMetadata);
+
+    // Check which commands to include!
+  },
+
+  /** Loop across plugins... note no control over item order
+   * Items must have a label (text), may have an href or an onclick.
+   */
+  getColumnHeaderItems: (columnName) => {
+    let items = [];
+
+    datasetteManager.plugins.forEach(plugin => {
+      // Accept function that returns list of items with keys
+      // Must have: text label (for now, no custom DOM node renderprop)
+      // One of these: onClick or href
+      if (plugin.getColumnHeaderItems) {
+        items.push(...plugin.getColumnHeaderItems(columnName));
+      }
+    });
+
+    // TODO: validate item configs
+
+    return items;
   },
 
   /** State helpers */

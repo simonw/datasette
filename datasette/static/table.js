@@ -17,7 +17,7 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 </svg>`;
 
-/** Initialize the Datasette startup! */
+/** Main initialization function for Datasette Table interactions */
 const initDatasetteTable = function (manager) {
   // Feature detection
   if (!window.URLSearchParams) {
@@ -85,7 +85,6 @@ const initDatasetteTable = function (manager) {
     }
   });
 
-  /** Table header  */
   function onTableHeaderClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
@@ -191,8 +190,6 @@ const initDatasetteTable = function (manager) {
     // Plugin hook: allow adding JS-based additional menu items
     const menuList = menu.querySelector('ul');
 
-    // Pass datasette column configs! Record<string,string>
-
     const columnItemConfigs = manager.getColumnHeaderItems({ ...th.dataset });
 
     columnItemConfigs.forEach(itemConfig => {
@@ -202,7 +199,6 @@ const initDatasetteTable = function (manager) {
         node.remove();
       });
 
-      // Create new items for each config.
       const newLink = document.createElement('a');
       newLink.textContent = itemConfig.label;
       newLink.href = itemConfig.href ?? '#';
@@ -218,10 +214,10 @@ const initDatasetteTable = function (manager) {
 
   }
 
-  var dropdownIcon = document.createElement("div");
-  dropdownIcon.innerHTML = DROPDOWN_ICON_SVG;
-  dropdownIcon = dropdownIcon.querySelector("*");
-  dropdownIcon.classList.add("dropdown-menu-icon");
+  var svg = document.createElement("div");
+  svg.innerHTML = DROPDOWN_ICON_SVG;
+  svg = svg.querySelector("*");
+  svg.classList.add("dropdown-menu-icon");
   var menu = document.createElement("div");
   menu.innerHTML = DROPDOWN_HTML;
   menu = menu.querySelector("*");
@@ -234,7 +230,7 @@ const initDatasetteTable = function (manager) {
     if (!th.querySelector("a")) {
       return;
     }
-    var icon = dropdownIcon.cloneNode(true);
+    var icon = svg.cloneNode(true);
     icon.addEventListener("click", onTableHeaderClick);
     th.appendChild(icon);
   });
@@ -305,7 +301,7 @@ function initAutocompleteForFilterValues(manager) {
   });
 };
 
-// Main function: registers everything after datasette-manager is done
+// Ensures Table UI is initialized only after the Manager is ready.
 document.addEventListener("InitDatasette", function (evt) {
   const { detail: manager } = evt;
 

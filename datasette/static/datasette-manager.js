@@ -1,13 +1,9 @@
-// Local dev
-// datasette/static/datasette-manager.js
-// use quokka run on current file for JS debugging
-
 // Custom events for use with the native CustomEvent API
 const DATASETTE_EVENTS = {
   INIT: "InitDatasette", // returns datasette manager instance in evt.detail
 }
 
-// Datasette "core" -> Methods/APIs that are core
+// Datasette "core" -> Methods/APIs that are foundational
 // Plugins will have greater stability if they use the functional hooks- but if they do decide to hook into
 // literal DOM selectors, they'll have an easier time using these addresses.
 const DOM_SELECTORS = {
@@ -37,17 +33,13 @@ const DOM_SELECTORS = {
 const datasetteManager = {
   VERSION: 'TODO_INJECT_VERSION_OR_ENDPOINT_FROM_SERVER_OR_AT_BUILD_TIME',
 
-  // Let plugins register. TODO... what should unique identifiers be?
-  // Name, etc. Should this be a MAP instead of a list?
-  // Does order of registration matter?
+
+  // TODO: Should order of registration matter?
 
   // Should plugins be allowed to clobber others or is it last-in takes priority?
   // Does pluginMetadata need to be serializable, or can we let it be stateful / have functions?
-  // Should we notify plugins that have dependencies
-  // when all dependencies were fulfilled? (leaflet, codemirror, etc)
-  // https://github.com/simonw/datasette-leaflet -> this way
-  // multiple plugins can all request the same copy of leaflet.
   plugins: new Map(),
+
   registerPlugin: (name, pluginMetadata) => {
     if (datasetteManager.plugins.get(name)) {
       console.warn(`Warning -> plugin ${name} was redefined`);
@@ -95,7 +87,7 @@ const datasetteManager = {
    * Currently, we never destroy any panels, we just hide them.
    *
    * TODO: nicer panel css, show panel selection state.
-   * TODO: does this hook need to have any arguments inside?
+   * TODO: does this hook need to take any arguments?
    */
   renderAboveTablePanel: () => {
 
@@ -123,17 +115,18 @@ const datasetteManager = {
       const { getAboveTablePanelConfigs: getPanelConfigs } = plugin;
 
       if (getPanelConfigs) {
-        // TODO: prevent repeats - as backup, select
         const controls = aboveTablePanel.querySelector('.tab-controls');
         const contents = aboveTablePanel.querySelector('.tab-contents');
 
-        // Each plugin could register multiple plugins...
+        // Each plugin can make multiple panels
         const configs = getPanelConfigs();
 
         configs.forEach((config, i) => {
           const nodeContentId = `${pluginName}_${config.id}_panel-content`;
 
-          // quit if we've already registerd this plugin
+          // quit if we've already registered this plugin
+          // TODO: look into whether plugins should be allowed to ask
+          // parent to re-render, or if they should manage that internally.
           if (document.getElementById(nodeContentId)) {
             return;
           }
@@ -179,23 +172,31 @@ const datasetteManager = {
   // Provide knowledge of what datasette JS or server-side via traditional console autocomplete
   // State helpers: URL params https://github.com/simonw/datasette/issues/1144 and localstorage
   // UI Hooks: command + k, tab manager hook
+  // Should we notify plugins that have dependencies
+  // when all dependencies were fulfilled? (leaflet, codemirror, etc)
+  // https://github.com/simonw/datasette-leaflet -> this way
+  // multiple plugins can all request the same copy of leaflet.
 };
 
-/**
- * Fire AFTER the document has been parsed
- * Initialization... TODO how to make sure this exists BEFORE datasette manager is loaded? */
+
 const initializeDatasette = () => {
-  // Make Manager available to other plugins
+  // Hide the global behind __ prefix. Ideally they should be listening for the
+  // DATASETTE_EVENTS.INIT event to avoid the habit of reading from the window.
+
   window.__DATASETTE__ = datasetteManager;
-  console.log("Datasette Manager Created!");
+  console.debug("Datasette Manager Created!");
 
   const initDatasetteEvent = new CustomEvent(DATASETTE_EVENTS.INIT, {
     detail: datasetteManager
   });
+
   document.dispatchEvent(initDatasetteEvent)
 }
 
-// Main function
+/**
+ * Main function
+ * Fires AFTER the document has been parsed
+ */
 document.addEventListener("DOMContentLoaded", function () {
   initializeDatasette();
 });

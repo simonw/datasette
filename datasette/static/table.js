@@ -70,7 +70,7 @@ const initDatasetteTable = function (manager) {
     menu.classList.remove("anim-scale-in");
   }
 
-  const tableWrapper = document.querySelector(".table-wrapper");
+  const tableWrapper = document.querySelector(manager.selectors.tableWrapper);
   if (tableWrapper) {
     tableWrapper.addEventListener("scroll", closeMenu);
   }
@@ -229,7 +229,7 @@ const initDatasetteTable = function (manager) {
   menu.style.display = "none";
   document.body.appendChild(menu);
 
-  var ths = Array.from(document.querySelectorAll(".rows-and-columns th"));
+  var ths = Array.from(document.querySelectorAll(manager.selectors.tableHeaders));
   ths.forEach((th) => {
     if (!th.querySelector("a")) {
       return;
@@ -272,7 +272,7 @@ function addButtonsToFilterRows(manager) {
 function initAutocompleteForFilterValues(manager) {
   function createDataLists() {
     var facetResults = document.querySelectorAll(
-      ".facet-results [data-column]"
+      manager.selectors.facetResults
     );
     Array.from(facetResults).forEach(function (facetResult) {
       // Use link text from all links in the facet result
@@ -310,7 +310,6 @@ function initAutocompleteForFilterValues(manager) {
 // TODO: document what events can be listened for
 document.addEventListener("InitDatasette", function (evt) {
 
-
   const { detail: manager } = evt;
 
   // Main table
@@ -320,10 +319,8 @@ document.addEventListener("InitDatasette", function (evt) {
   addButtonsToFilterRows(manager);
   initAutocompleteForFilterValues(manager);
 
+  // === Demo plugins ===
 
-  // Test area: demo plugins
-  // Future: dispatch message to some other part of the page with CustomEvent APi
-  // Could use to drive filter/sort query builder actions without  page refresh.
   manager.registerPlugin("column-name-plugin-demo", {
     version: 0.1,
     getColumnHeaderItems: (columnMeta) => {
@@ -341,6 +338,13 @@ document.addEventListener("InitDatasette", function (evt) {
       ];
     },
   });
+
+  // Future: dispatch message to some other part of the page with CustomEvent API
+  // Could use to drive filter/sort query builder actions without  page refresh.
+
+
+
+
 });
 
 

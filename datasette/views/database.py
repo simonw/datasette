@@ -757,3 +757,332 @@ async def _table_columns(datasette, database_name):
     for view_name in await db.view_names():
         table_columns[view_name] = []
     return table_columns
+
+
+async def database_view(request, datasette):
+    return await database_view_impl(request, datasette)
+
+
+async def database_view_impl(
+    request,
+    datasette,
+    canned_query=None,
+    _size=None,
+    named_parameters=None,
+    write=False,
+):
+    db = await datasette.resolve_database(request)
+    database = db.name
+    params = {key: request.args.get(key) for key in request.args}
+    sql = ""
+    if "sql" in params:
+        sql = params.pop("sql")
+    _shape = None
+    if "_shape" in params:
+        _shape = params.pop("_shape")
+
+    private = False
+    if canned_query:
+        # Respect canned query permissions
+        visible, private = await datasette.check_visibility(
+            request.actor,
+            permissions=[
+                ("view-query", (database, canned_query)),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this query")
+
+    else:
+        await datasette.ensure_permissions(request.actor, [("execute-sql", database)])
+
+    # Extract any :named parameters
+    named_parameters = named_parameters or await derive_named_parameters(db, sql)
+    named_parameter_values = {
+        named_parameter: params.get(named_parameter) or ""
+        for named_parameter in named_parameters
+        if not named_parameter.startswith("_")
+    }
+
+    # Set to blank string if missing from params
+    for named_parameter in named_parameters:
+        if named_parameter not in params and not named_parameter.startswith("_"):
+            params[named_parameter] = ""
+
+    extra_args = {}
+    if params.get("_timelimit"):
+        extra_args["custom_time_limit"] = int(params["_timelimit"])
+    if _size:
+        extra_args["page_size"] = _size
+
+    templates = [f"query-{to_css_class(database)}.html", "query.html"]
+    if canned_query:
+        templates.insert(
+            0,
+            f"query-{to_css_class(database)}-{to_css_class(canned_query)}.html",
+        )
+
+    query_error = None
+
+    # Execute query - as write or as read
+    if write:
+        raise NotImplementedError("Write queries not yet implemented")
+        # if request.method == "POST":
+        #     # If database is immutable, return an error
+        #     if not db.is_mutable:
+        #         raise Forbidden("Database is immutable")
+        #     body = await request.post_body()
+        #     body = body.decode("utf-8").strip()
+        #     if body.startswith("{") and body.endswith("}"):
+        #         params = json.loads(body)
+        #         # But we want key=value strings
+        #         for key, value in params.items():
+        #             params[key] = str(value)
+        #     else:
+        #         params = dict(parse_qsl(body, keep_blank_values=True))
+        #     # Should we return JSON?
+        #     should_return_json = (
+        #         request.headers.get("accept") == "application/json"
+        #         or request.args.get("_json")
+        #         or params.get("_json")
+        #     )
+        #     if canned_query:
+        #         params_for_query = MagicParameters(params, request, self.ds)
+        #     else:
+        #         params_for_query = params
+        #     ok = None
+        #     try:
+        #         cursor = await self.ds.databases[database].execute_write(
+        #             sql, params_for_query
+        #         )
+        #         message = metadata.get(
+        #             "on_success_message"
+        #         ) or "Query executed, {} row{} affected".format(
+        #             cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+        #         )
+        #         message_type = self.ds.INFO
+        #         redirect_url = metadata.get("on_success_redirect")
+        #         ok = True
+        #     except Exception as e:
+        #         message = metadata.get("on_error_message") or str(e)
+        #         message_type = self.ds.ERROR
+        #         redirect_url = metadata.get("on_error_redirect")
+        #         ok = False
+        #     if should_return_json:
+        #         return Response.json(
+        #             {
+        #                 "ok": ok,
+        #                 "message": message,
+        #                 "redirect": redirect_url,
+        #             }
+        #         )
+        #     else:
+        #         self.ds.add_message(request, message, message_type)
+        #         return self.redirect(request, redirect_url or request.path)
+        # else:
+
+        #     async def extra_template():
+        #         return {
+        #             "request": request,
+        #             "db_is_immutable": not db.is_mutable,
+        #             "path_with_added_args": path_with_added_args,
+        #             "path_with_removed_args": path_with_removed_args,
+        #             "named_parameter_values": named_parameter_values,
+        #             "canned_query": canned_query,
+        #             "success_message": request.args.get("_success") or "",
+        #             "canned_write": True,
+        #         }
+
+        #     return (
+        #         {
+        #             "database": database,
+        #             "rows": [],
+        #             "truncated": False,
+        #             "columns": [],
+        #             "query": {"sql": sql, "params": params},
+        #             "private": private,
+        #         },
+        #         extra_template,
+        #         templates,
+        #     )
+
+    # Not a write
+    if canned_query:
+        params_for_query = MagicParameters(params, request, datasette)
+    else:
+        params_for_query = params
+    try:
+        results = await datasette.execute(
+            database, sql, params_for_query, truncate=True, **extra_args
+        )
+        columns = [r[0] for r in results.description]
+    except sqlite3.DatabaseError as e:
+        query_error = e
+        results = None
+        columns = []
+
+    allow_execute_sql = await datasette.permission_allowed(
+        request.actor, "execute-sql", database
+    )
+
+    return Response.json(
+        {
+            "ok": True,
+            "rows": [dict(r) for r in results],
+            # "columns": columns,
+            # "database": database,
+            # "params": params,
+            # "sql": sql,
+            # "_shape": _shape,
+            # "named_parameters": named_parameters,
+            # "named_parameter_values": named_parameter_values,
+            # "extra_args": extra_args,
+            # "templates": templates,
+        }
+    )
+
+    async def extra_template():
+        display_rows = []
+        truncate_cells = datasette.setting("truncate_cells_html")
+        for row in results.rows if results else []:
+            display_row = []
+            for column, value in zip(results.columns, row):
+                display_value = value
+                # Let the plugins have a go
+                # pylint: disable=no-member
+                plugin_display_value = None
+                for candidate in pm.hook.render_cell(
+                    row=row,
+                    value=value,
+                    column=column,
+                    table=None,
+                    database=database,
+                    datasette=self.ds,
+                    request=request,
+                ):
+                    candidate = await await_me_maybe(candidate)
+                    if candidate is not None:
+                        plugin_display_value = candidate
+                        break
+                if plugin_display_value is not None:
+                    display_value = plugin_display_value
+                else:
+                    if value in ("", None):
+                        display_value = Markup("&nbsp;")
+                    elif is_url(str(display_value).strip()):
+                        display_value = markupsafe.Markup(
+                            '<a href="{url}">{truncated_url}</a>'.format(
+                                url=markupsafe.escape(value.strip()),
+                                truncated_url=markupsafe.escape(
+                                    truncate_url(value.strip(), truncate_cells)
+                                ),
+                            )
+                        )
+                    elif isinstance(display_value, bytes):
+                        blob_url = path_with_format(
+                            request=request,
+                            format="blob",
+                            extra_qs={
+                                "_blob_column": column,
+                                "_blob_hash": hashlib.sha256(display_value).hexdigest(),
+                            },
+                        )
+                        formatted = format_bytes(len(value))
+                        display_value = markupsafe.Markup(
+                            '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
+                                blob_url,
+                                ' title="{}"'.format(formatted)
+                                if "bytes" not in formatted
+                                else "",
+                                len(value),
+                                "" if len(value) == 1 else "s",
+                            )
+                        )
+                    else:
+                        display_value = str(value)
+                        if truncate_cells and len(display_value) > truncate_cells:
+                            display_value = display_value[:truncate_cells] + "\u2026"
+                display_row.append(display_value)
+            display_rows.append(display_row)
+
+        # Show 'Edit SQL' button only if:
+        # - User is allowed to execute SQL
+        # - SQL is an approved SELECT statement
+        # - No magic parameters, so no :_ in the SQL string
+        edit_sql_url = None
+        is_validated_sql = False
+        try:
+            validate_sql_select(sql)
+            is_validated_sql = True
+        except InvalidSql:
+            pass
+        if allow_execute_sql and is_validated_sql and ":_" not in sql:
+            edit_sql_url = (
+                self.ds.urls.database(database)
+                + "?"
+                + urlencode(
+                    {
+                        **{
+                            "sql": sql,
+                        },
+                        **named_parameter_values,
+                    }
+                )
+            )
+
+        show_hide_hidden = ""
+        if metadata.get("hide_sql"):
+            if bool(params.get("_show_sql")):
+                show_hide_link = path_with_removed_args(request, {"_show_sql"})
+                show_hide_text = "hide"
+                show_hide_hidden = '<input type="hidden" name="_show_sql" value="1">'
+            else:
+                show_hide_link = path_with_added_args(request, {"_show_sql": 1})
+                show_hide_text = "show"
+        else:
+            if bool(params.get("_hide_sql")):
+                show_hide_link = path_with_removed_args(request, {"_hide_sql"})
+                show_hide_text = "show"
+                show_hide_hidden = '<input type="hidden" name="_hide_sql" value="1">'
+            else:
+                show_hide_link = path_with_added_args(request, {"_hide_sql": 1})
+                show_hide_text = "hide"
+        hide_sql = show_hide_text == "show"
+        return {
+            "display_rows": display_rows,
+            "custom_sql": True,
+            "named_parameter_values": named_parameter_values,
+            "editable": editable,
+            "canned_query": canned_query,
+            "edit_sql_url": edit_sql_url,
+            "metadata": metadata,
+            "settings": self.ds.settings_dict(),
+            "request": request,
+            "show_hide_link": self.ds.urls.path(show_hide_link),
+            "show_hide_text": show_hide_text,
+            "show_hide_hidden": markupsafe.Markup(show_hide_hidden),
+            "hide_sql": hide_sql,
+            "table_columns": await _table_columns(self.ds, database)
+            if allow_execute_sql
+            else {},
+        }
+
+    return (
+        {
+            "ok": not query_error,
+            "database": database,
+            "query_name": canned_query,
+            "rows": results.rows if results else [],
+            "truncated": results.truncated if results else False,
+            "columns": columns,
+            "query": {"sql": sql, "params": params},
+            "error": str(query_error) if query_error else None,
+            "private": private,
+            "allow_execute_sql": allow_execute_sql,
+        },
+        extra_template,
+        templates,
+        400 if query_error else 200,
+    )

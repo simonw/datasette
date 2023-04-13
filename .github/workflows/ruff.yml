@@ -13,3 +13,19 @@ jobs:
     - run: pip install --user ruff
     - run: ruff --exclude=tests/ --ignore=E713,F401,F522,F811,F841 --format=github --line-length=145 --target-version=py37 .
     - run: ruff --ignore=E711,E712,E713,E741,F401,F522,F811,F841 --format=github --line-length=252 --target-version=py37 .
+  ruff_with_cache:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    # Read self to find an exactly pinned dependency (ruff==x.y.z) and then echo if we got a cache hit
+    # https://github.com/actions/setup-python#caching-packages-dependencies
+    - uses: actions/setup-python@v4
+      id: python_with_cache
+      with:
+        python-version: 3.x
+        cache: pip
+        cache-dependency-path: .github/workflows/ruff.yml
+    - run: echo 'cache-hit = ${{ steps.python_with_cache.outputs.cache-hit }}' # true if cache-hit occured on pip
+    - run: pip install --user ruff==0.0.261
+    - run: ruff --exclude=tests/ --ignore=E713,F401,F522,F811,F841 --format=github --line-length=145 --target-version=py37 .
+    - run: ruff --ignore=E711,E712,E713,E741,F401,F522,F811,F841 --format=github --line-length=252 --target-version=py37 .

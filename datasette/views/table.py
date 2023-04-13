@@ -9,7 +9,6 @@ import markupsafe
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette import tracer
-from datasette.renderer import json_renderer
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,

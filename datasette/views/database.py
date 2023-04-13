@@ -12,6 +12,7 @@ import markupsafe
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
+    call_with_supported_arguments,
     derive_named_parameters,
     format_bytes,
     tilde_decode,
@@ -763,6 +764,119 @@ async def database_view(request, datasette):
     return await database_view_impl(request, datasette)
 
 
+async def database_index_view(request, datasette, db):
+    database = db.name
+    visible, private = await datasette.check_visibility(
+        request.actor,
+        permissions=[
+            ("view-database", database),
+            "view-instance",
+        ],
+    )
+    if not visible:
+        raise Forbidden("You do not have permission to view this database")
+
+    metadata = (datasette.metadata("databases") or {}).get(database, {})
+    datasette.update_with_inherited_metadata(metadata)
+
+    table_counts = await db.table_counts(5)
+    hidden_table_names = set(await db.hidden_table_names())
+    all_foreign_keys = await db.get_all_foreign_keys()
+
+    views = []
+    for view_name in await db.view_names():
+        view_visible, view_private = await datasette.check_visibility(
+            request.actor,
+            permissions=[
+                ("view-table", (database, view_name)),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
+        if view_visible:
+            views.append(
+                {
+                    "name": view_name,
+                    "private": view_private,
+                }
+            )
+
+    tables = []
+    for table in table_counts:
+        table_visible, table_private = await datasette.check_visibility(
+            request.actor,
+            permissions=[
+                ("view-table", (database, table)),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
+        if not table_visible:
+            continue
+        table_columns = await db.table_columns(table)
+        tables.append(
+            {
+                "name": table,
+                "columns": table_columns,
+                "primary_keys": await db.primary_keys(table),
+                "count": table_counts[table],
+                "hidden": table in hidden_table_names,
+                "fts_table": await db.fts_table(table),
+                "foreign_keys": all_foreign_keys[table],
+                "private": table_private,
+            }
+        )
+
+    tables.sort(key=lambda t: (t["hidden"], t["name"]))
+    canned_queries = []
+    for query in (await datasette.get_canned_queries(database, request.actor)).values():
+        query_visible, query_private = await datasette.check_visibility(
+            request.actor,
+            permissions=[
+                ("view-query", (database, query["name"])),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
+        if query_visible:
+            canned_queries.append(dict(query, private=query_private))
+
+    async def database_actions():
+        links = []
+        for hook in pm.hook.database_actions(
+            datasette=datasette,
+            database=database,
+            actor=request.actor,
+            request=request,
+        ):
+            extra_links = await await_me_maybe(hook)
+            if extra_links:
+                links.extend(extra_links)
+        return links
+
+    attached_databases = [d.name for d in await db.attached_databases()]
+
+    allow_execute_sql = await datasette.permission_allowed(
+        request.actor, "execute-sql", database
+    )
+    return Response.json(
+        {
+            "database": db.name,
+            "private": private,
+            "path": datasette.urls.database(database),
+            "size": db.size,
+            "tables": tables,
+            "hidden_count": len([t for t in tables if t["hidden"]]),
+            "views": views,
+            "queries": canned_queries,
+            "allow_execute_sql": allow_execute_sql,
+            "table_columns": await _table_columns(datasette, database)
+            if allow_execute_sql
+            else {},
+        }
+    )
+
+
 async def database_view_impl(
     request,
     datasette,
@@ -797,6 +911,12 @@ async def database_view_impl(
 
     else:
         await datasette.ensure_permissions(request.actor, [("execute-sql", database)])
+
+    # If there's no sql, show the database index page
+    if not sql:
+        return await database_index_view(request, datasette, db)
+
+    validate_sql_select(sql)
 
     # Extract any :named parameters
     named_parameters = named_parameters or await derive_named_parameters(db, sql)
@@ -909,6 +1029,7 @@ async def database_view_impl(
         #     )
 
     # Not a write
+    rows = []
     if canned_query:
         params_for_query = MagicParameters(params, request, datasette)
     else:
@@ -918,6 +1039,7 @@ async def database_view_impl(
             database, sql, params_for_query, truncate=True, **extra_args
         )
         columns = [r[0] for r in results.description]
+        rows = list(results.rows)
     except sqlite3.DatabaseError as e:
         query_error = e
         results = None
@@ -927,21 +1049,96 @@ async def database_view_impl(
         request.actor, "execute-sql", database
     )
 
-    return Response.json(
-        {
-            "ok": True,
-            "rows": [dict(r) for r in results],
-            # "columns": columns,
-            # "database": database,
-            # "params": params,
-            # "sql": sql,
-            # "_shape": _shape,
-            # "named_parameters": named_parameters,
-            # "named_parameter_values": named_parameter_values,
-            # "extra_args": extra_args,
-            # "templates": templates,
-        }
-    )
+    format_ = request.url_vars.get("format") or "html"
+
+    if format_ == "csv":
+        raise NotImplementedError("CSV format not yet implemented")
+    elif format_ in datasette.renderers.keys():
+        # Dispatch request to the correct output format renderer
+        # (CSV is not handled here due to streaming)
+        result = call_with_supported_arguments(
+            datasette.renderers[format_][0],
+            datasette=datasette,
+            columns=columns,
+            rows=rows,
+            sql=sql,
+            query_name=None,
+            database=db.name,
+            table=None,
+            request=request,
+            view_name="table",  # TODO: should this be "query"?
+            # These will be deprecated in Datasette 1.0:
+            args=request.args,
+            data={
+                "rows": rows,
+            },  # TODO what should this be?
+        )
+        result = await await_me_maybe(result)
+        if result is None:
+            raise NotFound("No data")
+        if isinstance(result, dict):
+            r = Response(
+                body=result.get("body"),
+                status=result.get("status_code") or 200,
+                content_type=result.get("content_type", "text/plain"),
+                headers=result.get("headers"),
+            )
+        elif isinstance(result, Response):
+            r = result
+            # if status_code is not None:
+            #     # Over-ride the status code
+            #     r.status = status_code
+        else:
+            assert False, f"{result} should be dict or Response"
+    elif format_ == "html":
+        headers = {}
+        templates = [f"query-{to_css_class(database)}.html", "query.html"]
+        template = datasette.jinja_env.select_template(templates)
+        alternate_url_json = datasette.absolute_url(
+            request,
+            datasette.urls.path(path_with_format(request=request, format="json")),
+        )
+        headers.update(
+            {
+                "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                    alternate_url_json
+                )
+            }
+        )
+        r = Response.html(
+            await datasette.render_template(
+                template,
+                dict(
+                    data,
+                    append_querystring=append_querystring,
+                    path_with_replaced_args=path_with_replaced_args,
+                    fix_path=datasette.urls.path,
+                    settings=datasette.settings_dict(),
+                    # TODO: review up all of these hacks:
+                    alternate_url_json=alternate_url_json,
+                    datasette_allow_facet=(
+                        "true" if datasette.setting("allow_facet") else "false"
+                    ),
+                    is_sortable=any(c["sortable"] for c in data["display_columns"]),
+                    allow_execute_sql=await datasette.permission_allowed(
+                        request.actor, "execute-sql", resolved.db.name
+                    ),
+                    query_ms=1.2,
+                    select_templates=[
+                        f"{'*' if template_name == template.name else ''}{template_name}"
+                        for template_name in templates
+                    ],
+                ),
+                request=request,
+                view_name="table",
+            ),
+            headers=headers,
+        )
+    else:
+        assert False, "Invalid format: {}".format(format_)
+    # if next_url:
+    #     r.headers["link"] = f'<{next_url}>; rel="next"'
+    return r
 
     async def extra_template():
         display_rows = []

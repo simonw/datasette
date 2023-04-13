@@ -424,25 +424,45 @@ class Datasette:
             await init_internal_db(internal_db)
             self.internal_db_created = True
 
-        current_schema_versions = {
-            row["database_name"]: row["schema_version"]
+        current_schema_versions_and_hashes = {
+            row["database_name"]: (row["schema_version"], row["schema_hash"])
             for row in await internal_db.execute(
-                "select database_name, schema_version from databases"
+                "select database_name, schema_version, schema_hash from databases"
             )
         }
         for database_name, db in self.databases.items():
-            schema_version = (await db.execute("PRAGMA schema_version")).first()[0]
-            # Compare schema versions to see if we should skip it
-            if schema_version == current_schema_versions.get(database_name):
-                continue
-            placeholders = "(?, ?, ?, ?)"
-            values = [database_name, str(db.path), db.is_memory, schema_version]
+            schema_version = await db.schema_version()
+            current_version_and_hash = current_schema_versions_and_hashes.get(
+                database_name
+            )
+            if current_version_and_hash:
+                # We might get to skip this database
+                if schema_version is not None and current_version_and_hash:
+                    # Use this to decide if the schema has changed
+                    if schema_version == current_version_and_hash[0]:
+                        continue
+                else:
+                    # Use the schema hash instead
+                    schema_hash = await db.schema_hash()
+                    if schema_hash == current_version_and_hash[1]:
+                        continue
+
+            # Calculate new schema hash
+            schema_hash = await db.schema_hash()
+            placeholders = "(?, ?, ?, ?, ?)"
+            values = [
+                database_name,
+                str(db.path),
+                db.is_memory,
+                schema_version,
+                schema_hash,
+            ]
             if db.path is None:
-                placeholders = "(?, null, ?, ?)"
-                values = [database_name, db.is_memory, schema_version]
+                placeholders = "(?, null, ?, ?, ?)"
+                values = [database_name, db.is_memory, schema_version, schema_hash]
             await internal_db.execute_write(
                 """
-                INSERT OR REPLACE INTO databases (database_name, path, is_memory, schema_version)
+                INSERT OR REPLACE INTO databases (database_name, path, is_memory, schema_version, schema_hash)
                 VALUES {}
             """.format(
                     placeholders

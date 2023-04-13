@@ -9,7 +9,8 @@ async def init_internal_db(db):
         database_name TEXT PRIMARY KEY,
         path TEXT,
         is_memory INTEGER,
-        schema_version INTEGER
+        schema_version INTEGER,
+        schema_hash TEXT
     );
     CREATE TABLE IF NOT EXISTS tables (
         database_name TEXT,

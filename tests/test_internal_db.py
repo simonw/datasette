@@ -1,4 +1,7 @@
 import pytest
+from unittest.mock import patch
+from datasette.app import Datasette
+from datasette.database import Database
 
 
 @pytest.mark.asyncio
@@ -83,3 +86,51 @@ async def test_internal_foreign_keys(ds_client):
         "table_name",
         "from",
     }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schema_version_returns_none", (True, False))
+async def test_detects_schema_changes(schema_version_returns_none):
+    ds = Datasette()
+    db_name = "test_detects_schema_changes_{}".format(schema_version_returns_none)
+    db = ds.add_memory_database(db_name)
+    # Test if Datasette correctly detects schema changes, whether or not
+    # the schema_version method is working.
+    # https://github.com/simonw/datasette/issues/2058
+
+    _internal = ds.get_database("_internal")
+
+    async def get_tables():
+        return [
+            dict(r)
+            for r in await _internal.execute(
+                "select table_name from tables where database_name = ?", [db_name]
+            )
+        ]
+
+    async def test_it():
+        await ds.refresh_schemas()
+        initial_hash = await db.schema_hash()
+        # _internal should list zero tables
+        tables = await get_tables()
+        assert tables == []
+        # Create a new table
+        await db.execute_write("CREATE TABLE test (id INTEGER PRIMARY KEY)")
+        await ds.refresh_schemas()
+        assert await db.schema_hash() != initial_hash
+        # _internal should list one table
+        tables = await get_tables()
+        assert tables == [
+            {"table_name": "test"},
+        ]
+
+    async def schema_version_none(self):
+        return None
+
+    if schema_version_returns_none:
+        with patch(
+            "datasette.database.Database.schema_version", new=schema_version_none
+        ):
+            await test_it()
+    else:
+        await test_it()

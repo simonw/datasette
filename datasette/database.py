@@ -1,6 +1,7 @@
 import asyncio
 from collections import namedtuple
 from pathlib import Path
+import hashlib
 import janus
 import queue
 import sys
@@ -49,6 +50,24 @@ class Database:
         self._write_connection = None
         # This is used to track all file connections so they can be closed
         self._all_file_connections = []
+
+    async def schema_version(self):
+        # This can return 'None' if the schema_version cannot be read
+        # See https://github.com/simonw/datasette/issues/2058
+        try:
+            return (await self.execute("PRAGMA schema_version")).first()[0]
+        except sqlite3.OperationalError:
+            return None
+
+    async def schema_hash(self):
+        return hashlib.md5(
+            (
+                (
+                    await self.execute("SELECT group_concat(sql) FROM sqlite_master")
+                ).first()[0]
+                or ""
+            ).encode("utf8")
+        ).hexdigest()
 
     @property
     def cached_table_counts(self):

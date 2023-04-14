@@ -15,7 +15,7 @@ const addPlugins = (manager) => {
 
   manager.registerPlugin("column-name-plugin", {
     version: 0.1,
-    getColumnHeaderItems: (columnMeta) => {
+    getColumnActions: (columnMeta) => {
       const { column } = columnMeta;
 
       return [

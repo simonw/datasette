@@ -190,7 +190,7 @@ const initDatasetteTable = function (manager) {
     // Plugin hook: allow adding JS-based additional menu items
     const menuList = menu.querySelector('ul');
 
-    const columnItemConfigs = manager.getColumnHeaderItems({ ...th.dataset });
+    const columnItemConfigs = manager.getColumnActions({ ...th.dataset });
 
     columnItemConfigs.forEach(itemConfig => {
       // Remove items from previous render. We assume entries have unique labels.

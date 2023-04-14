@@ -16,7 +16,7 @@ const DOM_SELECTORS = {
   aboveTablePanel: '.above-table-panel',
 
   // These could have multiple matches
-  /** Used for selecting table headers. Use getColumnHeaderItems if you want to add menu items. */
+  /** Used for selecting table headers. Use getColumnActions if you want to add menu items. */
   tableHeaders: `table.rows-and-columns th`,
 
   /** Used to add "where"  clauses to query using direct manipulation */
@@ -64,16 +64,16 @@ const datasetteManager = {
    * - columnType: sqlite datatype enum (text, number, etc)
    * - isPk: 0 or 1
    */
-  getColumnHeaderItems: (columnMeta) => {
+  getColumnActions: (columnMeta) => {
     let items = [];
     // Accept function that returns list of items with keys
     // Required: label (text)
     // Optional: onClick or href
     datasetteManager.plugins.forEach(plugin => {
-      if (plugin.getColumnHeaderItems) {
+      if (plugin.getColumnActions) {
         // Plugins can provide multiple items if they want
         // If multiple try to create entry with same label, the last one deletes the others
-        items.push(...plugin.getColumnHeaderItems(columnMeta));
+        items.push(...plugin.getColumnActions(columnMeta));
       }
     });
     // TODO: Validate item configs and give informative error message if missing keys.

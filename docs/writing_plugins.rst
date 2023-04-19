@@ -118,7 +118,7 @@ To learn how to upload your plugin to `PyPI <https://pypi.org/>`_ for use by oth
 Packaging a plugin using Poetry
 -------------------------------
 
-Instead of using `setup.py` you can package a Datasette plugin using `Poetry <https://python-poetry.org/>`_. You can define your plugin using a `pyproject.toml` file such as:
+Instead of using ``setup.py`` you can package a Datasette plugin using `Poetry <https://python-poetry.org/>`_. You can define your plugin using a ``pyproject.toml`` file such as:
 
 .. code-block:: toml
 

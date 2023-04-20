@@ -2,7 +2,7 @@
  * Example usage of Datasette JS Manager API
  */
 
-document.addEventListener("InitDatasette", function (evt) {
+document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
   // === Demo plugins: remove before merge===
   addPlugins(manager);

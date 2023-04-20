@@ -1,6 +1,6 @@
 // Custom events for use with the native CustomEvent API
 const DATASETTE_EVENTS = {
-  INIT: "InitDatasette", // returns datasette manager instance in evt.detail
+  INIT: "datasette_init", // returns datasette manager instance in evt.detail
 }
 
 // Datasette "core" -> Methods/APIs that are foundational

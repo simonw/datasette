@@ -302,7 +302,7 @@ function initAutocompleteForFilterValues(manager) {
 };
 
 // Ensures Table UI is initialized only after the Manager is ready.
-document.addEventListener("InitDatasette", function (evt) {
+document.addEventListener("datasette_init", function (evt) {
   const { detail: manager } = evt;
 
   // Main table

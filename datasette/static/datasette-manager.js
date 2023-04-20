@@ -53,16 +53,17 @@ const datasetteManager = {
   },
 
   /**
-   * New DOM elements created each time the button is clicked so the data is not stale.
+   * New DOM elements are created on each click, so the data is not stale.
+   *
    * Items
    *  - must provide label (text)
    *  - might provide href (string) or an onclick ((evt) => void)
    *
    * columnMeta is metadata stored on the column header (TH) as a DOMStringMap
    * - column: string
-   * - columnNotNull: 0 or 1
+   * - columnNotNull: boolean
    * - columnType: sqlite datatype enum (text, number, etc)
-   * - isPk: 0 or 1
+   * - isPk: boolean
    */
   getColumnActions: (columnMeta) => {
     let items = [];

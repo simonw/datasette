@@ -188,10 +188,15 @@ const initDatasetteTable = function (manager) {
 
     // Custom menu items on each render
     // Plugin hook: allow adding JS-based additional menu items
+    const columnActionsPayload = {
+      columnName: th.dataset.column,
+      columnNotNull: th.dataset.columnNotNull === '1',
+      columnType: th.dataset.columnType,
+      isPk: th.dataset.isPk === '1'
+    };
+    const columnItemConfigs = manager.getColumnActions(columnActionsPayload);
+
     const menuList = menu.querySelector('ul');
-
-    const columnItemConfigs = manager.getColumnActions({ ...th.dataset });
-
     columnItemConfigs.forEach(itemConfig => {
       // Remove items from previous render. We assume entries have unique labels.
       const existingItems = menuList.querySelectorAll(`li`);

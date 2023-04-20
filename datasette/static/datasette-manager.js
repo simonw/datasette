@@ -47,7 +47,7 @@ const datasetteManager = {
     datasetteManager.plugins.set(name, pluginMetadata);
 
     // If the plugin partipates in the panel... update the panel.
-    if (pluginMetadata.getAboveTablePanelConfigs) {
+    if (pluginMetadata.makeAboveTablePanelConfigs) {
       datasetteManager.renderAboveTablePanel();
     }
   },
@@ -120,9 +120,9 @@ const datasetteManager = {
     }
 
     datasetteManager.plugins.forEach((plugin, pluginName) => {
-      const { getAboveTablePanelConfigs: getPanelConfigs } = plugin;
+      const { makeAboveTablePanelConfigs } = plugin;
 
-      if (getPanelConfigs) {
+      if (makeAboveTablePanelConfigs) {
         const controls = aboveTablePanel.querySelector('.tab-controls');
         const contents = aboveTablePanel.querySelector('.tab-contents');
 

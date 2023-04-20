@@ -33,7 +33,7 @@ const addPlugins = (manager) => {
 
   manager.registerPlugin("panel-plugin-graphs", {
     version: 0.1,
-    getAboveTablePanelConfigs: () => {
+    makeAboveTablePanelConfigs: () => {
       return [
         {
           id: 'first-panel',
@@ -62,7 +62,7 @@ const addPlugins = (manager) => {
 
   manager.registerPlugin("panel-plugin-maps", {
     version: 0.1,
-    getAboveTablePanelConfigs: () => {
+    makeAboveTablePanelConfigs: () => {
       return [
         {
           // ID only has to be unique within a plugin, manager namespaces for you

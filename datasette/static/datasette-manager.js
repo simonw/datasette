@@ -41,7 +41,7 @@ const datasetteManager = {
   plugins: new Map(),
 
   registerPlugin: (name, pluginMetadata) => {
-    if (datasetteManager.plugins.get(name)) {
+    if (datasetteManager.plugins.has(name)) {
       console.warn(`Warning -> plugin ${name} was redefined`);
     }
     datasetteManager.plugins.set(name, pluginMetadata);

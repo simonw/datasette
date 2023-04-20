@@ -194,7 +194,7 @@ const initDatasetteTable = function (manager) {
       columnType: th.dataset.columnType,
       isPk: th.dataset.isPk === '1'
     };
-    const columnItemConfigs = manager.getColumnActions(columnActionsPayload);
+    const columnItemConfigs = manager.makeColumnActions(columnActionsPayload);
 
     const menuList = menu.querySelector('ul');
     columnItemConfigs.forEach(itemConfig => {

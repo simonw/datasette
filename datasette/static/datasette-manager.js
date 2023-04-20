@@ -93,6 +93,11 @@ const datasetteManager = {
   renderAboveTablePanel: () => {
 
     const aboveTablePanel = document.querySelector(DOM_SELECTORS.aboveTablePanel);
+
+    if (!aboveTablePanel) {
+      console.warn('This page does not have a table, the renderAboveTablePanel cannot be used.');
+    }
+
     let aboveTablePanelWrapper = aboveTablePanel.querySelector('.panels');
 
     // First render: create wrappers. Otherwise, reuse previous.

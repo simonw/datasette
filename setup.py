@@ -62,6 +62,7 @@ setup(
         "pip",
         "asyncinject>=0.6",
         "setuptools",
+        "pip",
     ],
     entry_points="""
         [console_scripts]

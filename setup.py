@@ -57,6 +57,8 @@ setup(
         "PyYAML>=5.3",
         "mergedeep>=1.1.1",
         "itsdangerous>=1.1",
+        "setuptools",
+        "pip",
     ],
     entry_points="""
         [console_scripts]

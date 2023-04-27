@@ -58,9 +58,9 @@ setup(
         "mergedeep>=1.1.1",
         "itsdangerous>=1.1",
         "sqlite-utils>=3.30",
-        "asyncinject>=0.6",
         "setuptools",
         "pip",
+        "asyncinject>=0.6",
     ],
     entry_points="""
         [console_scripts]

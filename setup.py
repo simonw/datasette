@@ -59,6 +59,7 @@ setup(
         "itsdangerous>=1.1",
         "sqlite-utils>=3.30",
         "asyncinject>=0.6",
+        "setuptools",
     ],
     entry_points="""
         [console_scripts]

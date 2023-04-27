@@ -6,6 +6,7 @@ from .fixtures import (  # noqa
     app_client_with_cors,
     app_client_with_trace,
 )
+import urllib.parse
 
 EXPECTED_TABLE_CSV = """id,content
 1,hello
@@ -154,11 +155,24 @@ async def test_csv_with_non_ascii_characters(ds_client):
 
 
 def test_max_csv_mb(app_client_csv_max_mb_one):
+    # This query deliberately generates a really long string
+    # should be 100*100*100*2 = roughly 2MB
     response = app_client_csv_max_mb_one.get(
-        (
-            "/fixtures.csv?sql=select+'{}'+"
-            "from+compound_three_primary_keys&_stream=1&_size=max"
-        ).format("abcdefg" * 10000)
+        "/fixtures.csv?"
+        + urllib.parse.urlencode(
+            {
+                "sql": """
+            select group_concat('ab', '')
+            from json_each(json_array({lots})),
+                json_each(json_array({lots})),
+                json_each(json_array({lots}))
+            """.format(
+                    lots=", ".join(str(i) for i in range(100))
+                ),
+                "_stream": 1,
+                "_size": "max",
+            }
+        ),
     )
     # It's a 200 because we started streaming before we knew the error
     assert response.status == 200

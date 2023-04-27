@@ -975,12 +975,6 @@ async def query_view(
 
     response = Response.json(output)
 
-    assert False
-
-    import pdb
-
-    pdb.set_trace()
-
     if isinstance(output, dict) and output.get("ok") is False:
         # TODO: Other error codes?
 

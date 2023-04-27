@@ -1,6 +1,7 @@
 from datasette.cli import cli, serve
 from datasette.plugins import pm
 from click.testing import CliRunner
+from unittest.mock import ANY
 import textwrap
 import json
 
@@ -35,11 +36,11 @@ def test_serve_with_get(tmp_path_factory):
         ],
     )
     assert 0 == result.exit_code, result.output
-    assert {
-        "database": "_memory",
+    assert json.loads(result.output) == {
+        "ok": True,
+        "rows": [{"sqlite_version()": ANY}],
         "truncated": False,
-        "columns": ["sqlite_version()"],
-    }.items() <= json.loads(result.output).items()
+    }
 
     # The plugin should have created hello.txt
     assert (plugins_dir / "hello.txt").read_text() == "hello"

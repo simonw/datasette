@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_64_3:
+
+0.64.3 (2023-04-27)
+-------------------
+
+- Added ``pip`` and ``setuptools`` as explicit dependencies. This fixes a bug where Datasette could not be installed using `Rye <https://github.com/mitsuhiko/rye>`__. (:issue:`2065`)
+
 .. _v0_64_2:
 
 0.64.2 (2023-03-08)

@@ -82,15 +82,6 @@ class TableView(DataView):
             sortable_columns.add("rowid")
         return sortable_columns
 
-    async def expandable_columns(self, database_name, table_name):
-        # Returns list of (fk_dict, label_column-or-None) pairs for that table
-        expandables = []
-        db = self.ds.databases[database_name]
-        for fk in await db.foreign_keys_for_table(table_name):
-            label_column = await db.label_column_for_table(fk["other_table"])
-            expandables.append((fk, label_column))
-        return expandables
-
     async def post(self, request):
         database_route = tilde_decode(request.url_vars["database"])
         try:
@@ -572,54 +563,15 @@ class TableView(DataView):
         rows = list(results.rows)
 
         # Expand labeled columns if requested
-        expanded_columns = []
-        expandable_columns = await self.expandable_columns(database_name, table_name)
-        columns_to_expand = None
-        try:
-            all_labels = value_as_boolean(request.args.get("_labels", ""))
-        except ValueError:
-            all_labels = default_labels
-        # Check for explicit _label=
-        if "_label" in request.args:
-            columns_to_expand = request.args.getlist("_label")
-        if columns_to_expand is None and all_labels:
-            # expand all columns with foreign keys
-            columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
-
-        if columns_to_expand:
-            expanded_labels = {}
-            for fk, _ in expandable_columns:
-                column = fk["column"]
-                if column not in columns_to_expand:
-                    continue
-                if column not in columns:
-                    continue
-                expanded_columns.append(column)
-                # Gather the values
-                column_index = columns.index(column)
-                values = [row[column_index] for row in rows]
-                # Expand them
-                expanded_labels.update(
-                    await self.ds.expand_foreign_keys(
-                        database_name, table_name, column, values
-                    )
-                )
-            if expanded_labels:
-                # Rewrite the rows
-                new_rows = []
-                for row in rows:
-                    new_row = CustomRow(columns)
-                    for column in row.keys():
-                        value = row[column]
-                        if (column, value) in expanded_labels and value is not None:
-                            new_row[column] = {
-                                "value": value,
-                                "label": expanded_labels[(column, value)],
-                            }
-                        else:
-                            new_row[column] = value
-                    new_rows.append(new_row)
-                rows = new_rows
+        rows, expanded_columns, expandable_columns = await expand_labels(
+            self.ds,
+            database_name,
+            table_name,
+            columns,
+            rows,
+            request.args,
+            default_labels,
+        )
 
         # Pagination next link
         next_value = None
@@ -1023,3 +975,64 @@ async def display_columns_and_rows(
             }
         columns = [first_column] + columns
     return columns, cell_rows
+
+
+async def expand_labels(
+    datasette, database_name, table_name, columns, rows, request_args, default_labels
+):
+    """Expands labeled columns if requested"""
+    db = datasette.databases[database_name]
+    expanded_columns = []
+    # List of (fk_dict, label_column-or-None) pairs for that table
+    expandable_columns = []
+    for fk in await db.foreign_keys_for_table(table_name):
+        label_column = await db.label_column_for_table(fk["other_table"])
+        expandable_columns.append((fk, label_column))
+    columns_to_expand = None
+    try:
+        all_labels = value_as_boolean(request_args.get("_labels", ""))
+    except ValueError:
+        all_labels = default_labels
+    # Check for explicit _label=
+    if "_label" in request_args:
+        columns_to_expand = request_args.getlist("_label")
+    if columns_to_expand is None and all_labels:
+        # expand all columns with foreign keys
+        columns_to_expand = [fk["column"] for fk, _ in expandable_columns]
+
+    if columns_to_expand:
+        expanded_labels = {}
+        for fk, _ in expandable_columns:
+            column = fk["column"]
+            if column not in columns_to_expand:
+                continue
+            if column not in columns:
+                continue
+            expanded_columns.append(column)
+            # Gather the values
+            column_index = columns.index(column)
+            values = [row[column_index] for row in rows]
+            # Expand them
+            expanded_labels.update(
+                await datasette.expand_foreign_keys(
+                    database_name, table_name, column, values
+                )
+            )
+        if expanded_labels:
+            # Rewrite the rows
+            new_rows = []
+            for row in rows:
+                new_row = CustomRow(columns)
+                for column in row.keys():
+                    value = row[column]
+                    if (column, value) in expanded_labels and value is not None:
+                        new_row[column] = {
+                            "value": value,
+                            "label": expanded_labels[(column, value)],
+                        }
+                    else:
+                        new_row[column] = value
+                new_rows.append(new_row)
+            rows = new_rows
+
+    return rows, expanded_columns, expandable_columns

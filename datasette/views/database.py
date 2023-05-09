@@ -941,11 +941,17 @@ async def query_view(
             return {"ok": False, "error": str(error)}
         return [dict(r) for r in results.rows]
 
+    async def shape_arrayfirst(_results):
+        results, error = _results
+        if error:
+            return {"ok": False, "error": str(error)}
+        return [r[0] for r in results.rows]
+
     shape_fn = {
         "arrays": shape_arrays,
         "objects": shape_objects,
         "array": shape_array,
-        # "arrayfirst": shape_arrayfirst,
+        "arrayfirst": shape_arrayfirst,
         # "object": shape_object,
     }[_shape or "objects"]
 

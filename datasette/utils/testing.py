@@ -16,6 +16,9 @@ class TestResponse:
     def status(self):
         return self.httpx_response.status_code
 
+    def __repr__(self):
+        return "<TestResponse {} [{}]>".format(self.httpx_response.url, self.status)
+
     # Supports both for test-writing convenience
     @property
     def status_code(self):

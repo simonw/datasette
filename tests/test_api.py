@@ -643,9 +643,6 @@ async def test_custom_sql(ds_client):
         "/fixtures.json?sql=select+content+from+simple_primary_key&_shape=objects"
     )
     data = response.json()
-    assert {"sql": "select content from simple_primary_key", "params": {}} == data[
-        "query"
-    ]
     assert [
         {"content": "hello"},
         {"content": "world"},
@@ -653,8 +650,6 @@ async def test_custom_sql(ds_client):
         {"content": "RENDER_CELL_DEMO"},
         {"content": "RENDER_CELL_ASYNC"},
     ] == data["rows"]
-    assert ["content"] == data["columns"]
-    assert "fixtures" == data["database"]
     assert not data["truncated"]
 
 

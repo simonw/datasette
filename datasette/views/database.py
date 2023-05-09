@@ -886,7 +886,6 @@ async def query_view(
     named_parameters=None,
     write=False,
 ):
-    print("query_view")
     db = await datasette.resolve_database(request)
     database = db.name
     # TODO: Why do I do this? Is it to eliminate multi-args?
@@ -1290,6 +1289,7 @@ async def database_view_impl(
     named_parameters=None,
     write=False,
 ):
+    await datasette.refresh_schemas()
     db = await datasette.resolve_database(request)
     database = db.name
 

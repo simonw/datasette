@@ -1,0 +1,35 @@
+name: Deploy a Datasette branch preview to Vercel
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy"
+        required: true
+        type: string
+
+jobs:
+  deploy-branch-preview:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+    - name: Install dependencies
+      run: |
+        pip install datasette-publish-vercel
+    - name: Deploy the preview
+      env:
+        VERCEL_TOKEN: ${{ secrets.BRANCH_PREVIEW_VERCEL_TOKEN }}
+      run: |
+        export BRANCH="${{ github.event.inputs.branch }}"
+        wget https://latest.datasette.io/fixtures.db
+        datasette publish vercel fixtures.db \
+          --branch $BRANCH \
+          --project "datasette-preview-$BRANCH" \
+          --token $VERCEL_TOKEN \
+          --scope datasette \
+          --about "Preview of $BRANCH" \
+          --about_url "https://github.com/simonw/datasette/tree/$BRANCH"

@@ -12,10 +12,12 @@ import markupsafe
 
 from datasette.utils import (
     add_cors_headers,
+    append_querystring,
     await_me_maybe,
     call_with_supported_arguments,
     derive_named_parameters,
     format_bytes,
+    path_with_replaced_args,
     tilde_decode,
     to_css_class,
     validate_sql_select,
@@ -887,6 +889,145 @@ async def query_view(
     write=False,
 ):
     db = await datasette.resolve_database(request)
+
+    format_ = request.url_vars.get("format") or "html"
+    force_shape = None
+    if format_ == "html":
+        force_shape = "arrays"
+
+    data = await query_view_data(
+        request,
+        datasette,
+        canned_query=canned_query,
+        _size=_size,
+        named_parameters=named_parameters,
+        write=write,
+        force_shape=force_shape,
+    )
+    if format_ == "csv":
+        raise NotImplementedError("CSV format not yet implemented")
+    elif format_ in datasette.renderers.keys():
+        # Dispatch request to the correct output format renderer
+        # (CSV is not handled here due to streaming)
+        result = call_with_supported_arguments(
+            datasette.renderers[format_][0],
+            datasette=datasette,
+            columns=columns,
+            rows=rows,
+            sql=sql,
+            query_name=None,
+            database=db.name,
+            table=None,
+            request=request,
+            view_name="table",  # TODO: should this be "query"?
+            # These will be deprecated in Datasette 1.0:
+            args=request.args,
+            data={
+                "rows": rows,
+            },  # TODO what should this be?
+        )
+        result = await await_me_maybe(result)
+        if result is None:
+            raise NotFound("No data")
+        if isinstance(result, dict):
+            r = Response(
+                body=result.get("body"),
+                status=result.get("status_code") or 200,
+                content_type=result.get("content_type", "text/plain"),
+                headers=result.get("headers"),
+            )
+        elif isinstance(result, Response):
+            r = result
+            # if status_code is not None:
+            #     # Over-ride the status code
+            #     r.status = status_code
+        else:
+            assert False, f"{result} should be dict or Response"
+    elif format_ == "html":
+        headers = {}
+        templates = [f"query-{to_css_class(db.name)}.html", "query.html"]
+        template = datasette.jinja_env.select_template(templates)
+        alternate_url_json = datasette.absolute_url(
+            request,
+            datasette.urls.path(path_with_format(request=request, format="json")),
+        )
+        headers.update(
+            {
+                "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                    alternate_url_json
+                )
+            }
+        )
+        metadata = (datasette.metadata("databases") or {}).get(db.name, {})
+        datasette.update_with_inherited_metadata(metadata)
+
+        r = Response.html(
+            await datasette.render_template(
+                template,
+                dict(
+                    data,
+                    database=db.name,
+                    database_color=lambda database: "ff0000",
+                    metadata=metadata,
+                    display_rows=data["rows"],
+                    renderers={},
+                    query={
+                        "sql": request.args.get("sql"),
+                    },
+                    editable=True,
+                    append_querystring=append_querystring,
+                    path_with_replaced_args=path_with_replaced_args,
+                    fix_path=datasette.urls.path,
+                    settings=datasette.settings_dict(),
+                    # TODO: review up all of these hacks:
+                    alternate_url_json=alternate_url_json,
+                    datasette_allow_facet=(
+                        "true" if datasette.setting("allow_facet") else "false"
+                    ),
+                    is_sortable=False,
+                    allow_execute_sql=await datasette.permission_allowed(
+                        request.actor, "execute-sql", db.name
+                    ),
+                    query_ms=1.2,
+                    select_templates=[
+                        f"{'*' if template_name == template.name else ''}{template_name}"
+                        for template_name in templates
+                    ],
+                ),
+                request=request,
+                view_name="table",
+            ),
+            headers=headers,
+        )
+    else:
+        assert False, "Invalid format: {}".format(format_)
+    # if next_url:
+    #     r.headers["link"] = f'<{next_url}>; rel="next"'
+    return r
+
+    response = Response.json(data)
+
+    if isinstance(data, dict) and data.get("ok") is False:
+        # TODO: Other error codes?
+
+        response.status_code = 400
+
+    if datasette.cors:
+        add_cors_headers(response.headers)
+
+    return response
+
+
+async def query_view_data(
+    request,
+    datasette,
+    canned_query=None,
+    _size=None,
+    named_parameters=None,
+    write=False,
+    force_shape=None,
+):
+    db = await datasette.resolve_database(request)
     database = db.name
     # TODO: Why do I do this? Is it to eliminate multi-args?
     # It's going to break ?_extra=...&_extra=...
@@ -898,11 +1039,11 @@ async def query_view(
     # TODO: Behave differently for canned query here:
     await datasette.ensure_permissions(request.actor, [("execute-sql", database)])
 
-    _shape = None
+    _shape = force_shape
     if "_shape" in params:
         _shape = params.pop("_shape")
 
-    # ?_shape=arrays - "rows" is the default option, shown above
+    # ?_shape=arrays
     # ?_shape=objects - "rows" is a list of JSON key/value objects
     # ?_shape=array - an JSON array of objects
     # ?_shape=array&_nl=on - a newline-separated list of JSON objects
@@ -921,6 +1062,7 @@ async def query_view(
             return {"ok": False, "error": str(error)}
         return {
             "ok": True,
+            "columns": [r[0] for r in results.description],
             "rows": [list(r) for r in results.rows],
             "truncated": results.truncated,
         }
@@ -978,17 +1120,7 @@ async def query_view(
     output = results["_shape"]
     output.update(dict((k, v) for k, v in results.items() if not k.startswith("_")))
 
-    response = Response.json(output)
-
-    if isinstance(output, dict) and output.get("ok") is False:
-        # TODO: Other error codes?
-
-        response.status_code = 400
-
-    if datasette.cors:
-        add_cors_headers(response.headers)
-
-    return response
+    return output
 
     # registry = Registry(
     #     extra_count,

@@ -1141,6 +1141,7 @@ def add_cors_headers(headers):
     headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
     headers["Access-Control-Expose-Headers"] = "Link"
     headers["Access-Control-Allow-Methods"] = "GET, POST, HEAD, OPTIONS"
+    headers["Access-Control-Max-Age"] = "3600"
 
 
 _TILDE_ENCODING_SAFE = frozenset(

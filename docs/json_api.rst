@@ -454,12 +454,28 @@ Enabling CORS
 -------------
 
 If you start Datasette with the ``--cors`` option, each JSON endpoint will be
-served with the following additional HTTP headers::
+served with the following additional HTTP headers:
+
+.. [[[cog
+    from datasette.utils import add_cors_headers
+    import textwrap
+    headers = {}
+    add_cors_headers(headers)
+    output = "\n".join("{}: {}".format(k, v) for k, v in headers.items())
+    cog.out("\n::\n\n")
+    cog.out(textwrap.indent(output, '    '))
+    cog.out("\n\n")
+.. ]]]
+
+::
 
     Access-Control-Allow-Origin: *
     Access-Control-Allow-Headers: Authorization, Content-Type
     Access-Control-Expose-Headers: Link
     Access-Control-Allow-Methods: GET, POST, HEAD, OPTIONS
+    Access-Control-Max-Age: 3600
+
+.. [[[end]]]
 
 This allows JavaScript running on any domain to make cross-origin
 requests to interact with the Datasette API.

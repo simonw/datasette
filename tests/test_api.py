@@ -936,6 +936,7 @@ def test_cors(
     assert (
         response.headers["Access-Control-Allow-Methods"] == "GET, POST, HEAD, OPTIONS"
     )
+    assert response.headers["Access-Control-Max-Age"] == "3600"
     # Same request to app_client_two_attached_databases_one_immutable
     # should not have those headers - I'm using that fixture because
     # regular app_client doesn't have immutable fixtures.db which means
@@ -946,6 +947,7 @@ def test_cors(
     assert "Access-Control-Allow-Headers" not in response.headers
     assert "Access-Control-Expose-Headers" not in response.headers
     assert "Access-Control-Allow-Methods" not in response.headers
+    assert "Access-Control-Max-Age" not in response.headers
 
 
 @pytest.mark.parametrize(

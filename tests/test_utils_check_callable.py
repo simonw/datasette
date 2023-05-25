@@ -1,4 +1,4 @@
-from datasette.utils.callable import check_callable
+from datasette.utils.check_callable import check_callable
 import pytest
 
 

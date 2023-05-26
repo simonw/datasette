@@ -17,6 +17,7 @@ import secrets
 import sys
 import threading
 import time
+import types
 import urllib.parse
 from concurrent import futures
 from pathlib import Path
@@ -1366,7 +1367,7 @@ class Datasette:
             r"/-/allow-debug$",
         )
         add_route(
-            PatternPortfolioView.as_view(self),
+            wrap_view(PatternPortfolioView, self),
             r"/-/patterns$",
         )
         add_route(DatabaseDownload.as_view(self), r"/(?P<database>[^\/\.]+)\.db$")
@@ -1682,7 +1683,42 @@ def _cleaner_task_str(task):
     return _cleaner_task_str_re.sub("", s)
 
 
-def wrap_view(view_fn, datasette):
+def wrap_view(view_fn_or_class, datasette):
+    is_function = isinstance(view_fn_or_class, types.FunctionType)
+    if is_function:
+        return wrap_view_function(view_fn_or_class, datasette)
+    else:
+        if not isinstance(view_fn_or_class, type):
+            raise ValueError("view_fn_or_class must be a function or a class")
+        return wrap_view_class(view_fn_or_class, datasette)
+
+
+def wrap_view_class(view_class, datasette):
+    async def async_view_for_class(request, send):
+        instance = view_class()
+        if inspect.iscoroutinefunction(instance.__call__):
+            return await async_call_with_supported_arguments(
+                instance.__call__,
+                scope=request.scope,
+                receive=request.receive,
+                send=send,
+                request=request,
+                datasette=datasette,
+            )
+        else:
+            return call_with_supported_arguments(
+                instance.__call__,
+                scope=request.scope,
+                receive=request.receive,
+                send=send,
+                request=request,
+                datasette=datasette,
+            )
+
+    return async_view_for_class
+
+
+def wrap_view_function(view_fn, datasette):
     @functools.wraps(view_fn)
     async def async_view_fn(request, send):
         if inspect.iscoroutinefunction(view_fn):

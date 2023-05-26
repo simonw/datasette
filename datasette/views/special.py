@@ -6,7 +6,7 @@ from datasette.utils import (
     tilde_encode,
     tilde_decode,
 )
-from .base import BaseView
+from .base import BaseView, View
 import secrets
 import urllib
 
@@ -57,13 +57,16 @@ class JsonDataView(BaseView):
             )
 
 
-class PatternPortfolioView(BaseView):
-    name = "patterns"
-    has_json_alternate = False
-
-    async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
-        return await self.render(["patterns.html"], request=request)
+class PatternPortfolioView(View):
+    async def get(self, request, datasette):
+        await datasette.ensure_permissions(request.actor, ["view-instance"])
+        return Response.html(
+            await datasette.render_template(
+                "patterns.html",
+                request=request,
+                view_name="patterns",
+            )
+        )
 
 
 class AuthTokenView(BaseView):

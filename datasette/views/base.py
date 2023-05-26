@@ -53,6 +53,43 @@ class DatasetteError(Exception):
         self.message_is_html = message_is_html
 
 
+class View:
+    async def head(self, request, datasette):
+        if not hasattr(self, "get"):
+            return await self.method_not_allowed(request)
+        response = await self.get(request, datasette)
+        response.body = ""
+        return response
+
+    async def method_not_allowed(self, request):
+        if (
+            request.path.endswith(".json")
+            or request.headers.get("content-type") == "application/json"
+        ):
+            response = Response.json(
+                {"ok": False, "error": "Method not allowed"}, status=405
+            )
+        else:
+            response = Response.text("Method not allowed", status=405)
+        return response
+
+    async def options(self, request, datasette):
+        response = Response.text("ok")
+        response.headers["allow"] = ", ".join(
+            method.upper()
+            for method in ("head", "get", "post", "put", "patch", "delete")
+            if hasattr(self, method)
+        )
+        return response
+
+    async def __call__(self, request, datasette):
+        try:
+            handler = getattr(self, request.method.lower())
+        except AttributeError:
+            return await self.method_not_allowed(request)
+        return await handler(request, datasette)
+
+
 class BaseView:
     ds = None
     has_json_alternate = True

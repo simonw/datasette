@@ -869,7 +869,9 @@ Examples: `datasette-cors <https://datasette.io/plugins/datasette-cors>`__, `dat
 startup(datasette)
 ------------------
 
-This hook fires when the Datasette application server first starts up. You can implement a regular function, for example to validate required plugin configuration:
+This hook fires when the Datasette application server first starts up.
+
+Here is an example that validates required plugin configuration. The server will fail to start and show an error if the validation check fails:
 
 .. code-block:: python
 
@@ -880,7 +882,7 @@ This hook fires when the Datasette application server first starts up. You can i
             "required-setting" in config
         ), "my-plugin requires setting required-setting"
 
-Or you can return an async function which will be awaited on startup. Use this option if you need to make any database queries:
+You can also return an async function, which will be awaited on startup. Use this option if you need to execute any database queries, for example this function which creates the ``my_table`` database table if it does not yet exist:
 
 .. code-block:: python
 

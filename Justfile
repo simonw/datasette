@@ -17,7 +17,7 @@ export DATASETTE_SECRET := "not_a_secret"
   pipenv run codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
 
 # Run linters: black, flake8, mypy, cog
-@lint:
+@lint: codespell
   pipenv run black . --check
   pipenv run flake8
   pipenv run cog --check README.md docs/*.rst

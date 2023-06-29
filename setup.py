@@ -72,7 +72,7 @@ setup(
             "Sphinx==6.1.3",
             "furo==2023.3.27",
             "sphinx-autobuild",
-            "codespell",
+            "codespell>=2.2.5",
             "blacken-docs",
             "sphinx-copybutton",
         ],

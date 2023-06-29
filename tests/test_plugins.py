@@ -115,7 +115,9 @@ async def test_hook_extra_css_urls(ds_client, path, expected_decoded_object):
     assert response.status_code == 200
     links = Soup(response.text, "html.parser").findAll("link")
     special_href = [
-        l for l in links if l.attrs["href"].endswith("/extra-css-urls-demo.css")
+        link
+        for link in links
+        if link.attrs["href"].endswith("/extra-css-urls-demo.css")
     ][0]["href"]
     # This link has a base64-encoded JSON blob in it
     encoded = special_href.split("/")[3]
@@ -543,7 +545,7 @@ async def test_hook_register_output_renderer_can_render(ds_client):
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
-    actual = [l["href"] for l in links]
+    actual = [link["href"] for link in links]
     # Should not be present because we sent ?_no_can_render=1
     assert "/fixtures/facetable.testall?_labels=on" not in actual
     # Check that it was passed the values we expected
@@ -940,7 +942,7 @@ async def test_hook_table_actions(ds_client, table_or_view):
 
     response_2 = await ds_client.get(f"/fixtures/{table_or_view}?_bot=1&_hello=BOB")
     assert sorted(
-        get_table_actions_links(response_2.text), key=lambda l: l["label"]
+        get_table_actions_links(response_2.text), key=lambda link: link["label"]
     ) == [
         {"label": "Database: fixtures", "href": "/"},
         {"label": "From async BOB", "href": "/"},

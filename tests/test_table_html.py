@@ -481,7 +481,7 @@ async def test_table_csv_json_export_interface(ds_client):
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
-    actual = [l["href"] for l in links]
+    actual = [link["href"] for link in links]
     expected = [
         "/fixtures/simple_primary_key.json?id__gt=2",
         "/fixtures/simple_primary_key.testall?id__gt=2",
@@ -521,7 +521,7 @@ async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
         .find("p", {"class": "export-links"})
         .findAll("a")
     )
-    actual = [l["href"] for l in links]
+    actual = [link["href"] for link in links]
     expected = [
         "/fixtures/facetable.json?_labels=on",
         "/fixtures/facetable.testall?_labels=on",

@@ -29,12 +29,13 @@ const DOM_SELECTORS = {
 /**
  * Monolith class for interacting with Datasette JS API
  * Imported with DEFER, runs after main document parsed
+ * For now, manually synced with datasette/version.py
  */
 const datasetteManager = {
-  VERSION: 'TODO_INJECT_VERSION_OR_ENDPOINT_FROM_SERVER_OR_AT_BUILD_TIME',
+  VERSION: '1.0a2',
 
 
-  // TODO: Should order of registration matter?
+  // TODO: Should order of registration matter more?
 
   // Should plugins be allowed to clobber others or is it last-in takes priority?
   // Does pluginMetadata need to be serializable, or can we let it be stateful / have functions?

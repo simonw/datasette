@@ -73,7 +73,6 @@ all of your data.
 You can also provide metadata at the per-database or per-table level, like this:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "database1": {
@@ -153,7 +152,6 @@ Column descriptions
 You can include descriptions for your columns by adding a ``"columns": {"name-of-column": "description-of-column"}`` block to your table metadata:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "database1": {
@@ -216,7 +214,6 @@ values from that column. SI prefixes will be used where appropriate.
 Column units are configured in the metadata like so:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "database1": {
@@ -272,7 +269,6 @@ Pint's `unit registry`_. You can also add `custom units`_ to the metadata, which
 registered with Pint:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "custom_units": [
             "decibel = [] = dB"
@@ -311,7 +307,6 @@ Setting a default sort order
 By default Datasette tables are sorted by primary key. You can over-ride this default for a specific table using the ``"sort"`` or ``"sort_desc"`` metadata properties:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "mydatabase": {
@@ -356,7 +351,6 @@ By default Datasette tables are sorted by primary key. You can over-ride this de
 Or use ``"sort_desc"`` to sort in descending order:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "mydatabase": {
@@ -406,7 +400,6 @@ Setting a custom page size
 Datasette defaults to displaying 100 rows per page, for both tables and views. You can change this default page size on a per-table or per-view basis using the ``"size"`` key in ``metadata.json``:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "mydatabase": {
@@ -460,7 +453,6 @@ control which columns are available for sorting you can do so using the optional
 ``sortable_columns`` key:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "database1": {
@@ -518,7 +510,6 @@ You can also disable sorting entirely by setting ``"sortable_columns": []``
 You can use ``sortable_columns`` to enable specific sort orders for a view called ``name_of_view`` in the database ``my_database`` like so:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "my_database": {
@@ -582,7 +573,6 @@ If your table has more than two columns you can specify which column should be
 used for the link label with the ``label_column`` property:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "database1": {
@@ -633,7 +623,6 @@ You can hide tables from the database listing view (in the same way that FTS and
 SpatiaLite tables are automatically hidden) using ``"hidden": true``:
 
 .. [[[cog
-    from metadata_doc import metadata_example
     metadata_example(cog, {
         "databases": {
             "database1": {

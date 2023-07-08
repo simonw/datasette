@@ -31,18 +31,6 @@ Interested in learning Datasette? Start with `the official tutorials <https://da
 
 Support questions, feedback? Join the `Datasette Discord <https://datasette.io/discord>`__.
 
-.. tab:: macOS/Linux/other Unix
-
-   .. code-block:: shell
-
-      python -m pip install webcolors
-
-.. tab:: Windows
-
-   .. code-block:: shell
-
-      py -m pip install webcolors
-
 Contents
 --------
 

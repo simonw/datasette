@@ -12,20 +12,45 @@ Custom CSS and JavaScript
 
 When you launch Datasette, you can specify a custom metadata file like this::
 
-    datasette mydb.db --metadata metadata.json
+    datasette mydb.db --metadata metadata.yaml
 
-Your ``metadata.json`` file can include links that look like this:
+Your ``metadata.yaml`` file can include links that look like this:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "extra_css_urls": [
             "https://simonwillison.net/static/css/all.bf8cd891642c.css"
         ],
         "extra_js_urls": [
             "https://code.jquery.com/jquery-3.2.1.slim.min.js"
         ]
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        extra_css_urls:
+        - https://simonwillison.net/static/css/all.bf8cd891642c.css
+        extra_js_urls:
+        - https://code.jquery.com/jquery-3.2.1.slim.min.js
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "extra_css_urls": [
+            "https://simonwillison.net/static/css/all.bf8cd891642c.css"
+          ],
+          "extra_js_urls": [
+            "https://code.jquery.com/jquery-3.2.1.slim.min.js"
+          ]
+        }
+.. [[[end]]]
 
 The extra CSS and JavaScript files will be linked in the ``<head>`` of every page:
 
@@ -36,9 +61,8 @@ The extra CSS and JavaScript files will be linked in the ``<head>`` of every pag
 
 You can also specify a SRI (subresource integrity hash) for these assets:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "extra_css_urls": [
             {
                 "url": "https://simonwillison.net/static/css/all.bf8cd891642c.css",
@@ -51,7 +75,40 @@ You can also specify a SRI (subresource integrity hash) for these assets:
                 "sri": "sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
             }
         ]
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        extra_css_urls:
+        - url: https://simonwillison.net/static/css/all.bf8cd891642c.css
+          sri: sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI
+        extra_js_urls:
+        - url: https://code.jquery.com/jquery-3.2.1.slim.min.js
+          sri: sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g=
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "extra_css_urls": [
+            {
+              "url": "https://simonwillison.net/static/css/all.bf8cd891642c.css",
+              "sri": "sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI"
+            }
+          ],
+          "extra_js_urls": [
+            {
+              "url": "https://code.jquery.com/jquery-3.2.1.slim.min.js",
+              "sri": "sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
+            }
+          ]
+        }
+.. [[[end]]]
 
 This will produce:
 
@@ -69,16 +126,39 @@ matches the content served. You can generate hashes using `www.srihash.org <http
 
 Items in ``"extra_js_urls"`` can specify ``"module": true`` if they reference JavaScript that uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__. This configuration:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "extra_js_urls": [
             {
                 "url": "https://example.datasette.io/module.js",
-                "module": true
+                "module": True
             }
         ]
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        extra_js_urls:
+        - url: https://example.datasette.io/module.js
+          module: true
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "extra_js_urls": [
+            {
+              "url": "https://example.datasette.io/module.js",
+              "module": true
+            }
+          ]
+        }
+.. [[[end]]]
 
 Will produce this HTML:
 
@@ -188,16 +268,40 @@ The following URLs will now serve the content from those CSS and JS files::
 
 You can reference those files from ``metadata.json`` like so:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "extra_css_urls": [
             "/assets/styles.css"
         ],
         "extra_js_urls": [
             "/assets/app.js"
         ]
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        extra_css_urls:
+        - /assets/styles.css
+        extra_js_urls:
+        - /assets/app.js
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "extra_css_urls": [
+            "/assets/styles.css"
+          ],
+          "extra_js_urls": [
+            "/assets/app.js"
+          ]
+        }
+.. [[[end]]]
 
 Publishing static assets
 ~~~~~~~~~~~~~~~~~~~~~~~~

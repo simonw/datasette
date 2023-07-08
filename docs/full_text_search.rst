@@ -64,9 +64,9 @@ The ``"searchmode": "raw"`` property can be used to default the table to accepti
 
 Here is an example which enables full-text search (with SQLite advanced search operators) for a ``display_ads`` view which is defined against the ``ads`` table and hence needs to run FTS against the ``ads_fts`` table, using the ``id`` as the primary key:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "russian-ads": {
                 "tables": {
@@ -78,7 +78,40 @@ Here is an example which enables full-text search (with SQLite advanced search o
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          russian-ads:
+            tables:
+              display_ads:
+                fts_table: ads_fts
+                fts_pk: id
+                searchmode: raw
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "russian-ads": {
+              "tables": {
+                "display_ads": {
+                  "fts_table": "ads_fts",
+                  "fts_pk": "id",
+                  "searchmode": "raw"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _full_text_search_custom_sql:
 

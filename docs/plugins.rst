@@ -245,9 +245,9 @@ Plugins can have their own configuration, embedded in a :ref:`metadata` file. Co
 
 Here is an example of some plugin configuration for a specific table:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "sf-trees": {
                 "tables": {
@@ -262,7 +262,44 @@ Here is an example of some plugin configuration for a specific table:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          sf-trees:
+            tables:
+              Street_Tree_List:
+                plugins:
+                  datasette-cluster-map:
+                    latitude_column: lat
+                    longitude_column: lng
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "sf-trees": {
+              "tables": {
+                "Street_Tree_List": {
+                  "plugins": {
+                    "datasette-cluster-map": {
+                      "latitude_column": "lat",
+                      "longitude_column": "lng"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 This tells the ``datasette-cluster-map`` column which latitude and longitude columns should be used for a table called ``Street_Tree_List`` inside a database file called ``sf-trees.db``.
 
@@ -271,13 +308,12 @@ This tells the ``datasette-cluster-map`` column which latitude and longitude col
 Secret configuration values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Any values embedded in ``metadata.json`` will be visible to anyone who views the ``/-/metadata`` page of your Datasette instance. Some plugins may need configuration that should stay secret - API keys for example. There are two ways in which you can store secret configuration values.
+Any values embedded in ``metadata.yaml`` will be visible to anyone who views the ``/-/metadata`` page of your Datasette instance. Some plugins may need configuration that should stay secret - API keys for example. There are two ways in which you can store secret configuration values.
 
 **As environment variables**. If your secret lives in an environment variable that is available to the Datasette process, you can indicate that the configuration value should be read from that environment variable like so:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "plugins": {
             "datasette-auth-github": {
                 "client_secret": {
@@ -285,13 +321,38 @@ Any values embedded in ``metadata.json`` will be visible to anyone who views the
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        plugins:
+          datasette-auth-github:
+            client_secret:
+              $env: GITHUB_CLIENT_SECRET
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "plugins": {
+            "datasette-auth-github": {
+              "client_secret": {
+                "$env": "GITHUB_CLIENT_SECRET"
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 **As values in separate files**. Your secrets can also live in files on disk. To specify a secret should be read from a file, provide the full file path like this:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "plugins": {
             "datasette-auth-github": {
                 "client_secret": {
@@ -299,7 +360,33 @@ Any values embedded in ``metadata.json`` will be visible to anyone who views the
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        plugins:
+          datasette-auth-github:
+            client_secret:
+              $file: /secrets/client-secret
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "plugins": {
+            "datasette-auth-github": {
+              "client_secret": {
+                "$file": "/secrets/client-secret"
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 If you are publishing your data using the :ref:`datasette publish <cli_publish>` family of commands, you can use the ``--plugin-secret`` option to set these secrets at publish time. For example, using Heroku you might run the following command::
 
@@ -309,11 +396,10 @@ If you are publishing your data using the :ref:`datasette publish <cli_publish>`
         --plugin-secret datasette-auth-github client_id your_client_id \
         --plugin-secret datasette-auth-github client_secret your_client_secret
 
-This will set the necessary environment variables and add the following to the deployed ``metadata.json``:
+This will set the necessary environment variables and add the following to the deployed ``metadata.yaml``:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "plugins": {
             "datasette-auth-github": {
                 "client_id": {
@@ -324,4 +410,35 @@ This will set the necessary environment variables and add the following to the d
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        plugins:
+          datasette-auth-github:
+            client_id:
+              $env: DATASETTE_AUTH_GITHUB_CLIENT_ID
+            client_secret:
+              $env: DATASETTE_AUTH_GITHUB_CLIENT_SECRET
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "plugins": {
+            "datasette-auth-github": {
+              "client_id": {
+                "$env": "DATASETTE_AUTH_GITHUB_CLIENT_ID"
+              },
+              "client_secret": {
+                "$env": "DATASETTE_AUTH_GITHUB_CLIENT_SECRET"
+              }
+            }
+          }
+        }
+.. [[[end]]]

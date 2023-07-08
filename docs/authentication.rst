@@ -212,23 +212,63 @@ Access to an instance
 
 Here's how to restrict access to your entire Datasette instance to just the ``"id": "root"`` user:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "title": "My private Datasette instance",
         "allow": {
             "id": "root"
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        title: My private Datasette instance
+        allow:
+          id: root
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "title": "My private Datasette instance",
+          "allow": {
+            "id": "root"
+          }
+        }
+.. [[[end]]]
 
 To deny access to all users, you can use ``"allow": false``:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "title": "My entirely inaccessible instance",
-        "allow": false
-    }
+        "allow": False
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        title: My entirely inaccessible instance
+        allow: false
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "title": "My entirely inaccessible instance",
+          "allow": false
+        }
+.. [[[end]]]
 
 One reason to do this is if you are using a Datasette plugin - such as `datasette-permissions-sql <https://github.com/simonw/datasette-permissions-sql>`__ - to control permissions instead.
 
@@ -239,9 +279,8 @@ Access to specific databases
 
 To limit access to a specific ``private.db`` database to just authenticated users, use the ``"allow"`` block like this:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "databases": {
             "private": {
                 "allow": {
@@ -249,7 +288,33 @@ To limit access to a specific ``private.db`` database to just authenticated user
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          private:
+            allow:
+              id: '*'
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "private": {
+              "allow": {
+                "id": "*"
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _authentication_permissions_table:
 
@@ -258,9 +323,8 @@ Access to specific tables and views
 
 To limit access to the ``users`` table in your ``bakery.db`` database:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "databases": {
             "bakery": {
                 "tables": {
@@ -272,7 +336,39 @@ To limit access to the ``users`` table in your ``bakery.db`` database:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          bakery:
+            tables:
+              users:
+                allow:
+                  id: '*'
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "bakery": {
+              "tables": {
+                "users": {
+                  "allow": {
+                    "id": "*"
+                  }
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 This works for SQL views as well - you can list their names in the ``"tables"`` block above in the same way as regular tables.
 
@@ -290,15 +386,14 @@ Access to specific canned queries
 
 To limit access to the ``add_name`` canned query in your ``dogs.db`` database to just the :ref:`root user<authentication_root>`:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "databases": {
             "dogs": {
                 "queries": {
                     "add_name": {
                         "sql": "INSERT INTO names (name) VALUES (:name)",
-                        "write": true,
+                        "write": True,
                         "allow": {
                             "id": ["root"]
                         }
@@ -306,7 +401,46 @@ To limit access to the ``add_name`` canned query in your ``dogs.db`` database to
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          dogs:
+            queries:
+              add_name:
+                sql: INSERT INTO names (name) VALUES (:name)
+                write: true
+                allow:
+                  id:
+                  - root
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "dogs": {
+              "queries": {
+                "add_name": {
+                  "sql": "INSERT INTO names (name) VALUES (:name)",
+                  "write": true,
+                  "allow": {
+                    "id": [
+                      "root"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _authentication_permissions_execute_sql:
 
@@ -323,27 +457,61 @@ You can alternatively use an ``"allow_sql"`` block to control who is allowed to 
 
 To prevent any user from executing arbitrary SQL queries, use this:
 
-.. code-block:: json
+.. [[[cog
+    metadata_example(cog, {
+        "allow_sql": False
+    })
+.. ]]]
 
-    {
-        "allow_sql": false
-    }
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow_sql: false
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow_sql": false
+        }
+.. [[[end]]]
 
 To enable just the :ref:`root user<authentication_root>` to execute SQL for all databases in your instance, use the following:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "allow_sql": {
             "id": "root"
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow_sql:
+          id: root
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow_sql": {
+            "id": "root"
+          }
+        }
+.. [[[end]]]
 
 To limit this ability for just one specific database, use this:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "databases": {
             "mydatabase": {
                 "allow_sql": {
@@ -351,7 +519,33 @@ To limit this ability for just one specific database, use this:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          mydatabase:
+            allow_sql:
+              id: root
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydatabase": {
+              "allow_sql": {
+                "id": "root"
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _authentication_permissions_other:
 
@@ -362,21 +556,42 @@ For all other permissions, you can use one or more ``"permissions"`` blocks in y
 
 To grant access to the :ref:`permissions debug tool <PermissionsDebugView>` to all signed in users you can grant ``permissions-debug`` to any actor with an ``id`` matching the wildcard ``*`` by adding this a the root of your metadata:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "permissions": {
             "debug-menu": {
                 "id": "*"
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        permissions:
+          debug-menu:
+            id: '*'
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "permissions": {
+            "debug-menu": {
+              "id": "*"
+            }
+          }
+        }
+.. [[[end]]]
 
 To grant ``create-table`` to the user with ``id`` of ``editor`` for the ``docs`` database:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "databases": {
             "docs": {
                 "permissions": {
@@ -386,13 +601,41 @@ To grant ``create-table`` to the user with ``id`` of ``editor`` for the ``docs``
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          docs:
+            permissions:
+              create-table:
+                id: editor
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "docs": {
+              "permissions": {
+                "create-table": {
+                  "id": "editor"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 And for ``insert-row`` against the ``reports`` table in that ``docs`` database:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "databases": {
             "docs": {
                 "tables": {
@@ -406,7 +649,42 @@ And for ``insert-row`` against the ``reports`` table in that ``docs`` database:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          docs:
+            tables:
+              reports:
+                permissions:
+                  insert-row:
+                    id: editor
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "docs": {
+              "tables": {
+                "reports": {
+                  "permissions": {
+                    "insert-row": {
+                      "id": "editor"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 The :ref:`permissions debug tool <PermissionsDebugView>` can be useful for helping test permissions that you have configured in this way.
 

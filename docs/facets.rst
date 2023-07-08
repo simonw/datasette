@@ -98,16 +98,16 @@ You can increase this on an individual page by adding ``?_facet_size=100`` to th
 
 .. _facets_metadata:
 
-Facets in metadata.json
------------------------
+Facets in metadata
+------------------
 
 You can turn facets on by default for specific tables by adding them to a ``"facets"`` key in a Datasette :ref:`metadata` file.
 
 Here's an example that turns on faceting by default for the ``qLegalStatus`` column in the ``Street_Tree_List`` table in the ``sf-trees`` database:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
       "databases": {
         "sf-trees": {
           "tables": {
@@ -117,26 +117,82 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
           }
         }
       }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          sf-trees:
+            tables:
+              Street_Tree_List:
+                facets:
+                - qLegalStatus
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "sf-trees": {
+              "tables": {
+                "Street_Tree_List": {
+                  "facets": [
+                    "qLegalStatus"
+                  ]
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 Facets defined in this way will always be shown in the interface and returned in the API, regardless of the ``_facet`` arguments passed to the view.
 
 You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>` facets in metadata using JSON objects with a single key of ``array`` or ``date`` and a value specifying the column, like this:
 
-.. code-block:: json
+.. [[[cog
+    metadata_example(cog, {
+      "facets": [
+        {"array": "tags"},
+        {"date": "created"}
+      ]
+    })
+.. ]]]
 
-  {
-    "facets": [
-      {"array": "tags"},
-      {"date": "created"}
-    ]
-  }
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        facets:
+        - array: tags
+        - date: created
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "facets": [
+            {
+              "array": "tags"
+            },
+            {
+              "date": "created"
+            }
+          ]
+        }
+.. [[[end]]]
 
 You can change the default facet size (the number of results shown for each facet) for a table using ``facet_size``:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
       "databases": {
         "sf-trees": {
           "tables": {
@@ -147,7 +203,41 @@ You can change the default facet size (the number of results shown for each face
           }
         }
       }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          sf-trees:
+            tables:
+              Street_Tree_List:
+                facets:
+                - qLegalStatus
+                facet_size: 10
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "sf-trees": {
+              "tables": {
+                "Street_Tree_List": {
+                  "facets": [
+                    "qLegalStatus"
+                  ],
+                  "facet_size": 10
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 Suggested facets
 ----------------

@@ -76,6 +76,7 @@ setup(
             "blacken-docs",
             "sphinx-copybutton",
             "sphinx-inline-tabs",
+            "ruamel.yaml",
         ],
         "test": [
             "pytest>=5.2.2",

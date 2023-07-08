@@ -64,11 +64,11 @@ The quickest way to create views is with the SQLite command-line interface::
 Canned queries
 --------------
 
-As an alternative to adding views to your database, you can define canned queries inside your ``metadata.json`` file. Here's an example:
+As an alternative to adding views to your database, you can define canned queries inside your ``metadata.yaml`` file. Here's an example:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
            "sf-trees": {
                "queries": {
@@ -78,7 +78,36 @@ As an alternative to adding views to your database, you can define canned querie
                }
            }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          sf-trees:
+            queries:
+              just_species:
+                sql: select qSpecies from Street_Tree_List
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "sf-trees": {
+              "queries": {
+                "just_species": {
+                  "sql": "select qSpecies from Street_Tree_List"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 Then run Datasette like this::
 
@@ -111,38 +140,58 @@ Here's an example of a canned query with a named parameter:
     where neighborhood like '%' || :text || '%'
     order by neighborhood;
 
-In the canned query metadata (here :ref:`metadata_yaml` as ``metadata.yaml``) it looks like this:
+In the canned query metadata looks like this:
 
-.. code-block:: yaml
 
+.. [[[cog
+    metadata_example(cog, yaml="""
     databases:
       fixtures:
         queries:
           neighborhood_search:
+            title: Search neighborhoods
             sql: |-
               select neighborhood, facet_cities.name, state
               from facetable
                 join facet_cities on facetable.city_id = facet_cities.id
               where neighborhood like '%' || :text || '%'
               order by neighborhood
-            title: Search neighborhoods
+    """)
+.. ]]]
 
-Here's the equivalent using JSON (as ``metadata.json``):
+.. tab:: YAML
 
-.. code-block:: json
+    .. code-block:: yaml
 
-    {
-        "databases": {
+        databases:
+          fixtures:
+            queries:
+              neighborhood_search:
+                title: Search neighborhoods
+                sql: |-
+                  select neighborhood, facet_cities.name, state
+                  from facetable
+                    join facet_cities on facetable.city_id = facet_cities.id
+                  where neighborhood like '%' || :text || '%'
+                  order by neighborhood
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
             "fixtures": {
-                "queries": {
-                    "neighborhood_search": {
-                        "sql": "select neighborhood, facet_cities.name, state\nfrom facetable\n  join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%'\norder by neighborhood",
-                        "title": "Search neighborhoods"
-                    }
+              "queries": {
+                "neighborhood_search": {
+                  "title": "Search neighborhoods",
+                  "sql": "select neighborhood, facet_cities.name, state\nfrom facetable\n  join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%'\norder by neighborhood"
                 }
+              }
             }
+          }
         }
-    }
+.. [[[end]]]
 
 Note that we are using SQLite string concatenation here - the ``||`` operator - to add wildcard ``%`` characters to the string provided by the user.
 
@@ -153,12 +202,13 @@ In this example the ``:text`` named parameter is automatically extracted from th
 
 You can alternatively provide an explicit list of named parameters using the ``"params"`` key, like this:
 
-.. code-block:: yaml
-
+.. [[[cog
+    metadata_example(cog, yaml="""
     databases:
       fixtures:
         queries:
           neighborhood_search:
+            title: Search neighborhoods
             params:
             - text
             sql: |-
@@ -167,7 +217,47 @@ You can alternatively provide an explicit list of named parameters using the ``"
                 join facet_cities on facetable.city_id = facet_cities.id
               where neighborhood like '%' || :text || '%'
               order by neighborhood
-            title: Search neighborhoods
+    """)
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          fixtures:
+            queries:
+              neighborhood_search:
+                title: Search neighborhoods
+                params:
+                - text
+                sql: |-
+                  select neighborhood, facet_cities.name, state
+                  from facetable
+                    join facet_cities on facetable.city_id = facet_cities.id
+                  where neighborhood like '%' || :text || '%'
+                  order by neighborhood
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "fixtures": {
+              "queries": {
+                "neighborhood_search": {
+                  "title": "Search neighborhoods",
+                  "params": [
+                    "text"
+                  ],
+                  "sql": "select neighborhood, facet_cities.name, state\nfrom facetable\n  join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%'\norder by neighborhood"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _canned_queries_options:
 
@@ -192,21 +282,54 @@ You can set a default fragment hash that will be included in the link to the can
 
 This example demonstrates both ``fragment`` and ``hide_sql``:
 
-.. code-block:: json
+.. [[[cog
+    metadata_example(cog, yaml="""
+    databases:
+      fixtures:
+        queries:
+          neighborhood_search:
+            fragment: fragment-goes-here
+            hide_sql: true
+            sql: |-
+              select neighborhood, facet_cities.name, state
+              from facetable join facet_cities on facetable.city_id = facet_cities.id
+              where neighborhood like '%' || :text || '%' order by neighborhood;
+    """)
+.. ]]]
 
-    {
-        "databases": {
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          fixtures:
+            queries:
+              neighborhood_search:
+                fragment: fragment-goes-here
+                hide_sql: true
+                sql: |-
+                  select neighborhood, facet_cities.name, state
+                  from facetable join facet_cities on facetable.city_id = facet_cities.id
+                  where neighborhood like '%' || :text || '%' order by neighborhood;
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
             "fixtures": {
-                "queries": {
-                    "neighborhood_search": {
-                        "sql": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;",
-                        "fragment": "fragment-goes-here",
-                        "hide_sql": true
-                    }
+              "queries": {
+                "neighborhood_search": {
+                  "fragment": "fragment-goes-here",
+                  "hide_sql": true,
+                  "sql": "select neighborhood, facet_cities.name, state\nfrom facetable join facet_cities on facetable.city_id = facet_cities.id\nwhere neighborhood like '%' || :text || '%' order by neighborhood;"
                 }
+              }
             }
+          }
         }
-    }
+.. [[[end]]]
 
 `See here <https://latest.datasette.io/fixtures#queries>`__ for a demo of this in action.
 
@@ -219,20 +342,50 @@ Canned queries by default are read-only. You can use the ``"write": true`` key t
 
 See :ref:`authentication_permissions_query` for details on how to add permission checks to canned queries, using the ``"allow"`` key.
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "databases": {
             "mydatabase": {
                 "queries": {
                     "add_name": {
                         "sql": "INSERT INTO names (name) VALUES (:name)",
-                        "write": true
+                        "write": True
                     }
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          mydatabase:
+            queries:
+              add_name:
+                sql: INSERT INTO names (name) VALUES (:name)
+                write: true
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydatabase": {
+              "queries": {
+                "add_name": {
+                  "sql": "INSERT INTO names (name) VALUES (:name)",
+                  "write": true
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 This configuration will create a page at ``/mydatabase/add_name`` displaying a form with a ``name`` field. Submitting that form will execute the configured ``INSERT`` query.
 
@@ -245,15 +398,14 @@ You can customize how Datasette represents success and errors using the followin
 
 For example:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    metadata_example(cog, {
         "databases": {
             "mydatabase": {
                 "queries": {
                     "add_name": {
                         "sql": "INSERT INTO names (name) VALUES (:name)",
-                        "write": true,
+                        "write": True,
                         "on_success_message": "Name inserted",
                         "on_success_redirect": "/mydatabase/names",
                         "on_error_message": "Name insert failed",
@@ -262,7 +414,46 @@ For example:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          mydatabase:
+            queries:
+              add_name:
+                sql: INSERT INTO names (name) VALUES (:name)
+                write: true
+                on_success_message: Name inserted
+                on_success_redirect: /mydatabase/names
+                on_error_message: Name insert failed
+                on_error_redirect: /mydatabase
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydatabase": {
+              "queries": {
+                "add_name": {
+                  "sql": "INSERT INTO names (name) VALUES (:name)",
+                  "write": true,
+                  "on_success_message": "Name inserted",
+                  "on_success_redirect": "/mydatabase/names",
+                  "on_error_message": "Name insert failed",
+                  "on_error_redirect": "/mydatabase"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 You can use ``"params"`` to explicitly list the named parameters that should be displayed as form fields - otherwise they will be automatically detected.
 
@@ -300,10 +491,10 @@ Available magic parameters are:
 ``_random_chars_*`` - e.g. ``_random_chars_128``
     A random string of characters of the specified length.
 
-Here's an example configuration (this time using ``metadata.yaml`` since that provides better support for multi-line SQL queries) that adds a message from the authenticated user, storing various pieces of additional metadata using magic parameters:
+Here's an example configuration that adds a message from the authenticated user, storing various pieces of additional metadata using magic parameters:
 
-.. code-block:: yaml
-
+.. [[[cog
+    metadata_example(cog, yaml="""
     databases:
       mydatabase:
         queries:
@@ -317,6 +508,47 @@ Here's an example configuration (this time using ``metadata.yaml`` since that pr
                 :_actor_id, :message, :_now_datetime_utc
               )
             write: true
+    """)
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          mydatabase:
+            queries:
+              add_message:
+                allow:
+                  id: "*"
+                sql: |-
+                  INSERT INTO messages (
+                    user_id, message, datetime
+                  ) VALUES (
+                    :_actor_id, :message, :_now_datetime_utc
+                  )
+                write: true
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydatabase": {
+              "queries": {
+                "add_message": {
+                  "allow": {
+                    "id": "*"
+                  },
+                  "sql": "INSERT INTO messages (\n  user_id, message, datetime\n) VALUES (\n  :_actor_id, :message, :_now_datetime_utc\n)",
+                  "write": true
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 The form presented at ``/mydatabase/add_message`` will have just a field for ``message`` - the other parameters will be populated by the magic parameter mechanism.
 

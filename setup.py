@@ -40,7 +40,7 @@ setup(
     packages=find_packages(exclude=("tests",)),
     package_data={"datasette": ["templates/*.html"]},
     include_package_data=True,
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     install_requires=[
         "asgiref>=3.2.10",
         "click>=7.1.1",
@@ -104,6 +104,5 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.7",
     ],
 )

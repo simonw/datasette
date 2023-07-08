@@ -1072,15 +1072,13 @@ class Datasette:
                 {"name": t.name, "ident": t.ident, "daemon": t.daemon} for t in threads
             ],
         }
-        # Only available in Python 3.7+
-        if hasattr(asyncio, "all_tasks"):
-            tasks = asyncio.all_tasks()
-            d.update(
-                {
-                    "num_tasks": len(tasks),
-                    "tasks": [_cleaner_task_str(t) for t in tasks],
-                }
-            )
+        tasks = asyncio.all_tasks()
+        d.update(
+            {
+                "num_tasks": len(tasks),
+                "tasks": [_cleaner_task_str(t) for t in tasks],
+            }
+        )
         return d
 
     def _actor(self, request):

@@ -29,7 +29,19 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 
 Interested in learning Datasette? Start with `the official tutorials <https://datasette.io/tutorials>`__.
 
-Support questions, feedback? Join our `GitHub Discussions forum <https://github.com/simonw/datasette/discussions>`__.
+Support questions, feedback? Join the `Datasette Discord <https://datasette.io/discord>`__.
+
+.. tab:: macOS/Linux/other Unix
+
+   .. code-block:: shell
+
+      python -m pip install webcolors
+
+.. tab:: Windows
+
+   .. code-block:: shell
+
+      py -m pip install webcolors
 
 Contents
 --------

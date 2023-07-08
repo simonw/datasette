@@ -75,6 +75,7 @@ setup(
             "codespell>=2.2.5",
             "blacken-docs",
             "sphinx-copybutton",
+            "sphinx-inline-tabs",
         ],
         "test": [
             "pytest>=5.2.2",

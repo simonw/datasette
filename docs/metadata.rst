@@ -4,27 +4,56 @@ Metadata
 ========
 
 Data loves metadata. Any time you run Datasette you can optionally include a
-JSON file with metadata about your databases and tables. Datasette will then
+YAML or JSON file with metadata about your databases and tables. Datasette will then
 display that information in the web UI.
 
 Run Datasette like this::
 
-    datasette database1.db database2.db --metadata metadata.json
+    datasette database1.db database2.db --metadata metadata.yaml
 
-Your ``metadata.json`` file can look something like this:
+Your ``metadata.yaml`` file can look something like this:
 
-.. code-block:: json
 
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "title": "Custom title for your index page",
         "description": "Some description text can go here",
         "license": "ODbL",
         "license_url": "https://opendatacommons.org/licenses/odbl/",
         "source": "Original Data Source",
         "source_url": "http://example.com/"
-    }
+    })
+.. ]]]
 
-You can optionally use YAML instead of JSON, see :ref:`metadata_yaml`.
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        description: Some description text can go here
+        license: ODbL
+        license_url: https://opendatacommons.org/licenses/odbl/
+        source: Original Data Source
+        source_url: http://example.com/
+        title: Custom title for your index page
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "title": "Custom title for your index page",
+          "description": "Some description text can go here",
+          "license": "ODbL",
+          "license_url": "https://opendatacommons.org/licenses/odbl/",
+          "source": "Original Data Source",
+          "source_url": "http://example.com/"
+        }
+.. [[[end]]]
+
+
+Choosing YAML over JSON adds support for multi-line strings and comments, see :ref:`metadata_yaml`.
 
 The above metadata will be displayed on the index page of your Datasette-powered
 site. The source and license information will also be included in the footer of
@@ -37,15 +66,15 @@ instead.
 Per-database and per-table metadata
 -----------------------------------
 
-Metadata at the top level of the JSON will be shown on the index page and in the
+Metadata at the top level of the file will be shown on the index page and in the
 footer on every page of the site. The license and source is expected to apply to
 all of your data.
 
 You can also provide metadata at the per-database or per-table level, like this:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "database1": {
                 "source": "Alternative source",
@@ -59,7 +88,45 @@ You can also provide metadata at the per-database or per-table level, like this:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          database1:
+            source: Alternative source
+            source_url: http://example.com/
+            tables:
+              example_table:
+                description_html: Custom <em>table</em> description
+                license: CC BY 3.0 US
+                license_url: https://creativecommons.org/licenses/by/3.0/us/
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "database1": {
+              "source": "Alternative source",
+              "source_url": "http://example.com/",
+              "tables": {
+                "example_table": {
+                  "description_html": "Custom <em>table</em> description",
+                  "license": "CC BY 3.0 US",
+                  "license_url": "https://creativecommons.org/licenses/by/3.0/us/"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
+
 
 Each of the top-level metadata fields can be used at the database and table level.
 
@@ -85,9 +152,9 @@ Column descriptions
 
 You can include descriptions for your columns by adding a ``"columns": {"name-of-column": "description-of-column"}`` block to your table metadata:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "database1": {
                 "tables": {
@@ -100,7 +167,41 @@ You can include descriptions for your columns by adding a ``"columns": {"name-of
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          database1:
+            tables:
+              example_table:
+                columns:
+                  column1: Description of column 1
+                  column2: Description of column 2
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "database1": {
+              "tables": {
+                "example_table": {
+                  "columns": {
+                    "column1": "Description of column 1",
+                    "column2": "Description of column 2"
+                  }
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 These will be displayed at the top of the table page, and will also show in the cog menu for each column.
 
@@ -114,9 +215,9 @@ values from that column. SI prefixes will be used where appropriate.
 
 Column units are configured in the metadata like so:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "database1": {
                 "tables": {
@@ -129,19 +230,74 @@ Column units are configured in the metadata like so:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          database1:
+            tables:
+              example_table:
+                units:
+                  column1: metres
+                  column2: Hz
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "database1": {
+              "tables": {
+                "example_table": {
+                  "units": {
+                    "column1": "metres",
+                    "column2": "Hz"
+                  }
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
+
 
 Units are interpreted using Pint_, and you can see the full list of available units in
 Pint's `unit registry`_. You can also add `custom units`_ to the metadata, which will be
 registered with Pint:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "custom_units": [
             "decibel = [] = dB"
         ]
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        custom_units:
+        - decibel = [] = dB
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "custom_units": [
+            "decibel = [] = dB"
+          ]
+        }
+.. [[[end]]]
 
 .. _Pint: https://pint.readthedocs.io/
 .. _unit registry: https://github.com/hgrecco/pint/blob/master/pint/default_en.txt
@@ -154,9 +310,9 @@ Setting a default sort order
 
 By default Datasette tables are sorted by primary key. You can over-ride this default for a specific table using the ``"sort"`` or ``"sort_desc"`` metadata properties:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "mydatabase": {
                 "tables": {
@@ -166,13 +322,42 @@ By default Datasette tables are sorted by primary key. You can over-ride this de
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          mydatabase:
+            tables:
+              example_table:
+                sort: created
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydatabase": {
+              "tables": {
+                "example_table": {
+                  "sort": "created"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 Or use ``"sort_desc"`` to sort in descending order:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "mydatabase": {
                 "tables": {
@@ -182,7 +367,36 @@ Or use ``"sort_desc"`` to sort in descending order:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          mydatabase:
+            tables:
+              example_table:
+                sort_desc: created
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydatabase": {
+              "tables": {
+                "example_table": {
+                  "sort_desc": "created"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _metadata_page_size:
 
@@ -191,9 +405,9 @@ Setting a custom page size
 
 Datasette defaults to displaying 100 rows per page, for both tables and views. You can change this default page size on a per-table or per-view basis using the ``"size"`` key in ``metadata.json``:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "mydatabase": {
                 "tables": {
@@ -203,7 +417,36 @@ Datasette defaults to displaying 100 rows per page, for both tables and views. Y
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          mydatabase:
+            tables:
+              example_table:
+                size: 10
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "mydatabase": {
+              "tables": {
+                "example_table": {
+                  "size": 10
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 This size can still be over-ridden by passing e.g. ``?_size=50`` in the query string.
 
@@ -216,9 +459,9 @@ Datasette allows any column to be used for sorting by default. If you need to
 control which columns are available for sorting you can do so using the optional
 ``sortable_columns`` key:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "database1": {
                 "tables": {
@@ -231,7 +474,41 @@ control which columns are available for sorting you can do so using the optional
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          database1:
+            tables:
+              example_table:
+                sortable_columns:
+                - height
+                - weight
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "database1": {
+              "tables": {
+                "example_table": {
+                  "sortable_columns": [
+                    "height",
+                    "weight"
+                  ]
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 This will restrict sorting of ``example_table`` to just the ``height`` and
 ``weight`` columns.
@@ -240,9 +517,9 @@ You can also disable sorting entirely by setting ``"sortable_columns": []``
 
 You can use ``sortable_columns`` to enable specific sort orders for a view called ``name_of_view`` in the database ``my_database`` like so:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "my_database": {
                 "tables": {
@@ -255,7 +532,41 @@ You can use ``sortable_columns`` to enable specific sort orders for a view calle
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          my_database:
+            tables:
+              name_of_view:
+                sortable_columns:
+                - clicks
+                - impressions
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "my_database": {
+              "tables": {
+                "name_of_view": {
+                  "sortable_columns": [
+                    "clicks",
+                    "impressions"
+                  ]
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _label_columns:
 
@@ -270,9 +581,9 @@ column should be used as the link label.
 If your table has more than two columns you can specify which column should be
 used for the link label with the ``label_column`` property:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "database1": {
                 "tables": {
@@ -282,7 +593,36 @@ used for the link label with the ``label_column`` property:
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          database1:
+            tables:
+              example_table:
+                label_column: title
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "database1": {
+              "tables": {
+                "example_table": {
+                  "label_column": "title"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _metadata_hiding_tables:
 
@@ -292,26 +632,56 @@ Hiding tables
 You can hide tables from the database listing view (in the same way that FTS and
 SpatiaLite tables are automatically hidden) using ``"hidden": true``:
 
-.. code-block:: json
-
-    {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
         "databases": {
             "database1": {
                 "tables": {
                     "example_table": {
-                        "hidden": true
+                        "hidden": True
                     }
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          database1:
+            tables:
+              example_table:
+                hidden: true
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "database1": {
+              "tables": {
+                "example_table": {
+                  "hidden": true
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 .. _metadata_yaml:
 
 Using YAML for metadata
 -----------------------
 
-Datasette accepts YAML as an alternative to JSON for your metadata configuration file. YAML is particularly useful for including multiline HTML and SQL strings.
+Datasette accepts YAML as an alternative to JSON for your metadata configuration file.
+YAML is particularly useful for including multiline HTML and SQL strings, plus inline comments.
 
 Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`canned_queries`.
 
@@ -331,6 +701,7 @@ Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`can
           no_primary_key:
             hidden: true
         queries:
+          # This query provides LIKE-based search
           neighborhood_search:
             sql: |-
               select neighborhood, facet_cities.name, state
@@ -339,7 +710,3 @@ Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`can
             title: Search neighborhoods
             description_html: |-
               <p>This demonstrates <em>basic</em> LIKE search
-
-The ``metadata.yml`` file is passed to Datasette using the same ``--metadata`` option::
-
-    datasette fixtures.db --metadata metadata.yml

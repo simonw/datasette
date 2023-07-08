@@ -17,7 +17,8 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-# import os
+import os
+
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
@@ -35,8 +36,9 @@ extensions = [
     "sphinx.ext.extlinks",
     "sphinx.ext.autodoc",
     "sphinx_copybutton",
-    "sphinx_inline_tabs",
 ]
+if not os.environ.get("DISABLE_SPHINX_INLINE_TABS"):
+    extensions += ["sphinx_inline_tabs"]
 
 extlinks = {
     "issue": ("https://github.com/simonw/datasette/issues/%s", "#%s"),

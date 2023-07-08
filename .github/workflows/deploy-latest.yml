@@ -43,7 +43,7 @@ jobs:
       if: ${{ github.ref == 'refs/heads/main' }}
       run: |-
         cd docs
-        sphinx-build -b xml . _build
+        DISABLE_SPHINX_INLINE_TABS=1 sphinx-build -b xml . _build
         sphinx-to-sqlite ../docs.db _build
         cd ..
     - name: Set up the alternate-route demo

@@ -184,10 +184,12 @@ This will return the ``{"latitude_column": "lat", "longitude_column": "lng"}`` i
 
 If there is no configuration for that plugin, the method will return ``None``.
 
-If it cannot find the requested configuration at the table layer, it will fall back to the database layer and then the root layer. For example, a user may have set the plugin configuration option like so::
+If it cannot find the requested configuration at the table layer, it will fall back to the database layer and then the root layer. For example, a user may have set the plugin configuration option like so:
 
-    {
-        "databases: {
+.. [[[cog
+    from metadata_doc import metadata_example
+    metadata_example(cog, {
+        "databases": {
             "sf-trees": {
                 "plugins": {
                     "datasette-cluster-map": {
@@ -197,13 +199,45 @@ If it cannot find the requested configuration at the table layer, it will fall b
                 }
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        databases:
+          sf-trees:
+            plugins:
+              datasette-cluster-map:
+                latitude_column: xlat
+                longitude_column: xlng
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "sf-trees": {
+              "plugins": {
+                "datasette-cluster-map": {
+                  "latitude_column": "xlat",
+                  "longitude_column": "xlng"
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
 
 In this case, the above code would return that configuration for ANY table within the ``sf-trees`` database.
 
-The plugin configuration could also be set at the top level of ``metadata.json``::
+The plugin configuration could also be set at the top level of ``metadata.yaml``:
 
-    {
+.. [[[cog
+    metadata_example(cog, {
         "title": "This is the top-level title in metadata.json",
         "plugins": {
             "datasette-cluster-map": {
@@ -211,7 +245,34 @@ The plugin configuration could also be set at the top level of ``metadata.json``
                 "longitude_column": "xlng"
             }
         }
-    }
+    })
+.. ]]]
+
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        title: This is the top-level title in metadata.json
+        plugins:
+          datasette-cluster-map:
+            latitude_column: xlat
+            longitude_column: xlng
+
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "title": "This is the top-level title in metadata.json",
+          "plugins": {
+            "datasette-cluster-map": {
+              "latitude_column": "xlat",
+              "longitude_column": "xlng"
+            }
+          }
+        }
+.. [[[end]]]
 
 Now that ``datasette-cluster-map`` plugin configuration will apply to every table in every database.
 
@@ -234,7 +295,7 @@ To avoid accidentally conflicting with a database file that may be loaded into D
 
 - ``/-/upload-excel``
 
-Try to avoid registering URLs that clash with other plugins that your users might have installed. There is no central repository of reserved URL paths (yet) but you can review existing plugins by browsing the `plugins directory <https://datasette.io/plugins>`.
+Try to avoid registering URLs that clash with other plugins that your users might have installed. There is no central repository of reserved URL paths (yet) but you can review existing plugins by browsing the `plugins directory <https://datasette.io/plugins>`__.
 
 If your plugin includes functionality that relates to a specific database you could also register a URL route like this:
 

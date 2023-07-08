@@ -30,12 +30,12 @@ Your ``metadata.yaml`` file can look something like this:
 
     .. code-block:: yaml
 
+        title: Custom title for your index page
         description: Some description text can go here
         license: ODbL
         license_url: https://opendatacommons.org/licenses/odbl/
         source: Original Data Source
         source_url: http://example.com/
-        title: Custom title for your index page
 
 
 .. tab:: JSON

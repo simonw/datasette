@@ -99,6 +99,7 @@ const datasetteManager = {
 
     if (!aboveTablePanel) {
       console.warn('This page does not have a table, the renderAboveTablePanel cannot be used.');
+      return;
     }
 
     let aboveTablePanelWrapper = aboveTablePanel.querySelector('.panels');

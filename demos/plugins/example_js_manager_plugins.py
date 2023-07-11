@@ -1,7 +1,8 @@
 from datasette import hookimpl
 
 # Test command:
-# datasette fixtures.db  --plugins-dir=demos/plugins/
+# datasette fixtures.db \ --plugins-dir=demos/plugins/
+#                       \ --static static:demos/plugins/static
 
 # Create a set with view names that qualify for this JS, since plugins won't do anything on other pages
 # Same pattern as in Nteract data explorer
@@ -15,6 +16,6 @@ def extra_js_urls(view_name):
     if view_name in PERMITTED_VIEWS:
         return [
             {
-                "url": f"/-/demos/plugins/static/table-example-plugins.js",
+                "url": f"/static/table-example-plugins.js",
             }
         ]

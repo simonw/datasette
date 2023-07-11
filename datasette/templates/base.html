@@ -7,6 +7,7 @@
 {% for url in extra_css_urls %}
     <link rel="stylesheet" href="{{ url.url }}"{% if url.get("sri") %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}>
 {% endfor %}
+<script> window.datasetteVersion = '{{ datasette_version }}'; </script>
 <script src="{{ urls.static('datasette-manager.js') }}" defer></script>
 {% for url in extra_js_urls %}
     <script {% if url.module %}type="module" {% endif %}src="{{ url.url }}"{% if url.get("sri") %} integrity="{{ url.sri }}" crossorigin="anonymous"{% endif %}></script>

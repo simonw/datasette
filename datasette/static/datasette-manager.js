@@ -32,7 +32,7 @@ const DOM_SELECTORS = {
  * For now, manually synced with datasette/version.py
  */
 const datasetteManager = {
-  VERSION: '1.0a2',
+  VERSION: window.datasetteVersion,
 
 
   // TODO: Should order of registration matter more?
@@ -128,7 +128,7 @@ const datasetteManager = {
         const contents = aboveTablePanel.querySelector('.tab-contents');
 
         // Each plugin can make multiple panels
-        const configs = getPanelConfigs();
+        const configs = makeAboveTablePanelConfigs();
 
         configs.forEach((config, i) => {
           const nodeContentId = `${pluginName}_${config.id}_panel-content`;

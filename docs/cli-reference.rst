@@ -350,9 +350,10 @@ Would install the `datasette-cluster-map <https://datasette.io/plugins/datasette
       Install plugins and packages from PyPI into the same environment as Datasette
 
     Options:
-      -U, --upgrade           Upgrade packages to latest version
-      -r, --requirement PATH  Install from requirements file
-      --help                  Show this message and exit.
+      -U, --upgrade             Upgrade packages to latest version
+      -r, --requirement PATH    Install from requirements file
+      -e, --editable DIRECTORY  Install a project in editable mode from this path
+      --help                    Show this message and exit.
 
 
 .. [[[end]]]

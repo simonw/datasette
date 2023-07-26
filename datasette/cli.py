@@ -354,7 +354,6 @@ def package(
 @click.option(
     "-e",
     "--editable",
-    type=click.Path(readable=True, exists=True, dir_okay=True, file_okay=False),
     help="Install a project in editable mode from this path",
 )
 def install(packages, upgrade, requirement, editable):
@@ -365,7 +364,7 @@ def install(packages, upgrade, requirement, editable):
     if upgrade:
         args += ["--upgrade"]
     if editable:
-        args += ["--editable", str(editable)]
+        args += ["--editable", editable]
     if requirement:
         args += ["-r", requirement]
     args += list(packages)

@@ -31,142 +31,149 @@ from datasette.plugins import pm
 from .base import BaseView, DatasetteError, DataView, _error
 
 
-class DatabaseView(DataView):
-    name = "database"
+async def database_view(request, datasette):
+    format_ = request.url_vars.get("format") or "html"
+    if format_ not in ("html", "json"):
+        raise NotFound("Invalid format: {}".format(format_))
 
-    async def data(self, request, default_labels=False, _size=None):
-        db = await self.ds.resolve_database(request)
-        database = db.name
+    await datasette.refresh_schemas()
 
-        visible, private = await self.ds.check_visibility(
+    db = await datasette.resolve_database(request)
+    database = db.name
+
+    visible, private = await datasette.check_visibility(
+        request.actor,
+        permissions=[
+            ("view-database", database),
+            "view-instance",
+        ],
+    )
+    if not visible:
+        raise Forbidden("You do not have permission to view this database")
+
+    sql = (request.args.get("sql") or "").strip()
+    if sql:
+        validate_sql_select(sql)
+        return await query_view(request, datasette, sql)
+
+    metadata = (datasette.metadata("databases") or {}).get(database, {})
+    datasette.update_with_inherited_metadata(metadata)
+
+    table_counts = await db.table_counts(5)
+    hidden_table_names = set(await db.hidden_table_names())
+    all_foreign_keys = await db.get_all_foreign_keys()
+
+    sql_views = []
+    for view_name in await db.view_names():
+        view_visible, view_private = await datasette.check_visibility(
             request.actor,
             permissions=[
+                ("view-table", (database, view_name)),
                 ("view-database", database),
                 "view-instance",
             ],
         )
-        if not visible:
-            raise Forbidden("You do not have permission to view this database")
-
-        metadata = (self.ds.metadata("databases") or {}).get(database, {})
-        self.ds.update_with_inherited_metadata(metadata)
-
-        if request.args.get("sql"):
-            sql = request.args.get("sql")
-            validate_sql_select(sql)
-            return await QueryView(self.ds).data(
-                request, sql, _size=_size, metadata=metadata
-            )
-
-        table_counts = await db.table_counts(5)
-        hidden_table_names = set(await db.hidden_table_names())
-        all_foreign_keys = await db.get_all_foreign_keys()
-
-        views = []
-        for view_name in await db.view_names():
-            view_visible, view_private = await self.ds.check_visibility(
-                request.actor,
-                permissions=[
-                    ("view-table", (database, view_name)),
-                    ("view-database", database),
-                    "view-instance",
-                ],
-            )
-            if view_visible:
-                views.append(
-                    {
-                        "name": view_name,
-                        "private": view_private,
-                    }
-                )
-
-        tables = []
-        for table in table_counts:
-            table_visible, table_private = await self.ds.check_visibility(
-                request.actor,
-                permissions=[
-                    ("view-table", (database, table)),
-                    ("view-database", database),
-                    "view-instance",
-                ],
-            )
-            if not table_visible:
-                continue
-            table_columns = await db.table_columns(table)
-            tables.append(
+        if view_visible:
+            sql_views.append(
                 {
-                    "name": table,
-                    "columns": table_columns,
-                    "primary_keys": await db.primary_keys(table),
-                    "count": table_counts[table],
-                    "hidden": table in hidden_table_names,
-                    "fts_table": await db.fts_table(table),
-                    "foreign_keys": all_foreign_keys[table],
-                    "private": table_private,
+                    "name": view_name,
+                    "private": view_private,
                 }
             )
 
-        tables.sort(key=lambda t: (t["hidden"], t["name"]))
-        canned_queries = []
-        for query in (
-            await self.ds.get_canned_queries(database, request.actor)
-        ).values():
-            query_visible, query_private = await self.ds.check_visibility(
-                request.actor,
-                permissions=[
-                    ("view-query", (database, query["name"])),
-                    ("view-database", database),
-                    "view-instance",
-                ],
-            )
-            if query_visible:
-                canned_queries.append(dict(query, private=query_private))
-
-        async def database_actions():
-            links = []
-            for hook in pm.hook.database_actions(
-                datasette=self.ds,
-                database=database,
-                actor=request.actor,
-                request=request,
-            ):
-                extra_links = await await_me_maybe(hook)
-                if extra_links:
-                    links.extend(extra_links)
-            return links
-
-        attached_databases = [d.name for d in await db.attached_databases()]
-
-        allow_execute_sql = await self.ds.permission_allowed(
-            request.actor, "execute-sql", database
+    tables = []
+    for table in table_counts:
+        table_visible, table_private = await datasette.check_visibility(
+            request.actor,
+            permissions=[
+                ("view-table", (database, table)),
+                ("view-database", database),
+                "view-instance",
+            ],
         )
-        return (
+        if not table_visible:
+            continue
+        table_columns = await db.table_columns(table)
+        tables.append(
             {
-                "database": database,
-                "private": private,
-                "path": self.ds.urls.database(database),
-                "size": db.size,
-                "tables": tables,
-                "hidden_count": len([t for t in tables if t["hidden"]]),
-                "views": views,
-                "queries": canned_queries,
-                "allow_execute_sql": allow_execute_sql,
-                "table_columns": await _table_columns(self.ds, database)
-                if allow_execute_sql
-                else {},
-            },
-            {
-                "database_actions": database_actions,
-                "show_hidden": request.args.get("_show_hidden"),
-                "editable": True,
-                "metadata": metadata,
-                "allow_download": self.ds.setting("allow_download")
-                and not db.is_mutable
-                and not db.is_memory,
-                "attached_databases": attached_databases,
-            },
-            (f"database-{to_css_class(database)}.html", "database.html"),
+                "name": table,
+                "columns": table_columns,
+                "primary_keys": await db.primary_keys(table),
+                "count": table_counts[table],
+                "hidden": table in hidden_table_names,
+                "fts_table": await db.fts_table(table),
+                "foreign_keys": all_foreign_keys[table],
+                "private": table_private,
+            }
         )
+
+    tables.sort(key=lambda t: (t["hidden"], t["name"]))
+    canned_queries = []
+    for query in (await datasette.get_canned_queries(database, request.actor)).values():
+        query_visible, query_private = await datasette.check_visibility(
+            request.actor,
+            permissions=[
+                ("view-query", (database, query["name"])),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
+        if query_visible:
+            canned_queries.append(dict(query, private=query_private))
+
+    async def database_actions():
+        links = []
+        for hook in pm.hook.database_actions(
+            datasette=datasette,
+            database=database,
+            actor=request.actor,
+            request=request,
+        ):
+            extra_links = await await_me_maybe(hook)
+            if extra_links:
+                links.extend(extra_links)
+        return links
+
+    attached_databases = [d.name for d in await db.attached_databases()]
+
+    allow_execute_sql = await datasette.permission_allowed(
+        request.actor, "execute-sql", database
+    )
+    json_data = {
+        "database": database,
+        "private": private,
+        "path": datasette.urls.database(database),
+        "size": db.size,
+        "tables": tables,
+        "hidden_count": len([t for t in tables if t["hidden"]]),
+        "views": sql_views,
+        "queries": canned_queries,
+        "allow_execute_sql": allow_execute_sql,
+        "table_columns": await _table_columns(datasette, database)
+        if allow_execute_sql
+        else {},
+    }
+
+    if format_ == "json":
+        return Response.json(json_data)
+
+    assert format_ == "html"
+    context = {
+        **json_data,
+        "database_actions": database_actions,
+        "show_hidden": request.args.get("_show_hidden"),
+        "editable": True,
+        "metadata": metadata,
+        "allow_download": datasette.setting("allow_download")
+        and not db.is_mutable
+        and not db.is_memory,
+        "attached_databases": attached_databases,
+        "database_color": lambda _: "#ff0000",
+    }
+    templates = (f"database-{to_css_class(database)}.html", "database.html")
+    return Response.html(
+        await datasette.render_template(templates, context, request=request)
+    )
 
 
 async def database_download(request, datasette):
@@ -208,6 +215,10 @@ async def database_download(request, datasette):
         content_type="application/octet-stream",
         headers=headers,
     )
+
+
+async def query_view(request, datasette, sql):
+    return Response.html("Not yet implemented")
 
 
 class QueryView(DataView):

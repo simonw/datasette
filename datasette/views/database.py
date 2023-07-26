@@ -27,7 +27,7 @@ from datasette.utils import (
 from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
-from .base import BaseView, DatasetteError, DataView, _error
+from .base import BaseView, DatasetteError, DataView, _error, stream_csv
 
 
 async def database_view(request, datasette):
@@ -226,92 +226,135 @@ async def query_view(
 ):
     db = await datasette.resolve_database(request)
     database = db.name
-    # TODO: Why do I do this? Is it to eliminate multi-args?
-    # It's going to break ?_extra=...&_extra=...
+    # Flattened because of ?sql=&name1=value1&name2=value2 feature
     params = {key: request.args.get(key) for key in request.args}
-    sql = ""
+    sql = None
     if "sql" in params:
         sql = params.pop("sql")
+    if "_shape" in params:
+        params.pop("_shape")
+    
+    # extras come from original request.args to avoid being flattened
+    extras = request.args.getlist("_extra")
 
     # TODO: Behave differently for canned query here:
     await datasette.ensure_permissions(request.actor, [("execute-sql", database)])
 
-    _shape = None
-    if "_shape" in params:
-        _shape = params.pop("_shape")
+    format_ = request.url_vars.get("format") or "html"
 
-    async def _results(_sql, _params):
-        # Returns (results, error (can be None))
-        try:
-            results = await db.execute(_sql, _params, truncate=True)
-            return results, None
-        except Exception as e:
-            return None, e
+    # Handle formats from plugins
+    if format_ == "csv":
 
-    async def shape_arrays(_results):
-        results, error = _results
-        if error:
-            return {"ok": False, "error": str(error)}
-        return {
-            "ok": True,
-            "rows": [list(r) for r in results.rows],
-            "truncated": results.truncated,
+        async def fetch_data_for_csv(request, _next=None):
+            results = await db.execute(sql, params, truncate=True)
+            data = {
+                "rows": results.rows,
+                "columns": results.columns()
+            }
+            return data, None, None
+
+        return await stream_csv(datasette, fetch_data_for_csv, request, db.name)
+    elif format_ in datasette.renderers.keys():
+        # Dispatch request to the correct output format renderer
+        # (CSV is not handled here due to streaming)
+        result = call_with_supported_arguments(
+            datasette.renderers[format_][0],
+            datasette=datasette,
+            columns=columns,
+            rows=rows,
+            sql=sql,
+            query_name=None,
+            database=resolved.db.name,
+            table=resolved.table,
+            request=request,
+            view_name="table",
+            # These will be deprecated in Datasette 1.0:
+            args=request.args,
+            data=data,
+        )
+        if asyncio.iscoroutine(result):
+            result = await result
+        if result is None:
+            raise NotFound("No data")
+        if isinstance(result, dict):
+            r = Response(
+                body=result.get("body"),
+                status=result.get("status_code") or 200,
+                content_type=result.get("content_type", "text/plain"),
+                headers=result.get("headers"),
+            )
+        elif isinstance(result, Response):
+            r = result
+            # if status_code is not None:
+            #     # Over-ride the status code
+            #     r.status = status_code
+        else:
+            assert False, f"{result} should be dict or Response"
+    elif format_ == "html":
+        headers = {}
+        templates = [f"query-{to_css_class(database)}.html", "query.html"]
+        template = datasette.jinja_env.select_template(templates)
+        alternate_url_json = datasette.absolute_url(
+            request,
+            datasette.urls.path(path_with_format(request=request, format="json")),
+        )
+        data = {
+
         }
-
-    async def shape_objects(_results):
-        results, error = _results
-        if error:
-            return {"ok": False, "error": str(error)}
-        return {
-            "ok": True,
-            "rows": [dict(r) for r in results.rows],
-            "truncated": results.truncated,
-        }
-
-    async def shape_array(_results):
-        results, error = _results
-        if error:
-            return {"ok": False, "error": str(error)}
-        return [dict(r) for r in results.rows]
-
-    async def shape_arrayfirst(_results):
-        results, error = _results
-        if error:
-            return {"ok": False, "error": str(error)}
-        return [r[0] for r in results.rows]
-
-    shape_fn = {
-        "arrays": shape_arrays,
-        "objects": shape_objects,
-        "array": shape_array,
-        "arrayfirst": shape_arrayfirst,
-    }[_shape or "objects"]
-
-    registry = Registry.from_dict(
-        {
-            "_results": _results,
-            "_shape": shape_fn,
-        },
-        parallel=False,
-    )
-
-    results = await registry.resolve_multi(
-        ["_shape"],
-        results={
-            "_sql": sql,
-            "_params": params,
-        },
-    )
-
-    # If "shape" does not include "rows" we return that as the response
-    # because it's likely [{...}] or similar, with no room to attach extras
-    if "rows" not in results["_shape"]:
-        return Response.json(results["_shape"])
-
-    output = results["_shape"]
-    # Include the extras:
-    output.update(dict((k, v) for k, v in results.items() if not k.startswith("_")))
-    return Response.json(output)
+        headers.update(
+            {
+                "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                    alternate_url_json
+                )
+            }
+        )
+        metadata = (datasette.metadata("databases") or {}).get(database, {})
+        datasette.update_with_inherited_metadata(metadata)
+        r = Response.html(
+            await datasette.render_template(
+                template,
+                {
+                    "todo": True,
+                    "database": database,
+                    "database_color": lambda _: "#ff0000",
+                    "metadata": metadata,
+                    "columns": columns,
+                    "display_rows": display_rows,
+                },
+                request=request,
+            ),
+            headers=headers,
+        )
+    
+        #         dict(
+        #             data,
+        #             append_querystring=append_querystring,
+        #             path_with_replaced_args=path_with_replaced_args,
+        #             fix_path=datasette.urls.path,
+        #             settings=datasette.settings_dict(),
+        #             # TODO: review up all of these hacks:
+        #             alternate_url_json=alternate_url_json,
+        #             datasette_allow_facet=(
+        #                 "true" if datasette.setting("allow_facet") else "false"
+        #             ),
+        #             is_sortable=any(c["sortable"] for c in data["display_columns"]),
+        #             allow_execute_sql=await datasette.permission_allowed(
+        #                 request.actor, "execute-sql", resolved.db.name
+        #             ),
+        #             query_ms=1.2,
+        #             select_templates=[
+        #                 f"{'*' if template_name == template.name else ''}{template_name}"
+        #                 for template_name in templates
+        #             ],
+        #         ),
+        #         request=request,
+        #         view_name="table",
+        #     ),
+        #     headers=headers,
+        # )
+    else:
+        assert False, "Invalid format: {}".format(format_)
+    return r
 
 
 class QueryView(DataView):

@@ -169,47 +169,45 @@ class DatabaseView(DataView):
         )
 
 
-class DatabaseDownload(DataView):
-    name = "database_download"
+async def database_download(request, datasette):
+    database = tilde_decode(request.url_vars["database"])
+    await datasette.ensure_permissions(
+        request.actor,
+        [
+            ("view-database-download", database),
+            ("view-database", database),
+            "view-instance",
+        ],
+    )
+    try:
+        db = datasette.get_database(route=database)
+    except KeyError:
+        raise DatasetteError("Invalid database", status=404)
 
-    async def get(self, request):
-        database = tilde_decode(request.url_vars["database"])
-        await self.ds.ensure_permissions(
-            request.actor,
-            [
-                ("view-database-download", database),
-                ("view-database", database),
-                "view-instance",
-            ],
-        )
-        try:
-            db = self.ds.get_database(route=database)
-        except KeyError:
-            raise DatasetteError("Invalid database", status=404)
-        if db.is_memory:
-            raise DatasetteError("Cannot download in-memory databases", status=404)
-        if not self.ds.setting("allow_download") or db.is_mutable:
-            raise Forbidden("Database download is forbidden")
-        if not db.path:
-            raise DatasetteError("Cannot download database", status=404)
-        filepath = db.path
-        headers = {}
-        if self.ds.cors:
-            add_cors_headers(headers)
-        if db.hash:
-            etag = '"{}"'.format(db.hash)
-            headers["Etag"] = etag
-            # Has user seen this already?
-            if_none_match = request.headers.get("if-none-match")
-            if if_none_match and if_none_match == etag:
-                return Response("", status=304)
-        headers["Transfer-Encoding"] = "chunked"
-        return AsgiFileDownload(
-            filepath,
-            filename=os.path.basename(filepath),
-            content_type="application/octet-stream",
-            headers=headers,
-        )
+    if db.is_memory:
+        raise DatasetteError("Cannot download in-memory databases", status=404)
+    if not datasette.setting("allow_download") or db.is_mutable:
+        raise Forbidden("Database download is forbidden")
+    if not db.path:
+        raise DatasetteError("Cannot download database", status=404)
+    filepath = db.path
+    headers = {}
+    if datasette.cors:
+        add_cors_headers(headers)
+    if db.hash:
+        etag = '"{}"'.format(db.hash)
+        headers["Etag"] = etag
+        # Has user seen this already?
+        if_none_match = request.headers.get("if-none-match")
+        if if_none_match and if_none_match == etag:
+            return Response("", status=304)
+    headers["Transfer-Encoding"] = "chunked"
+    return AsgiFileDownload(
+        filepath,
+        filename=os.path.basename(filepath),
+        content_type="application/octet-stream",
+        headers=headers,
+    )
 
 
 class QueryView(DataView):

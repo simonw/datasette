@@ -1,13 +1,12 @@
+from asyncinject import Registry
 import os
 import hashlib
 import itertools
 import json
-from markupsafe import Markup, escape
+import markupsafe
 from urllib.parse import parse_qsl, urlencode
 import re
 import sqlite_utils
-
-import markupsafe
 
 from datasette.utils import (
     add_cors_headers,
@@ -54,7 +53,7 @@ async def database_view(request, datasette):
     sql = (request.args.get("sql") or "").strip()
     if sql:
         validate_sql_select(sql)
-        return await query_view(request, datasette, sql)
+        return await query_view(request, datasette)
 
     metadata = (datasette.metadata("databases") or {}).get(database, {})
     datasette.update_with_inherited_metadata(metadata)
@@ -217,8 +216,102 @@ async def database_download(request, datasette):
     )
 
 
-async def query_view(request, datasette, sql):
-    return Response.html("Not yet implemented")
+async def query_view(
+    request,
+    datasette,
+    # canned_query=None,
+    # _size=None,
+    # named_parameters=None,
+    # write=False,
+):
+    db = await datasette.resolve_database(request)
+    database = db.name
+    # TODO: Why do I do this? Is it to eliminate multi-args?
+    # It's going to break ?_extra=...&_extra=...
+    params = {key: request.args.get(key) for key in request.args}
+    sql = ""
+    if "sql" in params:
+        sql = params.pop("sql")
+
+    # TODO: Behave differently for canned query here:
+    await datasette.ensure_permissions(request.actor, [("execute-sql", database)])
+
+    _shape = None
+    if "_shape" in params:
+        _shape = params.pop("_shape")
+
+    async def _results(_sql, _params):
+        # Returns (results, error (can be None))
+        try:
+            results = await db.execute(_sql, _params, truncate=True)
+            return results, None
+        except Exception as e:
+            return None, e
+
+    async def shape_arrays(_results):
+        results, error = _results
+        if error:
+            return {"ok": False, "error": str(error)}
+        return {
+            "ok": True,
+            "rows": [list(r) for r in results.rows],
+            "truncated": results.truncated,
+        }
+
+    async def shape_objects(_results):
+        results, error = _results
+        if error:
+            return {"ok": False, "error": str(error)}
+        return {
+            "ok": True,
+            "rows": [dict(r) for r in results.rows],
+            "truncated": results.truncated,
+        }
+
+    async def shape_array(_results):
+        results, error = _results
+        if error:
+            return {"ok": False, "error": str(error)}
+        return [dict(r) for r in results.rows]
+
+    async def shape_arrayfirst(_results):
+        results, error = _results
+        if error:
+            return {"ok": False, "error": str(error)}
+        return [r[0] for r in results.rows]
+
+    shape_fn = {
+        "arrays": shape_arrays,
+        "objects": shape_objects,
+        "array": shape_array,
+        "arrayfirst": shape_arrayfirst,
+    }[_shape or "objects"]
+
+    registry = Registry.from_dict(
+        {
+            "_results": _results,
+            "_shape": shape_fn,
+        },
+        parallel=False,
+    )
+
+    results = await registry.resolve_multi(
+        ["_shape"],
+        results={
+            "_sql": sql,
+            "_params": params,
+        },
+    )
+
+    # If "shape" does not include "rows" we return that as the response
+    # because it's likely [{...}] or similar, with no room to attach extras
+    if "rows" not in results["_shape"]:
+        return Response.json(results["_shape"])
+
+    output = results["_shape"]
+    # Include the extras:
+    output.update(dict((k, v) for k, v in results.items() if not k.startswith("_")))
+    return Response.json(output)
 
 
 class QueryView(DataView):
@@ -415,7 +508,7 @@ class QueryView(DataView):
                         display_value = plugin_display_value
                     else:
                         if value in ("", None):
-                            display_value = Markup("&nbsp;")
+                            display_value = markupsafe.Markup("&nbsp;")
                         elif is_url(str(display_value).strip()):
                             display_value = markupsafe.Markup(
                                 '<a href="{url}">{truncated_url}</a>'.format(

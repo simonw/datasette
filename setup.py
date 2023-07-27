@@ -70,7 +70,7 @@ setup(
     extras_require={
         "docs": [
             "Sphinx==6.1.3",
-            "furo==2023.3.27",
+            "furo==2023.7.26",
             "sphinx-autobuild",
             "codespell>=2.2.5",
             "blacken-docs",

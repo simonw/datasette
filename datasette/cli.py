@@ -351,13 +351,20 @@ def package(
     type=click.Path(exists=True),
     help="Install from requirements file",
 )
-def install(packages, upgrade, requirement):
+@click.option(
+    "-e",
+    "--editable",
+    help="Install a project in editable mode from this path",
+)
+def install(packages, upgrade, requirement, editable):
     """Install plugins and packages from PyPI into the same environment as Datasette"""
-    if not packages and not requirement:
+    if not packages and not requirement and not editable:
         raise click.UsageError("Please specify at least one package to install")
     args = ["pip", "install"]
     if upgrade:
         args += ["--upgrade"]
+    if editable:
+        args += ["--editable", editable]
     if requirement:
         args += ["-r", requirement]
     args += list(packages)

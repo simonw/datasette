@@ -310,6 +310,7 @@ class DataView(BaseView):
                 request=request,
                 view_name=self.name,
                 truncated=False,  # TODO: support this
+                error=data.get("error"),
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
                 data=data,

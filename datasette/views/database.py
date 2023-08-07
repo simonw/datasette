@@ -360,7 +360,7 @@ async def query_view(
             message_is_html=True,
         )
     except sqlite3.DatabaseError as ex:
-        query_error = ex
+        query_error = str(ex)
         results = None
         rows = []
         columns = []
@@ -395,6 +395,7 @@ async def query_view(
             request=request,
             view_name="table",
             truncated=results.truncated if results else False,
+            error=query_error,
             # These will be deprecated in Datasette 1.0:
             args=request.args,
             data={"rows": rows, "columns": columns},

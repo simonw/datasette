@@ -1,10 +1,12 @@
 """
 Tests for the datasette.app.Datasette class
 """
-from datasette import Forbidden
+import dataclasses
+from datasette import Forbidden, Context
 from datasette.app import Datasette, Database
 from itsdangerous import BadSignature
 import pytest
+from typing import Optional
 
 
 @pytest.fixture
@@ -134,6 +136,22 @@ async def test_datasette_render_template_no_request():
     await ds.invoke_startup()
     rendered = await ds.render_template("error.html")
     assert "Error " in rendered
+
+
+@pytest.mark.asyncio
+async def test_datasette_render_template_with_dataclass():
+    @dataclasses.dataclass
+    class ExampleContext(Context):
+        title: str
+        status: int
+        error: str
+
+    context = ExampleContext(title="Hello", status=200, error="Error message")
+    ds = Datasette(memory=True)
+    await ds.invoke_startup()
+    rendered = await ds.render_template("error.html", context)
+    assert "<h1>Hello</h1>" in rendered
+    assert "Error message" in rendered
 
 
 def test_datasette_error_if_string_not_list(tmpdir):

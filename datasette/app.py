@@ -1,7 +1,8 @@
 import asyncio
-from typing import Sequence, Union, Tuple, Optional, Dict, Iterable
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import asgi_csrf
 import collections
+import dataclasses
 import datetime
 import functools
 import glob
@@ -33,6 +34,7 @@ from jinja2 import (
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
+from .views import Context
 from .views.base import ureg
 from .views.database import database_download, database_view, TableCreateView
 from .views.index import IndexView
@@ -1115,7 +1117,11 @@ class Datasette:
             )
 
     async def render_template(
-        self, templates, context=None, request=None, view_name=None
+        self,
+        templates: Union[List[str], str, Template],
+        context: Optional[Union[Dict[str, Any], Context]] = None,
+        request: Optional[Request] = None,
+        view_name: Optional[str] = None,
     ):
         if not self._startup_invoked:
             raise Exception("render_template() called before await ds.invoke_startup()")
@@ -1126,6 +1132,8 @@ class Datasette:
             if isinstance(templates, str):
                 templates = [templates]
             template = self.jinja_env.select_template(templates)
+        if dataclasses.is_dataclass(context):
+            context = dataclasses.asdict(context)
         body_scripts = []
         # pylint: disable=no-member
         for extra_script in pm.hook.extra_body_script(

@@ -317,7 +317,25 @@ async def query_view(
         ],
     )
 
+    extra_args = {}
+    if params.get("_timelimit"):
+        extra_args["custom_time_limit"] = int(params["_timelimit"])
+
     format_ = request.url_vars.get("format") or "html"
+    query_error = None
+    try:
+        results = await datasette.execute(
+            database, sql, params, truncate=True, **extra_args
+        )
+        columns = [r[0] for r in results.description]
+    except (sqlite3.DatabaseError, InvalidSql) as e:
+        query_error = e
+        results = None
+        columns = []
+
+    results = await db.execute(sql, params, truncate=True)
+    rows = results.rows
+    columns = results.columns
 
     # Handle formats from plugins
     if format_ == "csv":
@@ -383,10 +401,6 @@ async def query_view(
         metadata = (datasette.metadata("databases") or {}).get(database, {})
         datasette.update_with_inherited_metadata(metadata)
 
-        results = await db.execute(sql, params, truncate=True)
-        rows = results.rows
-        columns = results.columns
-
         renderers = {}
         for key, (_, can_render) in datasette.renderers.items():
             it_can_render = call_with_supported_arguments(
@@ -421,8 +435,7 @@ async def query_view(
                     private=private,
                     canned_write=False,
                     db_is_immutable=not db.is_mutable,
-                    # TODO: error
-                    error=None,
+                    error=query_error,
                     hide_sql=None,  # TODO
                     show_hide_link="todo",
                     show_hide_text="todo",

@@ -8,6 +8,7 @@ import markupsafe
 from urllib.parse import parse_qsl, urlencode
 import re
 import sqlite_utils
+from typing import Callable
 
 from datasette.utils import (
     add_cors_headers,
@@ -166,9 +167,9 @@ class QueryContext:
     private: bool = field(
         metadata={"help": "Boolean indicating if this is a private database"}
     )
-    urls: dict = field(
-        metadata={"help": "Object containing URL helpers like `database()`"}
-    )
+    # urls: dict = field(
+    #     metadata={"help": "Object containing URL helpers like `database()`"}
+    # )
     canned_write: bool = field(
         metadata={"help": "Boolean indicating if this canned query allows writes"}
     )
@@ -195,7 +196,6 @@ class QueryContext:
     named_parameter_values: dict = field(
         metadata={"help": "Dictionary of parameter names/values"}
     )
-    csrftoken: callable = field(metadata={"help": "Function to generate a CSRF token"})
     edit_sql_url: str = field(
         metadata={"help": "URL to edit the SQL for a canned query"}
     )
@@ -204,6 +204,9 @@ class QueryContext:
     renderers: dict = field(metadata={"help": "Dictionary of renderer name to URL"})
     url_csv: str = field(metadata={"help": "URL for CSV export"})
     metadata: dict = field(metadata={"help": "Metadata about the query/database"})
+    database_color: Callable = field(
+        metadata={"help": "Function that returns a color for a given database name"}
+    )
 
 
 async def get_tables(datasette, request, db):
@@ -306,6 +309,14 @@ async def query_view(
     # TODO: Behave differently for canned query here:
     await datasette.ensure_permissions(request.actor, [("execute-sql", database)])
 
+    _, private = await datasette.check_visibility(
+        request.actor,
+        permissions=[
+            ("view-database", database),
+            "view-instance",
+        ],
+    )
+
     format_ = request.url_vars.get("format") or "html"
 
     # Handle formats from plugins
@@ -400,21 +411,37 @@ async def query_view(
         r = Response.html(
             await datasette.render_template(
                 template,
-                {
-                    "todo": True,
-                    "database": database,
-                    "database_color": lambda _: "#ff0000",
-                    "metadata": metadata,
-                    "columns": columns,
-                    "display_rows": await display_rows(
+                QueryContext(
+                    database=database,
+                    query={
+                        "sql": sql,
+                        # TODO: Params?
+                    },
+                    canned_query=None,
+                    private=private,
+                    canned_write=False,
+                    db_is_immutable=not db.is_mutable,
+                    # TODO: error
+                    error=None,
+                    hide_sql=None,  # TODO
+                    show_hide_link="todo",
+                    show_hide_text="todo",
+                    editable=True,  # TODO
+                    allow_execute_sql=await datasette.permission_allowed(
+                        request.actor, "execute-sql", database
+                    ),
+                    tables=await get_tables(datasette, request, db),
+                    named_parameter_values={},  # TODO
+                    edit_sql_url="todo",
+                    display_rows=await display_rows(
                         datasette, database, request, rows, columns
                     ),
-                    "renderers": renderers,
-                    "editable": True,
-                    # TODO: permission check
-                    "allow_execute_sql": True,
-                    "tables": await get_tables(datasette, request, db),
-                },
+                    columns=columns,
+                    renderers=renderers,
+                    url_csv="todo",
+                    metadata=metadata,
+                    database_color=lambda _: "#ff0000",
+                ),
                 request=request,
             ),
             headers=headers,

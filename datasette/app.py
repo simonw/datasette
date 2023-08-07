@@ -1716,6 +1716,7 @@ def wrap_view_class(view_class, datasette):
                 datasette=datasette,
             )
 
+    async_view_for_class.view_class = view_class
     return async_view_for_class
 
 

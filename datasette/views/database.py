@@ -354,6 +354,11 @@ async def query_view(
             status=400,
             message_is_html=True,
         )
+    except sqlite3.DatabaseError as ex:
+        query_error = ex
+        results = None
+        rows = []
+        columns = []
     except (sqlite3.OperationalError, InvalidSql) as ex:
         raise DatasetteError(str(ex), title="Invalid SQL", status=400)
     except sqlite3.OperationalError as ex:

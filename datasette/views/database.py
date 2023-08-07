@@ -8,8 +8,10 @@ import markupsafe
 from urllib.parse import parse_qsl, urlencode
 import re
 import sqlite_utils
+import textwrap
 from typing import Callable
 
+from datasette.database import QueryInterrupted
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -55,7 +57,6 @@ async def database_view(request, datasette):
 
     sql = (request.args.get("sql") or "").strip()
     if sql:
-        validate_sql_select(sql)
         return await query_view(request, datasette)
 
     metadata = (datasette.metadata("databases") or {}).get(database, {})
@@ -131,7 +132,10 @@ async def database_view(request, datasette):
     }
 
     if format_ == "json":
-        return Response.json(json_data)
+        response = Response.json(json_data)
+        if datasette.cors:
+            add_cors_headers(response.headers)
+        return response
 
     assert format_ == "html"
     context = {
@@ -324,18 +328,38 @@ async def query_view(
     format_ = request.url_vars.get("format") or "html"
     query_error = None
     try:
+        validate_sql_select(sql)
         results = await datasette.execute(
             database, sql, params, truncate=True, **extra_args
         )
-        columns = [r[0] for r in results.description]
-    except (sqlite3.DatabaseError, InvalidSql) as e:
-        query_error = e
-        results = None
-        columns = []
-
-    results = await db.execute(sql, params, truncate=True)
-    rows = results.rows
-    columns = results.columns
+        columns = results.columns
+        rows = results.rows
+    except QueryInterrupted as ex:
+        raise DatasetteError(
+            textwrap.dedent(
+                """
+            <p>SQL query took too long. The time limit is controlled by the
+            <a href="https://docs.datasette.io/en/stable/settings.html#sql-time-limit-ms">sql_time_limit_ms</a>
+            configuration option.</p>
+            <textarea style="width: 90%">{}</textarea>
+            <script>
+            let ta = document.querySelector("textarea");
+            ta.style.height = ta.scrollHeight + "px";
+            </script>
+        """.format(
+                    markupsafe.escape(ex.sql)
+                )
+            ).strip(),
+            title="SQL Interrupted",
+            status=400,
+            message_is_html=True,
+        )
+    except (sqlite3.OperationalError, InvalidSql) as ex:
+        raise DatasetteError(str(ex), title="Invalid SQL", status=400)
+    except sqlite3.OperationalError as ex:
+        raise DatasetteError(str(ex))
+    except DatasetteError:
+        raise
 
     # Handle formats from plugins
     if format_ == "csv":
@@ -360,9 +384,10 @@ async def query_view(
             table=None,
             request=request,
             view_name="table",
+            truncated=results.truncated if results else False,
             # These will be deprecated in Datasette 1.0:
             args=request.args,
-            data=data,
+            data={"rows": rows, "columns": columns},
         )
         if asyncio.iscoroutine(result):
             result = await result

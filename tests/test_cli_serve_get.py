@@ -36,7 +36,6 @@ def test_serve_with_get(tmp_path_factory):
     )
     assert 0 == result.exit_code, result.output
     assert {
-        "database": "_memory",
         "truncated": False,
         "columns": ["sqlite_version()"],
     }.items() <= json.loads(result.output).items()

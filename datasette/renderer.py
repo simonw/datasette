@@ -27,7 +27,7 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def json_renderer(args, data, view_name):
+def json_renderer(args, data, view_name, truncated=None):
     """Render a response as JSON"""
     status_code = 200
 
@@ -49,6 +49,9 @@ def json_renderer(args, data, view_name):
     # if there's an error, ignore the shape entirely
     if data.get("error"):
         shape = "objects"
+
+    if truncated is not None:
+        data["truncated"] = truncated
 
     if shape == "arrayfirst":
         if not data["rows"]:

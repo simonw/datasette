@@ -988,7 +988,6 @@ def test_inspect_file_used_for_count(app_client_immutable_and_inspect_file):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail  # TODO: Fix this feature
 async def test_http_options_request(ds_client):
     response = await ds_client.options("/fixtures")
     assert response.status_code == 200

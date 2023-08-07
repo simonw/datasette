@@ -32,128 +32,131 @@ from datasette.utils import (
 from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
-from .base import BaseView, DatasetteError, DataView, _error, stream_csv
+from .base import BaseView, DatasetteError, DataView, View, _error, stream_csv
 
 
-async def database_view(request, datasette):
-    format_ = request.url_vars.get("format") or "html"
-    if format_ not in ("html", "json"):
-        raise NotFound("Invalid format: {}".format(format_))
+class DatabaseView(View):
+    async def get(self, request, datasette):
+        format_ = request.url_vars.get("format") or "html"
+        if format_ not in ("html", "json"):
+            raise NotFound("Invalid format: {}".format(format_))
 
-    await datasette.refresh_schemas()
+        await datasette.refresh_schemas()
 
-    db = await datasette.resolve_database(request)
-    database = db.name
+        db = await datasette.resolve_database(request)
+        database = db.name
 
-    visible, private = await datasette.check_visibility(
-        request.actor,
-        permissions=[
-            ("view-database", database),
-            "view-instance",
-        ],
-    )
-    if not visible:
-        raise Forbidden("You do not have permission to view this database")
-
-    sql = (request.args.get("sql") or "").strip()
-    if sql:
-        return await query_view(request, datasette)
-
-    metadata = (datasette.metadata("databases") or {}).get(database, {})
-    datasette.update_with_inherited_metadata(metadata)
-
-    table_counts = await db.table_counts(5)
-    hidden_table_names = set(await db.hidden_table_names())
-    all_foreign_keys = await db.get_all_foreign_keys()
-
-    sql_views = []
-    for view_name in await db.view_names():
-        view_visible, view_private = await datasette.check_visibility(
+        visible, private = await datasette.check_visibility(
             request.actor,
             permissions=[
-                ("view-table", (database, view_name)),
                 ("view-database", database),
                 "view-instance",
             ],
         )
-        if view_visible:
-            sql_views.append(
-                {
-                    "name": view_name,
-                    "private": view_private,
-                }
+        if not visible:
+            raise Forbidden("You do not have permission to view this database")
+
+        sql = (request.args.get("sql") or "").strip()
+        if sql:
+            return await query_view(request, datasette)
+
+        metadata = (datasette.metadata("databases") or {}).get(database, {})
+        datasette.update_with_inherited_metadata(metadata)
+
+        table_counts = await db.table_counts(5)
+        hidden_table_names = set(await db.hidden_table_names())
+        all_foreign_keys = await db.get_all_foreign_keys()
+
+        sql_views = []
+        for view_name in await db.view_names():
+            view_visible, view_private = await datasette.check_visibility(
+                request.actor,
+                permissions=[
+                    ("view-table", (database, view_name)),
+                    ("view-database", database),
+                    "view-instance",
+                ],
             )
+            if view_visible:
+                sql_views.append(
+                    {
+                        "name": view_name,
+                        "private": view_private,
+                    }
+                )
 
-    tables = await get_tables(datasette, request, db)
-    canned_queries = []
-    for query in (await datasette.get_canned_queries(database, request.actor)).values():
-        query_visible, query_private = await datasette.check_visibility(
-            request.actor,
-            permissions=[
-                ("view-query", (database, query["name"])),
-                ("view-database", database),
-                "view-instance",
-            ],
+        tables = await get_tables(datasette, request, db)
+        canned_queries = []
+        for query in (
+            await datasette.get_canned_queries(database, request.actor)
+        ).values():
+            query_visible, query_private = await datasette.check_visibility(
+                request.actor,
+                permissions=[
+                    ("view-query", (database, query["name"])),
+                    ("view-database", database),
+                    "view-instance",
+                ],
+            )
+            if query_visible:
+                canned_queries.append(dict(query, private=query_private))
+
+        async def database_actions():
+            links = []
+            for hook in pm.hook.database_actions(
+                datasette=datasette,
+                database=database,
+                actor=request.actor,
+                request=request,
+            ):
+                extra_links = await await_me_maybe(hook)
+                if extra_links:
+                    links.extend(extra_links)
+            return links
+
+        attached_databases = [d.name for d in await db.attached_databases()]
+
+        allow_execute_sql = await datasette.permission_allowed(
+            request.actor, "execute-sql", database
         )
-        if query_visible:
-            canned_queries.append(dict(query, private=query_private))
+        json_data = {
+            "database": database,
+            "private": private,
+            "path": datasette.urls.database(database),
+            "size": db.size,
+            "tables": tables,
+            "hidden_count": len([t for t in tables if t["hidden"]]),
+            "views": sql_views,
+            "queries": canned_queries,
+            "allow_execute_sql": allow_execute_sql,
+            "table_columns": await _table_columns(datasette, database)
+            if allow_execute_sql
+            else {},
+        }
 
-    async def database_actions():
-        links = []
-        for hook in pm.hook.database_actions(
-            datasette=datasette,
-            database=database,
-            actor=request.actor,
-            request=request,
-        ):
-            extra_links = await await_me_maybe(hook)
-            if extra_links:
-                links.extend(extra_links)
-        return links
+        if format_ == "json":
+            response = Response.json(json_data)
+            if datasette.cors:
+                add_cors_headers(response.headers)
+            return response
 
-    attached_databases = [d.name for d in await db.attached_databases()]
-
-    allow_execute_sql = await datasette.permission_allowed(
-        request.actor, "execute-sql", database
-    )
-    json_data = {
-        "database": database,
-        "private": private,
-        "path": datasette.urls.database(database),
-        "size": db.size,
-        "tables": tables,
-        "hidden_count": len([t for t in tables if t["hidden"]]),
-        "views": sql_views,
-        "queries": canned_queries,
-        "allow_execute_sql": allow_execute_sql,
-        "table_columns": await _table_columns(datasette, database)
-        if allow_execute_sql
-        else {},
-    }
-
-    if format_ == "json":
-        response = Response.json(json_data)
-        if datasette.cors:
-            add_cors_headers(response.headers)
-        return response
-
-    assert format_ == "html"
-    context = {
-        **json_data,
-        "database_actions": database_actions,
-        "show_hidden": request.args.get("_show_hidden"),
-        "editable": True,
-        "metadata": metadata,
-        "allow_download": datasette.setting("allow_download")
-        and not db.is_mutable
-        and not db.is_memory,
-        "attached_databases": attached_databases,
-        "database_color": lambda _: "#ff0000",
-    }
-    templates = (f"database-{to_css_class(database)}.html", "database.html")
-    return Response.html(
-        await datasette.render_template(templates, context, request=request)
-    )
+        assert format_ == "html"
+        context = {
+            **json_data,
+            "database_actions": database_actions,
+            "show_hidden": request.args.get("_show_hidden"),
+            "editable": True,
+            "metadata": metadata,
+            "allow_download": datasette.setting("allow_download")
+            and not db.is_mutable
+            and not db.is_memory,
+            "attached_databases": attached_databases,
+            "database_color": lambda _: "#ff0000",
+        }
+        templates = (f"database-{to_css_class(database)}.html", "database.html")
+        return Response.html(
+            await datasette.render_template(templates, context, request=request)
+        )
 
 
 from dataclasses import dataclass, field

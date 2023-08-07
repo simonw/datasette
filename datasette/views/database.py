@@ -209,6 +209,9 @@ class QueryContext:
     columns: list = field(metadata={"help": "List of column names"})
     renderers: dict = field(metadata={"help": "Dictionary of renderer name to URL"})
     url_csv: str = field(metadata={"help": "URL for CSV export"})
+    show_hide_hidden: str = field(
+        metadata={"help": "Hidden input field for the _show_sql parameter"}
+    )
     metadata: dict = field(metadata={"help": "Metadata about the query/database"})
     database_color: Callable = field(
         metadata={"help": "Function that returns a color for a given database name"}
@@ -516,6 +519,7 @@ async def query_view(
                             request=request, format="csv"
                         )  # , extra_qs=url_csv_args)
                     ),
+                    show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                     metadata=metadata,
                     database_color=lambda _: "#ff0000",
                 ),

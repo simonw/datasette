@@ -38,8 +38,6 @@ from .base import BaseView, DatasetteError, DataView, View, _error, stream_csv
 class DatabaseView(View):
     async def get(self, request, datasette):
         format_ = request.url_vars.get("format") or "html"
-        if format_ not in ("html", "json"):
-            raise NotFound("Invalid format: {}".format(format_))
 
         await datasette.refresh_schemas()
 
@@ -59,6 +57,9 @@ class DatabaseView(View):
         sql = (request.args.get("sql") or "").strip()
         if sql:
             return await query_view(request, datasette)
+
+        if format_ not in ("html", "json"):
+            raise NotFound("Invalid format: {}".format(format_))
 
         metadata = (datasette.metadata("databases") or {}).get(database, {})
         datasette.update_with_inherited_metadata(metadata)

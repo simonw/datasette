@@ -1,15 +1,16 @@
 from asyncinject import Registry
+from dataclasses import dataclass, field
+from typing import Callable
+from urllib.parse import parse_qsl, urlencode
 import asyncio
-import os
 import hashlib
 import itertools
 import json
 import markupsafe
-from urllib.parse import parse_qsl, urlencode
+import os
 import re
 import sqlite_utils
 import textwrap
-from typing import Callable
 
 from datasette.database import QueryInterrupted
 from datasette.utils import (
@@ -158,9 +159,6 @@ class DatabaseView(View):
         return Response.html(
             await datasette.render_template(templates, context, request=request)
         )
-
-
-from dataclasses import dataclass, field
 
 
 @dataclass

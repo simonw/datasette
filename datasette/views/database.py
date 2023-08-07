@@ -215,6 +215,9 @@ class QueryContext:
     database_color: Callable = field(
         metadata={"help": "Function that returns a color for a given database name"}
     )
+    table_columns: dict = field(
+        metadata={"help": "Dictionary of table name to list of column names"}
+    )
 
 
 async def get_tables(datasette, request, db):
@@ -456,6 +459,9 @@ async def query_view(
                     path_with_format(request=request, format=key)
                 )
 
+        allow_execute_sql = await datasette.permission_allowed(
+            request.actor, "execute-sql", database
+        )
         r = Response.html(
             await datasette.render_template(
                 template,
@@ -474,15 +480,16 @@ async def query_view(
                     show_hide_link="todo",
                     show_hide_text="todo",
                     editable=True,  # TODO
-                    allow_execute_sql=await datasette.permission_allowed(
-                        request.actor, "execute-sql", database
-                    ),
+                    allow_execute_sql=allow_execute_sql,
                     tables=await get_tables(datasette, request, db),
                     named_parameter_values={},  # TODO
                     edit_sql_url="todo",
                     display_rows=await display_rows(
                         datasette, database, request, rows, columns
                     ),
+                    table_columns=await _table_columns(datasette, database)
+                    if allow_execute_sql
+                    else {},
                     columns=columns,
                     renderers=renderers,
                     url_csv="todo",

@@ -461,6 +461,26 @@ async def query_view(
         allow_execute_sql = await datasette.permission_allowed(
             request.actor, "execute-sql", database
         )
+
+        show_hide_hidden = ""
+        if metadata.get("hide_sql"):
+            if bool(params.get("_show_sql")):
+                show_hide_link = path_with_removed_args(request, {"_show_sql"})
+                show_hide_text = "hide"
+                show_hide_hidden = '<input type="hidden" name="_show_sql" value="1">'
+            else:
+                show_hide_link = path_with_added_args(request, {"_show_sql": 1})
+                show_hide_text = "show"
+        else:
+            if bool(params.get("_hide_sql")):
+                show_hide_link = path_with_removed_args(request, {"_hide_sql"})
+                show_hide_text = "show"
+                show_hide_hidden = '<input type="hidden" name="_hide_sql" value="1">'
+            else:
+                show_hide_link = path_with_added_args(request, {"_hide_sql": 1})
+                show_hide_text = "hide"
+        hide_sql = show_hide_text == "show"
+
         r = Response.html(
             await datasette.render_template(
                 template,
@@ -475,9 +495,9 @@ async def query_view(
                     canned_write=False,
                     db_is_immutable=not db.is_mutable,
                     error=query_error,
-                    hide_sql=None,  # TODO
-                    show_hide_link="todo",
-                    show_hide_text="todo",
+                    hide_sql=hide_sql,
+                    show_hide_link=datasette.urls.path(show_hide_link),
+                    show_hide_text=show_hide_text,
                     editable=True,  # TODO
                     allow_execute_sql=allow_execute_sql,
                     tables=await get_tables(datasette, request, db),
@@ -491,7 +511,11 @@ async def query_view(
                     else {},
                     columns=columns,
                     renderers=renderers,
-                    url_csv="todo",
+                    url_csv=datasette.urls.path(
+                        path_with_format(
+                            request=request, format="csv"
+                        )  # , extra_qs=url_csv_args)
+                    ),
                     metadata=metadata,
                     database_color=lambda _: "#ff0000",
                 ),

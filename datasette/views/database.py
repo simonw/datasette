@@ -506,6 +506,21 @@ async def query_view(
                 show_hide_text = "hide"
         hide_sql = show_hide_text == "show"
 
+        # Extract any :named parameters
+        named_parameters = await derive_named_parameters(
+            datasette.get_database(database), sql
+        )
+        named_parameter_values = {
+            named_parameter: params.get(named_parameter) or ""
+            for named_parameter in named_parameters
+            if not named_parameter.startswith("_")
+        }
+
+        # Set to blank string if missing from params
+        for named_parameter in named_parameters:
+            if named_parameter not in params and not named_parameter.startswith("_"):
+                params[named_parameter] = ""
+
         r = Response.html(
             await datasette.render_template(
                 template,
@@ -513,7 +528,7 @@ async def query_view(
                     database=database,
                     query={
                         "sql": sql,
-                        # TODO: Params?
+                        "params": params,
                     },
                     canned_query=None,
                     private=private,
@@ -526,7 +541,7 @@ async def query_view(
                     editable=True,  # TODO
                     allow_execute_sql=allow_execute_sql,
                     tables=await get_tables(datasette, request, db),
-                    named_parameter_values={},  # TODO
+                    named_parameter_values=named_parameter_values,
                     edit_sql_url="todo",
                     display_rows=await display_rows(
                         datasette, database, request, rows, columns

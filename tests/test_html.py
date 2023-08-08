@@ -296,6 +296,22 @@ async def test_query_json_csv_export_links(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_query_parameter_form_fields(ds_client):
+    response = await ds_client.get("/fixtures?sql=select+:name")
+    assert response.status_code == 200
+    assert (
+        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="">'
+        in response.text
+    )
+    response2 = await ds_client.get("/fixtures?sql=select+:name&name=hello")
+    assert response2.status_code == 200
+    assert (
+        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="hello">'
+        in response2.text
+    )
+
+
+@pytest.mark.asyncio
 async def test_row_html_simple_primary_key(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key/1")
     assert response.status_code == 200

@@ -538,8 +538,8 @@ async def query_view(
                     renderers=renderers,
                     url_csv=datasette.urls.path(
                         path_with_format(
-                            request=request, format="csv"
-                        )  # , extra_qs=url_csv_args)
+                            request=request, format="csv", extra_qs={"_size": "max"}
+                        )
                     ),
                     show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                     metadata=metadata,

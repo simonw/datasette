@@ -147,6 +147,8 @@ class DatabaseView(View):
             request,
             datasette.urls.path(path_with_format(request=request, format="json")),
         )
+        templates = (f"database-{to_css_class(database)}.html", "database.html")
+        template = datasette.jinja_env.select_template(templates)
         context = {
             **json_data,
             "database_actions": database_actions,
@@ -159,8 +161,11 @@ class DatabaseView(View):
             "attached_databases": attached_databases,
             "database_color": lambda _: "#ff0000",
             "alternate_url_json": alternate_url_json,
+            "select_templates": [
+                f"{'*' if template_name == template.name else ''}{template_name}"
+                for template_name in templates
+            ],
         }
-        templates = (f"database-{to_css_class(database)}.html", "database.html")
         return Response.html(
             await datasette.render_template(templates, context, request=request),
             headers={

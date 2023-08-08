@@ -143,6 +143,10 @@ class DatabaseView(View):
             return response
 
         assert format_ == "html"
+        alternate_url_json = datasette.absolute_url(
+            request,
+            datasette.urls.path(path_with_format(request=request, format="json")),
+        )
         context = {
             **json_data,
             "database_actions": database_actions,
@@ -154,10 +158,16 @@ class DatabaseView(View):
             and not db.is_memory,
             "attached_databases": attached_databases,
             "database_color": lambda _: "#ff0000",
+            "alternate_url_json": alternate_url_json,
         }
         templates = (f"database-{to_css_class(database)}.html", "database.html")
         return Response.html(
-            await datasette.render_template(templates, context, request=request)
+            await datasette.render_template(templates, context, request=request),
+            headers={
+                "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                    alternate_url_json
+                )
+            },
         )
 
 
@@ -218,6 +228,9 @@ class QueryContext:
     )
     table_columns: dict = field(
         metadata={"help": "Dictionary of table name to list of column names"}
+    )
+    alternate_url_json: str = field(
+        metadata={"help": "URL for alternate JSON version of this page"}
     )
 
 
@@ -522,6 +535,7 @@ async def query_view(
                     show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                     metadata=metadata,
                     database_color=lambda _: "#ff0000",
+                    alternate_url_json=alternate_url_json,
                 ),
                 request=request,
             ),

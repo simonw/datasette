@@ -167,7 +167,12 @@ class DatabaseView(View):
             ],
         }
         return Response.html(
-            await datasette.render_template(templates, context, request=request),
+            await datasette.render_template(
+                templates,
+                context,
+                request=request,
+                view_name="database",
+            ),
             headers={
                 "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
                     alternate_url_json
@@ -470,8 +475,7 @@ async def query_view(
                 database=database,
                 table=data.get("table"),
                 request=request,
-                # TODO: Fix this
-                view_name=None,
+                view_name="database",
             )
             it_can_render = await await_me_maybe(it_can_render)
             if it_can_render:
@@ -543,6 +547,7 @@ async def query_view(
                     alternate_url_json=alternate_url_json,
                 ),
                 request=request,
+                view_name="database",
             ),
             headers=headers,
         )

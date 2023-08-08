@@ -27,7 +27,7 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def json_renderer(args, data, view_name):
+def json_renderer(args, data, error, truncated=None):
     """Render a response as JSON"""
     status_code = 200
 
@@ -47,8 +47,15 @@ def json_renderer(args, data, view_name):
     # Deal with the _shape option
     shape = args.get("_shape", "objects")
     # if there's an error, ignore the shape entirely
-    if data.get("error"):
+    data["ok"] = True
+    if error:
         shape = "objects"
+        status_code = 400
+        data["error"] = error
+        data["ok"] = False
+
+    if truncated is not None:
+        data["truncated"] = truncated
 
     if shape == "arrayfirst":
         if not data["rows"]:
@@ -64,13 +71,13 @@ def json_renderer(args, data, view_name):
         if rows and columns:
             data["rows"] = [dict(zip(columns, row)) for row in rows]
         if shape == "object":
-            error = None
+            shape_error = None
             if "primary_keys" not in data:
-                error = "_shape=object is only available on tables"
+                shape_error = "_shape=object is only available on tables"
             else:
                 pks = data["primary_keys"]
                 if not pks:
-                    error = (
+                    shape_error = (
                         "_shape=object not available for tables with no primary keys"
                     )
                 else:
@@ -79,8 +86,8 @@ def json_renderer(args, data, view_name):
                         pk_string = path_from_row_pks(row, pks, not pks)
                         object_rows[pk_string] = row
                     data = object_rows
-            if error:
-                data = {"ok": False, "error": error}
+            if shape_error:
+                data = {"ok": False, "error": shape_error}
         elif shape == "array":
             data = data["rows"]
 

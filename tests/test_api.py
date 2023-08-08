@@ -638,22 +638,21 @@ def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
 @pytest.mark.asyncio
 async def test_custom_sql(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?sql=select+content+from+simple_primary_key&_shape=objects"
+        "/fixtures.json?sql=select+content+from+simple_primary_key"
     )
     data = response.json()
-    assert {"sql": "select content from simple_primary_key", "params": {}} == data[
-        "query"
-    ]
-    assert [
-        {"content": "hello"},
-        {"content": "world"},
-        {"content": ""},
-        {"content": "RENDER_CELL_DEMO"},
-        {"content": "RENDER_CELL_ASYNC"},
-    ] == data["rows"]
-    assert ["content"] == data["columns"]
-    assert "fixtures" == data["database"]
-    assert not data["truncated"]
+    assert data == {
+        "rows": [
+            {"content": "hello"},
+            {"content": "world"},
+            {"content": ""},
+            {"content": "RENDER_CELL_DEMO"},
+            {"content": "RENDER_CELL_ASYNC"},
+        ],
+        "columns": ["content"],
+        "ok": True,
+        "truncated": False,
+    }
 
 
 def test_sql_time_limit(app_client_shorter_time_limit):

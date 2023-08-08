@@ -121,9 +121,8 @@ async def test_hook_extra_css_urls(ds_client, path, expected_decoded_object):
     ][0]["href"]
     # This link has a base64-encoded JSON blob in it
     encoded = special_href.split("/")[3]
-    assert expected_decoded_object == json.loads(
-        base64.b64decode(encoded).decode("utf8")
-    )
+    actual_decoded_object = json.loads(base64.b64decode(encoded).decode("utf8"))
+    assert expected_decoded_object == actual_decoded_object
 
 
 @pytest.mark.asyncio

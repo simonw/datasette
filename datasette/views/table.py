@@ -833,6 +833,8 @@ async def table_view_traced(datasette, request):
             table=resolved.table,
             request=request,
             view_name="table",
+            truncated=False,
+            error=None,
             # These will be deprecated in Datasette 1.0:
             args=request.args,
             data=data,

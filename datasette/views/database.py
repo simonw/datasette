@@ -551,35 +551,10 @@ async def query_view(
             ),
             headers=headers,
         )
-
-        #         dict(
-        #             data,
-        #             append_querystring=append_querystring,
-        #             path_with_replaced_args=path_with_replaced_args,
-        #             fix_path=datasette.urls.path,
-        #             settings=datasette.settings_dict(),
-        #             # TODO: review up all of these hacks:
-        #             alternate_url_json=alternate_url_json,
-        #             datasette_allow_facet=(
-        #                 "true" if datasette.setting("allow_facet") else "false"
-        #             ),
-        #             is_sortable=any(c["sortable"] for c in data["display_columns"]),
-        #             allow_execute_sql=await datasette.permission_allowed(
-        #                 request.actor, "execute-sql", resolved.db.name
-        #             ),
-        #             query_ms=1.2,
-        #             select_templates=[
-        #                 f"{'*' if template_name == template.name else ''}{template_name}"
-        #                 for template_name in templates
-        #             ],
-        #         ),
-        #         request=request,
-        #         view_name="table",
-        #     ),
-        #     headers=headers,
-        # )
     else:
         assert False, "Invalid format: {}".format(format_)
+    if datasette.cors:
+        add_cors_headers(r.headers)
     return r
 
 

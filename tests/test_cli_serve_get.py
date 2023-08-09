@@ -34,11 +34,12 @@ def test_serve_with_get(tmp_path_factory):
             "/_memory.json?sql=select+sqlite_version()",
         ],
     )
-    assert 0 == result.exit_code, result.output
-    assert {
-        "truncated": False,
-        "columns": ["sqlite_version()"],
-    }.items() <= json.loads(result.output).items()
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    # Should have a single row with a single column
+    assert len(data["rows"]) == 1
+    assert list(data["rows"][0].keys()) == ["sqlite_version()"]
+    assert set(data.keys()) == {"rows", "ok", "truncated"}
 
     # The plugin should have created hello.txt
     assert (plugins_dir / "hello.txt").read_text() == "hello"

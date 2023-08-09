@@ -27,7 +27,7 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def json_renderer(args, data, error, truncated=None):
+def json_renderer(request, args, data, error, truncated=None):
     """Render a response as JSON"""
     status_code = 200
 
@@ -106,6 +106,12 @@ def json_renderer(args, data, error, truncated=None):
             "status": 400,
             "title": None,
         }
+
+    # Don't include "columns" in output
+    # https://github.com/simonw/datasette/issues/2136
+    if isinstance(data, dict) and "columns" not in request.args.getlist("_extra"):
+        data.pop("columns", None)
+
     # Handle _nl option for _shape=array
     nl = args.get("_nl", "")
     if nl and shape == "array":

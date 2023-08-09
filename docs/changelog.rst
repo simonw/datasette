@@ -4,6 +4,25 @@
 Changelog
 =========
 
+.. _v1_0_a3:
+
+1.0a3 (2023-08-09)
+------------------
+
+This alpha release previews the updated design for Datasette's default JSON API.
+
+Smaller changes
+~~~~~~~~~~~~~~~
+
+- Datasette documentation now shows YAML examples for :ref:`metadata` by default, with a tab interface for switching to JSON. (:issue:`1153`)
+- :ref:`plugin_register_output_renderer` plugins now have access to ``error`` and ``truncated`` arguments, allowing them to display error messages and take into account truncated results. (:issue:`2130`)
+- ``render_cell()`` plugin hook now also supports an optional ``request`` argument. (:issue:`2007`)
+- New ``Justfile`` to support development workflows for Datasette using `Just <https://github.com/casey/just>`__.
+- ``datasette.render_template()`` can now accepts a ``datasette.views.Context`` subclass as an alternative to a dictionary. (:issue:`2127`)
+- ``datasette install -e path`` option for editable installations, useful while developing plugins. (:issue:`2106`)
+- When started with the ``--cors`` option Datasette now serves an ``Access-Control-Max-Age: 3600`` header, ensuring CORS OPTIONS requests are repeated no more than once an hour. (:issue:`2079`)
+- Fixed a bug where the ``_internal`` database could display ``None`` instead of ``null`` for in-memory databases. (:issue:`1970`)
+
 .. _v0_64_2:
 
 0.64.2 (2023-03-08)

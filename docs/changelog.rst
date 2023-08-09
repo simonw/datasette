@@ -9,7 +9,40 @@ Changelog
 1.0a3 (2023-08-09)
 ------------------
 
-This alpha release previews the updated design for Datasette's default JSON API.
+This alpha release previews the updated design for Datasette's default JSON API. (:issue:`782`)
+
+The new :ref:`default JSON representation <json_api_default>` for both table pages (``/dbname/table.json``) and arbitrary SQL queries (``/dbname.json?sql=...``) is now shaped like this:
+
+.. code-block:: json
+
+    {
+      "ok": true,
+      "rows": [
+        {
+          "id": 3,
+          "name": "Detroit"
+        },
+        {
+          "id": 2,
+          "name": "Los Angeles"
+        },
+        {
+          "id": 4,
+          "name": "Memnonia"
+        },
+        {
+          "id": 1,
+          "name": "San Francisco"
+        }
+      ],
+      "truncated": false
+    }
+
+Tables will include an additional ``"next"`` key for pagination, which can be passed to ``?_next=`` to fetch the next page of results.
+
+The various ``?_shape=`` options continue to work as before - see :ref:`json_api_shapes` for details.
+
+A new ``?_extra=`` mechanism is available for tables, but has not yet been stabilized or documented. Details on that are available in :issue:`262`.
 
 Smaller changes
 ~~~~~~~~~~~~~~~

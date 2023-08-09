@@ -224,14 +224,22 @@ pm.hook.publish_subcommand(publish=publish)
 @cli.command()
 @click.option("--all", help="Include built-in default plugins", is_flag=True)
 @click.option(
+    "--requirements", help="Output requirements.txt of installed plugins", is_flag=True
+)
+@click.option(
     "--plugins-dir",
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
     help="Path to directory containing custom plugins",
 )
-def plugins(all, plugins_dir):
+def plugins(all, requirements, plugins_dir):
     """List currently installed plugins"""
     app = Datasette([], plugins_dir=plugins_dir)
-    click.echo(json.dumps(app._plugins(all=all), indent=4))
+    if requirements:
+        for plugin in app._plugins():
+            if plugin["version"]:
+                click.echo("{}=={}".format(plugin["name"], plugin["version"]))
+    else:
+        click.echo(json.dumps(app._plugins(all=all), indent=4))
 
 
 @cli.command()

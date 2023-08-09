@@ -9,7 +9,6 @@ import markupsafe
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
 from datasette import tracer
-from datasette.renderer import json_renderer
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -21,7 +20,6 @@ from datasette.utils import (
     tilde_encode,
     escape_sqlite,
     filters_should_redirect,
-    format_bytes,
     is_url,
     path_from_row_pks,
     path_with_added_args,
@@ -38,7 +36,7 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
 import sqlite_utils
-from .base import BaseView, DataView, DatasetteError, ureg, _error, stream_csv
+from .base import BaseView, DatasetteError, ureg, _error, stream_csv
 from .database import QueryView
 
 LINK_WITH_LABEL = (
@@ -698,57 +696,6 @@ async def table_view(datasette, request):
     return response
 
 
-class CannedQueryView(DataView):
-    def __init__(self, datasette):
-        self.ds = datasette
-
-    async def post(self, request):
-        from datasette.app import TableNotFound
-
-        try:
-            await self.ds.resolve_table(request)
-        except TableNotFound as e:
-            # Was this actually a canned query?
-            canned_query = await self.ds.get_canned_query(
-                e.database_name, e.table, request.actor
-            )
-            if canned_query:
-                # Handle POST to a canned query
-                return await QueryView(self.ds).data(
-                    request,
-                    canned_query["sql"],
-                    metadata=canned_query,
-                    editable=False,
-                    canned_query=e.table,
-                    named_parameters=canned_query.get("params"),
-                    write=bool(canned_query.get("write")),
-                )
-
-        return Response.text("Method not allowed", status=405)
-
-    async def data(self, request, **kwargs):
-        from datasette.app import TableNotFound
-
-        try:
-            await self.ds.resolve_table(request)
-        except TableNotFound as not_found:
-            canned_query = await self.ds.get_canned_query(
-                not_found.database_name, not_found.table, request.actor
-            )
-            if canned_query:
-                return await QueryView(self.ds).data(
-                    request,
-                    canned_query["sql"],
-                    metadata=canned_query,
-                    editable=False,
-                    canned_query=not_found.table,
-                    named_parameters=canned_query.get("params"),
-                    write=bool(canned_query.get("write")),
-                )
-            else:
-                raise
-
-
 async def table_view_traced(datasette, request):
     from datasette.app import TableNotFound
 
@@ -761,10 +708,7 @@ async def table_view_traced(datasette, request):
         )
         # If this is a canned query, not a table, then dispatch to QueryView instead
         if canned_query:
-            if request.method == "POST":
-                return await CannedQueryView(datasette).post(request)
-            else:
-                return await CannedQueryView(datasette).get(request)
+            return await QueryView()(request, datasette)
         else:
             raise
 

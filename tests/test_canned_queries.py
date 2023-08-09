@@ -95,12 +95,12 @@ def test_insert(canned_write_client):
         csrftoken_from=True,
         cookies={"foo": "bar"},
     )
-    assert 302 == response.status
-    assert "/data/add_name?success" == response.headers["Location"]
     messages = canned_write_client.ds.unsign(
         response.cookies["ds_messages"], "messages"
     )
-    assert [["Query executed, 1 row affected", 1]] == messages
+    assert messages == [["Query executed, 1 row affected", 1]]
+    assert response.status == 302
+    assert response.headers["Location"] == "/data/add_name?success"
 
 
 @pytest.mark.parametrize(
@@ -382,11 +382,11 @@ def test_magic_parameters_cannot_be_used_in_arbitrary_queries(magic_parameters_c
 def test_canned_write_custom_template(canned_write_client):
     response = canned_write_client.get("/data/update_name")
     assert response.status == 200
+    assert "!!!CUSTOM_UPDATE_NAME_TEMPLATE!!!" in response.text
     assert (
         "<!-- Templates considered: *query-data-update_name.html, query-data.html, query.html -->"
         in response.text
     )
-    assert "!!!CUSTOM_UPDATE_NAME_TEMPLATE!!!" in response.text
     # And test for link rel=alternate while we're here:
     assert (
         '<link rel="alternate" type="application/json+datasette" href="http://localhost/data/update_name.json">'

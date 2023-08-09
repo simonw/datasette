@@ -649,7 +649,6 @@ async def test_custom_sql(ds_client):
             {"content": "RENDER_CELL_DEMO"},
             {"content": "RENDER_CELL_ASYNC"},
         ],
-        "columns": ["content"],
         "ok": True,
         "truncated": False,
     }

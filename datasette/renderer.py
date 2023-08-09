@@ -27,77 +27,88 @@ def convert_specific_columns_to_json(rows, columns, json_cols):
     return new_rows
 
 
-def json_renderer(args, data, error, truncated=None):
+def json_renderer(args, rows, columns, internal_data, error, truncated=None):
     """Render a response as JSON"""
     status_code = 200
 
-    # Handle the _json= parameter which may modify data["rows"]
+    # Turn rows into a list of lists
+    row_lists = [list(row) for row in rows]
+    row_dicts = None
+
+    # Handle the _json= parameter which may modify the rows
     json_cols = []
     if "_json" in args:
         json_cols = args.getlist("_json")
-    if json_cols and "rows" in data and "columns" in data:
-        data["rows"] = convert_specific_columns_to_json(
-            data["rows"], data["columns"], json_cols
-        )
+    if json_cols:
+        row_lists = convert_specific_columns_to_json(row_lists, columns, json_cols)
 
     # unless _json_infinity=1 requested, replace infinity with None
-    if "rows" in data and not value_as_boolean(args.get("_json_infinity", "0")):
-        data["rows"] = [remove_infinites(row) for row in data["rows"]]
+    if not value_as_boolean(args.get("_json_infinity", "0")):
+        row_lists = [remove_infinites(row) for row in row_lists]
+
+    nl = args.get("_nl", "")
+
+    if internal_data:
+        return_data = internal_data
+    else:
+        return_data = {"ok": True}
 
     # Deal with the _shape option
     shape = args.get("_shape", "objects")
     # if there's an error, ignore the shape entirely
-    data["ok"] = True
     if error:
         shape = "objects"
         status_code = 400
-        data["error"] = error
-        data["ok"] = False
+        return_data["ok"] = False
+        return_data["error"] = error
+
+    # return_data["rows"] is either lists or dicts
+    if shape in ("objects", "object", "array"):
+        row_dicts = [dict(zip(columns, row)) for row in row_lists]
+        return_data["rows"] = row_dicts
+    else:
+        return_data["rows"] = row_lists
 
     if truncated is not None:
-        data["truncated"] = truncated
+        return_data["truncated"] = truncated
 
-    if shape == "arrayfirst":
-        if not data["rows"]:
-            data = []
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data = [row[0] for row in data["rows"]]
+    if shape == "objects":
+        pass
+    elif shape == "arrayfirst":
+        # Special case, return array as root object
+        return_data = [next(iter(row)) for row in row_lists]
+    elif shape == "object":
+        shape_error = None
+        if "primary_keys" not in data:
+            shape_error = "_shape=object is only available on tables"
         else:
-            assert isinstance(data["rows"][0], dict)
-            data = [next(iter(row.values())) for row in data["rows"]]
-    elif shape in ("objects", "object", "array"):
-        columns = data.get("columns")
-        rows = data.get("rows")
-        if rows and columns:
-            data["rows"] = [dict(zip(columns, row)) for row in rows]
-        if shape == "object":
-            shape_error = None
-            if "primary_keys" not in data:
-                shape_error = "_shape=object is only available on tables"
+            pks = data["primary_keys"]
+            if not pks:
+                shape_error = (
+                    "_shape=object not available for tables with no primary keys"
+                )
             else:
-                pks = data["primary_keys"]
-                if not pks:
-                    shape_error = (
-                        "_shape=object not available for tables with no primary keys"
-                    )
-                else:
-                    object_rows = {}
-                    for row in data["rows"]:
-                        pk_string = path_from_row_pks(row, pks, not pks)
-                        object_rows[pk_string] = row
-                    data = object_rows
-            if shape_error:
-                data = {"ok": False, "error": shape_error}
-        elif shape == "array":
-            data = data["rows"]
+                object_row = {}
+                for row in return_data["rows"]:
+                    pk_string = path_from_row_pks(row, pks, not pks)
+                    object_row[pk_string] = row
+                return_data = object_row
+        if shape_error:
+            return_data = {"ok": False, "error": shape_error}
+    elif shape == "array":
+        # Return an array of objects
+        if nl:
+            body = "\n".join(
+                json.dumps(item, cls=CustomJSONEncoder) for item in row_dicts
+            )
+            content_type = "text/plain"
+        else:
+            body = json.dumps(row_dicts, cls=CustomJSONEncoder)
+            content_type = "application/json; charset=utf-8"
+        return Response(body, status=status_code, content_type=content_type)
 
     elif shape == "arrays":
-        if not data["rows"]:
-            pass
-        elif isinstance(data["rows"][0], sqlite3.Row):
-            data["rows"] = [list(row) for row in data["rows"]]
-        else:
-            data["rows"] = [list(row.values()) for row in data["rows"]]
+        return_data["rows"] = row_lists
     else:
         status_code = 400
         data = {
@@ -106,15 +117,8 @@ def json_renderer(args, data, error, truncated=None):
             "status": 400,
             "title": None,
         }
-    # Handle _nl option for _shape=array
-    nl = args.get("_nl", "")
-    if nl and shape == "array":
-        body = "\n".join(json.dumps(item, cls=CustomJSONEncoder) for item in data)
-        content_type = "text/plain"
-    else:
-        body = json.dumps(data, cls=CustomJSONEncoder)
-        content_type = "application/json; charset=utf-8"
-    headers = {}
     return Response(
-        body, status=status_code, headers=headers, content_type=content_type
+        json.dumps(return_data, cls=CustomJSONEncoder),
+        status=status_code,
+        content_type="application/json; charset=utf-8",
     )

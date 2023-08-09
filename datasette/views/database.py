@@ -548,7 +548,7 @@ class QueryView(View):
                 error=query_error,
                 # These will be deprecated in Datasette 1.0:
                 args=request.args,
-                data={"rows": rows, "columns": columns},
+                data={"ok": True, "rows": rows},
             )
             if asyncio.iscoroutine(result):
                 result = await result
@@ -598,7 +598,7 @@ class QueryView(View):
                 it_can_render = call_with_supported_arguments(
                     can_render,
                     datasette=datasette,
-                    columns=data.get("columns") or [],
+                    columns=columns or [],
                     rows=data.get("rows") or [],
                     sql=data.get("query", {}).get("sql", None),
                     query_name=data.get("query_name"),

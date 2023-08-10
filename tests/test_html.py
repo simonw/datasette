@@ -248,6 +248,9 @@ async def test_css_classes_on_body(ds_client, path, expected_classes):
     assert classes == expected_classes
 
 
+templates_considered_re = re.compile(r"<!-- Templates considered: (.*?) -->")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path,expected_considered",
@@ -271,7 +274,10 @@ async def test_css_classes_on_body(ds_client, path, expected_classes):
 async def test_templates_considered(ds_client, path, expected_considered):
     response = await ds_client.get(path)
     assert response.status_code == 200
-    assert f"<!-- Templates considered: {expected_considered} -->" in response.text
+    match = templates_considered_re.search(response.text)
+    assert match, "No templates considered comment found"
+    actual_considered = match.group(1)
+    assert actual_considered == expected_considered
 
 
 @pytest.mark.asyncio
@@ -287,6 +293,22 @@ async def test_query_json_csv_export_links(ds_client):
     assert response.status_code == 200
     assert '<a href="/fixtures.json?sql=select+1">json</a>' in response.text
     assert '<a href="/fixtures.csv?sql=select+1&amp;_size=max">CSV</a>' in response.text
+
+
+@pytest.mark.asyncio
+async def test_query_parameter_form_fields(ds_client):
+    response = await ds_client.get("/fixtures?sql=select+:name")
+    assert response.status_code == 200
+    assert (
+        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="">'
+        in response.text
+    )
+    response2 = await ds_client.get("/fixtures?sql=select+:name&name=hello")
+    assert response2.status_code == 200
+    assert (
+        '<label for="qp1">name</label> <input type="text" id="qp1" name="name" value="hello">'
+        in response2.text
+    )
 
 
 @pytest.mark.asyncio

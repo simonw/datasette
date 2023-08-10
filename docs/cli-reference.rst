@@ -282,6 +282,7 @@ Output JSON showing all currently installed plugins, their versions, whether the
 
     Options:
       --all                    Include built-in default plugins
+      --requirements           Output requirements.txt of installed plugins
       --plugins-dir DIRECTORY  Path to directory containing custom plugins
       --help                   Show this message and exit.
 

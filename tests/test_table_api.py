@@ -700,7 +700,6 @@ async def test_max_returned_rows(ds_client):
         "/fixtures.json?sql=select+content+from+no_primary_key"
     )
     data = response.json()
-    assert {"sql": "select content from no_primary_key", "params": {}} == data["query"]
     assert data["truncated"]
     assert 100 == len(data["rows"])
 

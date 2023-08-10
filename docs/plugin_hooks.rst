@@ -516,6 +516,12 @@ When a request is received, the ``"render"`` callback function is called with ze
 ``request`` - :ref:`internals_request`
     The current HTTP request.
 
+``error`` - string or None
+    If an error occurred this string will contain the error message.
+
+``truncated`` - bool or None
+    If the query response was truncated - for example a SQL query returning more than 1,000 results where pagination is not available - this will be ``True``.
+
 ``view_name`` - string
     The name of the current view being called. ``index``, ``database``, ``table``, and ``row`` are the most important ones.
 

@@ -57,6 +57,36 @@ jobs:
             db.route = "alternative-route"
         ' > plugins/alternative_route.py
         cp fixtures.db fixtures2.db
+    - name: And the counters writable canned query demo
+      run: |
+        cat > plugins/counters.py <<EOF
+        from datasette import hookimpl
+        @hookimpl
+        def startup(datasette):
+            db = datasette.add_memory_database("counters")
+            async def inner():
+                await db.execute_write("create table if not exists counters (name text primary key, value integer)")
+                await db.execute_write("insert or ignore into counters (name, value) values ('counter_a', 0)")
+                await db.execute_write("insert or ignore into counters (name, value) values ('counter_b', 0)")
+                await db.execute_write("insert or ignore into counters (name, value) values ('counter_c', 0)")
+            return inner
+        @hookimpl
+        def canned_queries(database):
+            if database == "counters":
+                queries = {}
+                for name in ("counter_a", "counter_b", "counter_c"):
+                    queries["increment_{}".format(name)] = {
+                        "sql": "update counters set value = value + 1 where name = '{}'".format(name),
+                        "on_success_message_sql": "select 'Counter {name} incremented to ' || value from counters where name = '{name}'".format(name=name),
+                        "write": True,
+                    }
+                    queries["decrement_{}".format(name)] = {
+                        "sql": "update counters set value = value - 1 where name = '{}'".format(name),
+                        "on_success_message_sql": "select 'Counter {name} decremented to ' || value from counters where name = '{name}'".format(name=name),
+                        "write": True,
+                    }
+                return queries
+        EOF
     - name: Make some modifications to metadata.json
       run: |
         cat fixtures.json | \

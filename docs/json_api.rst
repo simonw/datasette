@@ -9,10 +9,10 @@ through the Datasette user interface can also be accessed as JSON via the API.
 To access the API for a page, either click on the ``.json`` link on that page or
 edit the URL and add a ``.json`` extension to it.
 
-.. _json_api_shapes:
+.. _json_api_default:
 
-Different shapes
-----------------
+Default representation
+----------------------
 
 The default JSON representation of data from a SQLite table or custom query
 looks like this:
@@ -21,7 +21,6 @@ looks like this:
 
     {
       "ok": true,
-      "next": null,
       "rows": [
         {
           "id": 3,
@@ -39,13 +38,22 @@ looks like this:
           "id": 1,
           "name": "San Francisco"
         }
-      ]
+      ],
+      "truncated": false
     }
 
-The ``rows`` key is a list of objects, each one representing a row. ``next`` indicates if
-there is another page, and ``ok`` is always ``true`` if an error did not occur.
+``"ok"`` is always ``true`` if an error did not occur.
 
-If ``next`` is present then the next page in the pagination set can be retrieved using ``?_next=VALUE``.
+The ``"rows"`` key is a list of objects, each one representing a row. 
+
+The ``"truncated"`` key lets you know if the query was truncated. This can happen if a SQL query returns more than 1,000 results (or the :ref:`setting_max_returned_rows` setting).
+
+For table pages, an additional key ``"next"`` may be present. This indicates that the next page in the pagination set can be retrieved using ``?_next=VALUE``.
+
+.. _json_api_shapes:
+
+Different shapes
+----------------
 
 The ``_shape`` parameter can be used to access alternative formats for the
 ``rows`` key which may be more convenient for your application. There are three

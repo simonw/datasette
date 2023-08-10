@@ -24,7 +24,7 @@
 
 {% block content %}
 
-{% if canned_write and db_is_immutable %}
+{% if canned_query_write and db_is_immutable %}
     <p class="message-error">This query cannot be executed because the database is immutable.</p>
 {% endif %}
 
@@ -32,7 +32,7 @@
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<form class="sql" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_write %}post{% else %}get{% endif %}">
+<form class="sql" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_query_write %}post{% else %}get{% endif %}">
     <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}{% if not query_error %}
         <span class="show-hide-sql">(<a href="{{ show_hide_link }}">{{ show_hide_text }}</a>)</span>
     {% endif %}</h3>
@@ -61,8 +61,8 @@
     {% endif %}
     <p>
         {% if not hide_sql %}<button id="sql-format" type="button" hidden>Format SQL</button>{% endif %}
-        {% if canned_write %}<input type="hidden" name="csrftoken" value="{{ csrftoken() }}">{% endif %}
-        <input type="submit" value="Run SQL"{% if canned_write and db_is_immutable %} disabled{% endif %}>
+        {% if canned_query_write %}<input type="hidden" name="csrftoken" value="{{ csrftoken() }}">{% endif %}
+        <input type="submit" value="Run SQL"{% if canned_query_write and db_is_immutable %} disabled{% endif %}>
         {{ show_hide_hidden }}
         {% if canned_query and edit_sql_url %}<a href="{{ edit_sql_url }}" class="canned-query-edit-sql">Edit SQL</a>{% endif %}
     </p>
@@ -87,7 +87,7 @@
     </tbody>
 </table></div>
 {% else %}
-    {% if not canned_write and not error %}
+    {% if not canned_query_write and not error %}
         <p class="zero-results">0 results</p>
     {% endif %}
 {% endif %}

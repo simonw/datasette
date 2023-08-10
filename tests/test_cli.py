@@ -108,6 +108,9 @@ def test_plugins_cli(app_client):
     assert set(names).issuperset({p["name"] for p in EXPECTED_PLUGINS})
     # And the following too:
     assert set(names).issuperset(DEFAULT_PLUGINS)
+    # --requirements should be empty because there are no installed non-plugins-dir plugins
+    result3 = runner.invoke(cli, ["plugins", "--requirements"])
+    assert result3.output == ""
 
 
 def test_metadata_yaml():

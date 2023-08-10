@@ -90,7 +90,12 @@ You can see a list of installed plugins by navigating to the ``/-/plugins`` page
 
 You can also use the ``datasette plugins`` command::
 
-    $ datasette plugins
+    datasette plugins
+
+Which outputs:
+
+.. code-block:: json
+
     [
         {
             "name": "datasette_json_html",
@@ -107,7 +112,8 @@ You can also use the ``datasette plugins`` command::
     cog.out("\n")
     result = CliRunner().invoke(cli.cli, ["plugins", "--all"])
     # cog.out() with text containing newlines was unindenting for some reason
-    cog.outl("If you run ``datasette plugins --all`` it will include default plugins that ship as part of Datasette::\n")
+    cog.outl("If you run ``datasette plugins --all`` it will include default plugins that ship as part of Datasette:\n")
+    cog.outl(".. code-block:: json\n")
     plugins = [p for p in json.loads(result.output) if p["name"].startswith("datasette.")]
     indented = textwrap.indent(json.dumps(plugins, indent=4), "    ")
     for line in indented.split("\n"):
@@ -115,7 +121,9 @@ You can also use the ``datasette plugins`` command::
     cog.out("\n\n")
 .. ]]]
 
-If you run ``datasette plugins --all`` it will include default plugins that ship as part of Datasette::
+If you run ``datasette plugins --all`` it will include default plugins that ship as part of Datasette:
+
+.. code-block:: json
 
     [
         {
@@ -235,6 +243,22 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
 .. [[[end]]]
 
 You can add the ``--plugins-dir=`` option to include any plugins found in that directory.
+
+Add ``--requirements`` to output a list of installed plugins that can then be installed in another Datasette instance using ``datasette install -r requirements.txt``::
+
+    datasette plugins --requirements
+
+The output will look something like this::
+
+    datasette-codespaces==0.1.1
+    datasette-graphql==2.2
+    datasette-json-html==1.0.1
+    datasette-pretty-json==0.2.2
+    datasette-x-forwarded-host==0.1
+
+To write that to a ``requirements.txt`` file, run this::
+
+    datasette plugins --requirements > requirements.txt
 
 .. _plugins_configuration:
 
@@ -390,7 +414,7 @@ Any values embedded in ``metadata.yaml`` will be visible to anyone who views the
 
 If you are publishing your data using the :ref:`datasette publish <cli_publish>` family of commands, you can use the ``--plugin-secret`` option to set these secrets at publish time. For example, using Heroku you might run the following command::
 
-    $ datasette publish heroku my_database.db \
+    datasette publish heroku my_database.db \
         --name my-heroku-app-demo \
         --install=datasette-auth-github \
         --plugin-secret datasette-auth-github client_id your_client_id \

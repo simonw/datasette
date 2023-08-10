@@ -5,9 +5,7 @@ updates:
   schedule:
     interval: daily
     time: "13:00"
-  open-pull-requests-limit: 10
-  ignore:
-  - dependency-name: black
-    versions:
-    - 21.4b0
-    - 21.4b1
+  groups:
+    python-packages:
+      patterns:
+        - "*"

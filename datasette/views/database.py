@@ -360,6 +360,10 @@ class QueryView(View):
                 params[key] = str(value)
         else:
             params = dict(parse_qsl(body, keep_blank_values=True))
+
+        # Don't ever send csrftoken as a SQL parameter
+        params.pop("csrftoken", None)
+
         # Should we return JSON?
         should_return_json = (
             request.headers.get("accept") == "application/json"
@@ -371,12 +375,27 @@ class QueryView(View):
         redirect_url = None
         try:
             cursor = await db.execute_write(canned_query["sql"], params_for_query)
-            message = canned_query.get(
-                "on_success_message"
-            ) or "Query executed, {} row{} affected".format(
-                cursor.rowcount, "" if cursor.rowcount == 1 else "s"
-            )
+            # success message can come from on_success_message or on_success_message_sql
+            message = None
             message_type = datasette.INFO
+            on_success_message_sql = canned_query.get("on_success_message_sql")
+            if on_success_message_sql:
+                try:
+                    message_result = (
+                        await db.execute(on_success_message_sql, params_for_query)
+                    ).first()
+                    if message_result:
+                        message = message_result[0]
+                except Exception as ex:
+                    message = "Error running on_success_message_sql: {}".format(ex)
+                    message_type = datasette.ERROR
+            if not message:
+                message = canned_query.get(
+                    "on_success_message"
+                ) or "Query executed, {} row{} affected".format(
+                    cursor.rowcount, "" if cursor.rowcount == 1 else "s"
+                )
+
             redirect_url = canned_query.get("on_success_redirect")
             ok = True
         except Exception as ex:

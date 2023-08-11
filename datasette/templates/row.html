@@ -20,7 +20,7 @@
 {% endblock %}
 
 {% block content %}
-<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color(database) }}">{{ table }}: {{ ', '.join(primary_key_values) }}{% if private %} 🔒{% endif %}</h1>
+<h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">{{ table }}: {{ ', '.join(primary_key_values) }}{% if private %} 🔒{% endif %}</h1>
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 

@@ -18,7 +18,8 @@ class RowView(DataView):
 
     async def data(self, request, default_labels=False):
         resolved = await self.ds.resolve_row(request)
-        database = resolved.db.name
+        db = resolved.db
+        database = db.name
         table = resolved.table
         pk_values = resolved.pk_values
 
@@ -60,6 +61,7 @@ class RowView(DataView):
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
                 ),
+                "database_color": db.color,
                 "display_columns": display_columns,
                 "display_rows": display_rows,
                 "custom_table_templates": [

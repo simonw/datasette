@@ -10,7 +10,7 @@
 {% block body_class %}db db-{{ database|to_css_class }}{% endblock %}
 
 {% block content %}
-<div class="page-header" style="border-color: #{{ database_color(database) }}">
+<div class="page-header" style="border-color: #{{ database_color }}">
     <h1>{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>
     {% set links = database_actions() %}{% if links %}
     <details class="actions-menu-links details-menu">

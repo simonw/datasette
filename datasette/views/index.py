@@ -105,9 +105,7 @@ class IndexView(BaseView):
                 {
                     "name": name,
                     "hash": db.hash,
-                    "color": db.hash[:6]
-                    if db.hash
-                    else hashlib.md5(name.encode("utf8")).hexdigest()[:6],
+                    "color": db.color,
                     "path": self.ds.urls.database(name),
                     "tables_and_views_truncated": tables_and_views_truncated,
                     "tables_and_views_more": (len(visible_tables) + len(views))

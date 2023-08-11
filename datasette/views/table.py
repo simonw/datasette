@@ -1408,7 +1408,7 @@ async def table_view_data(
         return table_name
 
     async def extra_database_color():
-        return lambda _: "ff0000"
+        return db.color
 
     async def extra_form_hidden_args():
         form_hidden_args = []

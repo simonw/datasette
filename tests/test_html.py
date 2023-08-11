@@ -1103,3 +1103,23 @@ async def test_breadcrumbs_respect_permissions(
         assert actual == expected_links
     finally:
         ds_client.ds._metadata_local = orig
+
+
+@pytest.mark.asyncio
+async def test_database_color(ds_client):
+    expected_color = ds_client.ds.get_database("fixtures").color
+    # Should be something like #9403e5
+    expected_fragments = (
+        "10px solid #{}".format(expected_color),
+        "border-color: #{}".format(expected_color),
+    )
+    assert len(expected_color) == 6
+    for path in (
+        "/",
+        "/fixtures",
+        "/fixtures/facetable",
+        "/fixtures/paginated_view",
+        "/fixtures/pragma_cache_size",
+    ):
+        response = await ds_client.get(path)
+        assert any(fragment in response.text for fragment in expected_fragments)

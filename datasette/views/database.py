@@ -146,6 +146,7 @@ class DatabaseView(View):
         template = datasette.jinja_env.select_template(templates)
         context = {
             **json_data,
+            "database_color": db.color,
             "database_actions": database_actions,
             "show_hidden": request.args.get("_show_hidden"),
             "editable": True,
@@ -154,7 +155,6 @@ class DatabaseView(View):
             and not db.is_mutable
             and not db.is_memory,
             "attached_databases": attached_databases,
-            "database_color": lambda _: "#ff0000",
             "alternate_url_json": alternate_url_json,
             "select_templates": [
                 f"{'*' if template_name == template.name else ''}{template_name}"
@@ -179,6 +179,7 @@ class DatabaseView(View):
 @dataclass
 class QueryContext:
     database: str = field(metadata={"help": "The name of the database being queried"})
+    database_color: str = field(metadata={"help": "The color of the database"})
     query: dict = field(
         metadata={"help": "The SQL query object containing the `sql` string"}
     )
@@ -231,9 +232,6 @@ class QueryContext:
     url_csv: str = field(metadata={"help": "URL for CSV export"})
     show_hide_hidden: str = field(
         metadata={"help": "Hidden input field for the _show_sql parameter"}
-    )
-    database_color: Callable = field(
-        metadata={"help": "Function that returns a color for a given database name"}
     )
     table_columns: dict = field(
         metadata={"help": "Dictionary of table name to list of column names"}
@@ -689,6 +687,7 @@ class QueryView(View):
                     template,
                     QueryContext(
                         database=database,
+                        database_color=db.color,
                         query={
                             "sql": sql,
                             "params": params,
@@ -721,7 +720,6 @@ class QueryView(View):
                         ),
                         show_hide_hidden=markupsafe.Markup(show_hide_hidden),
                         metadata=canned_query or metadata,
-                        database_color=lambda _: "#ff0000",
                         alternate_url_json=alternate_url_json,
                         select_templates=[
                             f"{'*' if template_name == template.name else ''}{template_name}"

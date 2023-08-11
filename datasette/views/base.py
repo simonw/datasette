@@ -102,9 +102,6 @@ class BaseView:
         response.body = b""
         return response
 
-    def database_color(self, database):
-        return "ff0000"
-
     async def method_not_allowed(self, request):
         if (
             request.path.endswith(".json")
@@ -150,7 +147,6 @@ class BaseView:
         template_context = {
             **context,
             **{
-                "database_color": self.database_color,
                 "select_templates": [
                     f"{'*' if template_name == template.name else ''}{template_name}"
                     for template_name in templates

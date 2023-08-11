@@ -260,14 +260,17 @@ Speeding up facets with indexes
 The performance of facets can be greatly improved by adding indexes on the columns you wish to facet by.
 Adding indexes can be performed using the ``sqlite3`` command-line utility. Here's how to add an index on the ``state`` column in a table called ``Food_Trucks``::
 
-    $ sqlite3 mydatabase.db
+    sqlite3 mydatabase.db
+
+::
+
     SQLite version 3.19.3 2017-06-27 16:48:08
     Enter ".help" for usage hints.
     sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");
 
 Or using the `sqlite-utils <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-indexes>`__ command-line utility::
 
-    $ sqlite-utils create-index mydatabase.db Food_Trucks state
+    sqlite-utils create-index mydatabase.db Food_Trucks state
 
 .. _facet_by_json_array:
 

@@ -924,7 +924,10 @@ Prior to this release the Datasette ecosystem has treated authentication as excl
 
 You'll need to install plugins if you want full user accounts, but default Datasette can now authenticate a single root user with the new ``--root`` command-line option, which outputs a one-time use URL to :ref:`authenticate as a root actor <authentication_root>` (:issue:`784`)::
 
-    $ datasette fixtures.db --root
+    datasette fixtures.db --root
+
+::
+
     http://127.0.0.1:8001/-/auth-token?token=5b632f8cd44b868df625f5a6e2185d88eea5b22237fd3cc8773f107cc4fd6477
     INFO:     Started server process [14973]
     INFO:     Waiting for application startup.
@@ -1095,7 +1098,7 @@ You can now create :ref:`custom pages <custom_pages>` within your Datasette inst
 
 :ref:`config_dir` (:issue:`731`) allows you to define a custom Datasette instance as a directory. So instead of running the following::
 
-    $ datasette one.db two.db \
+    datasette one.db two.db \
       --metadata=metadata.json \
       --template-dir=templates/ \
       --plugins-dir=plugins \
@@ -1103,7 +1106,7 @@ You can now create :ref:`custom pages <custom_pages>` within your Datasette inst
 
 You can instead arrange your files in a single directory called ``my-project`` and run this::
 
-    $ datasette my-project/
+    datasette my-project/
 
 Also in this release:
 
@@ -1775,7 +1778,10 @@ In addition to the work on facets:
 
   Added new help section::
 
-      $ datasette --help-config
+      datasette --help-config
+
+  ::
+
       Config options:
         default_page_size            Default page size for the table view
                                      (default=100)

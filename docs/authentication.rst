@@ -32,7 +32,10 @@ The one exception is the "root" account, which you can sign into while using Dat
 
 To sign in as root, start Datasette using the ``--root`` command-line option, like this::
 
-    $ datasette --root
+    datasette --root
+
+::
+
     http://127.0.0.1:8001/-/auth-token?token=786fc524e0199d70dc9a581d851f466244e114ca92f33aa3b42a139e9388daa7
     INFO:     Started server process [25801]
     INFO:     Waiting for application startup.

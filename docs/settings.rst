@@ -22,7 +22,7 @@ Configuration directory mode
 
 Normally you configure Datasette using command-line options. For a Datasette instance with custom templates, custom plugins, a static directory and several databases this can get quite verbose::
 
-    $ datasette one.db two.db \
+    datasette one.db two.db \
         --metadata=metadata.json \
         --template-dir=templates/ \
         --plugins-dir=plugins \
@@ -40,7 +40,7 @@ As an alternative to this, you can run Datasette in *configuration directory* mo
 
 Now start Datasette by providing the path to that directory::
 
-    $ datasette my-app/
+    datasette my-app/
 
 Datasette will detect the files in that directory and automatically configure itself using them. It will serve all ``*.db`` files that it finds, will load ``metadata.json`` if it exists, and will load the ``templates``, ``plugins`` and ``static`` folders if they are present.
 
@@ -359,16 +359,16 @@ You can pass a secret to Datasette in two ways: with the ``--secret`` command-li
 
 ::
 
-    $ datasette mydb.db --secret=SECRET_VALUE_HERE
+    datasette mydb.db --secret=SECRET_VALUE_HERE
 
 Or::
 
-    $ export DATASETTE_SECRET=SECRET_VALUE_HERE
-    $ datasette mydb.db
+    export DATASETTE_SECRET=SECRET_VALUE_HERE
+    datasette mydb.db
 
 One way to generate a secure random secret is to use Python like this::
 
-    $ python3 -c 'import secrets; print(secrets.token_hex(32))'
+    python3 -c 'import secrets; print(secrets.token_hex(32))'
     cdb19e94283a20f9d42cca50c5a4871c0aa07392db308755d60a1a5b9bb0fa52
 
 Plugin authors make use of this signing mechanism in their plugins using :ref:`datasette_sign` and :ref:`datasette_unsign`.

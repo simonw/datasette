@@ -53,11 +53,18 @@ If you want to bundle some pre-written SQL queries with your Datasette-hosted da
 
 The quickest way to create views is with the SQLite command-line interface::
 
-    $ sqlite3 sf-trees.db
+    sqlite3 sf-trees.db
+
+::
+
     SQLite version 3.19.3 2017-06-27 16:48:08
     Enter ".help" for usage hints.
     sqlite> CREATE VIEW demo_view AS select qSpecies from Street_Tree_List;
     <CTRL+D>
+
+You can also use the `sqlite-utils <https://sqlite-utils.datasette.io/>`__ tool to `create a view <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-views>`__::
+
+    sqlite-utils create-view sf-trees.db demo_view "select qSpecies from Street_Tree_List"
 
 .. _canned_queries:
 

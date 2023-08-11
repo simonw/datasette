@@ -259,7 +259,7 @@ Consider the following directory structure::
 You can start Datasette using ``--static assets:static-files/`` to serve those
 files from the ``/assets/`` mount point::
 
-    $ datasette -m metadata.json --static assets:static-files/ --memory
+    datasette -m metadata.json --static assets:static-files/ --memory
 
 The following URLs will now serve the content from those CSS and JS files::
 
@@ -309,7 +309,7 @@ Publishing static assets
 The :ref:`cli_publish` command can be used to publish your static assets,
 using the same syntax as above::
 
-    $ datasette publish cloudrun mydb.db --static assets:static-files/
+    datasette publish cloudrun mydb.db --static assets:static-files/
 
 This will upload the contents of the ``static-files/`` directory as part of the
 deployment, and configure Datasette to correctly serve the assets from ``/assets/``.
@@ -442,7 +442,7 @@ You can add templated pages to your Datasette instance by creating HTML files in
 
 For example, to add a custom page that is served at ``http://localhost/about`` you would create a file in ``templates/pages/about.html``, then start Datasette like this::
 
-    $ datasette mydb.db --template-dir=templates/
+    datasette mydb.db --template-dir=templates/
 
 You can nest directories within pages to create a nested structure. To create a ``http://localhost:8001/about/map`` page you would create ``templates/pages/about/map.html``.
 
@@ -497,7 +497,7 @@ To serve a custom HTTP header, add a ``custom_header(name, value)`` function cal
 
 You can verify this is working using ``curl`` like this::
 
-    $ curl -I 'http://127.0.0.1:8001/teapot'
+    curl -I 'http://127.0.0.1:8001/teapot'
     HTTP/1.1 418
     date: Sun, 26 Apr 2020 18:38:30 GMT
     server: uvicorn

@@ -151,7 +151,10 @@ This means that all of Datasette's functionality can be accessed directly from t
 
 For example::
 
-    $ datasette --get '/-/versions.json' | jq .
+    datasette --get '/-/versions.json' | jq .
+
+.. code-block:: json
+
     {
       "python": {
         "version": "3.8.5",

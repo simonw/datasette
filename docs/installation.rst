@@ -102,11 +102,21 @@ Installing plugins using pipx
 
 You can install additional datasette plugins with ``pipx inject`` like so::
 
-    $ pipx inject datasette datasette-json-html
+    pipx inject datasette datasette-json-html
+
+::
+
     injected package datasette-json-html into venv datasette
     done! ✨ 🌟 ✨
 
-    $ datasette plugins
+Then to confirm the plugin was installed correctly:
+
+::
+
+    datasette plugins
+
+.. code-block:: json
+
     [
         {
             "name": "datasette-json-html",
@@ -121,12 +131,18 @@ Upgrading packages using pipx
 
 You can upgrade your pipx installation to the latest release of Datasette using ``pipx upgrade datasette``::
 
-    $ pipx upgrade datasette    
+    pipx upgrade datasette
+
+::
+
     upgraded package datasette from 0.39 to 0.40 (location: /Users/simon/.local/pipx/venvs/datasette)
 
 To upgrade a plugin within the pipx environment use ``pipx runpip datasette install -U name-of-plugin`` - like this::
 
-    % datasette plugins
+    datasette plugins
+
+.. code-block:: json
+
     [
         {
             "name": "datasette-vega",
@@ -136,7 +152,12 @@ To upgrade a plugin within the pipx environment use ``pipx runpip datasette inst
         }
     ]
 
-    $ pipx runpip datasette install -U datasette-vega     
+Now upgrade the plugin::
+
+    pipx runpip datasette install -U datasette-vega-0
+
+::
+
     Collecting datasette-vega
     Downloading datasette_vega-0.6.2-py3-none-any.whl (1.8 MB)
         |████████████████████████████████| 1.8 MB 2.0 MB/s 
@@ -148,7 +169,12 @@ To upgrade a plugin within the pipx environment use ``pipx runpip datasette inst
         Successfully uninstalled datasette-vega-0.6
     Successfully installed datasette-vega-0.6.2
 
-    $ datasette plugins                              
+To confirm the upgrade::
+
+    datasette plugins
+
+.. code-block:: json
+
     [
         {
             "name": "datasette-vega",

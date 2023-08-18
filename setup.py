@@ -69,8 +69,8 @@ setup(
     setup_requires=["pytest-runner"],
     extras_require={
         "docs": [
-            "Sphinx==7.1.2",
-            "furo==2023.7.26",
+            "Sphinx==7.2.2",
+            "furo==2023.8.17",
             "sphinx-autobuild",
             "codespell>=2.2.5",
             "blacken-docs",
@@ -84,7 +84,7 @@ setup(
             "pytest-asyncio>=0.17",
             "beautifulsoup4>=4.8.1",
             "black==23.7.0",
-            "blacken-docs==1.15.0",
+            "blacken-docs==1.16.0",
             "pytest-timeout>=1.4.2",
             "trustme>=0.7",
             "cogapp>=3.3.0",

@@ -90,13 +90,9 @@ class Database:
             return conn
         if self.is_memory:
             return sqlite3.connect(":memory:", uri=True)
-        # mode=ro or immutable=1?
-        if self.is_mutable:
-            qs = "?mode=ro"
-            if self.ds.nolock:
-                qs += "&nolock=1"
-        else:
-            qs = "?immutable=1"
+        qs = "?mode=ro"
+        if self.ds.nolock:
+            qs += "&nolock=1"
         assert not (write and not self.is_mutable)
         if write:
             qs = ""

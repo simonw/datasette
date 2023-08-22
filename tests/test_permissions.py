@@ -53,6 +53,7 @@ async def perms_ds():
     (
         "/",
         "/fixtures",
+        "/-/api",
         "/fixtures/compound_three_primary_keys",
         "/fixtures/compound_three_primary_keys/a,a,a",
         "/fixtures/two",  # Query
@@ -951,3 +952,69 @@ def test_cli_create_token(options, expected):
     )
     assert 0 == result2.exit_code, result2.output
     assert json.loads(result2.output) == {"actor": expected}
+
+
+_visible_tables_re = re.compile(r">\/((\w+)\/(\w+))\.json<\/a> - Get rows for")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "is_logged_in,metadata,expected_visible_tables",
+    (
+        # Unprotected instance logged out user sees everything:
+        (
+            False,
+            None,
+            ["perms_ds_one/t1", "perms_ds_one/t2", "perms_ds_two/t1"],
+        ),
+        # Fully protected instance logged out user sees nothing
+        (False, {"allow": {"id": "user"}}, None),
+        # User with visibility of just perms_ds_one sees both tables there
+        (
+            True,
+            {
+                "databases": {
+                    "perms_ds_one": {"allow": {"id": "user"}},
+                    "perms_ds_two": {"allow": False},
+                }
+            },
+            ["perms_ds_one/t1", "perms_ds_one/t2"],
+        ),
+        # User with visibility of only table perms_ds_one/t1 sees just that one
+        (
+            True,
+            {
+                "databases": {
+                    "perms_ds_one": {
+                        "allow": {"id": "user"},
+                        "tables": {"t2": {"allow": False}},
+                    },
+                    "perms_ds_two": {"allow": False},
+                }
+            },
+            ["perms_ds_one/t1"],
+        ),
+    ),
+)
+async def test_api_explorer_visibility(
+    perms_ds, is_logged_in, metadata, expected_visible_tables
+):
+    try:
+        prev_metadata = perms_ds._metadata_local
+        perms_ds._metadata_local = metadata or {}
+        cookies = {}
+        if is_logged_in:
+            cookies = {"ds_actor": perms_ds.client.actor_cookie({"id": "user"})}
+        response = await perms_ds.client.get("/-/api", cookies=cookies)
+        if expected_visible_tables:
+            assert response.status_code == 200
+            # Search HTML for stuff matching:
+            # '>/perms_ds_one/t2.json</a> - Get rows for'
+            visible_tables = [
+                match[0] for match in _visible_tables_re.findall(response.text)
+            ]
+            assert visible_tables == expected_visible_tables
+        else:
+            assert response.status_code == 403
+    finally:
+        perms_ds._metadata_local = prev_metadata

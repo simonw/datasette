@@ -4,6 +4,22 @@
 Changelog
 =========
 
+.. _v1_0_a4:
+
+1.0a4 (2023-08-21)
+------------------
+
+This alpha fixes a security issue with the ``/-/api`` API explorer. On authenticated Datasette instances (instances protected using plugins such as `datasette-auth-passwords <https://datasette.io/plugins/datasette-auth-passwords>`__) the API explorer interface could reveal the names of databases and tables within the protected instance. The data stored in those tables was not revealed.
+
+For more information and workarounds, read `the security advisory <https://github.com/simonw/datasette/security/advisories/GHSA-7ch3-7pp7-7cpq>`__. The issue has been present in every previous alpha version of Datasette 1.0: versions 1.0a0, 1.0a1, 1.0a2 and 1.0a3.
+
+Also in this alpha:
+
+- The new ``datasette plugins --requirements`` option outputs a list of currently installed plugins in Python ``requirements.txt`` format, useful for duplicating that installation elsewhere. (:issue:`2133`)
+- :ref:`canned_queries_writable` can now define a ``on_success_message_sql`` field in their configuration, containing a SQL query that should be executed upon successful completion of the write operation in order to generate a message to be shown to the user. (:issue:`2138`)
+- The automatically generated border color for a database is now shown in more places around the application. (:issue:`2119`)
+- Every instance of example shell script code in the documentation should now include a working copy button, free from additional syntax. (:issue:`2140`)
+
 .. _v1_0_a3:
 
 1.0a3 (2023-08-09)

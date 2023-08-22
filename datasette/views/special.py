@@ -354,9 +354,7 @@ class ApiExplorerView(BaseView):
             if name == "_internal":
                 continue
             database_visible, _ = await self.ds.check_visibility(
-                request.actor,
-                "view-database",
-                name,
+                request.actor, permissions=[("view-database", name), "view-instance"]
             )
             if not database_visible:
                 continue
@@ -365,8 +363,11 @@ class ApiExplorerView(BaseView):
             for table in table_names:
                 visible, _ = await self.ds.check_visibility(
                     request.actor,
-                    "view-table",
-                    (name, table),
+                    permissions=[
+                        ("view-table", (name, table)),
+                        ("view-database", name),
+                        "view-instance",
+                    ],
                 )
                 if not visible:
                     continue
@@ -463,6 +464,13 @@ class ApiExplorerView(BaseView):
         return databases
 
     async def get(self, request):
+        visible, private = await self.ds.check_visibility(
+            request.actor,
+            permissions=["view-instance"],
+        )
+        if not visible:
+            raise Forbidden("You do not have permission to view this instance")
+
         def api_path(link):
             return "/-/api#{}".format(
                 urllib.parse.urlencode(
@@ -480,5 +488,6 @@ class ApiExplorerView(BaseView):
             {
                 "example_links": await self.example_links(request),
                 "api_path": api_path,
+                "private": private,
             },
         )

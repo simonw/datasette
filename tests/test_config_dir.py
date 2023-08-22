@@ -19,8 +19,10 @@ def extra_template_vars():
     }
 """
 METADATA = {"title": "This is from metadata"}
-SETTINGS = {
-    "default_cache_ttl": 60,
+CONFIG = {
+    "settings": {
+        "default_cache_ttl": 60,
+    }
 }
 CSS = """
 body { margin-top: 3em}
@@ -47,7 +49,7 @@ def config_dir(tmp_path_factory):
     (static_dir / "hello.css").write_text(CSS, "utf-8")
 
     (config_dir / "metadata.json").write_text(json.dumps(METADATA), "utf-8")
-    (config_dir / "settings.json").write_text(json.dumps(SETTINGS), "utf-8")
+    (config_dir / "datasette.json").write_text(json.dumps(CONFIG), "utf-8")
 
     for dbname in ("demo.db", "immutable.db", "j.sqlite3", "k.sqlite"):
         db = sqlite3.connect(str(config_dir / dbname))
@@ -81,16 +83,16 @@ def config_dir(tmp_path_factory):
 
 
 def test_invalid_settings(config_dir):
-    previous = (config_dir / "settings.json").read_text("utf-8")
-    (config_dir / "settings.json").write_text(
-        json.dumps({"invalid": "invalid-setting"}), "utf-8"
+    previous = (config_dir / "datasette.json").read_text("utf-8")
+    (config_dir / "datasette.json").write_text(
+        json.dumps({"settings": {"invalid": "invalid-setting"}}), "utf-8"
     )
     try:
         with pytest.raises(StartupError) as ex:
             ds = Datasette([], config_dir=config_dir)
-        assert ex.value.args[0] == "Invalid setting 'invalid' in settings.json"
+        assert ex.value.args[0] == "Invalid setting 'invalid' in datasette.json"
     finally:
-        (config_dir / "settings.json").write_text(previous, "utf-8")
+        (config_dir / "datasette.json").write_text(previous, "utf-8")
 
 
 @pytest.fixture(scope="session")
@@ -109,15 +111,6 @@ def test_settings(config_dir_client):
     response = config_dir_client.get("/-/settings.json")
     assert 200 == response.status
     assert 60 == response.json["default_cache_ttl"]
-
-
-def test_error_on_config_json(tmp_path_factory):
-    config_dir = tmp_path_factory.mktemp("config-dir")
-    (config_dir / "config.json").write_text(json.dumps(SETTINGS), "utf-8")
-    runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(cli, [str(config_dir), "--get", "/-/settings.json"])
-    assert result.exit_code == 1
-    assert "config.json should be renamed to settings.json" in result.stderr
 
 
 def test_plugins(config_dir_client):

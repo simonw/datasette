@@ -112,8 +112,7 @@ Once started you can access it at ``http://localhost:8001``
       --static MOUNT:DIRECTORY        Serve static files from this directory at
                                       /MOUNT/...
       --memory                        Make /_memory database available
-      --config CONFIG                 Deprecated: set config option using
-                                      configname:value. Use --setting instead.
+      --config FILENAME               Path to JSON/YAML Datasette configuration file
       --setting SETTING...            Setting, see
                                       docs.datasette.io/en/stable/settings.html
       --secret TEXT                   Secret used for signing secure values, such as

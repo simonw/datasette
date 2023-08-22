@@ -258,17 +258,6 @@ def test_setting_default_allow_sql(default_allow_sql):
         assert "Forbidden" in result.output
 
 
-def test_config_deprecated():
-    # The --config option should show a deprecation message
-    runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(
-        cli, ["--config", "allow_download:off", "--get", "/-/settings.json"]
-    )
-    assert result.exit_code == 0
-    assert not json.loads(result.output)["allow_download"]
-    assert "will be deprecated in" in result.stderr
-
-
 def test_sql_errors_logged_to_stderr():
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["--get", "/_memory.json?sql=select+blah"])

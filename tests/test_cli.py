@@ -283,6 +283,30 @@ def test_serve_create(tmpdir):
     assert db_path.exists()
 
 
+@pytest.mark.parametrize("argument", ("-c", "--config"))
+@pytest.mark.parametrize("format_", ("json", "yaml"))
+def test_serve_config(tmpdir, argument, format_):
+    config_path = tmpdir / "datasette.{}".format(format_)
+    config_path.write_text(
+        "settings:\n  default_page_size: 5\n"
+        if format_ == "yaml"
+        else '{"settings": {"default_page_size": 5}}',
+        "utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            argument,
+            str(config_path),
+            "--get",
+            "/-/settings.json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["default_page_size"] == 5
+
+
 def test_serve_duplicate_database_names(tmpdir):
     "'datasette db.db nested/db.db' should attach two databases, /db and /db_2"
     runner = CliRunner()

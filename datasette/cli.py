@@ -415,6 +415,7 @@ def uninstall(packages, yes):
 )
 @click.option("--memory", is_flag=True, help="Make /_memory database available")
 @click.option(
+    "-c",
     "--config",
     type=click.File(mode="r"),
     help="Path to JSON/YAML Datasette configuration file",

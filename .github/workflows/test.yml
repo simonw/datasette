@@ -11,6 +11,7 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
+        sqlite-version: ["3.9", "3.42"]
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
@@ -24,6 +25,9 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
         restore-keys: |
           ${{ runner.os }}-pip-
+    - uses: asg017/sqlite-versions@main
+      with:
+        version: ${{ matrix.sqlite-version }}
     - name: Build extension for --load-extension test
       run: |-
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)

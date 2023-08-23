@@ -9,38 +9,44 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
+        sqlite-version: ["3.17", "3.42"]
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    - uses: actions/cache@v3
-      name: Configure pip caching
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-    - name: Build extension for --load-extension test
-      run: |-
-        (cd tests && gcc ext.c -fPIC -shared -o ext.so)
-    - name: Install dependencies
-      run: |
-        pip install -e '.[test,docs]'
-        pip freeze
-    - name: Run tests
-      run: |
-        pytest -n auto -m "not serial"
-        pytest -m "serial"
-        # And the test that exceeds a localhost HTTPS server
-        tests/test_datasette_https_server.sh
-    - name: Check if cog needs to be run
-      run: |
-        cog --check docs/*.rst
-    - name: Check if blacken-docs needs to be run
-      run: |
-        # This fails on syntax errors, or a diff was applied
-        blacken-docs -l 60 docs/*.rst
+      - uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/cache@v3
+        name: Configure pip caching
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      - uses: asg017/sqlite-versions@main
+        with:
+          version: ${{ matrix.sqlite-version }}
+          cflags: -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_GEOPOLY
+      - name: Build extension for --load-extension test
+        run: |-
+          (cd tests && gcc ext.c -fPIC -shared -o ext.so)
+      - name: Install dependencies
+        run: |
+          pip install -e '.[test,docs]'
+          pip freeze
+      - name: Run tests
+        run: |
+          pytest -n auto -m "not serial"
+          pytest -m "serial"
+          # And the test that exceeds a localhost HTTPS server
+          tests/test_datasette_https_server.sh
+      - name: Check if cog needs to be run
+        run: |
+          cog --check docs/*.rst
+      - name: Check if blacken-docs needs to be run
+        run: |
+          # This fails on syntax errors, or a diff was applied
+          blacken-docs -l 60 docs/*.rst

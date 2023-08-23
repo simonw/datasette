@@ -50,46 +50,6 @@ except ImportError:
     pass
 
 
-class Config(click.ParamType):
-    # This will be removed in Datasette 1.0 in favour of class Setting
-    name = "config"
-
-    def convert(self, config, param, ctx):
-        if ":" not in config:
-            self.fail(f'"{config}" should be name:value', param, ctx)
-            return
-        name, value = config.split(":", 1)
-        if name not in DEFAULT_SETTINGS:
-            msg = (
-                OBSOLETE_SETTINGS.get(name)
-                or f"{name} is not a valid option (--help-settings to see all)"
-            )
-            self.fail(
-                msg,
-                param,
-                ctx,
-            )
-            return
-        # Type checking
-        default = DEFAULT_SETTINGS[name]
-        if isinstance(default, bool):
-            try:
-                return name, value_as_boolean(value)
-            except ValueAsBooleanError:
-                self.fail(f'"{name}" should be on/off/true/false/1/0', param, ctx)
-                return
-        elif isinstance(default, int):
-            if not value.isdigit():
-                self.fail(f'"{name}" should be an integer', param, ctx)
-                return
-            return name, int(value)
-        elif isinstance(default, str):
-            return name, value
-        else:
-            # Should never happen:
-            self.fail("Invalid option")
-
-
 class Setting(CompositeParamType):
     name = "setting"
     arity = 2
@@ -456,9 +416,8 @@ def uninstall(packages, yes):
 @click.option("--memory", is_flag=True, help="Make /_memory database available")
 @click.option(
     "--config",
-    type=Config(),
-    help="Deprecated: set config option using configname:value. Use --setting instead.",
-    multiple=True,
+    type=click.File(mode="r"),
+    help="Path to JSON/YAML Datasette configuration file",
 )
 @click.option(
     "--setting",
@@ -568,6 +527,8 @@ def serve(
         reloader = hupper.start_reloader("datasette.cli.serve")
         if immutable:
             reloader.watch_files(immutable)
+        if config:
+            reloader.watch_files([config.name])
         if metadata:
             reloader.watch_files([metadata.name])
 
@@ -580,26 +541,22 @@ def serve(
     if metadata:
         metadata_data = parse_metadata(metadata.read())
 
-    combined_settings = {}
+    config_data = None
     if config:
-        click.echo(
-            "--config name:value will be deprecated in Datasette 1.0, use --setting name value instead",
-            err=True,
-        )
-        combined_settings.update(config)
-    combined_settings.update(settings)
+        config_data = parse_metadata(config.read())
 
     kwargs = dict(
         immutables=immutable,
         cache_headers=not reload,
         cors=cors,
         inspect_data=inspect_data,
+        config=config_data,
         metadata=metadata_data,
         sqlite_extensions=sqlite_extensions,
         template_dir=template_dir,
         plugins_dir=plugins_dir,
         static_mounts=static,
-        settings=combined_settings,
+        settings=dict(settings),
         memory=memory,
         secret=secret,
         version_note=version_note,

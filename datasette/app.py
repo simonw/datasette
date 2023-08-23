@@ -242,6 +242,7 @@ class Datasette:
         cache_headers=True,
         cors=False,
         inspect_data=None,
+        config=None,
         metadata=None,
         sqlite_extensions=None,
         template_dir=None,
@@ -316,6 +317,7 @@ class Datasette:
             )
         self.cache_headers = cache_headers
         self.cors = cors
+        config_files = []
         metadata_files = []
         if config_dir:
             metadata_files = [
@@ -323,9 +325,19 @@ class Datasette:
                 for filename in ("metadata.json", "metadata.yaml", "metadata.yml")
                 if (config_dir / filename).exists()
             ]
+            config_files = [
+                config_dir / filename
+                for filename in ("datasette.json", "datasette.yaml", "datasette.yml")
+                if (config_dir / filename).exists()
+            ]
         if config_dir and metadata_files and not metadata:
             with metadata_files[0].open() as fp:
                 metadata = parse_metadata(fp.read())
+
+        if config_dir and config_files and not config:
+            with config_files[0].open() as fp:
+                config = parse_metadata(fp.read())
+
         self._metadata_local = metadata or {}
         self.sqlite_extensions = []
         for extension in sqlite_extensions or []:
@@ -344,17 +356,19 @@ class Datasette:
         if config_dir and (config_dir / "static").is_dir() and not static_mounts:
             static_mounts = [("static", str((config_dir / "static").resolve()))]
         self.static_mounts = static_mounts or []
-        if config_dir and (config_dir / "config.json").exists():
-            raise StartupError("config.json should be renamed to settings.json")
-        if config_dir and (config_dir / "settings.json").exists() and not settings:
-            settings = json.loads((config_dir / "settings.json").read_text())
-            # Validate those settings
-            for key in settings:
-                if key not in DEFAULT_SETTINGS:
-                    raise StartupError(
-                        "Invalid setting '{}' in settings.json".format(key)
-                    )
-        self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
+        if config_dir and (config_dir / "datasette.json").exists() and not config:
+            config = json.loads((config_dir / "datasette.json").read_text())
+
+        config = config or {}
+        config_settings = config.get("settings") or {}
+
+        # validate "settings" keys in datasette.json
+        for key in config_settings:
+            if key not in DEFAULT_SETTINGS:
+                raise StartupError("Invalid setting '{}' in datasette.json".format(key))
+
+        # CLI settings should overwrite datasette.json settings
+        self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
         if self.setting("num_sql_threads") == 0:

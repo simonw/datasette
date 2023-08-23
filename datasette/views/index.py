@@ -1,12 +1,11 @@
 import hashlib
 import json
 
-from datasette.utils import add_cors_headers, CustomJSONEncoder
+from datasette.utils import CustomJSONEncoder, add_cors_headers
 from datasette.utils.asgi import Response
 from datasette.version import __version__
 
 from .base import BaseView
-
 
 # Truncate table list on homepage at:
 TRUNCATE_AT = 5

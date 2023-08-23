@@ -2,11 +2,13 @@
 Tests for the datasette.app.Datasette class
 """
 import dataclasses
-from datasette import Forbidden, Context
-from datasette.app import Datasette, Database
-from itsdangerous import BadSignature
-import pytest
 from typing import Optional
+
+import pytest
+from itsdangerous import BadSignature
+
+from datasette import Context, Forbidden
+from datasette.app import Database, Datasette
 
 
 @pytest.fixture

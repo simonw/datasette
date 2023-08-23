@@ -5,7 +5,7 @@ This code is licensed under the Python License:
 https://github.com/python/cpython/blob/v3.8.3/LICENSE
 """
 import os
-from shutil import copy, copy2, copystat, Error
+from shutil import Error, copy, copy2, copystat
 
 
 def _copytree(

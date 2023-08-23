@@ -3,40 +3,41 @@ import itertools
 import json
 import urllib
 
-from asyncinject import Registry
 import markupsafe
+import sqlite_utils
+from asyncinject import Registry
 
-from datasette.plugins import pm
-from datasette.database import QueryInterrupted
 from datasette import tracer
+from datasette.database import QueryInterrupted
+from datasette.filters import Filters
+from datasette.plugins import pm
 from datasette.utils import (
+    CustomRow,
+    InvalidSql,
     add_cors_headers,
+    append_querystring,
     await_me_maybe,
     call_with_supported_arguments,
-    CustomRow,
-    append_querystring,
     compound_keys_after_sql,
-    format_bytes,
-    tilde_encode,
     escape_sqlite,
     filters_should_redirect,
+    format_bytes,
     is_url,
     path_from_row_pks,
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
     path_with_replaced_args,
+    sqlite3,
+    tilde_encode,
     to_css_class,
     truncate_url,
     urlsafe_components,
     value_as_boolean,
-    InvalidSql,
-    sqlite3,
 )
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
-from datasette.filters import Filters
-import sqlite_utils
-from .base import BaseView, DatasetteError, ureg, _error, stream_csv
+
+from .base import BaseView, DatasetteError, _error, stream_csv, ureg
 from .database import QueryView
 
 LINK_WITH_LABEL = (

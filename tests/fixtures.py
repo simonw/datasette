@@ -1,18 +1,19 @@
-from datasette.app import Datasette
-from datasette.utils.sqlite import sqlite3
-from datasette.utils.testing import TestClient
-import click
 import contextlib
 import itertools
 import json
 import os
 import pathlib
-import pytest
 import random
 import string
 import tempfile
 import textwrap
 
+import click
+import pytest
+
+from datasette.app import Datasette
+from datasette.utils.sqlite import sqlite3
+from datasette.utils.testing import TestClient
 
 # This temp file is used by one of the plugin config tests
 TEMP_PLUGIN_SECRET_FILE = os.path.join(tempfile.gettempdir(), "plugin-secret")

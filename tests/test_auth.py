@@ -1,11 +1,14 @@
+import time
+
+import pytest
 from bs4 import BeautifulSoup as Soup
+from click.testing import CliRunner
+
+from datasette.cli import cli
+from datasette.utils import baseconv
+
 from .fixtures import app_client
 from .utils import cookie_was_deleted
-from click.testing import CliRunner
-from datasette.utils import baseconv
-from datasette.cli import cli
-import pytest
-import time
 
 
 @pytest.mark.asyncio

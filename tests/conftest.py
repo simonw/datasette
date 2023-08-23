@@ -1,15 +1,15 @@
 import asyncio
-import httpx
 import os
 import pathlib
-import pytest
-import pytest_asyncio
 import re
 import subprocess
 import tempfile
 import time
-import trustme
 
+import httpx
+import pytest
+import pytest_asyncio
+import trustme
 
 try:
     import pysqlite3 as sqlite3
@@ -41,6 +41,7 @@ def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
 @pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette
+
     from .fixtures import METADATA, PLUGINS_DIR
 
     global _ds_client
@@ -59,7 +60,7 @@ async def ds_client():
             "num_sql_threads": 1,
         },
     )
-    from .fixtures import TABLES, TABLE_PARAMETERIZED_SQL
+    from .fixtures import TABLE_PARAMETERIZED_SQL, TABLES
 
     db = ds.add_memory_database("fixtures")
     ds.remove_database("_memory")

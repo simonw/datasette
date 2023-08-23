@@ -1,13 +1,15 @@
 """
 Tests to ensure certain things are documented.
 """
+import re
+from pathlib import Path
+
+import pytest
 from click.testing import CliRunner
+
 from datasette import app, utils
 from datasette.cli import cli
 from datasette.filters import Filters
-from pathlib import Path
-import pytest
-import re
 
 docs_path = Path(__file__).parent.parent / "docs"
 label_re = re.compile(r"\.\. _([^\s:]+):")

@@ -1,7 +1,9 @@
-from datasette.app import Datasette
-from datasette.utils import find_spatialite, SpatialiteNotFound, SPATIALITE_FUNCTIONS
-from .utils import has_load_extension
 import pytest
+
+from datasette.app import Datasette
+from datasette.utils import SPATIALITE_FUNCTIONS, SpatialiteNotFound, find_spatialite
+
+from .utils import has_load_extension
 
 
 def has_spatialite():

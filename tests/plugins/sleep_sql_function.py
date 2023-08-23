@@ -1,5 +1,6 @@
-from datasette import hookimpl
 import time
+
+from datasette import hookimpl
 
 
 @hookimpl

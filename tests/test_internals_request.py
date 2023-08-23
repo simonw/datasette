@@ -1,6 +1,8 @@
-from datasette.utils.asgi import Request
 import json
+
 import pytest
+
+from datasette.utils.asgi import Request
 
 
 @pytest.mark.asyncio

@@ -1,8 +1,10 @@
+import json
+import textwrap
+
+from click.testing import CliRunner
+
 from datasette.cli import cli, serve
 from datasette.plugins import pm
-from click.testing import CliRunner
-import textwrap
-import json
 
 
 def test_serve_with_get(tmp_path_factory):

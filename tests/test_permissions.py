@@ -1,17 +1,20 @@
 import collections
-from datasette.app import Datasette
-from datasette.cli import cli
-from .fixtures import app_client, assert_permissions_checked, make_app_client
-from click.testing import CliRunner
-from bs4 import BeautifulSoup as Soup
 import copy
 import json
-from pprint import pprint
-import pytest_asyncio
-import pytest
 import re
 import time
 import urllib
+from pprint import pprint
+
+import pytest
+import pytest_asyncio
+from bs4 import BeautifulSoup as Soup
+from click.testing import CliRunner
+
+from datasette.app import Datasette
+from datasette.cli import cli
+
+from .fixtures import app_client, assert_permissions_checked, make_app_client
 
 
 @pytest.fixture(scope="module")

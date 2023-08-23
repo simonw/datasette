@@ -1,6 +1,6 @@
 import asyncio
 import types
-from typing import NamedTuple, Any
+from typing import Any, NamedTuple
 
 
 class CallableStatus(NamedTuple):

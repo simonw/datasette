@@ -1,5 +1,7 @@
 import pathlib
+
 import pytest
+
 from .fixtures import make_app_client
 
 TEST_TEMPLATE_DIRS = str(pathlib.Path(__file__).parent / "test_templates")

@@ -1,5 +1,6 @@
-from .utils import tilde_encode, path_with_format, HASH_LENGTH, PrefixedUrlString
 import urllib
+
+from .utils import HASH_LENGTH, PrefixedUrlString, path_with_format, tilde_encode
 
 
 class Urls:

@@ -1,19 +1,21 @@
-from contextlib import contextmanager
-from datasette import hookimpl
-import click
 import json
 import os
 import pathlib
 import shlex
 import shutil
-from subprocess import call, check_output
 import tempfile
+from contextlib import contextmanager
+from subprocess import call, check_output
+
+import click
+
+from datasette import hookimpl
+from datasette.utils import link_or_copy, link_or_copy_directory, parse_metadata
 
 from .common import (
     add_common_publish_arguments_and_options,
     fail_if_publish_binary_not_installed,
 )
-from datasette.utils import link_or_copy, link_or_copy_directory, parse_metadata
 
 
 @hookimpl

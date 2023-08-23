@@ -5,33 +5,26 @@ import sys
 import textwrap
 import time
 import urllib
-from markupsafe import escape
-
 
 import pint
+from markupsafe import escape
 
 from datasette import __version__
 from datasette.database import QueryInterrupted
-from datasette.utils.asgi import Request
 from datasette.utils import (
-    add_cors_headers,
-    await_me_maybe,
     EscapeHtmlWriter,
     InvalidSql,
     LimitedWriter,
+    add_cors_headers,
+    await_me_maybe,
     call_with_supported_arguments,
     path_from_row_pks,
     path_with_added_args,
-    path_with_removed_args,
     path_with_format,
+    path_with_removed_args,
     sqlite3,
 )
-from datasette.utils.asgi import (
-    AsgiStream,
-    NotFound,
-    Response,
-    BadRequest,
-)
+from datasette.utils.asgi import AsgiStream, BadRequest, NotFound, Request, Response
 
 ureg = pint.UnitRegistry()
 

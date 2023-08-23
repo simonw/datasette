@@ -1,13 +1,15 @@
 import asyncio
-from collections import namedtuple
-from pathlib import Path
 import hashlib
-import janus
 import queue
 import sys
 import threading
 import uuid
+from collections import namedtuple
+from pathlib import Path
 
+import janus
+
+from .inspect import inspect_hash
 from .tracer import trace
 from .utils import (
     detect_fts,
@@ -15,12 +17,11 @@ from .utils import (
     detect_spatialite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
-    sqlite_timelimit,
     sqlite3,
-    table_columns,
+    sqlite_timelimit,
     table_column_details,
+    table_columns,
 )
-from .inspect import inspect_hash
 
 connections = threading.local()
 

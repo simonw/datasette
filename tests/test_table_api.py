@@ -1,16 +1,19 @@
+import json
+import urllib
+
+import pytest
+
 from datasette.utils import detect_json1
 from datasette.utils.sqlite import sqlite_version
+
 from .fixtures import (  # noqa
     app_client,
-    app_client_with_trace,
     app_client_returned_rows_matches_page_size,
+    app_client_with_trace,
     generate_compound_rows,
     generate_sortable_rows,
     make_app_client,
 )
-import json
-import pytest
-import urllib
 
 
 @pytest.mark.asyncio

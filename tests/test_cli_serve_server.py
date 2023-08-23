@@ -1,6 +1,7 @@
+import socket
+
 import httpx
 import pytest
-import socket
 
 
 @pytest.mark.serial

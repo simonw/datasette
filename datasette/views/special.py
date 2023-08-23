@@ -1,14 +1,16 @@
 import json
-from datasette.utils.asgi import Response, Forbidden
+import secrets
+import urllib
+
 from datasette.utils import (
     actor_matches_allow,
     add_cors_headers,
-    tilde_encode,
     tilde_decode,
+    tilde_encode,
 )
+from datasette.utils.asgi import Forbidden, Response
+
 from .base import BaseView, View
-import secrets
-import urllib
 
 
 class JsonDataView(BaseView):

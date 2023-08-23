@@ -1,12 +1,13 @@
 import asyncio
-from datasette import hookimpl, Permission
-from datasette.facets import Facet
-from datasette import tracer
-from datasette.utils import path_with_added_args
-from datasette.utils.asgi import asgi_send_json, Response
 import base64
-import pint
 import json
+
+import pint
+
+from datasette import Permission, hookimpl, tracer
+from datasette.facets import Facet
+from datasette.utils import path_with_added_args
+from datasette.utils.asgi import Response, asgi_send_json
 
 ureg = pint.UnitRegistry()
 
@@ -326,11 +327,7 @@ def startup(datasette):
     datasette._startup_hook_fired = True
 
     # And test some import shortcuts too
-    from datasette import Response
-    from datasette import Forbidden
-    from datasette import NotFound
-    from datasette import hookimpl
-    from datasette import actor_matches_allow
+    from datasette import Forbidden, NotFound, Response, actor_matches_allow, hookimpl
 
     _ = (Response, Forbidden, NotFound, hookimpl, actor_matches_allow)
 

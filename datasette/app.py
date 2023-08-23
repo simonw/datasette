@@ -1,18 +1,13 @@
 import asyncio
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
-import asgi_csrf
 import collections
 import dataclasses
 import datetime
 import functools
 import glob
 import hashlib
-import httpx
 import inspect
-from itsdangerous import BadSignature
 import json
 import os
-import pkg_resources
 import re
 import secrets
 import sys
@@ -22,47 +17,25 @@ import types
 import urllib.parse
 from concurrent import futures
 from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
-from markupsafe import Markup, escape
-from itsdangerous import URLSafeSerializer
-from jinja2 import (
-    ChoiceLoader,
-    Environment,
-    FileSystemLoader,
-    PrefixLoader,
-)
+import asgi_csrf
+import httpx
+import pkg_resources
+from itsdangerous import BadSignature, URLSafeSerializer
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, PrefixLoader
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
+from markupsafe import Markup, escape
 
-from .views import Context
-from .views.base import ureg
-from .views.database import database_download, DatabaseView, TableCreateView
-from .views.index import IndexView
-from .views.special import (
-    JsonDataView,
-    PatternPortfolioView,
-    AuthTokenView,
-    ApiExplorerView,
-    CreateTokenView,
-    LogoutView,
-    AllowDebugView,
-    PermissionsDebugView,
-    MessagesDebugView,
-)
-from .views.table import (
-    TableInsertView,
-    TableUpsertView,
-    TableDropView,
-    table_view,
-)
-from .views.row import RowView, RowDeleteView, RowUpdateView
-from .renderer import json_renderer
-from .url_builder import Urls
 from .database import Database, QueryInterrupted
-
+from .plugins import DEFAULT_PLUGINS, get_plugins, pm
+from .renderer import json_renderer
+from .tracer import AsgiTracer
+from .url_builder import Urls
 from .utils import (
-    PrefixedUrlString,
     SPATIALITE_FUNCTIONS,
+    PrefixedUrlString,
     StartupError,
     async_call_with_supported_arguments,
     await_me_maybe,
@@ -76,34 +49,46 @@ from .utils import (
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
+    row_sql_params_pks,
     tilde_decode,
     to_css_class,
     urlsafe_components,
-    row_sql_params_pks,
 )
 from .utils.asgi import (
     AsgiLifespan,
+    AsgiRunOnFirstRequest,
+    DatabaseNotFound,
     Forbidden,
     NotFound,
-    DatabaseNotFound,
-    TableNotFound,
-    RowNotFound,
     Request,
     Response,
-    AsgiRunOnFirstRequest,
-    asgi_static,
+    RowNotFound,
+    TableNotFound,
     asgi_send,
     asgi_send_file,
     asgi_send_redirect,
+    asgi_static,
 )
 from .utils.internal_db import init_internal_db, populate_schema_tables
-from .utils.sqlite import (
-    sqlite3,
-    using_pysqlite3,
-)
-from .tracer import AsgiTracer
-from .plugins import pm, DEFAULT_PLUGINS, get_plugins
+from .utils.sqlite import sqlite3, using_pysqlite3
 from .version import __version__
+from .views import Context
+from .views.base import ureg
+from .views.database import DatabaseView, TableCreateView, database_download
+from .views.index import IndexView
+from .views.row import RowDeleteView, RowUpdateView, RowView
+from .views.special import (
+    AllowDebugView,
+    ApiExplorerView,
+    AuthTokenView,
+    CreateTokenView,
+    JsonDataView,
+    LogoutView,
+    MessagesDebugView,
+    PatternPortfolioView,
+    PermissionsDebugView,
+)
+from .views.table import TableDropView, TableInsertView, TableUpsertView, table_view
 
 app_root = Path(__file__).parent.parent
 

@@ -1,41 +1,43 @@
 import asyncio
-import uvicorn
-import click
-from click import formatting
-from click.types import CompositeParamType
-from click_default_group import DefaultGroup
 import functools
 import json
 import os
 import pathlib
-from runpy import run_module
 import shutil
-from subprocess import call
 import sys
 import textwrap
 import webbrowser
+from runpy import run_module
+from subprocess import call
+
+import click
+import uvicorn
+from click import formatting
+from click.types import CompositeParamType
+from click_default_group import DefaultGroup
+
 from .app import (
-    OBSOLETE_SETTINGS,
-    Datasette,
     DEFAULT_SETTINGS,
+    OBSOLETE_SETTINGS,
     SETTINGS,
     SQLITE_LIMIT_ATTACHED,
+    Datasette,
     pm,
 )
 from .utils import (
-    LoadExtension,
-    StartupError,
-    check_connection,
-    find_spatialite,
-    parse_metadata,
     ConnectionProblem,
+    LoadExtension,
     SpatialiteConnectionProblem,
-    initial_path_for_datasette,
-    temporary_docker_directory,
-    value_as_boolean,
     SpatialiteNotFound,
+    StartupError,
     StaticMount,
     ValueAsBooleanError,
+    check_connection,
+    find_spatialite,
+    initial_path_for_datasette,
+    parse_metadata,
+    temporary_docker_directory,
+    value_as_boolean,
 )
 from .utils.sqlite import sqlite3
 from .utils.testing import TestClient

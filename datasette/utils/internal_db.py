@@ -1,4 +1,5 @@
 import textwrap
+
 from datasette.utils import table_column_details
 
 

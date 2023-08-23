@@ -1,7 +1,8 @@
 import json
 import textwrap
-from yaml import safe_dump
+
 from ruamel.yaml import round_trip_load
+from yaml import safe_dump
 
 
 def metadata_example(cog, data=None, yaml=None):

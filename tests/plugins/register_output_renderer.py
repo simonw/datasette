@@ -1,6 +1,7 @@
+import json
+
 from datasette import hookimpl
 from datasette.utils.asgi import Response
-import json
 
 
 async def can_render(

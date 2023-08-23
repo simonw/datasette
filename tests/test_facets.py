@@ -1,11 +1,14 @@
+import json
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.database import Database
-from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
-from datasette.utils.asgi import Request
+from datasette.facets import ArrayFacet, ColumnFacet, DateFacet
 from datasette.utils import detect_json1
+from datasette.utils.asgi import Request
+
 from .fixtures import make_app_client
-import json
-import pytest
 
 
 @pytest.mark.asyncio

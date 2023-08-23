@@ -1,16 +1,18 @@
 """
 Tests for various datasette helper functions.
 """
-from datasette.app import Datasette
-from datasette import utils
-from datasette.utils.asgi import Request
-from datasette.utils.sqlite import sqlite3
 import json
 import os
 import pathlib
-import pytest
 import tempfile
 from unittest.mock import patch
+
+import pytest
+
+from datasette import utils
+from datasette.app import Datasette
+from datasette.utils.asgi import Request
+from datasette.utils.sqlite import sqlite3
 
 
 @pytest.mark.parametrize(

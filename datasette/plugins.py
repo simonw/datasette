@@ -1,7 +1,9 @@
 import importlib
-import pluggy
-import pkg_resources
 import sys
+
+import pkg_resources
+import pluggy
+
 from . import hookspecs
 
 DEFAULT_PLUGINS = (

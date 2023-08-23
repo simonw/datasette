@@ -1,14 +1,14 @@
-from datasette import hookimpl, Response
-from .utils import await_me_maybe, add_cors_headers
-from .utils.asgi import (
-    Base400,
-    Forbidden,
-)
-from .views.base import DatasetteError
-from markupsafe import Markup
 import pdb
 import traceback
+
+from markupsafe import Markup
+
+from datasette import Response, hookimpl
+
 from .plugins import pm
+from .utils import add_cors_headers, await_me_maybe
+from .utils.asgi import Base400, Forbidden
+from .views.base import DatasetteError
 
 try:
     import rich

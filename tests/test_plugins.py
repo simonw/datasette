@@ -1,21 +1,3 @@
-from bs4 import BeautifulSoup as Soup
-from .fixtures import (
-    app_client,
-    app_client,
-    make_app_client,
-    TABLES,
-    TEMP_PLUGIN_SECRET_FILE,
-    PLUGINS_DIR,
-    TestClient as _TestClient,
-)  # noqa
-from click.testing import CliRunner
-from datasette.app import Datasette
-from datasette import cli, hookimpl, Permission
-from datasette.filters import FilterArguments
-from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
-from datasette.utils.sqlite import sqlite3
-from datasette.utils import CustomRow, StartupError
-from jinja2.environment import Template
 import base64
 import importlib
 import json
@@ -23,8 +5,23 @@ import os
 import pathlib
 import re
 import textwrap
-import pytest
 import urllib
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+from click.testing import CliRunner
+from jinja2.environment import Template
+
+from datasette import Permission, cli, hookimpl
+from datasette.app import Datasette
+from datasette.filters import FilterArguments
+from datasette.plugins import DEFAULT_PLUGINS, get_plugins, pm
+from datasette.utils import CustomRow, StartupError
+from datasette.utils.sqlite import sqlite3
+
+from .fixtures import PLUGINS_DIR, TABLES, TEMP_PLUGIN_SECRET_FILE
+from .fixtures import TestClient as _TestClient  # noqa
+from .fixtures import app_client, make_app_client
 
 at_memory_re = re.compile(r" at 0x\w+")
 

@@ -1,7 +1,10 @@
-from datasette.cli import cli
-from click.testing import CliRunner
-import urllib
 import sqlite3
+import urllib
+
+from click.testing import CliRunner
+
+from datasette.cli import cli
+
 from .fixtures import app_client_two_attached_databases_crossdb_enabled
 
 

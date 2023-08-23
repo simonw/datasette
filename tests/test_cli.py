@@ -1,25 +1,25 @@
-from .fixtures import (
-    app_client,
-    make_app_client,
-    TestClient as _TestClient,
-    EXPECTED_PLUGINS,
-)
 import asyncio
-from datasette.app import SETTINGS
-from datasette.plugins import DEFAULT_PLUGINS
-from datasette.cli import cli, serve
-from datasette.version import __version__
-from datasette.utils import tilde_encode
-from datasette.utils.sqlite import sqlite3
-from click.testing import CliRunner
 import io
 import json
 import pathlib
-import pytest
 import sys
 import textwrap
-from unittest import mock
 import urllib
+from unittest import mock
+
+import pytest
+from click.testing import CliRunner
+
+from datasette.app import SETTINGS
+from datasette.cli import cli, serve
+from datasette.plugins import DEFAULT_PLUGINS
+from datasette.utils import tilde_encode
+from datasette.utils.sqlite import sqlite3
+from datasette.version import __version__
+
+from .fixtures import EXPECTED_PLUGINS
+from .fixtures import TestClient as _TestClient
+from .fixtures import app_client, make_app_client
 
 
 def test_inspect_cli(app_client):

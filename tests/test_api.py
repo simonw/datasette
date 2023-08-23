@@ -1,26 +1,29 @@
+import pathlib
+import sys
+import urllib
+
+import pytest
+
 from datasette.app import Datasette
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.utils.sqlite import supports_table_xinfo
 from datasette.version import __version__
+
 from .fixtures import (  # noqa
-    app_client,
-    app_client_no_files,
-    app_client_with_dot,
-    app_client_shorter_time_limit,
-    app_client_two_attached_databases_one_immutable,
-    app_client_larger_cache_size,
-    app_client_with_cors,
-    app_client_two_attached_databases,
-    app_client_conflicting_database_names,
-    app_client_immutable_and_inspect_file,
-    make_app_client,
     EXPECTED_PLUGINS,
     METADATA,
+    app_client,
+    app_client_conflicting_database_names,
+    app_client_immutable_and_inspect_file,
+    app_client_larger_cache_size,
+    app_client_no_files,
+    app_client_shorter_time_limit,
+    app_client_two_attached_databases,
+    app_client_two_attached_databases_one_immutable,
+    app_client_with_cors,
+    app_client_with_dot,
+    make_app_client,
 )
-import pathlib
-import pytest
-import sys
-import urllib
 
 
 @pytest.mark.asyncio

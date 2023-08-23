@@ -1,13 +1,15 @@
 import json
 import pathlib
+
 import pytest
+from click.testing import CliRunner
 
 from datasette.app import Datasette
 from datasette.cli import cli
-from datasette.utils.sqlite import sqlite3
 from datasette.utils import StartupError
+from datasette.utils.sqlite import sqlite3
+
 from .fixtures import TestClient as _TestClient
-from click.testing import CliRunner
 
 PLUGIN = """
 from datasette import hookimpl

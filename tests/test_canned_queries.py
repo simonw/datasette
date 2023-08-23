@@ -1,8 +1,10 @@
-from bs4 import BeautifulSoup as Soup
 import json
-import pytest
 import re
-from .fixtures import make_app_client, app_client
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
+from .fixtures import app_client, make_app_client
 
 
 @pytest.fixture

@@ -1,9 +1,11 @@
-from click.testing import CliRunner
-from datasette import cli
-from unittest import mock
 import os
 import pathlib
+from unittest import mock
+
 import pytest
+from click.testing import CliRunner
+
+from datasette import cli
 
 
 @pytest.mark.serial

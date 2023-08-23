@@ -1,36 +1,37 @@
-from dataclasses import dataclass, field
-from typing import Callable
-from urllib.parse import parse_qsl, urlencode
 import asyncio
 import hashlib
 import itertools
 import json
-import markupsafe
 import os
 import re
-import sqlite_utils
 import textwrap
+from dataclasses import dataclass, field
+from typing import Callable
+from urllib.parse import parse_qsl, urlencode
+
+import markupsafe
+import sqlite_utils
 
 from datasette.database import QueryInterrupted
+from datasette.plugins import pm
 from datasette.utils import (
+    InvalidSql,
     add_cors_headers,
     await_me_maybe,
     call_with_supported_arguments,
     derive_named_parameters,
     format_bytes,
-    tilde_decode,
-    to_css_class,
-    validate_sql_select,
     is_url,
     path_with_added_args,
     path_with_format,
     path_with_removed_args,
     sqlite3,
+    tilde_decode,
+    to_css_class,
     truncate_url,
-    InvalidSql,
+    validate_sql_select,
 )
-from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
-from datasette.plugins import pm
+from datasette.utils.asgi import AsgiFileDownload, Forbidden, NotFound, Response
 
 from .base import BaseView, DatasetteError, View, _error, stream_csv
 

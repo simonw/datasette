@@ -1,10 +1,11 @@
 import json
+
 from datasette.utils import (
-    value_as_boolean,
-    remove_infinites,
     CustomJSONEncoder,
     path_from_row_pks,
+    remove_infinites,
     sqlite3,
+    value_as_boolean,
 )
 from datasette.utils.asgi import Response
 

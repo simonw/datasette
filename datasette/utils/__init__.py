@@ -1,27 +1,28 @@
 import asyncio
-from contextlib import contextmanager
-import click
-from collections import OrderedDict, namedtuple, Counter
 import base64
 import hashlib
 import inspect
 import json
-import markupsafe
-import mergedeep
 import os
 import re
+import secrets
 import shlex
+import shutil
 import tempfile
-import typing
 import time
 import types
-import secrets
-import shutil
+import typing
 import urllib
+from collections import Counter, OrderedDict, namedtuple
+from contextlib import contextmanager
+
+import click
+import markupsafe
+import mergedeep
 import yaml
+
 from .shutil_backport import copytree
 from .sqlite import sqlite3, supports_table_xinfo
-
 
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set(

@@ -1,8 +1,10 @@
-from ..utils import StaticMount
-import click
 import os
 import shutil
 import sys
+
+import click
+
+from ..utils import StaticMount
 
 
 def add_common_publish_arguments_and_options(subcommand):

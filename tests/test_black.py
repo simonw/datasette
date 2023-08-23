@@ -1,8 +1,9 @@
-import black
-from click.testing import CliRunner
-from pathlib import Path
-import pytest
 import sys
+from pathlib import Path
+
+import black
+import pytest
+from click.testing import CliRunner
 
 code_root = Path(__file__).parent.parent
 

@@ -1,12 +1,12 @@
-from datasette.app import Datasette, Database
-from bs4 import BeautifulSoup as Soup
-from .fixtures import (  # noqa
-    app_client,
-    make_app_client,
-)
 import pathlib
-import pytest
 import urllib.parse
+
+import pytest
+from bs4 import BeautifulSoup as Soup
+
+from datasette.app import Database, Datasette
+
+from .fixtures import app_client, make_app_client  # noqa
 from .utils import assert_footer_links, inner_html
 
 

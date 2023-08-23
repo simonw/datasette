@@ -1,8 +1,10 @@
+import json
+from functools import wraps
+
+import markupsafe
+
 from datasette import hookimpl
 from datasette.utils.asgi import Response
-from functools import wraps
-import markupsafe
-import json
 
 
 @hookimpl

@@ -1,11 +1,13 @@
 import json
-from datasette.utils import MultiParams
+from http.cookies import Morsel, SimpleCookie
 from mimetypes import guess_type
-from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
-from http.cookies import SimpleCookie, Morsel
+from urllib.parse import parse_qs, parse_qsl, urlunparse
+
 import aiofiles
 import aiofiles.os
+
+from datasette.utils import MultiParams
 
 # Workaround for adding samesite support to pre 3.8 python
 Morsel._reserved["samesite"] = "SameSite"

@@ -1,7 +1,9 @@
-from datasette import hookimpl, Permission
-from datasette.utils import actor_matches_allow
-import itsdangerous
 import time
+
+import itsdangerous
+
+from datasette import Permission, hookimpl
+from datasette.utils import actor_matches_allow
 
 
 @hookimpl

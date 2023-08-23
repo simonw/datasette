@@ -1,15 +1,18 @@
-from datasette.utils.asgi import NotFound, Forbidden, Response
+import json
+
+import sqlite_utils
+
 from datasette.database import QueryInterrupted
-from .base import DataView, BaseView, _error
 from datasette.utils import (
-    tilde_decode,
-    urlsafe_components,
-    to_css_class,
     escape_sqlite,
     row_sql_params_pks,
+    tilde_decode,
+    to_css_class,
+    urlsafe_components,
 )
-import json
-import sqlite_utils
+from datasette.utils.asgi import Forbidden, NotFound, Response
+
+from .base import BaseView, DataView, _error
 from .table import display_columns_and_rows
 
 
@@ -152,7 +155,7 @@ class RowError(Exception):
 
 
 async def _resolve_row_and_check_permission(datasette, request, permission):
-    from datasette.app import DatabaseNotFound, TableNotFound, RowNotFound
+    from datasette.app import DatabaseNotFound, RowNotFound, TableNotFound
 
     try:
         resolved = await datasette.resolve_row(request)

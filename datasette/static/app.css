@@ -482,20 +482,18 @@ form.sql textarea {
     font-family: monospace;
     font-size: 1.3em;
 }
+form.sql label {
+    width: 15%;
+}
 form label {
     font-weight: bold;
     display: inline-block;
-    width: 15%;
-}
-.advanced-export form label {
-    width: auto;
 }
 .advanced-export input[type=submit] {
     font-size: 0.6em;
     margin-left: 1em;
 }
 label.sort_by_desc {
-    width: auto;
     padding-right: 1em;
 }
 pre#sql-query {

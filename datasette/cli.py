@@ -445,6 +445,10 @@ def uninstall(packages, yes):
     "--token",
     help="API token to send with --get requests",
 )
+@click.option(
+    "--actor",
+    help="Actor to use for --get requests",
+)
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-settings", is_flag=True, help="Show available settings")
 @click.option("--pdb", is_flag=True, help="Launch debugger on any errors")
@@ -499,6 +503,7 @@ def serve(
     root,
     get,
     token,
+    actor,
     version_note,
     help_settings,
     pdb,
@@ -611,7 +616,10 @@ def serve(
         headers = {}
         if token:
             headers["Authorization"] = "Bearer {}".format(token)
-        response = client.get(get, headers=headers)
+        cookies = {}
+        if actor:
+            cookies["ds_actor"] = client.actor_cookie(json.loads(actor))
+        response = client.get(get, headers=headers, cookies=cookies)
         click.echo(response.text)
         exit_code = 0 if response.status == 200 else 1
         sys.exit(exit_code)

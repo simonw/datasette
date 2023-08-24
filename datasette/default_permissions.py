@@ -187,6 +187,30 @@ def permission_allowed_actor_restrictions(datasette, actor, action, resource):
         return None
     _r = actor.get("_r")
 
+    # Special case for view-instance: it's allowed if there are any view-database
+    # or view-table permissions defined
+    if action == "view-instance":
+        database_rules = _r.get("d") or {}
+        for rules in database_rules.values():
+            if "vd" in rules or "view-database" in rules:
+                return None
+        # Now check resources
+        resource_rules = _r.get("r") or {}
+        for _database, resources in resource_rules.items():
+            for rules in resources.values():
+                if "vt" in rules or "view-table" in rules:
+                    return None
+
+    # Special case for view-database: it's allowed if there are any view-table permissions
+    # defined within that database
+    if action == "view-database":
+        database_name = resource
+        resource_rules = _r.get("r") or {}
+        resources_in_database = resource_rules.get(database_name) or {}
+        for rules in resources_in_database.values():
+            if "vt" in rules or "view-table" in rules:
+                return None
+
     # Does this action have an abbreviation?
     to_check = {action}
     permission = datasette.permissions.get(action)

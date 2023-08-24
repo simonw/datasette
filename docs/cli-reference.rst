@@ -122,6 +122,7 @@ Once started you can access it at ``http://localhost:8001``
       --get TEXT                      Run an HTTP GET request against this path,
                                       print results and exit
       --token TEXT                    API token to send with --get requests
+      --actor TEXT                    Actor to use for --get requests
       --version-note TEXT             Additional note to show on /-/versions
       --help-settings                 Show available settings
       --pdb                           Launch debugger on any errors

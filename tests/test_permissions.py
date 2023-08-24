@@ -1018,3 +1018,16 @@ async def test_api_explorer_visibility(
             assert response.status_code == 403
     finally:
         perms_ds._metadata_local = prev_metadata
+
+
+@pytest.mark.asyncio
+async def test_view_table_token_can_access_table(perms_ds):
+    actor = {
+        "id": "restricted-token",
+        "token": "dstok",
+        # Restricted to just view-table on perms_ds_two/t1
+        "_r": {"r": {"perms_ds_two": {"t1": ["vt"]}}},
+    }
+    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
+    response = await perms_ds.client.get("/perms_ds_two/t1.json", cookies=cookies)
+    assert response.status_code == 200

@@ -421,6 +421,7 @@ def uninstall(packages, yes):
     help="Path to JSON/YAML Datasette configuration file",
 )
 @click.option(
+    "-s",
     "--setting",
     "settings",
     type=Setting(),

@@ -722,7 +722,7 @@ async def test_hook_register_routes(ds_client, path, body):
 @pytest.mark.parametrize("configured_path", ("path1", "path2"))
 def test_hook_register_routes_with_datasette(configured_path):
     with make_app_client(
-        metadata={
+        config={
             "plugins": {
                 "register-route-demo": {
                     "path": configured_path,
@@ -741,7 +741,7 @@ def test_hook_register_routes_with_datasette(configured_path):
 def test_hook_register_routes_override():
     "Plugins can over-ride default paths such as /db/table"
     with make_app_client(
-        metadata={
+        config={
             "plugins": {
                 "register-route-demo": {
                     "path": "blah",
@@ -1099,7 +1099,7 @@ async def test_hook_filters_from_request(ds_client):
 @pytest.mark.parametrize("extra_metadata", (False, True))
 async def test_hook_register_permissions(extra_metadata):
     ds = Datasette(
-        metadata={
+        config={
             "plugins": {
                 "datasette-register-permissions": {
                     "permissions": [
@@ -1151,7 +1151,7 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
     if duplicate == "abbr":
         abbr2 = "abbr1"
     ds = Datasette(
-        metadata={
+        config={
             "plugins": {
                 "datasette-register-permissions": {
                     "permissions": [
@@ -1186,7 +1186,7 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
 @pytest.mark.asyncio
 async def test_hook_register_permissions_allows_identical_duplicates():
     ds = Datasette(
-        metadata={
+        config={
             "plugins": {
                 "datasette-register-permissions": {
                     "permissions": [

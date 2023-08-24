@@ -368,7 +368,8 @@ class Datasette:
         for key in config_settings:
             if key not in DEFAULT_SETTINGS:
                 raise StartupError("Invalid setting '{}' in datasette.json".format(key))
-
+        self.config = config
+        print('x', self.config, config)
         # CLI settings should overwrite datasette.json settings
         self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
@@ -674,6 +675,15 @@ class Datasette:
 
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
+        print("XXX", "plugin_config", plugin_name, database, table, self.config)
+        if database is None and table is None:
+            plugins = self.config.get("plugins")
+            if plugins is None:
+                return None
+            plugin_config = plugins.get(plugin_name)
+            plugin_config = resolve_env_secrets(plugin_config, os.environ)
+            return plugin_config
+
         plugins = self.metadata(
             "plugins", database=database, table=table, fallback=fallback
         )

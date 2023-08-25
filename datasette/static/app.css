@@ -94,6 +94,40 @@ em {
     --dark-grey-2: #222;
 }
 
+@media (prefers-color-scheme: dark) {
+    :root { /* TODO */
+        --fg: #111A35;
+        --bg: #F8FAFB;
+        --link: #276890;
+        --link-visited: #54AC8E;
+        --link-hover: #67C98D;
+        --header-bg: var(--link);
+        --header-fg: rgba(255,255,244,0.9);
+        --header-link: rgba(255,255,244,0.8);
+        --header-link-alt: rgba(255,255,244,1);
+        --message-info-bg: rgba(103,201,141,0.3);
+        --message-warning-bg: rgba(245,166,35,0.3);
+        --message-error-bg: rgba(208,2,27,0.3);
+        --pattern-heading-bg: rgba(208,2,27,0.2);
+        --pattern-heading-border: rgba(208,2,27,0.8);
+        --submit-bg: #007bff;
+        --submit-border: #007bff;
+        --button-fg: #007bff;
+        --button-border: #007bff;
+        --select-wrapper-bg: #fafafa;
+        --select-wrapper-after: #bbb;
+
+        --white: white;
+        --black: black;
+        --very-light-grey: #eee;
+        --light-grey-1: #aaa;
+        --light-grey-2: #ccc;
+        --dark-grey: #666;
+        --dark-grey-2: #222;
+    }
+}
+
+
 body {
     margin: 0;
     padding: 0;

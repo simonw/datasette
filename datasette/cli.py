@@ -148,9 +148,6 @@ async def inspect_(files, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     data = {}
     for name, database in app.databases.items():
-        if name == "_internal":
-            # Don't include the in-memory _internal database
-            continue
         counts = await database.table_counts(limit=3600 * 1000)
         data[name] = {
             "hash": database.hash,
@@ -476,6 +473,11 @@ def uninstall(packages, yes):
     "--ssl-certfile",
     help="SSL certificate file",
 )
+@click.option(
+    "--internal",
+    type=click.Path(),
+    help="Path to a persistent Datasette internal SQLite database",
+)
 def serve(
     files,
     immutable,
@@ -507,6 +509,7 @@ def serve(
     nolock,
     ssl_keyfile,
     ssl_certfile,
+    internal,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -570,6 +573,7 @@ def serve(
         pdb=pdb,
         crossdb=crossdb,
         nolock=nolock,
+        internal=internal,
     )
 
     # if files is a single directory, use that as config_dir=

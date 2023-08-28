@@ -1,55 +1,35 @@
 import pytest
 
 
-@pytest.mark.asyncio
-async def test_internal_only_available_to_root(ds_client):
-    cookie = ds_client.actor_cookie({"id": "root"})
-    assert (await ds_client.get("/_internal")).status_code == 403
-    assert (
-        await ds_client.get("/_internal", cookies={"ds_actor": cookie})
-    ).status_code == 200
+# ensure refresh_schemas() gets called before interacting with internal_db
+async def ensure_internal(ds_client):
+    await ds_client.get("/fixtures.json?sql=select+1")
+    return ds_client.ds.get_internal_db()
 
 
 @pytest.mark.asyncio
 async def test_internal_databases(ds_client):
-    cookie = ds_client.actor_cookie({"id": "root"})
-    databases = (
-        await ds_client.get(
-            "/_internal/databases.json?_shape=array", cookies={"ds_actor": cookie}
-        )
-    ).json()
-    assert len(databases) == 2
-    internal, fixtures = databases
-    assert internal["database_name"] == "_internal"
-    assert internal["is_memory"] == 1
-    assert internal["path"] is None
-    assert isinstance(internal["schema_version"], int)
-    assert fixtures["database_name"] == "fixtures"
+    internal_db = await ensure_internal(ds_client)
+    databases = await internal_db.execute("select * from core_databases")
+    assert len(databases) == 1
+    assert databases.rows[0]["database_name"] == "fixtures"
 
 
 @pytest.mark.asyncio
 async def test_internal_tables(ds_client):
-    cookie = ds_client.actor_cookie({"id": "root"})
-    tables = (
-        await ds_client.get(
-            "/_internal/tables.json?_shape=array", cookies={"ds_actor": cookie}
-        )
-    ).json()
+    internal_db = await ensure_internal(ds_client)
+    tables = await internal_db.execute("select * from core_tables")
     assert len(tables) > 5
-    table = tables[0]
+    table = tables.rows[0]
     assert set(table.keys()) == {"rootpage", "table_name", "database_name", "sql"}
 
 
 @pytest.mark.asyncio
 async def test_internal_indexes(ds_client):
-    cookie = ds_client.actor_cookie({"id": "root"})
-    indexes = (
-        await ds_client.get(
-            "/_internal/indexes.json?_shape=array", cookies={"ds_actor": cookie}
-        )
-    ).json()
+    internal_db = await ensure_internal(ds_client)
+    indexes = await internal_db.execute("select * from core_indexes")
     assert len(indexes) > 5
-    index = indexes[0]
+    index = indexes.rows[0]
     assert set(index.keys()) == {
         "partial",
         "name",
@@ -63,14 +43,10 @@ async def test_internal_indexes(ds_client):
 
 @pytest.mark.asyncio
 async def test_internal_foreign_keys(ds_client):
-    cookie = ds_client.actor_cookie({"id": "root"})
-    foreign_keys = (
-        await ds_client.get(
-            "/_internal/foreign_keys.json?_shape=array", cookies={"ds_actor": cookie}
-        )
-    ).json()
+    internal_db = await ensure_internal(ds_client)
+    foreign_keys = await internal_db.execute("select * from core_foreign_keys")
     assert len(foreign_keys) > 5
-    foreign_key = foreign_keys[0]
+    foreign_key = foreign_keys.rows[0]
     assert set(foreign_key.keys()) == {
         "table",
         "seq",

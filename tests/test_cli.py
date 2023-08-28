@@ -154,6 +154,7 @@ def test_metadata_yaml():
         ssl_keyfile=None,
         ssl_certfile=None,
         return_instance=True,
+        internal=None,
     )
     client = _TestClient(ds)
     response = client.get("/-/metadata.json")
@@ -368,3 +369,21 @@ def test_help_settings():
     result = runner.invoke(cli, ["--help-settings"])
     for setting in SETTINGS:
         assert setting.name in result.output
+
+def test_internal_db(tmpdir):
+    runner = CliRunner()
+    internal_path = tmpdir / "internal.db"
+    assert not internal_path.exists()
+    result = runner.invoke(
+        cli, ["--memory", "--internal", str(internal_path), "--get", "/"]
+    )
+    assert result.exit_code == 0
+    assert internal_path.exists()
+
+
+@pytest.mark.parametrize("setting", ("hash_urls", "default_cache_ttl_hashed"))
+def test_help_error_on_hash_urls_setting(setting):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["--setting", setting, 1])
+    assert result.exit_code == 2
+    assert "The hash_urls setting has been removed" in result.output

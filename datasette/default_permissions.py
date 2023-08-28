@@ -146,8 +146,6 @@ async def _resolve_metadata_view_permissions(datasette, actor, action, resource)
         if allow is not None:
             return actor_matches_allow(actor, allow)
     elif action == "view-database":
-        if resource == "_internal" and (actor is None or actor.get("id") != "root"):
-            return False
         database_allow = datasette.metadata("allow", database=resource)
         if database_allow is None:
             return None

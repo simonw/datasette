@@ -587,7 +587,6 @@ DEF = "USE_DEFAULT"
         ({"id": "t", "_r": {"a": ["vd"]}}, "view-database", "one", None, DEF),
         ({"id": "t", "_r": {"a": ["vt"]}}, "view-table", "one", "t1", DEF),
         # But not if it's the wrong permission
-        ({"id": "t", "_r": {"a": ["vd"]}}, "view-instance", None, None, False),
         ({"id": "t", "_r": {"a": ["vi"]}}, "view-database", "one", None, False),
         ({"id": "t", "_r": {"a": ["vd"]}}, "view-table", "one", "t1", False),
         # Works at the "d" for database level:
@@ -631,6 +630,8 @@ DEF = "USE_DEFAULT"
             "t1",
             DEF,
         ),
+        # view-instance is granted if you have view-database
+        ({"id": "t", "_r": {"a": ["vd"]}}, "view-instance", None, None, DEF),
     ),
 )
 async def test_actor_restricted_permissions(

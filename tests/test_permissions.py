@@ -35,6 +35,8 @@ async def perms_ds():
     one = ds.add_memory_database("perms_ds_one")
     two = ds.add_memory_database("perms_ds_two")
     await one.execute_write("create table if not exists t1 (id integer primary key)")
+    await one.execute_write("insert or ignore into t1 (id) values (1)")
+    await one.execute_write("create view if not exists v1 as select * from t1")
     await one.execute_write("create table if not exists t2 (id integer primary key)")
     await two.execute_write("create table if not exists t1 (id integer primary key)")
     return ds
@@ -1031,3 +1033,136 @@ async def test_view_table_token_can_access_table(perms_ds):
     cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
     response = await perms_ds.client.get("/perms_ds_two/t1.json", cookies=cookies)
     assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "restrictions,verb,path,body,expected_status",
+    (
+        # No restrictions
+        (None, "get", "/.json", None, 200),
+        (None, "get", "/perms_ds_one.json", None, 200),
+        (None, "get", "/perms_ds_one/t1.json", None, 200),
+        (None, "get", "/perms_ds_one/t1/1.json", None, 200),
+        (None, "get", "/perms_ds_one/v1.json", None, 200),
+        # Restricted to just view-instance
+        ({"a": ["vi"]}, "get", "/.json", None, 200),
+        ({"a": ["vi"]}, "get", "/perms_ds_one.json", None, 403),
+        ({"a": ["vi"]}, "get", "/perms_ds_one/t1.json", None, 403),
+        ({"a": ["vi"]}, "get", "/perms_ds_one/t1/1.json", None, 403),
+        ({"a": ["vi"]}, "get", "/perms_ds_one/v1.json", None, 403),
+        # Restricted to just view-database
+        ({"a": ["vd"]}, "get", "/.json", None, 200),  # Can see instance too
+        ({"a": ["vd"]}, "get", "/perms_ds_one.json", None, 200),
+        ({"a": ["vd"]}, "get", "/perms_ds_one/t1.json", None, 403),
+        ({"a": ["vd"]}, "get", "/perms_ds_one/t1/1.json", None, 403),
+        ({"a": ["vd"]}, "get", "/perms_ds_one/v1.json", None, 403),
+        # Restricted to just view-table for specific database
+        (
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/.json",
+            None,
+            200,
+        ),  # Can see instance
+        (
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/perms_ds_one.json",
+            None,
+            200,
+        ),  # and this database
+        (
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/perms_ds_two.json",
+            None,
+            403,
+        ),  # But not this one
+        (
+            # Can see the table
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/perms_ds_one/t1.json",
+            None,
+            200,
+        ),
+        (
+            # And the view
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/perms_ds_one/v1.json",
+            None,
+            200,
+        ),
+        # view-table access to a specific table
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/.json",
+            None,
+            200,
+        ),
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/perms_ds_one.json",
+            None,
+            200,
+        ),
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/perms_ds_one/t1.json",
+            None,
+            200,
+        ),
+        # But cannot see the other table
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/perms_ds_one/t2.json",
+            None,
+            403,
+        ),
+        # Or the view
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/perms_ds_one/v1.json",
+            None,
+            403,
+        ),
+    ),
+)
+async def test_actor_restrictions(
+    perms_ds, restrictions, verb, path, body, expected_status
+):
+    actor = {"id": "user"}
+    if restrictions:
+        actor["_r"] = restrictions
+    method = getattr(perms_ds.client, verb)
+    kwargs = {"cookies": {"ds_actor": perms_ds.client.actor_cookie(actor)}}
+    if body:
+        kwargs["json"] = body
+    perms_ds._permission_checks.clear()
+    response = await method(path, **kwargs)
+    assert response.status_code == expected_status, json.dumps(
+        {
+            "verb": verb,
+            "path": path,
+            "body": body,
+            "restrictions": restrictions,
+            "expected_status": expected_status,
+            "response_status": response.status_code,
+            "checks": [
+                {
+                    "action": check["action"],
+                    "resource": check["resource"],
+                    "result": check["result"],
+                }
+                for check in perms_ds._permission_checks
+            ],
+        },
+        indent=2,
+    )

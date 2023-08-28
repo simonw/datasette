@@ -190,9 +190,22 @@ def permission_allowed_actor_restrictions(datasette, actor, action, resource):
     # Special case for view-instance: it's allowed if there are any view-database
     # or view-table permissions defined
     if action == "view-instance":
+        all_rules = _r.get("a") or []
+        if (
+            "view-database" in all_rules
+            or "vd" in all_rules
+            or "view-table" in all_rules
+            or "vt" in all_rules
+        ):
+            return None
         database_rules = _r.get("d") or {}
         for rules in database_rules.values():
-            if "vd" in rules or "view-database" in rules:
+            if (
+                "vd" in rules
+                or "view-database" in rules
+                or "vt" in rules
+                or "view-table" in rules
+            ):
                 return None
         # Now check resources
         resource_rules = _r.get("r") or {}
@@ -205,11 +218,32 @@ def permission_allowed_actor_restrictions(datasette, actor, action, resource):
     # defined within that database
     if action == "view-database":
         database_name = resource
+        all_rules = _r.get("a") or []
+        if (
+            "view-database" in all_rules
+            or "vd" in all_rules
+            or "view-table" in all_rules
+            or "vt" in all_rules
+        ):
+            return None
+        database_rules = (_r.get("d") or {}).get(database_name) or {}
+        if "vt" in database_rules or "view-table" in database_rules:
+            return None
         resource_rules = _r.get("r") or {}
         resources_in_database = resource_rules.get(database_name) or {}
         for rules in resources_in_database.values():
             if "vt" in rules or "view-table" in rules:
                 return None
+
+    if action == "view-table":
+        # Can view table if they have view-table in database or instance too
+        database_name = resource[0]
+        all_rules = _r.get("a") or []
+        if "view-table" in all_rules or "vt" in all_rules:
+            return None
+        database_rules = (_r.get("d") or {}).get(database_name) or {}
+        if "vt" in database_rules or "view-table" in database_rules:
+            return None
 
     # Does this action have an abbreviation?
     to_check = {action}

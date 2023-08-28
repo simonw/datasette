@@ -113,8 +113,8 @@ Once started you can access it at ``http://localhost:8001``
                                       /MOUNT/...
       --memory                        Make /_memory database available
       -c, --config FILENAME           Path to JSON/YAML Datasette configuration file
-      --setting SETTING...            Setting, see
-                                      docs.datasette.io/en/stable/settings.html
+      -s, --setting SETTING...        nested.key, value setting to use in Datasette
+                                      configuration
       --secret TEXT                   Secret used for signing secure values, such as
                                       signed cookies
       --root                          Output URL that sets a cookie authenticating

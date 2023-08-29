@@ -459,7 +459,7 @@ class Datasette:
         current_schema_versions = {
             row["database_name"]: row["schema_version"]
             for row in await internal_db.execute(
-                "select database_name, schema_version from core_databases"
+                "select database_name, schema_version from catalog_databases"
             )
         }
         for database_name, db in self.databases.items():
@@ -474,7 +474,7 @@ class Datasette:
                 values = [database_name, db.is_memory, schema_version]
             await internal_db.execute_write(
                 """
-                INSERT OR REPLACE INTO core_databases (database_name, path, is_memory, schema_version)
+                INSERT OR REPLACE INTO catalog_databases (database_name, path, is_memory, schema_version)
                 VALUES {}
             """.format(
                     placeholders

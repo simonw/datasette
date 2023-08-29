@@ -1149,6 +1149,8 @@ Datasette's internal database
 
 Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a `--internal` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
 
+Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
+
 The internal database is not exposed in the Datasette application by default, which means private data can safely be stored without worry of accidentally leaking information through the default Datasette interface and API. However, other plugins do have full read and write access to the internal database.
 
 Plugins can access this database by calling ``internal_db = datasette.get_internal_database()`` and then executing queries using the :ref:`Database API <internals_database>`.

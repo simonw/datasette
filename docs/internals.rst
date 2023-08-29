@@ -1140,15 +1140,16 @@ Datasette's internal database
 
 Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a `--internal` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
 
-The internal database is not exposed in the Datasette application by default, which means "secrets" can safely be stored without worry of accidentally leaking information through Datasette. However, plugins do have full read and write access to the internal database, so ensure that only trusted plugins as used.
+The internal database is not exposed in the Datasette application by default, which means private data can safely be stored without worry of accidentally leaking information through the default Datasette interface and API. However, other plugins do have full read and write access to the internal database.
 
 Plugins can access this database by calling ``internal_db = datasette.get_internal_database()`` and then executing queries using the :ref:`Database API <internals_database>`.
 
 Plugin authors are asked to practice good etiquette when using the internal database, as all plugins use the same database to store data. For example:
 
-1. Use a unique prefix when creating tables, indices, and triggera in the internal database. If your plugin is called `datasette-xyz`, then prefix names with `datasete_xyz_*`.
+1. Use a unique prefix when creating tables, indices, and triggera in the internal database. If your plugin is called `datasette-xyz`, then prefix names with `datasette_xyz_*`.
 2. Avoid long-running write statements that may stall or block other plugins that are trying to write at the same time.
 3. Use temporary tables or shared in-memory attached databases when possible.
+4. Avoid implementing features that could expose private data stored in the internal database by other plugins.
 
 .. _internals_utils:
 

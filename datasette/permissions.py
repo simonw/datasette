@@ -1,6 +1,13 @@
-import collections
+from dataclasses import dataclass, fields
+from typing import Optional
 
-Permission = collections.namedtuple(
-    "Permission",
-    ("name", "abbr", "description", "takes_database", "takes_resource", "default"),
-)
+
+@dataclass
+class Permission:
+    name: str
+    abbr: Optional[str]
+    description: Optional[str]
+    takes_database: bool
+    takes_resource: bool
+    default: bool
+    implies_can_view: bool = False

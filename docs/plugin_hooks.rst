@@ -794,24 +794,24 @@ If your plugin needs to register additional permissions unique to that plugin - 
             )
         ]
 
-The fields of the ``Permission`` named tuple are as follows:
+The fields of the ``Permission`` class are as follows:
 
-``name``
+``name`` - string
     The name of the permission, e.g. ``upload-csvs``. This should be unique across all plugins that the user might have installed, so choose carefully.
 
-``abbr``
+``abbr`` - string or None
     An abbreviation of the permission, e.g. ``uc``. This is optional - you can set it to ``None`` if you do not want to pick an abbreviation. Since this needs to be unique across all installed plugins it's best not to specify an abbreviation at all. If an abbreviation is provided it will be used when creating restricted signed API tokens.
 
-``description``
+``description`` - string or None
     A human-readable description of what the permission lets you do. Should make sense as the second part of a sentence that starts "A user with this permission can ...".
 
-``takes_database``
+``takes_database`` - boolean
     ``True`` if this permission can be granted on a per-database basis, ``False`` if it is only valid at the overall Datasette instance level.
 
-``takes_resource``
+``takes_resource`` - boolean
     ``True`` if this permission can be granted on a per-resource basis. A resource is a database table, SQL view or :ref:`canned query <canned_queries>`.
 
-``default``
+``default`` - boolean
     The default value for this permission if it is not explicitly granted to a user. ``True`` means the permission is granted by default, ``False`` means it is not.
 
     This should only be ``True`` if you want anonymous users to be able to take this action.

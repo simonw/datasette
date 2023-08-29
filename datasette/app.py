@@ -431,6 +431,20 @@ class Datasette:
         self._root_token = secrets.token_hex(32)
         self.client = DatasetteClient(self)
 
+    def get_permission(self, name_or_abbr: str) -> "Permission":
+        """
+        Returns a Permission object for the given name or abbreviation. Raises KeyError if not found.
+        """
+        if name_or_abbr in self.permissions:
+            return self.permissions[name_or_abbr]
+        # Try abbreviation
+        for permission in self.permissions.values():
+            if permission.abbr == name_or_abbr:
+                return permission
+        raise KeyError(
+            "No permission found with name or abbreviation {}".format(name_or_abbr)
+        )
+
     async def refresh_schemas(self):
         if self._refresh_schemas_lock.locked():
             return

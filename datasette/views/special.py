@@ -122,7 +122,17 @@ class PermissionsDebugView(BaseView):
             # list() avoids error if check is performed during template render:
             {
                 "permission_checks": list(reversed(self.ds._permission_checks)),
-                "permissions": list(self.ds.permissions.values()),
+                "permissions": [
+                    (
+                        p.name,
+                        p.abbr,
+                        p.description,
+                        p.takes_database,
+                        p.takes_resource,
+                        p.default,
+                    )
+                    for p in self.ds.permissions.values()
+                ],
             },
         )
 

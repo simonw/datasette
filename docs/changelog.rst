@@ -4,6 +4,17 @@
 Changelog
 =========
 
+.. _v1_0_a5:
+
+1.0a5 (2023-08-29)
+------------------
+
+- When restrictions are applied to :ref:`API tokens <CreateTokenView>`, those restrictions now behave slightly differently: applying the ``view-table`` restriction will imply the ability to ``view-database`` for the database containing that table, and both ``view-table`` and ``view-database`` will imply ``view-instance``. Previously you needed to create a token with restrictions that explicitly listed ``view-instance`` and ``view-database`` and ``view-table`` in order to view a table without getting a permission denied error. (:issue:`2102`)
+- New ``datasette.yaml`` (or ``.json``) configuration file, which can be specified using ``datasette -c path-to-file``. The goal here to consolidate settings, plugin configuration, permissions, canned queries, and other Datasette configuration into a single single file, separate from ``metadata.yaml``. The legacy ``settings.json`` config file used for :ref:`config_dir` has been removed, and ``datasette.yaml`` has a ``"settings"`` section where the same settings key/value pairs can be included. In the next future alpha release, more configuration such as plugins/permissions/canned queries will be moved to the ``datasette.yaml`` file. See :issue:`2093` for more details. Thanks, Alex Garcia.
+- The ``-s/--setting`` option can now take dotted paths to nested settings. These will then be used to set or over-ride the same options as are present in the new configuration file. (:issue:`2156`)
+- New ``--actor '{"id": "json-goes-here"}'`` option for use with ``datasette --get`` to treat the simulated request as being made by a specific actor, see :ref:`cli_datasette_get`. (:issue:`2153`)
+- The Datasette ``_internal`` database has had some changes. It no longer shows up in the ``datasette.databases`` list by default, and is now instead available to plugins using the ``datasette.get_internal_database()``. Plugins are invited to use this as a private database to store configuration and settings and secrets that should not be made visible through the default Datasette interface. Users can pass the new  ``--internal internal.db`` option to persist that internal database to disk. Thanks, Alex Garcia. (:issue:`2157`).
+
 .. _v1_0_a4:
 
 1.0a4 (2023-08-21)

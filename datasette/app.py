@@ -438,7 +438,7 @@ class Datasette:
             await self._refresh_schemas()
 
     async def _refresh_schemas(self):
-        internal_db = self.get_internal_db()
+        internal_db = self.get_internal_database()
         if not self.internal_db_created:
             await init_internal_db(internal_db)
             self.internal_db_created = True
@@ -655,7 +655,7 @@ class Datasette:
     def _metadata(self):
         return self.metadata()
 
-    def get_internal_db(self):
+    def get_internal_database(self):
         return self._internal_database
 
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):

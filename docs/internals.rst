@@ -271,7 +271,7 @@ Property exposing a ``collections.OrderedDict`` of databases currently connected
 
 The dictionary keys are the name of the database that is used in the URL - e.g. ``/fixtures`` would have a key of ``"fixtures"``. The values are :ref:`internals_database` instances.
 
-All databases are listed, irrespective of user permissions. This means that the ``_internal`` database will always be listed here.
+All databases are listed, irrespective of user permissions.
 
 .. _datasette_permissions:
 
@@ -478,6 +478,13 @@ The following example creates a token that can access ``view-instance`` and ``vi
     The name of the database - optional.
 
 Returns the specified database object. Raises a ``KeyError`` if the database does not exist. Call this method without an argument to return the first connected database.
+
+.. _get_internal_database:
+
+.get_internal_database()
+-------------------
+
+TODO
 
 .. _datasette_add_database:
 
@@ -1127,19 +1134,21 @@ You can selectively disable CSRF protection using the :ref:`plugin_hook_skip_csr
 
 .. _internals_internal:
 
-The _internal database
+Datasette's internal database
 ======================
 
-.. warning::
-    This API should be considered unstable - the structure of these tables may change prior to the release of Datasette 1.0.
 
-Datasette maintains an in-memory SQLite database with details of the the databases, tables and columns for all of the attached databases.
+Datasette mantains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a `--internal` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
 
-By default all actors are denied access to the ``view-database`` permission for the ``_internal`` database, so the database is not visible to anyone unless they :ref:`sign in as root <authentication_root>`.
+The internal database is not exposed in the Datasette application by default, which means "secrets" can safely be stored without worry of accidentally leaking information through Datasette. However, plugins do have full read and write access to the internal database, so ensure that only trusted plugins as used.
 
-Plugins can access this database by calling ``db = datasette.get_database("_internal")`` and then executing queries using the :ref:`Database API <internals_database>`.
+Plugins can access this database by calling ``internal_db = datasette.get_internal_database()`` and then executing queries using the :ref:`Database API <internals_database>`.
 
-You can explore an example of this database by `signing in as root <https://latest.datasette.io/login-as-root>`__ to the ``latest.datasette.io`` demo instance and then navigating to `latest.datasette.io/_internal <https://latest.datasette.io/_internal>`__.
+Plugin authors are asked to practice good etiquette when using the internal database, as all plugins use the same database to store data. For example:
+
+1. Use a unique prefix when creating tables, indicies, and triggera in the internal database. If your plugin is called `datasette-xyz`, then prefix names with `datasete_xyz_*`.
+2. Avoid long-running write statements that may stall or block other plugins that are trying to write at the same time.
+3. Use temporary tables or shared in-memory attached databases when possible.
 
 .. _internals_utils:
 

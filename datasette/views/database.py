@@ -950,7 +950,7 @@ class TableCreateView(BaseView):
 
 
 async def _table_columns(datasette, database_name):
-    internal_db = datasette.get_internal_db()
+    internal_db = datasette.get_internal_database()
     result = await internal_db.execute(
         "select table_name, name from core_columns where database_name = ?",
         [database_name],

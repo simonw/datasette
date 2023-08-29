@@ -4,7 +4,7 @@ import pytest
 # ensure refresh_schemas() gets called before interacting with internal_db
 async def ensure_internal(ds_client):
     await ds_client.get("/fixtures.json?sql=select+1")
-    return ds_client.ds.get_internal_db()
+    return ds_client.ds.get_internal_database()
 
 
 @pytest.mark.asyncio

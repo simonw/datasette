@@ -482,9 +482,9 @@ Returns the specified database object. Raises a ``KeyError`` if the database doe
 .. _get_internal_database:
 
 .get_internal_database()
--------------------
+------------------------
 
-TODO
+Returns a database object for reading and writing to the private :ref:`internal database <internals_internal>`.
 
 .. _datasette_add_database:
 
@@ -1135,8 +1135,7 @@ You can selectively disable CSRF protection using the :ref:`plugin_hook_skip_csr
 .. _internals_internal:
 
 Datasette's internal database
-======================
-
+=============================
 
 Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a `--internal` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
 

@@ -1179,12 +1179,30 @@ async def test_actor_restrictions(
         # view-table and view-database implies view-instance
         ({"a": ["view-table"]}, "view-instance", None, True),
         ({"a": ["view-database"]}, "view-instance", None, True),
+        # update-row does not imply view-instance
+        ({"a": ["update-row"]}, "view-instance", None, False),
         # view-table on a resource implies view-instance
         ({"r": {"db1": {"t1": ["view-table"]}}}, "view-instance", None, True),
+        # update-row on a resource does not imply view-instance
+        ({"r": {"db1": {"t1": ["update-row"]}}}, "view-instance", None, False),
         # view-database on a resource implies view-instance
         ({"d": {"db1": ["view-database"]}}, "view-instance", None, True),
-        # edit-row does not imply view-instance
-        ({"a": ["edit-row"]}, "view-instance", None, False),
+        # Having view-table on "a" allows access to any specific table
+        ({"a": ["view-table"]}, "view-table", ("dbname", "tablename"), True),
+        # Ditto for on the database
+        (
+            {"d": {"dbname": ["view-table"]}},
+            "view-table",
+            ("dbname", "tablename"),
+            True,
+        ),
+        # But not if it's allowed on a different database
+        (
+            {"d": {"dbname": ["view-table"]}},
+            "view-table",
+            ("dbname2", "tablename"),
+            False,
+        ),
     ),
 )
 async def test_restrictions_allow_action(restrictions, action, resource, expected):

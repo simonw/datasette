@@ -266,62 +266,31 @@ def restrictions_allow_action(
     resource: Union[str, Tuple[str, str]],
 ):
     "Do these restrictions allow the requested action against the requested resource?"
-    # Special case for view-instance: it's allowed if there are any view-database
-    # or view-table permissions defined
     if action == "view-instance":
+        # Special case for view-instance: it's allowed if the restrictions include any
+        # permissions that have the implies_can_view=True flag set
         all_rules = restrictions.get("a") or []
-        if (
-            "view-database" in all_rules
-            or "vd" in all_rules
-            or "view-table" in all_rules
-            or "vt" in all_rules
-        ):
+        for database_rules in (restrictions.get("d") or {}).values():
+            all_rules += database_rules
+        for database_resource_rules in (restrictions.get("r") or {}).values():
+            for resource_rules in database_resource_rules.values():
+                all_rules += resource_rules
+        permissions = [datasette.get_permission(action) for action in all_rules]
+        if any(p for p in permissions if p.implies_can_view):
             return True
-        database_rules = restrictions.get("d") or {}
-        for rules in database_rules.values():
-            if (
-                "vd" in rules
-                or "view-database" in rules
-                or "vt" in rules
-                or "view-table" in rules
-            ):
-                return True
-        # Now check resources
-        resource_rules = restrictions.get("r") or {}
-        for _database, resources in resource_rules.items():
-            for rules in resources.values():
-                if "vt" in rules or "view-table" in rules:
-                    return True
 
-    # Special case for view-database: it's allowed if there are any view-table permissions
-    # defined within that database
     if action == "view-database":
-        database_name = resource
+        # Special case for view-database: it's allowed if the restrictions include any
+        # permissions that have the implies_can_view=True flag set AND takes_database
         all_rules = restrictions.get("a") or []
-        if (
-            "view-database" in all_rules
-            or "vd" in all_rules
-            or "view-table" in all_rules
-            or "vt" in all_rules
-        ):
-            return True
-        database_rules = (restrictions.get("d") or {}).get(database_name) or {}
-        if "vt" in database_rules or "view-table" in database_rules:
-            return True
-        resource_rules = restrictions.get("r") or {}
-        resources_in_database = resource_rules.get(database_name) or {}
-        for rules in resources_in_database.values():
-            if "vt" in rules or "view-table" in rules:
-                return True
-
-    if action == "view-table":
-        # Can view table if they have view-table in database or instance too
-        database_name = resource[0]
-        all_rules = restrictions.get("a") or []
-        if "view-table" in all_rules or "vt" in all_rules:
-            return True
-        database_rules = (restrictions.get("d") or {}).get(database_name) or {}
-        if "vt" in database_rules or "view-table" in database_rules:
+        database_rules = list((restrictions.get("d") or {}).get(resource) or [])
+        all_rules += database_rules
+        resource_rules = ((restrictions.get("r") or {}).get(resource) or {}).values()
+        for resource_rules in (restrictions.get("r") or {}).values():
+            for table_rules in resource_rules.values():
+                all_rules += table_rules
+        permissions = [datasette.get_permission(action) for action in all_rules]
+        if any(p for p in permissions if p.implies_can_view and p.takes_database):
             return True
 
     # Does this action have an abbreviation?
@@ -340,8 +309,12 @@ def restrictions_allow_action(
         if to_check.intersection(all_allowed):
             return True
     # How about for the current database?
-    if isinstance(resource, str):
-        database_allowed = restrictions.get("d", {}).get(resource)
+    if resource:
+        if isinstance(resource, str):
+            database_name = resource
+        else:
+            database_name = resource[0]
+        database_allowed = restrictions.get("d", {}).get(database_name)
         if database_allowed is not None:
             assert isinstance(database_allowed, list)
             if to_check.intersection(database_allowed):

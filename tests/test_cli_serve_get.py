@@ -80,7 +80,7 @@ def test_serve_with_get_and_token():
     assert json.loads(result2.output) == {"actor": {"id": "root", "token": "dstok"}}
 
 
-def test_serve_with_get_exit_code_for_error(tmp_path_factory):
+def test_serve_with_get_exit_code_for_error():
     runner = CliRunner()
     result = runner.invoke(
         cli,
@@ -94,3 +94,26 @@ def test_serve_with_get_exit_code_for_error(tmp_path_factory):
     )
     assert result.exit_code == 1
     assert "404" in result.output
+
+
+def test_serve_get_actor():
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "serve",
+            "--memory",
+            "--get",
+            "/-/actor.json",
+            "--actor",
+            '{"id": "root", "extra": "x"}',
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert json.loads(result.output) == {
+        "actor": {
+            "id": "root",
+            "extra": "x",
+        }
+    }

@@ -159,3 +159,17 @@ def test_datasette_error_if_string_not_list(tmpdir):
     db_path = str(tmpdir / "data.db")
     with pytest.raises(ValueError):
         ds = Datasette(db_path)
+
+
+@pytest.mark.asyncio
+async def test_get_permission(ds_client):
+    ds = ds_client.ds
+    for name_or_abbr in ("vi", "view-instance", "vt", "view-table"):
+        permission = ds.get_permission(name_or_abbr)
+        if "-" in name_or_abbr:
+            assert permission.name == name_or_abbr
+        else:
+            assert permission.abbr == name_or_abbr
+    # And test KeyError
+    with pytest.raises(KeyError):
+        ds.get_permission("missing-permission")

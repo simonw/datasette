@@ -13,7 +13,7 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
-        python-version: 3.9
+        python-version: 3.11
     - uses: actions/cache@v2
       name: Configure pip caching
       with:

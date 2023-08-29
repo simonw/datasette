@@ -1,6 +1,7 @@
 import collections
 from datasette.app import Datasette
 from datasette.cli import cli
+from datasette.default_permissions import restrictions_allow_action
 from .fixtures import app_client, assert_permissions_checked, make_app_client
 from click.testing import CliRunner
 from bs4 import BeautifulSoup as Soup
@@ -637,6 +638,7 @@ DEF = "USE_DEFAULT"
 async def test_actor_restricted_permissions(
     perms_ds, actor, permission, resource_1, resource_2, expected_result
 ):
+    perms_ds.pdb = True
     cookies = {"ds_actor": perms_ds.sign({"a": {"id": "root"}}, "actor")}
     csrftoken = (await perms_ds.client.get("/-/permissions", cookies=cookies)).cookies[
         "ds_csrftoken"
@@ -1167,3 +1169,26 @@ async def test_actor_restrictions(
         },
         indent=2,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "restrictions,action,resource,expected",
+    (
+        ({"a": ["view-instance"]}, "view-instance", None, True),
+        # view-table and view-database implies view-instance
+        ({"a": ["view-table"]}, "view-instance", None, True),
+        ({"a": ["view-database"]}, "view-instance", None, True),
+        # view-table on a resource implies view-instance
+        ({"r": {"db1": {"t1": ["view-table"]}}}, "view-instance", None, True),
+        # view-database on a resource implies view-instance
+        ({"d": {"db1": ["view-database"]}}, "view-instance", None, True),
+        # edit-row does not imply view-instance
+        ({"a": ["edit-row"]}, "view-instance", None, False),
+    ),
+)
+async def test_restrictions_allow_action(restrictions, action, resource, expected):
+    ds = Datasette()
+    await ds.invoke_startup()
+    actual = restrictions_allow_action(ds, restrictions, action, resource)
+    assert actual == expected

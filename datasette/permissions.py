@@ -10,4 +10,7 @@ class Permission:
     takes_database: bool
     takes_resource: bool
     default: bool
+    # This is deliberately undocumented: it's considered an internal
+    # implementation detail for view-table/view-database and should
+    # not be used by plugins as it may change in the future.
     implies_can_view: bool = False

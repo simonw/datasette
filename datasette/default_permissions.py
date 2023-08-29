@@ -2,6 +2,7 @@ from datasette import hookimpl, Permission
 from datasette.utils import actor_matches_allow
 import itsdangerous
 import time
+from typing import Union, Tuple
 
 
 @hookimpl
@@ -9,32 +10,112 @@ def register_permissions():
     return (
         # name, abbr, description, takes_database, takes_resource, default
         Permission(
-            "view-instance", "vi", "View Datasette instance", False, False, True
-        ),
-        Permission("view-database", "vd", "View database", True, False, True),
-        Permission(
-            "view-database-download", "vdd", "Download database file", True, False, True
-        ),
-        Permission("view-table", "vt", "View table", True, True, True),
-        Permission("view-query", "vq", "View named query results", True, True, True),
-        Permission(
-            "execute-sql", "es", "Execute read-only SQL queries", True, False, True
+            name="view-instance",
+            abbr="vi",
+            description="View Datasette instance",
+            takes_database=False,
+            takes_resource=False,
+            default=True,
         ),
         Permission(
-            "permissions-debug",
-            "pd",
-            "Access permission debug tool",
-            False,
-            False,
-            False,
+            name="view-database",
+            abbr="vd",
+            description="View database",
+            takes_database=True,
+            takes_resource=False,
+            default=True,
+            implies_can_view=True,
         ),
-        Permission("debug-menu", "dm", "View debug menu items", False, False, False),
-        # Write API permissions
-        Permission("insert-row", "ir", "Insert rows", True, True, False),
-        Permission("delete-row", "dr", "Delete rows", True, True, False),
-        Permission("update-row", "ur", "Update rows", True, True, False),
-        Permission("create-table", "ct", "Create tables", True, False, False),
-        Permission("drop-table", "dt", "Drop tables", True, True, False),
+        Permission(
+            name="view-database-download",
+            abbr="vdd",
+            description="Download database file",
+            takes_database=True,
+            takes_resource=False,
+            default=True,
+        ),
+        Permission(
+            name="view-table",
+            abbr="vt",
+            description="View table",
+            takes_database=True,
+            takes_resource=True,
+            default=True,
+            implies_can_view=True,
+        ),
+        Permission(
+            name="view-query",
+            abbr="vq",
+            description="View named query results",
+            takes_database=True,
+            takes_resource=True,
+            default=True,
+            implies_can_view=True,
+        ),
+        Permission(
+            name="execute-sql",
+            abbr="es",
+            description="Execute read-only SQL queries",
+            takes_database=True,
+            takes_resource=False,
+            default=True,
+        ),
+        Permission(
+            name="permissions-debug",
+            abbr="pd",
+            description="Access permission debug tool",
+            takes_database=False,
+            takes_resource=False,
+            default=False,
+        ),
+        Permission(
+            name="debug-menu",
+            abbr="dm",
+            description="View debug menu items",
+            takes_database=False,
+            takes_resource=False,
+            default=False,
+        ),
+        Permission(
+            name="insert-row",
+            abbr="ir",
+            description="Insert rows",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
+        Permission(
+            name="delete-row",
+            abbr="dr",
+            description="Delete rows",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
+        Permission(
+            name="update-row",
+            abbr="ur",
+            description="Update rows",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
+        Permission(
+            name="create-table",
+            abbr="ct",
+            description="Create tables",
+            takes_database=True,
+            takes_resource=False,
+            default=False,
+        ),
+        Permission(
+            name="drop-table",
+            abbr="dt",
+            description="Drop tables",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
     )
 
 
@@ -178,6 +259,107 @@ async def _resolve_metadata_view_permissions(datasette, actor, action, resource)
         return actor_matches_allow(actor, database_allow_sql)
 
 
+def restrictions_allow_action(
+    datasette: "Datasette",
+    restrictions: dict,
+    action: str,
+    resource: Union[str, Tuple[str, str]],
+):
+    "Do these restrictions allow the requested action against the requested resource?"
+    # Special case for view-instance: it's allowed if there are any view-database
+    # or view-table permissions defined
+    if action == "view-instance":
+        all_rules = restrictions.get("a") or []
+        if (
+            "view-database" in all_rules
+            or "vd" in all_rules
+            or "view-table" in all_rules
+            or "vt" in all_rules
+        ):
+            return True
+        database_rules = restrictions.get("d") or {}
+        for rules in database_rules.values():
+            if (
+                "vd" in rules
+                or "view-database" in rules
+                or "vt" in rules
+                or "view-table" in rules
+            ):
+                return True
+        # Now check resources
+        resource_rules = restrictions.get("r") or {}
+        for _database, resources in resource_rules.items():
+            for rules in resources.values():
+                if "vt" in rules or "view-table" in rules:
+                    return True
+
+    # Special case for view-database: it's allowed if there are any view-table permissions
+    # defined within that database
+    if action == "view-database":
+        database_name = resource
+        all_rules = restrictions.get("a") or []
+        if (
+            "view-database" in all_rules
+            or "vd" in all_rules
+            or "view-table" in all_rules
+            or "vt" in all_rules
+        ):
+            return True
+        database_rules = (restrictions.get("d") or {}).get(database_name) or {}
+        if "vt" in database_rules or "view-table" in database_rules:
+            return True
+        resource_rules = restrictions.get("r") or {}
+        resources_in_database = resource_rules.get(database_name) or {}
+        for rules in resources_in_database.values():
+            if "vt" in rules or "view-table" in rules:
+                return True
+
+    if action == "view-table":
+        # Can view table if they have view-table in database or instance too
+        database_name = resource[0]
+        all_rules = restrictions.get("a") or []
+        if "view-table" in all_rules or "vt" in all_rules:
+            return True
+        database_rules = (restrictions.get("d") or {}).get(database_name) or {}
+        if "vt" in database_rules or "view-table" in database_rules:
+            return True
+
+    # Does this action have an abbreviation?
+    to_check = {action}
+    permission = datasette.permissions.get(action)
+    if permission and permission.abbr:
+        to_check.add(permission.abbr)
+
+    # If restrictions is defined then we use those to further restrict the actor
+    # Crucially, we only use this to say NO (return False) - we never
+    # use it to return YES (True) because that might over-ride other
+    # restrictions placed on this actor
+    all_allowed = restrictions.get("a")
+    if all_allowed is not None:
+        assert isinstance(all_allowed, list)
+        if to_check.intersection(all_allowed):
+            return True
+    # How about for the current database?
+    if isinstance(resource, str):
+        database_allowed = restrictions.get("d", {}).get(resource)
+        if database_allowed is not None:
+            assert isinstance(database_allowed, list)
+            if to_check.intersection(database_allowed):
+                return True
+    # Or the current table? That's any time the resource is (database, table)
+    if resource is not None and not isinstance(resource, str) and len(resource) == 2:
+        database, table = resource
+        table_allowed = restrictions.get("r", {}).get(database, {}).get(table)
+        # TODO: What should this do for canned queries?
+        if table_allowed is not None:
+            assert isinstance(table_allowed, list)
+            if to_check.intersection(table_allowed):
+                return True
+
+    # This action is not specifically allowed, so reject it
+    return False
+
+
 @hookimpl(specname="permission_allowed")
 def permission_allowed_actor_restrictions(datasette, actor, action, resource):
     if actor is None:
@@ -186,98 +368,12 @@ def permission_allowed_actor_restrictions(datasette, actor, action, resource):
         # No restrictions, so we have no opinion
         return None
     _r = actor.get("_r")
-
-    # Special case for view-instance: it's allowed if there are any view-database
-    # or view-table permissions defined
-    if action == "view-instance":
-        all_rules = _r.get("a") or []
-        if (
-            "view-database" in all_rules
-            or "vd" in all_rules
-            or "view-table" in all_rules
-            or "vt" in all_rules
-        ):
-            return None
-        database_rules = _r.get("d") or {}
-        for rules in database_rules.values():
-            if (
-                "vd" in rules
-                or "view-database" in rules
-                or "vt" in rules
-                or "view-table" in rules
-            ):
-                return None
-        # Now check resources
-        resource_rules = _r.get("r") or {}
-        for _database, resources in resource_rules.items():
-            for rules in resources.values():
-                if "vt" in rules or "view-table" in rules:
-                    return None
-
-    # Special case for view-database: it's allowed if there are any view-table permissions
-    # defined within that database
-    if action == "view-database":
-        database_name = resource
-        all_rules = _r.get("a") or []
-        if (
-            "view-database" in all_rules
-            or "vd" in all_rules
-            or "view-table" in all_rules
-            or "vt" in all_rules
-        ):
-            return None
-        database_rules = (_r.get("d") or {}).get(database_name) or {}
-        if "vt" in database_rules or "view-table" in database_rules:
-            return None
-        resource_rules = _r.get("r") or {}
-        resources_in_database = resource_rules.get(database_name) or {}
-        for rules in resources_in_database.values():
-            if "vt" in rules or "view-table" in rules:
-                return None
-
-    if action == "view-table":
-        # Can view table if they have view-table in database or instance too
-        database_name = resource[0]
-        all_rules = _r.get("a") or []
-        if "view-table" in all_rules or "vt" in all_rules:
-            return None
-        database_rules = (_r.get("d") or {}).get(database_name) or {}
-        if "vt" in database_rules or "view-table" in database_rules:
-            return None
-
-    # Does this action have an abbreviation?
-    to_check = {action}
-    permission = datasette.permissions.get(action)
-    if permission and permission.abbr:
-        to_check.add(permission.abbr)
-
-    # If _r is defined then we use those to further restrict the actor
-    # Crucially, we only use this to say NO (return False) - we never
-    # use it to return YES (True) because that might over-ride other
-    # restrictions placed on this actor
-    all_allowed = _r.get("a")
-    if all_allowed is not None:
-        assert isinstance(all_allowed, list)
-        if to_check.intersection(all_allowed):
-            return None
-    # How about for the current database?
-    if isinstance(resource, str):
-        database_allowed = _r.get("d", {}).get(resource)
-        if database_allowed is not None:
-            assert isinstance(database_allowed, list)
-            if to_check.intersection(database_allowed):
-                return None
-    # Or the current table? That's any time the resource is (database, table)
-    if resource is not None and not isinstance(resource, str) and len(resource) == 2:
-        database, table = resource
-        table_allowed = _r.get("r", {}).get(database, {}).get(table)
-        # TODO: What should this do for canned queries?
-        if table_allowed is not None:
-            assert isinstance(table_allowed, list)
-            if to_check.intersection(table_allowed):
-                return None
-    # This action is not specifically allowed, so reject it
-    return False
+    if restrictions_allow_action(datasette, _r, action, resource):
+        # Return None because we do not have an opinion here
+        return None
+    else:
+        # Block this permission check
+        return False
 
 
 @hookimpl

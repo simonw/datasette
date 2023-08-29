@@ -134,6 +134,8 @@ Once started you can access it at ``http://localhost:8001``
                                       mode
       --ssl-keyfile TEXT              SSL key file
       --ssl-certfile TEXT             SSL certificate file
+      --internal PATH                 Path to a persistent Datasette internal SQLite
+                                      database
       --help                          Show this message and exit.
 
 

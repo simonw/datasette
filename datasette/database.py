@@ -29,7 +29,13 @@ AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
 class Database:
     def __init__(
-        self, ds, path=None, is_mutable=True, is_memory=False, memory_name=None
+        self,
+        ds,
+        path=None,
+        is_mutable=True,
+        is_memory=False,
+        memory_name=None,
+        mode=None,
     ):
         self.name = None
         self.route = None
@@ -50,6 +56,7 @@ class Database:
         self._write_connection = None
         # This is used to track all file connections so they can be closed
         self._all_file_connections = []
+        self.mode = mode
 
     @property
     def cached_table_counts(self):
@@ -90,6 +97,7 @@ class Database:
             return conn
         if self.is_memory:
             return sqlite3.connect(":memory:", uri=True)
+
         # mode=ro or immutable=1?
         if self.is_mutable:
             qs = "?mode=ro"
@@ -100,6 +108,8 @@ class Database:
         assert not (write and not self.is_mutable)
         if write:
             qs = ""
+        if self.mode is not None:
+            qs = f"?mode={self.mode}"
         conn = sqlite3.connect(
             f"file:{self.path}{qs}", uri=True, check_same_thread=False
         )

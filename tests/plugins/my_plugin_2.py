@@ -120,7 +120,7 @@ def permission_allowed(datasette, actor, action):
         assert (
             2
             == (
-                await datasette.get_database("_internal").execute("select 1 + 1")
+                await datasette.get_internal_database().execute("select 1 + 1")
             ).first()[0]
         )
         if action == "this_is_allowed_async":
@@ -142,7 +142,8 @@ def startup(datasette):
     async def inner():
         # Run against _internal so tests that use the ds_client fixture
         # (which has no databases yet on startup) do not fail:
-        result = await datasette.get_database("_internal").execute("select 1 + 1")
+        internal_db = datasette.get_internal_database()
+        result = await internal_db.execute("select 1 + 1")
         datasette._startup_hook_calculation = result.first()[0]
 
     return inner

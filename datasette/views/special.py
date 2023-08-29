@@ -238,7 +238,7 @@ class CreateTokenView(BaseView):
         # Build list of databases and tables the user has permission to view
         database_with_tables = []
         for database in self.ds.databases.values():
-            if database.name in ("_internal", "_memory"):
+            if database.name == "_memory":
                 continue
             if not await self.ds.permission_allowed(
                 request.actor, "view-database", database.name

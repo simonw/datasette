@@ -329,7 +329,7 @@ def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
 @pytest.mark.asyncio
 async def test_hook_asgi_wrapper(ds_client):
     response = await ds_client.get("/fixtures")
-    assert "_internal, fixtures" == response.headers["x-databases"]
+    assert "fixtures" == response.headers["x-databases"]
 
 
 def test_hook_extra_template_vars(restore_working_directory):

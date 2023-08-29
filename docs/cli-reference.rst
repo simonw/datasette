@@ -113,8 +113,8 @@ Once started you can access it at ``http://localhost:8001``
                                       /MOUNT/...
       --memory                        Make /_memory database available
       -c, --config FILENAME           Path to JSON/YAML Datasette configuration file
-      --setting SETTING...            Setting, see
-                                      docs.datasette.io/en/stable/settings.html
+      -s, --setting SETTING...        nested.key, value setting to use in Datasette
+                                      configuration
       --secret TEXT                   Secret used for signing secure values, such as
                                       signed cookies
       --root                          Output URL that sets a cookie authenticating
@@ -122,7 +122,7 @@ Once started you can access it at ``http://localhost:8001``
       --get TEXT                      Run an HTTP GET request against this path,
                                       print results and exit
       --token TEXT                    API token to send with --get requests
-      --actor TEXT                    Actor to use for --get requests
+      --actor TEXT                    Actor to use for --get requests (JSON string)
       --version-note TEXT             Additional note to show on /-/versions
       --help-settings                 Show available settings
       --pdb                           Launch debugger on any errors
@@ -149,7 +149,9 @@ The ``--get`` option to ``datasette serve`` (or just ``datasette``) specifies th
 
 This means that all of Datasette's functionality can be accessed directly from the command-line.
 
-For example::
+For example:
+
+.. code-block:: bash
 
     datasette --get '/-/versions.json' | jq .
 
@@ -195,7 +197,13 @@ For example::
 
 You can use the ``--token TOKEN`` option to send an :ref:`API token <CreateTokenView>` with the simulated request.
 
-The exit code will be 0 if the request succeeds and 1 if the request produced an HTTP status code other than 200 - e.g. a 404 or 500 error.
+Or you can make a request as a specific actor by passing a JSON representation of that actor to ``--actor``:
+
+.. code-block:: bash
+
+    datasette --memory --actor '{"id": "root"}' --get '/-/actor.json'
+
+The exit code of ``datasette --get`` will be 0 if the request succeeds and 1 if the request produced an HTTP status code other than 200 - e.g. a 404 or 500 error.
 
 This lets you use ``datasette --get /`` to run tests against a Datasette application in a continuous integration environment such as GitHub Actions.
 

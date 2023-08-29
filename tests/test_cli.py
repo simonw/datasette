@@ -221,20 +221,27 @@ def test_serve_invalid_ports(invalid_port):
     assert "Invalid value for '-p'" in result.stderr
 
 
-def test_setting():
+@pytest.mark.parametrize(
+    "args",
+    (
+        ["--setting", "default_page_size", "5"],
+        ["--setting", "settings.default_page_size", "5"],
+        ["-s", "settings.default_page_size", "5"],
+    ),
+)
+def test_setting(args):
     runner = CliRunner()
-    result = runner.invoke(
-        cli, ["--setting", "default_page_size", "5", "--get", "/-/settings.json"]
-    )
+    result = runner.invoke(cli, ["--get", "/-/settings.json"] + args)
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["default_page_size"] == 5
+    settings = json.loads(result.output)
+    assert settings["default_page_size"] == 5
 
 
 def test_setting_type_validation():
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["--setting", "default_page_size", "dog"])
     assert result.exit_code == 2
-    assert '"default_page_size" should be an integer' in result.stderr
+    assert '"settings.default_page_size" should be an integer' in result.stderr
 
 
 @pytest.mark.parametrize("default_allow_sql", (True, False))
@@ -361,11 +368,3 @@ def test_help_settings():
     result = runner.invoke(cli, ["--help-settings"])
     for setting in SETTINGS:
         assert setting.name in result.output
-
-
-@pytest.mark.parametrize("setting", ("hash_urls", "default_cache_ttl_hashed"))
-def test_help_error_on_hash_urls_setting(setting):
-    runner = CliRunner()
-    result = runner.invoke(cli, ["--setting", setting, 1])
-    assert result.exit_code == 2
-    assert "The hash_urls setting has been removed" in result.output

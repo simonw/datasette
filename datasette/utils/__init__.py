@@ -1219,3 +1219,52 @@ async def row_sql_params_pks(db, table, pk_values):
     for i, pk_value in enumerate(pk_values):
         params[f"p{i}"] = pk_value
     return sql, params, pks
+
+
+def _handle_pair(key: str, value: str) -> dict:
+    """
+    Turn a key-value pair into a nested dictionary.
+    foo, bar => {'foo': 'bar'}
+    foo.bar, baz => {'foo': {'bar': 'baz'}}
+    foo.bar, [1, 2, 3] => {'foo': {'bar': [1, 2, 3]}}
+    foo.bar, "baz" => {'foo': {'bar': 'baz'}}
+    foo.bar, '{"baz": "qux"}' => {'foo': {'bar': "{'baz': 'qux'}"}}
+    """
+    try:
+        value = json.loads(value)
+    except json.JSONDecodeError:
+        # If it doesn't parse as JSON, treat it as a string
+        pass
+
+    keys = key.split(".")
+    result = current_dict = {}
+
+    for k in keys[:-1]:
+        current_dict[k] = {}
+        current_dict = current_dict[k]
+
+    current_dict[keys[-1]] = value
+    return result
+
+
+def _combine(base: dict, update: dict) -> dict:
+    """
+    Recursively merge two dictionaries.
+    """
+    for key, value in update.items():
+        if isinstance(value, dict) and key in base and isinstance(base[key], dict):
+            base[key] = _combine(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def pairs_to_nested_config(pairs: typing.List[typing.Tuple[str, typing.Any]]) -> dict:
+    """
+    Parse a list of key-value pairs into a nested dictionary.
+    """
+    result = {}
+    for key, value in pairs:
+        parsed_pair = _handle_pair(key, value)
+        result = _combine(result, parsed_pair)
+    return result

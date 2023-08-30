@@ -81,6 +81,60 @@ You can use the name of a package on PyPI or any of the other valid arguments to
     datasette publish cloudrun mydb.db \
         --install=https://url-to-my-package.zip
 
+
+.. _plugins_datasette_load_plugins:
+
+Controlling which plugins are loaded
+------------------------------------
+
+Datasette defaults to loading every plugin that is installed in the same virtual environment as Datasette itself.
+
+You can set the ``DATASETTE_LOAD_PLUGINS`` environment variable to a comma-separated list of plugin names to load a controlled subset of plugins instead.
+
+For example, to load just the ``datasette-vega`` and ``datasette-cluster-map`` plugins, set ``DATASETTE_LOAD_PLUGINS`` to ``datasette-vega,datasette-cluster-map``:
+
+.. code-block:: bash
+
+    export DATASETTE_LOAD_PLUGINS='datasette-vega,datasette-cluster-map'
+    datasette mydb.db
+
+Or:
+
+.. code-block:: bash
+
+    DATASETTE_LOAD_PLUGINS='datasette-vega,datasette-cluster-map' \
+      datasette mydb.db
+
+To disable the loading of all additional plugins, set ``DATASETTE_LOAD_PLUGINS`` to an empty string:
+
+.. code-block:: bash
+
+    export DATASETTE_LOAD_PLUGINS=''
+    datasette mydb.db
+
+A quick way to test this setting is to use it with the ``datasette plugins`` command:
+
+.. code-block:: bash
+
+    DATASETTE_LOAD_PLUGINS='datasette-vega' datasette plugins
+
+This should output the following:
+
+.. code-block:: json
+
+    [
+        {
+            "name": "datasette-vega",
+            "static": true,
+            "templates": false,
+            "version": "0.6.2",
+            "hooks": [
+                "extra_css_urls",
+                "extra_js_urls"
+            ]
+        }
+    ]
+
 .. _plugins_installed:
 
 Seeing what plugins are installed

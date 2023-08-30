@@ -1147,7 +1147,7 @@ You can selectively disable CSRF protection using the :ref:`plugin_hook_skip_csr
 Datasette's internal database
 =============================
 
-Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a `--internal` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
+Datasette maintains an "internal" SQLite database used for configuration, caching, and storage. Plugins can store configuration, settings, and other data inside this database. By default, Datasette will use a temporary in-memory SQLite database as the internal database, which is created at startup and destroyed at shutdown. Users of Datasette can optionally pass in a ``--internal`` flag to specify the path to a SQLite database to use as the internal database, which will persist internal data across Datasette instances.
 
 Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
 

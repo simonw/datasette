@@ -38,7 +38,9 @@ if DATASETTE_LOAD_PLUGINS:
             if "datasette" in entry_map:
                 for plugin_name, entry_point in entry_map["datasette"].items():
                     mod = entry_point.load()
-                    pm.register(mod, plugin_name)
+                    pm.register(mod, name=entry_point.name)
+                    # Ensure name can be found in plugin_to_distinfo later:
+                    pm._plugin_distinfo.append((mod, distribution))
         except pkg_resources.DistributionNotFound:
             sys.stderr.write("Plugin {} could not be found\n".format(package_name))
 

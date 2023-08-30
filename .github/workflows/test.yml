@@ -50,3 +50,7 @@ jobs:
       run: |
         # This fails on syntax errors, or a diff was applied
         blacken-docs -l 60 docs/*.rst
+    - name: Test DATASETTE_LOAD_PLUGINS
+      run: |
+        pip install datasette-init datasette-json-html
+        tests/test-datasette-load-plugins.sh

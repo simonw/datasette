@@ -23,15 +23,15 @@ DEFAULT_PLUGINS = (
 pm = pluggy.PluginManager("datasette")
 pm.add_hookspecs(hookspecs)
 
-DATASETTE_LOAD_PLUGINS = os.environ.get("DATASETTE_LOAD_PLUGINS") or None
+DATASETTE_LOAD_PLUGINS = os.environ.get("DATASETTE_LOAD_PLUGINS", None)
 
-if not hasattr(sys, "_called_from_test") and not DATASETTE_LOAD_PLUGINS:
+if not hasattr(sys, "_called_from_test") and DATASETTE_LOAD_PLUGINS is None:
     # Only load plugins if not running tests
     pm.load_setuptools_entrypoints("datasette")
 
-# Load any plugins specified in DATASETTE_LOAD_PLUGINS
-if DATASETTE_LOAD_PLUGINS:
-    for package_name in DATASETTE_LOAD_PLUGINS.split(","):
+# Load any plugins specified in DATASETTE_LOAD_PLUGINS")
+if DATASETTE_LOAD_PLUGINS is not None:
+    for package_name in [name for name in DATASETTE_LOAD_PLUGINS.split(",") if name.strip()]:
         try:
             distribution = pkg_resources.get_distribution(package_name)
             entry_map = distribution.get_entry_map()

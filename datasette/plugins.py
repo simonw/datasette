@@ -31,7 +31,9 @@ if not hasattr(sys, "_called_from_test") and DATASETTE_LOAD_PLUGINS is None:
 
 # Load any plugins specified in DATASETTE_LOAD_PLUGINS")
 if DATASETTE_LOAD_PLUGINS is not None:
-    for package_name in [name for name in DATASETTE_LOAD_PLUGINS.split(",") if name.strip()]:
+    for package_name in [
+        name for name in DATASETTE_LOAD_PLUGINS.split(",") if name.strip()
+    ]:
         try:
             distribution = pkg_resources.get_distribution(package_name)
             entry_map = distribution.get_entry_map()

@@ -1183,6 +1183,10 @@ async def test_actor_restrictions(
         ({"a": ["update-row"]}, "view-instance", None, False),
         # view-table on a resource implies view-instance
         ({"r": {"db1": {"t1": ["view-table"]}}}, "view-instance", None, True),
+        # execute-sql on a database implies view-instance, view-database
+        ({"d": {"db1": ["es"]}}, "view-instance", None, True),
+        ({"d": {"db1": ["es"]}}, "view-database", "db1", True),
+        ({"d": {"db1": ["es"]}}, "view-database", "db2", False),
         # update-row on a resource does not imply view-instance
         ({"r": {"db1": {"t1": ["update-row"]}}}, "view-instance", None, False),
         # view-database on a resource implies view-instance

@@ -59,6 +59,7 @@ def register_permissions():
             takes_database=True,
             takes_resource=False,
             default=True,
+            implies_can_view=True,
         ),
         Permission(
             name="permissions-debug",

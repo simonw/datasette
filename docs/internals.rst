@@ -1012,6 +1012,7 @@ For example:
 
     def delete_and_return_count(conn):
         conn.execute("delete from some_table where id > 5")
+        conn.commit()
         return conn.execute(
             "select count(*) from some_table"
         ).fetchone()[0]
@@ -1027,6 +1028,8 @@ For example:
 The value returned from ``await database.execute_write_fn(...)`` will be the return value from your function.
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.
+
+If you see ``OperationalError: database table is locked`` errors you should check that you remembered to explicitly call ``conn.commit()`` in your write function.
 
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
 

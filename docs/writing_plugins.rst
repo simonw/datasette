@@ -343,6 +343,7 @@ To define additional hooks, add a file to the plugin called ``datasette_your_plu
 
     hookspec = HookspecMarker("datasette")
 
+
     @hookspec
     def name_of_your_hook_goes_here(datasette):
         "Description of your hook."
@@ -366,16 +367,20 @@ Within your plugin code you can trigger the hook using this pattern:
 
     from datasette.plugins import pm
 
-    for plugin_return_value in pm.hook.name_of_your_hook_goes_here(
+    for (
+        plugin_return_value
+    ) in pm.hook.name_of_your_hook_goes_here(
         datasette=datasette
     ):
         # Do something with plugin_return_value
+        pass
 
 Other plugins will then be able to register their own implementations of your hook using this syntax:
 
 .. code-block:: python
 
     from datasette import hookimpl
+
 
     @hookimpl
     def name_of_your_hook_goes_here(datasette):

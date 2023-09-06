@@ -44,7 +44,7 @@ setup(
     install_requires=[
         "asgiref>=3.2.10",
         "click>=7.1.1",
-        "click-default-group-wheel>=1.2.2",
+        "click-default-group>=1.2.3",
         "Jinja2>=2.10.3",
         "hupper>=1.9",
         "httpx>=0.20",

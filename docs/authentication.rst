@@ -4,7 +4,7 @@
  Authentication and permissions
 ================================
 
-Datasette does not require authentication by default. Any visitor to a Datasette instance can explore the full data and execute read-only SQL queries.
+Datasette doesn't require authentication by default. Any visitor to a Datasette instance can explore the full data and execute read-only SQL queries.
 
 Datasette's plugin system can be used to add many different styles of authentication, such as user accounts, single sign-on or API keys.
 

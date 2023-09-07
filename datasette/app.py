@@ -950,13 +950,19 @@ class Datasette:
         except IndexError:
             return {}
         # Ensure user has permission to view the referenced table
-        if not await self.permission_allowed(
-            actor=actor,
-            action="view-table",
-            resource=(database, fk["other_table"]),
-        ):
+        other_table = fk["other_table"]
+        other_column = fk["other_column"]
+        visible, _ = await self.check_visibility(
+            actor,
+            permissions=[
+                ("view-table", (database, other_table)),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
+        if not visible:
             return {}
-        label_column = await db.label_column_for_table(fk["other_table"])
+        label_column = await db.label_column_for_table(other_table)
         if not label_column:
             return {(fk["column"], value): str(value) for value in values}
         labeled_fks = {}
@@ -965,9 +971,9 @@ class Datasette:
             from {other_table}
             where {other_column} in ({placeholders})
         """.format(
-            other_column=escape_sqlite(fk["other_column"]),
+            other_column=escape_sqlite(other_column),
             label_column=escape_sqlite(label_column),
-            other_table=escape_sqlite(fk["other_table"]),
+            other_table=escape_sqlite(other_table),
             placeholders=", ".join(["?"] * len(set(values))),
         )
         try:

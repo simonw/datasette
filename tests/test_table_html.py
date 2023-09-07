@@ -1207,9 +1207,11 @@ async def test_format_of_binary_links(size, title, length_bytes):
 
 
 @pytest.mark.asyncio
-async def test_foreign_key_labels_obey_permissions():
-    ds = Datasette(
-        metadata={
+@pytest.mark.parametrize(
+    "metadata",
+    (
+        # Blocked at table level
+        {
             "databases": {
                 "foreign_key_labels": {
                     "tables": {
@@ -1218,15 +1220,47 @@ async def test_foreign_key_labels_obey_permissions():
                     }
                 }
             }
-        }
-    )
+        },
+        # Blocked at database level
+        {
+            "databases": {
+                "foreign_key_labels": {
+                    # Only root can view this database
+                    "allow": {"id": "root"},
+                    "tables": {
+                        # But table b is visible to everyone
+                        "b": {"allow": True},
+                    },
+                }
+            }
+        },
+        # Blocked at the instance level
+        {
+            "allow": {"id": "root"},
+            "databases": {
+                "foreign_key_labels": {
+                    "tables": {
+                        # Table b is visible to everyone
+                        "b": {"allow": True},
+                    }
+                }
+            },
+        },
+    ),
+)
+async def test_foreign_key_labels_obey_permissions(metadata):
+    ds = Datasette(metadata=metadata)
     db = ds.add_memory_database("foreign_key_labels")
-    await db.execute_write("create table a(id integer primary key, name text)")
-    await db.execute_write("insert into a (id, name) values (1, 'hello')")
     await db.execute_write(
-        "create table b(id integer primary key, name text, a_id integer references a(id))"
+        "create table if not exists a(id integer primary key, name text)"
     )
-    await db.execute_write("insert into b (id, name, a_id) values (1, 'world', 1)")
+    await db.execute_write("insert or replace into a (id, name) values (1, 'hello')")
+    await db.execute_write(
+        "create table if not exists b(id integer primary key, name text, a_id integer references a(id))"
+    )
+    await db.execute_write(
+        "insert or replace into b (id, name, a_id) values (1, 'world', 1)"
+    )
     # Anonymous user can see table b but not table a
     blah = await ds.client.get("/foreign_key_labels.json")
     anon_a = await ds.client.get("/foreign_key_labels/a.json?_labels=on")

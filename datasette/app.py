@@ -935,7 +935,7 @@ class Datasette:
             log_sql_errors=log_sql_errors,
         )
 
-    async def expand_foreign_keys(self, database, table, column, values):
+    async def expand_foreign_keys(self, actor, database, table, column, values):
         """Returns dict mapping (column, value) -> label"""
         labeled_fks = {}
         db = self.databases[database]
@@ -948,6 +948,13 @@ class Datasette:
                 if foreign_key["column"] == column
             ][0]
         except IndexError:
+            return {}
+        # Ensure user has permission to view the referenced table
+        if not await self.permission_allowed(
+            actor=actor,
+            action="view-table",
+            resource=(database, fk["other_table"]),
+        ):
             return {}
         label_column = await db.label_column_for_table(fk["other_table"])
         if not label_column:

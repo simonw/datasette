@@ -1144,7 +1144,7 @@ async def table_view_data(
             # Expand them
             expanded_labels.update(
                 await datasette.expand_foreign_keys(
-                    database_name, table_name, column, values
+                    request.actor, database_name, table_name, column, values
                 )
             )
         if expanded_labels:

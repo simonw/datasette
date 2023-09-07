@@ -1204,3 +1204,56 @@ async def test_format_of_binary_links(size, title, length_bytes):
     sql_response = await ds.client.get("/{}".format(db_name), params={"sql": sql})
     assert sql_response.status_code == 200
     assert expected in sql_response.text
+
+
+@pytest.mark.asyncio
+async def test_foreign_key_labels_obey_permissions():
+    ds = Datasette(
+        metadata={
+            "databases": {
+                "foreign_key_labels": {
+                    "tables": {
+                        # Table a is only visible to root
+                        "a": {"allow": {"id": "root"}},
+                    }
+                }
+            }
+        }
+    )
+    db = ds.add_memory_database("foreign_key_labels")
+    await db.execute_write("create table a(id integer primary key, name text)")
+    await db.execute_write("insert into a (id, name) values (1, 'hello')")
+    await db.execute_write(
+        "create table b(id integer primary key, name text, a_id integer references a(id))"
+    )
+    await db.execute_write("insert into b (id, name, a_id) values (1, 'world', 1)")
+    # Anonymous user can see table b but not table a
+    blah = await ds.client.get("/foreign_key_labels.json")
+    anon_a = await ds.client.get("/foreign_key_labels/a.json?_labels=on")
+    assert anon_a.status_code == 403
+    anon_b = await ds.client.get("/foreign_key_labels/b.json?_labels=on")
+    assert anon_b.status_code == 200
+    # root user can see both
+    cookies = {"ds_actor": ds.sign({"a": {"id": "root"}}, "actor")}
+    root_a = await ds.client.get(
+        "/foreign_key_labels/a.json?_labels=on", cookies=cookies
+    )
+    assert root_a.status_code == 200
+    root_b = await ds.client.get(
+        "/foreign_key_labels/b.json?_labels=on", cookies=cookies
+    )
+    assert root_b.status_code == 200
+    # Labels should have been expanded for root
+    assert root_b.json() == {
+        "ok": True,
+        "next": None,
+        "rows": [{"id": 1, "name": "world", "a_id": {"value": 1, "label": "hello"}}],
+        "truncated": False,
+    }
+    # But not for anon
+    assert anon_b.json() == {
+        "ok": True,
+        "next": None,
+        "rows": [{"id": 1, "name": "world", "a_id": 1}],
+        "truncated": False,
+    }

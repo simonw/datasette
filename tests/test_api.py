@@ -967,7 +967,10 @@ async def test_hidden_sqlite_stat1_table():
     await db.execute_write("analyze")
     data = (await ds.client.get("/db.json?_show_hidden=1")).json()
     tables = [(t["name"], t["hidden"]) for t in data["tables"]]
-    assert tables == [("normal", False), ("sqlite_stat1", True)]
+    assert tables in (
+        [("normal", False), ("sqlite_stat1", True)],
+        [("normal", False), ("sqlite_stat1", True), ("sqlite_stat4", True)],
+    )
 
 
 @pytest.mark.asyncio

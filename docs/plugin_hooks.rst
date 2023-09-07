@@ -1450,13 +1450,18 @@ This example adds a new database action for creating a table, if the user has th
     def database_actions(datasette, actor, database):
         async def inner():
             if not await datasette.permission_allowed(
-                actor, "edit-schema", resource=database, default=False
+                actor,
+                "edit-schema",
+                resource=database,
+                default=False,
             ):
                 return []
             return [
                 {
                     "href": datasette.urls.path(
-                        "/-/edit-schema/{}/-/create".format(database)
+                        "/-/edit-schema/{}/-/create".format(
+                            database
+                        )
                     ),
                     "label": "Create a table",
                 }

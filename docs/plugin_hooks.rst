@@ -1439,7 +1439,32 @@ database_actions(datasette, actor, database, request)
 
 This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.
 
-Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
+This example adds a new database action for creating a table, if the user has the ``edit-schema`` permission:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def database_actions(datasette, actor, database):
+        async def inner():
+            if not await datasette.permission_allowed(
+                actor, "edit-schema", resource=database, default=False
+            ):
+                return []
+            return [
+                {
+                    "href": datasette.urls.path(
+                        "/-/edit-schema/{}/-/create".format(database)
+                    ),
+                    "label": "Create a table",
+                }
+            ]
+
+        return inner
+
+Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_, `datasette-edit-schema <https://datasette.io/plugins/datasette-edit-schema>`_
 
 .. _plugin_hook_skip_csrf:
 

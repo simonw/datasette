@@ -1126,6 +1126,8 @@ The returned dictionary from this example looks like this:
 
 These IDs could be integers or strings, depending on how the actors used by the Datasette instance are configured.
 
+Example: `datasette-remote-actors <https://github.com/datasette/datasette-remote-actors>`_
+
 .. _plugin_hook_filters_from_request:
 
 filters_from_request(request, database, table, datasette)

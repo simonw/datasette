@@ -310,9 +310,6 @@ class Datasette:
                 Database(self, file, is_mutable=file not in self.immutables)
             )
 
-        if internal is None and "DATASETTE_INTERNAL_DB_PATH" in os.environ:
-            internal = os.environ.get("DATASETTE_INTERNAL_DB_PATH")
-
         self.internal_db_created = False
         if internal is None:
             self._internal_database = Database(self, memory_name=secrets.token_hex())

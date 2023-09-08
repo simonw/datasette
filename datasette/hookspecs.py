@@ -94,6 +94,11 @@ def actor_from_request(datasette, request):
     """Return an actor dictionary based on the incoming request"""
 
 
+@hookspec(firstresult=True)
+def actors_from_ids(datasette, actor_ids):
+    """Returns a dictionary mapping those IDs to actor dictionaries"""
+
+
 @hookspec
 def filters_from_request(request, database, table, datasette):
     """

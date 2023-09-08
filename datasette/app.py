@@ -819,6 +819,16 @@ class Datasette:
                 )
         return crumbs
 
+    async def actors_from_ids(
+        self, actor_ids: Iterable[Union[str, int]]
+    ) -> Dict[Union[id, str], Dict]:
+        result = pm.hook.actors_from_ids(datasette=self, actor_ids=actor_ids)
+        if result is None:
+            # Do the default thing
+            return {actor_id: {"id": actor_id} for actor_id in actor_ids}
+        result = await await_me_maybe(result)
+        return result
+
     async def permission_allowed(
         self, actor, action, resource=None, default=DEFAULT_NOT_SET
     ):

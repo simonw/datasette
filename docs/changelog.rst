@@ -4,6 +4,18 @@
 Changelog
 =========
 
+.. _v1_0_a6:
+
+1.0a6 (2023-09-07)
+------------------
+
+- New plugin hook: :ref:`plugin_hook_actors_from_ids` and an internal method to accompany it, :ref:`datasette_actors_from_ids`. This mechanism is intended to be used by plugins that may need to display the actor who was responsible for something managed by that plugin: they can now resolve the recorded IDs of actors into the full actor objects. (:issue:`2181`)
+- ``DATASETTE_LOAD_PLUGINS`` environment variable for :ref:`controlling which plugins <plugins_datasette_load_plugins>` are loaded by Datasette. (:issue:`2164`)
+- Datasette now checks if the user has permission to view a table linked to by a foreign key before turning that foreign key into a clickable link. (:issue:`2178`)
+- The ``execute-sql`` permission now implies that the actor can also view the database and instance. (:issue:`2169`)
+- Documentation describing a pattern for building plugins that themselves :ref:`define further hooks <writing_plugins_extra_hooks>` for other plugins. (:issue:`1765`)
+- Datasette is now tested against the Python 3.12 preview. (`#2175 <https://github.com/simonw/datasette/pull/2175>`__)
+
 .. _v1_0_a5:
 
 1.0a5 (2023-08-29)

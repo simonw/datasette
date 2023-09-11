@@ -296,13 +296,33 @@ def generate_sortable_rows(num):
             "sortable_with_nulls_2": rand.choice([None, rand.random(), rand.random()]),
             "text": rand.choice(["$null", "$blah"]),
         }
+
+
 CONFIG = {
-  "plugins": {
-      "name-of-plugin": {"depth": "root"},
-      "env-plugin": {"foo": {"$env": "FOO_ENV"}},
-      "env-plugin-list": [{"in_a_list": {"$env": "FOO_ENV"}}],
-      "file-plugin": {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}},
-  },
+    "plugins": {
+        "name-of-plugin": {"depth": "root"},
+        "env-plugin": {"foo": {"$env": "FOO_ENV"}},
+        "env-plugin-list": [{"in_a_list": {"$env": "FOO_ENV"}}],
+        "file-plugin": {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}},
+    },
+    "databases": {
+        "fixtures": {
+            "plugins": {"name-of-plugin": {"depth": "database"}},
+            "tables": {
+                "simple_primary_key": {
+                    "plugins": {
+                        "name-of-plugin": {
+                            "depth": "table",
+                            "special": "this-is-simple_primary_key",
+                        }
+                    },
+                },
+                "sortable": {
+                    "plugins": {"name-of-plugin": {"depth": "table"}},
+                },
+            },
+        }
+    },
 }
 
 METADATA = {
@@ -318,17 +338,10 @@ METADATA = {
     "databases": {
         "fixtures": {
             "description": "Test tables description",
-            "plugins": {"name-of-plugin": {"depth": "database"}},
             "tables": {
                 "simple_primary_key": {
                     "description_html": "Simple <em>primary</em> key",
                     "title": "This <em>HTML</em> is escaped",
-                    "plugins": {
-                        "name-of-plugin": {
-                            "depth": "table",
-                            "special": "this-is-simple_primary_key",
-                        }
-                    },
                 },
                 "sortable": {
                     "sortable_columns": [
@@ -337,7 +350,6 @@ METADATA = {
                         "sortable_with_nulls_2",
                         "text",
                     ],
-                    "plugins": {"name-of-plugin": {"depth": "table"}},
                 },
                 "no_primary_key": {"sortable_columns": [], "hidden": True},
                 "units": {"units": {"distance": "m", "frequency": "Hz"}},

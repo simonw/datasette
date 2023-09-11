@@ -682,11 +682,11 @@ class Datasette:
         return resolve_env_secrets(config, os.environ)
 
     def _plugin_config_top(self, plugin_name):
-        """ Returns any top-level plugin configuration for the specified plugin. """
+        """Returns any top-level plugin configuration for the specified plugin."""
         return ((self.config or {}).get("plugins") or {}).get(plugin_name)
 
     def _plugin_config_nested(self, plugin_name, database, table=None, fallback=True):
-        """ Returns any database or table-level plugin configuration for the specified plugin. """
+        """Returns any database or table-level plugin configuration for the specified plugin."""
         db_config = ((self.config or {}).get("databases") or {}).get(database)
 
         # if there's no db-level configuration, then return early, falling back to top-level if needed

@@ -296,7 +296,7 @@ The dictionary keys are the permission names - e.g. ``view-instance`` - and the 
 ``table`` - None or string
     The table the user is interacting with.
 
-This method lets you read plugin configuration values that were set in ``metadata.json``. See :ref:`writing_plugins_configuration` for full details of how this method should be used.
+This method lets you read plugin configuration values that were set in  ``datasette.yaml``. See :ref:`writing_plugins_configuration` for full details of how this method should be used.
 
 The return value will be the value from the configuration file - usually a dictionary.
 

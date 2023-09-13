@@ -64,3 +64,4 @@ Contents
    internals
    contributing
    changelog
+   configuration

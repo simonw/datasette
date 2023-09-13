@@ -41,7 +41,7 @@ def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
 @pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette
-    from .fixtures import METADATA, PLUGINS_DIR
+    from .fixtures import CONFIG, METADATA, PLUGINS_DIR
 
     global _ds_client
     if _ds_client is not None:
@@ -49,6 +49,7 @@ async def ds_client():
 
     ds = Datasette(
         metadata=METADATA,
+        config=CONFIG,
         plugins_dir=PLUGINS_DIR,
         settings={
             "default_page_size": 50,

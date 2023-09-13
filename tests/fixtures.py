@@ -114,6 +114,7 @@ def make_app_client(
     inspect_data=None,
     static_mounts=None,
     template_dir=None,
+    config=None,
     metadata=None,
     crossdb=False,
 ):
@@ -158,6 +159,7 @@ def make_app_client(
             memory=memory,
             cors=cors,
             metadata=metadata or METADATA,
+            config=config or CONFIG,
             plugins_dir=PLUGINS_DIR,
             settings=settings,
             inspect_data=inspect_data,
@@ -296,6 +298,33 @@ def generate_sortable_rows(num):
         }
 
 
+CONFIG = {
+    "plugins": {
+        "name-of-plugin": {"depth": "root"},
+        "env-plugin": {"foo": {"$env": "FOO_ENV"}},
+        "env-plugin-list": [{"in_a_list": {"$env": "FOO_ENV"}}],
+        "file-plugin": {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}},
+    },
+    "databases": {
+        "fixtures": {
+            "plugins": {"name-of-plugin": {"depth": "database"}},
+            "tables": {
+                "simple_primary_key": {
+                    "plugins": {
+                        "name-of-plugin": {
+                            "depth": "table",
+                            "special": "this-is-simple_primary_key",
+                        }
+                    },
+                },
+                "sortable": {
+                    "plugins": {"name-of-plugin": {"depth": "table"}},
+                },
+            },
+        }
+    },
+}
+
 METADATA = {
     "title": "Datasette Fixtures",
     "description_html": 'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>',
@@ -306,26 +335,13 @@ METADATA = {
     "about": "About Datasette",
     "about_url": "https://github.com/simonw/datasette",
     "extra_css_urls": ["/static/extra-css-urls.css"],
-    "plugins": {
-        "name-of-plugin": {"depth": "root"},
-        "env-plugin": {"foo": {"$env": "FOO_ENV"}},
-        "env-plugin-list": [{"in_a_list": {"$env": "FOO_ENV"}}],
-        "file-plugin": {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}},
-    },
     "databases": {
         "fixtures": {
             "description": "Test tables description",
-            "plugins": {"name-of-plugin": {"depth": "database"}},
             "tables": {
                 "simple_primary_key": {
                     "description_html": "Simple <em>primary</em> key",
                     "title": "This <em>HTML</em> is escaped",
-                    "plugins": {
-                        "name-of-plugin": {
-                            "depth": "table",
-                            "special": "this-is-simple_primary_key",
-                        }
-                    },
                 },
                 "sortable": {
                     "sortable_columns": [
@@ -334,7 +350,6 @@ METADATA = {
                         "sortable_with_nulls_2",
                         "text",
                     ],
-                    "plugins": {"name-of-plugin": {"depth": "table"}},
                 },
                 "no_primary_key": {"sortable_columns": [], "hidden": True},
                 "units": {"units": {"distance": "m", "frequency": "Hz"}},
@@ -768,6 +783,7 @@ def assert_permissions_checked(datasette, actions):
     type=click.Path(file_okay=True, dir_okay=False),
 )
 @click.argument("metadata", required=False)
+@click.argument("config", required=False)
 @click.argument(
     "plugins_path", type=click.Path(file_okay=False, dir_okay=True), required=False
 )
@@ -782,7 +798,7 @@ def assert_permissions_checked(datasette, actions):
     type=click.Path(file_okay=True, dir_okay=False),
     help="Write out second test DB to this file",
 )
-def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
+def cli(db_filename, config, metadata, plugins_path, recreate, extra_db_filename):
     """Write out the fixtures database used by Datasette's test suite"""
     if metadata and not metadata.endswith(".json"):
         raise click.ClickException("Metadata should end with .json")
@@ -805,6 +821,10 @@ def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
         with open(metadata, "w") as fp:
             fp.write(json.dumps(METADATA, indent=4))
         print(f"- metadata written to {metadata}")
+    if config:
+        with open(config, "w") as fp:
+            fp.write(json.dumps(CONFIG, indent=4))
+        print(f"- config written to {config}")
     if plugins_path:
         path = pathlib.Path(plugins_path)
         if not path.exists():

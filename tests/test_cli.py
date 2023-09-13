@@ -238,6 +238,44 @@ def test_setting(args):
     assert settings["default_page_size"] == 5
 
 
+def test_plugin_s_overwrite():
+    runner = CliRunner()
+    plugins_dir = str(pathlib.Path(__file__).parent / "plugins")
+
+    result = runner.invoke(
+        cli,
+        [
+            "--plugins-dir",
+            plugins_dir,
+            "--get",
+            "/_memory.json?sql=select+prepare_connection_args()",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (
+        json.loads(result.output).get("rows")[0].get("prepare_connection_args()")
+        == 'database=_memory, datasette.plugin_config("name-of-plugin")=None'
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "--plugins-dir",
+            plugins_dir,
+            "--get",
+            "/_memory.json?sql=select+prepare_connection_args()",
+            "-s",
+            "plugins.name-of-plugin",
+            "OVERRIDE",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (
+        json.loads(result.output).get("rows")[0].get("prepare_connection_args()")
+        == 'database=_memory, datasette.plugin_config("name-of-plugin")=OVERRIDE'
+    )
+
+
 def test_setting_type_validation():
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["--setting", "default_page_size", "dog"])

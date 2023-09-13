@@ -368,7 +368,7 @@ class Datasette:
         for key in config_settings:
             if key not in DEFAULT_SETTINGS:
                 raise StartupError("Invalid setting '{}' in datasette.json".format(key))
-
+        self.config = config
         # CLI settings should overwrite datasette.json settings
         self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
@@ -674,15 +674,43 @@ class Datasette:
 
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
-        plugins = self.metadata(
-            "plugins", database=database, table=table, fallback=fallback
-        )
-        if plugins is None:
-            return None
-        plugin_config = plugins.get(plugin_name)
-        # Resolve any $file and $env keys
-        plugin_config = resolve_env_secrets(plugin_config, os.environ)
-        return plugin_config
+        if database is None and table is None:
+            config = self._plugin_config_top(plugin_name)
+        else:
+            config = self._plugin_config_nested(plugin_name, database, table, fallback)
+
+        return resolve_env_secrets(config, os.environ)
+
+    def _plugin_config_top(self, plugin_name):
+        """Returns any top-level plugin configuration for the specified plugin."""
+        return ((self.config or {}).get("plugins") or {}).get(plugin_name)
+
+    def _plugin_config_nested(self, plugin_name, database, table=None, fallback=True):
+        """Returns any database or table-level plugin configuration for the specified plugin."""
+        db_config = ((self.config or {}).get("databases") or {}).get(database)
+
+        # if there's no db-level configuration, then return early, falling back to top-level if needed
+        if not db_config:
+            return self._plugin_config_top(plugin_name) if fallback else None
+
+        db_plugin_config = (db_config.get("plugins") or {}).get(plugin_name)
+
+        if table:
+            table_plugin_config = (
+                ((db_config.get("tables") or {}).get(table) or {}).get("plugins") or {}
+            ).get(plugin_name)
+
+            # fallback to db_config or top-level config, in that order, if needed
+            if table_plugin_config is None and fallback:
+                return db_plugin_config or self._plugin_config_top(plugin_name)
+
+            return table_plugin_config
+
+        # fallback to top-level if needed
+        if db_plugin_config is None and fallback:
+            self._plugin_config_top(plugin_name)
+
+        return db_plugin_config
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):

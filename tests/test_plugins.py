@@ -234,9 +234,6 @@ async def test_plugin_config(ds_client):
 async def test_plugin_config_env(ds_client):
     os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
     assert {"foo": "FROM_ENVIRONMENT"} == ds_client.ds.plugin_config("env-plugin")
-    # Ensure secrets aren't visible in /-/metadata.json
-    metadata = await ds_client.get("/-/metadata.json")
-    assert {"foo": {"$env": "FOO_ENV"}} == metadata.json()["plugins"]["env-plugin"]
     del os.environ["FOO_ENV"]
 
 
@@ -246,11 +243,6 @@ async def test_plugin_config_env_from_list(ds_client):
     assert [{"in_a_list": "FROM_ENVIRONMENT"}] == ds_client.ds.plugin_config(
         "env-plugin-list"
     )
-    # Ensure secrets aren't visible in /-/metadata.json
-    metadata = await ds_client.get("/-/metadata.json")
-    assert [{"in_a_list": {"$env": "FOO_ENV"}}] == metadata.json()["plugins"][
-        "env-plugin-list"
-    ]
     del os.environ["FOO_ENV"]
 
 
@@ -259,11 +251,6 @@ async def test_plugin_config_file(ds_client):
     with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:
         fp.write("FROM_FILE")
     assert {"foo": "FROM_FILE"} == ds_client.ds.plugin_config("file-plugin")
-    # Ensure secrets aren't visible in /-/metadata.json
-    metadata = await ds_client.get("/-/metadata.json")
-    assert {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}} == metadata.json()["plugins"][
-        "file-plugin"
-    ]
     os.remove(TEMP_PLUGIN_SECRET_FILE)
 
 
@@ -722,7 +709,7 @@ async def test_hook_register_routes(ds_client, path, body):
 @pytest.mark.parametrize("configured_path", ("path1", "path2"))
 def test_hook_register_routes_with_datasette(configured_path):
     with make_app_client(
-        metadata={
+        config={
             "plugins": {
                 "register-route-demo": {
                     "path": configured_path,
@@ -741,7 +728,7 @@ def test_hook_register_routes_with_datasette(configured_path):
 def test_hook_register_routes_override():
     "Plugins can over-ride default paths such as /db/table"
     with make_app_client(
-        metadata={
+        config={
             "plugins": {
                 "register-route-demo": {
                     "path": "blah",
@@ -1099,7 +1086,7 @@ async def test_hook_filters_from_request(ds_client):
 @pytest.mark.parametrize("extra_metadata", (False, True))
 async def test_hook_register_permissions(extra_metadata):
     ds = Datasette(
-        metadata={
+        config={
             "plugins": {
                 "datasette-register-permissions": {
                     "permissions": [
@@ -1151,7 +1138,7 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
     if duplicate == "abbr":
         abbr2 = "abbr1"
     ds = Datasette(
-        metadata={
+        config={
             "plugins": {
                 "datasette-register-permissions": {
                     "permissions": [
@@ -1186,7 +1173,7 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
 @pytest.mark.asyncio
 async def test_hook_register_permissions_allows_identical_duplicates():
     ds = Datasette(
-        metadata={
+        config={
             "plugins": {
                 "datasette-register-permissions": {
                     "permissions": [

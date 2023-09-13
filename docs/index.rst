@@ -39,6 +39,7 @@ Contents
 
    getting_started
    installation
+   configuration
    ecosystem
    cli-reference
    pages

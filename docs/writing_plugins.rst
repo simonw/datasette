@@ -206,7 +206,6 @@ If it cannot find the requested configuration at the table layer, it will fall b
 
     .. code-block:: yaml
 
-        # inside datasette.yaml
         databases:
           sf-trees:
             plugins:
@@ -253,7 +252,7 @@ The plugin configuration could also be set at the top level of ``datasette.yaml`
 
     .. code-block:: yaml
 
-        title: This is the top-level title in datasette.yaml
+        title: This is the top-level title in metadata.json
         plugins:
           datasette-cluster-map:
             latitude_column: xlat
@@ -265,7 +264,7 @@ The plugin configuration could also be set at the top level of ``datasette.yaml`
     .. code-block:: json
 
         {
-          "title": "This is the top-level title in datasette.json",
+          "title": "This is the top-level title in metadata.json",
           "plugins": {
             "datasette-cluster-map": {
               "latitude_column": "xlat",

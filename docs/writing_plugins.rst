@@ -238,7 +238,6 @@ The plugin configuration could also be set at the top level of ``datasette.yaml`
 
 .. [[[cog
     metadata_example(cog, {
-        "title": "This is the top-level title in metadata.json",
         "plugins": {
             "datasette-cluster-map": {
                 "latitude_column": "xlat",
@@ -252,7 +251,6 @@ The plugin configuration could also be set at the top level of ``datasette.yaml`
 
     .. code-block:: yaml
 
-        title: This is the top-level title in metadata.json
         plugins:
           datasette-cluster-map:
             latitude_column: xlat
@@ -264,7 +262,6 @@ The plugin configuration could also be set at the top level of ``datasette.yaml`
     .. code-block:: json
 
         {
-          "title": "This is the top-level title in metadata.json",
           "plugins": {
             "datasette-cluster-map": {
               "latitude_column": "xlat",

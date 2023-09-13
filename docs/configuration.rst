@@ -11,11 +11,10 @@ To facilitate this, You can provide a ``datasette.yaml`` configuration file to d
 
     datasette mydatabase.db --config datasette.yaml
 
-
 .. _configuration_reference:
 
-``datasette.yaml`` Reference
-------------------------
+``datasette.yaml`` reference
+----------------------------
 
 Here's a full example of all the valid configuration options that can exist inside ``datasette.yaml``.
 
@@ -49,8 +48,9 @@ Here's a full example of all the valid configuration options that can exist insi
                   datasette-my-plugin:
                     key: valueB
 
-Settings Configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _configuration_reference_settings:
+Settings configuration
+~~~~~~~~~~~~~~~~~~~~~~
 
 :ref:`settings` can be configured in ``datasette.yaml`` with the ``settings`` key.
 
@@ -65,8 +65,8 @@ Settings Configuration
 
 
 .. _configuration_reference_plugins:
-Plugin Configuration
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Plugin configuration
+~~~~~~~~~~~~~~~~~~~~
 
 Configuration for plugins can be defined inside ``datasette.yaml``. For top-level plugin configuration, use the ``plugins`` key.
 

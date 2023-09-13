@@ -39,6 +39,7 @@ Contents
 
    getting_started
    installation
+   configuration
    ecosystem
    cli-reference
    pages
@@ -64,4 +65,3 @@ Contents
    internals
    contributing
    changelog
-   configuration

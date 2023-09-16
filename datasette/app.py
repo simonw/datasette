@@ -8,11 +8,11 @@ import functools
 import glob
 import hashlib
 import httpx
+import importlib.metadata
 import inspect
 from itsdangerous import BadSignature
 import json
 import os
-import pkg_resources
 import re
 import secrets
 import sys
@@ -1118,9 +1118,9 @@ class Datasette:
         if using_pysqlite3:
             for package in ("pysqlite3", "pysqlite3-binary"):
                 try:
-                    info["pysqlite3"] = pkg_resources.get_distribution(package).version
+                    info["pysqlite3"] = importlib.metadata.version(package)
                     break
-                except pkg_resources.DistributionNotFound:
+                except importlib.metadata.PackageNotFoundError:
                     pass
         return info
 

@@ -1264,3 +1264,25 @@ async def test_hook_actors_from_ids():
         }
     finally:
         pm.unregister(name="ReturnNothingPlugin")
+
+
+@pytest.mark.asyncio
+async def test_plugin_is_installed():
+    datasette = Datasette(memory=True)
+
+    class DummyPlugin:
+        __name__ = "DummyPlugin"
+
+        @hookimpl
+        def actors_from_ids(self, datasette, actor_ids):
+            return {}
+
+    try:
+        pm.register(DummyPlugin(), name="DummyPlugin")
+        response = await datasette.client.get("/-/plugins.json")
+        assert response.status_code == 200
+        installed_plugins = {p["name"] for p in response.json()}
+        assert "DummyPlugin" in installed_plugins
+
+    finally:
+        pm.unregister(name="DummyPlugin")

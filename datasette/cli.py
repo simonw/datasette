@@ -33,6 +33,7 @@ from .utils import (
     initial_path_for_datasette,
     pairs_to_nested_config,
     temporary_docker_directory,
+    fail_if_plugins_in_metadata,
     value_as_boolean,
     SpatialiteNotFound,
     StaticMount,
@@ -542,7 +543,7 @@ def serve(
 
     metadata_data = None
     if metadata:
-        metadata_data = parse_metadata(metadata.read())
+        metadata_data = fail_if_plugins_in_metadata(parse_metadata(metadata.read()), metadata.name)
 
     config_data = None
     if config:

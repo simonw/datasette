@@ -833,7 +833,7 @@ async def test_hook_canned_queries_actor(ds_client):
 def test_hook_register_magic_parameters(restore_working_directory):
     with make_app_client(
         extra_databases={"data.db": "create table logs (line text)"},
-        metadata={
+        config={
             "databases": {
                 "data": {
                     "queries": {
@@ -863,7 +863,7 @@ def test_hook_register_magic_parameters(restore_working_directory):
 def test_hook_forbidden(restore_working_directory):
     with make_app_client(
         extra_databases={"data2.db": "create table logs (line text)"},
-        metadata={"allow": {}},
+        config={"allow": {}},
     ) as client:
         response = client.get("/")
         assert response.status_code == 403

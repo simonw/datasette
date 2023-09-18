@@ -85,7 +85,7 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "actor,metadata,permissions,should_allow,expected_private",
+    "actor,config,permissions,should_allow,expected_private",
     (
         (None, ALLOW_ROOT, ["view-instance"], False, False),
         (ROOT, ALLOW_ROOT, ["view-instance"], True, True),
@@ -114,9 +114,9 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
     ),
 )
 async def test_datasette_ensure_permissions_check_visibility(
-    actor, metadata, permissions, should_allow, expected_private
+    actor, config, permissions, should_allow, expected_private
 ):
-    ds = Datasette([], memory=True, metadata=metadata)
+    ds = Datasette([], memory=True, config=config)
     await ds.invoke_startup()
     if not should_allow:
         with pytest.raises(Forbidden):

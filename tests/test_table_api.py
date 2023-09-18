@@ -653,7 +653,7 @@ async def test_table_filter_extra_where_invalid(ds_client):
 
 
 def test_table_filter_extra_where_disabled_if_no_sql_allowed():
-    with make_app_client(metadata={"allow_sql": {}}) as client:
+    with make_app_client(config={"allow_sql": {}}) as client:
         response = client.get(
             "/fixtures/facetable.json?_where=_neighborhood='Dogpatch'"
         )

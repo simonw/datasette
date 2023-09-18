@@ -18,7 +18,7 @@ import urllib
 @pytest.fixture(scope="module")
 def padlock_client():
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {
                     "queries": {"two": {"sql": "select 1 + 1"}},
@@ -63,7 +63,7 @@ async def perms_ds():
     ),
 )
 def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
-    padlock_client.ds._metadata_local["allow"] = allow
+    padlock_client.ds.config["allow"] = allow
     fragment = "🔒</h1>"
     anon_response = padlock_client.get(path)
     assert expected_anon == anon_response.status
@@ -78,7 +78,7 @@ def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client)
     # Check for the padlock
     if allow and expected_anon == 403 and expected_auth == 200:
         assert fragment in auth_response.text
-    del padlock_client.ds._metadata_local["allow"]
+    del padlock_client.ds.config["allow"]
 
 
 @pytest.mark.parametrize(
@@ -91,7 +91,7 @@ def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client)
 )
 def test_view_database(allow, expected_anon, expected_auth):
     with make_app_client(
-        metadata={"databases": {"fixtures": {"allow": allow}}}
+        config={"databases": {"fixtures": {"allow": allow}}}
     ) as client:
         for path in (
             "/fixtures",
@@ -119,7 +119,7 @@ def test_view_database(allow, expected_anon, expected_auth):
 
 def test_database_list_respects_view_database():
     with make_app_client(
-        metadata={"databases": {"fixtures": {"allow": {"id": "root"}}}},
+        config={"databases": {"fixtures": {"allow": {"id": "root"}}}},
         extra_databases={"data.db": "create table names (name text)"},
     ) as client:
         anon_response = client.get("/")
@@ -135,7 +135,7 @@ def test_database_list_respects_view_database():
 
 def test_database_list_respects_view_table():
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "data": {
                     "tables": {
@@ -175,7 +175,7 @@ def test_database_list_respects_view_table():
 )
 def test_view_table(allow, expected_anon, expected_auth):
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {
                     "tables": {"compound_three_primary_keys": {"allow": allow}}
@@ -199,7 +199,7 @@ def test_view_table(allow, expected_anon, expected_auth):
 
 def test_table_list_respects_view_table():
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {
                     "tables": {
@@ -235,7 +235,7 @@ def test_table_list_respects_view_table():
 )
 def test_view_query(allow, expected_anon, expected_auth):
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {"queries": {"q": {"sql": "select 1 + 1", "allow": allow}}}
             }
@@ -255,15 +255,15 @@ def test_view_query(allow, expected_anon, expected_auth):
 
 
 @pytest.mark.parametrize(
-    "metadata",
+    "config",
     [
         {"allow_sql": {"id": "root"}},
         {"databases": {"fixtures": {"allow_sql": {"id": "root"}}}},
     ],
 )
-def test_execute_sql(metadata):
+def test_execute_sql(config):
     schema_re = re.compile("const schema = ({.*?});", re.DOTALL)
-    with make_app_client(metadata=metadata) as client:
+    with make_app_client(config=config) as client:
         form_fragment = '<form class="sql" action="/fixtures"'
 
         # Anonymous users - should not display the form:
@@ -297,7 +297,7 @@ def test_execute_sql(metadata):
 
 def test_query_list_respects_view_query():
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {
                     "queries": {"q": {"sql": "select 1 + 1", "allow": {"id": "root"}}}
@@ -424,13 +424,13 @@ async def test_allow_debug(ds_client, actor, allow, expected_fragment):
     ],
 )
 def test_allow_unauthenticated(allow, expected):
-    with make_app_client(metadata={"allow": allow}) as client:
+    with make_app_client(config={"allow": allow}) as client:
         assert expected == client.get("/").status
 
 
 @pytest.fixture(scope="session")
 def view_instance_client():
-    with make_app_client(metadata={"allow": {}}) as client:
+    with make_app_client(config={"allow": {}}) as client:
         yield client
 
 
@@ -504,24 +504,24 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
     """Test that e.g. having view-table but NOT view-database lets you view table page, etc"""
     allow = {"id": "*"}
     deny = {}
-    previous_metadata = cascade_app_client.ds.metadata()
-    updated_metadata = copy.deepcopy(previous_metadata)
+    previous_config = cascade_app_client.ds.config
+    updated_config = copy.deepcopy(previous_config)
     actor = {"id": "test"}
     if "download" in permissions:
         actor["can_download"] = 1
     try:
         # Set up the different allow blocks
-        updated_metadata["allow"] = allow if "instance" in permissions else deny
-        updated_metadata["databases"]["fixtures"]["allow"] = (
+        updated_config["allow"] = allow if "instance" in permissions else deny
+        updated_config["databases"]["fixtures"]["allow"] = (
             allow if "database" in permissions else deny
         )
-        updated_metadata["databases"]["fixtures"]["tables"]["binary_data"] = {
+        updated_config["databases"]["fixtures"]["tables"]["binary_data"] = {
             "allow": (allow if "table" in permissions else deny)
         }
-        updated_metadata["databases"]["fixtures"]["queries"]["magic_parameters"][
+        updated_config["databases"]["fixtures"]["queries"]["magic_parameters"][
             "allow"
         ] = (allow if "query" in permissions else deny)
-        cascade_app_client.ds._metadata_local = updated_metadata
+        cascade_app_client.ds.config = updated_config
         response = cascade_app_client.get(
             path,
             cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
@@ -532,11 +532,11 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
             path, permissions, expected_status, response.status
         )
     finally:
-        cascade_app_client.ds._metadata_local = previous_metadata
+        cascade_app_client.ds.config = previous_config
 
 
 def test_padlocks_on_database_page(cascade_app_client):
-    metadata = {
+    config = {
         "databases": {
             "fixtures": {
                 "allow": {"id": "test"},
@@ -548,9 +548,9 @@ def test_padlocks_on_database_page(cascade_app_client):
             }
         }
     }
-    previous_metadata = cascade_app_client.ds._metadata_local
+    previous_config = cascade_app_client.ds.config
     try:
-        cascade_app_client.ds._metadata_local = metadata
+        cascade_app_client.ds.config = config
         response = cascade_app_client.get(
             "/fixtures",
             cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
@@ -565,7 +565,7 @@ def test_padlocks_on_database_page(cascade_app_client):
         assert ">paginated_view</a> 🔒</li>" in response.text
         assert ">simple_view</a></li>" in response.text
     finally:
-        cascade_app_client.ds._metadata_local = previous_metadata
+        cascade_app_client.ds.config = previous_config
 
 
 DEF = "USE_DEFAULT"
@@ -671,51 +671,51 @@ async def test_actor_restricted_permissions(
     assert response.json() == expected
 
 
-PermMetadataTestCase = collections.namedtuple(
-    "PermMetadataTestCase",
-    "metadata,actor,action,resource,expected_result",
+PermConfigTestCase = collections.namedtuple(
+    "PermConfigTestCase",
+    "config,actor,action,resource,expected_result",
 )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "metadata,actor,action,resource,expected_result",
+    "config,actor,action,resource,expected_result",
     (
         # Simple view-instance default=True example
-        PermMetadataTestCase(
-            metadata={},
+        PermConfigTestCase(
+            config={},
             actor=None,
             action="view-instance",
             resource=None,
             expected_result=True,
         ),
         # debug-menu on root
-        PermMetadataTestCase(
-            metadata={"permissions": {"debug-menu": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"debug-menu": {"id": "user"}}},
             actor={"id": "user"},
             action="debug-menu",
             resource=None,
             expected_result=True,
         ),
         # debug-menu on root, wrong actor
-        PermMetadataTestCase(
-            metadata={"permissions": {"debug-menu": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"debug-menu": {"id": "user"}}},
             actor={"id": "user2"},
             action="debug-menu",
             resource=None,
             expected_result=False,
         ),
         # create-table on root
-        PermMetadataTestCase(
-            metadata={"permissions": {"create-table": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"create-table": {"id": "user"}}},
             actor={"id": "user"},
             action="create-table",
             resource=None,
             expected_result=True,
         ),
         # create-table on database - no resource specified
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {"permissions": {"create-table": {"id": "user"}}}
                 }
@@ -726,8 +726,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=False,
         ),
         # create-table on database
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {"permissions": {"create-table": {"id": "user"}}}
                 }
@@ -738,24 +738,24 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=True,
         ),
         # insert-row on root, wrong actor
-        PermMetadataTestCase(
-            metadata={"permissions": {"insert-row": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"insert-row": {"id": "user"}}},
             actor={"id": "user2"},
             action="insert-row",
             resource=("perms_ds_one", "t1"),
             expected_result=False,
         ),
         # insert-row on root, right actor
-        PermMetadataTestCase(
-            metadata={"permissions": {"insert-row": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"insert-row": {"id": "user"}}},
             actor={"id": "user"},
             action="insert-row",
             resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
         # insert-row on database
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {"permissions": {"insert-row": {"id": "user"}}}
                 }
@@ -766,8 +766,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=True,
         ),
         # insert-row on table, wrong table
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {
                         "tables": {
@@ -782,8 +782,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=False,
         ),
         # insert-row on table, right table
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {
                         "tables": {
@@ -798,8 +798,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=True,
         ),
         # view-query on canned query, wrong actor
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {
                         "queries": {
@@ -817,8 +817,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=False,
         ),
         # view-query on canned query, right actor
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {
                         "queries": {
@@ -837,20 +837,20 @@ PermMetadataTestCase = collections.namedtuple(
         ),
     ),
 )
-async def test_permissions_in_metadata(
-    perms_ds, metadata, actor, action, resource, expected_result
+async def test_permissions_in_config(
+    perms_ds, config, actor, action, resource, expected_result
 ):
-    previous_metadata = perms_ds.metadata()
-    updated_metadata = copy.deepcopy(previous_metadata)
-    updated_metadata.update(metadata)
-    perms_ds._metadata_local = updated_metadata
+    previous_config = perms_ds.config
+    updated_config = copy.deepcopy(previous_config)
+    updated_config.update(config)
+    perms_ds.config = updated_config
     try:
         result = await perms_ds.permission_allowed(actor, action, resource)
         if result != expected_result:
             pprint(perms_ds._permission_checks)
             assert result == expected_result
     finally:
-        perms_ds._metadata_local = previous_metadata
+        perms_ds.config = previous_config
 
 
 @pytest.mark.asyncio
@@ -964,7 +964,7 @@ _visible_tables_re = re.compile(r">\/((\w+)\/(\w+))\.json<\/a> - Get rows for")
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "is_logged_in,metadata,expected_visible_tables",
+    "is_logged_in,config,expected_visible_tables",
     (
         # Unprotected instance logged out user sees everything:
         (
@@ -1002,11 +1002,11 @@ _visible_tables_re = re.compile(r">\/((\w+)\/(\w+))\.json<\/a> - Get rows for")
     ),
 )
 async def test_api_explorer_visibility(
-    perms_ds, is_logged_in, metadata, expected_visible_tables
+    perms_ds, is_logged_in, config, expected_visible_tables
 ):
     try:
-        prev_metadata = perms_ds._metadata_local
-        perms_ds._metadata_local = metadata or {}
+        prev_config = perms_ds.config
+        perms_ds.config = config or {}
         cookies = {}
         if is_logged_in:
             cookies = {"ds_actor": perms_ds.client.actor_cookie({"id": "user"})}
@@ -1022,7 +1022,7 @@ async def test_api_explorer_visibility(
         else:
             assert response.status_code == 403
     finally:
-        perms_ds._metadata_local = prev_metadata
+        perms_ds.config = prev_config
 
 
 @pytest.mark.asyncio

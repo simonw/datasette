@@ -543,7 +543,7 @@ def serve(
 
     metadata_data = None
     if metadata:
-        metadata_data = fail_if_plugins_in_metadata(parse_metadata(metadata.read()), metadata.name)
+        metadata_data = fail_if_plugins_in_metadata(parse_metadata(metadata.read()))
 
     config_data = None
     if config:

@@ -335,7 +335,9 @@ class Datasette:
             ]
         if config_dir and metadata_files and not metadata:
             with metadata_files[0].open() as fp:
-                metadata = fail_if_plugins_in_metadata(parse_metadata(fp.read()), metadata_files[0].name)
+                metadata = fail_if_plugins_in_metadata(
+                    parse_metadata(fp.read()), metadata_files[0].name
+                )
 
         if config_dir and config_files and not config:
             with config_files[0].open() as fp:

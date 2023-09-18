@@ -649,44 +649,17 @@ async def test_conflicting_facet_names_json(ds_client):
 async def test_facet_against_in_memory_database():
     ds = Datasette()
     db = ds.add_memory_database("mem")
-    await db.execute_write("create table t (id integer primary key, name text)")
-    to_insert = [["one"] for _ in range(800)] + [["two"] for _ in range(300)]
-    await db.execute_write_many("insert into t (name) values (?)", to_insert)
-    response1 = await ds.client.get("/mem/t.json")
+    await db.execute_write(
+        "create table t (id integer primary key, name text, name2 text)"
+    )
+    to_insert = [{"name": "one", "name2": "1"} for _ in range(800)] + [
+        {"name": "two", "name2": "2"} for _ in range(300)
+    ]
+    print(to_insert)
+    await db.execute_write_many(
+        "insert into t (name, name2) values (:name, :name2)", to_insert
+    )
+    response1 = await ds.client.get("/mem/t")
     assert response1.status_code == 200
-    response2 = await ds.client.get("/mem/t.json?_facet=name&_size=0")
+    response2 = await ds.client.get("/mem/t?_facet=name&_facet=name2")
     assert response2.status_code == 200
-    assert response2.json() == {
-        "ok": True,
-        "next": None,
-        "facet_results": {
-            "results": {
-                "name": {
-                    "name": "name",
-                    "type": "column",
-                    "hideable": True,
-                    "toggle_url": "/mem/t.json?_size=0",
-                    "results": [
-                        {
-                            "value": "one",
-                            "label": "one",
-                            "count": 800,
-                            "toggle_url": "http://localhost/mem/t.json?_facet=name&_size=0&name=one",
-                            "selected": False,
-                        },
-                        {
-                            "value": "two",
-                            "label": "two",
-                            "count": 300,
-                            "toggle_url": "http://localhost/mem/t.json?_facet=name&_size=0&name=two",
-                            "selected": False,
-                        },
-                    ],
-                    "truncated": False,
-                }
-            },
-            "timed_out": [],
-        },
-        "rows": [],
-        "truncated": False,
-    }

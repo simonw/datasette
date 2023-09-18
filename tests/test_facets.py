@@ -643,3 +643,50 @@ async def test_conflicting_facet_names_json(ds_client):
         "created_2",
         "tags_2",
     }
+
+
+@pytest.mark.asyncio
+async def test_facet_against_in_memory_database():
+    ds = Datasette()
+    db = ds.add_memory_database("mem")
+    await db.execute_write("create table t (id integer primary key, name text)")
+    to_insert = [["one"] for _ in range(800)] + [["two"] for _ in range(300)]
+    await db.execute_write_many("insert into t (name) values (?)", to_insert)
+    response1 = await ds.client.get("/mem/t.json")
+    assert response1.status_code == 200
+    response2 = await ds.client.get("/mem/t.json?_facet=name&_size=0")
+    assert response2.status_code == 200
+    assert response2.json() == {
+        "ok": True,
+        "next": None,
+        "facet_results": {
+            "results": {
+                "name": {
+                    "name": "name",
+                    "type": "column",
+                    "hideable": True,
+                    "toggle_url": "/mem/t.json?_size=0",
+                    "results": [
+                        {
+                            "value": "one",
+                            "label": "one",
+                            "count": 800,
+                            "toggle_url": "http://localhost/mem/t.json?_facet=name&_size=0&name=one",
+                            "selected": False,
+                        },
+                        {
+                            "value": "two",
+                            "label": "two",
+                            "count": 300,
+                            "toggle_url": "http://localhost/mem/t.json?_facet=name&_size=0&name=two",
+                            "selected": False,
+                        },
+                    ],
+                    "truncated": False,
+                }
+            },
+            "timed_out": [],
+        },
+        "rows": [],
+        "truncated": False,
+    }

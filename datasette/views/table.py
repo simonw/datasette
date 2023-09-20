@@ -74,11 +74,10 @@ class Row:
         return json.dumps(d, default=repr, indent=2)
 
 
-async def _gather_parallel(*args):
-    return await asyncio.gather(*args)
-
-
-async def _gather_sequential(*args):
+async def run_sequential(*args):
+    # This used to be swappable for asyncio.gather() to run things in
+    # parallel, but this lead to hard-to-debug locking issues with
+    # in-memory databases: https://github.com/simonw/datasette/issues/2189
     results = []
     for fn in args:
         results.append(await fn)
@@ -1183,9 +1182,6 @@ async def table_view_data(
     )
     rows = rows[:page_size]
 
-    # For performance profiling purposes, ?_noparallel=1 turns off asyncio.gather
-    gather = _gather_sequential if request.args.get("_noparallel") else _gather_parallel
-
     # Resolve extras
     extras = _get_extras(request)
     if any(k for k in request.args.keys() if k == "_facet" or k.startswith("_facet_")):
@@ -1249,7 +1245,7 @@ async def table_view_data(
         if not nofacet:
             # Run them in parallel
             facet_awaitables = [facet.facet_results() for facet in facet_instances]
-            facet_awaitable_results = await gather(*facet_awaitables)
+            facet_awaitable_results = await run_sequential(*facet_awaitables)
             for (
                 instance_facet_results,
                 instance_facets_timed_out,
@@ -1282,7 +1278,7 @@ async def table_view_data(
         ):
             # Run them in parallel
             facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await gather(*facet_suggest_awaitables):
+            for suggest_result in await run_sequential(*facet_suggest_awaitables):
                 suggested_facets.extend(suggest_result)
         return suggested_facets
 

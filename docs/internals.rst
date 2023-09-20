@@ -1317,6 +1317,7 @@ This example uses the :ref:`register_routes() <plugin_register_routes>` plugin h
             (r"/parallel-queries$", parallel_queries),
         ]
 
+Note that running parallel SQL queries in this way has `been known to cause problems in the past <https://github.com/simonw/datasette/issues/2189>`__, so treat this example with caution.
 
 Adding ``?_trace=1`` will show that the trace covers both of those child tasks.
 

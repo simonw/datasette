@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_64_4:
+
+0.64.4 (2023-09-21)
+-------------------
+
+- Fix for a crashing bug caused by viewing the table page for a named in-memory database. (:issue:`2189`)
+
 .. _v1_0_a6:
 
 1.0a6 (2023-09-07)

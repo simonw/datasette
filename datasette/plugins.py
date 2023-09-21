@@ -1,4 +1,4 @@
-import importlib.metadata
+import importlib
 import os
 import pluggy
 import sys
@@ -6,8 +6,10 @@ from . import hookspecs
 
 if sys.version_info >= (3, 9):
     import importlib.resources as importlib_resources
+    import importlib.metadata as importlib_metadata
 else:
     import importlib_resources
+    import importlib_metadata
 
 
 DEFAULT_PLUGINS = (
@@ -40,7 +42,7 @@ if DATASETTE_LOAD_PLUGINS is not None:
         name for name in DATASETTE_LOAD_PLUGINS.split(",") if name.strip()
     ]:
         try:
-            distribution = importlib.metadata.distribution(package_name)
+            distribution = importlib_metadata.distribution(package_name)
             entry_points = distribution.entry_points
             for entry_point in entry_points:
                 if entry_point.group == "datasette":
@@ -48,7 +50,7 @@ if DATASETTE_LOAD_PLUGINS is not None:
                     pm.register(mod, name=entry_point.name)
                     # Ensure name can be found in plugin_to_distinfo later:
                     pm._plugin_distinfo.append((mod, distribution))
-        except importlib.metadata.PackageNotFoundError:
+        except importlib_metadata.PackageNotFoundError:
             sys.stderr.write("Plugin {} could not be found\n".format(package_name))
 
 
@@ -86,6 +88,6 @@ def get_plugins():
         distinfo = plugin_to_distinfo.get(plugin)
         if distinfo:
             plugin_info["version"] = distinfo.version
-            plugin_info["name"] = distinfo.name
+            plugin_info["name"] = distinfo.name or distinfo.project_name
         plugins.append(plugin_info)
     return plugins

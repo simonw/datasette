@@ -48,6 +48,7 @@ setup(
         "Jinja2>=2.10.3",
         "hupper>=1.9",
         "httpx>=0.20",
+        'importlib_resources>=1.3.1; python_version < "3.9"',
         "pint>=0.9",
         "pluggy>=1.0",
         "uvicorn>=0.11",

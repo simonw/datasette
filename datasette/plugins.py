@@ -1,9 +1,14 @@
 import importlib.metadata
-import importlib.resources
 import os
 import pluggy
 import sys
 from . import hookspecs
+
+if sys.version_info >= (3, 9):
+    import importlib.resources as importlib_resources
+else:
+    import importlib_resources
+
 
 DEFAULT_PLUGINS = (
     "datasette.publish.heroku",
@@ -61,13 +66,13 @@ def get_plugins():
         templates_path = None
         if plugin.__name__ not in DEFAULT_PLUGINS:
             try:
-                if (importlib.resources.files(plugin.__name__) / "static").is_dir():
+                if (importlib_resources.files(plugin.__name__) / "static").is_dir():
                     static_path = str(
-                        importlib.resources.files(plugin.__name__) / "static"
+                        importlib_resources.files(plugin.__name__) / "static"
                     )
-                if (importlib.resources.files(plugin.__name__) / "templates").is_dir():
+                if (importlib_resources.files(plugin.__name__) / "templates").is_dir():
                     templates_path = str(
-                        importlib.resources.files(plugin.__name__) / "templates"
+                        importlib_resources.files(plugin.__name__) / "templates"
                     )
             except (TypeError, ModuleNotFoundError):
                 # Caused by --plugins_dir= plugins

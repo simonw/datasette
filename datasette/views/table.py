@@ -172,19 +172,13 @@ class TableView(DataView):
             raise NotFound("Database not found: {}".format(database_route))
         database_name = db.name
 
-        # For performance profiling purposes, ?_noparallel=1 turns off asyncio.gather
-        async def _gather_parallel(*args):
-            return await asyncio.gather(*args)
-
-        async def _gather_sequential(*args):
+        # We always now run queries sequentially, rather than with asyncio.gather() -
+        # see https://github.com/simonw/datasette/issues/2189
+        async def gather(*args):
             results = []
             for fn in args:
                 results.append(await fn)
             return results
-
-        gather = (
-            _gather_sequential if request.args.get("_noparallel") else _gather_parallel
-        )
 
         # If this is a canned query, not a table, then dispatch to QueryView instead
         canned_query = await self.ds.get_canned_query(

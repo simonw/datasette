@@ -782,8 +782,8 @@ def assert_permissions_checked(datasette, actions):
     default="fixtures.db",
     type=click.Path(file_okay=True, dir_okay=False),
 )
-@click.argument("metadata", required=False)
 @click.argument("config", required=False)
+@click.argument("metadata", required=False)
 @click.argument(
     "plugins_path", type=click.Path(file_okay=False, dir_okay=True), required=False
 )

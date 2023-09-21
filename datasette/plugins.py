@@ -6,9 +6,11 @@ from . import hookspecs
 
 if sys.version_info >= (3, 9):
     import importlib.resources as importlib_resources
-    import importlib.metadata as importlib_metadata
 else:
     import importlib_resources
+if sys.version_info >= (3, 10):
+    import importlib.metadata as importlib_metadata
+else:
     import importlib_metadata
 
 

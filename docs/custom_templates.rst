@@ -14,7 +14,7 @@ When you launch Datasette, you can specify a custom configuration file like this
 
     datasette mydb.db --config datasette.yaml
 
-TODO Your ``datasette.yaml`` file can include links that look like this:
+Your ``datasette.yaml`` file can include links that look like this:
 
 .. [[[cog
     from metadata_doc import config_example

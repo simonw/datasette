@@ -24,11 +24,12 @@ def metadata_example(cog, data=None, yaml=None):
     cog.out(textwrap.indent(json.dumps(data, indent=2), "        "))
     cog.out("\n")
 
+
 def config_example(cog, input):
     if type(input) is str:
-      # round_trip_load to preserve key order:
-      data = round_trip_load(input)
-      output_yaml = input
+        # round_trip_load to preserve key order:
+        data = round_trip_load(input)
+        output_yaml = input
     else:
         data = input
         output_yaml = safe_dump(input, sort_keys=False)

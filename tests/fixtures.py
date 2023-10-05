@@ -346,6 +346,7 @@ CONFIG = {
             },
         }
     },
+    "extra_css_urls": ["/static/extra-css-urls.css"],
 }
 
 METADATA = {
@@ -357,7 +358,6 @@ METADATA = {
     "source_url": "https://github.com/simonw/datasette/blob/main/tests/fixtures.py",
     "about": "About Datasette",
     "about_url": "https://github.com/simonw/datasette",
-    "extra_css_urls": ["/static/extra-css-urls.css"],
     "databases": {
         "fixtures": {
             "description": "Test tables description",

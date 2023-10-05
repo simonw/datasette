@@ -81,7 +81,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -94,7 +94,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
                 searchmode: raw
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 

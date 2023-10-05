@@ -120,7 +120,7 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -132,7 +132,7 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
                 - qLegalStatus
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -164,7 +164,7 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -173,7 +173,7 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
         - date: created
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -206,7 +206,7 @@ You can change the default facet size (the number of results shown for each face
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -219,7 +219,7 @@ You can change the default facet size (the number of results shown for each face
                 facet_size: 10
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 

@@ -319,13 +319,13 @@ To write that to a ``requirements.txt`` file, run this::
 Plugin configuration
 --------------------
 
-Plugins can have their own configuration, embedded in a :ref:`metadata` file. Configuration options for plugins live within a ``"plugins"`` key in that file, which can be included at the root, database or table level.
+Plugins can have their own configuration, embedded in a :ref:`configuration` file. Configuration options for plugins live within a ``"plugins"`` key in that file, which can be included at the root, database or table level.
 
 Here is an example of some plugin configuration for a specific table:
 
 .. [[[cog
-    from metadata_doc import metadata_example
-    metadata_example(cog, {
+    from metadata_doc import config_example
+    config_example(cog, {
         "databases": {
             "sf-trees": {
                 "tables": {
@@ -343,7 +343,7 @@ Here is an example of some plugin configuration for a specific table:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -357,7 +357,7 @@ Here is an example of some plugin configuration for a specific table:
                     longitude_column: lng
 
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -386,12 +386,12 @@ This tells the ``datasette-cluster-map`` column which latitude and longitude col
 Secret configuration values
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Any values embedded in ``metadata.yaml`` will be visible to anyone who views the ``/-/metadata`` page of your Datasette instance. Some plugins may need configuration that should stay secret - API keys for example. There are two ways in which you can store secret configuration values.
+Some plugins may need configuration that should stay secret - API keys for example. There are two ways in which you can store secret configuration values.
 
 **As environment variables**. If your secret lives in an environment variable that is available to the Datasette process, you can indicate that the configuration value should be read from that environment variable like so:
 
 .. [[[cog
-    metadata_example(cog, {
+    config_example(cog, {
         "plugins": {
             "datasette-auth-github": {
                 "client_secret": {
@@ -402,7 +402,7 @@ Any values embedded in ``metadata.yaml`` will be visible to anyone who views the
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -412,7 +412,7 @@ Any values embedded in ``metadata.yaml`` will be visible to anyone who views the
               $env: GITHUB_CLIENT_SECRET
 
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -430,7 +430,7 @@ Any values embedded in ``metadata.yaml`` will be visible to anyone who views the
 **As values in separate files**. Your secrets can also live in files on disk. To specify a secret should be read from a file, provide the full file path like this:
 
 .. [[[cog
-    metadata_example(cog, {
+    config_example(cog, {
         "plugins": {
             "datasette-auth-github": {
                 "client_secret": {
@@ -441,7 +441,7 @@ Any values embedded in ``metadata.yaml`` will be visible to anyone who views the
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -451,7 +451,7 @@ Any values embedded in ``metadata.yaml`` will be visible to anyone who views the
               $file: /secrets/client-secret
 
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -477,7 +477,7 @@ If you are publishing your data using the :ref:`datasette publish <cli_publish>`
 This will set the necessary environment variables and add the following to the deployed ``metadata.yaml``:
 
 .. [[[cog
-    metadata_example(cog, {
+    config_example(cog, {
         "plugins": {
             "datasette-auth-github": {
                 "client_id": {
@@ -491,7 +491,7 @@ This will set the necessary environment variables and add the following to the d
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -503,7 +503,7 @@ This will set the necessary environment variables and add the following to the d
               $env: DATASETTE_AUTH_GITHUB_CLIENT_SECRET
 
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 

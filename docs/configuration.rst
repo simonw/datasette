@@ -13,15 +13,15 @@ To facilitate this, You can provide a ``datasette.yaml`` configuration file to d
 
 .. _configuration_reference:
 
-``datasette.yaml`` reference
+``datasette.yaml`` Reference
 ----------------------------
 
 Here's a full example of all the valid configuration options that can exist inside ``datasette.yaml``.
 
 .. [[[cog
-    from metadata_doc import metadata_example
+    from metadata_doc import config_example
     import textwrap
-    metadata_example(cog, yaml=textwrap.dedent(
+    config_example(cog, textwrap.dedent(
       """
         # Datasette settings block
         settings:
@@ -52,9 +52,10 @@ Here's a full example of all the valid configuration options that can exist insi
       )
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
+
 
         # Datasette settings block
         settings:
@@ -82,7 +83,8 @@ Here's a full example of all the valid configuration options that can exist insi
                   datasette-my-plugin:
                     key: valueB
 
-.. tab:: JSON
+
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -125,9 +127,9 @@ Settings configuration
 :ref:`settings` can be configured in ``datasette.yaml`` with the ``settings`` key.
 
 .. [[[cog
-    from metadata_doc import metadata_example
+    from metadata_doc import config_example
     import textwrap
-    metadata_example(cog, yaml=textwrap.dedent(
+    config_example(cog, textwrap.dedent(
       """
         # inside datasette.yaml
         settings:
@@ -137,7 +139,7 @@ Settings configuration
       )
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -146,7 +148,7 @@ Settings configuration
            default_allow_sql: off
            default_page_size: 50
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -165,9 +167,9 @@ Plugin configuration
 Configuration for plugins can be defined inside ``datasette.yaml``. For top-level plugin configuration, use the ``plugins`` key.
 
 .. [[[cog
-    from metadata_doc import metadata_example
+    from metadata_doc import config_example
     import textwrap
-    metadata_example(cog, yaml=textwrap.dedent(
+    config_example(cog, textwrap.dedent(
       """
         # inside datasette.yaml
         plugins:
@@ -177,7 +179,7 @@ Configuration for plugins can be defined inside ``datasette.yaml``. For top-leve
       )
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -186,7 +188,7 @@ Configuration for plugins can be defined inside ``datasette.yaml``. For top-leve
           datasette-my-plugin:
             key: my_value
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -202,9 +204,9 @@ Configuration for plugins can be defined inside ``datasette.yaml``. For top-leve
 For database level or table level plugin configuration, nest it under the appropriate place under ``databases``.
 
 .. [[[cog
-    from metadata_doc import metadata_example
+    from metadata_doc import config_example
     import textwrap
-    metadata_example(cog, yaml=textwrap.dedent(
+    config_example(cog, textwrap.dedent(
       """
         # inside datasette.yaml
         databases:
@@ -224,7 +226,7 @@ For database level or table level plugin configuration, nest it under the approp
       )
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -243,7 +245,7 @@ For database level or table level plugin configuration, nest it under the approp
                   datasette-my-plugin:
                     key: my_value
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -270,3 +272,29 @@ For database level or table level plugin configuration, nest it under the approp
           }
         }
 .. [[[end]]]
+
+
+.. _configuration_reference_permissions:
+Permissions Configuration
+~~~~~~~~~~~~~~~~~~~~
+
+TODO
+
+
+.. _configuration_reference_authentication:
+Authentication Configuration
+~~~~~~~~~~~~~~~~~~~~
+
+TODO
+
+.. _configuration_reference_canned_queries:
+Canned Queries Configuration
+~~~~~~~~~~~~~~~~~~~~
+
+TODO
+
+.. _configuration_reference_css_js:
+Extra CSS and JS Configuration
+~~~~~~~~~~~~~~~~~~~~
+
+TODO

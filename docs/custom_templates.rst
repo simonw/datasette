@@ -10,35 +10,34 @@ Datasette provides a number of ways of customizing the way data is displayed.
 Custom CSS and JavaScript
 -------------------------
 
-When you launch Datasette, you can specify a custom metadata file like this::
+When you launch Datasette, you can specify a custom configuration file like this::
 
-    datasette mydb.db --metadata metadata.yaml
+    datasette mydb.db --config datasette.yaml
 
-Your ``metadata.yaml`` file can include links that look like this:
+TODO Your ``datasette.yaml`` file can include links that look like this:
 
 .. [[[cog
-    from metadata_doc import metadata_example
-    metadata_example(cog, {
-        "extra_css_urls": [
-            "https://simonwillison.net/static/css/all.bf8cd891642c.css"
-        ],
-        "extra_js_urls": [
-            "https://code.jquery.com/jquery-3.2.1.slim.min.js"
-        ]
-    })
-.. ]]]
-
-.. tab:: YAML
-
-    .. code-block:: yaml
-
+    from metadata_doc import config_example
+    config_example(cog, """
         extra_css_urls:
         - https://simonwillison.net/static/css/all.bf8cd891642c.css
         extra_js_urls:
         - https://code.jquery.com/jquery-3.2.1.slim.min.js
+    """)
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
 
 
-.. tab:: JSON
+            extra_css_urls:
+            - https://simonwillison.net/static/css/all.bf8cd891642c.css
+            extra_js_urls:
+            - https://code.jquery.com/jquery-3.2.1.slim.min.js
+
+
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -62,35 +61,30 @@ The extra CSS and JavaScript files will be linked in the ``<head>`` of every pag
 You can also specify a SRI (subresource integrity hash) for these assets:
 
 .. [[[cog
-    metadata_example(cog, {
-        "extra_css_urls": [
-            {
-                "url": "https://simonwillison.net/static/css/all.bf8cd891642c.css",
-                "sri": "sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI"
-            }
-        ],
-        "extra_js_urls": [
-            {
-                "url": "https://code.jquery.com/jquery-3.2.1.slim.min.js",
-                "sri": "sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
-            }
-        ]
-    })
-.. ]]]
-
-.. tab:: YAML
-
-    .. code-block:: yaml
-
+    config_example(cog, """
         extra_css_urls:
         - url: https://simonwillison.net/static/css/all.bf8cd891642c.css
           sri: sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI
         extra_js_urls:
         - url: https://code.jquery.com/jquery-3.2.1.slim.min.js
           sri: sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g=
+    """)
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
 
 
-.. tab:: JSON
+            extra_css_urls:
+            - url: https://simonwillison.net/static/css/all.bf8cd891642c.css
+              sri: sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI
+            extra_js_urls:
+            - url: https://code.jquery.com/jquery-3.2.1.slim.min.js
+              sri: sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g=
+
+
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -115,7 +109,7 @@ This will produce:
 .. code-block:: html
 
     <link rel="stylesheet" href="https://simonwillison.net/static/css/all.bf8cd891642c.css"
-        integrity="sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI" 
+        integrity="sha384-9qIZekWUyjCyDIf2YK1FRoKiPJq4PHt6tp/ulnuuyRBvazd0hG7pWbE99zvwSznI"
         crossorigin="anonymous">
     <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js"
         integrity="sha256-k2WSCIexGzOj3Euiig+TlR8gA0EmPjuc79OEeY5L45g="
@@ -127,26 +121,24 @@ matches the content served. You can generate hashes using `www.srihash.org <http
 Items in ``"extra_js_urls"`` can specify ``"module": true`` if they reference JavaScript that uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__. This configuration:
 
 .. [[[cog
-    metadata_example(cog, {
-        "extra_js_urls": [
-            {
-                "url": "https://example.datasette.io/module.js",
-                "module": True
-            }
-        ]
-    })
-.. ]]]
-
-.. tab:: YAML
-
-    .. code-block:: yaml
-
+    config_example(cog, """
         extra_js_urls:
         - url: https://example.datasette.io/module.js
           module: true
+    """)
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
 
 
-.. tab:: JSON
+            extra_js_urls:
+            - url: https://example.datasette.io/module.js
+              module: true
+
+
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -259,37 +251,36 @@ Consider the following directory structure::
 You can start Datasette using ``--static assets:static-files/`` to serve those
 files from the ``/assets/`` mount point::
 
-    datasette -m metadata.json --static assets:static-files/ --memory
+    datasette --config datasette.yaml --static assets:static-files/ --memory
 
 The following URLs will now serve the content from those CSS and JS files::
 
     http://localhost:8001/assets/styles.css
     http://localhost:8001/assets/app.js
 
-You can reference those files from ``metadata.json`` like so:
+You can reference those files from ``datasette.yaml`` like so:
 
 .. [[[cog
-    metadata_example(cog, {
-        "extra_css_urls": [
-            "/assets/styles.css"
-        ],
-        "extra_js_urls": [
-            "/assets/app.js"
-        ]
-    })
-.. ]]]
-
-.. tab:: YAML
-
-    .. code-block:: yaml
-
+    config_example(cog, """
         extra_css_urls:
         - /assets/styles.css
         extra_js_urls:
         - /assets/app.js
+    """)
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
 
 
-.. tab:: JSON
+            extra_css_urls:
+            - /assets/styles.css
+            extra_js_urls:
+            - /assets/app.js
+
+
+.. tab:: datasette.json
 
     .. code-block:: json
 

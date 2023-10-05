@@ -1317,7 +1317,7 @@ class Datasette:
         ):
             hook = await await_me_maybe(hook)
             collected.extend(hook)
-        collected.extend(self.metadata(key) or [])
+        collected.extend((self.config or {}).get(key) or [])
         output = []
         for url_or_dict in collected:
             if isinstance(url_or_dict, dict):

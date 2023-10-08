@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_64_5:
+
+0.64.5 (2023-10-08)
+-------------------
+
+- Dropped dependency on ``click-default-group-wheel``, which could cause a dependency conflict. (:issue:`2197`)
+
 .. _v0_64_4:
 
 0.64.4 (2023-09-21)

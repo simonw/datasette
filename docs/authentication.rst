@@ -76,7 +76,7 @@ Permissions with potentially harmful effects should default to *deny*. Plugin au
 Defining permissions with "allow" blocks
 ----------------------------------------
 
-The standard way to define permissions in Datasette is to use an ``"allow"`` block. This is a JSON document describing which actors are allowed to perform a permission.
+The standard way to define permissions in Datasette is to use an ``"allow"`` block :ref:`in the datasette.yaml file <authentication_permissions_config>`. This is a JSON document describing which actors are allowed to perform a permission.
 
 The most basic form of allow block is this (`allow demo <https://latest.datasette.io/-/allow-debug?actor=%7B%22id%22%3A+%22root%22%7D&allow=%7B%0D%0A++++++++%22id%22%3A+%22root%22%0D%0A++++%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%22id%22%3A+%22trevor%22%7D&allow=%7B%0D%0A++++++++%22id%22%3A+%22root%22%0D%0A++++%7D>`__):
 

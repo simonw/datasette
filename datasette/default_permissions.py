@@ -144,14 +144,14 @@ def permission_allowed_default(datasette, actor, action, resource):
             "view-query",
             "execute-sql",
         ):
-            result = await _resolve_metadata_view_permissions(
+            result = await _resolve_config_view_permissions(
                 datasette, actor, action, resource
             )
             if result is not None:
                 return result
 
         # Check custom permissions: blocks
-        result = await _resolve_metadata_permissions_blocks(
+        result = await _resolve_config_permissions_blocks(
             datasette, actor, action, resource
         )
         if result is not None:
@@ -164,10 +164,10 @@ def permission_allowed_default(datasette, actor, action, resource):
     return inner
 
 
-async def _resolve_metadata_permissions_blocks(datasette, actor, action, resource):
+async def _resolve_config_permissions_blocks(datasette, actor, action, resource):
     # Check custom permissions: blocks
-    metadata = datasette.metadata()
-    root_block = (metadata.get("permissions", None) or {}).get(action)
+    config = datasette.config or {}
+    root_block = (config.get("permissions", None) or {}).get(action)
     if root_block:
         root_result = actor_matches_allow(actor, root_block)
         if root_result is not None:
@@ -180,7 +180,7 @@ async def _resolve_metadata_permissions_blocks(datasette, actor, action, resourc
     else:
         database = resource[0]
     database_block = (
-        (metadata.get("databases", {}).get(database, {}).get("permissions", None)) or {}
+        (config.get("databases", {}).get(database, {}).get("permissions", None)) or {}
     ).get(action)
     if database_block:
         database_result = actor_matches_allow(actor, database_block)
@@ -192,7 +192,7 @@ async def _resolve_metadata_permissions_blocks(datasette, actor, action, resourc
     database, table_or_query = resource
     table_block = (
         (
-            metadata.get("databases", {})
+            config.get("databases", {})
             .get(database, {})
             .get("tables", {})
             .get(table_or_query, {})
@@ -207,7 +207,7 @@ async def _resolve_metadata_permissions_blocks(datasette, actor, action, resourc
     # Finally the canned queries
     query_block = (
         (
-            metadata.get("databases", {})
+            config.get("databases", {})
             .get(database, {})
             .get("queries", {})
             .get(table_or_query, {})
@@ -222,25 +222,30 @@ async def _resolve_metadata_permissions_blocks(datasette, actor, action, resourc
     return None
 
 
-async def _resolve_metadata_view_permissions(datasette, actor, action, resource):
+async def _resolve_config_view_permissions(datasette, actor, action, resource):
+    config = datasette.config or {}
     if action == "view-instance":
-        allow = datasette.metadata("allow")
+        allow = config.get("allow")
         if allow is not None:
             return actor_matches_allow(actor, allow)
     elif action == "view-database":
-        database_allow = datasette.metadata("allow", database=resource)
+        database_allow = ((config.get("databases") or {}).get(resource) or {}).get(
+            "allow"
+        )
         if database_allow is None:
             return None
         return actor_matches_allow(actor, database_allow)
     elif action == "view-table":
         database, table = resource
-        tables = datasette.metadata("tables", database=database) or {}
+        tables = ((config.get("databases") or {}).get(database) or {}).get(
+            "tables"
+        ) or {}
         table_allow = (tables.get(table) or {}).get("allow")
         if table_allow is None:
             return None
         return actor_matches_allow(actor, table_allow)
     elif action == "view-query":
-        # Check if this query has a "allow" block in metadata
+        # Check if this query has a "allow" block in config
         database, query_name = resource
         query = await datasette.get_canned_query(database, query_name, actor)
         assert query is not None
@@ -250,9 +255,11 @@ async def _resolve_metadata_view_permissions(datasette, actor, action, resource)
         return actor_matches_allow(actor, allow)
     elif action == "execute-sql":
         # Use allow_sql block from database block, or from top-level
-        database_allow_sql = datasette.metadata("allow_sql", database=resource)
+        database_allow_sql = ((config.get("databases") or {}).get(resource) or {}).get(
+            "allow_sql"
+        )
         if database_allow_sql is None:
-            database_allow_sql = datasette.metadata("allow_sql")
+            database_allow_sql = config.get("allow_sql")
         if database_allow_sql is None:
             return None
         return actor_matches_allow(actor, database_allow_sql)

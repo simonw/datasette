@@ -321,8 +321,32 @@ CONFIG = {
                     "plugins": {"name-of-plugin": {"depth": "table"}},
                 },
             },
+            "queries": {
+                "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
+                "pragma_cache_size": "PRAGMA cache_size;",
+                "magic_parameters": {
+                    "sql": "select :_header_user_agent as user_agent, :_now_datetime_utc as datetime",
+                },
+                "neighborhood_search": {
+                    "sql": textwrap.dedent(
+                        """
+                        select _neighborhood, facet_cities.name, state
+                        from facetable
+                            join facet_cities
+                                on facetable._city_id = facet_cities.id
+                        where _neighborhood like '%' || :text || '%'
+                        order by _neighborhood;
+                    """
+                    ),
+                    "title": "Search neighborhoods",
+                    "description_html": "<b>Demonstrating</b> simple like search",
+                    "fragment": "fragment-goes-here",
+                    "hide_sql": True,
+                },
+            },
         }
     },
+    "extra_css_urls": ["/static/extra-css-urls.css"],
 }
 
 METADATA = {
@@ -334,7 +358,6 @@ METADATA = {
     "source_url": "https://github.com/simonw/datasette/blob/main/tests/fixtures.py",
     "about": "About Datasette",
     "about_url": "https://github.com/simonw/datasette",
-    "extra_css_urls": ["/static/extra-css-urls.css"],
     "databases": {
         "fixtures": {
             "description": "Test tables description",
@@ -370,29 +393,6 @@ METADATA = {
                 "attraction_characteristic": {"sort_desc": "pk"},
                 "facet_cities": {"sort": "name"},
                 "paginated_view": {"size": 25},
-            },
-            "queries": {
-                "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
-                "pragma_cache_size": "PRAGMA cache_size;",
-                "magic_parameters": {
-                    "sql": "select :_header_user_agent as user_agent, :_now_datetime_utc as datetime",
-                },
-                "neighborhood_search": {
-                    "sql": textwrap.dedent(
-                        """
-                        select _neighborhood, facet_cities.name, state
-                        from facetable
-                            join facet_cities
-                                on facetable._city_id = facet_cities.id
-                        where _neighborhood like '%' || :text || '%'
-                        order by _neighborhood;
-                    """
-                    ),
-                    "title": "Search neighborhoods",
-                    "description_html": "<b>Demonstrating</b> simple like search",
-                    "fragment": "fragment-goes-here",
-                    "hide_sql": True,
-                },
             },
         }
     },

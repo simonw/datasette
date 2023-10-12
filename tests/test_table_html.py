@@ -1085,7 +1085,7 @@ def test_facet_more_links(
 def test_unavailable_table_does_not_break_sort_relationships():
     # https://github.com/simonw/datasette/issues/1305
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {"tables": {"foreign_key_references": {"allow": False}}}
             }
@@ -1208,7 +1208,7 @@ async def test_format_of_binary_links(size, title, length_bytes):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "metadata",
+    "config",
     (
         # Blocked at table level
         {
@@ -1248,8 +1248,8 @@ async def test_format_of_binary_links(size, title, length_bytes):
         },
     ),
 )
-async def test_foreign_key_labels_obey_permissions(metadata):
-    ds = Datasette(metadata=metadata)
+async def test_foreign_key_labels_obey_permissions(config):
+    ds = Datasette(config=config)
     db = ds.add_memory_database("foreign_key_labels")
     await db.execute_write(
         "create table if not exists a(id integer primary key, name text)"

@@ -202,7 +202,7 @@ If it cannot find the requested configuration at the table layer, it will fall b
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -214,7 +214,7 @@ If it cannot find the requested configuration at the table layer, it will fall b
                 longitude_column: xlng
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -247,7 +247,7 @@ The plugin configuration could also be set at the top level of ``datasette.yaml`
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -257,7 +257,7 @@ The plugin configuration could also be set at the top level of ``datasette.yaml`
             longitude_column: xlng
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 

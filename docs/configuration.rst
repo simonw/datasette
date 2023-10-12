@@ -118,7 +118,6 @@ Here's a full example of all the valid configuration options that can exist insi
             }
           }
         }
-
 .. [[[end]]]
 
 .. _configuration_reference_settings:

@@ -10,7 +10,7 @@ const DOM_SELECTORS = {
   /** Should have one match */
   jsonExportLink: ".export-links a[href*=json]",
 
-  /** Event listeners that go outside of the main table, e.g. existing scroll lisetner */
+  /** Event listeners that go outside of the main table, e.g. existing scroll listener */
   tableWrapper: ".table-wrapper",
   table: "table.rows-and-columns",
   aboveTablePanel: '.above-table-panel',
@@ -47,7 +47,7 @@ const datasetteManager = {
     }
     datasetteManager.plugins.set(name, pluginMetadata);
 
-    // If the plugin partipates in the panel... update the panel.
+    // If the plugin participates in the panel... update the panel.
     if (pluginMetadata.makeAboveTablePanelConfigs) {
       datasetteManager.renderAboveTablePanel();
     }

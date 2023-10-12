@@ -879,6 +879,14 @@ def test_hook_forbidden(restore_working_directory):
         )
 
 
+def test_plugin_config_in_metadata():
+    with pytest.raises(
+        Exception,
+        match="Datasette no longer accepts plugin configuration in --metadata",
+    ):
+        Datasette(memory=True, metadata={"plugins": {}})
+
+
 @pytest.mark.asyncio
 async def test_hook_handle_exception(ds_client):
     await ds_client.get("/trigger-error?x=123")

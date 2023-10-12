@@ -1268,3 +1268,18 @@ def pairs_to_nested_config(pairs: typing.List[typing.Tuple[str, typing.Any]]) ->
         parsed_pair = _handle_pair(key, value)
         result = _combine(result, parsed_pair)
     return result
+
+
+def fail_if_plugins_in_metadata(metadata: dict, filename=None):
+    """If plugin config is inside metadata, raise an Exception"""
+    if metadata is not None and metadata.get("plugins") is not None:
+        suggested_extension = (
+            ".yaml"
+            if filename is not None
+            and (filename.endswith(".yaml") or filename.endswith(".yml"))
+            else ".json"
+        )
+        raise Exception(
+            f'Datasette no longer accepts plugin configuration in --metadata. Move your "plugins" configuration blocks to a separate file - we suggest calling that datasette.{suggested_extension} - and start Datasette with datasette -c datasette.{suggested_extension}. See https://docs.datasette.io/en/latest/configuration.html for more details.'
+        )
+    return metadata

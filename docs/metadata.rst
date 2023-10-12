@@ -693,14 +693,14 @@ Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`can
 
 .. _metadata_reference:
 
-Metadata Reference
------------------------
+Metadata reference
+------------------
 
 
 A full reference of every supported option in a ``metadata.json`` or ``metadata.yaml`` file.
 
 
-Top-level Metadata
+Top-level metadata
 ~~~~~~~~~~~~~~~~~~
 
 "Top-level" metadata refers to fields that can be specified at the root level  of a metadata file. These attributes are meant to describe the entire Datasette instance.
@@ -715,11 +715,8 @@ The following are the full list of allowed top-level metadata fields:
 - ``source``
 - ``source_url``
 
-
-
-Database-level Metadata
-~~~~~~~~~~~~~~~~~~
-
+Database-level metadata
+~~~~~~~~~~~~~~~~~~~~~~~
 
 "Database-level" metadata refers to fields that can be specified for each database in a Datasette instance. These attributes should be listed under a database inside the `"databases"` field.
 
@@ -732,14 +729,12 @@ The following are the full list of allowed database-level metadata fields:
 - ``about``
 - ``about_url``
 
-
-Table-level Metadata
-~~~~~~~~~~~~~~~~~~
+Table-level metadata
+~~~~~~~~~~~~~~~~~~~~
 
 "Table-level" metadata refers to fields that can be specified for each table in a Datasette instance. These attributes should be listed under a specific table using the `"tables"` field.
 
 The following are the full list of allowed table-level metadata fields:
-
 
 - ``source``
 - ``source_url``

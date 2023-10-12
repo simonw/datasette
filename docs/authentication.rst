@@ -189,7 +189,7 @@ The ``/-/allow-debug`` tool lets you try out different  ``"action"`` blocks agai
 .. _authentication_permissions_config:
 
 Access permissions in ``datasette.yaml``
-==============================
+========================================
 
 There are two ways to configure permissions using ``datasette.yaml`` (or ``datasette.json``).
 
@@ -544,7 +544,7 @@ To limit this ability for just one specific database, use this:
 .. _authentication_permissions_other:
 
 Other permissions in ``datasette.yaml``
-=============================
+=======================================
 
 For all other permissions, you can use one or more ``"permissions"`` blocks in your ``datasette.yaml`` configuration file.
 

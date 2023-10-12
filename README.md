@@ -7,7 +7,7 @@
 [![Documentation Status](https://readthedocs.org/projects/datasette/badge/?version=latest)](https://docs.datasette.io/en/latest/?badge=latest)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/simonw/datasette/blob/main/LICENSE)
 [![docker: datasette](https://img.shields.io/badge/docker-datasette-blue)](https://hub.docker.com/r/datasetteproject/datasette)
-[![discord](https://img.shields.io/discord/823971286308356157?label=discord)](https://discord.gg/ktd74dm5mw)
+[![discord](https://img.shields.io/discord/823971286308356157?label=discord)](https://datasette.io/discord)
 
 *An open source multi-tool for exploring and publishing data*
 
@@ -22,7 +22,7 @@ Datasette is aimed at data journalists, museum curators, archivists, local gover
 * Comprehensive documentation: https://docs.datasette.io/
 * Examples: https://datasette.io/examples
 * Live demo of current `main` branch: https://latest.datasette.io/
-* Questions, feedback or want to talk about the project? Join our [Discord](https://discord.gg/ktd74dm5mw)
+* Questions, feedback or want to talk about the project? Join our [Discord](https://datasette.io/discord)
 
 Want to stay up-to-date with the project? Subscribe to the [Datasette newsletter](https://datasette.substack.com/) for tips, tricks and news on what's new in the Datasette ecosystem.
 

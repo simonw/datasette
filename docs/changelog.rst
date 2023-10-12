@@ -273,7 +273,7 @@ Documentation
 
 Datasette can now run entirely in your browser using WebAssembly. Try out `Datasette Lite <https://lite.datasette.io/>`__, take a look `at the code <https://github.com/simonw/datasette-lite>`__ or read more about it in `Datasette Lite: a server-side Python web application running in a browser <https://simonwillison.net/2022/May/4/datasette-lite/>`__.
 
-Datasette now has a `Discord community <https://discord.gg/ktd74dm5mw>`__ for questions and discussions about Datasette and its ecosystem of projects.
+Datasette now has a `Discord community <https://datasette.io/discord>`__ for questions and discussions about Datasette and its ecosystem of projects.
 
 Features
 ~~~~~~~~

@@ -1,7 +1,7 @@
 // Custom events for use with the native CustomEvent API
 const DATASETTE_EVENTS = {
   INIT: "datasette_init", // returns datasette manager instance in evt.detail
-}
+};
 
 // Datasette "core" -> Methods/APIs that are foundational
 // Plugins will have greater stability if they use the functional hooks- but if they do decide to hook into
@@ -13,7 +13,7 @@ const DOM_SELECTORS = {
   /** Event listeners that go outside of the main table, e.g. existing scroll listener */
   tableWrapper: ".table-wrapper",
   table: "table.rows-and-columns",
-  aboveTablePanel: '.above-table-panel',
+  aboveTablePanel: ".above-table-panel",
 
   // These could have multiple matches
   /** Used for selecting table headers. Use makeColumnActions if you want to add menu items. */
@@ -25,7 +25,6 @@ const DOM_SELECTORS = {
   facetResults: ".facet-results [data-column]",
 };
 
-
 /**
  * Monolith class for interacting with Datasette JS API
  * Imported with DEFER, runs after main document parsed
@@ -33,7 +32,6 @@ const DOM_SELECTORS = {
  */
 const datasetteManager = {
   VERSION: window.datasetteVersion,
-
 
   // TODO: Should order of registration matter more?
 
@@ -72,7 +70,7 @@ const datasetteManager = {
     // Accept function that returns list of columnActions with keys
     // Required: label (text)
     // Optional: onClick or href
-    datasetteManager.plugins.forEach(plugin => {
+    datasetteManager.plugins.forEach((plugin) => {
       if (plugin.makeColumnActions) {
         // Plugins can provide multiple columnActions if they want
         // If multiple try to create entry with same label, the last one deletes the others
@@ -94,28 +92,31 @@ const datasetteManager = {
    * TODO: does this hook need to take any arguments?
    */
   renderAboveTablePanel: () => {
-
-    const aboveTablePanel = document.querySelector(DOM_SELECTORS.aboveTablePanel);
+    const aboveTablePanel = document.querySelector(
+      DOM_SELECTORS.aboveTablePanel
+    );
 
     if (!aboveTablePanel) {
-      console.warn('This page does not have a table, the renderAboveTablePanel cannot be used.');
+      console.warn(
+        "This page does not have a table, the renderAboveTablePanel cannot be used."
+      );
       return;
     }
 
-    let aboveTablePanelWrapper = aboveTablePanel.querySelector('.panels');
+    let aboveTablePanelWrapper = aboveTablePanel.querySelector(".panels");
 
     // First render: create wrappers. Otherwise, reuse previous.
     if (!aboveTablePanelWrapper) {
-      aboveTablePanelWrapper = document.createElement('div');
-      aboveTablePanelWrapper.classList.add('tab-contents');
-      const panelNav = document.createElement('div');
-      panelNav.classList.add('tab-controls');
+      aboveTablePanelWrapper = document.createElement("div");
+      aboveTablePanelWrapper.classList.add("tab-contents");
+      const panelNav = document.createElement("div");
+      panelNav.classList.add("tab-controls");
 
       // Temporary: css for minimal amount of breathing room.
-      panelNav.style.display = 'flex';
-      panelNav.style.gap = '8px';
-      panelNav.style.marginTop = '4px';
-      panelNav.style.marginBottom = '20px';
+      panelNav.style.display = "flex";
+      panelNav.style.gap = "8px";
+      panelNav.style.marginTop = "4px";
+      panelNav.style.marginBottom = "20px";
 
       aboveTablePanel.appendChild(panelNav);
       aboveTablePanel.appendChild(aboveTablePanelWrapper);
@@ -125,8 +126,8 @@ const datasetteManager = {
       const { makeAboveTablePanelConfigs } = plugin;
 
       if (makeAboveTablePanelConfigs) {
-        const controls = aboveTablePanel.querySelector('.tab-controls');
-        const contents = aboveTablePanel.querySelector('.tab-contents');
+        const controls = aboveTablePanel.querySelector(".tab-controls");
+        const contents = aboveTablePanel.querySelector(".tab-contents");
 
         // Each plugin can make multiple panels
         const configs = makeAboveTablePanelConfigs();
@@ -142,37 +143,35 @@ const datasetteManager = {
           }
 
           // Add tab control button
-          const pluginControl = document.createElement('button');
+          const pluginControl = document.createElement("button");
           pluginControl.textContent = config.label;
           pluginControl.onclick = () => {
-
-            contents.childNodes.forEach(node => {
+            contents.childNodes.forEach((node) => {
               if (node.id === nodeContentId) {
-                node.style.display = 'block'
+                node.style.display = "block";
               } else {
-                node.style.display = 'none'
+                node.style.display = "none";
               }
             });
-          }
+          };
           controls.appendChild(pluginControl);
 
           // Add plugin content area
-          const pluginNode = document.createElement('div');
+          const pluginNode = document.createElement("div");
           pluginNode.id = nodeContentId;
           config.render(pluginNode);
-          pluginNode.style.display = 'none'; // Default to hidden unless you're ifrst
+          pluginNode.style.display = "none"; // Default to hidden unless you're ifrst
 
           contents.appendChild(pluginNode);
         });
 
         // Let first node be selected by default
         if (contents.childNodes.length) {
-          contents.childNodes[0].style.display = 'block';
+          contents.childNodes[0].style.display = "block";
         }
       }
     });
   },
-
 
   /** Selectors for document (DOM) elements. Store identifier instead of immediate references in case they haven't loaded when Manager starts. */
   selectors: DOM_SELECTORS,
@@ -188,7 +187,6 @@ const datasetteManager = {
   // multiple plugins can all request the same copy of leaflet.
 };
 
-
 const initializeDatasette = () => {
   // Hide the global behind __ prefix. Ideally they should be listening for the
   // DATASETTE_EVENTS.INIT event to avoid the habit of reading from the window.
@@ -197,11 +195,11 @@ const initializeDatasette = () => {
   console.debug("Datasette Manager Created!");
 
   const initDatasetteEvent = new CustomEvent(DATASETTE_EVENTS.INIT, {
-    detail: datasetteManager
+    detail: datasetteManager,
   });
 
-  document.dispatchEvent(initDatasetteEvent)
-}
+  document.dispatchEvent(initDatasetteEvent);
+};
 
 /**
  * Main function

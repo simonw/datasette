@@ -52,7 +52,7 @@ const addPlugins = (manager) => {
             iframe.src = "https://observablehq.com/embed/@d3/sortable-bar-chart?cell=viewof+order&cell=chart";
             iframe.width = 800;
             iframe.height = 635;
-            iframe.frmaeborder = '0';
+            iframe.frameborder = '0';
             node.appendChild(iframe);
           }
         },

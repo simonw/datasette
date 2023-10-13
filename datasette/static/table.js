@@ -17,7 +17,8 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 </svg>`;
 
-(function () {
+/** Main initialization function for Datasette Table interactions */
+const initDatasetteTable = function (manager) {
   // Feature detection
   if (!window.URLSearchParams) {
     return;
@@ -68,13 +69,11 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     menu.style.display = "none";
     menu.classList.remove("anim-scale-in");
   }
-  // When page loads, add scroll listener on .table-wrapper
-  document.addEventListener("DOMContentLoaded", () => {
-    var tableWrapper = document.querySelector(".table-wrapper");
-    if (tableWrapper) {
-      tableWrapper.addEventListener("scroll", closeMenu);
-    }
-  });
+
+  const tableWrapper = document.querySelector(manager.selectors.tableWrapper);
+  if (tableWrapper) {
+    tableWrapper.addEventListener("scroll", closeMenu);
+  }
   document.body.addEventListener("click", (ev) => {
     /* was this click outside the menu? */
     var target = ev.target;
@@ -85,7 +84,8 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       closeMenu();
     }
   });
-  function iconClicked(ev) {
+
+  function onTableHeaderClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
     var th = ev.target;
@@ -185,7 +185,40 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
     menu.style.left = menuLeft + "px";
     menu.style.display = "block";
     menu.classList.add("anim-scale-in");
+
+    // Custom menu items on each render
+    // Plugin hook: allow adding JS-based additional menu items
+    const columnActionsPayload = {
+      columnName: th.dataset.column,
+      columnNotNull: th.dataset.columnNotNull === '1',
+      columnType: th.dataset.columnType,
+      isPk: th.dataset.isPk === '1'
+    };
+    const columnItemConfigs = manager.makeColumnActions(columnActionsPayload);
+
+    const menuList = menu.querySelector('ul');
+    columnItemConfigs.forEach(itemConfig => {
+      // Remove items from previous render. We assume entries have unique labels.
+      const existingItems = menuList.querySelectorAll(`li`);
+      Array.from(existingItems).filter(item => item.innerText === itemConfig.label).forEach(node => {
+        node.remove();
+      });
+
+      const newLink = document.createElement('a');
+      newLink.textContent = itemConfig.label;
+      newLink.href = itemConfig.href ?? '#';
+      if (itemConfig.onClick) {
+        newLink.onclick = itemConfig.onClick;
+      }
+
+      // Attach new elements to DOM
+      const menuItem = document.createElement('li');
+      menuItem.appendChild(newLink);
+      menuList.appendChild(menuItem);
+    });
+
   }
+
   var svg = document.createElement("div");
   svg.innerHTML = DROPDOWN_ICON_SVG;
   svg = svg.querySelector("*");
@@ -197,21 +230,21 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   menu.style.display = "none";
   document.body.appendChild(menu);
 
-  var ths = Array.from(document.querySelectorAll(".rows-and-columns th"));
+  var ths = Array.from(document.querySelectorAll(manager.selectors.tableHeaders));
   ths.forEach((th) => {
     if (!th.querySelector("a")) {
       return;
     }
     var icon = svg.cloneNode(true);
-    icon.addEventListener("click", iconClicked);
+    icon.addEventListener("click", onTableHeaderClick);
     th.appendChild(icon);
   });
-})();
+};
 
 /* Add x buttons to the filter rows */
-(function () {
+function addButtonsToFilterRows(manager) {
   var x = "✖";
-  var rows = Array.from(document.querySelectorAll(".filter-row")).filter((el) =>
+  var rows = Array.from(document.querySelectorAll(manager.selectors.filterRow)).filter((el) =>
     el.querySelector(".filter-op")
   );
   rows.forEach((row) => {
@@ -234,13 +267,13 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
       a.style.display = "none";
     }
   });
-})();
+};
 
 /* Set up datalist autocomplete for filter values */
-(function () {
+function initAutocompleteForFilterValues(manager) {
   function createDataLists() {
     var facetResults = document.querySelectorAll(
-      ".facet-results [data-column]"
+      manager.selectors.facetResults
     );
     Array.from(facetResults).forEach(function (facetResult) {
       // Use link text from all links in the facet result
@@ -266,9 +299,21 @@ var DROPDOWN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="14" heig
   document.body.addEventListener("change", function (event) {
     if (event.target.name === "_filter_column") {
       event.target
-        .closest(".filter-row")
+        .closest(manager.selectors.filterRow)
         .querySelector(".filter-value")
         .setAttribute("list", "datalist-" + event.target.value);
     }
   });
-})();
+};
+
+// Ensures Table UI is initialized only after the Manager is ready.
+document.addEventListener("datasette_init", function (evt) {
+  const { detail: manager } = evt;
+
+  // Main table
+  initDatasetteTable(manager);
+
+  // Other UI functions with interactive JS needs
+  addButtonsToFilterRows(manager);
+  initAutocompleteForFilterValues(manager);
+});

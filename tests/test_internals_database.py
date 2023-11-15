@@ -108,6 +108,7 @@ async def test_view_exists(db, view, expected):
                 "complex_array",
                 "distinct_some_null",
                 "n",
+                "value",
             ],
         ),
         (
@@ -230,6 +231,15 @@ async def test_table_columns(db, table, expected):
                     cid=10,
                     name="n",
                     type="text",
+                    notnull=0,
+                    default_value=None,
+                    is_pk=0,
+                    hidden=0,
+                ),
+                Column(
+                    cid=11,
+                    name="value",
+                    type="integer",
                     notnull=0,
                     default_value=None,
                     is_pk=0,

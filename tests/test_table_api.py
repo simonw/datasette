@@ -581,6 +581,7 @@ async def test_table_filter_json_arraycontains(ds_client):
             '[{"foo": "bar"}]',
             "one",
             "n1",
+            1,
         ],
         [
             2,
@@ -594,6 +595,7 @@ async def test_table_filter_json_arraycontains(ds_client):
             "[]",
             "two",
             "n2",
+            2,
         ],
     ]
 
@@ -617,6 +619,7 @@ async def test_table_filter_json_arraynotcontains(ds_client):
             '[{"foo": "bar"}]',
             "one",
             "n1",
+            1,
         ]
     ]
 
@@ -639,6 +642,7 @@ async def test_table_filter_extra_where(ds_client):
             "[]",
             "two",
             "n2",
+            2,
         ]
     ] == response.json()["rows"]
 
@@ -1088,6 +1092,7 @@ async def test_expand_labels(ds_client):
             "complex_array": "[]",
             "distinct_some_null": "two",
             "n": "n2",
+            "value": 2,
         },
         "13": {
             "pk": 13,
@@ -1101,6 +1106,7 @@ async def test_expand_labels(ds_client):
             "complex_array": "[]",
             "distinct_some_null": None,
             "n": None,
+            "value": None,
         },
     }
 
@@ -1304,6 +1310,7 @@ def test_generated_columns_are_visible_in_datasette():
                 "complex_array",
                 "distinct_some_null",
                 "n",
+                "value",
             ],
         ),
         (
@@ -1332,6 +1339,7 @@ def test_generated_columns_are_visible_in_datasette():
                 "complex_array",
                 "distinct_some_null",
                 "n",
+                "value",
             ],
         ),
         (

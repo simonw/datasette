@@ -70,10 +70,10 @@ Table cells with extremely long text contents are truncated on the table view ac
 
 Rows which are the targets of foreign key references from other tables will show a link to a filtered search for all records that reference that row. Here's an example from the Registers of Members Interests database:
 
-`../people/uk.org.publicwhip%2Fperson%2F10001 <https://register-of-members-interests.datasettes.com/regmem/people/uk.org.publicwhip%2Fperson%2F10001>`_
+`../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001 <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001>`_
 
 Note that this URL includes the encoded primary key of the record.
 
 Here's that same page as JSON:
 
-`../people/uk.org.publicwhip%2Fperson%2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk.org.publicwhip%2Fperson%2F10001.json>`_
+`../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json>`_

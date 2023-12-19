@@ -1017,7 +1017,7 @@ Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://d
 .. _database_execute_write_fn:
 
 await db.execute_write_fn(fn, block=True)
-------------------------------------------
+-----------------------------------------
 
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
@@ -1053,6 +1053,23 @@ If your function raises an exception that exception will be propagated up to the
 If you see ``OperationalError: database table is locked`` errors you should check that you remembered to explicitly call ``conn.commit()`` in your write function.
 
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
+
+.. _database_execute_isolated_fn:
+
+await db.execute_isolated_fn(fn)
+--------------------------------
+
+This method works is similar to :ref:`execute_write_fn() <database_execute_write_fn>` but executes the provided function in an entirely isolated SQLite connection, which is opened, used and then closed again in a single call to this method.
+
+The :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook is not executed against this connection.
+
+This allows plugins to execute database operations that might conflict with how database connections are usually configured. For example, running a ``VACUUM`` operation while bypassing any restrictions placed by the `datasette-sqlite-authorizer <https://github.com/datasette/datasette-sqlite-authorizer>`__ plugin.
+
+Plugins can also use this method to load potentially dangerous SQLite extensions, use them to perform an operation and then have them safely unloaded at the end of the call, without risk of exposing them to other connections.
+
+Functions run using ``execute_isolated_fn()`` share the same queue as ``execute_write_fn()``, which guarantees that no writes can be executed at the same time as the isolated function is executing.
+
+The return value of the function will be returned by this method. Any exceptions raised by the function will be raised out of the ``await`` line as well.
 
 .. _database_close:
 

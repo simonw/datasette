@@ -169,7 +169,11 @@ class Database:
                 result = fn(isolated_connection)
             finally:
                 isolated_connection.close()
-                self._all_file_connections.remove(isolated_connection)
+                try:
+                    self._all_file_connections.remove(isolated_connection)
+                except ValueError:
+                    # Was probably a memory connection
+                    pass
             return result
         else:
             # Threaded mode - send to write thread
@@ -230,7 +234,11 @@ class Database:
                         result = e
                     finally:
                         isolated_connection.close()
-                        self._all_file_connections.remove(isolated_connection)
+                        try:
+                            self._all_file_connections.remove(isolated_connection)
+                        except ValueError:
+                            # Was probably a memory connection
+                            pass
                 else:
                     try:
                         result = task.fn(conn)

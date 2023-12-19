@@ -1,6 +1,7 @@
 """
 Tests for the datasette.database.Database class
 """
+from datasette.app import Datasette
 from datasette.database import Database, Results, MultipleValues
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import Column
@@ -543,7 +544,12 @@ def table_exists_checker(name):
 
 
 @pytest.mark.asyncio
-async def test_execute_isolated(db):
+@pytest.mark.parametrize("disable_threads", (False, True))
+async def test_execute_isolated(db, disable_threads):
+    if disable_threads:
+        ds = Datasette(memory=True, settings={"num_sql_threads": 0})
+        db = ds.add_database(Database(ds, memory_name="test_num_sql_threads_zero"))
+
     # Create temporary table in write
     await db.execute_write(
         "create temporary table created_by_write (id integer primary key)"
@@ -576,6 +582,7 @@ async def test_execute_isolated(db):
 
     # ... and a second call to isolated should not see that connection either
     assert not await db.execute_isolated_fn(table_exists_checker("created_by_isolated"))
+
 
 @pytest.mark.asyncio
 async def test_mtime_ns(db):

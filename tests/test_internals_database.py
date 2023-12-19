@@ -557,6 +557,7 @@ async def test_execute_isolated(db):
         conn.execute(
             "create temporary table created_by_isolated (id integer primary key)"
         )
+        assert table_exists(conn, "created_by_isolated")
         # Also confirm that created_by_write does not exist
         return table_exists(conn, "created_by_write")
 
@@ -573,6 +574,8 @@ async def test_execute_isolated(db):
     # created_by_isolated should not exist, even in write connection
     assert not await db.execute_write_fn(table_exists_checker("created_by_isolated"))
 
+    # ... and a second call to isolated should not see that connection either
+    assert not await db.execute_isolated_fn(table_exists_checker("created_by_isolated"))
 
 @pytest.mark.asyncio
 async def test_mtime_ns(db):

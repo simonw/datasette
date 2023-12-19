@@ -1,4 +1,4 @@
-<div class="facet-results">
+<div class="facet-results"  style="view-transition-name: facet-results">
     {% for facet_info in sorted_facet_results %}
         <div class="facet-info facet-{{ database|to_css_class }}-{{ table|to_css_class }}-{{ facet_info.name|to_css_class }}" id="facet-{{ facet_info.name|to_css_class }}" data-column="{{ facet_info.name }}">
             <p class="facet-info-name">

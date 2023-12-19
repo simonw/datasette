@@ -519,6 +519,61 @@ async def test_execute_write_fn_connection_exception(tmpdir, app_client):
     app_client.ds.remove_database("immutable-db")
 
 
+def table_exists(conn, name):
+    return bool(
+        conn.execute(
+            """
+        with all_tables as (
+            select name from sqlite_master where type = 'table'
+                     union all
+            select name from temp.sqlite_master where type = 'table'
+        )
+        select 1 from all_tables where name = ?
+        """,
+            (name,),
+        ).fetchall(),
+    )
+
+
+def table_exists_checker(name):
+    def inner(conn):
+        return table_exists(conn, name)
+
+    return inner
+
+
+@pytest.mark.asyncio
+async def test_execute_isolated(db):
+    # Create temporary table in write
+    await db.execute_write(
+        "create temporary table created_by_write (id integer primary key)"
+    )
+    # Should stay visible to write connection
+    assert await db.execute_write_fn(table_exists_checker("created_by_write"))
+
+    def create_shared_table(conn):
+        conn.execute("create table shared (id integer primary key)")
+        # And a temporary table that should not continue to exist
+        conn.execute(
+            "create temporary table created_by_isolated (id integer primary key)"
+        )
+        # Also confirm that created_by_write does not exist
+        return table_exists(conn, "created_by_write")
+
+    # shared should not exist
+    assert not await db.execute_fn(table_exists_checker("shared"))
+
+    # Create it using isolated
+    created_by_write_exists = await db.execute_isolated_fn(create_shared_table)
+    assert not created_by_write_exists
+
+    # shared SHOULD exist now
+    assert await db.execute_fn(table_exists_checker("shared"))
+
+    # created_by_isolated should not exist, even in write connection
+    assert not await db.execute_write_fn(table_exists_checker("created_by_isolated"))
+
+
 @pytest.mark.asyncio
 async def test_mtime_ns(db):
     assert isinstance(db.mtime_ns, int)

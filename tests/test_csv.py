@@ -1,3 +1,4 @@
+from datasette.app import Datasette
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (  # noqa
     app_client,
@@ -5,6 +6,7 @@ from .fixtures import (  # noqa
     app_client_with_cors,
     app_client_with_trace,
 )
+import pytest
 import urllib.parse
 
 EXPECTED_TABLE_CSV = """id,content
@@ -88,6 +90,40 @@ def test_table_csv_with_nullable_labels(app_client):
     assert response.status == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == EXPECTED_TABLE_WITH_NULLABLE_LABELS_CSV
+
+
+@pytest.mark.asyncio
+async def test_table_csv_with_invalid_labels():
+    # https://github.com/simonw/datasette/issues/2214
+    ds = Datasette()
+    await ds.invoke_startup()
+    db = ds.add_memory_database("db_2214")
+    await db.execute_write_script(
+        """
+        create table t1 (id integer primary key, name text);
+        insert into t1 (id, name) values (1, 'one');
+        insert into t1 (id, name) values (2, 'two');
+        create table t2 (textid text primary key, name text);
+        insert into t2 (textid, name) values ('a', 'alpha');
+        insert into t2 (textid, name) values ('b', 'beta');
+        create table if not exists maintable (
+            id integer primary key,
+            fk_integer integer references t1(id),
+            fk_text text references t2(textid)
+        );
+        insert into maintable (id, fk_integer, fk_text) values (1, 1, 'a');
+        insert into maintable (id, fk_integer, fk_text) values (2, 3, 'b'); -- invalid fk_integer
+        insert into maintable (id, fk_integer, fk_text) values (3, 2, 'c'); -- invalid fk_text
+    """
+    )
+    response = await ds.client.get("/db_2214/maintable.csv?_labels=1")
+    assert response.status_code == 200
+    assert response.text == (
+        "id,fk_integer,fk_integer_label,fk_text,fk_text_label\r\n"
+        "1,1,one,a,alpha\r\n"
+        "2,3,,b,beta\r\n"
+        "3,2,two,c,\r\n"
+    )
 
 
 def test_table_csv_blob_columns(app_client):

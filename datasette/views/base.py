@@ -308,9 +308,11 @@ class DataView(BaseView):
                                     if cell is None:
                                         new_row.extend(("", ""))
                                     else:
-                                        assert isinstance(cell, dict)
-                                        new_row.append(cell["value"])
-                                        new_row.append(cell["label"])
+                                        if not isinstance(cell, dict):
+                                            new_row.extend((cell, ""))
+                                        else:
+                                            new_row.append(cell["value"])
+                                            new_row.append(cell["label"])
                                 else:
                                     new_row.append(cell)
                             await writer.writerow(new_row)

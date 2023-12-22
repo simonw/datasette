@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_64_6:
+
+0.64.6 (2023-12-22)
+-------------------
+
+- Fixed a bug where CSV export with expanded labels could fail if a foreign key reference did not correctly resolve. (:issue:`2214`)
+
 .. _v0_64_5:
 
 0.64.5 (2023-10-08)

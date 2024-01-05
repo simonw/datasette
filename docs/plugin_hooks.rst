@@ -1128,6 +1128,48 @@ These IDs could be integers or strings, depending on how the actors used by the 
 
 Example: `datasette-remote-actors <https://github.com/datasette/datasette-remote-actors>`_
 
+.. _plugin_hook_jinja2_environment_from_request:
+
+jinja2_environment_from_request(datasette, request, env)
+--------------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    A Datasette instance.
+
+``request`` - :ref:`internals_request` or ``None``
+    The current HTTP request, if one is available.
+
+``env`` - ``Environment``
+    The Jinja2 environment that will be used to render the current page.
+
+This hook can be used to return a customized `Jinja environment <https://jinja.palletsprojects.com/en/3.0.x/api/#jinja2.Environment>`__ based on the incoming request.
+
+If you want to run a single Datasette instance that serves different content for different domains, you can do so like this:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from jinja2 import ChoiceLoader, FileSystemLoader
+
+
+    @hookimpl
+    def jinja2_environment_from_request(request, env):
+        if request and request.host == "www.niche-museums.com":
+            return env.overlay(
+                loader=ChoiceLoader(
+                    [
+                        FileSystemLoader(
+                            "/mnt/niche-museums/templates"
+                        ),
+                        env.loader,
+                    ]
+                ),
+                enable_async=True,
+            )
+        return env
+
+This uses the Jinja `overlay() method <https://jinja.palletsprojects.com/en/3.0.x/api/#jinja2.Environment.overlay>`__ to create a new environment identical to the default environment except for having a different template loader, which first looks in the ``/mnt/niche-museums/templates`` directory before falling back on the default loader.
+
 .. _plugin_hook_filters_from_request:
 
 filters_from_request(request, database, table, datasette)

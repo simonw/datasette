@@ -420,20 +420,30 @@ class Datasette:
                 ),
             ]
         )
-        self.jinja_env = Environment(
+        environment = Environment(
             loader=template_loader,
             autoescape=True,
             enable_async=True,
             # undefined=StrictUndefined,
         )
-        self.jinja_env.filters["escape_css_string"] = escape_css_string
-        self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
-        self.jinja_env.filters["escape_sqlite"] = escape_sqlite
-        self.jinja_env.filters["to_css_class"] = to_css_class
+        environment.filters["escape_css_string"] = escape_css_string
+        environment.filters["quote_plus"] = urllib.parse.quote_plus
+        self._jinja_env = environment
+        environment.filters["escape_sqlite"] = escape_sqlite
+        environment.filters["to_css_class"] = to_css_class
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
         self.client = DatasetteClient(self)
+
+    def get_jinja_environment(self, request: Request = None) -> Environment:
+        environment = self._jinja_env
+        if request:
+            for environment in pm.hook.jinja2_environment_from_request(
+                datasette=self, request=request, env=environment
+            ):
+                pass
+        return environment
 
     def get_permission(self, name_or_abbr: str) -> "Permission":
         """
@@ -514,7 +524,7 @@ class Datasette:
                         abbrs[p.abbr] = p
                     self.permissions[p.name] = p
         for hook in pm.hook.prepare_jinja2_environment(
-            env=self.jinja_env, datasette=self
+            env=self._jinja_env, datasette=self
         ):
             await await_me_maybe(hook)
         for hook in pm.hook.startup(datasette=self):
@@ -1218,7 +1228,7 @@ class Datasette:
         else:
             if isinstance(templates, str):
                 templates = [templates]
-            template = self.jinja_env.select_template(templates)
+            template = self.get_jinja_environment(request).select_template(templates)
         if dataclasses.is_dataclass(context):
             context = dataclasses.asdict(context)
         body_scripts = []
@@ -1568,16 +1578,6 @@ class DatasetteRouter:
     def __init__(self, datasette, routes):
         self.ds = datasette
         self.routes = routes or []
-        # Build a list of pages/blah/{name}.html matching expressions
-        pattern_templates = [
-            filepath
-            for filepath in self.ds.jinja_env.list_templates()
-            if "{" in filepath and filepath.startswith("pages/")
-        ]
-        self.page_routes = [
-            (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
-            for filepath in pattern_templates
-        ]
 
     async def __call__(self, scope, receive, send):
         # Because we care about "foo/bar" v.s. "foo%2Fbar" we decode raw_path ourselves
@@ -1677,13 +1677,24 @@ class DatasetteRouter:
             route_path = request.scope.get("route_path", request.scope["path"])
             # Jinja requires template names to use "/" even on Windows
             template_name = "pages" + route_path + ".html"
+            # Build a list of pages/blah/{name}.html matching expressions
+            environment = self.ds.get_jinja_environment(request)
+            pattern_templates = [
+                filepath
+                for filepath in environment.list_templates()
+                if "{" in filepath and filepath.startswith("pages/")
+            ]
+            page_routes = [
+                (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
+                for filepath in pattern_templates
+            ]
             try:
-                template = self.ds.jinja_env.select_template([template_name])
+                template = environment.select_template([template_name])
             except TemplateNotFound:
                 template = None
             if template is None:
                 # Try for a pages/blah/{name}.html template match
-                for regex, wildcard_template in self.page_routes:
+                for regex, wildcard_template in page_routes:
                     match = regex.match(route_path)
                     if match is not None:
                         context.update(match.groupdict())

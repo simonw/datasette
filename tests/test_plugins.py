@@ -16,6 +16,7 @@ from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import CustomRow, StartupError
 from jinja2.environment import Template
+from jinja2 import ChoiceLoader, FileSystemLoader
 import base64
 import importlib
 import json
@@ -563,7 +564,8 @@ async def test_hook_register_output_renderer_can_render(ds_client):
 async def test_hook_prepare_jinja2_environment(ds_client):
     ds_client.ds._HELLO = "HI"
     await ds_client.ds.invoke_startup()
-    template = ds_client.ds.jinja_env.from_string(
+    environment = ds_client.ds.get_jinja_environment(None)
+    template = environment.from_string(
         "Hello there, {{ a|format_numeric }}, {{ a|to_hello }}, {{ b|select_times_three }}",
         {"a": 3412341, "b": 5},
     )
@@ -1294,3 +1296,41 @@ async def test_plugin_is_installed():
 
     finally:
         pm.unregister(name="DummyPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_jinja2_environment_from_request(tmpdir):
+    templates = pathlib.Path(tmpdir / "templates")
+    templates.mkdir()
+    (templates / "index.html").write_text("Hello museums!", "utf-8")
+
+    class EnvironmentPlugin:
+        @hookimpl
+        def jinja2_environment_from_request(self, request, env):
+            if request and request.host == "www.niche-museums.com":
+                return env.overlay(
+                    loader=ChoiceLoader(
+                        [
+                            FileSystemLoader(str(templates)),
+                            env.loader,
+                        ]
+                    ),
+                    enable_async=True,
+                )
+            return env
+
+    datasette = Datasette(memory=True)
+
+    try:
+        pm.register(EnvironmentPlugin(), name="EnvironmentPlugin")
+        response = await datasette.client.get("/")
+        assert response.status_code == 200
+        assert "Hello museums!" not in response.text
+        # Try again with the hostname
+        response2 = await datasette.client.get(
+            "/", headers={"host": "www.niche-museums.com"}
+        )
+        assert response2.status_code == 200
+        assert "Hello museums!" in response2.text
+    finally:
+        pm.unregister(name="EnvironmentPlugin")

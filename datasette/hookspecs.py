@@ -100,6 +100,11 @@ def actors_from_ids(datasette, actor_ids):
 
 
 @hookspec
+def jinja2_environment_from_request(datasette, request, env):
+    """Return a Jinja2 environment based on the incoming request"""
+
+
+@hookspec
 def filters_from_request(request, database, table, datasette):
     """
     Return datasette.filters.FilterArguments(

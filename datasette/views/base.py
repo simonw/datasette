@@ -143,7 +143,8 @@ class BaseView:
 
     async def render(self, templates, request, context=None):
         context = context or {}
-        template = self.ds.jinja_env.select_template(templates)
+        environment = self.ds.get_jinja_environment(request)
+        template = environment.select_template(templates)
         template_context = {
             **context,
             **{

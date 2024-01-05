@@ -143,7 +143,8 @@ class DatabaseView(View):
             datasette.urls.path(path_with_format(request=request, format="json")),
         )
         templates = (f"database-{to_css_class(database)}.html", "database.html")
-        template = datasette.jinja_env.select_template(templates)
+        environment = datasette.get_jinja_environment(request)
+        template = environment.select_template(templates)
         context = {
             **json_data,
             "database_color": db.color,
@@ -594,7 +595,8 @@ class QueryView(View):
                     f"query-{to_css_class(database)}-{to_css_class(canned_query['name'])}.html",
                 )
 
-            template = datasette.jinja_env.select_template(templates)
+            environment = datasette.get_jinja_environment(request)
+            template = environment.select_template(templates)
             alternate_url_json = datasette.absolute_url(
                 request,
                 datasette.urls.path(path_with_format(request=request, format="json")),

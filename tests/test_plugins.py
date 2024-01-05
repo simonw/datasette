@@ -563,7 +563,8 @@ async def test_hook_register_output_renderer_can_render(ds_client):
 async def test_hook_prepare_jinja2_environment(ds_client):
     ds_client.ds._HELLO = "HI"
     await ds_client.ds.invoke_startup()
-    template = ds_client.ds.jinja_env.from_string(
+    environment = ds_client.ds.get_jinja_environment(None)
+    template = environment.from_string(
         "Hello there, {{ a|format_numeric }}, {{ a|to_hello }}, {{ b|select_times_three }}",
         {"a": 3412341, "b": 5},
     )
@@ -1294,3 +1295,8 @@ async def test_plugin_is_installed():
 
     finally:
         pm.unregister(name="DummyPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_jinja2_environment_from_request():
+    pass

@@ -806,7 +806,8 @@ async def table_view_traced(datasette, request):
             f"table-{to_css_class(resolved.db.name)}-{to_css_class(resolved.table)}.html",
             "table.html",
         ]
-        template = datasette.jinja_env.select_template(templates)
+        environment = datasette.get_jinja_environment(request)
+        template = environment.select_template(templates)
         alternate_url_json = datasette.absolute_url(
             request,
             datasette.urls.path(path_with_format(request=request, format="json")),

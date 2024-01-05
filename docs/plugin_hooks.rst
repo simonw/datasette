@@ -1128,6 +1128,22 @@ These IDs could be integers or strings, depending on how the actors used by the 
 
 Example: `datasette-remote-actors <https://github.com/datasette/datasette-remote-actors>`_
 
+.. _plugin_hook_jinja2_environment_from_request:
+
+jinja2_environment_from_request(datasette, request, env)
+--------------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    A Datasette instance.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``env`` - `Environment`
+    The Jinja2 environment that will be used to render the current page.
+
+... use overlays here
+
 .. _plugin_hook_filters_from_request:
 
 filters_from_request(request, database, table, datasette)

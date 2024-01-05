@@ -57,7 +57,8 @@ def handle_exception(datasette, request, exception):
         if request.path.split("?")[0].endswith(".json"):
             return Response.json(info, status=status, headers=headers)
         else:
-            template = datasette.jinja_env.select_template(templates)
+            environment = datasette.get_jinja_environment(request)
+            template = environment.select_template(templates)
             return Response.html(
                 await template.render_async(
                     dict(

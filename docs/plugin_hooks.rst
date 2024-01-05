@@ -1151,13 +1151,16 @@ If you want to run a single Datasette instance that serves different content for
     from datasette import hookimpl
     from jinja2 import ChoiceLoader, FileSystemLoader
 
+
     @hookimpl
     def jinja2_environment_from_request(request, env):
         if request and request.host == "www.niche-museums.com":
             return env.overlay(
                 loader=ChoiceLoader(
                     [
-                        FileSystemLoader("/mnt/niche-museums/templates"),
+                        FileSystemLoader(
+                            "/mnt/niche-museums/templates"
+                        ),
                         env.loader,
                     ]
                 ),

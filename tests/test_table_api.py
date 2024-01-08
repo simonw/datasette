@@ -1378,6 +1378,16 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
                 "truncated": False,
             },
         ),
+        (
+            "count",
+            {
+                "ok": True,
+                "next": None,
+                "rows": [{"id": "1", "content": "hey", "content2": "world"}],
+                "truncated": False,
+                "count": 1,
+            },
+        ),
     ),
 )
 async def test_table_extras(ds_client, extra, expected_json):

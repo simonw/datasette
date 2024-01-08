@@ -1362,3 +1362,27 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
     response = await ds_client.get(path)
     assert response.status_code == 400
     assert response.json()["error"] == expected_error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra,expected_json",
+    (
+        (
+            "columns",
+            {
+                "ok": True,
+                "next": None,
+                "columns": ["id", "content", "content2"],
+                "rows": [{"id": "1", "content": "hey", "content2": "world"}],
+                "truncated": False,
+            },
+        ),
+    ),
+)
+async def test_table_extras(ds_client, extra, expected_json):
+    response = await ds_client.get(
+        "/fixtures/primary_key_multiple_columns.json?_extra=" + extra
+    )
+    assert response.status_code == 200
+    assert response.json() == expected_json

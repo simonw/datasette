@@ -89,7 +89,7 @@ Using datasette.client in tests
 
 The :ref:`internals_datasette_client` mechanism is designed for use in tests. It provides access to a pre-configured `HTTPX async client <https://www.python-httpx.org/async/>`__ instance that can make GET, POST and other HTTP requests against a Datasette instance from inside a test.
 
-I simple test looks like this:
+A simple test looks like this:
 
 .. literalinclude:: ../tests/test_docs.py
    :language: python

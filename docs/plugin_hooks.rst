@@ -1086,6 +1086,8 @@ The hook must return a dictionary that maps the incoming actor IDs to their full
 
 Some plugins that implement social features may store the ID of the :ref:`actor <authentication_actor>` that performed an action - added a comment, bookmarked a table or similar - and then need a way to resolve those IDs into display-friendly actor dictionaries later on.
 
+The :ref:`await datasette.actors_from_ids(actor_ids) <datasette_actors_from_ids>` internal method can be used to look up actors from their IDs. It will dispatch to the first plugin that implements this hook.
+
 Unlike other plugin hooks, this only uses the first implementation of the hook to return a result. You can expect users to only have a single plugin installed that implements this hook.
 
 If no plugin is installed, Datasette defaults to returning actors that are just ``{"id": actor_id}``.

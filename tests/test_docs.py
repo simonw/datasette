@@ -1,9 +1,8 @@
 """
 Tests to ensure certain things are documented.
 """
-from click.testing import CliRunner
 from datasette import app, utils
-from datasette.cli import cli
+from datasette.app import Datasette
 from datasette.filters import Filters
 from pathlib import Path
 import pytest
@@ -102,3 +101,41 @@ def documented_fns():
 @pytest.mark.parametrize("fn", utils.functions_marked_as_documented)
 def test_functions_marked_with_documented_are_documented(documented_fns, fn):
     assert fn.__name__ in documented_fns
+
+
+# Tests for testing_plugins.rst documentation
+
+
+# -- start test_homepage --
+@pytest.mark.asyncio
+async def test_homepage():
+    ds = Datasette(memory=True)
+    response = await ds.client.get("/")
+    html = response.text
+    assert "<h1>" in html
+
+
+# -- end test_homepage --
+
+
+# -- start test_actor_is_null --
+@pytest.mark.asyncio
+async def test_actor_is_null():
+    ds = Datasette(memory=True)
+    response = await ds.client.get("/-/actor.json")
+    assert response.json() == {"actor": None}
+
+
+# -- end test_actor_is_null --
+
+
+# -- start test_signed_cookie_actor --
+@pytest.mark.asyncio
+async def test_signed_cookie_actor():
+    ds = Datasette(memory=True)
+    cookies = {"ds_actor": ds.client.actor_cookie({"id": "root"})}
+    response = await ds.client.get("/-/actor.json", cookies=cookies)
+    assert response.json() == {"actor": {"id": "root"}}
+
+
+# -- end test_signed_cookie_actor --

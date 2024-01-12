@@ -313,3 +313,19 @@ When writing tests for plugins you may find it useful to register a test plugin 
             assert response.status_code == 500
         finally:
             pm.unregister(name="undo")
+
+To reuse the same temporary plugin in multiple tests, you can register it inside a fixture in your ``conftest.py`` file like this:
+
+.. literalinclude:: ../tests/test_docs_plugins.py
+   :language: python
+   :start-after: # -- start datasette_with_plugin_fixture --
+   :end-before: # -- end datasette_with_plugin_fixture --
+
+Note the ``yield`` statement here - this ensures that the ``finally:`` block that unregisters the plugin is executed only after the test function itself has completed.
+
+Then in a test:
+
+.. literalinclude:: ../tests/test_docs_plugins.py
+   :language: python
+   :start-after: # -- start datasette_with_plugin_test --
+   :end-before: # -- end datasette_with_plugin_test --

@@ -95,7 +95,7 @@
 {% endif %}
 
 {% if allow_download %}
-    <p class="download-sqlite">Download SQLite DB: <a href="{{ urls.database(database) }}.db">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
+    <p class="download-sqlite">Download SQLite DB: <a href="{{ urls.database(database) }}.db" rel="nofollow">{{ database }}.db</a> <em>{{ format_bytes(size) }}</em></p>
 {% endif %}
 
 {% include "_codemirror_foot.html" %}

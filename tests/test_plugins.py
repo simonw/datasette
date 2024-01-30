@@ -1334,3 +1334,22 @@ async def test_hook_jinja2_environment_from_request(tmpdir):
         assert "Hello museums!" in response2.text
     finally:
         pm.unregister(name="EnvironmentPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_homepage():
+    class HookPlugin:
+        __name__ = "HookPlugin"
+
+        @hookimpl
+        def top_homepage(self, request):
+            return "XXX-YYY: " + request.args["z"]
+
+    try:
+        pm.register(HookPlugin(), name="HookPlugin")
+        datasette = Datasette(memory=True)
+        response = await datasette.client.get("/?z=foo")
+        assert response.status_code == 200
+        assert "XXX-YYY: foo" in response.text
+    finally:
+        pm.unregister(name="HookPlugin")

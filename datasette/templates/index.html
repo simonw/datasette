@@ -7,6 +7,8 @@
 {% block content %}
 <h1>{{ metadata.title or "Datasette" }}{% if private %} 🔒{% endif %}</h1>
 
+{{ top_homepage() }}
+
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% for database in databases %}

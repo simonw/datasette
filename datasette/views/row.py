@@ -2,11 +2,9 @@ from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
 from .base import DataView, BaseView, _error
 from datasette.utils import (
-    tilde_decode,
-    urlsafe_components,
+    make_slot_function,
     to_css_class,
     escape_sqlite,
-    row_sql_params_pks,
 )
 import json
 import sqlite_utils
@@ -73,6 +71,14 @@ class RowView(DataView):
                 .get(database, {})
                 .get("tables", {})
                 .get(table, {}),
+                "top_row": make_slot_function(
+                    "top_row",
+                    self.ds,
+                    request,
+                    database=resolved.db.name,
+                    table=resolved.table,
+                    row=rows[0],
+                ),
             }
 
         data = {

@@ -1334,3 +1334,104 @@ async def test_hook_jinja2_environment_from_request(tmpdir):
         assert "Hello museums!" in response2.text
     finally:
         pm.unregister(name="EnvironmentPlugin")
+
+
+class SlotPlugin:
+    __name__ = "SlotPlugin"
+
+    @hookimpl
+    def top_homepage(self, request):
+        return "Xtop_homepage:" + request.args["z"]
+
+    @hookimpl
+    def top_database(self, request, database):
+        async def inner():
+            return "Xtop_database:{}:{}".format(database, request.args["z"])
+
+        return inner
+
+    @hookimpl
+    def top_table(self, request, database, table):
+        return "Xtop_table:{}:{}:{}".format(database, table, request.args["z"])
+
+    @hookimpl
+    def top_row(self, request, database, table, row):
+        return "Xtop_row:{}:{}:{}:{}".format(
+            database, table, row["name"], request.args["z"]
+        )
+
+    @hookimpl
+    def top_query(self, request, database, sql):
+        return "Xtop_query:{}:{}:{}".format(database, sql, request.args["z"])
+
+    @hookimpl
+    def top_canned_query(self, request, database, query_name):
+        return "Xtop_query:{}:{}:{}".format(database, query_name, request.args["z"])
+
+
+@pytest.mark.asyncio
+async def test_hook_top_homepage():
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        datasette = Datasette(memory=True)
+        response = await datasette.client.get("/?z=foo")
+        assert response.status_code == 200
+        assert "Xtop_homepage:foo" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_database():
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        datasette = Datasette(memory=True)
+        response = await datasette.client.get("/_memory?z=bar")
+        assert response.status_code == 200
+        assert "Xtop_database:_memory:bar" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_table(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/facetable?z=baz")
+        assert response.status_code == 200
+        assert "Xtop_table:fixtures:facetable:baz" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_row(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/facet_cities/1?z=bax")
+        assert response.status_code == 200
+        assert "Xtop_row:fixtures:facet_cities:San Francisco:bax" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_query(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures?sql=select+1&z=x")
+        assert response.status_code == 200
+        assert "Xtop_query:fixtures:select 1:x" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_canned_query(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/from_hook?z=xyz")
+        assert response.status_code == 200
+        assert "Xtop_query:fixtures:from_hook:xyz" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")

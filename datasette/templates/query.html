@@ -30,6 +30,8 @@
 
 <h1 style="padding-left: 10px; border-left: 10px solid #{{ database_color }}">{{ metadata.title or database }}{% if canned_query and not metadata.title %}: {{ canned_query }}{% endif %}{% if private %} 🔒{% endif %}</h1>
 
+{% if canned_query %}{{ top_canned_query() }}{% else %}{{ top_query() }}{% endif %}
+
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 <form class="sql" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_query_write %}post{% else %}get{% endif %}">

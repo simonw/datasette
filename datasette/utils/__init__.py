@@ -1283,3 +1283,20 @@ def fail_if_plugins_in_metadata(metadata: dict, filename=None):
             f'Datasette no longer accepts plugin configuration in --metadata. Move your "plugins" configuration blocks to a separate file - we suggest calling that datasette.{suggested_extension} - and start Datasette with datasette -c datasette.{suggested_extension}. See https://docs.datasette.io/en/latest/configuration.html for more details.'
         )
     return metadata
+
+
+def make_slot_function(name, datasette, request, **kwargs):
+    from datasette.plugins import pm
+
+    method = getattr(pm.hook, name, None)
+    assert method is not None, "No hook found for {}".format(name)
+
+    async def inner():
+        html_bits = []
+        for hook in method(datasette=datasette, request=request, **kwargs):
+            html = await await_me_maybe(hook)
+            if html is not None:
+                html_bits.append(html)
+        return markupsafe.Markup("".join(html_bits))
+
+    return inner

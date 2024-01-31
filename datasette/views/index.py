@@ -1,9 +1,11 @@
-import hashlib
 import json
 
-from datasette.utils import add_cors_headers, CustomJSONEncoder
+from datasette.plugins import pm
+from datasette.utils import add_cors_headers, make_slot_function, CustomJSONEncoder
 from datasette.utils.asgi import Response
 from datasette.version import __version__
+
+from markupsafe import Markup
 
 from .base import BaseView
 
@@ -141,6 +143,9 @@ class IndexView(BaseView):
                     "datasette_version": __version__,
                     "private": not await self.ds.permission_allowed(
                         None, "view-instance"
+                    ),
+                    "top_homepage": make_slot_function(
+                        "top_homepage", self.ds, request
                     ),
                 },
             )

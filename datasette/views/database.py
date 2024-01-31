@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Callable
 from urllib.parse import parse_qsl, urlencode
 import asyncio
 import hashlib
@@ -18,6 +17,7 @@ from datasette.utils import (
     call_with_supported_arguments,
     derive_named_parameters,
     format_bytes,
+    make_slot_function,
     tilde_decode,
     to_css_class,
     validate_sql_select,
@@ -161,6 +161,9 @@ class DatabaseView(View):
                 f"{'*' if template_name == template.name else ''}{template_name}"
                 for template_name in templates
             ],
+            "top_database": make_slot_function(
+                "top_database", datasette, request, database=database
+            ),
         }
         return Response.html(
             await datasette.render_template(
@@ -245,6 +248,12 @@ class QueryContext:
         metadata={
             "help": "List of templates that were considered for rendering this page"
         }
+    )
+    top_query: callable = field(
+        metadata={"help": "Callable to render the top_query slot"}
+    )
+    top_canned_query: callable = field(
+        metadata={"help": "Callable to render the top_canned_query slot"}
     )
 
 
@@ -727,6 +736,16 @@ class QueryView(View):
                             f"{'*' if template_name == template.name else ''}{template_name}"
                             for template_name in templates
                         ],
+                        top_query=make_slot_function(
+                            "top_query", datasette, request, database=database, sql=sql
+                        ),
+                        top_canned_query=make_slot_function(
+                            "top_canned_query",
+                            datasette,
+                            request,
+                            database=database,
+                            query_name=canned_query["name"] if canned_query else None,
+                        ),
                     ),
                     request=request,
                     view_name="database",

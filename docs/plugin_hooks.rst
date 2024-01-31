@@ -1641,3 +1641,122 @@ This hook is responsible for returning a dictionary corresponding to Datasette :
         return metadata
 
 Example: `datasette-remote-metadata plugin <https://datasette.io/plugins/datasette-remote-metadata>`__
+
+.. _plugin_hook_slots:
+
+Template slots
+--------------
+
+The following set of plugin hooks can be used to return extra HTML content that will be inserted into the corresponding page, directly below the ``<h1>`` heading.
+
+Multiple plugins can contribute content here. The order in which it is displayed can be controlled using Pluggy's `call time order options <https://pluggy.readthedocs.io/en/stable/#call-time-order>`__.
+
+Each of these plugin hooks can return either a string or an awaitable function that returns a string.
+
+.. _plugin_hook_top_homepage:
+
+top_homepage(datasette, request)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+Returns HTML to be displayed at the top of the Datasette homepage.
+
+.. _plugin_hook_top_database:
+
+top_database(datasette, request, database)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``database`` - string
+    The name of the database.
+
+Returns HTML to be displayed at the top of the database page.
+
+.. _plugin_hook_top_table:
+
+top_table(datasette, request, database, table)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``database`` - string
+    The name of the database.
+
+``table`` - string
+    The name of the table.
+
+Returns HTML to be displayed at the top of the table page.
+
+.. _plugin_hook_top_row:
+
+top_row(datasette, request, database, table, row)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``database`` - string
+    The name of the database.
+
+``table`` - string
+    The name of the table.
+
+``row`` - ``sqlite.Row``
+    The SQLite row object being displayed.
+
+Returns HTML to be displayed at the top of the row page.
+
+.. _plugin_hook_top_query:
+
+top_query(datasette, request, database, sql)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``database`` - string
+    The name of the database.
+
+``sql`` - string
+    The SQL query.
+
+Returns HTML to be displayed at the top of the query results page.
+
+.. _plugin_hook_top_canned_query:
+
+top_canned_query(datasette, request, database, query_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``database`` - string
+    The name of the database.
+
+``query_name`` - string
+    The name of the canned query.
+
+Returns HTML to be displayed at the top of the canned query page.

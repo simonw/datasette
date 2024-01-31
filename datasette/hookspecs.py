@@ -158,3 +158,33 @@ def skip_csrf(datasette, scope):
 @hookspec
 def handle_exception(datasette, request, exception):
     """Handle an uncaught exception. Can return a Response or None."""
+
+
+@hookspec
+def top_homepage(datasette, request):
+    """HTML to include at the top of the homepage"""
+
+
+@hookspec
+def top_database(datasette, request, database):
+    """HTML to include at the top of the database page"""
+
+
+@hookspec
+def top_table(datasette, request, database, table):
+    """HTML to include at the top of the table page"""
+
+
+@hookspec
+def top_row(datasette, request, database, table, row):
+    """HTML to include at the top of the row page"""
+
+
+@hookspec
+def top_query(datasette, request, database, sql):
+    """HTML to include at the top of the query results page"""
+
+
+@hookspec
+def top_canned_query(datasette, request, database, query_name):
+    """HTML to include at the top of the canned query page"""

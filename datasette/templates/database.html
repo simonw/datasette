@@ -34,6 +34,8 @@
     </details>{% endif %}
 </div> 
 
+{{ top_database() }}
+
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% if allow_execute_sql %}

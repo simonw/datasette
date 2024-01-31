@@ -15,18 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Check out datasette
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
-        python-version: 3.9
-    - uses: actions/cache@v2
-      name: Configure pip caching
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        python-version: '3.12'
+        cache: 'pip'
+        cache-dependency-path: '**/setup.py'
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip

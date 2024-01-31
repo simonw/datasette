@@ -41,7 +41,9 @@ def plugin_hooks_content():
     "plugin", [name for name in dir(app.pm.hook) if not name.startswith("_")]
 )
 def test_plugin_hooks_are_documented(plugin, plugin_hooks_content):
-    headings = get_headings(plugin_hooks_content, "-")
+    headings = set()
+    headings.update(get_headings(plugin_hooks_content, "-"))
+    headings.update(get_headings(plugin_hooks_content, "~"))
     assert plugin in headings
     hook_caller = getattr(app.pm.hook, plugin)
     arg_names = [a for a in hook_caller.spec.argnames if a != "__multicall__"]

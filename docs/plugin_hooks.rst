@@ -1782,7 +1782,7 @@ track_event(datasette, event)
 ``event`` - ``Event``
     Information about the event, represented as an instance of a subclass of the ``Event`` base class.
 
-This hook will be called any time an event is tracked through code calling the ``datasette.track_event(...)`` internal method.
+This hook will be called any time an event is tracked by code that calls the :ref:`datasette.track_event(...) <datasette_track_event>` internal method.
 
 The ``event`` object will always have the following properties:
 

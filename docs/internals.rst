@@ -593,6 +593,26 @@ Using either of these pattern will result in the in-memory database being served
 
 This removes a database that has been previously added. ``name=`` is the unique name of that database.
 
+.. _datasette_track_event:
+
+await .track_event(event)
+-------------------------
+
+``event`` - ``Event``
+    An instance of a subclass of ``datasette.events.Event``.
+
+Plugins can call this to track events, using classes they have previously registered. See :ref:`plugin_event_tracking` for details.
+
+The event will then be passed to all plugins that have registered to receive events using the :ref:`plugin_hook_track_event` hook.
+
+Example usage, assuming the plugin has previously registered the ``BanUserEvent`` class:
+
+.. code-block:: python
+
+    await datasette.track_event(
+        BanUserEvent(user={"id": 1, "username": "cleverbot"})
+    )
+
 .. _datasette_sign:
 
 .sign(value, namespace="default")

@@ -1789,7 +1789,33 @@ The ``event`` object will always have the following properties:
 - ``name``: a string representing the name of the event, for example ``logout`` or ``create-table``.
 - ``actor``: a dictionary representing the actor that triggered the event, or ``None`` if the event was not triggered by an actor.
 
-Other properties on the event will be available depending on the type of event. TODO: Link to documentation of these.
+Other properties on the event will be available depending on the type of event. You can also access those as a dictionary using ``event.properties()``.
+
+**TODO: Link to documentation of default core events**
+
+This example plugin logs details of all events to standard error:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import json
+    import sys
+
+
+    @hookimpl
+    def track_event(event):
+        name = event.name
+        actor = event.actor
+        properties = event.properties()
+        msg = json.dumps(
+            {
+                "name": name,
+                "actor": actor,
+                "properties": properties,
+            }
+        )
+        print(msg, file=sys.stderr, flush=True)
+
 
 .. _plugin_hook_register_events:
 
@@ -1829,4 +1855,6 @@ The plugin can then call ``datasette.track_event(...)`` to send a ``ban-user`` e
 
 .. code-block:: python
 
-    await datasette.track_event(BanUserEvent(user={"id": 1, "username": "cleverbot"}))
+    await datasette.track_event(
+        BanUserEvent(user={"id": 1, "username": "cleverbot"})
+    )

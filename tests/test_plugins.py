@@ -1360,6 +1360,14 @@ class SlotPlugin:
             database, table, row["name"], request.args["z"]
         )
 
+    @hookimpl
+    def top_query(self, request, database, sql):
+        return "Xtop_query:{}:{}:{}".format(database, sql, request.args["z"])
+
+    @hookimpl
+    def top_canned_query(self, request, database, query_name):
+        return "Xtop_query:{}:{}:{}".format(database, query_name, request.args["z"])
+
 
 @pytest.mark.asyncio
 async def test_hook_top_homepage():
@@ -1403,5 +1411,27 @@ async def test_hook_top_row(ds_client):
         response = await ds_client.get("/fixtures/facet_cities/1?z=bax")
         assert response.status_code == 200
         assert "Xtop_row:fixtures:facet_cities:San Francisco:bax" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_query(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures?sql=select+1&z=x")
+        assert response.status_code == 200
+        assert "Xtop_query:fixtures:select 1:x" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_canned_query(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/from_hook?z=xyz")
+        assert response.status_code == 200
+        assert "Xtop_query:fixtures:from_hook:xyz" in response.text
     finally:
         pm.unregister(name="SlotPlugin")

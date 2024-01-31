@@ -1642,32 +1642,6 @@ This hook is responsible for returning a dictionary corresponding to Datasette :
 
 Example: `datasette-remote-metadata plugin <https://datasette.io/plugins/datasette-remote-metadata>`__
 
-
-@hookimpl
-def top_homepage(datasette, request):
-    """HTML to include at the top of the homepage"""
-
-
-@hookimpl
-def top_database(datasette, request, database):
-    """HTML to include at the top of the database page"""
-
-
-@hookimpl
-def top_table(datasette, request, database, table):
-    """HTML to include at the top of the table page"""
-
-
-@hookimpl
-def top_row(datasette, request, database, table, row):
-    """HTML to include at the top of the row page"""
-
-
-@hookimpl
-def top_query(datasette, request, database, query):
-    """HTML to include at the top of the query page"""
-
-
 .. _plugin_hook_top_homepage:
 
 top_homepage(datasette, request)
@@ -1700,7 +1674,7 @@ Returns HTML to be displayed at the top of the database page.
 .. _plugin_hook_top_table:
 
 top_table(datasette, request, database, table)
----------------------------------------------
+----------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
@@ -1719,7 +1693,7 @@ Returns HTML to be displayed at the top of the table page.
 .. _plugin_hook_top_row:
 
 top_row(datasette, request, database, table, row)
-------------------------------------------------
+-------------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.

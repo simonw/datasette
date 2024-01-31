@@ -1740,8 +1740,8 @@ Returns HTML to be displayed at the top of the row page.
 
 .. _plugin_hook_top_query:
 
-top_query(datasette, request, database, query)
----------------------------------------------
+top_query(datasette, request, database, sql)
+--------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
@@ -1752,7 +1752,26 @@ top_query(datasette, request, database, query)
 ``database`` - string
     The name of the database.
 
-``query`` - string
+``sql`` - string
+    The SQL query.
+
+Returns HTML to be displayed at the top of the query results page.
+
+.. _plugin_hook_top_canned_query:
+
+top_canned_query(datasette, request, database, query_name)
+----------------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``database`` - string
+    The name of the database.
+
+``query_name`` - string
     The name of the canned query.
 
 Returns HTML to be displayed at the top of the canned query page.

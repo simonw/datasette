@@ -181,10 +181,10 @@ def top_homepage(datasette, request):
 
 
 # @hookspec
-# def top_query(datasette, request, database, query):
+# def top_query(datasette, request, database, sql):
 #     """HTML to include at the top of the query results page"""
 
 
 # @hookspec
-# def top_canned_query(datasette, request, database, query):
+# def top_canned_query(datasette, request, database, query_name):
 #     """HTML to include at the top of the canned query page"""

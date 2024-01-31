@@ -161,8 +161,8 @@ def handle_exception(datasette, request, exception):
 
 
 @hookspec
-def track_event(datasette, name, actor, properties):
-    """Respond to a named event tracked by Datasette"""
+def track_event(datasette, event):
+    """Respond to an event tracked by Datasette"""
 
 
 @hookspec

@@ -885,10 +885,11 @@ class Datasette:
         assert isinstance(event, self.event_classes), "Invalid event type: {}".format(
             type(event)
         )
-        properties = dataclasses.asdict(event)
-        actor = properties.pop("actor")
         for hook in pm.hook.track_event(
-            datasette=self, name=event.name, actor=actor, properties=properties
+            datasette=self,
+            name=event.name,
+            actor=event.actor,
+            properties=event.properties(),
         ):
             await await_me_maybe(hook)
 

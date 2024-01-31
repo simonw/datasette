@@ -1759,3 +1759,74 @@ top_canned_query(datasette, request, database, query_name)
     The name of the canned query.
 
 Returns HTML to be displayed at the top of the canned query page.
+
+.. _plugin_event_tracking:
+
+Event tracking
+--------------
+
+Datasette includes an internal mechanism for tracking analytical events. This can be used for analytics, but can also be used by plugins that want to listen out for when key events occur (such as a table being created) and take action in response.
+
+Plugins can register to receive events using the ``track_event`` plugin hook.
+
+They can also define their own events for other plugins to receive using the ``register_events`` plugin hook, combined with calls to the ``datasette.track_event(...)`` internal method.
+
+.. _plugin_hook_track_event:
+
+track_event(datasette, name, event)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+``event`` - ``Event``
+    Information about the event, represented as an instance of a subclass of the ``Event`` base class.
+
+This hook will be called any time an event is tracked through code calling the ``datasette.track_event(...)`` internal method.
+
+The ``event`` object will always have the following properties:
+
+- ``name``: a string representing the name of the event, for example ``logout`` or ``create-table``.
+- ``actor``: a dictionary representing the actor that triggered the event, or ``None`` if the event was not triggered by an actor.
+
+Other properties on the event will be available depending on the type of event. TODO: Link to documentation of these.
+
+.. _plugin_hook_register_events:
+
+register_events(datasette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
+
+This hook should return a list of ``Event`` subclasses that represent custom events that the plugin might send to the ``datasette.track_event()`` method.
+
+This example registers event subclasses for ``ban-user`` and ``unban-user`` events:
+
+.. code-block:: python
+
+    from dataclasses import dataclass
+    from datasette import hookimpl, Event
+
+
+    @dataclass
+    class BanUserEvent(Event):
+        name = "ban-user"
+        user: dict
+
+
+    @dataclass
+    class UnbanUserEvent(Event):
+        name = "unban-user"
+        user: dict
+
+
+    @hookimpl
+    def register_events():
+        return [BanUserEvent, UnbanUserEvent]
+
+The plugin can then call ``datasette.track_event(...)`` to send a ``ban-user`` event:
+
+.. code-block:: python
+
+    await datasette.track_event(BanUserEvent(user={"id": 1, "username": "cleverbot"}))

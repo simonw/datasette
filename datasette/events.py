@@ -1,5 +1,5 @@
 from abc import ABC, abstractproperty
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datasette.hookspecs import hookimpl
 
 
@@ -10,6 +10,11 @@ class Event(ABC):
         pass
 
     actor: dict
+
+    def properties(self):
+        properties = asdict(self)
+        properties.pop("actor", None)
+        return properties
 
 
 @dataclass

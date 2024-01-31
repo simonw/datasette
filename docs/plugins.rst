@@ -229,6 +229,15 @@ If you run ``datasette plugins --all`` it will include default plugins that ship
             ]
         },
         {
+            "name": "datasette.events",
+            "static": false,
+            "templates": false,
+            "version": null,
+            "hooks": [
+                "register_events"
+            ]
+        },
+        {
             "name": "datasette.facets",
             "static": false,
             "templates": false,

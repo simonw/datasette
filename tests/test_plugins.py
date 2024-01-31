@@ -9,8 +9,9 @@ from .fixtures import (
     TestClient as _TestClient,
 )  # noqa
 from click.testing import CliRunner
+from dataclasses import dataclass
 from datasette.app import Datasette
-from datasette import cli, hookimpl, Permission
+from datasette import cli, hookimpl, Event, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
@@ -18,6 +19,7 @@ from datasette.utils import CustomRow, StartupError
 from jinja2.environment import Template
 from jinja2 import ChoiceLoader, FileSystemLoader
 import base64
+import datetime
 import importlib
 import json
 import os
@@ -1437,3 +1439,30 @@ async def test_hook_top_canned_query(ds_client):
         assert "Xtop_query:fixtures:from_hook:xyz" in response.text
     finally:
         pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_track_event():
+    datasette = Datasette(memory=True)
+    from .conftest import TrackEventPlugin
+
+    await datasette.invoke_startup()
+    await datasette.track_event(
+        TrackEventPlugin.OneEvent(actor=None, extra="extra extra")
+    )
+    assert len(datasette._tracked_events) == 1
+    assert isinstance(datasette._tracked_events[0], TrackEventPlugin.OneEvent)
+    event = datasette._tracked_events[0]
+    assert event.name == "one"
+    assert event.properties() == {"extra": "extra extra"}
+    # Should have a recent created as well
+    created = event.created
+    assert isinstance(created, datetime.datetime)
+    assert created.tzinfo == datetime.timezone.utc
+
+
+@pytest.mark.asyncio
+async def test_hook_register_events():
+    datasette = Datasette(memory=True)
+    await datasette.invoke_startup()
+    assert any(k.__name__ == "OneEvent" for k in datasette.event_classes)

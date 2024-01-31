@@ -1,4 +1,5 @@
 import json
+from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
@@ -80,9 +81,9 @@ class AuthTokenView(BaseView):
         if secrets.compare_digest(token, self.ds._root_token):
             self.ds._root_token = None
             response = Response.redirect(self.ds.urls.instance())
-            response.set_cookie(
-                "ds_actor", self.ds.sign({"a": {"id": "root"}}, "actor")
-            )
+            root_actor = {"id": "root"}
+            response.set_cookie("ds_actor", self.ds.sign({"a": root_actor}, "actor"))
+            await self.ds.track_event(LoginEvent(actor=root_actor))
             return response
         else:
             raise Forbidden("Invalid token")
@@ -105,6 +106,7 @@ class LogoutView(BaseView):
         response = Response.redirect(self.ds.urls.instance())
         response.set_cookie("ds_actor", "", expires=0, max_age=0)
         self.ds.add_message(request, "You are now logged out", self.ds.WARNING)
+        await self.ds.track_event(LogoutEvent(actor=request.actor))
         return response
 
 
@@ -349,6 +351,15 @@ class CreateTokenView(BaseView):
             restrict_resource=restrict_resource,
         )
         token_bits = self.ds.unsign(token[len("dstok_") :], namespace="token")
+        await self.ds.track_event(
+            CreateTokenEvent(
+                actor=request.actor,
+                expires_after=expires_after,
+                restrict_all=restrict_all,
+                restrict_database=restrict_database,
+                restrict_resource=restrict_resource,
+            )
+        )
         context = await self.shared(request)
         context.update({"errors": errors, "token": token, "token_bits": token_bits})
         return await self.render(["create_token.html"], request, context)

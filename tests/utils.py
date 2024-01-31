@@ -1,6 +1,11 @@
 from datasette.utils.sqlite import sqlite3
 
 
+def last_event(datasette):
+    events = getattr(datasette, "_tracked_events", [])
+    return events[-1] if events else None
+
+
 def assert_footer_links(soup):
     footer_links = soup.find("footer").findAll("a")
     assert 4 == len(footer_links)

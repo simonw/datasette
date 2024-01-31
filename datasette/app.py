@@ -34,6 +34,7 @@ from jinja2 import (
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
+from .events import Event
 from .views import Context
 from .views.base import ureg
 from .views.database import database_download, DatabaseView, TableCreateView
@@ -505,6 +506,14 @@ class Datasette:
         # This must be called for Datasette to be in a usable state
         if self._startup_invoked:
             return
+        # Register event classes
+        event_classes = []
+        for hook in pm.hook.register_events(datasette=self):
+            extra_classes = await await_me_maybe(hook)
+            if extra_classes:
+                event_classes.extend(extra_classes)
+        self.event_classes = tuple(event_classes)
+
         # Register permissions, but watch out for duplicate name/abbr
         names = {}
         abbrs = {}
@@ -872,6 +881,13 @@ class Datasette:
             return {actor_id: {"id": actor_id} for actor_id in actor_ids}
         result = await await_me_maybe(result)
         return result
+
+    async def track_event(self, event: Event):
+        assert isinstance(event, self.event_classes), "Invalid event type: {}".format(
+            type(event)
+        )
+        for hook in pm.hook.track_event(datasette=self, event=event):
+            await await_me_maybe(hook)
 
     async def permission_allowed(
         self, actor, action, resource=None, default=DEFAULT_NOT_SET

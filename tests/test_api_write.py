@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 from datasette.utils import sqlite3
+from .utils import last_event
 import pytest
 import time
 
@@ -49,6 +50,14 @@ async def test_insert_row(ds_write):
     assert response.json()["rows"] == [expected_row]
     rows = (await ds_write.get_database("data").execute("select * from docs")).rows
     assert dict(rows[0]) == expected_row
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 1
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert not event.ignore
+    assert not event.replace
 
 
 @pytest.mark.asyncio
@@ -68,6 +77,16 @@ async def test_insert_rows(ds_write, return_rows):
         headers=_headers(token),
     )
     assert response.status_code == 201
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 20
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert not event.ignore
+    assert not event.replace
+
     actual_rows = [
         dict(r)
         for r in (
@@ -353,6 +372,16 @@ async def test_insert_ignore_replace(
         headers=_headers(token),
     )
     assert response.status_code == 201
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 1
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert event.ignore == ignore
+    assert event.replace == replace
+
     actual_rows = [
         dict(r)
         for r in (
@@ -427,6 +456,14 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
     )
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "upsert-rows"
+    assert event.num_rows == 1
+    assert event.database == "data"
+    assert event.table == "upsert_test"
+
     if should_return:
         # We only expect it to return rows corresponding to those we sent
         expected_returned_rows = expected_rows[: len(input["rows"])]
@@ -530,6 +567,13 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
         headers=_headers(write_token(ds_write)),
     )
     assert delete_response.status_code == 200
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "delete-row"
+    assert event.database == "data"
+    assert event.table == table
+    assert event.pks == str(delete_path).split(",")
     assert (
         await ds_write.client.get(
             "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)
@@ -610,6 +654,13 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
         for k, v in input.items():
             assert returned_row[k] == v
 
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.actor == {"id": "root", "token": "dstok"}
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert event.pks == [str(pk)]
+
     # And fetch the row to check it's updated
     response = await ds_write.client.get(
         "/data/docs/{}.json?_shape=array".format(pk),
@@ -676,6 +727,13 @@ async def test_drop_table(ds_write, scenario):
             headers=_headers(token),
         )
         assert response2.json() == {"ok": True}
+        # Check event
+        event = last_event(ds_write)
+        assert event.name == "drop-table"
+        assert event.actor == {"id": "root", "token": "dstok"}
+        assert event.table == "docs"
+        assert event.database == "data"
+        # Table should 404
         assert (await ds_write.client.get("/data/docs")).status_code == 404
 
 
@@ -1096,6 +1154,12 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
     assert response.status_code == expected_status
     data = response.json()
     assert data == expected_response
+    # create-table event
+    if expected_status == 201:
+        event = last_event(ds_write)
+        assert event.name == "create-table"
+        assert event.actor == {"id": "root", "token": "dstok"}
+        assert event.schema.startswith("CREATE TABLE ")
 
 
 @pytest.mark.asyncio

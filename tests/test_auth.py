@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import app_client
-from .utils import cookie_was_deleted
+from .utils import cookie_was_deleted, last_event
 from click.testing import CliRunner
 from datasette.utils import baseconv
 from datasette.cli import cli
@@ -19,6 +19,10 @@ async def test_auth_token(ds_client):
     assert {"a": {"id": "root"}} == ds_client.ds.unsign(
         response.cookies["ds_actor"], "actor"
     )
+    # Should have recorded a login event
+    event = last_event(ds_client.ds)
+    assert event.name == "login"
+    assert event.actor == {"id": "root"}
     # Check that a second with same token fails
     assert ds_client.ds._root_token is None
     assert (await ds_client.get(path)).status_code == 403
@@ -57,7 +61,7 @@ async def test_actor_cookie_that_expires(ds_client, offset, expected):
     cookie = ds_client.ds.sign(
         {"a": {"id": "test"}, "e": baseconv.base62.encode(expires_at)}, "actor"
     )
-    response = await ds_client.get("/", cookies={"ds_actor": cookie})
+    await ds_client.get("/", cookies={"ds_actor": cookie})
     assert ds_client.ds._last_request.scope["actor"] == expected
 
 
@@ -86,6 +90,10 @@ def test_logout(app_client):
         csrftoken_from=True,
         cookies={"ds_actor": app_client.actor_cookie({"id": "test"})},
     )
+    # Should have recorded a logout event
+    event = last_event(app_client.ds)
+    assert event.name == "logout"
+    assert event.actor == {"id": "test"}
     # The ds_actor cookie should have been unset
     assert cookie_was_deleted(response4, "ds_actor")
     # Should also have set a message
@@ -185,6 +193,13 @@ def test_auth_create_token(
         for error in errors:
             assert '<p class="message-error">{}</p>'.format(error) in response2.text
     else:
+        # Check create-token event
+        event = last_event(app_client.ds)
+        assert event.name == "create-token"
+        assert event.expires_after == expected_duration
+        assert isinstance(event.restrict_all, list)
+        assert isinstance(event.restrict_database, dict)
+        assert isinstance(event.restrict_resource, dict)
         # Extract token from page
         token = response2.text.split('value="dstok_')[1].split('"')[0]
         details = app_client.ds.unsign(token, "token")

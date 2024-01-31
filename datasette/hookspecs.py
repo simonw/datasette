@@ -161,6 +161,16 @@ def handle_exception(datasette, request, exception):
 
 
 @hookspec
+def track_event(datasette, event):
+    """Respond to an event tracked by Datasette"""
+
+
+@hookspec
+def register_events(datasette):
+    """Return a list of Event subclasses to use with track_event()"""
+
+
+@hookspec
 def top_homepage(datasette, request):
     """HTML to include at the top of the homepage"""
 

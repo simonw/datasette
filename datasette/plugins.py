@@ -27,6 +27,7 @@ DEFAULT_PLUGINS = (
     "datasette.default_menu_links",
     "datasette.handle_exception",
     "datasette.forbidden",
+    "datasette.events",
 )
 
 pm = pluggy.PluginManager("datasette")

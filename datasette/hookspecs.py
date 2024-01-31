@@ -170,9 +170,9 @@ def top_database(datasette, request, database):
     """HTML to include at the top of the database page"""
 
 
-# @hookspec
-# def top_table(datasette, request, database, table):
-#     """HTML to include at the top of the table page"""
+@hookspec
+def top_table(datasette, request, database, table):
+    """HTML to include at the top of the table page"""
 
 
 # @hookspec

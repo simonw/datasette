@@ -68,7 +68,6 @@ setup(
         [console_scripts]
         datasette=datasette.cli:cli
     """,
-    setup_requires=["pytest-runner"],
     extras_require={
         "docs": [
             "Sphinx==7.2.6",
@@ -93,7 +92,6 @@ setup(
         ],
         "rich": ["rich"],
     },
-    tests_require=["datasette[test]"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Framework :: Datasette",

@@ -1,5 +1,6 @@
 from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
+from datasette.events import UpdateRowEvent
 from .base import DataView, BaseView, _error
 from datasette.utils import (
     make_slot_function,
@@ -246,4 +247,14 @@ class RowUpdateView(BaseView):
             )
             rows = list(results.rows)
             result["row"] = dict(rows[0])
+
+        await self.ds.track_event(
+            UpdateRowEvent(
+                actor=request.actor,
+                database=resolved.db.name,
+                table=resolved.table,
+                pks=resolved.pk_values,
+            )
+        )
+
         return Response.json(result, status=200)

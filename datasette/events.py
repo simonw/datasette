@@ -63,7 +63,6 @@ class CreateTokenEvent(Event):
     """
 
     name = "create-token"
-
     expires_after: Optional[int]
     restrict_all: list
     restrict_database: dict
@@ -157,6 +156,26 @@ class UpsertRowsEvent(Event):
     num_rows: int
 
 
+@dataclass
+class UpdateRowEvent(Event):
+    """
+    Event name: ``update-row``
+
+    A row was updated in a table.
+
+    :ivar database: The name of the database where the row was updated.
+    :type database: str
+    :ivar table: The name of the table where the row was updated.
+    :type table: str
+    :ivar pks: The primary key values of the updated row.
+    """
+
+    name = "update-row"
+    database: str
+    table: str
+    pks: list
+
+
 @hookimpl
 def register_events():
     return [
@@ -167,4 +186,5 @@ def register_events():
         DropTableEvent,
         InsertRowsEvent,
         UpsertRowsEvent,
+        UpdateRowEvent,
     ]

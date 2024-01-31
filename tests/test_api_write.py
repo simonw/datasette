@@ -647,6 +647,13 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
         for k, v in input.items():
             assert returned_row[k] == v
 
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.actor == {"id": "root", "token": "dstok"}
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert event.pks == [str(pk)]
+
     # And fetch the row to check it's updated
     response = await ds_write.client.get(
         "/data/docs/{}.json?_shape=array".format(pk),

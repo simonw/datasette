@@ -373,8 +373,7 @@ Let's say you want to build a plugin that adds a ``datasette publish my_hosting_
             about,
             about_url,
             api_key,
-        ):
-            ...
+        ): ...
 
 Examples: `datasette-publish-fly <https://datasette.io/plugins/datasette-publish-fly>`_, `datasette-publish-vercel <https://datasette.io/plugins/datasette-publish-vercel>`_
 

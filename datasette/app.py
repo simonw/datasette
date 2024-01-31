@@ -437,13 +437,6 @@ class Datasette:
         self._root_token = secrets.token_hex(32)
         self.client = DatasetteClient(self)
 
-        # Register all event classes
-        event_classes = []
-        for hook in pm.hook.register_events(datasette=self):
-            if hook:
-                event_classes.extend(hook)
-        self.event_classes = tuple(event_classes)
-
     def get_jinja_environment(self, request: Request = None) -> Environment:
         environment = self._jinja_env
         if request:
@@ -513,6 +506,14 @@ class Datasette:
         # This must be called for Datasette to be in a usable state
         if self._startup_invoked:
             return
+        # Register event classes
+        event_classes = []
+        for hook in pm.hook.register_events(datasette=self):
+            extra_classes = await await_me_maybe(hook)
+            if extra_classes:
+                event_classes.extend(extra_classes)
+        self.event_classes = tuple(event_classes)
+
         # Register permissions, but watch out for duplicate name/abbr
         names = {}
         abbrs = {}
@@ -885,12 +886,7 @@ class Datasette:
         assert isinstance(event, self.event_classes), "Invalid event type: {}".format(
             type(event)
         )
-        for hook in pm.hook.track_event(
-            datasette=self,
-            name=event.name,
-            actor=event.actor,
-            properties=event.properties(),
-        ):
+        for hook in pm.hook.track_event(datasette=self, event=event):
             await await_me_maybe(hook)
 
     async def permission_allowed(

@@ -10,7 +10,7 @@ from .fixtures import (
 )  # noqa
 from click.testing import CliRunner
 from datasette.app import Datasette
-from datasette import cli, hookimpl, Permission
+from datasette import cli, hookimpl, Event, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
@@ -1437,3 +1437,46 @@ async def test_hook_top_canned_query(ds_client):
         assert "Xtop_query:fixtures:from_hook:xyz" in response.text
     finally:
         pm.unregister(name="SlotPlugin")
+
+
+class TrackEventPlugin:
+    __name__ = "TrackEventPlugin"
+
+    class OneEvent(Event):
+        name = "one"
+
+    @hookimpl
+    def register_events(self, datasette):
+        async def inner():
+            return [self.OneEvent]
+
+        return inner
+
+    @hookimpl
+    def track_event(self, datasette, event):
+        datasette._tracked_events = getattr(datasette, "_tracked_events", [])
+        datasette._tracked_events.append(event)
+
+
+@pytest.mark.asyncio
+async def test_track_event():
+    try:
+        pm.register(TrackEventPlugin(), name="TrackEventPlugin")
+        datasette = Datasette(memory=True)
+        await datasette.invoke_startup()
+        await datasette.track_event(TrackEventPlugin.OneEvent(None))
+        assert len(datasette._tracked_events) == 1
+        assert isinstance(datasette._tracked_events[0], TrackEventPlugin.OneEvent)
+    finally:
+        pm.unregister(name="TrackEventPlugin")
+
+
+@pytest.mark.asyncio
+async def test_register_events():
+    try:
+        pm.register(TrackEventPlugin(), name="TrackEventPlugin")
+        datasette = Datasette(memory=True)
+        await datasette.invoke_startup()
+        assert TrackEventPlugin.OneEvent in datasette.event_classes
+    finally:
+        pm.unregister(name="TrackEventPlugin")

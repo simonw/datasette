@@ -1773,8 +1773,8 @@ They can also define their own events for other plugins to receive using the ``r
 
 .. _plugin_hook_track_event:
 
-track_event(datasette, name, event)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+track_event(datasette, event)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.

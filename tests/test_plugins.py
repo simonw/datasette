@@ -1459,7 +1459,7 @@ class TrackEventPlugin:
 
 
 @pytest.mark.asyncio
-async def test_track_event():
+async def test_hook_track_event():
     try:
         pm.register(TrackEventPlugin(), name="TrackEventPlugin")
         datasette = Datasette(memory=True)
@@ -1472,7 +1472,7 @@ async def test_track_event():
 
 
 @pytest.mark.asyncio
-async def test_register_events():
+async def test_hook_register_events():
     try:
         pm.register(TrackEventPlugin(), name="TrackEventPlugin")
         datasette = Datasette(memory=True)

@@ -18,6 +18,11 @@ class Event(ABC):
 
 
 @dataclass
+class LoginEvent(Event):
+    name = "login"
+
+
+@dataclass
 class LogoutEvent(Event):
     name = "logout"
 
@@ -32,4 +37,4 @@ class CreateTableEvent(Event):
 
 @hookimpl
 def register_events():
-    return [LogoutEvent, CreateTableEvent]
+    return [LoginEvent, LogoutEvent, CreateTableEvent]

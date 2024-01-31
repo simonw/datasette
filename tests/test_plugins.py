@@ -1341,18 +1341,24 @@ class SlotPlugin:
 
     @hookimpl
     def top_homepage(self, request):
-        return "Xtop_homepage: " + request.args["z"]
+        return "Xtop_homepage:" + request.args["z"]
 
     @hookimpl
-    def top_database(self, request):
+    def top_database(self, request, database):
         async def inner():
-            return "Xtop_database: " + request.args["z"]
+            return "Xtop_database:{}:{}".format(database, request.args["z"])
 
         return inner
 
     @hookimpl
-    def top_table(self, request):
-        return "Xtop_table: " + request.args["z"]
+    def top_table(self, request, database, table):
+        return "Xtop_table:{}:{}:{}".format(database, table, request.args["z"])
+
+    @hookimpl
+    def top_row(self, request, database, table, row):
+        return "Xtop_row:{}:{}:{}:{}".format(
+            database, table, row["name"], request.args["z"]
+        )
 
 
 @pytest.mark.asyncio
@@ -1362,7 +1368,7 @@ async def test_hook_top_homepage():
         datasette = Datasette(memory=True)
         response = await datasette.client.get("/?z=foo")
         assert response.status_code == 200
-        assert "Xtop_homepage: foo" in response.text
+        assert "Xtop_homepage:foo" in response.text
     finally:
         pm.unregister(name="SlotPlugin")
 
@@ -1374,7 +1380,7 @@ async def test_hook_top_database():
         datasette = Datasette(memory=True)
         response = await datasette.client.get("/_memory?z=bar")
         assert response.status_code == 200
-        assert "Xtop_database: bar" in response.text
+        assert "Xtop_database:_memory:bar" in response.text
     finally:
         pm.unregister(name="SlotPlugin")
 
@@ -1385,6 +1391,17 @@ async def test_hook_top_table(ds_client):
         pm.register(SlotPlugin(), name="SlotPlugin")
         response = await ds_client.get("/fixtures/facetable?z=baz")
         assert response.status_code == 200
-        assert "Xtop_table: baz" in response.text
+        assert "Xtop_table:fixtures:facetable:baz" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_row(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/facet_cities/1?z=bax")
+        assert response.status_code == 200
+        assert "Xtop_row:fixtures:facet_cities:San Francisco:bax" in response.text
     finally:
         pm.unregister(name="SlotPlugin")

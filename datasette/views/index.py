@@ -153,8 +153,7 @@ class IndexView(BaseView):
 
 def include_block_function(name, datasette, request, **kwargs):
     method = getattr(pm.hook, name, None)
-    if method is None:
-        raise Exception("No hook found for {}".format(name))
+    assert method is not None, "No hook found for {}".format(name)
 
     async def inner():
         html_bits = []

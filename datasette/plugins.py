@@ -25,6 +25,7 @@ DEFAULT_PLUGINS = (
     "datasette.default_magic_parameters",
     "datasette.blob_renderer",
     "datasette.default_menu_links",
+    "datasette.default_include_blocks",
     "datasette.handle_exception",
     "datasette.forbidden",
 )

@@ -19,16 +19,38 @@ class Event(ABC):
 
 @dataclass
 class LoginEvent(Event):
+    """
+    Event name: ``login``
+
+    A user (represented by ``event.actor``) has logged in.
+    """
     name = "login"
 
 
 @dataclass
 class LogoutEvent(Event):
+    """
+    Event name: ``logout``
+
+    A user (represented by ``event.actor``) has logged out.
+    """
     name = "logout"
 
 
 @dataclass
 class CreateTableEvent(Event):
+    """
+    Event name: ``create-table``
+
+    A new table has been created in the database.
+
+    :ivar database: The name of the database where the table was created.
+    :type database: str
+    :ivar table: The name of the table that was created
+    :type table: str
+    :ivar schema: The SQL schema definition for the new table.
+    :type schema: str
+    """
     name = "create-table"
     database: str
     table: str

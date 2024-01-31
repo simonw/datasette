@@ -63,5 +63,6 @@ Contents
    plugin_hooks
    testing_plugins
    internals
+   events
    contributing
    changelog

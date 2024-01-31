@@ -1,7 +1,7 @@
 import json
 
 from datasette.plugins import pm
-from datasette.utils import add_cors_headers, await_me_maybe, CustomJSONEncoder
+from datasette.utils import add_cors_headers, make_slot_function, CustomJSONEncoder
 from datasette.utils.asgi import Response
 from datasette.version import __version__
 
@@ -144,23 +144,8 @@ class IndexView(BaseView):
                     "private": not await self.ds.permission_allowed(
                         None, "view-instance"
                     ),
-                    "top_homepage": include_block_function(
+                    "top_homepage": make_slot_function(
                         "top_homepage", self.ds, request
                     ),
                 },
             )
-
-
-def include_block_function(name, datasette, request, **kwargs):
-    method = getattr(pm.hook, name, None)
-    assert method is not None, "No hook found for {}".format(name)
-
-    async def inner():
-        html_bits = []
-        for hook in method(datasette=datasette, request=request, **kwargs):
-            html = await await_me_maybe(hook)
-            if html is not None:
-                html_bits.append(html)
-        return Markup("".join(html_bits))
-
-    return inner

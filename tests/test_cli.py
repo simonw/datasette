@@ -100,7 +100,11 @@ def test_spatialite_error_if_cannot_find_load_extension_spatialite():
 def test_plugins_cli(app_client):
     runner = CliRunner()
     result1 = runner.invoke(cli, ["plugins"])
-    assert json.loads(result1.output) == EXPECTED_PLUGINS
+    actual_plugins = sorted(
+        [p for p in json.loads(result1.output) if p["name"] != "TrackEventPlugin"],
+        key=lambda p: p["name"],
+    )
+    assert actual_plugins == EXPECTED_PLUGINS
     # Try with --all
     result2 = runner.invoke(cli, ["plugins", "--all"])
     names = [p["name"] for p in json.loads(result2.output)]

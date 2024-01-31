@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 from datasette.utils import sqlite3
+from .utils import last_event
 import pytest
 import time
 
@@ -1096,6 +1097,12 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
     assert response.status_code == expected_status
     data = response.json()
     assert data == expected_response
+    # create-table event
+    if expected_status == 201:
+        event = last_event(ds_write)
+        assert event.name == "create-table"
+        assert event.actor == {"id": "root", "token": "dstok"}
+        assert event.schema.startswith("CREATE TABLE ")
 
 
 @pytest.mark.asyncio

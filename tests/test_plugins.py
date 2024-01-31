@@ -1440,52 +1440,22 @@ async def test_hook_top_canned_query(ds_client):
         pm.unregister(name="SlotPlugin")
 
 
-class TrackEventPlugin:
-    __name__ = "TrackEventPlugin"
-
-    @dataclass
-    class OneEvent(Event):
-        name = "one"
-
-        extra: str
-
-    @hookimpl
-    def register_events(self, datasette):
-        async def inner():
-            return [self.OneEvent]
-
-        return inner
-
-    @hookimpl
-    def track_event(self, datasette, event):
-        datasette._tracked_events = getattr(datasette, "_tracked_events", [])
-        datasette._tracked_events.append(event)
-
-
 @pytest.mark.asyncio
 async def test_hook_track_event():
-    try:
-        pm.register(TrackEventPlugin(), name="TrackEventPlugin")
-        datasette = Datasette(memory=True)
-        await datasette.invoke_startup()
-        await datasette.track_event(
-            TrackEventPlugin.OneEvent(None, extra="extra extra")
-        )
-        assert len(datasette._tracked_events) == 1
-        assert isinstance(datasette._tracked_events[0], TrackEventPlugin.OneEvent)
-        event = datasette._tracked_events[0]
-        assert event.name == "one"
-        assert event.properties() == {"extra": "extra extra"}
-    finally:
-        pm.unregister(name="TrackEventPlugin")
+    datasette = Datasette(memory=True)
+    from .conftest import TrackEventPlugin
+
+    await datasette.invoke_startup()
+    await datasette.track_event(TrackEventPlugin.OneEvent(None, extra="extra extra"))
+    assert len(datasette._tracked_events) == 1
+    assert isinstance(datasette._tracked_events[0], TrackEventPlugin.OneEvent)
+    event = datasette._tracked_events[0]
+    assert event.name == "one"
+    assert event.properties() == {"extra": "extra extra"}
 
 
 @pytest.mark.asyncio
 async def test_hook_register_events():
-    try:
-        pm.register(TrackEventPlugin(), name="TrackEventPlugin")
-        datasette = Datasette(memory=True)
-        await datasette.invoke_startup()
-        assert TrackEventPlugin.OneEvent in datasette.event_classes
-    finally:
-        pm.unregister(name="TrackEventPlugin")
+    datasette = Datasette(memory=True)
+    await datasette.invoke_startup()
+    assert any(k.__name__ == "OneEvent" for k in datasette.event_classes)

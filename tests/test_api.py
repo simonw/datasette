@@ -786,7 +786,12 @@ async def test_threads_json(ds_client):
 @pytest.mark.asyncio
 async def test_plugins_json(ds_client):
     response = await ds_client.get("/-/plugins.json")
-    assert EXPECTED_PLUGINS == sorted(response.json(), key=lambda p: p["name"])
+    # Filter out TrackEventPlugin
+    actual_plugins = sorted(
+        [p for p in response.json() if p["name"] != "TrackEventPlugin"],
+        key=lambda p: p["name"],
+    )
+    assert EXPECTED_PLUGINS == actual_plugins
     # Try with ?all=1
     response = await ds_client.get("/-/plugins.json?all=1")
     names = {p["name"] for p in response.json()}

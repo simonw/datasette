@@ -17,6 +17,7 @@ from datasette.utils import (
     append_querystring,
     compound_keys_after_sql,
     format_bytes,
+    make_slot_function,
     tilde_encode,
     escape_sqlite,
     filters_should_redirect,
@@ -842,6 +843,13 @@ async def table_view_traced(datasette, request):
                         f"{'*' if template_name == template.name else ''}{template_name}"
                         for template_name in templates
                     ],
+                    top_table=make_slot_function(
+                        "top_table",
+                        datasette,
+                        request,
+                        database=resolved.db.name,
+                        table=resolved.table,
+                    ),
                 ),
                 request=request,
                 view_name="table",

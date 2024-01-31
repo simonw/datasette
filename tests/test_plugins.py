@@ -1350,6 +1350,10 @@ class SlotPlugin:
 
         return inner
 
+    @hookimpl
+    def top_table(self, request):
+        return "Xtop_table: " + request.args["z"]
+
 
 @pytest.mark.asyncio
 async def test_hook_top_homepage():
@@ -1371,5 +1375,16 @@ async def test_hook_top_database():
         response = await datasette.client.get("/_memory?z=bar")
         assert response.status_code == 200
         assert "Xtop_database: bar" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_table(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/facetable?z=baz")
+        assert response.status_code == 200
+        assert "Xtop_table: baz" in response.text
     finally:
         pm.unregister(name="SlotPlugin")

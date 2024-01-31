@@ -91,6 +91,24 @@ class CreateTableEvent(Event):
     schema: str
 
 
+@dataclass
+class DropTableEvent(Event):
+    """
+    Event name: ``drop-table``
+
+    A table has been dropped from the database.
+
+    :ivar database: The name of the database where the table was dropped.
+    :type database: str
+    :ivar table: The name of the table that was dropped
+    :type table: str
+    """
+
+    name = "drop-table"
+    database: str
+    table: str
+
+
 @hookimpl
 def register_events():
-    return [LoginEvent, LogoutEvent, CreateTableEvent, CreateTokenEvent]
+    return [LoginEvent, LogoutEvent, CreateTableEvent, CreateTokenEvent, DropTableEvent]

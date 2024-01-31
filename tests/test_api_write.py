@@ -677,6 +677,13 @@ async def test_drop_table(ds_write, scenario):
             headers=_headers(token),
         )
         assert response2.json() == {"ok": True}
+        # Check event
+        event = last_event(ds_write)
+        assert event.name == "drop-table"
+        assert event.actor == {"id": "root", "token": "dstok"}
+        assert event.table == "docs"
+        assert event.database == "data"
+        # Table should 404
         assert (await ds_write.client.get("/data/docs")).status_code == 404
 
 

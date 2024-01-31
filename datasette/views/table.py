@@ -8,6 +8,7 @@ import markupsafe
 
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
+from datasette.events import DropTableEvent
 from datasette import tracer
 from datasette.utils import (
     add_cors_headers,
@@ -587,6 +588,11 @@ class TableDropView(BaseView):
             sqlite_utils.Database(conn)[table_name].drop()
 
         await db.execute_write_fn(drop_table)
+        await self.ds.track_event(
+            DropTableEvent(
+                actor=request.actor, database=database_name, table=table_name
+            )
+        )
         return Response.json({"ok": True}, status=200)
 
 

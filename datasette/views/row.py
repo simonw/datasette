@@ -1,6 +1,6 @@
 from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
-from datasette.events import UpdateRowEvent
+from datasette.events import UpdateRowEvent, DeleteRowEvent
 from .base import DataView, BaseView, _error
 from datasette.utils import (
     make_slot_function,
@@ -200,6 +200,15 @@ class RowDeleteView(BaseView):
             await resolved.db.execute_write_fn(delete_row)
         except Exception as e:
             return _error([str(e)], 500)
+
+        await self.ds.track_event(
+            DeleteRowEvent(
+                actor=request.actor,
+                database=resolved.db.name,
+                table=resolved.table,
+                pks=resolved.pk_values,
+            )
+        )
 
         return Response.json({"ok": True}, status=200)
 

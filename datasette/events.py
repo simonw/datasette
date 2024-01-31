@@ -176,6 +176,26 @@ class UpdateRowEvent(Event):
     pks: list
 
 
+@dataclass
+class DeleteRowEvent(Event):
+    """
+    Event name: ``delete-row``
+
+    A row was deleted from a table.
+
+    :ivar database: The name of the database where the row was deleted.
+    :type database: str
+    :ivar table: The name of the table where the row was deleted.
+    :type table: str
+    :ivar pks: The primary key values of the deleted row.
+    """
+
+    name = "delete-row"
+    database: str
+    table: str
+    pks: list
+
+
 @hookimpl
 def register_events():
     return [
@@ -187,4 +207,5 @@ def register_events():
         InsertRowsEvent,
         UpsertRowsEvent,
         UpdateRowEvent,
+        DeleteRowEvent,
     ]

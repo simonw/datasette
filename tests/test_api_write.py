@@ -567,6 +567,13 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
         headers=_headers(write_token(ds_write)),
     )
     assert delete_response.status_code == 200
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "delete-row"
+    assert event.database == "data"
+    assert event.table == table
+    assert event.pks == str(delete_path).split(",")
     assert (
         await ds_write.client.get(
             "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)

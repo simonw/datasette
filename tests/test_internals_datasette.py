@@ -1,6 +1,7 @@
 """
 Tests for the datasette.app.Datasette class
 """
+
 import dataclasses
 from datasette import Forbidden, Context
 from datasette.app import Datasette, Database

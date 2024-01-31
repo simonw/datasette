@@ -1,6 +1,7 @@
 """
 Tests to ensure certain things are documented.
 """
+
 from datasette import app, utils
 from datasette.app import Datasette
 from datasette.filters import Filters

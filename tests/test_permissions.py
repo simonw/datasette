@@ -381,9 +381,11 @@ async def test_permissions_debug(ds_client):
         {
             "action": div.select_one(".check-action").text,
             # True = green tick, False = red cross, None = gray None
-            "result": None
-            if div.select(".check-result-no-opinion")
-            else bool(div.select(".check-result-true")),
+            "result": (
+                None
+                if div.select(".check-result-no-opinion")
+                else bool(div.select(".check-result-true"))
+            ),
             "used_default": bool(div.select(".check-used-default")),
         }
         for div in check_divs

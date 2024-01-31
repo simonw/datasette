@@ -279,9 +279,11 @@ async def test_insert_or_upsert_row_errors(
         json=input,
         headers={
             "Authorization": "Bearer {}".format(token),
-            "Content-Type": "text/plain"
-            if special_case == "invalid_content_type"
-            else "application/json",
+            "Content-Type": (
+                "text/plain"
+                if special_case == "invalid_content_type"
+                else "application/json"
+            ),
         },
     )
 

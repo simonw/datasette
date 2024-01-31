@@ -1096,24 +1096,26 @@ async def test_hook_filters_from_request(ds_client):
 @pytest.mark.parametrize("extra_metadata", (False, True))
 async def test_hook_register_permissions(extra_metadata):
     ds = Datasette(
-        config={
-            "plugins": {
-                "datasette-register-permissions": {
-                    "permissions": [
-                        {
-                            "name": "extra-from-metadata",
-                            "abbr": "efm",
-                            "description": "Extra from metadata",
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
-                        }
-                    ]
+        config=(
+            {
+                "plugins": {
+                    "datasette-register-permissions": {
+                        "permissions": [
+                            {
+                                "name": "extra-from-metadata",
+                                "abbr": "efm",
+                                "description": "Extra from metadata",
+                                "takes_database": False,
+                                "takes_resource": False,
+                                "default": True,
+                            }
+                        ]
+                    }
                 }
             }
-        }
-        if extra_metadata
-        else None,
+            if extra_metadata
+            else None
+        ),
         plugins_dir=PLUGINS_DIR,
     )
     await ds.invoke_startup()

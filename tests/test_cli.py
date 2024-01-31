@@ -335,9 +335,11 @@ def test_serve_create(tmpdir):
 def test_serve_config(tmpdir, argument, format_):
     config_path = tmpdir / "datasette.{}".format(format_)
     config_path.write_text(
-        "settings:\n  default_page_size: 5\n"
-        if format_ == "yaml"
-        else '{"settings": {"default_page_size": 5}}',
+        (
+            "settings:\n  default_page_size: 5\n"
+            if format_ == "yaml"
+            else '{"settings": {"default_page_size": 5}}'
+        ),
         "utf-8",
     )
     runner = CliRunner()

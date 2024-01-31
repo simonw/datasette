@@ -126,9 +126,9 @@ class DatabaseView(View):
             "views": sql_views,
             "queries": canned_queries,
             "allow_execute_sql": allow_execute_sql,
-            "table_columns": await _table_columns(datasette, database)
-            if allow_execute_sql
-            else {},
+            "table_columns": (
+                await _table_columns(datasette, database) if allow_execute_sql else {}
+            ),
         }
 
         if format_ == "json":
@@ -719,9 +719,11 @@ class QueryView(View):
                         display_rows=await display_rows(
                             datasette, database, request, rows, columns
                         ),
-                        table_columns=await _table_columns(datasette, database)
-                        if allow_execute_sql
-                        else {},
+                        table_columns=(
+                            await _table_columns(datasette, database)
+                            if allow_execute_sql
+                            else {}
+                        ),
                         columns=columns,
                         renderers=renderers,
                         url_csv=datasette.urls.path(
@@ -1036,9 +1038,11 @@ async def display_rows(datasette, database, request, rows, columns):
                     display_value = markupsafe.Markup(
                         '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                             blob_url,
-                            ' title="{}"'.format(formatted)
-                            if "bytes" not in formatted
-                            else "",
+                            (
+                                ' title="{}"'.format(formatted)
+                                if "bytes" not in formatted
+                                else ""
+                            ),
                             len(value),
                             "" if len(value) == 1 else "s",
                         )

@@ -39,9 +39,9 @@ def extra_css_urls(template, database, table, view_name, columns, request, datas
                             "database": database,
                             "table": table,
                             "view_name": view_name,
-                            "request_path": request.path
-                            if request is not None
-                            else None,
+                            "request_path": (
+                                request.path if request is not None else None
+                            ),
                             "added": (
                                 await datasette.get_database().execute("select 3 * 5")
                             ).first()[0],

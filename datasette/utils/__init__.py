@@ -402,9 +402,9 @@ def make_dockerfile(
     apt_get_extras = apt_get_extras_
     if spatialite:
         apt_get_extras.extend(["python3-dev", "gcc", "libsqlite3-mod-spatialite"])
-        environment_variables[
-            "SQLITE_EXTENSIONS"
-        ] = "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
+        environment_variables["SQLITE_EXTENSIONS"] = (
+            "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
+        )
     return """
 FROM python:3.11.0-slim-bullseye
 COPY . /app
@@ -416,9 +416,11 @@ RUN datasette inspect {files} --inspect-file inspect-data.json
 ENV PORT {port}
 EXPOSE {port}
 CMD {cmd}""".format(
-        apt_get_extras=APT_GET_DOCKERFILE_EXTRAS.format(" ".join(apt_get_extras))
-        if apt_get_extras
-        else "",
+        apt_get_extras=(
+            APT_GET_DOCKERFILE_EXTRAS.format(" ".join(apt_get_extras))
+            if apt_get_extras
+            else ""
+        ),
         environment_variables="\n".join(
             [
                 "ENV {} '{}'".format(key, value)

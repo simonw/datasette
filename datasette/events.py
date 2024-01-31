@@ -1,6 +1,7 @@
 from abc import ABC, abstractproperty
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datasette.hookspecs import hookimpl
+from datetime import datetime, timezone
 from typing import Optional
 
 
@@ -10,11 +11,15 @@ class Event(ABC):
     def name(self):
         pass
 
-    actor: dict
+    created: datetime = field(
+        init=False, default_factory=lambda: datetime.now(timezone.utc)
+    )
+    actor: Optional[dict]
 
     def properties(self):
         properties = asdict(self)
         properties.pop("actor", None)
+        properties.pop("created", None)
         return properties
 
 

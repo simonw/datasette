@@ -1788,6 +1788,7 @@ The ``event`` object will always have the following properties:
 
 - ``name``: a string representing the name of the event, for example ``logout`` or ``create-table``.
 - ``actor``: a dictionary representing the actor that triggered the event, or ``None`` if the event was not triggered by an actor.
+- ``created``: a ``datatime.datetime`` object in the ``timezone.utc`` timezone representing the time the event object was created.
 
 Other properties on the event will be available depending on the type of event. You can also access those as a dictionary using ``event.properties()``.
 

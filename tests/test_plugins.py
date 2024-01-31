@@ -19,6 +19,7 @@ from datasette.utils import CustomRow, StartupError
 from jinja2.environment import Template
 from jinja2 import ChoiceLoader, FileSystemLoader
 import base64
+import datetime
 import importlib
 import json
 import os
@@ -1446,12 +1447,18 @@ async def test_hook_track_event():
     from .conftest import TrackEventPlugin
 
     await datasette.invoke_startup()
-    await datasette.track_event(TrackEventPlugin.OneEvent(None, extra="extra extra"))
+    await datasette.track_event(
+        TrackEventPlugin.OneEvent(actor=None, extra="extra extra")
+    )
     assert len(datasette._tracked_events) == 1
     assert isinstance(datasette._tracked_events[0], TrackEventPlugin.OneEvent)
     event = datasette._tracked_events[0]
     assert event.name == "one"
     assert event.properties() == {"extra": "extra extra"}
+    # Should have a recent created as well
+    created = event.created
+    assert isinstance(created, datetime.datetime)
+    assert created.tzinfo == datetime.timezone.utc
 
 
 @pytest.mark.asyncio

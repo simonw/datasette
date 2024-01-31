@@ -1,6 +1,7 @@
 from abc import ABC, abstractproperty
 from dataclasses import asdict, dataclass
 from datasette.hookspecs import hookimpl
+from typing import Optional
 
 
 @dataclass
@@ -40,6 +41,31 @@ class LogoutEvent(Event):
 
 
 @dataclass
+class CreateTokenEvent(Event):
+    """
+    Event name: ``create-token``
+
+    A user created an API token.
+
+    :ivar expires_after: Number of seconds after which this token will expire.
+    :type expires_after: int or None
+    :ivar restrict_all: Restricted permissions for this token.
+    :type restrict_all: list
+    :ivar restrict_database: Restricted database permissions for this token.
+    :type restrict_database: dict
+    :ivar restrict_resource: Restricted resource permissions for this token.
+    :type restrict_resource: dict
+    """
+
+    name = "create-token"
+
+    expires_after: Optional[int]
+    restrict_all: list
+    restrict_database: dict
+    restrict_resource: dict
+
+
+@dataclass
 class CreateTableEvent(Event):
     """
     Event name: ``create-table``
@@ -62,4 +88,4 @@ class CreateTableEvent(Event):
 
 @hookimpl
 def register_events():
-    return [LoginEvent, LogoutEvent, CreateTableEvent]
+    return [LoginEvent, LogoutEvent, CreateTableEvent, CreateTokenEvent]

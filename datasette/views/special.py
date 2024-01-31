@@ -1,5 +1,5 @@
 import json
-from datasette.events import LogoutEvent, LoginEvent
+from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
@@ -351,6 +351,15 @@ class CreateTokenView(BaseView):
             restrict_resource=restrict_resource,
         )
         token_bits = self.ds.unsign(token[len("dstok_") :], namespace="token")
+        await self.ds.track_event(
+            CreateTokenEvent(
+                actor=request.actor,
+                expires_after=expires_after,
+                restrict_all=restrict_all,
+                restrict_database=restrict_database,
+                restrict_resource=restrict_resource,
+            )
+        )
         context = await self.shared(request)
         context.update({"errors": errors, "token": token, "token_bits": token_bits})
         return await self.render(["create_token.html"], request, context)

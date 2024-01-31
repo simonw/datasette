@@ -193,6 +193,13 @@ def test_auth_create_token(
         for error in errors:
             assert '<p class="message-error">{}</p>'.format(error) in response2.text
     else:
+        # Check create-token event
+        event = last_event(app_client.ds)
+        assert event.name == "create-token"
+        assert event.expires_after == expected_duration
+        assert isinstance(event.restrict_all, list)
+        assert isinstance(event.restrict_database, dict)
+        assert isinstance(event.restrict_resource, dict)
         # Extract token from page
         token = response2.text.split('value="dstok_')[1].split('"')[0]
         details = app_client.ds.unsign(token, "token")

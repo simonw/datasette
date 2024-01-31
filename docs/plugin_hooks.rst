@@ -1791,7 +1791,7 @@ The ``event`` object will always have the following properties:
 
 Other properties on the event will be available depending on the type of event. You can also access those as a dictionary using ``event.properties()``.
 
-**TODO: Link to documentation of default core events**
+The events fired by Datasette core are :ref:`documented here <events>`.
 
 This example plugin logs details of all events to standard error:
 

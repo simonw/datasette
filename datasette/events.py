@@ -24,6 +24,7 @@ class LoginEvent(Event):
 
     A user (represented by ``event.actor``) has logged in.
     """
+
     name = "login"
 
 
@@ -34,6 +35,7 @@ class LogoutEvent(Event):
 
     A user (represented by ``event.actor``) has logged out.
     """
+
     name = "logout"
 
 
@@ -51,6 +53,7 @@ class CreateTableEvent(Event):
     :ivar schema: The SQL schema definition for the new table.
     :type schema: str
     """
+
     name = "create-table"
     database: str
     table: str

@@ -9,6 +9,7 @@ from .fixtures import (
     TestClient as _TestClient,
 )  # noqa
 from click.testing import CliRunner
+from dataclasses import dataclass
 from datasette.app import Datasette
 from datasette import cli, hookimpl, Event, Permission
 from datasette.filters import FilterArguments
@@ -1442,8 +1443,11 @@ async def test_hook_top_canned_query(ds_client):
 class TrackEventPlugin:
     __name__ = "TrackEventPlugin"
 
+    @dataclass
     class OneEvent(Event):
         name = "one"
+
+        extra: str
 
     @hookimpl
     def register_events(self, datasette):
@@ -1464,9 +1468,14 @@ async def test_hook_track_event():
         pm.register(TrackEventPlugin(), name="TrackEventPlugin")
         datasette = Datasette(memory=True)
         await datasette.invoke_startup()
-        await datasette.track_event(TrackEventPlugin.OneEvent(None))
+        await datasette.track_event(
+            TrackEventPlugin.OneEvent(None, extra="extra extra")
+        )
         assert len(datasette._tracked_events) == 1
         assert isinstance(datasette._tracked_events[0], TrackEventPlugin.OneEvent)
+        event = datasette._tracked_events[0]
+        assert event.name == "one"
+        assert event.properties() == {"extra": "extra extra"}
     finally:
         pm.unregister(name="TrackEventPlugin")
 

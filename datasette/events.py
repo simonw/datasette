@@ -136,6 +136,27 @@ class InsertRowsEvent(Event):
     replace: bool
 
 
+@dataclass
+class UpsertRowsEvent(Event):
+    """
+    Event name: ``upsert-rows``
+
+    Rows were upserted into a table.
+
+    :ivar database: The name of the database where the rows were inserted.
+    :type database: str
+    :ivar table: The name of the table where the rows were inserted.
+    :type table: str
+    :ivar num_rows: The number of rows that were requested to be inserted.
+    :type num_rows: int
+    """
+
+    name = "upsert-rows"
+    database: str
+    table: str
+    num_rows: int
+
+
 @hookimpl
 def register_events():
     return [
@@ -145,4 +166,5 @@ def register_events():
         CreateTokenEvent,
         DropTableEvent,
         InsertRowsEvent,
+        UpsertRowsEvent,
     ]

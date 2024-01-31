@@ -456,6 +456,14 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
     )
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "upsert-rows"
+    assert event.num_rows == 1
+    assert event.database == "data"
+    assert event.table == "upsert_test"
+
     if should_return:
         # We only expect it to return rows corresponding to those we sent
         expected_returned_rows = expected_rows[: len(input["rows"])]

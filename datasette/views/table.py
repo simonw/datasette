@@ -8,7 +8,7 @@ import markupsafe
 
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
-from datasette.events import DropTableEvent, InsertRowsEvent
+from datasette.events import DropTableEvent, InsertRowsEvent, UpsertRowsEvent
 from datasette import tracer
 from datasette.utils import (
     add_cors_headers,
@@ -533,7 +533,14 @@ class TableInsertView(BaseView):
         # We track the number of rows requested, but do not attempt to show which were actually
         # inserted or upserted v.s. ignored
         if upsert:
-            pass
+            await self.ds.track_event(
+                UpsertRowsEvent(
+                    actor=request.actor,
+                    database=database_name,
+                    table=table_name,
+                    num_rows=num_rows,
+                )
+            )
         else:
             await self.ds.track_event(
                 InsertRowsEvent(

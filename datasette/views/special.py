@@ -1,4 +1,5 @@
 import json
+from datasette.events import LogoutEvent
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
@@ -105,6 +106,7 @@ class LogoutView(BaseView):
         response = Response.redirect(self.ds.urls.instance())
         response.set_cookie("ds_actor", "", expires=0, max_age=0)
         self.ds.add_message(request, "You are now logged out", self.ds.WARNING)
+        await self.ds.track_event(LogoutEvent(request.actor))
         return response
 
 

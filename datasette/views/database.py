@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Callable
 from urllib.parse import parse_qsl, urlencode
 import asyncio
 import hashlib
@@ -18,6 +17,7 @@ from datasette.utils import (
     call_with_supported_arguments,
     derive_named_parameters,
     format_bytes,
+    make_slot_function,
     tilde_decode,
     to_css_class,
     validate_sql_select,
@@ -161,6 +161,9 @@ class DatabaseView(View):
                 f"{'*' if template_name == template.name else ''}{template_name}"
                 for template_name in templates
             ],
+            "top_database": make_slot_function(
+                "top_database", datasette, request, database=database
+            ),
         }
         return Response.html(
             await datasette.render_template(

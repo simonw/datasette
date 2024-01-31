@@ -1336,20 +1336,40 @@ async def test_hook_jinja2_environment_from_request(tmpdir):
         pm.unregister(name="EnvironmentPlugin")
 
 
+class SlotPlugin:
+    __name__ = "SlotPlugin"
+
+    @hookimpl
+    def top_homepage(self, request):
+        return "Xtop_homepage: " + request.args["z"]
+
+    @hookimpl
+    def top_database(self, request):
+        async def inner():
+            return "Xtop_database: " + request.args["z"]
+
+        return inner
+
+
 @pytest.mark.asyncio
 async def test_hook_top_homepage():
-    class HookPlugin:
-        __name__ = "HookPlugin"
-
-        @hookimpl
-        def top_homepage(self, request):
-            return "XXX-YYY: " + request.args["z"]
-
     try:
-        pm.register(HookPlugin(), name="HookPlugin")
+        pm.register(SlotPlugin(), name="SlotPlugin")
         datasette = Datasette(memory=True)
         response = await datasette.client.get("/?z=foo")
         assert response.status_code == 200
-        assert "XXX-YYY: foo" in response.text
+        assert "Xtop_homepage: foo" in response.text
     finally:
-        pm.unregister(name="HookPlugin")
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_database():
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        datasette = Datasette(memory=True)
+        response = await datasette.client.get("/_memory?z=bar")
+        assert response.status_code == 200
+        assert "Xtop_database: bar" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")

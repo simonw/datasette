@@ -50,6 +50,14 @@ async def test_insert_row(ds_write):
     assert response.json()["rows"] == [expected_row]
     rows = (await ds_write.get_database("data").execute("select * from docs")).rows
     assert dict(rows[0]) == expected_row
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 1
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert not event.ignore
+    assert not event.replace
 
 
 @pytest.mark.asyncio
@@ -69,6 +77,16 @@ async def test_insert_rows(ds_write, return_rows):
         headers=_headers(token),
     )
     assert response.status_code == 201
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 20
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert not event.ignore
+    assert not event.replace
+
     actual_rows = [
         dict(r)
         for r in (
@@ -354,6 +372,16 @@ async def test_insert_ignore_replace(
         headers=_headers(token),
     )
     assert response.status_code == 201
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 1
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert event.ignore == ignore
+    assert event.replace == replace
+
     actual_rows = [
         dict(r)
         for r in (

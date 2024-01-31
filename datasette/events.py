@@ -109,6 +109,40 @@ class DropTableEvent(Event):
     table: str
 
 
+@dataclass
+class InsertRowsEvent(Event):
+    """
+    Event name: ``insert-rows``
+
+    Rows were inserted into a table.
+
+    :ivar database: The name of the database where the rows were inserted.
+    :type database: str
+    :ivar table: The name of the table where the rows were inserted.
+    :type table: str
+    :ivar num_rows: The number of rows that were requested to be inserted.
+    :type num_rows: int
+    :ivar ignore: Was ignore set?
+    :type ignore: bool
+    :ivar replace: Was replace set?
+    :type replace: bool
+    """
+
+    name = "insert-rows"
+    database: str
+    table: str
+    num_rows: int
+    ignore: bool
+    replace: bool
+
+
 @hookimpl
 def register_events():
-    return [LoginEvent, LogoutEvent, CreateTableEvent, CreateTokenEvent, DropTableEvent]
+    return [
+        LoginEvent,
+        LogoutEvent,
+        CreateTableEvent,
+        CreateTokenEvent,
+        DropTableEvent,
+        InsertRowsEvent,
+    ]

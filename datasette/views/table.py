@@ -8,7 +8,7 @@ import markupsafe
 
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
-from datasette.events import DropTableEvent
+from datasette.events import DropTableEvent, InsertRowsEvent
 from datasette import tracer
 from datasette.utils import (
     add_cors_headers,
@@ -468,6 +468,8 @@ class TableInsertView(BaseView):
         if errors:
             return _error(errors, 400)
 
+        num_rows = len(rows)
+
         # No that we've passed pks to _validate_data it's safe to
         # fix the rowids case:
         if not pks:
@@ -528,6 +530,22 @@ class TableInsertView(BaseView):
                 result["rows"] = [dict(r) for r in fetched_rows.rows]
             else:
                 result["rows"] = rows
+        # We track the number of rows requested, but do not attempt to show which were actually
+        # inserted or upserted v.s. ignored
+        if upsert:
+            pass
+        else:
+            await self.ds.track_event(
+                InsertRowsEvent(
+                    actor=request.actor,
+                    database=database_name,
+                    table=table_name,
+                    num_rows=num_rows,
+                    ignore=bool(ignore),
+                    replace=bool(replace),
+                )
+            )
+
         return Response.json(result, status=200 if upsert else 201)
 
 

@@ -11,9 +11,9 @@ Datasette supports a number of settings. These can be set using the ``--setting 
 You can set multiple settings at once like this::
 
     datasette mydatabase.db \
-        --setting default_page_size 50 \
-        --setting sql_time_limit_ms 3500 \
-        --setting max_returned_rows 2000
+      --setting default_page_size 50 \
+      --setting sql_time_limit_ms 3500 \
+      --setting max_returned_rows 2000
 
 Settings can also be specified :ref:`in the database.yaml configuration file <configuration_reference_settings>`.
 
@@ -25,10 +25,10 @@ Configuration directory mode
 Normally you configure Datasette using command-line options. For a Datasette instance with custom templates, custom plugins, a static directory and several databases this can get quite verbose::
 
     datasette one.db two.db \
-        --metadata=metadata.json \
-        --template-dir=templates/ \
-        --plugins-dir=plugins \
-        --static css:css
+      --metadata=metadata.json \
+      --template-dir=templates/ \
+      --plugins-dir=plugins \
+      --static css:css
 
 As an alternative to this, you can run Datasette in *configuration directory* mode. Create a directory with the following structure::
 

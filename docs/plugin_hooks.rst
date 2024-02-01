@@ -270,7 +270,7 @@ you have one:
 
 Note that ``your-plugin`` here should be the hyphenated plugin name - the name that is displayed in the list on the ``/-/plugins`` debug page.
 
-If your code uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__ you should include the ``"module": True`` key. See :ref:`customization_css_and_javascript` for more details.
+If your code uses `JavaScript modules <https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules>`__ you should include the ``"module": True`` key. See :ref:`configuration_reference_css_js` for more details.
 
 .. code-block:: python
 

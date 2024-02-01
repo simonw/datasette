@@ -24,17 +24,19 @@ def metadata_example(cog, data=None, yaml=None):
     cog.out("\n")
 
 
-def config_example(cog, input):
+def config_example(
+    cog, input, yaml_title="datasette.yaml", json_title="datasette.json"
+):
     if type(input) is str:
         data = YAML().load(input)
         output_yaml = input
     else:
         data = input
         output_yaml = safe_dump(input, sort_keys=False)
-    cog.out("\n.. tab:: datasette.yaml\n\n")
+    cog.out("\n.. tab:: {}\n\n".format(yaml_title))
     cog.out("    .. code-block:: yaml\n\n")
     cog.out(textwrap.indent(output_yaml, "        "))
-    cog.out("\n\n.. tab:: datasette.json\n\n")
+    cog.out("\n\n.. tab:: {}\n\n".format(json_title))
     cog.out("    .. code-block:: json\n\n")
     cog.out(textwrap.indent(json.dumps(data, indent=2), "        "))
     cog.out("\n")

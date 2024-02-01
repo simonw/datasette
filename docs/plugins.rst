@@ -328,7 +328,7 @@ To write that to a ``requirements.txt`` file, run this::
 Plugin configuration
 --------------------
 
-Plugins can have their own configuration, embedded in a :ref:`configuration` file. Configuration options for plugins live within a ``"plugins"`` key in that file, which can be included at the root, database or table level.
+Plugins can have their own configuration, embedded in a :ref:`configuration file <configuration>`. Configuration options for plugins live within a ``"plugins"`` key in that file, which can be included at the root, database or table level.
 
 Here is an example of some plugin configuration for a specific table:
 

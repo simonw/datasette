@@ -77,7 +77,6 @@ from .utils import (
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
-    fail_if_plugins_in_metadata,
     tilde_decode,
     to_css_class,
     urlsafe_components,
@@ -336,16 +335,13 @@ class Datasette:
             ]
         if config_dir and metadata_files and not metadata:
             with metadata_files[0].open() as fp:
-                metadata = fail_if_plugins_in_metadata(
-                    parse_metadata(fp.read()), metadata_files[0].name
-                )
+                metadata = parse_metadata(fp.read())
 
         if config_dir and config_files and not config:
             with config_files[0].open() as fp:
                 config = parse_metadata(fp.read())
 
-        self._metadata_local = fail_if_plugins_in_metadata(metadata or {})
-
+        self._metadata_local = metadata or {}
         self.sqlite_extensions = []
         for extension in sqlite_extensions or []:
             # Resolve spatialite, if requested

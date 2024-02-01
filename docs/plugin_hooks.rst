@@ -1769,7 +1769,7 @@ Datasette includes an internal mechanism for tracking analytical events. This ca
 
 Plugins can register to receive events using the ``track_event`` plugin hook.
 
-They can also define their own events for other plugins to receive using the ``register_events`` plugin hook, combined with calls to the ``datasette.track_event(...)`` internal method.
+They can also define their own events for other plugins to receive using the :ref:`register_events() plugin hook <plugin_hook_register_events>`, combined with calls to the :ref:`datasette.track_event() internal method <datasette_track_event>`.
 
 .. _plugin_hook_track_event:
 
@@ -1826,7 +1826,7 @@ register_events(datasette)
 ``datasette`` - :ref:`internals_datasette`
     You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
 
-This hook should return a list of ``Event`` subclasses that represent custom events that the plugin might send to the ``datasette.track_event()`` method.
+This hook should return a list of ``Event`` subclasses that represent custom events that the plugin might send to the :ref:`datasette.track_event() <datasette_track_event>` method.
 
 This example registers event subclasses for ``ban-user`` and ``unban-user`` events:
 

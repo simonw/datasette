@@ -74,6 +74,7 @@ from .utils import (
     find_spatialite,
     format_bytes,
     module_from_path,
+    move_plugins,
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
@@ -340,6 +341,11 @@ class Datasette:
         if config_dir and config_files and not config:
             with config_files[0].open() as fp:
                 config = parse_metadata(fp.read())
+
+        # Move any "plugins" settings from metadata to config - updates them in place
+        metadata = metadata or {}
+        config = config or {}
+        move_plugins(metadata, config)
 
         self._metadata_local = metadata or {}
         self.sqlite_extensions = []

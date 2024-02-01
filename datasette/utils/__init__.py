@@ -1287,3 +1287,43 @@ def make_slot_function(name, datasette, request, **kwargs):
         return markupsafe.Markup("".join(html_bits))
 
     return inner
+
+
+def move_plugins(source, destination):
+    """
+    Move 'plugins' keys from source to destination dictionary. Creates hierarchy in destination if needed.
+    After moving, recursively remove any keys in the source that are left empty.
+    """
+
+    def recursive_move(src, dest, path=None):
+        if path is None:
+            path = []
+        for key, value in list(src.items()):
+            new_path = path + [key]
+            if key == "plugins":
+                # Navigate and create the hierarchy in destination if needed
+                d = dest
+                for step in path:
+                    d = d.setdefault(step, {})
+                # Move the plugins
+                d[key] = value
+                # Remove the plugins from source
+                src.pop(key, None)
+            elif isinstance(value, dict):
+                recursive_move(value, dest, new_path)
+                # After moving, check if the current dictionary is empty and remove it if so
+                if not value:
+                    src.pop(key, None)
+
+    def prune_empty_dicts(d):
+        """
+        Recursively prune all empty dictionaries from a given dictionary.
+        """
+        for key, value in list(d.items()):
+            if isinstance(value, dict):
+                prune_empty_dicts(value)
+                if value == {}:
+                    d.pop(key, None)
+
+    recursive_move(source, destination)
+    prune_empty_dicts(source)

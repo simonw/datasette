@@ -15,6 +15,8 @@ You can set multiple settings at once like this::
         --setting sql_time_limit_ms 3500 \
         --setting max_returned_rows 2000
 
+Settings can also be specified :ref:`in the database.yaml configuration file <configuration_reference_settings>`.
+
 .. _config_dir:
 
 Configuration directory mode

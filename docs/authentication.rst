@@ -80,13 +80,35 @@ The standard way to define permissions in Datasette is to use an ``"allow"`` blo
 
 The most basic form of allow block is this (`allow demo <https://latest.datasette.io/-/allow-debug?actor=%7B%22id%22%3A+%22root%22%7D&allow=%7B%0D%0A++++++++%22id%22%3A+%22root%22%0D%0A++++%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%22id%22%3A+%22trevor%22%7D&allow=%7B%0D%0A++++++++%22id%22%3A+%22root%22%0D%0A++++%7D>`__):
 
-.. code-block:: json
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+        allow:
+          id: root
+        """).strip(),
+        "YAML", "JSON"
+      )
+.. ]]]
 
-    {
-        "allow": {
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow:
+          id: root
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow": {
             "id": "root"
+          }
         }
-    }
+.. [[[end]]]
 
 This will match any actors with an ``"id"`` property of ``"root"`` - for example, an actor that looks like this:
 
@@ -99,29 +121,98 @@ This will match any actors with an ``"id"`` property of ``"root"`` - for example
 
 An allow block can specify "deny all" using ``false`` (`demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22root%22%0D%0A%7D&allow=false>`__):
 
-.. code-block:: json
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+        allow: false
+        """).strip(),
+        "YAML", "JSON"
+      )
+.. ]]]
 
-    {
-        "allow": false
-    }
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow: false
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow": false
+        }
+.. [[[end]]]
 
 An ``"allow"`` of ``true`` allows all access (`demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22root%22%0D%0A%7D&allow=true>`__):
 
-.. code-block:: json
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+        allow: true
+        """).strip(),
+        "YAML", "JSON"
+      )
+.. ]]]
 
-    {
-        "allow": true
-    }
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow: true
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow": true
+        }
+.. [[[end]]]
 
 Allow keys can provide a list of values. These will match any actor that has any of those values (`allow demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22cleopaws%22%0D%0A%7D&allow=%7B%0D%0A++++%22id%22%3A+%5B%0D%0A++++++++%22simon%22%2C%0D%0A++++++++%22cleopaws%22%0D%0A++++%5D%0D%0A%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22pancakes%22%0D%0A%7D&allow=%7B%0D%0A++++%22id%22%3A+%5B%0D%0A++++++++%22simon%22%2C%0D%0A++++++++%22cleopaws%22%0D%0A++++%5D%0D%0A%7D>`__):
 
-.. code-block:: json
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+        allow:
+          id:
+          - simon
+          - cleopaws
+        """).strip(),
+        "YAML", "JSON"
+      )
+.. ]]]
 
-    {
-        "allow": {
-            "id": ["simon", "cleopaws"]
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow:
+          id:
+          - simon
+          - cleopaws
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow": {
+            "id": [
+              "simon",
+              "cleopaws"
+            ]
+          }
         }
-    }
+.. [[[end]]]
 
 This will match any actor with an ``"id"`` of either ``"simon"`` or ``"cleopaws"``.
 
@@ -129,53 +220,154 @@ Actors can have properties that feature a list of values. These will be matched 
 
 .. code-block:: json
 
-    {
-        "id": "simon",
-        "roles": ["staff", "developer"]
-    }
+      {
+          "id": "simon",
+          "roles": ["staff", "developer"]
+      }
 
 This allow block will provide access to any actor that has ``"developer"`` as one of their roles (`allow demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22simon%22%2C%0D%0A++++%22roles%22%3A+%5B%0D%0A++++++++%22staff%22%2C%0D%0A++++++++%22developer%22%0D%0A++++%5D%0D%0A%7D&allow=%7B%0D%0A++++%22roles%22%3A+%5B%0D%0A++++++++%22developer%22%0D%0A++++%5D%0D%0A%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22cleopaws%22%2C%0D%0A++++%22roles%22%3A+%5B%22dog%22%5D%0D%0A%7D&allow=%7B%0D%0A++++%22roles%22%3A+%5B%0D%0A++++++++%22developer%22%0D%0A++++%5D%0D%0A%7D>`__):
 
-.. code-block:: json
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+        allow:
+          roles:
+          - developer
+        """).strip(),
+        "YAML", "JSON"
+      )
+.. ]]]
 
-    {
-        "allow": {
-            "roles": ["developer"]
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow:
+          roles:
+          - developer
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow": {
+            "roles": [
+              "developer"
+            ]
+          }
         }
-    }
+.. [[[end]]]
 
 Note that "roles" is not a concept that is baked into Datasette - it's a convention that plugins can choose to implement and act on.
 
 If you want to provide access to any actor with a value for a specific key, use ``"*"``. For example, to match any logged-in user specify the following (`allow demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22simon%22%0D%0A%7D&allow=%7B%0D%0A++++%22id%22%3A+%22*%22%0D%0A%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22bot%22%3A+%22readme-bot%22%0D%0A%7D&allow=%7B%0D%0A++++%22id%22%3A+%22*%22%0D%0A%7D>`__):
 
-.. code-block:: json
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+        allow:
+          id: "*"
+        """).strip(),
+        "YAML", "JSON"
+      )
+.. ]]]
 
-    {
-        "allow": {
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow:
+          id: "*"
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow": {
             "id": "*"
+          }
         }
-    }
+.. [[[end]]]
 
 You can specify that only unauthenticated actors (from anynomous HTTP requests) should be allowed access using the special ``"unauthenticated": true`` key in an allow block (`allow demo <https://latest.datasette.io/-/allow-debug?actor=null&allow=%7B%0D%0A++++%22unauthenticated%22%3A+true%0D%0A%7D>`__, `deny demo <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22hello%22%0D%0A%7D&allow=%7B%0D%0A++++%22unauthenticated%22%3A+true%0D%0A%7D>`__):
 
-.. code-block:: json
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+        allow:
+          unauthenticated: true
+        """).strip(),
+        "YAML", "JSON"
+      )
+.. ]]]
 
-    {
-        "allow": {
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow:
+          unauthenticated: true
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow": {
             "unauthenticated": true
+          }
         }
-    }
+.. [[[end]]]
 
 Allow keys act as an "or" mechanism. An actor will be able to execute the query if any of their JSON properties match any of the values in the corresponding lists in the ``allow`` block. The following block will allow users with either a ``role`` of ``"ops"`` OR users who have an ``id`` of ``"simon"`` or ``"cleopaws"``:
 
-.. code-block:: json
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+        allow:
+          id:
+          - simon
+          - cleopaws
+          role: ops
+        """).strip(),
+        "YAML", "JSON"
+      )
+.. ]]]
 
-    {
-        "allow": {
-            "id": ["simon", "cleopaws"],
+.. tab:: YAML
+
+    .. code-block:: yaml
+
+        allow:
+          id:
+          - simon
+          - cleopaws
+          role: ops
+
+.. tab:: JSON
+
+    .. code-block:: json
+
+        {
+          "allow": {
+            "id": [
+              "simon",
+              "cleopaws"
+            ],
             "role": "ops"
+          }
         }
-    }
+.. [[[end]]]
 
 `Demo for cleopaws <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22cleopaws%22%0D%0A%7D&allow=%7B%0D%0A++++%22id%22%3A+%5B%0D%0A++++++++%22simon%22%2C%0D%0A++++++++%22cleopaws%22%0D%0A++++%5D%2C%0D%0A++++%22role%22%3A+%22ops%22%0D%0A%7D>`__, `demo for ops role <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22trevor%22%2C%0D%0A++++%22role%22%3A+%5B%0D%0A++++++++%22ops%22%2C%0D%0A++++++++%22staff%22%0D%0A++++%5D%0D%0A%7D&allow=%7B%0D%0A++++%22id%22%3A+%5B%0D%0A++++++++%22simon%22%2C%0D%0A++++++++%22cleopaws%22%0D%0A++++%5D%2C%0D%0A++++%22role%22%3A+%22ops%22%0D%0A%7D>`__, `demo for an actor matching neither rule <https://latest.datasette.io/-/allow-debug?actor=%7B%0D%0A++++%22id%22%3A+%22percy%22%2C%0D%0A++++%22role%22%3A+%5B%0D%0A++++++++%22staff%22%0D%0A++++%5D%0D%0A%7D&allow=%7B%0D%0A++++%22id%22%3A+%5B%0D%0A++++++++%22simon%22%2C%0D%0A++++++++%22cleopaws%22%0D%0A++++%5D%2C%0D%0A++++%22role%22%3A+%22ops%22%0D%0A%7D>`__.
 

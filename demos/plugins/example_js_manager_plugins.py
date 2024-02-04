@@ -16,6 +16,6 @@ def extra_js_urls(view_name):
     if view_name in PERMITTED_VIEWS:
         return [
             {
-                "url": f"/static/table-example-plugins.js",
+                "url": "/static/table-example-plugins.js",
             }
         ]

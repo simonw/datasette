@@ -145,8 +145,8 @@ Settings
       """
         # inside datasette.yaml
         settings:
-           default_allow_sql: off
-           default_page_size: 50
+          default_allow_sql: off
+          default_page_size: 50
         """).strip()
       )
 .. ]]]
@@ -157,8 +157,8 @@ Settings
 
         # inside datasette.yaml
         settings:
-           default_allow_sql: off
-           default_page_size: 50
+          default_allow_sql: off
+          default_page_size: 50
 
 .. tab:: datasette.json
 

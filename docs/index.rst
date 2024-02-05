@@ -60,6 +60,7 @@ Contents
    custom_templates
    plugins
    writing_plugins
+   javascript_plugins
    plugin_hooks
    testing_plugins
    internals

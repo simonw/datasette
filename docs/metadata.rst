@@ -53,7 +53,7 @@ Your ``metadata.yaml`` file can look something like this:
 .. [[[end]]]
 
 
-Choosing YAML over JSON adds support for multi-line strings and comments, see :ref:`metadata_yaml`.
+Choosing YAML over JSON adds support for multi-line strings and comments.
 
 The above metadata will be displayed on the index page of your Datasette-powered
 site. The source and license information will also be included in the footer of
@@ -663,33 +663,6 @@ SpatiaLite tables are automatically hidden) using ``"hidden": true``:
           }
         }
 .. [[[end]]]
-
-.. _metadata_yaml:
-
-Using YAML for metadata
------------------------
-
-Datasette accepts YAML as an alternative to JSON for your metadata configuration file.
-YAML is particularly useful for including multiline HTML and SQL strings, plus inline comments.
-
-Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`canned_queries`.
-
-.. code-block:: yaml
-
-    title: Demonstrating Metadata from YAML
-    description_html: |-
-      <p>This description includes a long HTML string</p>
-      <ul>
-        <li>YAML is better for embedding HTML strings than JSON!</li>
-      </ul>
-    license: ODbL
-    license_url: https://opendatacommons.org/licenses/odbl/
-    databases:
-      fixtures:
-        tables:
-          no_primary_key:
-            hidden: true
-
 
 .. _metadata_reference:
 

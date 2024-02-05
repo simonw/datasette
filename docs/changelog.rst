@@ -4,6 +4,23 @@
 Changelog
 =========
 
+.. _v1_0_a8:
+
+1.0a8 (2024-02-01)
+------------------
+
+- Plugin configs and various other :ref:`Datasette configuration <configuration>` now live in the ``datasette.yaml`` configuration file, passed to Datasette using the ``-c/--config`` option. Thanks, Alex Garcia. (:issue:`2093`)
+
+  .. code-block:: bash
+
+        datasette -c datasette.yaml
+
+  Previously these lived in ``metadata.yaml``, which was confusing as plugin settings were unrelated to database and table metadata.
+
+- The :ref:`configuration documentation <configuration>` now shows examples of both YAML and JSON for each setting.
+
+- Datasette no longer attempts to run SQL queries in parallel when rendering a table page, as this was leading to some rare crashing bugs. (:issue:`2189`)
+
 .. _v0_64_6:
 
 0.64.6 (2023-12-22)

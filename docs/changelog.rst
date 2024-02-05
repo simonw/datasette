@@ -17,9 +17,18 @@ Changelog
 
   Previously these lived in ``metadata.yaml``, which was confusing as plugin settings were unrelated to database and table metadata.
 
+- New internal function for plugin authors: :ref:`database_execute_isolated_fn`, for creating a new SQLite connection, executing code and then closing that connection, all while preventing other code from writing to that particular database. This connection will not have the :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook executed against it, allowing plugins to perform actions that might otherwise be blocked by existing connection configuration. (:issue:`2218`)
+
+Documentation
+~~~~~~~~~~~~~
+
 - The :ref:`configuration documentation <configuration>` now shows examples of both YAML and JSON for each setting.
 
+Minor
+~~~~~
+
 - Datasette no longer attempts to run SQL queries in parallel when rendering a table page, as this was leading to some rare crashing bugs. (:issue:`2189`)
+- Fixed warning: ``DeprecationWarning: pkg_resources is deprecated as an API`` (:issue:`2057`)
 
 .. _v0_64_6:
 

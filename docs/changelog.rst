@@ -1233,7 +1233,7 @@ Also in this release:
 0.40 (2020-04-21)
 -----------------
 
-* Datasette :ref:`metadata` can now be provided as a YAML file as an optional alternative to JSON. See :ref:`metadata_yaml`. (:issue:`713`)
+* Datasette :ref:`metadata` can now be provided as a YAML file as an optional alternative to JSON. (:issue:`713`)
 * Removed support for ``datasette publish now``, which used the the now-retired Zeit Now v1 hosting platform. A new plugin, `datasette-publish-now <https://github.com/simonw/datasette-publish-now>`__, can be installed to publish data to Zeit (`now Vercel <https://vercel.com/blog/zeit-is-now-vercel>`__) Now v2. (:issue:`710`)
 * Fixed a bug where the ``extra_template_vars(request, view_name)`` plugin hook was not receiving the correct ``view_name``. (:issue:`716`)
 * Variables added to the template context by the ``extra_template_vars()`` plugin hook are now shown in the ``?_context=1`` debugging mode (see :ref:`setting_template_debug`). (:issue:`693`)

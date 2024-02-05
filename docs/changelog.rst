@@ -31,8 +31,8 @@ Documentation
 - Documentation on how to :ref:`register a plugin for the duration of a test <testing_plugins_register_in_test>`. (:issue:`2234`)
 - The :ref:`configuration documentation <configuration>` now shows examples of both YAML and JSON for each setting.
 
-Minor
-~~~~~
+Minor fixes
+~~~~~~~~~~~
 
 - Datasette no longer attempts to run SQL queries in parallel when rendering a table page, as this was leading to some rare crashing bugs. (:issue:`2189`)
 - Fixed warning: ``DeprecationWarning: pkg_resources is deprecated as an API`` (:issue:`2057`)

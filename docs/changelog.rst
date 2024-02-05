@@ -27,6 +27,8 @@ Plugin hooks
 Documentation
 ~~~~~~~~~~~~~
 
+- Documentation describing :ref:`how to write tests that use signed actor cookies <testing_datasette_client>` using ``datasette.client.actor_cookie()``. (:issue:`1830`)
+- Documentation on how to :ref:`register a plugin for the duration of a test <testing_plugins_register_in_test>`. (:issue:`2234`)
 - The :ref:`configuration documentation <configuration>` now shows examples of both YAML and JSON for each setting.
 
 Minor
@@ -34,6 +36,7 @@ Minor
 
 - Datasette no longer attempts to run SQL queries in parallel when rendering a table page, as this was leading to some rare crashing bugs. (:issue:`2189`)
 - Fixed warning: ``DeprecationWarning: pkg_resources is deprecated as an API`` (:issue:`2057`)
+- Fixed bug where ``?_extra=columns`` parameter returned an incorrectly shaped response. (:issue:`2230`)
 
 .. _v0_64_6:
 

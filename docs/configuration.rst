@@ -5,7 +5,7 @@ Configuration
 
 Datasette offers several ways to configure your Datasette instances: server settings, plugin configuration, authentication, and more.
 
-Most configuration can be handled using a ``datasette.yaml`` configuration file, passed to datasette using the ``--config``/ ``-c`` flag:
+Most configuration can be handled using a ``datasette.yaml`` configuration file, passed to datasette using the ``-c/--config`` flag:
 
 .. code-block:: bash
 
@@ -13,12 +13,86 @@ Most configuration can be handled using a ``datasette.yaml`` configuration file,
 
 This file can also use JSON, as ``datasette.json``. YAML is recommended over JSON due to its support for comments and multi-line strings.
 
+.. _configuration_cli:
+
+Configuration via the command-line
+----------------------------------
+
+The recommended way to configure Datasette is using a ``datasette.yaml`` file passed to ``-c/--config``. You can also pass individual settings to Datasette using the ``-s/--setting`` option, which can be used multiple times:
+
+.. code-block:: bash
+
+    datasette mydatabase.db \
+      --setting settings.default_page_size 50 \
+      --setting settings.sql_time_limit_ms 3500
+
+This option takes dotted-notation for the first argument and a value for the second argument. This means you can use it to set any configuration value that would be valid in a ``datasette.yaml`` file.
+
+It also works for plugin configuration, for example for `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster-map>`_:
+
+.. code-block:: bash
+
+    datasette mydatabase.db \
+      --setting plugins.datasette-cluster-map.latitude_column xlat \
+      --setting plugins.datasette-cluster-map.longitude_column xlon
+
+If the value you provide is a valid JSON object or list it will be treated as nested data, allowing you to configure plugins that accept lists such as `datasette-proxy-url <https://datasette.io/plugins/datasette-proxy-url>`_:
+
+.. code-block:: bash
+
+    datasette mydatabase.db \
+      -s plugins.datasette-proxy-url.paths '[{"path": "/proxy", "backend": "http://example.com/"}]'
+
+This is equivalent to a ``datasette.yaml`` file containing the following:
+
+.. [[[cog
+    from metadata_doc import config_example
+    import textwrap
+    config_example(cog, textwrap.dedent(
+      """
+      plugins:
+        datasette-proxy-url:
+          paths:
+          - path: /proxy
+            backend: http://example.com/
+      """).strip()
+      )
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
+
+        plugins:
+          datasette-proxy-url:
+            paths:
+            - path: /proxy
+              backend: http://example.com/
+
+.. tab:: datasette.json
+
+    .. code-block:: json
+
+        {
+          "plugins": {
+            "datasette-proxy-url": {
+              "paths": [
+                {
+                  "path": "/proxy",
+                  "backend": "http://example.com/"
+                }
+              ]
+            }
+          }
+        }
+.. [[[end]]]
+
 .. _configuration_reference:
 
 ``datasette.yaml`` reference
 ----------------------------
 
-This example shows many of the valid configuration options that can exist inside ``datasette.yaml``.
+The following example shows some of the valid configuration options that can exist inside ``datasette.yaml``.
 
 .. [[[cog
     from metadata_doc import config_example

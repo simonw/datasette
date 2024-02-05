@@ -21,6 +21,7 @@ Configuration
         datasette -c datasette.yaml
 
   Previously these lived in ``metadata.yaml``, which was confusing as plugin settings were unrelated to database and table metadata.
+- The ``-s/--setting`` option can now be used to set plugin configuration as well. See :ref:`configuration_cli` for details. (:issue:`2252`)
 
 Plugin hooks
 ~~~~~~~~~~~~

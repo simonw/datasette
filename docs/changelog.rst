@@ -40,6 +40,18 @@ Configuration
           -s plugins.datasette-cluster-map.latitude_column xlat \
           -s plugins.datasette-cluster-map.longitude_column xlon
 
+JavaScript plugins
+~~~~~~~~~~~~~~~~~~
+
+Datasette now includes a :ref:`JavaScript plugins mechanism <javascript_plugins>`, allowing JavaScript to customize Datasette in a way that can collaborate with other plugins.
+
+This provides two initial hooks, with more to come in the future:
+
+- :ref:`makeAboveTablePanelConfigs() <javascript_plugins_makeAboveTablePanelConfigs>` can add additional panels to the top of the table page.
+- :ref:`makeColumnActions() <javascript_plugins_makeColumnActions>` can add additional actions to the column menu.
+
+Thanks `Cameron Yick <https://github.com/hydrosquall>`__ for contributing this feature. (`#2052 <https://github.com/simonw/datasette/pull/2052>`__)
+
 Plugin hooks
 ~~~~~~~~~~~~
 

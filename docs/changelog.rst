@@ -14,13 +14,22 @@ This alpha release continues the migration of Datasette's configuration from ``m
 Configuration
 ~~~~~~~~~~~~~
 
-- Plugin configs and various other :ref:`Datasette configuration <configuration>` now live in the ``datasette.yaml`` configuration file, passed to Datasette using the ``-c/--config`` option. Thanks, Alex Garcia. (:issue:`2093`)
+- Plugin configuration now lives in the :ref:`datasette.yaml configuration file <configuration>`, passed to Datasette using the ``-c/--config`` option. Thanks, Alex Garcia. (:issue:`2093`)
 
   .. code-block:: bash
 
         datasette -c datasette.yaml
 
-  Previously these lived in ``metadata.yaml``, which was confusing as plugin settings were unrelated to database and table metadata.
+  Where ``datasette.yaml`` contains configuration that looks like this:
+
+  .. code-block:: yaml
+
+        plugins:
+          datasette-cluster-map:
+            latitude_column: xlat
+            longitude_column: xlon
+
+  Previously plugins were configured in ``metadata.yaml``, which was confusing as plugin settings were unrelated to database and table metadata.
 - The ``-s/--setting`` option can now be used to set plugin configuration as well. See :ref:`configuration_cli` for details. (:issue:`2252`)
 
 Plugin hooks

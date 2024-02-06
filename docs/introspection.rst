@@ -110,7 +110,17 @@ Shows the :ref:`settings` for this instance of Datasette. `Settings example <htt
 /-/config
 ---------
 
-Shows the :ref:`configuration <configuration>` for this instance of Datasette. This is generally the contents of the :ref:`datasette.yaml or datasette.json <configuration_reference>` file, which can include plugin configuration as well.
+Shows the :ref:`configuration <configuration>` for this instance of Datasette. This is generally the contents of the :ref:`datasette.yaml or datasette.json <configuration_reference>` file, which can include plugin configuration as well. `Config example <https://latest.datasette.io/-/config>`_:
+
+.. code-block:: json
+
+    {
+        "settings": {
+            "template_debug": true,
+            "trace_debug": true,
+            "force_https_urls": true
+        }
+    }
 
 Any keys that include the one of the following substrings in their names will be returned as redacted ``***`` output, to help avoid accidentally leaking private configuration information: ``secret``, ``key``, ``password``, ``token``, ``hash``, ``dsn``.
 

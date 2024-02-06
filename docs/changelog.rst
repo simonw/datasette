@@ -40,6 +40,8 @@ Configuration
           -s plugins.datasette-cluster-map.latitude_column xlat \
           -s plugins.datasette-cluster-map.longitude_column xlon
 
+- The new ``/-/config`` page shows the current instance configuration, after redacting keys that could contain sensitive data such as API keys or passwords. (:issue:`2254`)
+
 JavaScript plugins
 ~~~~~~~~~~~~~~~~~~
 

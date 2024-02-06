@@ -38,7 +38,7 @@ Plugin hooks
 - New :ref:`plugin_hook_jinja2_environment_from_request` plugin hook, which can be used to customize the current Jinja environment based on the incoming request. This can be used to modify the template lookup path based on the incoming request hostname, among other things. (:issue:`2225`)
 - New :ref:`family of template slot plugin hooks <plugin_hook_slots>`: ``top_homepage``, ``top_database``, ``top_table``, ``top_row``, ``top_query``, ``top_canned_query``. Plugins can use these to provide additional HTML to be injected at the top of the corresponding pages. (:issue:`1191`)
 - New :ref:`track_event() mechanism <plugin_event_tracking>` for plugins to emit and receive events when certain events occur within Datasette. (:issue:`2240`)
-    - Plugins can register additional events using :ref:`plugin_hook_register_events`.
+    - Plugins can register additional event classes using :ref:`plugin_hook_register_events`.
     - They can then trigger those events with the :ref:`datasette.track_event(event) <datasette_track_event>` internal method.
     - Plugins can subscribe to notifications of events using the :ref:`plugin_hook_track_event` plugin hook.
 - New internal function for plugin authors: :ref:`database_execute_isolated_fn`, for creating a new SQLite connection, executing code and then closing that connection, all while preventing other code from writing to that particular database. This connection will not have the :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook executed against it, allowing plugins to perform actions that might otherwise be blocked by existing connection configuration. (:issue:`2218`)

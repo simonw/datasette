@@ -82,7 +82,7 @@ async def test_column_facet_suggest_skip_if_enabled_by_metadata(ds_client):
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
-        metadata={"facets": ["_city_id"]},
+        table_config={"facets": ["_city_id"]},
     )
     suggestions = [s["name"] for s in await facet.suggest()]
     assert [
@@ -278,7 +278,7 @@ async def test_column_facet_from_metadata_cannot_be_hidden(ds_client):
         database="fixtures",
         sql="select * from facetable",
         table="facetable",
-        metadata={"facets": ["_city_id"]},
+        table_config={"facets": ["_city_id"]},
     )
     buckets, timed_out = await facet.facet_results()
     assert [] == timed_out

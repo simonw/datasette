@@ -1275,7 +1275,7 @@ async def table_view_data(
                     sql=sql_no_order_no_limit,
                     params=params,
                     table=table_name,
-                    metadata=table_metadata,
+                    table_config=table_metadata,
                     row_count=extra_count,
                 )
             )

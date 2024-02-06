@@ -32,6 +32,14 @@ Configuration
   Previously plugins were configured in ``metadata.yaml``, which was confusing as plugin settings were unrelated to database and table metadata.
 - The ``-s/--setting`` option can now be used to set plugin configuration as well. See :ref:`configuration_cli` for details. (:issue:`2252`)
 
+  The above YAML configuration example using ``-s/--setting`` looks like this:
+  
+  .. code-block:: bash
+
+        datasette mydatabase.db \
+          -s plugins.datasette-cluster-map.latitude_column xlat \
+          -s plugins.datasette-cluster-map.longitude_column xlon
+
 Plugin hooks
 ~~~~~~~~~~~~
 

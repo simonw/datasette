@@ -17,6 +17,7 @@ import time
 import types
 import secrets
 import shutil
+from typing import Iterable
 import urllib
 import yaml
 from .shutil_backport import copytree
@@ -1327,3 +1328,30 @@ def move_plugins(source, destination):
 
     recursive_move(source, destination)
     prune_empty_dicts(source)
+
+
+def redact_keys(original: dict, key_patterns: Iterable) -> dict:
+    """
+    Recursively redact sensitive keys in a dictionary based on given patterns
+
+    :param original: The original dictionary
+    :param key_patterns: A list of substring patterns to redact
+    :return: A copy of the original dictionary with sensitive values redacted
+    """
+
+    def redact(data):
+        if isinstance(data, dict):
+            return {
+                k: (
+                    redact(v)
+                    if not any(pattern in k for pattern in key_patterns)
+                    else "***"
+                )
+                for k, v in data.items()
+            }
+        elif isinstance(data, list):
+            return [redact(item) for item in data]
+        else:
+            return data
+
+    return redact(original)

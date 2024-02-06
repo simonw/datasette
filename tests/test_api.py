@@ -846,20 +846,6 @@ async def test_settings_json(ds_client):
     }
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "path,expected_redirect",
-    (
-        ("/-/config.json", "/-/settings.json"),
-        ("/-/config", "/-/settings"),
-    ),
-)
-async def test_config_redirects_to_settings(ds_client, path, expected_redirect):
-    response = await ds_client.get(path)
-    assert response.status_code == 301
-    assert response.headers["Location"] == expected_redirect
-
-
 test_json_columns_default_expected = [
     {"intval": 1, "strval": "s", "floatval": 0.5, "jsonval": '{"foo": "bar"}'}
 ]
@@ -1039,3 +1025,39 @@ async def test_tilde_encoded_database_names(db_name):
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "config,expected",
+    (
+        ({}, {}),
+        ({"plugins": {"datasette-foo": "bar"}}, {"plugins": {"datasette-foo": "bar"}}),
+        # Test redaction
+        (
+            {
+                "plugins": {
+                    "datasette-auth": {"secret_key": "key"},
+                    "datasette-foo": "bar",
+                    "datasette-auth2": {"password": "password"},
+                    "datasette-sentry": {
+                        "dsn": "sentry:///foo",
+                    },
+                }
+            },
+            {
+                "plugins": {
+                    "datasette-auth": {"secret_key": "***"},
+                    "datasette-foo": "bar",
+                    "datasette-auth2": {"password": "***"},
+                    "datasette-sentry": {"dsn": "***"},
+                }
+            },
+        ),
+    ),
+)
+async def test_config_json(config, expected):
+    "/-/config.json should return redacted configuration"
+    ds = Datasette(config=config)
+    response = await ds.client.get("/-/config.json")
+    assert response.json() == expected

@@ -42,7 +42,7 @@ class JsonDataView(BaseView):
             if self.ds.cors:
                 add_cors_headers(headers)
             return Response(
-                json.dumps(data),
+                json.dumps(data, default=repr),
                 content_type="application/json; charset=utf-8",
                 headers=headers,
             )
@@ -53,7 +53,7 @@ class JsonDataView(BaseView):
                 request=request,
                 context={
                     "filename": self.filename,
-                    "data_json": json.dumps(data, indent=4),
+                    "data_json": json.dumps(data, indent=4, default=repr),
                 },
             )
 

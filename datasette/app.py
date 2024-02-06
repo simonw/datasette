@@ -81,6 +81,7 @@ from .utils import (
     tilde_decode,
     to_css_class,
     urlsafe_components,
+    redact_keys,
     row_sql_params_pks,
 )
 from .utils.asgi import (
@@ -1374,6 +1375,11 @@ class Datasette:
             output.append(script)
         return output
 
+    def _config(self):
+        return redact_keys(
+            self.config, ("secret", "key", "password", "token", "hash", "dsn")
+        )
+
     def _routes(self):
         routes = []
 
@@ -1433,12 +1439,8 @@ class Datasette:
             r"/-/settings(\.(?P<format>json))?$",
         )
         add_route(
-            permanent_redirect("/-/settings.json"),
-            r"/-/config.json",
-        )
-        add_route(
-            permanent_redirect("/-/settings"),
-            r"/-/config",
+            JsonDataView.as_view(self, "config.json", lambda: self._config()),
+            r"/-/config(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "threads.json", self._threads),

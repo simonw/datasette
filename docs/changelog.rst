@@ -4,6 +4,83 @@
 Changelog
 =========
 
+.. _v1_0_a8:
+
+1.0a8 (2024-02-01)
+------------------
+
+This alpha release continues the migration of Datasette's configuration from ``metadata.yaml`` to the new ``datasette.yaml`` configuration file, and adds several new plugin hooks.
+
+Configuration
+~~~~~~~~~~~~~
+
+- Plugin configuration now lives in the :ref:`datasette.yaml configuration file <configuration>`, passed to Datasette using the ``-c/--config`` option. Thanks, Alex Garcia. (:issue:`2093`)
+
+  .. code-block:: bash
+
+        datasette -c datasette.yaml
+
+  Where ``datasette.yaml`` contains configuration that looks like this:
+
+  .. code-block:: yaml
+
+        plugins:
+          datasette-cluster-map:
+            latitude_column: xlat
+            longitude_column: xlon
+
+  Previously plugins were configured in ``metadata.yaml``, which was confusing as plugin settings were unrelated to database and table metadata.
+- The ``-s/--setting`` option can now be used to set plugin configuration as well. See :ref:`configuration_cli` for details. (:issue:`2252`)
+
+  The above YAML configuration example using ``-s/--setting`` looks like this:
+  
+  .. code-block:: bash
+
+        datasette mydatabase.db \
+          -s plugins.datasette-cluster-map.latitude_column xlat \
+          -s plugins.datasette-cluster-map.longitude_column xlon
+
+- The new ``/-/config`` page shows the current instance configuration, after redacting keys that could contain sensitive data such as API keys or passwords. (:issue:`2254`)
+
+- Existing Datasette installations may already have configuration set in ``metadata.yaml`` that should be migrated to ``datasette.yaml``. To avoid breaking these installations, Datasette will silently treat table configuration, plugin configuration and allow blocks in metadata as if they had been specified in configuration instead. (:issue:`2247`) (:issue:`2248`) (:issue:`2249`)
+
+JavaScript plugins
+~~~~~~~~~~~~~~~~~~
+
+Datasette now includes a :ref:`JavaScript plugins mechanism <javascript_plugins>`, allowing JavaScript to customize Datasette in a way that can collaborate with other plugins.
+
+This provides two initial hooks, with more to come in the future:
+
+- :ref:`makeAboveTablePanelConfigs() <javascript_plugins_makeAboveTablePanelConfigs>` can add additional panels to the top of the table page.
+- :ref:`makeColumnActions() <javascript_plugins_makeColumnActions>` can add additional actions to the column menu.
+
+Thanks `Cameron Yick <https://github.com/hydrosquall>`__ for contributing this feature. (`#2052 <https://github.com/simonw/datasette/pull/2052>`__)
+
+Plugin hooks
+~~~~~~~~~~~~
+
+- New :ref:`plugin_hook_jinja2_environment_from_request` plugin hook, which can be used to customize the current Jinja environment based on the incoming request. This can be used to modify the template lookup path based on the incoming request hostname, among other things. (:issue:`2225`)
+- New :ref:`family of template slot plugin hooks <plugin_hook_slots>`: ``top_homepage``, ``top_database``, ``top_table``, ``top_row``, ``top_query``, ``top_canned_query``. Plugins can use these to provide additional HTML to be injected at the top of the corresponding pages. (:issue:`1191`)
+- New :ref:`track_event() mechanism <plugin_event_tracking>` for plugins to emit and receive events when certain events occur within Datasette. (:issue:`2240`)
+    - Plugins can register additional event classes using :ref:`plugin_hook_register_events`.
+    - They can then trigger those events with the :ref:`datasette.track_event(event) <datasette_track_event>` internal method.
+    - Plugins can subscribe to notifications of events using the :ref:`plugin_hook_track_event` plugin hook.
+- New internal function for plugin authors: :ref:`database_execute_isolated_fn`, for creating a new SQLite connection, executing code and then closing that connection, all while preventing other code from writing to that particular database. This connection will not have the :ref:`prepare_connection() <plugin_hook_prepare_connection>` plugin hook executed against it, allowing plugins to perform actions that might otherwise be blocked by existing connection configuration. (:issue:`2218`)
+
+Documentation
+~~~~~~~~~~~~~
+
+- Documentation describing :ref:`how to write tests that use signed actor cookies <testing_datasette_client>` using ``datasette.client.actor_cookie()``. (:issue:`1830`)
+- Documentation on how to :ref:`register a plugin for the duration of a test <testing_plugins_register_in_test>`. (:issue:`2234`)
+- The :ref:`configuration documentation <configuration>` now shows examples of both YAML and JSON for each setting.
+
+Minor fixes
+~~~~~~~~~~~
+
+- Datasette no longer attempts to run SQL queries in parallel when rendering a table page, as this was leading to some rare crashing bugs. (:issue:`2189`)
+- Fixed warning: ``DeprecationWarning: pkg_resources is deprecated as an API`` (:issue:`2057`)
+- Fixed bug where ``?_extra=columns`` parameter returned an incorrectly shaped response. (:issue:`2230`)
+
 .. _v0_64_6:
 
 0.64.6 (2023-12-22)

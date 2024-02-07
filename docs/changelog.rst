@@ -42,6 +42,8 @@ Configuration
 
 - The new ``/-/config`` page shows the current instance configuration, after redacting keys that could contain sensitive data such as API keys or passwords. (:issue:`2254`)
 
+- Existing Datasette installations may already have configuration set in ``metadata.yaml`` that should be migrated to ``datasette.yaml``. To avoid breaking these installations, Datasette will silently treat table and plugin configuration in metadata as if it had been specified in configuration. (:issue:`2247`)
+
 JavaScript plugins
 ~~~~~~~~~~~~~~~~~~
 

@@ -11,6 +11,8 @@ Changelog
 
 This alpha release continues the migration of Datasette's configuration from ``metadata.yaml`` to the new ``datasette.yaml`` configuration file, introduces a new system for JavaScript plugins and adds several new plugin hooks.
 
+See `Datasette 1.0a8: JavaScript plugins, new plugin hooks and plugin configuration in datasette.yaml <https://simonwillison.net/2024/Feb/7/datasette-1a8/>`__ for an annotated version of these release notes.
+
 Configuration
 ~~~~~~~~~~~~~
 

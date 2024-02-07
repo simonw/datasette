@@ -10,7 +10,6 @@ from markupsafe import escape
 
 import pint
 
-from datasette import __version__
 from datasette.database import QueryInterrupted
 from datasette.utils.asgi import Request
 from datasette.utils import (

@@ -1,11 +1,8 @@
 import json
 
-from datasette.plugins import pm
 from datasette.utils import add_cors_headers, make_slot_function, CustomJSONEncoder
 from datasette.utils.asgi import Response
 from datasette.version import __version__
-
-from markupsafe import Markup
 
 from .base import BaseView
 

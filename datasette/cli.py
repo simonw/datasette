@@ -15,7 +15,6 @@ import sys
 import textwrap
 import webbrowser
 from .app import (
-    OBSOLETE_SETTINGS,
     Datasette,
     DEFAULT_SETTINGS,
     SETTINGS,

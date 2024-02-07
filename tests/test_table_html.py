@@ -1,4 +1,4 @@
-from datasette.app import Datasette, Database
+from datasette.app import Datasette
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (  # noqa
     app_client,

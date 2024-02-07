@@ -7,7 +7,7 @@ import re
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datasette import Event, hookimpl
 
 

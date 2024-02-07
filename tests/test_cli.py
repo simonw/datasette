@@ -4,7 +4,6 @@ from .fixtures import (
     TestClient as _TestClient,
     EXPECTED_PLUGINS,
 )
-import asyncio
 from datasette.app import SETTINGS
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.cli import cli, serve
@@ -19,7 +18,6 @@ import pytest
 import sys
 import textwrap
 from unittest import mock
-import urllib
 
 
 def test_inspect_cli(app_client):

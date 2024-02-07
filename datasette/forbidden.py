@@ -1,4 +1,3 @@
-from os import stat
 from datasette import hookimpl, Response
 
 

@@ -1,7 +1,6 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (
     app_client,
-    app_client,
     make_app_client,
     TABLES,
     TEMP_PLUGIN_SECRET_FILE,
@@ -9,14 +8,12 @@ from .fixtures import (
     TestClient as _TestClient,
 )  # noqa
 from click.testing import CliRunner
-from dataclasses import dataclass
 from datasette.app import Datasette
-from datasette import cli, hookimpl, Event, Permission
+from datasette import cli, hookimpl, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
-from datasette.utils import CustomRow, StartupError
-from jinja2.environment import Template
+from datasette.utils import StartupError
 from jinja2 import ChoiceLoader, FileSystemLoader
 import base64
 import datetime

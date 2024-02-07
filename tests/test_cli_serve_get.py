@@ -1,4 +1,4 @@
-from datasette.cli import cli, serve
+from datasette.cli import cli
 from datasette.plugins import pm
 from click.testing import CliRunner
 import textwrap

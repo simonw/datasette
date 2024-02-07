@@ -142,11 +142,11 @@ async def display_columns_and_rows(
     """Returns columns, rows for specified table - including fancy foreign key treatment"""
     sortable_columns = sortable_columns or set()
     db = datasette.databases[database_name]
-    table_metadata = await datasette.table_config(database_name, table_name)
-    column_descriptions = table_metadata.get("columns") or {}
+    column_descriptions = datasette.metadata("columns", database_name, table_name) or {}
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
     }
+    table_config = await datasette.table_config(database_name, table_name)
     pks = await db.primary_keys(table_name)
     pks_for_display = pks
     if not pks_for_display:
@@ -193,7 +193,6 @@ async def display_columns_and_rows(
                     "raw": pk_path,
                     "value": markupsafe.Markup(
                         '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
-                            base_url=base_url,
                             table_path=datasette.urls.table(database_name, table_name),
                             flat_pks=str(markupsafe.escape(pk_path)),
                             flat_pks_quoted=path_from_row_pks(row, pks, not pks),
@@ -274,9 +273,9 @@ async def display_columns_and_rows(
                         ),
                     )
                 )
-            elif column in table_metadata.get("units", {}) and value != "":
+            elif column in table_config.get("units", {}) and value != "":
                 # Interpret units using pint
-                value = value * ureg(table_metadata["units"][column])
+                value = value * ureg(table_config["units"][column])
                 # Pint uses floating point which sometimes introduces errors in the compact
                 # representation, which we have to round off to avoid ugliness. In the vast
                 # majority of cases this rounding will be inconsequential. I hope.
@@ -591,7 +590,7 @@ class TableDropView(BaseView):
         try:
             data = json.loads(await request.post_body())
             confirm = data.get("confirm")
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             pass
 
         if not confirm:

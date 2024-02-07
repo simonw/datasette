@@ -1290,7 +1290,18 @@ def make_slot_function(name, datasette, request, **kwargs):
     return inner
 
 
-def move_plugins(source, destination):
+def prune_empty_dicts(d: dict):
+    """
+    Recursively prune all empty dictionaries from a given dictionary.
+    """
+    for key, value in list(d.items()):
+        if isinstance(value, dict):
+            prune_empty_dicts(value)
+            if value == {}:
+                d.pop(key, None)
+
+
+def move_plugins(source: dict, destination: dict):
     """
     Move 'plugins' keys from source to destination dictionary. Creates hierarchy in destination if needed.
     After moving, recursively remove any keys in the source that are left empty.
@@ -1316,18 +1327,45 @@ def move_plugins(source, destination):
                 if not value:
                     src.pop(key, None)
 
-    def prune_empty_dicts(d):
-        """
-        Recursively prune all empty dictionaries from a given dictionary.
-        """
-        for key, value in list(d.items()):
-            if isinstance(value, dict):
-                prune_empty_dicts(value)
-                if value == {}:
-                    d.pop(key, None)
-
     recursive_move(source, destination)
     prune_empty_dicts(source)
+
+
+_table_config_keys = (
+    "hidden",
+    "sort",
+    "sort_desc",
+    "size",
+    "sortable_columns",
+    "label_column",
+    "facets",
+    "fts_table",
+    "fts_pk",
+    "searchmode",
+    "units",
+)
+
+
+def move_table_config(metadata: dict, config: dict):
+    """
+    Move all known table configuration keys from metadata to config.
+    """
+    if "databases" not in metadata:
+        return
+    for database_name, database in metadata["databases"].items():
+        if "tables" not in database:
+            continue
+        for table_name, table in database["tables"].items():
+            for key in _table_config_keys:
+                if key in table:
+                    config.setdefault("databases", {}).setdefault(
+                        database_name, {}
+                    ).setdefault("tables", {}).setdefault(table_name, {})[
+                        key
+                    ] = table.pop(
+                        key
+                    )
+    prune_empty_dicts(metadata)
 
 
 def redact_keys(original: dict, key_patterns: Iterable) -> dict:

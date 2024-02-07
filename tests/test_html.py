@@ -753,7 +753,7 @@ async def test_metadata_json_html(ds_client):
     response = await ds_client.get("/-/metadata")
     assert response.status_code == 200
     pre = Soup(response.content, "html.parser").find("pre")
-    assert METADATA == json.loads(pre.text)
+    assert ds_client.ds.metadata() == json.loads(pre.text)
 
 
 @pytest.mark.asyncio

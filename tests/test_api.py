@@ -771,7 +771,7 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
 @pytest.mark.asyncio
 async def test_metadata_json(ds_client):
     response = await ds_client.get("/-/metadata.json")
-    assert response.json() == METADATA
+    assert response.json() == ds_client.ds.metadata()
 
 
 @pytest.mark.asyncio
@@ -1061,3 +1061,102 @@ async def test_config_json(config, expected):
     ds = Datasette(config=config)
     response = await ds.client.get("/-/config.json")
     assert response.json() == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata,expected_config,expected_metadata",
+    (
+        ({}, {}, {}),
+        (
+            # Metadata input
+            {
+                "title": "Datasette Fixtures",
+                "databases": {
+                    "fixtures": {
+                        "tables": {
+                            "sortable": {
+                                "sortable_columns": [
+                                    "sortable",
+                                    "sortable_with_nulls",
+                                    "sortable_with_nulls_2",
+                                    "text",
+                                ],
+                            },
+                            "no_primary_key": {"sortable_columns": [], "hidden": True},
+                            "units": {"units": {"distance": "m", "frequency": "Hz"}},
+                            "primary_key_multiple_columns_explicit_label": {
+                                "label_column": "content2"
+                            },
+                            "simple_view": {"sortable_columns": ["content"]},
+                            "searchable_view_configured_by_metadata": {
+                                "fts_table": "searchable_fts",
+                                "fts_pk": "pk",
+                            },
+                            "roadside_attractions": {
+                                "columns": {
+                                    "name": "The name of the attraction",
+                                    "address": "The street address for the attraction",
+                                }
+                            },
+                            "attraction_characteristic": {"sort_desc": "pk"},
+                            "facet_cities": {"sort": "name"},
+                            "paginated_view": {"size": 25},
+                        },
+                    }
+                },
+            },
+            # Should produce a config with just the table configuration keys
+            {
+                "databases": {
+                    "fixtures": {
+                        "tables": {
+                            "sortable": {
+                                "sortable_columns": [
+                                    "sortable",
+                                    "sortable_with_nulls",
+                                    "sortable_with_nulls_2",
+                                    "text",
+                                ]
+                            },
+                            "units": {"units": {"distance": "m", "frequency": "Hz"}},
+                            # These one get redacted:
+                            "no_primary_key": "***",
+                            "primary_key_multiple_columns_explicit_label": "***",
+                            "simple_view": {"sortable_columns": ["content"]},
+                            "searchable_view_configured_by_metadata": {
+                                "fts_table": "searchable_fts",
+                                "fts_pk": "pk",
+                            },
+                            "attraction_characteristic": {"sort_desc": "pk"},
+                            "facet_cities": {"sort": "name"},
+                            "paginated_view": {"size": 25},
+                        }
+                    }
+                }
+            },
+            # And metadata with everything else
+            {
+                "title": "Datasette Fixtures",
+                "databases": {
+                    "fixtures": {
+                        "tables": {
+                            "roadside_attractions": {
+                                "columns": {
+                                    "name": "The name of the attraction",
+                                    "address": "The street address for the attraction",
+                                }
+                            },
+                        }
+                    }
+                },
+            },
+        ),
+    ),
+)
+async def test_upgrade_metadata(metadata, expected_config, expected_metadata):
+    ds = Datasette(metadata=metadata)
+    response = await ds.client.get("/-/config.json")
+    assert response.json() == expected_config
+    response2 = await ds.client.get("/-/metadata.json")
+    assert response2.json() == expected_metadata

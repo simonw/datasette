@@ -2,6 +2,7 @@ import asyncio
 from contextlib import contextmanager
 import click
 from collections import OrderedDict, namedtuple, Counter
+import copy
 import base64
 import hashlib
 import inspect
@@ -17,7 +18,7 @@ import time
 import types
 import secrets
 import shutil
-from typing import Iterable
+from typing import Iterable, Tuple
 import urllib
 import yaml
 from .shutil_backport import copytree
@@ -1290,11 +1291,24 @@ def make_slot_function(name, datasette, request, **kwargs):
     return inner
 
 
-def move_plugins(source, destination):
+def prune_empty_dicts(d: dict):
+    """
+    Recursively prune all empty dictionaries from a given dictionary.
+    """
+    for key, value in list(d.items()):
+        if isinstance(value, dict):
+            prune_empty_dicts(value)
+            if value == {}:
+                d.pop(key, None)
+
+
+def move_plugins(source: dict, destination: dict) -> Tuple[dict, dict]:
     """
     Move 'plugins' keys from source to destination dictionary. Creates hierarchy in destination if needed.
     After moving, recursively remove any keys in the source that are left empty.
     """
+    source = copy.deepcopy(source)
+    destination = copy.deepcopy(destination)
 
     def recursive_move(src, dest, path=None):
         if path is None:
@@ -1316,18 +1330,49 @@ def move_plugins(source, destination):
                 if not value:
                     src.pop(key, None)
 
-    def prune_empty_dicts(d):
-        """
-        Recursively prune all empty dictionaries from a given dictionary.
-        """
-        for key, value in list(d.items()):
-            if isinstance(value, dict):
-                prune_empty_dicts(value)
-                if value == {}:
-                    d.pop(key, None)
-
     recursive_move(source, destination)
     prune_empty_dicts(source)
+    return source, destination
+
+
+_table_config_keys = (
+    "hidden",
+    "sort",
+    "sort_desc",
+    "size",
+    "sortable_columns",
+    "label_column",
+    "facets",
+    "fts_table",
+    "fts_pk",
+    "searchmode",
+    "units",
+)
+
+
+def move_table_config(metadata: dict, config: dict):
+    """
+    Move all known table configuration keys from metadata to config.
+    """
+    if "databases" not in metadata:
+        return metadata, config
+    metadata = copy.deepcopy(metadata)
+    config = copy.deepcopy(config)
+    for database_name, database in metadata["databases"].items():
+        if "tables" not in database:
+            continue
+        for table_name, table in database["tables"].items():
+            for key in _table_config_keys:
+                if key in table:
+                    config.setdefault("databases", {}).setdefault(
+                        database_name, {}
+                    ).setdefault("tables", {}).setdefault(table_name, {})[
+                        key
+                    ] = table.pop(
+                        key
+                    )
+    prune_empty_dicts(metadata)
+    return metadata, config
 
 
 def redact_keys(original: dict, key_patterns: Iterable) -> dict:

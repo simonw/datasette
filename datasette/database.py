@@ -487,13 +487,11 @@ class Database:
                     )
                 ).rows
             ]
-        # Add any from metadata.json
-        db_metadata = self.ds.metadata(database=self.name)
-        if "tables" in db_metadata:
+        # Add any tables marked as hidden in config
+        db_config = self.ds.config.get("databases", {}).get(self.name, {})
+        if "tables" in db_config:
             hidden_tables += [
-                t
-                for t in db_metadata["tables"]
-                if db_metadata["tables"][t].get("hidden")
+                t for t in db_config["tables"] if db_config["tables"][t].get("hidden")
             ]
         # Also mark as hidden any tables which start with the name of a hidden table
         # e.g. "searchable_fts" implies "searchable_fts_content" should be hidden

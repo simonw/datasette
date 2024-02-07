@@ -44,6 +44,8 @@ Configuration
 
 - Existing Datasette installations may already have configuration set in ``metadata.yaml`` that should be migrated to ``datasette.yaml``. To avoid breaking these installations, Datasette will silently treat table configuration, plugin configuration and allow blocks in metadata as if they had been specified in configuration instead. (:issue:`2247`) (:issue:`2248`) (:issue:`2249`)
 
+Note that the ``datasette publish`` command has not yet been updated to accept a ``datasette.yaml`` configuration file. This will be addressed in :issue:`2195` but for the moment you can include those settings in ``metadata.yaml`` instead.
+
 JavaScript plugins
 ~~~~~~~~~~~~~~~~~~
 

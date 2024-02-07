@@ -231,10 +231,18 @@ async def test_plugin_config(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_plugin_config_env(ds_client):
-    os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
-    assert {"foo": "FROM_ENVIRONMENT"} == ds_client.ds.plugin_config("env-plugin")
-    del os.environ["FOO_ENV"]
+async def test_plugin_config_env(ds_client, monkeypatch):
+    monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT")
+    assert ds_client.ds.plugin_config("env-plugin") == {"foo": "FROM_ENVIRONMENT"}
+
+
+@pytest.mark.asyncio
+async def test_plugin_config_env_from_config(monkeypatch):
+    monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT_2")
+    datasette = Datasette(
+        config={"plugins": {"env-plugin": {"setting": {"$env": "FOO_ENV"}}}}
+    )
+    assert datasette.plugin_config("env-plugin") == {"setting": "FROM_ENVIRONMENT_2"}
 
 
 @pytest.mark.asyncio

@@ -142,7 +142,7 @@ async def display_columns_and_rows(
     """Returns columns, rows for specified table - including fancy foreign key treatment"""
     sortable_columns = sortable_columns or set()
     db = datasette.databases[database_name]
-    table_metadata = datasette.table_metadata(database_name, table_name)
+    table_metadata = await datasette.table_config(database_name, table_name)
     column_descriptions = table_metadata.get("columns") or {}
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
@@ -663,7 +663,7 @@ async def _columns_to_select(table_columns, pks, request):
 
 async def _sortable_columns_for_table(datasette, database_name, table_name, use_rowid):
     db = datasette.databases[database_name]
-    table_metadata = datasette.table_metadata(database_name, table_name)
+    table_metadata = await datasette.table_config(database_name, table_name)
     if "sortable_columns" in table_metadata:
         sortable_columns = set(table_metadata["sortable_columns"])
     else:
@@ -962,7 +962,7 @@ async def table_view_data(
         nocount = True
         nofacet = True
 
-    table_metadata = datasette.table_metadata(database_name, table_name)
+    table_metadata = await datasette.table_config(database_name, table_name)
     units = table_metadata.get("units", {})
 
     # Arguments that start with _ and don't contain a __ are

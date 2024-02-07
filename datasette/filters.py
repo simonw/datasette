@@ -50,7 +50,7 @@ def search_filters(request, database, table, datasette):
         extra_context = {}
 
         # Figure out which fts_table to use
-        table_metadata = datasette.table_metadata(database, table)
+        table_metadata = await datasette.table_config(database, table)
         db = datasette.get_database(database)
         fts_table = request.args.get("_fts_table")
         fts_table = fts_table or table_metadata.get("fts_table")

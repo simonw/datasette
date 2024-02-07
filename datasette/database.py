@@ -418,7 +418,7 @@ class Database:
         return await self.execute_fn(lambda conn: detect_fts(conn, table))
 
     async def label_column_for_table(self, table):
-        explicit_label_column = self.ds.table_metadata(self.name, table).get(
+        explicit_label_column = (await self.ds.table_config(self.name, table)).get(
             "label_column"
         )
         if explicit_label_column:

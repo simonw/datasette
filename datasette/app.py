@@ -1202,7 +1202,7 @@ class Datasette:
     def _actor(self, request):
         return {"actor": request.actor}
 
-    def table_metadata(self, database, table):
+    async def table_config(self, database, table):
         """Fetch table-specific metadata."""
         return (
             (self.metadata("databases") or {})

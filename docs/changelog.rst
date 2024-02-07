@@ -9,7 +9,7 @@ Changelog
 1.0a8 (2024-02-07)
 ------------------
 
-This alpha release continues the migration of Datasette's configuration from ``metadata.yaml`` to the new ``datasette.yaml`` configuration file, and adds several new plugin hooks.
+This alpha release continues the migration of Datasette's configuration from ``metadata.yaml`` to the new ``datasette.yaml`` configuration file, introduces a new system for JavaScript plugins and adds several new plugin hooks.
 
 Configuration
 ~~~~~~~~~~~~~

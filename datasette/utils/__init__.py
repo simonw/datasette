@@ -1302,10 +1302,11 @@ def prune_empty_dicts(d: dict):
                 d.pop(key, None)
 
 
-def move_plugins(source: dict, destination: dict) -> Tuple[dict, dict]:
+def move_plugins_and_allow(source: dict, destination: dict) -> Tuple[dict, dict]:
     """
-    Move 'plugins' keys from source to destination dictionary. Creates hierarchy in destination if needed.
-    After moving, recursively remove any keys in the source that are left empty.
+    Move 'plugins' and 'allow' keys from source to destination dictionary. Creates
+    hierarchy in destination if needed. After moving, recursively remove any keys
+    in the source that are left empty.
     """
     source = copy.deepcopy(source)
     destination = copy.deepcopy(destination)
@@ -1315,7 +1316,7 @@ def move_plugins(source: dict, destination: dict) -> Tuple[dict, dict]:
             path = []
         for key, value in list(src.items()):
             new_path = path + [key]
-            if key == "plugins":
+            if key in ("plugins", "allow"):
                 # Navigate and create the hierarchy in destination if needed
                 d = dest
                 for step in path:

@@ -89,10 +89,11 @@ def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client)
         ({"id": "root"}, 403, 200),
     ],
 )
-def test_view_database(allow, expected_anon, expected_auth):
-    with make_app_client(
-        config={"databases": {"fixtures": {"allow": allow}}}
-    ) as client:
+@pytest.mark.parametrize("use_metadata", (True, False))
+def test_view_database(allow, expected_anon, expected_auth, use_metadata):
+    key = "metadata" if use_metadata else "config"
+    kwargs = {key: {"databases": {"fixtures": {"allow": allow}}}}
+    with make_app_client(**kwargs) as client:
         for path in (
             "/fixtures",
             "/fixtures/compound_three_primary_keys",
@@ -173,16 +174,19 @@ def test_database_list_respects_view_table():
         ({"id": "root"}, 403, 200),
     ],
 )
-def test_view_table(allow, expected_anon, expected_auth):
-    with make_app_client(
-        config={
+@pytest.mark.parametrize("use_metadata", (True, False))
+def test_view_table(allow, expected_anon, expected_auth, use_metadata):
+    key = "metadata" if use_metadata else "config"
+    kwargs = {
+        key: {
             "databases": {
                 "fixtures": {
                     "tables": {"compound_three_primary_keys": {"allow": allow}}
                 }
             }
         }
-    ) as client:
+    }
+    with make_app_client(**kwargs) as client:
         anon_response = client.get("/fixtures/compound_three_primary_keys")
         assert expected_anon == anon_response.status
         if allow and anon_response.status == 200:

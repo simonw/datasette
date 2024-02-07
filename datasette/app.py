@@ -74,7 +74,7 @@ from .utils import (
     find_spatialite,
     format_bytes,
     module_from_path,
-    move_plugins,
+    move_plugins_and_allow,
     move_table_config,
     parse_metadata,
     resolve_env_secrets,
@@ -344,10 +344,10 @@ class Datasette:
             with config_files[0].open() as fp:
                 config = parse_metadata(fp.read())
 
-        # Move any "plugins" settings from metadata to config - updates them in place
+        # Move any "plugins" and "allow" settings from metadata to config - updates them in place
         metadata = metadata or {}
         config = config or {}
-        metadata, config = move_plugins(metadata, config)
+        metadata, config = move_plugins_and_allow(metadata, config)
         # Now migrate any known table configuration settings over as well
         metadata, config = move_table_config(metadata, config)
 

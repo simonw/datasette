@@ -2,6 +2,7 @@ import asyncio
 from contextlib import contextmanager
 import click
 from collections import OrderedDict, namedtuple, Counter
+import copy
 import base64
 import hashlib
 import inspect
@@ -17,7 +18,7 @@ import time
 import types
 import secrets
 import shutil
-from typing import Iterable
+from typing import Iterable, Tuple
 import urllib
 import yaml
 from .shutil_backport import copytree
@@ -1301,11 +1302,13 @@ def prune_empty_dicts(d: dict):
                 d.pop(key, None)
 
 
-def move_plugins(source: dict, destination: dict):
+def move_plugins(source: dict, destination: dict) -> Tuple[dict, dict]:
     """
     Move 'plugins' keys from source to destination dictionary. Creates hierarchy in destination if needed.
     After moving, recursively remove any keys in the source that are left empty.
     """
+    source = copy.deepcopy(source)
+    destination = copy.deepcopy(destination)
 
     def recursive_move(src, dest, path=None):
         if path is None:
@@ -1329,6 +1332,7 @@ def move_plugins(source: dict, destination: dict):
 
     recursive_move(source, destination)
     prune_empty_dicts(source)
+    return source, destination
 
 
 _table_config_keys = (
@@ -1351,7 +1355,9 @@ def move_table_config(metadata: dict, config: dict):
     Move all known table configuration keys from metadata to config.
     """
     if "databases" not in metadata:
-        return
+        return metadata, config
+    metadata = copy.deepcopy(metadata)
+    config = copy.deepcopy(config)
     for database_name, database in metadata["databases"].items():
         if "tables" not in database:
             continue
@@ -1366,6 +1372,7 @@ def move_table_config(metadata: dict, config: dict):
                         key
                     )
     prune_empty_dicts(metadata)
+    return metadata, config
 
 
 def redact_keys(original: dict, key_patterns: Iterable) -> dict:

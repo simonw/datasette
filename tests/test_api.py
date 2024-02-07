@@ -771,7 +771,7 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
 @pytest.mark.asyncio
 async def test_metadata_json(ds_client):
     response = await ds_client.get("/-/metadata.json")
-    assert response.json() == METADATA
+    assert response.json() == ds_client.ds.metadata()
 
 
 @pytest.mark.asyncio

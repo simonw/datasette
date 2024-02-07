@@ -347,9 +347,9 @@ class Datasette:
         # Move any "plugins" settings from metadata to config - updates them in place
         metadata = metadata or {}
         config = config or {}
-        move_plugins(metadata, config)
+        metadata, config = move_plugins(metadata, config)
         # Now migrate any known table configuration settings over as well
-        move_table_config(metadata, config)
+        metadata, config = move_table_config(metadata, config)
 
         self._metadata_local = metadata or {}
         self.sqlite_extensions = []

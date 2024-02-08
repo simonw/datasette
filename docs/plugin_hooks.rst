@@ -1817,6 +1817,7 @@ This example plugin logs details of all events to standard error:
         )
         print(msg, file=sys.stderr, flush=True)
 
+Example: `datasette-events-db <https://datasette.io/plugins/datasette-events-db>`_
 
 .. _plugin_hook_register_events:
 

@@ -499,10 +499,14 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
 
     # Analytics event
     event = last_event(ds_write)
-    assert event.name == "upsert-rows"
-    assert event.num_rows == 1
     assert event.database == "data"
     assert event.table == "upsert_test"
+    if input.get("alter"):
+        assert event.name == "alter-table"
+        assert "extra" in event.after_schema
+    else:
+        assert event.name == "upsert-rows"
+        assert event.num_rows == 1
 
     if should_return:
         # We only expect it to return rows corresponding to those we sent

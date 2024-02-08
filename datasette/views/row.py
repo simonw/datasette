@@ -237,11 +237,21 @@ class RowUpdateView(BaseView):
         if not "update" in data or not isinstance(data["update"], dict):
             return _error(["JSON must contain an update dictionary"])
 
+        invalid_keys = set(data.keys()) - {"update", "return", "alter"}
+        if invalid_keys:
+            return _error(["Invalid keys: {}".format(", ".join(invalid_keys))])
+
         update = data["update"]
+
+        alter = data.get("alter")
+        if alter and not await self.ds.permission_allowed(
+            request.actor, "alter-table", resource=(resolved.db.name, resolved.table)
+        ):
+            return _error(["Permission denied for alter-table"], 403)
 
         def update_row(conn):
             sqlite_utils.Database(conn)[resolved.table].update(
-                resolved.pk_values, update
+                resolved.pk_values, update, alter=alter
             )
 
         try:

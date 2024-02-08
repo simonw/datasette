@@ -1377,7 +1377,7 @@ async def test_create_uses_alter_by_default_for_new_table(ds_write):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("has_alter_permission", (True,))  # False))
+@pytest.mark.parametrize("has_alter_permission", (True, False))
 async def test_create_using_alter_against_existing_table(
     ds_write, has_alter_permission
 ):

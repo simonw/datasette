@@ -10,7 +10,7 @@ import re
 import sqlite_utils
 import textwrap
 
-from datasette.events import CreateTableEvent
+from datasette.events import AlterTableEvent, CreateTableEvent
 from datasette.database import QueryInterrupted
 from datasette.utils import (
     add_cors_headers,
@@ -792,7 +792,17 @@ class MagicParameters(dict):
 class TableCreateView(BaseView):
     name = "table-create"
 
-    _valid_keys = {"table", "rows", "row", "columns", "pk", "pks", "ignore", "replace"}
+    _valid_keys = {
+        "table",
+        "rows",
+        "row",
+        "columns",
+        "pk",
+        "pks",
+        "ignore",
+        "replace",
+        "alter",
+    }
     _supported_column_types = {
         "text",
         "integer",
@@ -876,6 +886,20 @@ class TableCreateView(BaseView):
             ):
                 return _error(["Permission denied - need insert-row"], 403)
 
+        alter = False
+        if rows or row:
+            if not table_exists:
+                # if table is being created for the first time, alter=True
+                alter = True
+            else:
+                # alter=True only if they request it AND they have permission
+                if data.get("alter"):
+                    if not await self.ds.permission_allowed(
+                        request.actor, "alter-table", resource=database_name
+                    ):
+                        return _error(["Permission denied - need alter-table"], 403)
+                    alter = True
+
         if columns:
             if rows or row:
                 return _error(["Cannot specify columns with rows or row"])
@@ -939,10 +963,18 @@ class TableCreateView(BaseView):
                 return _error(["pk cannot be changed for existing table"])
             pks = actual_pks
 
+        initial_schema = None
+        if table_exists:
+            initial_schema = await db.execute_fn(
+                lambda conn: sqlite_utils.Database(conn)[table_name].schema
+            )
+
         def create_table(conn):
             table = sqlite_utils.Database(conn)[table_name]
             if rows:
-                table.insert_all(rows, pk=pks or pk, ignore=ignore, replace=replace)
+                table.insert_all(
+                    rows, pk=pks or pk, ignore=ignore, replace=replace, alter=alter
+                )
             else:
                 table.create(
                     {c["name"]: c["type"] for c in columns},
@@ -954,6 +986,18 @@ class TableCreateView(BaseView):
             schema = await db.execute_write_fn(create_table)
         except Exception as e:
             return _error([str(e)])
+
+        if initial_schema is not None and initial_schema != schema:
+            await self.ds.track_event(
+                AlterTableEvent(
+                    request.actor,
+                    database=database_name,
+                    table=table_name,
+                    before_schema=initial_schema,
+                    after_schema=schema,
+                )
+            )
+
         table_url = self.ds.absolute_url(
             request, self.ds.urls.table(db.name, table_name)
         )
@@ -970,11 +1014,14 @@ class TableCreateView(BaseView):
         }
         if rows:
             details["row_count"] = len(rows)
-        await self.ds.track_event(
-            CreateTableEvent(
-                request.actor, database=db.name, table=table_name, schema=schema
+
+        if not table_exists:
+            # Only log creation if we created a table
+            await self.ds.track_event(
+                CreateTableEvent(
+                    request.actor, database=db.name, table=table_name, schema=schema
+                )
             )
-        )
         return Response.json(details, status=201)
 
 

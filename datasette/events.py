@@ -109,6 +109,30 @@ class DropTableEvent(Event):
 
 
 @dataclass
+class AlterTableEvent(Event):
+    """
+    Event name: ``alter-table``
+
+    A table has been altered.
+
+    :ivar database: The name of the database where the table was altered
+    :type database: str
+    :ivar table: The name of the table that was altered
+    :type table: str
+    :ivar before_schema: The table's SQL schema before the alteration
+    :type before_schema: str
+    :ivar after_schema: The table's SQL schema after the alteration
+    :type after_schema: str
+    """
+
+    name = "alter-table"
+    database: str
+    table: str
+    before_schema: str
+    after_schema: str
+
+
+@dataclass
 class InsertRowsEvent(Event):
     """
     Event name: ``insert-rows``
@@ -203,6 +227,7 @@ def register_events():
         LogoutEvent,
         CreateTableEvent,
         CreateTokenEvent,
+        AlterTableEvent,
         DropTableEvent,
         InsertRowsEvent,
         UpsertRowsEvent,

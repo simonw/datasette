@@ -1217,6 +1217,18 @@ Actor is allowed to create a database table.
 
 Default *deny*.
 
+.. _permissions_alter_table:
+
+alter-table
+-----------
+
+Actor is allowed to alter a database table.
+
+``resource`` - tuple: (string, string)
+    The name of the database, then the name of the table
+
+Default *deny*.
+
 .. _permissions_drop_table:
 
 drop-table

@@ -8,7 +8,6 @@ from typing import Union, Tuple
 @hookimpl
 def register_permissions():
     return (
-        # name, abbr, description, takes_database, takes_resource, default
         Permission(
             name="view-instance",
             abbr="vi",
@@ -110,6 +109,14 @@ def register_permissions():
             default=False,
         ),
         Permission(
+            name="alter-table",
+            abbr="at",
+            description="Alter tables",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
+        Permission(
             name="drop-table",
             abbr="dt",
             description="Drop tables",
@@ -129,6 +136,7 @@ def permission_allowed_default(datasette, actor, action, resource):
             "debug-menu",
             "insert-row",
             "create-table",
+            "alter-table",
             "drop-table",
             "delete-row",
             "update-row",

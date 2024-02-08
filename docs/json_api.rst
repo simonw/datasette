@@ -787,6 +787,8 @@ The returned JSON will look like this:
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
+Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
+
 .. _RowDeleteView:
 
 Deleting a row

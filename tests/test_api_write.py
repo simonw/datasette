@@ -622,12 +622,17 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table"))
+@pytest.mark.parametrize(
+    "scenario", ("no_token", "no_perm", "bad_table", "cannot_alter")
+)
 async def test_update_row_check_permission(ds_write, scenario):
     if scenario == "no_token":
         token = "bad_token"
     elif scenario == "no_perm":
         token = write_token(ds_write, actor_id="not-root")
+    elif scenario == "cannot_alter":
+        # update-row but no alter-table:
+        token = write_token(ds_write, permissions=["ur"])
     else:
         token = write_token(ds_write)
 
@@ -637,9 +642,13 @@ async def test_update_row_check_permission(ds_write, scenario):
         "docs" if scenario != "bad_table" else "bad_table", pk
     )
 
+    json_body = {"update": {"title": "New title"}}
+    if scenario == "cannot_alter":
+        json_body["alter"] = True
+
     response = await ds_write.client.post(
         path,
-        json={"update": {"title": "New title"}},
+        json=json_body,
         headers=_headers(token),
     )
     assert response.status_code == 403 if scenario in ("no_token", "bad_token") else 404
@@ -649,6 +658,36 @@ async def test_update_row_check_permission(ds_write, scenario):
         if scenario == "no_token"
         else ["Table not found: bad_table"]
     )
+
+
+@pytest.mark.asyncio
+async def test_update_row_invalid_key(ds_write):
+    token = write_token(ds_write)
+
+    pk = await _insert_row(ds_write)
+
+    path = "/data/docs/{}/-/update".format(pk)
+    response = await ds_write.client.post(
+        path,
+        json={"update": {"title": "New title"}, "bad_key": 1},
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "errors": ["Invalid keys: bad_key"]}
+
+
+@pytest.mark.asyncio
+async def test_update_row_alter(ds_write):
+    token = write_token(ds_write, permissions=["ur", "at"])
+    pk = await _insert_row(ds_write)
+    path = "/data/docs/{}/-/update".format(pk)
+    response = await ds_write.client.post(
+        path,
+        json={"update": {"title": "New title", "extra": "extra"}, "alter": True},
+        headers=_headers(token),
+    )
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
 
 
 @pytest.mark.asyncio

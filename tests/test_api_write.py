@@ -633,7 +633,7 @@ async def test_update_row_check_permission(ds_write, scenario):
 
     pk = await _insert_row(ds_write)
 
-    path = "/data/{}/{}/-/delete".format(
+    path = "/data/{}/{}/-/update".format(
         "docs" if scenario != "bad_table" else "bad_table", pk
     )
 

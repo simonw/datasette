@@ -61,6 +61,27 @@ async def test_insert_row(ds_write):
 
 
 @pytest.mark.asyncio
+async def test_insert_row_alter(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/docs/-/insert",
+        json={
+            "row": {"title": "Test", "score": 1.2, "age": 5, "extra": "extra"},
+            "alter": True,
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    assert response.json()["ok"] is True
+    assert response.json()["rows"][0]["extra"] == "extra"
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "alter-table"
+    assert "extra" not in event.before_schema
+    assert "extra" in event.after_schema
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("return_rows", (True, False))
 async def test_insert_rows(ds_write, return_rows):
     token = write_token(ds_write)
@@ -278,16 +299,27 @@ async def test_insert_rows(ds_write, return_rows):
             403,
             ["Permission denied: need both insert-row and update-row"],
         ),
+        # Alter table forbidden without alter permission
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": 1, "title": "One", "extra": "extra"}], "alter": True},
+            "update-and-insert-but-no-alter",
+            403,
+            ["Permission denied for alter-table"],
+        ),
     ),
 )
 async def test_insert_or_upsert_row_errors(
     ds_write, path, input, special_case, expected_status, expected_errors
 ):
-    token = write_token(ds_write)
+    token_permissions = []
     if special_case == "insert-but-not-update":
-        token = write_token(ds_write, permissions=["ir", "vi"])
+        token_permissions = ["ir", "vi"]
     if special_case == "update-but-not-insert":
-        token = write_token(ds_write, permissions=["ur", "vi"])
+        token_permissions = ["ur", "vi"]
+    if special_case == "update-and-insert-but-no-alter":
+        token_permissions = ["ur", "ir"]
+    token = write_token(ds_write, permissions=token_permissions)
     if special_case == "duplicate_id":
         await ds_write.get_database("data").execute_write(
             "insert into docs (id) values (1)"
@@ -309,7 +341,9 @@ async def test_insert_or_upsert_row_errors(
     actor_response = (
         await ds_write.client.get("/-/actor.json", headers=kwargs["headers"])
     ).json()
-    print(actor_response)
+    assert set((actor_response["actor"] or {}).get("_r", {}).get("a") or []) == set(
+        token_permissions
+    )
 
     if special_case == "invalid_json":
         del kwargs["json"]
@@ -433,6 +467,12 @@ async def test_insert_ignore_replace(
             [
                 {"id": 1, "title": "Two", "score": 1},
             ],
+        ),
+        (
+            # Upsert with an alter
+            {"rows": [{"id": 1, "title": "One"}], "pk": "id"},
+            {"rows": [{"id": 1, "title": "Two", "extra": "extra"}], "alter": True},
+            [{"id": 1, "title": "Two", "extra": "extra"}],
         ),
     ),
 )

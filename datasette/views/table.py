@@ -8,7 +8,12 @@ import markupsafe
 
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
-from datasette.events import DropTableEvent, InsertRowsEvent, UpsertRowsEvent
+from datasette.events import (
+    AlterTableEvent,
+    DropTableEvent,
+    InsertRowsEvent,
+    UpsertRowsEvent,
+)
 from datasette import tracer
 from datasette.utils import (
     add_cors_headers,
@@ -388,7 +393,7 @@ class TableInsertView(BaseView):
         extras = {
             key: value for key, value in data.items() if key not in ("row", "rows")
         }
-        valid_extras = {"return", "ignore", "replace"}
+        valid_extras = {"return", "ignore", "replace", "alter"}
         invalid_extras = extras.keys() - valid_extras
         if invalid_extras:
             return _errors(
@@ -397,7 +402,6 @@ class TableInsertView(BaseView):
         if extras.get("ignore") and extras.get("replace"):
             return _errors(['Cannot use "ignore" and "replace" at the same time'])
 
-        # Validate columns of each row
         columns = set(await db.table_columns(table_name))
         columns.update(pks_list)
 
@@ -412,7 +416,7 @@ class TableInsertView(BaseView):
                         )
                     )
             invalid_columns = set(row.keys()) - columns
-            if invalid_columns:
+            if invalid_columns and not extras.get("alter"):
                 errors.append(
                     "Row {} has invalid columns: {}".format(
                         i, ", ".join(sorted(invalid_columns))
@@ -476,9 +480,22 @@ class TableInsertView(BaseView):
 
         ignore = extras.get("ignore")
         replace = extras.get("replace")
+        alter = extras.get("alter")
 
         if upsert and (ignore or replace):
             return _error(["Upsert does not support ignore or replace"], 400)
+
+        initial_schema = None
+        if alter:
+            # Must have alter-table permission
+            if not await self.ds.permission_allowed(
+                request.actor, "alter-table", resource=(database_name, table_name)
+            ):
+                return _error(["Permission denied for alter-table"], 403)
+            # Track initial schema to check if it changed later
+            initial_schema = await db.execute_fn(
+                lambda conn: sqlite_utils.Database(conn)[table_name].schema
+            )
 
         should_return = bool(extras.get("return", False))
         row_pk_values_for_later = []
@@ -489,9 +506,13 @@ class TableInsertView(BaseView):
             table = sqlite_utils.Database(conn)[table_name]
             kwargs = {}
             if upsert:
-                kwargs["pk"] = pks[0] if len(pks) == 1 else pks
+                kwargs = {
+                    "pk": pks[0] if len(pks) == 1 else pks,
+                    "alter": alter,
+                }
             else:
-                kwargs = {"ignore": ignore, "replace": replace}
+                # Insert
+                kwargs = {"ignore": ignore, "replace": replace, "alter": alter}
             if should_return and not upsert:
                 rowids = []
                 method = table.upsert if upsert else table.insert
@@ -551,6 +572,21 @@ class TableInsertView(BaseView):
                     replace=bool(replace),
                 )
             )
+
+        if initial_schema is not None:
+            after_schema = await db.execute_fn(
+                lambda conn: sqlite_utils.Database(conn)[table_name].schema
+            )
+            if initial_schema != after_schema:
+                await self.ds.track_event(
+                    AlterTableEvent(
+                        request.actor,
+                        database=database_name,
+                        table=table_name,
+                        before_schema=initial_schema,
+                        after_schema=after_schema,
+                    )
+                )
 
         return Response.json(result, status=200 if upsert else 201)
 

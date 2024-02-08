@@ -1349,3 +1349,77 @@ async def test_method_not_allowed(ds_write, path):
         "ok": False,
         "error": "Method not allowed",
     }
+
+
+@pytest.mark.asyncio
+async def test_create_uses_alter_by_default_for_new_table(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "new_table",
+            "rows": [
+                {
+                    "name": "Row 1",
+                }
+            ]
+            * 100
+            + [
+                {"name": "Row 2", "extra": "Extra"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    event = last_event(ds_write)
+    assert event.name == "create-table"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_alter_permission", (True,))  # False))
+async def test_create_using_alter_against_existing_table(
+    ds_write, has_alter_permission
+):
+    token = write_token(
+        ds_write, permissions=["ir", "ct"] + (["at"] if has_alter_permission else [])
+    )
+    # First create the table
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "new_table",
+            "rows": [
+                {
+                    "name": "Row 1",
+                }
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    # Now try to insert more rows using /-/create with alter=True
+    response2 = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "new_table",
+            "rows": [{"name": "Row 2", "extra": "extra"}],
+            "pk": "id",
+            "alter": True,
+        },
+        headers=_headers(token),
+    )
+    if not has_alter_permission:
+        assert response2.status_code == 403
+        assert response2.json() == {
+            "ok": False,
+            "errors": ["Permission denied - need alter-table"],
+        }
+    else:
+        assert response2.status_code == 201
+        # It should have altered the table
+        event = last_event(ds_write)
+        assert event.name == "alter-table"
+        assert "extra" not in event.before_schema
+        assert "extra" in event.after_schema

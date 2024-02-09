@@ -444,10 +444,10 @@ class TableInsertView(BaseView):
             # Must have insert-row AND upsert-row permissions
             if not (
                 await self.ds.permission_allowed(
-                    request.actor, "insert-row", database_name, table_name
+                    request.actor, "insert-row", resource=(database_name, table_name)
                 )
                 and await self.ds.permission_allowed(
-                    request.actor, "update-row", database_name, table_name
+                    request.actor, "update-row", resource=(database_name, table_name)
                 )
             ):
                 return _error(

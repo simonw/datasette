@@ -896,7 +896,7 @@ class Datasette:
             await await_me_maybe(hook)
 
     async def permission_allowed(
-        self, actor, action, resource=None, default=DEFAULT_NOT_SET
+        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
     ):
         """Check permissions using the permissions_allowed plugin hook"""
         result = None

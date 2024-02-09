@@ -196,6 +196,9 @@ class Database:
             self._write_thread = threading.Thread(
                 target=self._execute_writes, daemon=True
             )
+            self._write_thread.name = "_execute_writes for database {}".format(
+                self.name
+            )
             self._write_thread.start()
         task_id = uuid.uuid5(uuid.NAMESPACE_DNS, "datasette.io")
         reply_queue = janus.Queue()

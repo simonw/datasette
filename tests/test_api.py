@@ -780,7 +780,11 @@ async def test_threads_json(ds_client):
     expected_keys = {"threads", "num_threads"}
     if sys.version_info >= (3, 7, 0):
         expected_keys.update({"tasks", "num_tasks"})
-    assert set(response.json().keys()) == expected_keys
+    data = response.json()
+    assert set(data.keys()) == expected_keys
+    # Should be at least one _execute_writes thread for __INTERNAL__
+    thread_names = [thread["name"] for thread in data["threads"]]
+    assert "_execute_writes for database __INTERNAL__" in thread_names
 
 
 @pytest.mark.asyncio

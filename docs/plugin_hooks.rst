@@ -1765,7 +1765,7 @@ Returns HTML to be displayed at the top of the canned query page.
 Event tracking
 --------------
 
-Datasette includes an internal mechanism for tracking analytical events. This can be used for analytics, but can also be used by plugins that want to listen out for when key events occur (such as a table being created) and take action in response.
+Datasette includes an internal mechanism for tracking notable events. This can be used for analytics, but can also be used by plugins that want to listen out for when key events occur (such as a table being created) and take action in response.
 
 Plugins can register to receive events using the ``track_event`` plugin hook.
 

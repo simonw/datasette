@@ -1,7 +1,6 @@
 import asyncio
 from collections import namedtuple
 from pathlib import Path
-import hashlib
 import janus
 import queue
 import sys
@@ -15,6 +14,7 @@ from .utils import (
     detect_spatialite,
     get_all_foreign_keys,
     get_outbound_foreign_keys,
+    md5_not_usedforsecurity,
     sqlite_timelimit,
     sqlite3,
     table_columns,
@@ -74,7 +74,7 @@ class Database:
     def color(self):
         if self.hash:
             return self.hash[:6]
-        return hashlib.md5(self.name.encode("utf8")).hexdigest()[:6]
+        return md5_not_usedforsecurity(self.name)[:6]
 
     def suggest_name(self):
         if self.path:

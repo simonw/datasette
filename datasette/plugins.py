@@ -1,6 +1,7 @@
 import importlib
 import os
 import pluggy
+from pprint import pprint
 import sys
 from . import hookspecs
 
@@ -32,6 +33,29 @@ DEFAULT_PLUGINS = (
 
 pm = pluggy.PluginManager("datasette")
 pm.add_hookspecs(hookspecs)
+
+DATASETTE_TRACE_PLUGINS = os.environ.get("DATASETTE_TRACE_PLUGINS", None)
+
+
+def before(hook_name, hook_impls, kwargs):
+    print(file=sys.stderr)
+    print(f"{hook_name}:", file=sys.stderr)
+    pprint(kwargs, width=40, indent=4, stream=sys.stderr)
+    print("Hook implementations:", file=sys.stderr)
+    pprint(hook_impls, width=40, indent=4, stream=sys.stderr)
+
+
+def after(outcome, hook_name, hook_impls, kwargs):
+    results = outcome.get_result()
+    if not isinstance(results, list):
+        results = [results]
+    print(f"Results:", file=sys.stderr)
+    pprint(results, width=40, indent=4, stream=sys.stderr)
+
+
+if DATASETTE_TRACE_PLUGINS:
+    pm.add_hookcall_monitoring(before, after)
+
 
 DATASETTE_LOAD_PLUGINS = os.environ.get("DATASETTE_LOAD_PLUGINS", None)
 

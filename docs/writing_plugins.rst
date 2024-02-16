@@ -7,6 +7,30 @@ You can write one-off plugins that apply to just one Datasette instance, or you 
 
 Want to start by looking at an example? The `Datasette plugins directory <https://datasette.io/plugins>`__ lists more than 90 open source plugins with code you can explore. The :ref:`plugin hooks <plugin_hooks>` page includes links to example plugins for each of the documented hooks.
 
+.. _writing_plugins_tracing:
+
+Tracing plugin hooks
+--------------------
+
+The ``DATASETTE_TRACE_PLUGINS`` environment variable turns on detailed tracing showing exactly which hooks are being run. This can be useful for understanding how Datasette is using your plugin.
+
+.. code-block:: bash
+
+    DATASETTE_TRACE_PLUGINS=1 datasette mydb.db
+
+Example output::
+
+    actor_from_request:
+    {   'datasette': <datasette.app.Datasette object at 0x100bc7220>,
+        'request': <asgi.Request method="GET" url="http://127.0.0.1:4433/">}
+    Hook implementations:
+    [   <HookImpl plugin_name='codespaces', plugin=<module 'datasette_codespaces' from '.../site-packages/datasette_codespaces/__init__.py'>>,
+        <HookImpl plugin_name='datasette.actor_auth_cookie', plugin=<module 'datasette.actor_auth_cookie' from '.../datasette/datasette/actor_auth_cookie.py'>>,
+        <HookImpl plugin_name='datasette.default_permissions', plugin=<module 'datasette.default_permissions' from '.../datasette/default_permissions.py'>>]
+    Results:
+    [{'id': 'root'}]
+
+
 .. _writing_plugins_one_off:
 
 Writing one-off plugins

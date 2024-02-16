@@ -254,6 +254,7 @@ Datasette releases are performed using tags. When a new release is published on 
 * Re-point the "latest" tag on Docker Hub to the new image
 * Build a wheel bundle of the underlying Python source code
 * Push that new wheel up to PyPI: https://pypi.org/project/datasette/
+* If the release is an alpha, navigate to https://readthedocs.org/projects/datasette/versions/ and search for the tag name in the "Activate a version" filter, then mark that version as "active" to ensure it will appear on the public ReadTheDocs documentation site.
 
 To deploy new releases you will need to have push access to the main Datasette GitHub repository.
 

@@ -144,7 +144,7 @@ def permission_allowed_default(datasette, actor, action, resource):
             if actor and actor.get("id") == "root":
                 return True
 
-        # Resolve metadata view permissions
+        # Resolve view permissions in allow blocks in configuration
         if action in (
             "view-instance",
             "view-database",
@@ -158,7 +158,7 @@ def permission_allowed_default(datasette, actor, action, resource):
             if result is not None:
                 return result
 
-        # Check custom permissions: blocks
+        # Resolve custom permissions: blocks in configuration
         result = await _resolve_config_permissions_blocks(
             datasette, actor, action, resource
         )

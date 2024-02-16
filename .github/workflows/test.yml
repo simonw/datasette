@@ -37,6 +37,7 @@ jobs:
         uv pip freeze
     - name: Run tests
       run: |
+        source .venv/bin/activate
         pytest -n auto -m "not serial"
         pytest -m "serial"
         # And the test that exceeds a localhost HTTPS server
@@ -44,17 +45,21 @@ jobs:
     - name: Install docs dependencies on Python 3.9+
       if: matrix.python-version != '3.8'
       run: |
+        source .venv/bin/activate
         pip install -e '.[docs]'
     - name: Check if cog needs to be run
       if: matrix.python-version != '3.8'
       run: |
+        source .venv/bin/activate
         cog --check docs/*.rst
     - name: Check if blacken-docs needs to be run
       if: matrix.python-version != '3.8'
       run: |
+        source .venv/bin/activate
         # This fails on syntax errors, or a diff was applied
         blacken-docs -l 60 docs/*.rst
     - name: Test DATASETTE_LOAD_PLUGINS
       run: |
+        source .venv/bin/activate
         pip install datasette-init datasette-json-html
         tests/test-datasette-load-plugins.sh

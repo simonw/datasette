@@ -4,6 +4,51 @@
 Changelog
 =========
 
+.. _v1_0_a9:
+
+1.0a9 (2024-02-16)
+------------------
+
+This alpha release adds basic alter table support to the Datasette Write API and fixes a permissions bug relating to the ``/upsert`` API endpoint.
+
+Alter table support for create, insert, upsert and update
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`JSON write API <json_api_write>` can now be used to apply simple alter table schema changes, provided the acting actor has the new :ref:`permissions_alter_table` permission. (:issue:`2101`)
+
+The only alter operation supported so far is adding new columns to an existing table.
+
+* The :ref:`/db/-/create <TableCreateView>` API now adds new columns during large operations to create a table based on incoming example ``"rows"``, in the case where one of the later rows includes columns that were not present in the earlier batches. This requires the ``create-table`` but not the ``alter-table`` permission.
+* When ``/db/-/create`` is called with rows in a situation where the table may have been already created, an ``"alter": true`` key can be included to indicate that any missing columns from the new rows should be added to the table. This requires the ``alter-table`` permission.
+* :ref:`/db/table/-/insert <TableInsertView>` and :ref:`/db/table/-/upsert <TableUpsertView>` and :ref:`/db/table/row-pks/-/update <RowUpdateView>` all now also accept ``"alter": true``, depending on the ``alter-table`` permission.
+
+Operations that alter a table now fire the new :ref:`alter-table event <events>`.
+
+Permissions fix for the upsert API
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`/database/table/-/upsert API <TableUpsertView>` had a minor permissions bug, only affecting Datasette instances that had configured the ``insert-row`` and ``update-row`` permissions to apply to a specific table rather than the database or instance as a whole. Full details in issue :issue:`2262`.
+
+To avoid similar mistakes in the future the :ref:`datasette.permission_allowed() <datasette_permission_allowed>` method now specifies ``default=`` as a keyword-only argument.
+
+Permission checks now consider opinions from every plugin
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The :ref:`datasette.permission_allowed() <datasette_permission_allowed>` method previously consulted every plugin that implemented the :ref:`permission_allowed() <plugin_hook_permission_allowed>` plugin hook and obeyed the opinion of the last plugin to return a value. (:issue:`2275`)
+
+Datasette now consults every plugin and checks to see if any of them returned ``False`` (the veto rule), and if none of them did, it then checks to see if any of them returned ``True``.
+
+This is explained at length in the new documentation covering :ref:`authentication_permissions_explained`.
+
+Other changes
+~~~~~~~~~~~~~
+
+- The new :ref:`DATASETTE_TRACE_PLUGINS=1 environment variable <writing_plugins_tracing>` turns on detailed trace output for every executed plugin hook, useful for debugging and understanding how the plugin system works at a low level. (:issue:`2274`)
+- Datasette on Python 3.9 or above marks its non-cryptographic uses of the MD5 hash function as ``usedforsecurity=False``, for compatibility with FIPS systems. (:issue:`2270`)
+- SQL relating to :ref:`internals_internal` now executes inside a transaction, avoiding a potential database locked error. (:issue:`2273`)
+- The ``/-/threads`` debug page now identifies the database in the name associated with each dedicated write thread. (:issue:`2265`)
+- The ``/db/-/create`` API now fires a ``insert-rows`` event if rows were inserted after the table was created. (:issue:`2260`)
+
 .. _v1_0_a8:
 
 1.0a8 (2024-02-07)

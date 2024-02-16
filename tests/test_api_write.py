@@ -366,6 +366,41 @@ async def test_insert_or_upsert_row_errors(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("allowed", (True, False))
+async def test_upsert_permissions_per_table(ds_write, allowed):
+    # https://github.com/simonw/datasette/issues/2262
+    token = "dstok_{}".format(
+        ds_write.sign(
+            {
+                "a": "root",
+                "token": "dstok",
+                "t": int(time.time()),
+                "_r": {
+                    "r": {
+                        "data": {
+                            "docs" if allowed else "other": ["ir", "ur"],
+                        }
+                    }
+                },
+            },
+            namespace="token",
+        )
+    )
+    response = await ds_write.client.post(
+        "/data/docs/-/upsert",
+        json={"rows": [{"id": 1, "title": "One"}]},
+        headers={
+            "Authorization": "Bearer {}".format(token),
+        },
+    )
+    if allowed:
+        assert response.status_code == 200
+        assert response.json()["ok"] is True
+    else:
+        assert response.status_code == 403
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "ignore,replace,expected_rows",
     (

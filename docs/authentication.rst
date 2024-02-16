@@ -71,6 +71,23 @@ Datasette's built-in view permissions (``view-database``, ``view-table`` etc) de
 
 Permissions with potentially harmful effects should default to *deny*. Plugin authors should account for this when designing new plugins - for example, the `datasette-upload-csvs <https://github.com/simonw/datasette-upload-csvs>`__ plugin defaults to deny so that installations don't accidentally allow unauthenticated users to create new tables by uploading a CSV file.
 
+.. _authentication_permissions_explained:
+
+How permissions are resolved
+----------------------------
+
+The :ref:`datasette.permission_allowed(actor, action, resource=None, default=...)<datasette_permission_allowed>` method is called to check if an actor is allowed to perform a specific action.
+
+This method asks every plugin that implements the :ref:`plugin_hook_permission_allowed` hook if the actor is allowed to perform the action.
+
+Each plugin can return ``True`` to indicate that the actor is allowed to perform the action, ``False`` if they are not allowed and ``None`` if the plugin has no opinion on the matter.
+
+``False`` acts as a veto - if any plugin returns ``False`` then the permission check is denied. Otherwise, if any plugin returns ``True`` then the permission check is allowed.
+
+The ``resource`` argument can be used to specify a specific resource that the action is being performed against. Some permissions, such as ``view-instance``, do not involve a resource. Others such as ``view-database`` have a resource that is a string naming the database. Permissions that take both a database name and the name of a table, view or canned query within that database use a resource that is a tuple of two strings, ``(database_name, resource_name)``.
+
+Plugins that implement the ``permission_allowed()`` hook can decide if they are going to consider the provided resource or not.
+
 .. _authentication_permissions_allow:
 
 Defining permissions with "allow" blocks

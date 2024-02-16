@@ -903,6 +903,8 @@ class Datasette:
         # Use default from registered permission, if available
         if default is DEFAULT_NOT_SET and action in self.permissions:
             default = self.permissions[action].default
+        opinions = []
+        # Every plugin is consulted for their opinion
         for check in pm.hook.permission_allowed(
             datasette=self,
             actor=actor,
@@ -911,9 +913,19 @@ class Datasette:
         ):
             check = await await_me_maybe(check)
             if check is not None:
-                result = check
+                opinions.append(check)
+
+        result = None
+        # If any plugin said False it's false - the veto rule
+        if any(not r for r in opinions):
+            result = False
+        elif any(r for r in opinions):
+            # Otherwise, if any plugin said True it's true
+            result = True
+
         used_default = False
         if result is None:
+            # No plugin expressed an opinion, so use the default
             result = default
             used_default = True
         self._permission_checks.append(

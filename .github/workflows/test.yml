@@ -30,8 +30,9 @@ jobs:
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)
     - name: Install dependencies
       run: |
-        pip install -e '.[test]'
-        pip freeze
+        pip install uv
+        uv pip install -e '.[test]'
+        uv pip freeze
     - name: Run tests
       run: |
         pytest -n auto -m "not serial"

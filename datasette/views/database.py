@@ -10,7 +10,7 @@ import re
 import sqlite_utils
 import textwrap
 
-from datasette.events import AlterTableEvent, CreateTableEvent
+from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
 from datasette.utils import (
     add_cors_headers,
@@ -1020,6 +1020,17 @@ class TableCreateView(BaseView):
             await self.ds.track_event(
                 CreateTableEvent(
                     request.actor, database=db.name, table=table_name, schema=schema
+                )
+            )
+        if rows:
+            await self.ds.track_event(
+                InsertRowsEvent(
+                    request.actor,
+                    database=db.name,
+                    table=table_name,
+                    num_rows=len(rows),
+                    ignore=ignore,
+                    replace=replace,
                 )
             )
         return Response.json(details, status=201)

@@ -32,6 +32,7 @@ jobs:
       run: |
         pip install uv
         uv venv
+        source .venv/bin/activate
         uv pip install -e '.[test]'
         uv pip freeze
     - name: Run tests

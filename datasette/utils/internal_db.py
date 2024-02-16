@@ -69,18 +69,20 @@ async def populate_schema_tables(internal_db, db):
     database_name = db.name
 
     def delete_everything(conn):
-        conn.execute(
-            "DELETE FROM catalog_tables WHERE database_name = ?", [database_name]
-        )
-        conn.execute(
-            "DELETE FROM catalog_columns WHERE database_name = ?", [database_name]
-        )
-        conn.execute(
-            "DELETE FROM catalog_foreign_keys WHERE database_name = ?", [database_name]
-        )
-        conn.execute(
-            "DELETE FROM catalog_indexes WHERE database_name = ?", [database_name]
-        )
+        with conn:
+            conn.execute(
+                "DELETE FROM catalog_tables WHERE database_name = ?", [database_name]
+            )
+            conn.execute(
+                "DELETE FROM catalog_columns WHERE database_name = ?", [database_name]
+            )
+            conn.execute(
+                "DELETE FROM catalog_foreign_keys WHERE database_name = ?",
+                [database_name],
+            )
+            conn.execute(
+                "DELETE FROM catalog_indexes WHERE database_name = ?", [database_name]
+            )
 
     await internal_db.execute_write_fn(delete_everything)
 

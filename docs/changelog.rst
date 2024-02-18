@@ -4,6 +4,17 @@
 Changelog
 =========
 
+.. _v1_0_a10:
+
+1.0a10 (2024-02-17)
+-------------------
+
+The only changes in this alpha correspond to the way Datasette handles database transactions. (:issue:`2277`)
+
+- The :ref:`database.execute_write_fn() <database_execute_write_fn>` method has a new ``transaction=True`` parameter. This defaults to ``True`` which means all functions executed using this method are now automatically wrapped in a transaction - previously the functions needed to roll transaction handling on their own, and many did not.
+- Pass ``transaction=False`` to ``execute_write_fn()`` if you want to manually handle transactions in your function.
+- Several internal Datasette features, including parts of the :ref:`JSON write API <json_api_write>`, had been failing to wrap their operations in a transaction. This has been fixed by the new ``transaction=True`` default.
+
 .. _v1_0_a9:
 
 1.0a9 (2024-02-16)

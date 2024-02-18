@@ -12,20 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - uses: actions/cache@v3
-      name: Configure pip caching
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        cache: pip
+        cache-dependency-path: setup.py
     - name: Install dependencies
       run: |
         pip install -e '.[test]'
@@ -36,47 +31,38 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [test]
+    environment: release
+    permissions:
+      id-token: write
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
-    - uses: actions/cache@v3
-      name: Configure pip caching
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-publish-pip-${{ hashFiles('**/setup.py') }}
-        restore-keys: |
-          ${{ runner.os }}-publish-pip-
+        python-version: '3.12'
+        cache: pip
+        cache-dependency-path: setup.py
     - name: Install dependencies
       run: |
-        pip install setuptools wheel twine
-    - name: Publish
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        pip install setuptools wheel build
+    - name: Build
       run: |
-        python setup.py sdist bdist_wheel
-        twine upload dist/*
+        python -m build
+    - name: Publish
+      uses: pypa/gh-action-pypi-publish@release/v1
 
   deploy_static_docs:
     runs-on: ubuntu-latest
     needs: [deploy]
     if: "!github.event.release.prerelease"
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
-    - uses: actions/cache@v2
-      name: Configure pip caching
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-publish-pip-${{ hashFiles('**/setup.py') }}
-        restore-keys: |
-          ${{ runner.os }}-publish-pip-
+        cache: pip
+        cache-dependency-path: setup.py
     - name: Install dependencies
       run: |
         python -m pip install -e .[docs]
@@ -105,7 +91,7 @@ jobs:
     needs: [deploy]
     if: "!github.event.release.prerelease"
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Build and push to Docker Hub
       env:
         DOCKER_USER: ${{ secrets.DOCKER_USER }}

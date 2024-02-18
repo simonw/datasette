@@ -123,8 +123,7 @@ class Database:
 
     async def execute_write(self, sql, params=None, block=True):
         def _inner(conn):
-            with conn:
-                return conn.execute(sql, params or [])
+            return conn.execute(sql, params or [])
 
         with trace("sql", database=self.name, sql=sql.strip(), params=params):
             results = await self.execute_write_fn(_inner, block=block)
@@ -132,8 +131,7 @@ class Database:
 
     async def execute_write_script(self, sql, block=True):
         def _inner(conn):
-            with conn:
-                return conn.executescript(sql)
+            return conn.executescript(sql)
 
         with trace("sql", database=self.name, sql=sql.strip(), executescript=True):
             results = await self.execute_write_fn(_inner, block=block)
@@ -149,8 +147,7 @@ class Database:
                     count += 1
                     yield param
 
-            with conn:
-                return conn.executemany(sql, count_params(params_seq)), count
+            return conn.executemany(sql, count_params(params_seq)), count
 
         with trace(
             "sql", database=self.name, sql=sql.strip(), executemany=True

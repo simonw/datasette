@@ -501,9 +501,8 @@ async def test_execute_write_has_correctly_prepared_connection(db):
 @pytest.mark.asyncio
 async def test_execute_write_fn_block_false(db):
     def write_fn(conn):
-        with conn:
-            conn.execute("delete from roadside_attractions where pk = 1;")
-            row = conn.execute("select count(*) from roadside_attractions").fetchone()
+        conn.execute("delete from roadside_attractions where pk = 1;")
+        row = conn.execute("select count(*) from roadside_attractions").fetchone()
         return row[0]
 
     task_id = await db.execute_write_fn(write_fn, block=False)
@@ -513,9 +512,8 @@ async def test_execute_write_fn_block_false(db):
 @pytest.mark.asyncio
 async def test_execute_write_fn_block_true(db):
     def write_fn(conn):
-        with conn:
-            conn.execute("delete from roadside_attractions where pk = 1;")
-            row = conn.execute("select count(*) from roadside_attractions").fetchone()
+        conn.execute("delete from roadside_attractions where pk = 1;")
+        row = conn.execute("select count(*) from roadside_attractions").fetchone()
         return row[0]
 
     new_count = await db.execute_write_fn(write_fn)

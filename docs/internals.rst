@@ -1010,7 +1010,9 @@ You can pass additional SQL parameters as a tuple or dictionary.
 
 The method will block until the operation is completed, and the return value will be the return from calling ``conn.execute(...)`` using the underlying ``sqlite3`` Python library.
 
-If you pass ``block=False`` this behaviour changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
+If you pass ``block=False`` this behavior changes to "fire and forget" - queries will be added to the write queue and executed in a separate thread while your code can continue to do other things. The method will return a UUID representing the queued task.
+
+Each call to ``execute_write()`` will be executed inside a transaction.
 
 .. _database_execute_write_script:
 
@@ -1018,6 +1020,8 @@ await db.execute_write_script(sql, block=True)
 -----------------------------------------------
 
 Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
+
+Each call to ``execute_write_script()`` will be executed inside a transaction.
 
 .. _database_execute_write_many:
 
@@ -1033,10 +1037,12 @@ Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://d
         [(1, "Melanie"), (2, "Selma"), (2, "Viktor")],
     )
 
+Each call to ``execute_write_many()`` will be executed inside a transaction.
+
 .. _database_execute_write_fn:
 
-await db.execute_write_fn(fn, block=True)
------------------------------------------
+await db.execute_write_fn(fn, block=True, transaction=True)
+-----------------------------------------------------------
 
 This method works like ``.execute_write()``, but instead of a SQL statement you give it a callable Python function. Your function will be queued up and then called when the write connection is available, passing that connection as the argument to the function.
 
@@ -1052,7 +1058,6 @@ For example:
 
     def delete_and_return_count(conn):
         conn.execute("delete from some_table where id > 5")
-        conn.commit()
         return conn.execute(
             "select count(*) from some_table"
         ).fetchone()[0]
@@ -1069,7 +1074,7 @@ The value returned from ``await database.execute_write_fn(...)`` will be the ret
 
 If your function raises an exception that exception will be propagated up to the ``await`` line.
 
-If you see ``OperationalError: database table is locked`` errors you should check that you remembered to explicitly call ``conn.commit()`` in your write function.
+By default your function will be executed inside a transaction. You can pass ``transaction=False`` to disable this behavior, though if you do that you should be careful to manually apply transactions - ideally using the ``with conn:`` pattern, or you may see ``OperationalError: database table is locked`` errors.
 
 If you specify ``block=False`` the method becomes fire-and-forget, queueing your function to be executed and then allowing your code after the call to ``.execute_write_fn()`` to continue running while the underlying thread waits for an opportunity to run your function. A UUID representing the queued task will be returned. Any exceptions in your code will be silently swallowed.
 

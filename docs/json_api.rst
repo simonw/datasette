@@ -616,7 +616,7 @@ Pass ``"ignore": true`` to ignore these errors and insert the other rows:
         "ignore": true
     }
 
-Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values.
+Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values. This requires the :ref:`permissions_update_row` permission.
 
 Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
 
@@ -854,7 +854,7 @@ The JSON here describes the table that will be created:
 
 * ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
 * ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
-* ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists.
+* ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`permissions_update_row` permission.
 * ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
 
 If the table is successfully created this will return a ``201`` status code and the following response:

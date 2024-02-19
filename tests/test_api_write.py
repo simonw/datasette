@@ -222,6 +222,14 @@ async def test_insert_rows(ds_write, return_rows):
             ['Cannot use "ignore" and "replace" at the same time'],
         ),
         (
+            # Replace is not allowed if you don't have update-row
+            "/data/docs/-/insert",
+            {"rows": [{"title": "Test"}], "replace": True},
+            "insert-but-not-update",
+            403,
+            ['Permission denied: need update-row to use "replace"'],
+        ),
+        (
             "/data/docs/-/insert",
             {"rows": [{"title": "Test"}], "invalid_param": True},
             None,

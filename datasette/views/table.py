@@ -485,6 +485,11 @@ class TableInsertView(BaseView):
         if upsert and (ignore or replace):
             return _error(["Upsert does not support ignore or replace"], 400)
 
+        if replace and not await self.ds.permission_allowed(
+            request.actor, "update-row", resource=(database_name, table_name)
+        ):
+            return _error(['Permission denied: need update-row to use "replace"'], 403)
+
         initial_schema = None
         if alter:
             # Must have alter-table permission

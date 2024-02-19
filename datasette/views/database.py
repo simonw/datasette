@@ -860,7 +860,7 @@ class TableCreateView(BaseView):
             if not await self.ds.permission_allowed(
                 request.actor, "update-row", resource=database_name
             ):
-                return _error(["Permission denied - need update-row"], 403)
+                return _error(["Permission denied: need update-row"], 403)
 
         table_name = data.get("table")
         if not table_name:
@@ -884,7 +884,7 @@ class TableCreateView(BaseView):
             if not await self.ds.permission_allowed(
                 request.actor, "insert-row", resource=database_name
             ):
-                return _error(["Permission denied - need insert-row"], 403)
+                return _error(["Permission denied: need insert-row"], 403)
 
         alter = False
         if rows or row:
@@ -897,7 +897,7 @@ class TableCreateView(BaseView):
                     if not await self.ds.permission_allowed(
                         request.actor, "alter-table", resource=database_name
                     ):
-                        return _error(["Permission denied - need alter-table"], 403)
+                        return _error(["Permission denied: need alter-table"], 403)
                     alter = True
 
         if columns:

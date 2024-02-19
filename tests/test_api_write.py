@@ -1316,7 +1316,7 @@ async def test_create_table(
             ["create-table"],
             {"table": "t", "rows": [{"name": "c"}]},
             403,
-            ["Permission denied - need insert-row"],
+            ["Permission denied: need insert-row"],
         ),
         # This should work:
         (
@@ -1330,7 +1330,7 @@ async def test_create_table(
             ["create-table", "insert-row"],
             {"table": "t", "rows": [{"id": 1}], "pk": "id", "replace": True},
             403,
-            ["Permission denied - need update-row"],
+            ["Permission denied: need update-row"],
         ),
     ),
 )
@@ -1567,7 +1567,7 @@ async def test_create_using_alter_against_existing_table(
         assert response2.status_code == 403
         assert response2.json() == {
             "ok": False,
-            "errors": ["Permission denied - need alter-table"],
+            "errors": ["Permission denied: need alter-table"],
         }
     else:
         assert response2.status_code == 201

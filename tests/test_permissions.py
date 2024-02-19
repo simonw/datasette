@@ -378,6 +378,13 @@ async def test_permissions_debug(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
     response = await ds_client.get("/-/permissions", cookies={"ds_actor": cookie})
     assert response.status_code == 200
+    # Should have a select box listing permissions
+    for fragment in (
+        '<select name="permission" id="permission">',
+        '<option value="view-instance">view-instance (default True)</option>',
+            '<option value="insert-row">insert-row (default False)</option>',
+    ):
+        assert fragment in response.text
     # Should show one failure and one success
     soup = Soup(response.text, "html.parser")
     check_divs = soup.findAll("div", {"class": "check"})
@@ -673,6 +680,7 @@ async def test_actor_restricted_permissions(
         "permission": permission,
         "resource": expected_resource,
         "result": expected_result,
+        "default": perms_ds.permissions[permission].default,
     }
     assert response.json() == expected
 

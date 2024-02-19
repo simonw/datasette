@@ -57,7 +57,7 @@ textarea {
         <p><label for="permission" style="display:block">Permission</label>
         <select name="permission" id="permission">
             {% for permission in permissions %}
-                <option value="{{ permission.0 }}">{{ permission.name }} (default {{ permission.default }})</option>
+                <option value="{{ permission.name }}">{{ permission.name }} (default {{ permission.default }})</option>
             {% endfor %}
         </select>
         <p><label for="resource_1">Database name</label><input type="text" id="resource_1" name="resource_1"></p>
@@ -71,19 +71,19 @@ textarea {
 
 <script>
 var rawPerms = {{ permissions|tojson }};
-var permissions = Object.fromEntries(rawPerms.map(([label, abbr, needs_resource_1, needs_resource_2, def]) => [label, {needs_resource_1, needs_resource_2, def}]))
+var permissions = Object.fromEntries(rawPerms.map(p => [p.name, p]));
 var permissionSelect = document.getElementById('permission');
 var resource1 = document.getElementById('resource_1');
 var resource2 = document.getElementById('resource_2');
 function updateResourceVisibility() {
     var permission = permissionSelect.value;
-    var {needs_resource_1, needs_resource_2} = permissions[permission];
-    if (needs_resource_1) {
+    var {takes_database, takes_resource} = permissions[permission];
+    if (takes_database) {
         resource1.closest('p').style.display = 'block';
     } else {
         resource1.closest('p').style.display = 'none';
     }
-    if (needs_resource_2) {
+    if (takes_resource) {
         resource2.closest('p').style.display = 'block';
     } else {
         resource2.closest('p').style.display = 'none';

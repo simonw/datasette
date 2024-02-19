@@ -125,14 +125,14 @@ class PermissionsDebugView(BaseView):
             {
                 "permission_checks": list(reversed(self.ds._permission_checks)),
                 "permissions": [
-                    (
-                        p.name,
-                        p.abbr,
-                        p.description,
-                        p.takes_database,
-                        p.takes_resource,
-                        p.default,
-                    )
+                    {
+                        "name": p.name,
+                        "abbr": p.abbr,
+                        "description": p.description,
+                        "takes_database": p.takes_database,
+                        "takes_resource": p.takes_resource,
+                        "default": p.default,
+                    }
                     for p in self.ds.permissions.values()
                 ],
             },
@@ -164,6 +164,7 @@ class PermissionsDebugView(BaseView):
                 "permission": permission,
                 "resource": resource,
                 "result": result,
+                "default": self.ds.permissions[permission].default,
             }
         )
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# This should only run in environemnts where both
+# This should only run in environments where both
 # datasette-init and datasette-json-html are installed
 
 PLUGINS=$(datasette plugins)

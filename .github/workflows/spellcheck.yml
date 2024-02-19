@@ -24,3 +24,4 @@ jobs:
         codespell README.md --ignore-words docs/codespell-ignore-words.txt
         codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt
         codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
+        codespell tests --ignore-words docs/codespell-ignore-words.txt

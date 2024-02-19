@@ -227,7 +227,15 @@ const initDatasetteTable = function (manager) {
     const hook = menu.querySelector('.hook');
     const icon = th.querySelector('.dropdown-menu-icon');
     const iconRect = icon.getBoundingClientRect();
-    hook.style.left = (iconRect.left - menuLeft + 1) + 'px';
+    const hookLeft = (iconRect.left - menuLeft + 1) + 'px';
+    hook.style.left = hookLeft;
+    // Move the whole menu right if the hook is too far right
+    const menuRect = menu.getBoundingClientRect();
+    if (iconRect.right > menuRect.right) {
+      menu.style.left = (iconRect.right - menuWidth) + 'px';
+      // And move hook tip as well
+      hook.style.left = (menuWidth - 13) + 'px';
+    }
   }
 
   var svg = document.createElement("div");

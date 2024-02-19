@@ -382,7 +382,7 @@ async def test_permissions_debug(ds_client):
     for fragment in (
         '<select name="permission" id="permission">',
         '<option value="view-instance">view-instance (default True)</option>',
-            '<option value="insert-row">insert-row (default False)</option>',
+        '<option value="insert-row">insert-row (default False)</option>',
     ):
         assert fragment in response.text
     # Should show one failure and one success

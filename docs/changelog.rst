@@ -4,6 +4,15 @@
 Changelog
 =========
 
+.. _v1_0_a11:
+
+1.0a11 (2024-02-19)
+-------------------
+
+- The ``"replace": true`` argument to the ``/db/table/-/insert`` API now requires the actor to have the ``update-row`` permission. (:issue:`2279`)
+- Fixed some UI bugs in the interactive permissions debugging tool. (:issue:`2278`)
+- The column action menu now aligns better with the cog icon, and positions itself taking into account the width of the browser window. (:issue:`2263`)
+
 .. _v1_0_a10:
 
 1.0a10 (2024-02-17)

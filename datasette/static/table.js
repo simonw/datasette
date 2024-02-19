@@ -217,6 +217,17 @@ const initDatasetteTable = function (manager) {
       menuList.appendChild(menuItem);
     });
 
+    // Measure width of menu and adjust position if too far right
+    const menuWidth = menu.offsetWidth;
+    const windowWidth = window.innerWidth;
+    if (menuLeft + menuWidth > windowWidth) {
+      menu.style.left = windowWidth - menuWidth - 20 + "px";
+    }
+    // Align menu .hook arrow with the column cog icon
+    const hook = menu.querySelector('.hook');
+    const icon = th.querySelector('.dropdown-menu-icon');
+    const iconRect = icon.getBoundingClientRect();
+    hook.style.left = (iconRect.left - menuLeft + 1) + 'px';
   }
 
   var svg = document.createElement("div");

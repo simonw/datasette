@@ -21,30 +21,6 @@
 {% endblock %}
 
 {% block content %}
-<style>
-.icon-text {
-    font-size: 15px;
-    display: inline-flex;
-    align-items: center;
-    border: 2px solid #666;
-    border-radius: 6px;
-    padding: 5px 12px 3px 7px;
-}
-.icon-text span {
-    /* Nudge text up a bit */
-    position: relative;
-    top: -2px;
-}
-.icon-text:hover {
-    background-color: #ccc;
-    cursor: pointer;
-}
-.icon {
-    width: 18px;
-    height: 18px;
-    margin-right: 4px;
-}
-</style>
 <div class="page-header" style="border-color: #{{ database_color }}">
     <h1>{{ metadata.get("title") or table }}{% if is_view %} (view){% endif %}{% if private %} 🔒{% endif %}</h1>
 </div>
@@ -62,6 +38,7 @@
         </div>
     </summary>
     <div class="dropdown-menu">
+        <div class="hook"></div>
         {% if links %}
         <ul>
             {% for link in links %}

@@ -361,7 +361,6 @@ details .nav-menu-inner {
 }
 
 /* Table/database actions menu */
-.page-header,
 .page-action-menu {
     position: relative;
 }
@@ -372,6 +371,28 @@ details .nav-menu-inner {
     position: absolute;
     top: calc(100% + 10px);
     left: 0;
+}
+.page-action-menu .icon-text {
+    font-size: 15px;
+    display: inline-flex;
+    align-items: center;
+    border: 2px solid #666;
+    border-radius: 6px;
+    padding: 5px 12px 3px 7px;
+}
+.page-action-menu .icon-text span {
+    /* Nudge text up a bit */
+    position: relative;
+    top: -2px;
+}
+.page-action-menu .icon-text:hover {
+    background-color: #eee;
+    cursor: pointer;
+}
+.page-action-menu .icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 4px;
 }
 
 /* Components ============================================================== */

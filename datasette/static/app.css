@@ -176,15 +176,12 @@ h6,
     font-size: 2rem;
     padding-right: 0.2em;
 }
-.page-header details {
-    display: inline-flex;
-}
-.page-header details > summary {
+
+.page-action-menu details > summary {
     list-style: none;
-    display: inline-flex;
     cursor: pointer;
 }
-.page-header details > summary::-webkit-details-marker {
+.page-action-menu details > summary::-webkit-details-marker {
     display: none;
 }
 
@@ -364,13 +361,17 @@ details .nav-menu-inner {
 }
 
 /* Table/database actions menu */
-.page-header {
+.page-header,
+.page-action-menu {
     position: relative;
+}
+.actions-menu-links {
+    display: inline;
 }
 .actions-menu-links .dropdown-menu {
     position: absolute;
     top: calc(100% + 10px);
-    left: -10px;
+    left: 0;
 }
 
 /* Components ============================================================== */

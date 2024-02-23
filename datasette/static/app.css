@@ -376,9 +376,10 @@ details .nav-menu-inner {
     font-size: 15px;
     display: inline-flex;
     align-items: center;
-    border: 2px solid #666;
     border-radius: 6px;
     padding: 5px 12px 3px 7px;
+    color: #fff;
+    background: linear-gradient(180deg, #4B91F7 0%, #367AF6 100%);
 }
 .page-action-menu .icon-text span {
     /* Nudge text up a bit */

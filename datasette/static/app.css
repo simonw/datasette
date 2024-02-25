@@ -163,15 +163,12 @@ h6,
 }
 
 .page-header {
-  display: flex;
-  align-items: center;
   padding-left: 10px;
   border-left: 10px solid #666;
   margin-bottom: 0.75rem;
   margin-top: 1rem;
 }
 .page-header h1 {
-    display: inline;
     margin: 0;
     font-size: 2rem;
     padding-right: 0.2em;

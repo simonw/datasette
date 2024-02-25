@@ -163,28 +163,22 @@ h6,
 }
 
 .page-header {
-  display: flex;
-  align-items: center;
   padding-left: 10px;
   border-left: 10px solid #666;
   margin-bottom: 0.75rem;
   margin-top: 1rem;
 }
 .page-header h1 {
-    display: inline;
     margin: 0;
     font-size: 2rem;
     padding-right: 0.2em;
 }
-.page-header details {
-    display: inline-flex;
-}
-.page-header details > summary {
+
+.page-action-menu details > summary {
     list-style: none;
-    display: inline-flex;
     cursor: pointer;
 }
-.page-header details > summary::-webkit-details-marker {
+.page-action-menu details > summary::-webkit-details-marker {
     display: none;
 }
 
@@ -364,13 +358,40 @@ details .nav-menu-inner {
 }
 
 /* Table/database actions menu */
-.page-header {
+.page-action-menu {
     position: relative;
+}
+.actions-menu-links {
+    display: inline;
 }
 .actions-menu-links .dropdown-menu {
     position: absolute;
     top: calc(100% + 10px);
-    left: -10px;
+    left: 0;
+}
+.page-action-menu .icon-text {
+    display: inline-flex;
+    align-items: center;
+    border-radius: .25rem;
+    padding: 5px 12px 3px 7px;
+    color: #fff;
+    font-weight: 400;
+    font-size: 0.8em;
+    background: linear-gradient(180deg, #007bff 0%, #4E79C7 100%);
+    border-color: #007bff;
+}
+.page-action-menu .icon-text span {
+    /* Nudge text up a bit */
+    position: relative;
+    top: -2px;
+}
+.page-action-menu .icon-text:hover {
+    cursor: pointer;
+}
+.page-action-menu .icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 4px;
 }
 
 /* Components ============================================================== */
@@ -536,7 +557,7 @@ form input[type=submit], form button[type=button] {
 
 form input[type=submit] {
     color: #fff;
-    background-color: #007bff;
+    background: linear-gradient(180deg, #007bff 0%, #4E79C7 100%);
     border-color: #007bff;
     -webkit-appearance: button;
 }

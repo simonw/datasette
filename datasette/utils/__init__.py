@@ -18,12 +18,14 @@ import time
 import types
 import secrets
 import shutil
-from typing import Iterable, Tuple
+from typing import Iterable, List, Tuple
 import urllib
 import yaml
 from .shutil_backport import copytree
 from .sqlite import sqlite3, supports_table_xinfo
 
+if typing.TYPE_CHECKING:
+    from datasette.database import Database
 
 # From https://www.sqlite.org/lang_keywords.html
 reserved_words = set(
@@ -1130,7 +1132,13 @@ class StartupError(Exception):
 _re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
 
 
-async def derive_named_parameters(db, sql):
+@documented
+async def derive_named_parameters(db: "Database", sql: str) -> List[str]:
+    """
+    Given a SQL statement, return a list of named parameters that are used in the statement
+
+    e.g. for ``select * from foo where id=:id`` this would return ``["id"]``
+    """
     explain = "explain {}".format(sql.strip().rstrip(";"))
     possible_params = _re_named_parameter.findall(sql)
     try:

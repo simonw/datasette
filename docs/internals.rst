@@ -1256,6 +1256,15 @@ Utility function for calling ``await`` on a return value if it is awaitable, oth
 
 .. autofunction:: datasette.utils.await_me_maybe
 
+.. _internals_utils_derive_named_parameters:
+
+derive_named_parameters(db, sql)
+--------------------------------
+
+Derive the list of named parameters referenced in a SQL query, using an ``explain`` query executed against the provided database.
+
+.. autofunction:: datasette.utils.derive_named_parameters
+
 .. _internals_tilde_encoding:
 
 Tilde encoding

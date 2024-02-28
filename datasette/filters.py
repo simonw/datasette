@@ -282,6 +282,13 @@ class Filters:
                 format="%{}%",
             ),
             TemplatedFilter(
+                "notcontains",
+                "does not contain",
+                '"{c}" not like :{p}',
+                '{c} does not contain "{v}"',
+                format="%{}%",
+            ),
+            TemplatedFilter(
                 "endswith",
                 "ends with",
                 '"{c}" like :{p}',

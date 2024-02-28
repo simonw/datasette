@@ -237,6 +237,9 @@ You can filter the data returned by the table based on column values using a que
 ``?column__contains=value``
     Rows where the string column contains the specified value (``column like "%value%"`` in SQL).
 
+``?column__notcontains=value``
+    Rows where the string column does not contain the specified value (``column not like "%value%"`` in SQL).
+
 ``?column__endswith=value``
     Rows where the string column ends with the specified value (``column like "%value"`` in SQL).
 

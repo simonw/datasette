@@ -8,6 +8,11 @@ import pytest
     [
         ((("name_english__contains", "foo"),), ['"name_english" like :p0'], ["%foo%"]),
         (
+            (("name_english__notcontains", "foo"),),
+            ['"name_english" not like :p0'],
+            ["%foo%"],
+        ),
+        (
             (("foo", "bar"), ("bar__contains", "baz")),
             ['"bar" like :p0', '"foo" = :p1'],
             ["%baz%", "bar"],

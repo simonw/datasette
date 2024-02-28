@@ -46,6 +46,7 @@ EXPECTED_PLUGINS = [
             "permission_allowed",
             "prepare_connection",
             "prepare_jinja2_environment",
+            "query_actions",
             "register_facet_classes",
             "register_magic_parameters",
             "register_permissions",

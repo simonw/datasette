@@ -946,6 +946,31 @@ async def test_hook_table_actions(ds_client, table_or_view):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_url",
+    (
+        ("/fixtures?sql=select+1", "/fixtures/-/explain?sql=select+1"),
+        (
+            "/fixtures/pragma_cache_size",
+            "/fixtures/-/explain?sql=PRAGMA+cache_size%3B&query_name=pragma_cache_size",
+        ),
+    ),
+)
+async def test_hook_query_actions(ds_client, path, expected_url):
+    def get_table_actions_links(html):
+        soup = Soup(html, "html.parser")
+        details = soup.find("details", {"class": "actions-menu-links"})
+        if details is None:
+            return []
+        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
+
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    links = get_table_actions_links(response.text)
+    assert links == [{"label": "Explain this query", "href": expected_url}]
+
+
+@pytest.mark.asyncio
 async def test_hook_database_actions(ds_client):
     def get_table_actions_links(html):
         soup = Soup(html, "html.parser")

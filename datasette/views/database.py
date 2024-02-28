@@ -9,6 +9,7 @@ import os
 import re
 import sqlite_utils
 import textwrap
+from typing import List
 
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
@@ -255,6 +256,11 @@ class QueryContext:
     )
     top_canned_query: callable = field(
         metadata={"help": "Callable to render the top_canned_query slot"}
+    )
+    query_actions: callable = field(
+        metadata={
+            "help": "Callable returning a list of links for the query action menu"
+        }
     )
 
 
@@ -694,6 +700,22 @@ class QueryView(View):
                     )
                 )
 
+            async def query_actions():
+                query_actions = []
+                for hook in pm.hook.query_actions(
+                    datasette=datasette,
+                    actor=request.actor,
+                    database=database,
+                    query_name=canned_query["name"] if canned_query else None,
+                    request=request,
+                    sql=sql,
+                    params=params,
+                ):
+                    extra_links = await await_me_maybe(hook)
+                    if extra_links:
+                        query_actions.extend(extra_links)
+                return query_actions
+
             r = Response.html(
                 await datasette.render_template(
                     template,
@@ -749,6 +771,7 @@ class QueryView(View):
                             database=database,
                             query_name=canned_query["name"] if canned_query else None,
                         ),
+                        query_actions=query_actions,
                     ),
                     request=request,
                     view_name="database",

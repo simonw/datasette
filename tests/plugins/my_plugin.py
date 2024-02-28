@@ -7,6 +7,7 @@ from datasette.utils.asgi import asgi_send_json, Response
 import base64
 import pint
 import json
+import urllib
 
 ureg = pint.UnitRegistry()
 
@@ -388,6 +389,23 @@ def table_actions(datasette, database, table, actor):
             },
             {"href": datasette.urls.instance(), "label": f"Table: {table}"},
         ]
+
+
+@hookimpl
+def query_actions(datasette, database, query_name, sql):
+    args = {
+        "sql": sql,
+    }
+    if query_name:
+        args["query_name"] = query_name
+    return [
+        {
+            "href": datasette.urls.database(database)
+            + "/-/explain?"
+            + urllib.parse.urlencode(args),
+            "label": "Explain this query",
+        },
+    ]
 
 
 @hookimpl

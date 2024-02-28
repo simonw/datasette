@@ -1520,6 +1520,58 @@ This example adds a new table action if the signed in user is ``"root"``:
 
 Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
 
+.. _plugin_hook_query_actions:
+
+query_actions(datasette, actor, database, query_name, request, sql, params)
+---------------------------------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``query_name`` - string or None
+    The name of the canned query, or ``None`` if this is an arbitrary SQL query.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``sql`` - string
+    The SQL query being executed
+
+``params`` - dictionary
+    The parameters passed to the SQL query, if any.
+
+This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the canned query and arbitrary SQL query pages.
+
+This example adds a new query action linking to a page for explaining a query:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import urllib
+
+
+    @hookimpl
+    def query_actions(datasette, database, sql):
+        return [
+            {
+                "href": datasette.urls.database(database)
+                + "/-/explain?"
+                + urllib.parse.urlencode(
+                    {
+                        "sql": sql,
+                    }
+                ),
+                "label": "Explain this query",
+            },
+        ]
+
+
 .. _plugin_hook_database_actions:
 
 database_actions(datasette, actor, database, request)

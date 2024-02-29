@@ -4,6 +4,16 @@
 Changelog
 =========
 
+.. _v1_0_a12:
+
+1.0a12 (2024-02-29)
+-------------------
+
+- New :ref:`query_actions() <plugin_hook_query_actions>` plugin hook, similar to :ref:`table_actions() <plugin_hook_table_actions>` and :ref:`database_actions() <plugin_hook_database_actions>`. Can be used to add a menu of actions to the canned query or arbitrary SQL query page. (:issue:`2283`)
+- New design for the button that opens the query, table and database actions menu. (:issue:`2281`)
+- "does not contain" table filter for finding rows that do not contain a string. (:issue:`2287`)
+- Fixed a bug in the :ref:`javascript_plugins_makeColumnActions` JavaScript plugin mechanism where the column action menu was not fully reset in between each interaction. (:issue:`2289`)
+
 .. _v1_0_a11:
 
 1.0a11 (2024-02-19)

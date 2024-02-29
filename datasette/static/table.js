@@ -88,6 +88,7 @@ const initDatasetteTable = function (manager) {
   function onTableHeaderClick(ev) {
     ev.preventDefault();
     ev.stopPropagation();
+    menu.innerHTML = DROPDOWN_HTML;
     var th = ev.target;
     while (th.nodeName != "TH") {
       th = th.parentNode;

@@ -360,6 +360,7 @@ details .nav-menu-inner {
 /* Table/database actions menu */
 .page-action-menu {
     position: relative;
+    margin-bottom: 0.5em;
 }
 .actions-menu-links {
     display: inline;

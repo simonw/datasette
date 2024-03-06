@@ -949,10 +949,10 @@ async def test_hook_table_actions(ds_client, table_or_view):
 @pytest.mark.parametrize(
     "path,expected_url",
     (
-        ("/fixtures?sql=select+1", "/fixtures/-/explain?sql=select+1"),
+        ("/fixtures?sql=select+1", "/fixtures?sql=explain+select+1"),
         (
             "/fixtures/pragma_cache_size",
-            "/fixtures/-/explain?sql=PRAGMA+cache_size%3B&query_name=pragma_cache_size",
+            "/fixtures?sql=explain+PRAGMA+cache_size%3B",
         ),
     ),
 )

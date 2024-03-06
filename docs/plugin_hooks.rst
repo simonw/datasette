@@ -1561,10 +1561,10 @@ This example adds a new query action linking to a page for explaining a query:
         return [
             {
                 "href": datasette.urls.database(database)
-                + "/-/explain?"
+                + "?"
                 + urllib.parse.urlencode(
                     {
-                        "sql": sql,
+                        "sql": "explain " + sql,
                     }
                 ),
                 "label": "Explain this query",

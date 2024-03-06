@@ -401,8 +401,12 @@ def query_actions(datasette, database, query_name, sql):
     return [
         {
             "href": datasette.urls.database(database)
-            + "/-/explain?"
-            + urllib.parse.urlencode(args),
+            + "?"
+            + urllib.parse.urlencode(
+                {
+                    "sql": "explain " + sql,
+                }
+            ),
             "label": "Explain this query",
         },
     ]

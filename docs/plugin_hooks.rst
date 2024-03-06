@@ -1557,7 +1557,10 @@ This example adds a new query action linking to a page for explaining a query:
 
 
     @hookimpl
-    def query_actions(datasette, database, sql):
+    def query_actions(datasette, database, query_name, sql):
+        # Don't explain an explain
+        if sql.lower().startswith("explain"):
+            return
         return [
             {
                 "href": datasette.urls.database(database)
@@ -1570,7 +1573,6 @@ This example adds a new query action linking to a page for explaining a query:
                 "label": "Explain this query",
             },
         ]
-
 
 .. _plugin_hook_database_actions:
 

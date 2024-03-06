@@ -954,6 +954,8 @@ async def test_hook_table_actions(ds_client, table_or_view):
             "/fixtures/pragma_cache_size",
             "/fixtures?sql=explain+PRAGMA+cache_size%3B",
         ),
+        # Don't attempt to explain an explain
+        ("/fixtures?sql=explain+select+1", None),
     ),
 )
 async def test_hook_query_actions(ds_client, path, expected_url):
@@ -967,7 +969,10 @@ async def test_hook_query_actions(ds_client, path, expected_url):
     response = await ds_client.get(path)
     assert response.status_code == 200
     links = get_table_actions_links(response.text)
-    assert links == [{"label": "Explain this query", "href": expected_url}]
+    if expected_url is None:
+        assert links == []
+    else:
+        assert links == [{"label": "Explain this query", "href": expected_url}]
 
 
 @pytest.mark.asyncio

@@ -1019,6 +1019,21 @@ async def test_hidden_sqlite_stat1_table():
 
 
 @pytest.mark.asyncio
+async def test_hide_tables_starting_with_underscore():
+    ds = Datasette()
+    db = ds.add_memory_database("test_hide_tables_starting_with_underscore")
+    await db.execute_write("create table normal (id integer primary key, name text)")
+    await db.execute_write("create table _hidden (id integer primary key, name text)")
+    data = (
+        await ds.client.get(
+            "/test_hide_tables_starting_with_underscore.json?_show_hidden=1"
+        )
+    ).json()
+    tables = [(t["name"], t["hidden"]) for t in data["tables"]]
+    assert tables == [("normal", False), ("_hidden", True)]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("db_name", ("foo", r"fo%o", "f~/c.d"))
 async def test_tilde_encoded_database_names(db_name):
     ds = Datasette()

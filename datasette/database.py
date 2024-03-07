@@ -469,6 +469,7 @@ class Database:
                 and (
                     sql like '%VIRTUAL TABLE%USING FTS%'
                 ) or name in ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
+                or name like '\\_%' escape '\\'
             """
                 )
             ).rows

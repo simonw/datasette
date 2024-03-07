@@ -40,6 +40,21 @@ The JSON version of this page provides programmatic access to the underlying dat
 * `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
 * `global-power-plants.datasettes.com/global-power-plants.json <https://global-power-plants.datasettes.com/global-power-plants.json>`_
 
+.. _DatabaseView_hidden:
+
+Hidden tables
+-------------
+
+Some tables listed on the database page are treated as hidden. Hidden tables are not completely invisible - they can be accessed through the "hidden tables" link at the bottom of the page. They are hidden because they represent low-level implementation details which are generally not useful to end-users of Datasette.
+
+The following tables are hidden by default:
+
+- Any table with a name that starts with an underscore - this is a Datasette convention to help plugins easily hide their own internal tables.
+- Tables that have been configured as ``"hidden": true`` using :ref:`metadata_hiding_tables`.
+- ``*_fts`` tables that implement SQLite full-text search indexes.
+- Tables relating to the inner workings of the SpatiaLite SQLite extension.
+- ``sqlite_stat`` tables used to store statistics used by the query optimizer.
+
 .. _TableView:
 
 Table

@@ -925,24 +925,25 @@ async def test_hook_menu_links(ds_client):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("table_or_view", ["facetable", "simple_view"])
 async def test_hook_table_actions(ds_client, table_or_view):
-    def get_table_actions_links(html):
-        soup = Soup(html, "html.parser")
-        details = soup.find("details", {"class": "actions-menu-links"})
-        if details is None:
-            return []
-        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
-
     response = await ds_client.get(f"/fixtures/{table_or_view}")
-    assert get_table_actions_links(response.text) == []
+    assert get_actions_links(response.text) == []
 
     response_2 = await ds_client.get(f"/fixtures/{table_or_view}?_bot=1&_hello=BOB")
     assert sorted(
-        get_table_actions_links(response_2.text), key=lambda link: link["label"]
+        get_actions_links(response_2.text), key=lambda link: link["label"]
     ) == [
         {"label": "Database: fixtures", "href": "/"},
         {"label": "From async BOB", "href": "/"},
         {"label": f"Table: {table_or_view}", "href": "/"},
     ]
+
+
+def get_actions_links(html):
+    soup = Soup(html, "html.parser")
+    details = soup.find("details", {"class": "actions-menu-links"})
+    if details is None:
+        return []
+    return [{"label": a.text.strip(), "href": a["href"]} for a in details.select("a")]
 
 
 @pytest.mark.asyncio
@@ -959,16 +960,9 @@ async def test_hook_table_actions(ds_client, table_or_view):
     ),
 )
 async def test_hook_query_actions(ds_client, path, expected_url):
-    def get_table_actions_links(html):
-        soup = Soup(html, "html.parser")
-        details = soup.find("details", {"class": "actions-menu-links"})
-        if details is None:
-            return []
-        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
-
     response = await ds_client.get(path)
     assert response.status_code == 200
-    links = get_table_actions_links(response.text)
+    links = get_actions_links(response.text)
     if expected_url is None:
         assert links == []
     else:
@@ -977,18 +971,11 @@ async def test_hook_query_actions(ds_client, path, expected_url):
 
 @pytest.mark.asyncio
 async def test_hook_database_actions(ds_client):
-    def get_table_actions_links(html):
-        soup = Soup(html, "html.parser")
-        details = soup.find("details", {"class": "actions-menu-links"})
-        if details is None:
-            return []
-        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
-
     response = await ds_client.get("/fixtures")
-    assert get_table_actions_links(response.text) == []
+    assert get_actions_links(response.text) == []
 
     response_2 = await ds_client.get("/fixtures?_bot=1&_hello=BOB")
-    assert get_table_actions_links(response_2.text) == [
+    assert get_actions_links(response_2.text) == [
         {"label": "Database: fixtures - BOB", "href": "/"},
     ]
 

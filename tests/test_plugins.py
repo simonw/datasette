@@ -943,7 +943,16 @@ def get_actions_links(html):
     details = soup.find("details", {"class": "actions-menu-links"})
     if details is None:
         return []
-    return [{"label": a.text.strip(), "href": a["href"]} for a in details.select("a")]
+    return [
+        {
+            "label": a.text.strip(),
+            "href": a["href"],
+            "description": (
+                a.find("p").text.strip() if a.find("p") is not None else None
+            ),
+        }
+        for a in details.select("a")
+    ]
 
 
 @pytest.mark.asyncio

@@ -1515,7 +1515,7 @@ This example adds a new table action if the signed in user is ``"root"``:
                         )
                     ),
                     "label": "Edit schema for this table",
-                    "description": "Add, remove, rename or alter columns for this table."
+                    "description": "Add, remove, rename or alter columns for this table.",
                 }
             ]
 

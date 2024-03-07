@@ -47,7 +47,11 @@
         {% if links %}
         <ul>
             {% for link in links %}
-            <li><a href="{{ link.href }}">{{ link.label }}</a></li>
+            <li><a href="{{ link.href }}">{{ link.label }}
+            {% if link.description %}
+                <p class="dropdown-description">{{ link.description }}</p>
+            {% endif %}</a>
+            </li>
             {% endfor %}
         </ul>
         {% endif %}

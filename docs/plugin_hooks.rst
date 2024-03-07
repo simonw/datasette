@@ -1493,7 +1493,7 @@ table_actions(datasette, actor, database, table, request)
 ``request`` - :ref:`internals_request` or None
     The current HTTP request. This can be ``None`` if the request object is not available.
 
-This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items.
+This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items, with optional ``"description": "..."`` keys describing each action in more detail.
 
 It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
 
@@ -1515,6 +1515,7 @@ This example adds a new table action if the signed in user is ``"root"``:
                         )
                     ),
                     "label": "Edit schema for this table",
+                    "description": "Add, remove, rename or alter columns for this table."
                 }
             ]
 
@@ -1571,6 +1572,7 @@ This example adds a new query action linking to a page for explaining a query:
                     }
                 ),
                 "label": "Explain this query",
+                "description": "Get a summary of how SQLite executes the query",
             },
         ]
 

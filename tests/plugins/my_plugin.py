@@ -406,6 +406,7 @@ def query_actions(datasette, database, query_name, sql):
                 }
             ),
             "label": "Explain this query",
+            "description": "Runs a SQLite explain",
         },
     ]
 

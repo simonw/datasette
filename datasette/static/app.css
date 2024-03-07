@@ -840,6 +840,13 @@ svg.dropdown-menu-icon {
 .dropdown-menu a:hover {
     background-color: #eee;
 }
+.dropdown-menu .dropdown-description {
+    margin: 0;
+    color: #666;
+    font-size: 0.8em;
+    max-width: 80vw;
+    white-space: normal;
+}
 .dropdown-menu .hook {
     display: block;
     position: absolute;

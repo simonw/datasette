@@ -246,6 +246,7 @@ allowed_pragmas = (
     "schema_version",
     "table_info",
     "table_xinfo",
+    "table_list",
 )
 disallawed_sql_res = [
     (

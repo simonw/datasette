@@ -1576,6 +1576,8 @@ This example adds a new query action linking to a page for explaining a query:
             },
         ]
 
+Example: `datasette-create-view <https://datasette.io/plugins/datasette-create-view>`_
+
 .. _plugin_hook_database_actions:
 
 database_actions(datasette, actor, database, request)

@@ -156,6 +156,11 @@ def database_actions(datasette, actor, database, request):
 
 
 @hookspec
+def homepage_actions(datasette, actor, request):
+    """Links for the homepage actions menu"""
+
+
+@hookspec
 def skip_csrf(datasette, scope):
     """Mechanism for skipping CSRF checks for certain requests"""
 

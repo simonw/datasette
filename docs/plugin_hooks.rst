@@ -1629,6 +1629,39 @@ This example adds a new database action for creating a table, if the user has th
 
 Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_, `datasette-edit-schema <https://datasette.io/plugins/datasette-edit-schema>`_
 
+.. _plugin_hook_homepage_actions:
+
+homepage_actions(datasette, actor, request)
+-------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the index page of the Datasette instance.
+
+This example adds a link an imagined tool for editing the homepage, only for signed in users:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def homepage_actions(datasette, actor):
+        if actor:
+            return [
+                {
+                    "href": datasette.urls.path("/-/customize-homepage"),
+                    "label": "Customize homepage",
+                }
+            ]
+
 .. _plugin_hook_skip_csrf:
 
 skip_csrf(datasette, scope)

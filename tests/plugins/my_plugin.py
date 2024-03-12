@@ -426,6 +426,18 @@ def database_actions(datasette, database, actor, request):
 
 
 @hookimpl
+def homepage_actions(datasette, actor, request):
+    if actor:
+        label = f"Custom homepage for: {actor['id']}"
+        return [
+            {
+                "href": datasette.urls.path("/-/custom-homepage"),
+                "label": label,
+            }
+        ]
+
+
+@hookimpl
 def skip_csrf(scope):
     return scope["path"] == "/skip-csrf"
 

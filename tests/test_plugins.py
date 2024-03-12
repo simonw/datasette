@@ -995,6 +995,25 @@ async def test_hook_database_actions(ds_client):
     ]
 
 
+@pytest.mark.asyncio
+async def test_hook_homepage_actions(ds_client):
+    response = await ds_client.get("/")
+    # No button for anonymous users
+    assert "<span>Homepage actions</span>" not in response.text
+    # Signed in user gets an action
+    response2 = await ds_client.get(
+        "/", cookies={"ds_actor": ds_client.actor_cookie({"id": "troy"})}
+    )
+    assert "<span>Homepage actions</span>" in response2.text
+    assert get_actions_links(response2.text) == [
+        {
+            "label": "Custom homepage for: troy",
+            "href": "/-/custom-homepage",
+            "description": None,
+        },
+    ]
+
+
 def test_hook_skip_csrf(app_client):
     cookie = app_client.actor_cookie({"id": "test"})
     csrf_response = app_client.post(

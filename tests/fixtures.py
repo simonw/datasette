@@ -42,6 +42,7 @@ EXPECTED_PLUGINS = [
             "extra_js_urls",
             "extra_template_vars",
             "forbidden",
+            "homepage_actions",
             "menu_links",
             "permission_allowed",
             "prepare_connection",

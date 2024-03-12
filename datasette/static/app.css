@@ -269,6 +269,7 @@ header,
 footer {
     padding: 0.6rem 1rem 0.5rem 1rem;
     background-color: #276890;
+    background: linear-gradient(180deg, rgba(96,144,173,1) 0%, rgba(39,104,144,1) 50%);
     color: rgba(255,255,244,0.9);
     overflow: hidden;
     box-sizing: border-box;
@@ -346,12 +347,17 @@ details.nav-menu > summary::-webkit-details-marker {
 }
 details .nav-menu-inner {
     position: absolute;
-    top: 2rem;
+    top: 2.6rem;
     right: 10px;
     width: 180px;
     background-color: #276890;
-    padding: 1rem;
     z-index: 1000;
+    padding: 0;
+}
+.nav-menu-inner li,
+form.nav-menu-logout {
+    padding: 0.3rem 0.5rem;
+    border-top: 1px solid #ffffff69;
 }
 .nav-menu-inner a {
     display: block;

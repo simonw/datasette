@@ -37,7 +37,7 @@
             </ul>
             {% endif %}
             {% if show_logout %}
-            <form action="{{ urls.logout() }}" method="post">
+            <form class="nav-menu-logout" action="{{ urls.logout() }}" method="post">
                 <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
                 <button class="button-as-link">Log out</button>
             </form>{% endif %}

@@ -1557,6 +1557,10 @@ Action hooks
 
 Action hooks can be used to add items to the action menus that appear at the top of different pages within Datasette. Unlike :ref:`menu_links() <plugin_hook_menu_links>`, actions which are displayed on every page, actions should only be relevant to the page the user is currently viewing.
 
+Each of these hooks should return return a list of ``{"href": "...", "label": "..."}`` menu items, with optional ``"description": "..."`` keys describing each action in more detail.
+
+They can alternatively return an ``async def`` awaitable function which, when called, returns a list of those menu items.
+
 .. _plugin_hook_table_actions:
 
 table_actions(datasette, actor, database, table, request)
@@ -1576,10 +1580,6 @@ table_actions(datasette, actor, database, table, request)
 
 ``request`` - :ref:`internals_request` or None
     The current HTTP request. This can be ``None`` if the request object is not available.
-
-This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items, with optional ``"description": "..."`` keys describing each action in more detail.
-
-It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
 
 This example adds a new table action if the signed in user is ``"root"``:
 
@@ -1653,7 +1653,7 @@ query_actions(datasette, actor, database, query_name, request, sql, params)
 ``params`` - dictionary
     The parameters passed to the SQL query, if any.
 
-This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the canned query and arbitrary SQL query pages.
+Populates a "Query actions" menu on the canned query and arbitrary SQL query pages.
 
 This example adds a new query action linking to a page for explaining a query:
 
@@ -1684,6 +1684,49 @@ This example adds a new query action linking to a page for explaining a query:
 
 Example: `datasette-create-view <https://datasette.io/plugins/datasette-create-view>`_
 
+.. _plugin_hook_row_actions:
+
+row_actions(datasette, actor, request, database, table, row)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - :ref:`internals_request` or None
+    The current HTTP request.
+
+``database`` - string
+    The name of the database.
+
+``table`` - string
+    The name of the table.
+
+``row`` - ``sqlite.Row``
+    The SQLite row object being dispayed on the page.
+
+Return links for the "Row actions" menu shown at the top of the row page.
+
+This example displays the row in JSON plus some additional debug information if the user is signed in:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def row_actions(datasette, database, table, actor, row):
+        if actor:
+            return [
+                {
+                    "href": datasette.urls.instance(),
+                    "label": f"Row details for {actor['id']}",
+                    "description": json.dumps(dict(row), default=repr),
+                },
+            ]
+
 .. _plugin_hook_database_actions:
 
 database_actions(datasette, actor, database, request)
@@ -1701,7 +1744,7 @@ database_actions(datasette, actor, database, request)
 ``request`` - :ref:`internals_request`
     The current HTTP request.
 
-This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.
+Populates an actions menu on the database page.
 
 This example adds a new database action for creating a table, if the user has the ``edit-schema`` permission:
 
@@ -1749,7 +1792,7 @@ homepage_actions(datasette, actor, request)
 ``request`` - :ref:`internals_request`
     The current HTTP request.
 
-This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the index page of the Datasette instance.
+Populates an actions menu on the top-level index homepage of the Datasette instance.
 
 This example adds a link an imagined tool for editing the homepage, only for signed in users:
 

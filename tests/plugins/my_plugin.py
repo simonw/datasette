@@ -424,6 +424,18 @@ def query_actions(datasette, database, query_name, sql):
 
 
 @hookimpl
+def row_actions(datasette, database, table, actor, row):
+    if actor:
+        return [
+            {
+                "href": datasette.urls.instance(),
+                "label": f"Row details for {actor['id']}",
+                "description": json.dumps(dict(row), default=repr),
+            },
+        ]
+
+
+@hookimpl
 def database_actions(datasette, database, actor, request):
     if actor:
         label = f"Database: {database}"

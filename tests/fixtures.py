@@ -53,6 +53,7 @@ EXPECTED_PLUGINS = [
             "register_permissions",
             "register_routes",
             "render_cell",
+            "row_actions",
             "skip_csrf",
             "startup",
             "table_actions",

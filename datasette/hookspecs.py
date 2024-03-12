@@ -141,6 +141,11 @@ def menu_links(datasette, actor, request):
 
 
 @hookspec
+def row_actions(datasette, actor, request, database, table, row):
+    """Links for the row actions menu"""
+
+
+@hookspec
 def table_actions(datasette, actor, database, table, request):
     """Links for the table actions menu"""
 

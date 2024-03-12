@@ -1001,6 +1001,24 @@ async def test_hook_query_actions(ds_client, path, expected_url):
 
 
 @pytest.mark.asyncio
+async def test_hook_row_actions(ds_client):
+    response = await ds_client.get("/fixtures/facet_cities/1")
+    assert get_actions_links(response.text) == []
+
+    response_2 = await ds_client.get(
+        "/fixtures/facet_cities/1",
+        cookies={"ds_actor": ds_client.actor_cookie({"id": "sam"})},
+    )
+    assert get_actions_links(response_2.text) == [
+        {
+            "label": "Row details for sam",
+            "href": "/",
+            "description": '{"id": 1, "name": "San Francisco"}',
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_hook_database_actions(ds_client):
     response = await ds_client.get("/fixtures")
     assert get_actions_links(response.text) == []

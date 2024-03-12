@@ -3,10 +3,12 @@ from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
 from .base import DataView, BaseView, _error
 from datasette.utils import (
+    await_me_maybe,
     make_slot_function,
     to_css_class,
     escape_sqlite,
 )
+from datasette.plugins import pm
 import json
 import sqlite_utils
 from .table import display_columns_and_rows
@@ -55,6 +57,20 @@ class RowView(DataView):
             )
             for column in display_columns:
                 column["sortable"] = False
+
+            row_actions = []
+            for hook in pm.hook.row_actions(
+                datasette=self.ds,
+                actor=request.actor,
+                request=request,
+                database=database,
+                table=table,
+                row=rows[0],
+            ):
+                extra_links = await await_me_maybe(hook)
+                if extra_links:
+                    row_actions.extend(extra_links)
+
             return {
                 "private": private,
                 "foreign_key_tables": await self.foreign_key_tables(
@@ -68,6 +84,7 @@ class RowView(DataView):
                     f"_table-row-{to_css_class(database)}-{to_css_class(table)}.html",
                     "_table.html",
                 ],
+                "row_actions": row_actions,
                 "metadata": (self.ds.metadata("databases") or {})
                 .get(database, {})
                 .get("tables", {})

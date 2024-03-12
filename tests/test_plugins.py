@@ -926,8 +926,8 @@ async def test_hook_menu_links(ds_client):
 async def test_hook_table_actions(ds_client):
     response = await ds_client.get("/fixtures/facetable")
     assert get_actions_links(response.text) == []
-
     response_2 = await ds_client.get("/fixtures/facetable?_bot=1&_hello=BOB")
+    assert ">Table actions<" in response_2.text
     assert sorted(
         get_actions_links(response_2.text), key=lambda link: link["label"]
     ) == [
@@ -941,11 +941,11 @@ async def test_hook_table_actions(ds_client):
 async def test_hook_view_actions(ds_client):
     response = await ds_client.get("/fixtures/simple_view")
     assert get_actions_links(response.text) == []
-
     response_2 = await ds_client.get(
         "/fixtures/simple_view",
         cookies={"ds_actor": ds_client.actor_cookie({"id": "bob"})},
     )
+    assert ">View actions<" in response_2.text
     assert sorted(
         get_actions_links(response_2.text), key=lambda link: link["label"]
     ) == [

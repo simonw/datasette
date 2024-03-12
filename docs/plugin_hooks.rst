@@ -1705,7 +1705,7 @@ row_actions(datasette, actor, request, database, table, row)
     The name of the table.
 
 ``row`` - ``sqlite.Row``
-    The SQLite row object being dispayed on the page.
+    The SQLite row object being displayed on the page.
 
 Return links for the "Row actions" menu shown at the top of the row page.
 

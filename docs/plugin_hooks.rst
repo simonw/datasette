@@ -1723,7 +1723,9 @@ This example displays the row in JSON plus some additional debug information if 
                 {
                     "href": datasette.urls.instance(),
                     "label": f"Row details for {actor['id']}",
-                    "description": json.dumps(dict(row), default=repr),
+                    "description": json.dumps(
+                        dict(row), default=repr
+                    ),
                 },
             ]
 

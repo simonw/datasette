@@ -1401,22 +1401,28 @@ async def table_view_data(
         "Primary keys for this table"
         return pks
 
-    async def extra_table_actions():
-        async def table_actions():
+    async def extra_actions():
+        async def actions():
             links = []
-            for hook in pm.hook.table_actions(
-                datasette=datasette,
-                table=table_name,
-                database=database_name,
-                actor=request.actor,
-                request=request,
-            ):
+            kwargs = {
+                "datasette": datasette,
+                "database": database_name,
+                "actor": request.actor,
+                "request": request,
+            }
+            if is_view:
+                kwargs["view"] = table_name
+                method = pm.hook.view_actions
+            else:
+                kwargs["table"] = table_name
+                method = pm.hook.table_actions
+            for hook in method(**kwargs):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:
                     links.extend(extra_links)
             return links
 
-        return table_actions
+        return actions
 
     async def extra_is_view():
         return is_view
@@ -1606,7 +1612,7 @@ async def table_view_data(
             "database",
             "table",
             "database_color",
-            "table_actions",
+            "actions",
             "filters",
             "renderers",
             "custom_table_templates",
@@ -1647,7 +1653,7 @@ async def table_view_data(
         extra_database,
         extra_table,
         extra_database_color,
-        extra_table_actions,
+        extra_actions,
         extra_filters,
         extra_renderers,
         extra_custom_table_templates,

@@ -1521,6 +1521,28 @@ This example adds a new table action if the signed in user is ``"root"``:
 
 Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
 
+.. _plugin_hook_view_actions:
+
+view_actions(datasette, actor, database, view, request)
+-------------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``view`` - string
+    The name of the SQL view.
+
+``request`` - :ref:`internals_request` or None
+    The current HTTP request. This can be ``None`` if the request object is not available.
+
+Like :ref:`plugin_hook_table_actions` but for SQL views.
+
 .. _plugin_hook_query_actions:
 
 query_actions(datasette, actor, database, query_name, request, sql, params)
@@ -1657,7 +1679,9 @@ This example adds a link an imagined tool for editing the homepage, only for sig
         if actor:
             return [
                 {
-                    "href": datasette.urls.path("/-/customize-homepage"),
+                    "href": datasette.urls.path(
+                        "/-/customize-homepage"
+                    ),
                     "label": "Customize homepage",
                 }
             ]

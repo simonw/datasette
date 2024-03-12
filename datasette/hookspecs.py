@@ -146,6 +146,11 @@ def table_actions(datasette, actor, database, table, request):
 
 
 @hookspec
+def view_actions(datasette, actor, database, view, request):
+    """Links for the view actions menu"""
+
+
+@hookspec
 def query_actions(datasette, actor, database, query_name, request, sql, params):
     """Links for the query and canned query actions menu"""
 

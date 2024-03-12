@@ -923,18 +923,34 @@ async def test_hook_menu_links(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("table_or_view", ["facetable", "simple_view"])
-async def test_hook_table_actions(ds_client, table_or_view):
-    response = await ds_client.get(f"/fixtures/{table_or_view}")
+async def test_hook_table_actions(ds_client):
+    response = await ds_client.get("/fixtures/facetable")
     assert get_actions_links(response.text) == []
 
-    response_2 = await ds_client.get(f"/fixtures/{table_or_view}?_bot=1&_hello=BOB")
+    response_2 = await ds_client.get("/fixtures/facetable?_bot=1&_hello=BOB")
     assert sorted(
         get_actions_links(response_2.text), key=lambda link: link["label"]
     ) == [
         {"label": "Database: fixtures", "href": "/", "description": None},
         {"label": "From async BOB", "href": "/", "description": None},
-        {"label": f"Table: {table_or_view}", "href": "/", "description": None},
+        {"label": "Table: facetable", "href": "/", "description": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hook_view_actions(ds_client):
+    response = await ds_client.get("/fixtures/simple_view")
+    assert get_actions_links(response.text) == []
+
+    response_2 = await ds_client.get(
+        "/fixtures/simple_view",
+        cookies={"ds_actor": ds_client.actor_cookie({"id": "bob"})},
+    )
+    assert sorted(
+        get_actions_links(response_2.text), key=lambda link: link["label"]
+    ) == [
+        {"label": "Database: fixtures", "href": "/", "description": None},
+        {"label": "View: simple_view", "href": "/", "description": None},
     ]
 
 

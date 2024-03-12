@@ -56,6 +56,7 @@ EXPECTED_PLUGINS = [
             "skip_csrf",
             "startup",
             "table_actions",
+            "view_actions",
         ],
     },
     {

@@ -392,6 +392,18 @@ def table_actions(datasette, database, table, actor):
 
 
 @hookimpl
+def view_actions(datasette, database, view, actor):
+    if actor:
+        return [
+            {
+                "href": datasette.urls.instance(),
+                "label": f"Database: {database}",
+            },
+            {"href": datasette.urls.instance(), "label": f"View: {view}"},
+        ]
+
+
+@hookimpl
 def query_actions(datasette, database, query_name, sql):
     # Don't explain an explain
     if sql.lower().startswith("explain"):

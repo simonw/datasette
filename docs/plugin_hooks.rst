@@ -92,10 +92,17 @@ This function can return an awaitable function if it needs to run any async code
 
 Examples: `datasette-edit-templates <https://datasette.io/plugins/datasette-edit-templates>`_
 
+.. _plugin_page_extras:
+
+Page extras
+-----------
+
+These plugin hooks can be used to affect the way HTML pages for different Datasette interfaces are rendered.
+
 .. _plugin_hook_extra_template_vars:
 
 extra_template_vars(template, database, table, columns, view_name, request, datasette)
---------------------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Extra template variables that should be made available in the rendered template context.
 
@@ -184,7 +191,7 @@ Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-a
 .. _plugin_hook_extra_css_urls:
 
 extra_css_urls(template, database, table, columns, view_name, request, datasette)
----------------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
 
@@ -238,7 +245,7 @@ Examples: `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster
 .. _plugin_hook_extra_js_urls:
 
 extra_js_urls(template, database, table, columns, view_name, request, datasette)
---------------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This takes the same arguments as :ref:`extra_template_vars(...) <plugin_hook_extra_template_vars>`
 
@@ -288,7 +295,7 @@ Examples: `datasette-cluster-map <https://datasette.io/plugins/datasette-cluster
 .. _plugin_hook_extra_body_script:
 
 extra_body_script(template, database, table, columns, view_name, request, datasette)
-------------------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Extra JavaScript to be added to a ``<script>`` block at the end of the ``<body>`` element on the page.
 
@@ -1430,262 +1437,6 @@ This example logs an error to `Sentry <https://sentry.io/>`__ and then renders a
 
 Example: `datasette-sentry <https://datasette.io/plugins/datasette-sentry>`_
 
-.. _plugin_hook_menu_links:
-
-menu_links(datasette, actor, request)
--------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-``request`` - :ref:`internals_request` or None
-    The current HTTP request. This can be ``None`` if the request object is not available.
-
-This hook allows additional items to be included in the menu displayed by Datasette's top right menu icon.
-
-The hook should return a list of ``{"href": "...", "label": "..."}`` menu items. These will be added to the menu.
-
-It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
-
-This example adds a new menu item but only if the signed in user is ``"root"``:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def menu_links(datasette, actor):
-        if actor and actor.get("id") == "root":
-            return [
-                {
-                    "href": datasette.urls.path(
-                        "/-/edit-schema"
-                    ),
-                    "label": "Edit schema",
-                },
-            ]
-
-Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`setting_base_url` setting into account.
-
-Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-all>`_, `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
-
-.. _plugin_hook_table_actions:
-
-table_actions(datasette, actor, database, table, request)
----------------------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-``database`` - string
-    The name of the database.
-
-``table`` - string
-    The name of the table.
-
-``request`` - :ref:`internals_request` or None
-    The current HTTP request. This can be ``None`` if the request object is not available.
-
-This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items, with optional ``"description": "..."`` keys describing each action in more detail.
-
-It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
-
-This example adds a new table action if the signed in user is ``"root"``:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def table_actions(datasette, actor, database, table):
-        if actor and actor.get("id") == "root":
-            return [
-                {
-                    "href": datasette.urls.path(
-                        "/-/edit-schema/{}/{}".format(
-                            database, table
-                        )
-                    ),
-                    "label": "Edit schema for this table",
-                    "description": "Add, remove, rename or alter columns for this table.",
-                }
-            ]
-
-Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
-
-.. _plugin_hook_view_actions:
-
-view_actions(datasette, actor, database, view, request)
--------------------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-``database`` - string
-    The name of the database.
-
-``view`` - string
-    The name of the SQL view.
-
-``request`` - :ref:`internals_request` or None
-    The current HTTP request. This can be ``None`` if the request object is not available.
-
-Like :ref:`plugin_hook_table_actions` but for SQL views.
-
-.. _plugin_hook_query_actions:
-
-query_actions(datasette, actor, database, query_name, request, sql, params)
----------------------------------------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-``database`` - string
-    The name of the database.
-
-``query_name`` - string or None
-    The name of the canned query, or ``None`` if this is an arbitrary SQL query.
-
-``request`` - :ref:`internals_request`
-    The current HTTP request.
-
-``sql`` - string
-    The SQL query being executed
-
-``params`` - dictionary
-    The parameters passed to the SQL query, if any.
-
-This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the canned query and arbitrary SQL query pages.
-
-This example adds a new query action linking to a page for explaining a query:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-    import urllib
-
-
-    @hookimpl
-    def query_actions(datasette, database, query_name, sql):
-        # Don't explain an explain
-        if sql.lower().startswith("explain"):
-            return
-        return [
-            {
-                "href": datasette.urls.database(database)
-                + "?"
-                + urllib.parse.urlencode(
-                    {
-                        "sql": "explain " + sql,
-                    }
-                ),
-                "label": "Explain this query",
-                "description": "Get a summary of how SQLite executes the query",
-            },
-        ]
-
-Example: `datasette-create-view <https://datasette.io/plugins/datasette-create-view>`_
-
-.. _plugin_hook_database_actions:
-
-database_actions(datasette, actor, database, request)
------------------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-``database`` - string
-    The name of the database.
-
-``request`` - :ref:`internals_request`
-    The current HTTP request.
-
-This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.
-
-This example adds a new database action for creating a table, if the user has the ``edit-schema`` permission:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def database_actions(datasette, actor, database):
-        async def inner():
-            if not await datasette.permission_allowed(
-                actor,
-                "edit-schema",
-                resource=database,
-                default=False,
-            ):
-                return []
-            return [
-                {
-                    "href": datasette.urls.path(
-                        "/-/edit-schema/{}/-/create".format(
-                            database
-                        )
-                    ),
-                    "label": "Create a table",
-                }
-            ]
-
-        return inner
-
-Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_, `datasette-edit-schema <https://datasette.io/plugins/datasette-edit-schema>`_
-
-.. _plugin_hook_homepage_actions:
-
-homepage_actions(datasette, actor, request)
--------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-``request`` - :ref:`internals_request`
-    The current HTTP request.
-
-This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the index page of the Datasette instance.
-
-This example adds a link an imagined tool for editing the homepage, only for signed in users:
-
-.. code-block:: python
-
-    from datasette import hookimpl
-
-
-    @hookimpl
-    def homepage_actions(datasette, actor):
-        if actor:
-            return [
-                {
-                    "href": datasette.urls.path(
-                        "/-/customize-homepage"
-                    ),
-                    "label": "Customize homepage",
-                }
-            ]
-
 .. _plugin_hook_skip_csrf:
 
 skip_csrf(datasette, scope)
@@ -1755,6 +1506,269 @@ This hook is responsible for returning a dictionary corresponding to Datasette :
         return metadata
 
 Example: `datasette-remote-metadata plugin <https://datasette.io/plugins/datasette-remote-metadata>`__
+
+.. _plugin_hook_menu_links:
+
+menu_links(datasette, actor, request)
+-------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - :ref:`internals_request` or None
+    The current HTTP request. This can be ``None`` if the request object is not available.
+
+This hook allows additional items to be included in the menu displayed by Datasette's top right menu icon.
+
+The hook should return a list of ``{"href": "...", "label": "..."}`` menu items. These will be added to the menu.
+
+It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
+
+This example adds a new menu item but only if the signed in user is ``"root"``:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def menu_links(datasette, actor):
+        if actor and actor.get("id") == "root":
+            return [
+                {
+                    "href": datasette.urls.path(
+                        "/-/edit-schema"
+                    ),
+                    "label": "Edit schema",
+                },
+            ]
+
+Using :ref:`internals_datasette_urls` here ensures that links in the menu will take the :ref:`setting_base_url` setting into account.
+
+Examples: `datasette-search-all <https://datasette.io/plugins/datasette-search-all>`_, `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
+
+.. _plugin_actions:
+
+Action hooks
+------------
+
+Action hooks can be used to add items to the action menus that appear at the top of different pages within Datasette. Unlike :ref:`menu_links() <plugin_hook_menu_links>`, actions which are displayed on every page, actions should only be relevant to the page the user is currently viewing.
+
+.. _plugin_hook_table_actions:
+
+table_actions(datasette, actor, database, table, request)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``table`` - string
+    The name of the table.
+
+``request`` - :ref:`internals_request` or None
+    The current HTTP request. This can be ``None`` if the request object is not available.
+
+This hook allows table actions to be displayed in a menu accessed via an action icon at the top of the table page. It should return a list of ``{"href": "...", "label": "..."}`` menu items, with optional ``"description": "..."`` keys describing each action in more detail.
+
+It can alternatively return an ``async def`` awaitable function which returns a list of menu items.
+
+This example adds a new table action if the signed in user is ``"root"``:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def table_actions(datasette, actor, database, table):
+        if actor and actor.get("id") == "root":
+            return [
+                {
+                    "href": datasette.urls.path(
+                        "/-/edit-schema/{}/{}".format(
+                            database, table
+                        )
+                    ),
+                    "label": "Edit schema for this table",
+                    "description": "Add, remove, rename or alter columns for this table.",
+                }
+            ]
+
+Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_
+
+.. _plugin_hook_view_actions:
+
+view_actions(datasette, actor, database, view, request)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``view`` - string
+    The name of the SQL view.
+
+``request`` - :ref:`internals_request` or None
+    The current HTTP request. This can be ``None`` if the request object is not available.
+
+Like :ref:`plugin_hook_table_actions` but for SQL views.
+
+.. _plugin_hook_query_actions:
+
+query_actions(datasette, actor, database, query_name, request, sql, params)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``query_name`` - string or None
+    The name of the canned query, or ``None`` if this is an arbitrary SQL query.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+``sql`` - string
+    The SQL query being executed
+
+``params`` - dictionary
+    The parameters passed to the SQL query, if any.
+
+This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the canned query and arbitrary SQL query pages.
+
+This example adds a new query action linking to a page for explaining a query:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import urllib
+
+
+    @hookimpl
+    def query_actions(datasette, database, query_name, sql):
+        # Don't explain an explain
+        if sql.lower().startswith("explain"):
+            return
+        return [
+            {
+                "href": datasette.urls.database(database)
+                + "?"
+                + urllib.parse.urlencode(
+                    {
+                        "sql": "explain " + sql,
+                    }
+                ),
+                "label": "Explain this query",
+                "description": "Get a summary of how SQLite executes the query",
+            },
+        ]
+
+Example: `datasette-create-view <https://datasette.io/plugins/datasette-create-view>`_
+
+.. _plugin_hook_database_actions:
+
+database_actions(datasette, actor, database, request)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``database`` - string
+    The name of the database.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the database page.
+
+This example adds a new database action for creating a table, if the user has the ``edit-schema`` permission:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def database_actions(datasette, actor, database):
+        async def inner():
+            if not await datasette.permission_allowed(
+                actor,
+                "edit-schema",
+                resource=database,
+                default=False,
+            ):
+                return []
+            return [
+                {
+                    "href": datasette.urls.path(
+                        "/-/edit-schema/{}/-/create".format(
+                            database
+                        )
+                    ),
+                    "label": "Create a table",
+                }
+            ]
+
+        return inner
+
+Example: `datasette-graphql <https://datasette.io/plugins/datasette-graphql>`_, `datasette-edit-schema <https://datasette.io/plugins/datasette-edit-schema>`_
+
+.. _plugin_hook_homepage_actions:
+
+homepage_actions(datasette, actor, request)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``datasette`` - :ref:`internals_datasette`
+    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``, or to execute SQL queries.
+
+``actor`` - dictionary or None
+    The currently authenticated :ref:`actor <authentication_actor>`.
+
+``request`` - :ref:`internals_request`
+    The current HTTP request.
+
+This hook is similar to :ref:`plugin_hook_table_actions` but populates an actions menu on the index page of the Datasette instance.
+
+This example adds a link an imagined tool for editing the homepage, only for signed in users:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def homepage_actions(datasette, actor):
+        if actor:
+            return [
+                {
+                    "href": datasette.urls.path(
+                        "/-/customize-homepage"
+                    ),
+                    "label": "Customize homepage",
+                }
+            ]
 
 .. _plugin_hook_slots:
 

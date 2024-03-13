@@ -14,10 +14,12 @@ Each of the key concepts in Datasette now has an :ref:`actions menu <plugin_acti
 - Plugin hook: :ref:`view_actions() <plugin_hook_view_actions>` for actions that can be applied to a SQL view. (:issue:`2297`)
 - Plugin hook: :ref:`homepage_actions() <plugin_hook_homepage_actions>` for actions that apply to the instance homepage. (:issue:`2298`)
 - Plugin hook: :ref:`row_actions() <plugin_hook_row_actions>` for actions that apply to the row page. (:issue:`2299`)
+- Action menu items for all of the ``*_actions()`` plugin hooks can now return an optional ``"description"`` key, which will be displayed in the menu below the action label. (:issue:`2294`)
 - :ref:`Plugin hooks <plugin_hooks>` documentation page is now organized with additional headings. (:issue:`2300`)
 - Improved the display of action buttons on pages that also display metadata. (:issue:`2286`)
 - The header and footer of the page now uses a subtle gradient effect, and options in the navigation menu are better visually defined. (:issue:`2302`)
 - Table names that start with an underscore now default to hidden. (:issue:`2104`)
+- ``pragma_table_list`` has been added to the allow-list of SQLite pragma functions supported by Datasette. ``select * from pragma_table_list()`` is no longer blocked. (`#2104 <https://github.com/simonw/datasette/issues/2104#issuecomment-1982352475>`__)
 
 .. _v1_0_a12:
 

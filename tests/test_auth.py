@@ -110,7 +110,7 @@ async def test_logout_button_in_navigation(ds_client, path):
     anon_response = await ds_client.get(path)
     for fragment in (
         "<strong>test</strong>",
-        '<form action="/-/logout" method="post">',
+        '<form class="nav-menu-logout" action="/-/logout" method="post">',
     ):
         assert fragment in response.text
         assert fragment not in anon_response.text
@@ -121,7 +121,10 @@ async def test_logout_button_in_navigation(ds_client, path):
 async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, path):
     response = await ds_client.get(path + "?_bot=1")
     assert "<strong>bot</strong>" in response.text
-    assert '<form action="/-/logout" method="post">' not in response.text
+    assert (
+        '<form class="nav-menu-logout" action="/-/logout" method="post">'
+        not in response.text
+    )
 
 
 @pytest.mark.parametrize(

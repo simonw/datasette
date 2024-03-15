@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import contextmanager
+import aiofiles
 import click
 from collections import OrderedDict, namedtuple, Counter
 import copy
@@ -1418,3 +1419,24 @@ def md5_not_usedforsecurity(s):
     except TypeError:
         # For Python 3.8 which does not support usedforsecurity=False
         return hashlib.md5(s.encode("utf8")).hexdigest()
+
+
+_etag_cache = {}
+
+
+async def calculate_etag(filepath, chunk_size=4096):
+    if filepath in _etag_cache:
+        return _etag_cache[filepath]
+
+    hasher = hashlib.md5()
+    async with aiofiles.open(filepath, "rb") as f:
+        while True:
+            chunk = await f.read(chunk_size)
+            if not chunk:
+                break
+            hasher.update(chunk)
+
+    etag = f'"{hasher.hexdigest()}"'
+    _etag_cache[filepath] = etag
+
+    return etag

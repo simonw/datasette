@@ -1,5 +1,6 @@
+import hashlib
 import json
-from datasette.utils import MultiParams
+from datasette.utils import MultiParams, calculate_etag
 from mimetypes import guess_type
 from urllib.parse import parse_qs, urlunparse, parse_qsl
 from pathlib import Path
@@ -285,6 +286,7 @@ async def asgi_send_file(
     headers = headers or {}
     if filename:
         headers["content-disposition"] = f'attachment; filename="{filename}"'
+
     first = True
     headers["content-length"] = str((await aiofiles.os.stat(str(filepath))).st_size)
     async with aiofiles.open(str(filepath), mode="rb") as fp:
@@ -307,6 +309,7 @@ async def asgi_send_file(
 
 def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
     root_path = Path(root_path)
+    headers = headers or {}
 
     async def inner_static(request, send):
         path = request.scope["url_route"]["kwargs"]["path"]
@@ -325,7 +328,15 @@ def asgi_static(root_path, chunk_size=4096, headers=None, content_type=None):
             await asgi_send_html(send, "404: Path not inside root path", 404)
             return
         try:
-            await asgi_send_file(send, full_path, chunk_size=chunk_size)
+            # Calculate ETag for filepath
+            etag = await calculate_etag(full_path, chunk_size=chunk_size)
+            headers["ETag"] = etag
+            if_none_match = request.headers.get("if-none-match")
+            if if_none_match and if_none_match == etag:
+                return await asgi_send(send, "", 304)
+            await asgi_send_file(
+                send, full_path, chunk_size=chunk_size, headers=headers
+            )
         except FileNotFoundError:
             await asgi_send_html(send, "404: File not found", 404)
             return

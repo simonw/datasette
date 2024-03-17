@@ -1729,6 +1729,8 @@ This example displays the row in JSON plus some additional debug information if 
                 },
             ]
 
+Example: `datasette-enrichments <https://datasette.io/plugins/datasette-enrichments>`_
+
 .. _plugin_hook_database_actions:
 
 database_actions(datasette, actor, database, request)

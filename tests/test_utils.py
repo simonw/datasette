@@ -706,3 +706,15 @@ def test_truncate_url(url, length, expected):
 def test_pairs_to_nested_config(pairs, expected):
     actual = utils.pairs_to_nested_config(pairs)
     assert actual == expected
+
+
+@pytest.mark.asyncio
+async def test_calculate_etag(tmp_path):
+    path = tmp_path / "test.txt"
+    path.write_text("hello")
+    etag = '"5d41402abc4b2a76b9719d911017c592"'
+    assert etag == await utils.calculate_etag(path)
+    assert utils._etag_cache[path] == etag
+    utils._etag_cache[path] = "hash"
+    assert "hash" == await utils.calculate_etag(path)
+    utils._etag_cache.clear()

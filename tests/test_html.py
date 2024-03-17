@@ -78,6 +78,10 @@ async def test_static(ds_client):
     response = await ds_client.get("/-/static/app.css")
     assert response.status_code == 200
     assert "text/css" == response.headers["content-type"]
+    assert "etag" in response.headers
+    etag = response.headers.get("etag")
+    response = await ds_client.get("/-/static/app.css", headers={"if-none-match": etag})
+    assert response.status_code == 304
 
 
 def test_static_mounts():

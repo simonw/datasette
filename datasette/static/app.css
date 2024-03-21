@@ -375,6 +375,7 @@ form.nav-menu-logout {
     position: absolute;
     top: calc(100% + 10px);
     left: 0;
+    z-index: 10000;
 }
 .page-action-menu .icon-text {
     display: inline-flex;

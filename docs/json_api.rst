@@ -568,6 +568,8 @@ To insert multiple rows at a time, use the same API method but send a list of di
 
 If successful, this will return a ``201`` status code and a ``{"ok": true}`` response body.
 
+The maximum number rows that can be submitted at once defaults to 100, but this can be changed using the :ref:`setting_max_insert_rows` setting.
+
 To return the newly inserted rows, add the ``"return": true`` key to the request body:
 
 .. code-block:: json

@@ -237,6 +237,9 @@ You can filter the data returned by the table based on column values using a que
 ``?column__contains=value``
     Rows where the string column contains the specified value (``column like "%value%"`` in SQL).
 
+``?column__notcontains=value``
+    Rows where the string column does not contain the specified value (``column not like "%value%"`` in SQL).
+
 ``?column__endswith=value``
     Rows where the string column ends with the specified value (``column like "%value"`` in SQL).
 
@@ -616,7 +619,9 @@ Pass ``"ignore": true`` to ignore these errors and insert the other rows:
         "ignore": true
     }
 
-Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values.
+Or you can pass ``"replace": true`` to replace any rows with conflicting primary keys with the new values. This requires the :ref:`permissions_update_row` permission.
+
+Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
 
 .. _TableUpsertView:
 
@@ -728,6 +733,8 @@ When using upsert you must provide the primary key column (or columns if the tab
 
 If your table does not have an explicit primary key you should pass the SQLite ``rowid`` key instead.
 
+Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
+
 .. _RowUpdateView:
 
 Updating a row
@@ -783,6 +790,8 @@ The returned JSON will look like this:
 
 Any errors will return ``{"errors": ["... descriptive message ..."], "ok": false}``, and a ``400`` status code for a bad input or a ``403`` status code for an authentication or permission error.
 
+Pass ``"alter: true`` to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
+
 .. _RowDeleteView:
 
 Deleting a row
@@ -834,19 +843,22 @@ To create a table, make a ``POST`` to ``/<database>/-/create``. This requires th
 
 The JSON here describes the table that will be created:
 
-*   ``table`` is the name of the table to create. This field is required.
-*   ``columns`` is a list of columns to create. Each column is a dictionary with ``name`` and ``type`` keys.
+* ``table`` is the name of the table to create. This field is required.
+* ``columns`` is a list of columns to create. Each column is a dictionary with ``name`` and ``type`` keys.
 
-    -   ``name`` is the name of the column. This is required.
-    -   ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
+  - ``name`` is the name of the column. This is required.
+  - ``type`` is the type of the column. This is optional - if not provided, ``text`` will be assumed. The valid types are ``text``, ``integer``, ``float`` and ``blob``.
 
-*   ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
+* ``pk`` is the primary key for the table. This is optional - if not provided, Datasette will create a SQLite table with a hidden ``rowid`` column.
 
-    If the primary key is an integer column, it will be configured to automatically increment for each new record.
+  If the primary key is an integer column, it will be configured to automatically increment for each new record.
 
-    If you set this to ``id`` without including an ``id`` column in the list of ``columns``, Datasette will create an integer ID column for you.
+  If you set this to ``id`` without including an ``id`` column in the list of ``columns``, Datasette will create an auto-incrementing integer ID column for you.
 
-*   ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
+* ``pks`` can be used instead of ``pk`` to create a compound primary key. It should be a JSON list of column names to use in that primary key.
+* ``ignore`` can be set to ``true`` to ignore existing rows by primary key if the table already exists.
+* ``replace`` can be set to ``true`` to replace existing rows by primary key if the table already exists. This requires the :ref:`permissions_update_row` permission.
+* ``alter`` can be set to ``true`` if you want to automatically add any missing columns to the table. This requires the :ref:`permissions_alter_table` permission.
 
 If the table is successfully created this will return a ``201`` status code and the following response:
 
@@ -924,6 +936,8 @@ If you pass a row to the create endpoint with a primary key that already exists 
 You can avoid this error by passing the same ``"ignore": true`` or ``"replace": true`` options to the create endpoint as you can to the :ref:`insert endpoint <TableInsertView>`.
 
 To use the ``"replace": true`` option you will also need the :ref:`permissions_update_row` permission.
+
+Pass ``"alter": true`` to automatically add any missing columns to the existing table that are present in the rows you are submitting. This requires the :ref:`permissions_alter_table` permission.
 
 .. _TableDropView:
 

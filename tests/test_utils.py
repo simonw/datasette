@@ -1,6 +1,7 @@
 """
 Tests for various datasette helper functions.
 """
+
 from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request
@@ -654,4 +655,54 @@ def test_tilde_encoding(original, expected):
 )
 def test_truncate_url(url, length, expected):
     actual = utils.truncate_url(url, length)
+    assert actual == expected
+
+
+@pytest.mark.parametrize(
+    "pairs,expected",
+    (
+        # Simple nested objects
+        ([("a", "b")], {"a": "b"}),
+        ([("a.b", "c")], {"a": {"b": "c"}}),
+        # JSON literals
+        ([("a.b", "true")], {"a": {"b": True}}),
+        ([("a.b", "false")], {"a": {"b": False}}),
+        ([("a.b", "null")], {"a": {"b": None}}),
+        ([("a.b", "1")], {"a": {"b": 1}}),
+        ([("a.b", "1.1")], {"a": {"b": 1.1}}),
+        # Nested JSON literals
+        ([("a.b", '{"foo": "bar"}')], {"a": {"b": {"foo": "bar"}}}),
+        ([("a.b", "[1, 2, 3]")], {"a": {"b": [1, 2, 3]}}),
+        # JSON strings are preserved
+        ([("a.b", '"true"')], {"a": {"b": "true"}}),
+        ([("a.b", '"[1, 2, 3]"')], {"a": {"b": "[1, 2, 3]"}}),
+        # Later keys over-ride the previous
+        (
+            [
+                ("a", "b"),
+                ("a.b", "c"),
+            ],
+            {"a": {"b": "c"}},
+        ),
+        (
+            [
+                ("settings.trace_debug", "true"),
+                ("plugins.datasette-ripgrep.path", "/etc"),
+                ("settings.trace_debug", "false"),
+            ],
+            {
+                "settings": {
+                    "trace_debug": False,
+                },
+                "plugins": {
+                    "datasette-ripgrep": {
+                        "path": "/etc",
+                    }
+                },
+            },
+        ),
+    ),
+)
+def test_pairs_to_nested_config(pairs, expected):
+    actual = utils.pairs_to_nested_config(pairs)
     assert actual == expected

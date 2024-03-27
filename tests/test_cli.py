@@ -4,7 +4,6 @@ from .fixtures import (
     TestClient as _TestClient,
     EXPECTED_PLUGINS,
 )
-import asyncio
 from datasette.app import SETTINGS
 from datasette.plugins import DEFAULT_PLUGINS
 from datasette.cli import cli, serve
@@ -19,7 +18,6 @@ import pytest
 import sys
 import textwrap
 from unittest import mock
-import urllib
 
 
 def test_inspect_cli(app_client):
@@ -100,7 +98,11 @@ def test_spatialite_error_if_cannot_find_load_extension_spatialite():
 def test_plugins_cli(app_client):
     runner = CliRunner()
     result1 = runner.invoke(cli, ["plugins"])
-    assert json.loads(result1.output) == EXPECTED_PLUGINS
+    actual_plugins = sorted(
+        [p for p in json.loads(result1.output) if p["name"] != "TrackEventPlugin"],
+        key=lambda p: p["name"],
+    )
+    assert actual_plugins == EXPECTED_PLUGINS
     # Try with --all
     result2 = runner.invoke(cli, ["plugins", "--all"])
     names = [p["name"] for p in json.loads(result2.output)]
@@ -142,6 +144,7 @@ def test_metadata_yaml():
         secret=None,
         root=False,
         token=None,
+        actor=None,
         version_note=None,
         get=None,
         help_settings=False,
@@ -153,6 +156,7 @@ def test_metadata_yaml():
         ssl_keyfile=None,
         ssl_certfile=None,
         return_instance=True,
+        internal=None,
     )
     client = _TestClient(ds)
     response = client.get("/-/metadata.json")
@@ -220,20 +224,65 @@ def test_serve_invalid_ports(invalid_port):
     assert "Invalid value for '-p'" in result.stderr
 
 
-def test_setting():
+@pytest.mark.parametrize(
+    "args",
+    (
+        ["--setting", "default_page_size", "5"],
+        ["--setting", "settings.default_page_size", "5"],
+        ["-s", "settings.default_page_size", "5"],
+    ),
+)
+def test_setting(args):
     runner = CliRunner()
+    result = runner.invoke(cli, ["--get", "/-/settings.json"] + args)
+    assert result.exit_code == 0, result.output
+    settings = json.loads(result.output)
+    assert settings["default_page_size"] == 5
+
+
+def test_plugin_s_overwrite():
+    runner = CliRunner()
+    plugins_dir = str(pathlib.Path(__file__).parent / "plugins")
+
     result = runner.invoke(
-        cli, ["--setting", "default_page_size", "5", "--get", "/-/settings.json"]
+        cli,
+        [
+            "--plugins-dir",
+            plugins_dir,
+            "--get",
+            "/_memory.json?sql=select+prepare_connection_args()",
+        ],
     )
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["default_page_size"] == 5
+    assert (
+        json.loads(result.output).get("rows")[0].get("prepare_connection_args()")
+        == 'database=_memory, datasette.plugin_config("name-of-plugin")=None'
+    )
+
+    result = runner.invoke(
+        cli,
+        [
+            "--plugins-dir",
+            plugins_dir,
+            "--get",
+            "/_memory.json?sql=select+prepare_connection_args()",
+            "-s",
+            "plugins.name-of-plugin",
+            "OVERRIDE",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (
+        json.loads(result.output).get("rows")[0].get("prepare_connection_args()")
+        == 'database=_memory, datasette.plugin_config("name-of-plugin")=OVERRIDE'
+    )
 
 
 def test_setting_type_validation():
     runner = CliRunner(mix_stderr=False)
     result = runner.invoke(cli, ["--setting", "default_page_size", "dog"])
     assert result.exit_code == 2
-    assert '"default_page_size" should be an integer' in result.stderr
+    assert '"settings.default_page_size" should be an integer' in result.stderr
 
 
 @pytest.mark.parametrize("default_allow_sql", (True, False))
@@ -256,17 +305,6 @@ def test_setting_default_allow_sql(default_allow_sql):
         assert result.exit_code == 1, result.output
         # This isn't JSON at the moment, maybe it should be though
         assert "Forbidden" in result.output
-
-
-def test_config_deprecated():
-    # The --config option should show a deprecation message
-    runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(
-        cli, ["--config", "allow_download:off", "--get", "/-/settings.json"]
-    )
-    assert result.exit_code == 0
-    assert not json.loads(result.output)["allow_download"]
-    assert "will be deprecated in" in result.stderr
 
 
 def test_sql_errors_logged_to_stderr():
@@ -292,6 +330,32 @@ def test_serve_create(tmpdir):
         "hash": None,
     }.items() <= databases[0].items()
     assert db_path.exists()
+
+
+@pytest.mark.parametrize("argument", ("-c", "--config"))
+@pytest.mark.parametrize("format_", ("json", "yaml"))
+def test_serve_config(tmpdir, argument, format_):
+    config_path = tmpdir / "datasette.{}".format(format_)
+    config_path.write_text(
+        (
+            "settings:\n  default_page_size: 5\n"
+            if format_ == "yaml"
+            else '{"settings": {"default_page_size": 5}}'
+        ),
+        "utf-8",
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            argument,
+            str(config_path),
+            "--get",
+            "/-/settings.json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["default_page_size"] == 5
 
 
 def test_serve_duplicate_database_names(tmpdir):
@@ -349,9 +413,12 @@ def test_help_settings():
         assert setting.name in result.output
 
 
-@pytest.mark.parametrize("setting", ("hash_urls", "default_cache_ttl_hashed"))
-def test_help_error_on_hash_urls_setting(setting):
+def test_internal_db(tmpdir):
     runner = CliRunner()
-    result = runner.invoke(cli, ["--setting", setting, 1])
-    assert result.exit_code == 2
-    assert "The hash_urls setting has been removed" in result.output
+    internal_path = tmpdir / "internal.db"
+    assert not internal_path.exists()
+    result = runner.invoke(
+        cli, ["--memory", "--internal", str(internal_path), "--get", "/"]
+    )
+    assert result.exit_code == 0
+    assert internal_path.exists()

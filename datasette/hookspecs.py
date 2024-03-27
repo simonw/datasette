@@ -94,6 +94,16 @@ def actor_from_request(datasette, request):
     """Return an actor dictionary based on the incoming request"""
 
 
+@hookspec(firstresult=True)
+def actors_from_ids(datasette, actor_ids):
+    """Returns a dictionary mapping those IDs to actor dictionaries"""
+
+
+@hookspec
+def jinja2_environment_from_request(datasette, request, env):
+    """Return a Jinja2 environment based on the incoming request"""
+
+
 @hookspec
 def filters_from_request(request, database, table, datasette):
     """
@@ -131,13 +141,33 @@ def menu_links(datasette, actor, request):
 
 
 @hookspec
+def row_actions(datasette, actor, request, database, table, row):
+    """Links for the row actions menu"""
+
+
+@hookspec
 def table_actions(datasette, actor, database, table, request):
     """Links for the table actions menu"""
 
 
 @hookspec
+def view_actions(datasette, actor, database, view, request):
+    """Links for the view actions menu"""
+
+
+@hookspec
+def query_actions(datasette, actor, database, query_name, request, sql, params):
+    """Links for the query and canned query actions menu"""
+
+
+@hookspec
 def database_actions(datasette, actor, database, request):
     """Links for the database actions menu"""
+
+
+@hookspec
+def homepage_actions(datasette, actor, request):
+    """Links for the homepage actions menu"""
 
 
 @hookspec
@@ -148,3 +178,43 @@ def skip_csrf(datasette, scope):
 @hookspec
 def handle_exception(datasette, request, exception):
     """Handle an uncaught exception. Can return a Response or None."""
+
+
+@hookspec
+def track_event(datasette, event):
+    """Respond to an event tracked by Datasette"""
+
+
+@hookspec
+def register_events(datasette):
+    """Return a list of Event subclasses to use with track_event()"""
+
+
+@hookspec
+def top_homepage(datasette, request):
+    """HTML to include at the top of the homepage"""
+
+
+@hookspec
+def top_database(datasette, request, database):
+    """HTML to include at the top of the database page"""
+
+
+@hookspec
+def top_table(datasette, request, database, table):
+    """HTML to include at the top of the table page"""
+
+
+@hookspec
+def top_row(datasette, request, database, table, row):
+    """HTML to include at the top of the row page"""
+
+
+@hookspec
+def top_query(datasette, request, database, sql):
+    """HTML to include at the top of the query results page"""
+
+
+@hookspec
+def top_canned_query(datasette, request, database, query_name):
+    """HTML to include at the top of the canned query page"""

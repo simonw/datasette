@@ -133,13 +133,19 @@ Running Black
 
 Black will be installed when you run ``pip install -e '.[test]'``. To test that your code complies with Black, run the following in your root ``datasette`` repository checkout::
 
-    $ black . --check
+    black . --check
+
+::
+
     All done! ✨ 🍰 ✨
     95 files would be left unchanged.
 
 If any of your code does not conform to Black you can run this to automatically fix those problems::
 
-    $ black .
+    black .
+
+::
+
     reformatted ../datasette/setup.py
     All done! ✨ 🍰 ✨
     1 file reformatted, 94 files left unchanged.
@@ -160,11 +166,14 @@ Prettier
 
 To install Prettier, `install Node.js <https://nodejs.org/en/download/package-manager/>`__ and then run the following in the root of your ``datasette`` repository checkout::
 
-    $ npm install
+    npm install
 
 This will install Prettier in a ``node_modules`` directory. You can then check that your code matches the coding style like so::
 
-    $ npm run prettier -- --check
+    npm run prettier -- --check
+
+::
+
     > prettier
     > prettier 'datasette/static/*[!.min].js' "--check"
 
@@ -174,7 +183,7 @@ This will install Prettier in a ``node_modules`` directory. You can then check t
 
 You can fix any problems by running::
 
-    $ npm run fix
+    npm run fix
 
 .. _contributing_documentation:
 
@@ -245,6 +254,7 @@ Datasette releases are performed using tags. When a new release is published on 
 * Re-point the "latest" tag on Docker Hub to the new image
 * Build a wheel bundle of the underlying Python source code
 * Push that new wheel up to PyPI: https://pypi.org/project/datasette/
+* If the release is an alpha, navigate to https://readthedocs.org/projects/datasette/versions/ and search for the tag name in the "Activate a version" filter, then mark that version as "active" to ensure it will appear on the public ReadTheDocs documentation site.
 
 To deploy new releases you will need to have push access to the main Datasette GitHub repository.
 
@@ -322,10 +332,17 @@ Upgrading CodeMirror
 
 Datasette bundles `CodeMirror <https://codemirror.net/>`__ for the SQL editing interface, e.g. on `this page <https://latest.datasette.io/fixtures>`__. Here are the steps for upgrading to a new version of CodeMirror:
 
+* Install the packages with::
 
-* Install the packages with `npm i codemirror @codemirror/lang-sql`
-* Build the bundle using the version number from package.json with:
+    npm i codemirror @codemirror/lang-sql
 
-    node_modules/.bin/rollup datasette/static/cm-editor-6.0.1.js -f iife -n cm -o datasette/static/cm-editor-6.0.1.bundle.js -p @rollup/plugin-node-resolve -p @rollup/plugin-terser
+* Build the bundle using the version number from package.json with::
 
-* Update version reference in the `codemirror.html` template
+    node_modules/.bin/rollup datasette/static/cm-editor-6.0.1.js \
+      -f iife \
+      -n cm \
+      -o datasette/static/cm-editor-6.0.1.bundle.js \
+      -p @rollup/plugin-node-resolve \
+      -p @rollup/plugin-terser
+
+* Update the version reference in the ``codemirror.html`` template.

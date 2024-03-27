@@ -11,9 +11,11 @@ Datasette supports a number of settings. These can be set using the ``--setting 
 You can set multiple settings at once like this::
 
     datasette mydatabase.db \
-        --setting default_page_size 50 \
-        --setting sql_time_limit_ms 3500 \
-        --setting max_returned_rows 2000
+      --setting default_page_size 50 \
+      --setting sql_time_limit_ms 3500 \
+      --setting max_returned_rows 2000
+
+Settings can also be specified :ref:`in the database.yaml configuration file <configuration_reference_settings>`.
 
 .. _config_dir:
 
@@ -22,17 +24,18 @@ Configuration directory mode
 
 Normally you configure Datasette using command-line options. For a Datasette instance with custom templates, custom plugins, a static directory and several databases this can get quite verbose::
 
-    $ datasette one.db two.db \
-        --metadata=metadata.json \
-        --template-dir=templates/ \
-        --plugins-dir=plugins \
-        --static css:css
+    datasette one.db two.db \
+      --metadata=metadata.json \
+      --template-dir=templates/ \
+      --plugins-dir=plugins \
+      --static css:css
 
 As an alternative to this, you can run Datasette in *configuration directory* mode. Create a directory with the following structure::
 
     # In a directory called my-app:
     my-app/one.db
     my-app/two.db
+    my-app/datasette.yaml
     my-app/metadata.json
     my-app/templates/index.html
     my-app/plugins/my_plugin.py
@@ -40,16 +43,16 @@ As an alternative to this, you can run Datasette in *configuration directory* mo
 
 Now start Datasette by providing the path to that directory::
 
-    $ datasette my-app/
+    datasette my-app/
 
 Datasette will detect the files in that directory and automatically configure itself using them. It will serve all ``*.db`` files that it finds, will load ``metadata.json`` if it exists, and will load the ``templates``, ``plugins`` and ``static`` folders if they are present.
 
 The files that can be included in this directory are as follows. All are optional.
 
 * ``*.db`` (or ``*.sqlite3`` or ``*.sqlite``) - SQLite database files that will be served by Datasette
+* ``datasette.yaml`` - :ref:`configuration` for the Datasette instance
 * ``metadata.json`` - :ref:`metadata` for those databases - ``metadata.yaml`` or ``metadata.yml`` can be used as well
 * ``inspect-data.json`` - the result of running ``datasette inspect *.db --inspect-file=inspect-data.json`` from the configuration directory - any database files listed here will be treated as immutable, so they should not be changed while Datasette is running
-* ``settings.json`` - settings that would normally be passed using ``--setting`` - here they should be stored as a JSON object of key/value pairs
 * ``templates/`` - a directory containing :ref:`customization_custom_templates`
 * ``plugins/`` - a directory containing plugins, see :ref:`writing_plugins_one_off`
 * ``static/`` - a directory containing static files - these will be served from ``/static/filename.txt``, see :ref:`customization_static_files`
@@ -72,7 +75,7 @@ Setting this to ``off`` causes permission checks for :ref:`permissions_execute_s
 
     datasette mydatabase.db --setting default_allow_sql off
 
-There are two ways to achieve this: the other is to add ``"allow_sql": false`` to your ``metadata.json`` file, as described in :ref:`authentication_permissions_execute_sql`. This setting offers a more convenient way to do this.
+Another way to achieve this is to add ``"allow_sql": false`` to your ``datasette.yaml`` file, as described in :ref:`authentication_permissions_execute_sql`. This setting offers a more convenient way to do this.
 
 .. _setting_default_page_size:
 
@@ -359,16 +362,16 @@ You can pass a secret to Datasette in two ways: with the ``--secret`` command-li
 
 ::
 
-    $ datasette mydb.db --secret=SECRET_VALUE_HERE
+    datasette mydb.db --secret=SECRET_VALUE_HERE
 
 Or::
 
-    $ export DATASETTE_SECRET=SECRET_VALUE_HERE
-    $ datasette mydb.db
+    export DATASETTE_SECRET=SECRET_VALUE_HERE
+    datasette mydb.db
 
 One way to generate a secure random secret is to use Python like this::
 
-    $ python3 -c 'import secrets; print(secrets.token_hex(32))'
+    python3 -c 'import secrets; print(secrets.token_hex(32))'
     cdb19e94283a20f9d42cca50c5a4871c0aa07392db308755d60a1a5b9bb0fa52
 
 Plugin authors make use of this signing mechanism in their plugins using :ref:`datasette_sign` and :ref:`datasette_unsign`.

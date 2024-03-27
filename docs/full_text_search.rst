@@ -81,7 +81,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -94,7 +94,7 @@ Here is an example which enables full-text search (with SQLite advanced search o
                 searchmode: raw
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -177,14 +177,14 @@ Configuring FTS using sqlite-utils
 
 Here's how to use ``sqlite-utils`` to enable full-text search for an ``items`` table across the ``name`` and ``description`` columns::
 
-    $ sqlite-utils enable-fts mydatabase.db items name description
+    sqlite-utils enable-fts mydatabase.db items name description
 
 Configuring FTS using csvs-to-sqlite
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If your data starts out in CSV files, you can use Datasette's companion tool `csvs-to-sqlite <https://github.com/simonw/csvs-to-sqlite>`__ to convert that file into a SQLite database and enable full-text search on specific columns. For a file called ``items.csv`` where you want full-text search to operate against the ``name`` and ``description`` columns you would run the following::
 
-    $ csvs-to-sqlite items.csv items.db -f name -f description
+    csvs-to-sqlite items.csv items.db -f name -f description
 
 Configuring FTS by hand
 ~~~~~~~~~~~~~~~~~~~~~~~

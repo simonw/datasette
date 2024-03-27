@@ -40,6 +40,21 @@ The JSON version of this page provides programmatic access to the underlying dat
 * `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
 * `global-power-plants.datasettes.com/global-power-plants.json <https://global-power-plants.datasettes.com/global-power-plants.json>`_
 
+.. _DatabaseView_hidden:
+
+Hidden tables
+-------------
+
+Some tables listed on the database page are treated as hidden. Hidden tables are not completely invisible - they can be accessed through the "hidden tables" link at the bottom of the page. They are hidden because they represent low-level implementation details which are generally not useful to end-users of Datasette.
+
+The following tables are hidden by default:
+
+- Any table with a name that starts with an underscore - this is a Datasette convention to help plugins easily hide their own internal tables.
+- Tables that have been configured as ``"hidden": true`` using :ref:`metadata_hiding_tables`.
+- ``*_fts`` tables that implement SQLite full-text search indexes.
+- Tables relating to the inner workings of the SpatiaLite SQLite extension.
+- ``sqlite_stat`` tables used to store statistics used by the query optimizer.
+
 .. _TableView:
 
 Table
@@ -70,10 +85,10 @@ Table cells with extremely long text contents are truncated on the table view ac
 
 Rows which are the targets of foreign key references from other tables will show a link to a filtered search for all records that reference that row. Here's an example from the Registers of Members Interests database:
 
-`../people/uk.org.publicwhip%2Fperson%2F10001 <https://register-of-members-interests.datasettes.com/regmem/people/uk.org.publicwhip%2Fperson%2F10001>`_
+`../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001 <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001>`_
 
 Note that this URL includes the encoded primary key of the record.
 
 Here's that same page as JSON:
 
-`../people/uk.org.publicwhip%2Fperson%2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk.org.publicwhip%2Fperson%2F10001.json>`_
+`../people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json <https://register-of-members-interests.datasettes.com/regmem/people/uk~2Eorg~2Epublicwhip~2Fperson~2F10001.json>`_

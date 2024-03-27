@@ -1,6 +1,8 @@
 """
 Tests for the datasette.database.Database class
 """
+
+from datasette.app import Datasette
 from datasette.database import Database, Results, MultipleValues
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import Column
@@ -62,6 +64,33 @@ async def test_execute_fn(db):
         return conn.execute("select 1 + 1").fetchall()[0][0]
 
     assert 2 == await db.execute_fn(get_1_plus_1)
+
+
+@pytest.mark.asyncio
+async def test_execute_fn_transaction_false():
+    datasette = Datasette(memory=True)
+    db = datasette.add_memory_database("test_execute_fn_transaction_false")
+
+    def run(conn):
+        try:
+            with conn:
+                conn.execute("create table foo (id integer primary key)")
+                conn.execute("insert into foo (id) values (44)")
+                # Table should exist
+                assert (
+                    conn.execute(
+                        'select count(*) from sqlite_master where name = "foo"'
+                    ).fetchone()[0]
+                    == 1
+                )
+                assert conn.execute("select id from foo").fetchall()[0][0] == 44
+                raise ValueError("Cancel commit")
+        except ValueError:
+            pass
+        # Row should NOT exist
+        assert conn.execute("select count(*) from foo").fetchone()[0] == 0
+
+    await db.execute_write_fn(run, transaction=False)
 
 
 @pytest.mark.parametrize(
@@ -472,9 +501,8 @@ async def test_execute_write_has_correctly_prepared_connection(db):
 @pytest.mark.asyncio
 async def test_execute_write_fn_block_false(db):
     def write_fn(conn):
-        with conn:
-            conn.execute("delete from roadside_attractions where pk = 1;")
-            row = conn.execute("select count(*) from roadside_attractions").fetchone()
+        conn.execute("delete from roadside_attractions where pk = 1;")
+        row = conn.execute("select count(*) from roadside_attractions").fetchone()
         return row[0]
 
     task_id = await db.execute_write_fn(write_fn, block=False)
@@ -484,9 +512,8 @@ async def test_execute_write_fn_block_false(db):
 @pytest.mark.asyncio
 async def test_execute_write_fn_block_true(db):
     def write_fn(conn):
-        with conn:
-            conn.execute("delete from roadside_attractions where pk = 1;")
-            row = conn.execute("select count(*) from roadside_attractions").fetchone()
+        conn.execute("delete from roadside_attractions where pk = 1;")
+        row = conn.execute("select count(*) from roadside_attractions").fetchone()
         return row[0]
 
     new_count = await db.execute_write_fn(write_fn)
@@ -517,6 +544,70 @@ async def test_execute_write_fn_connection_exception(tmpdir, app_client):
         await db.execute_write_fn(write_fn)
 
     app_client.ds.remove_database("immutable-db")
+
+
+def table_exists(conn, name):
+    return bool(
+        conn.execute(
+            """
+        with all_tables as (
+            select name from sqlite_master where type = 'table'
+                     union all
+            select name from temp.sqlite_master where type = 'table'
+        )
+        select 1 from all_tables where name = ?
+        """,
+            (name,),
+        ).fetchall(),
+    )
+
+
+def table_exists_checker(name):
+    def inner(conn):
+        return table_exists(conn, name)
+
+    return inner
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("disable_threads", (False, True))
+async def test_execute_isolated(db, disable_threads):
+    if disable_threads:
+        ds = Datasette(memory=True, settings={"num_sql_threads": 0})
+        db = ds.add_database(Database(ds, memory_name="test_num_sql_threads_zero"))
+
+    # Create temporary table in write
+    await db.execute_write(
+        "create temporary table created_by_write (id integer primary key)"
+    )
+    # Should stay visible to write connection
+    assert await db.execute_write_fn(table_exists_checker("created_by_write"))
+
+    def create_shared_table(conn):
+        conn.execute("create table shared (id integer primary key)")
+        # And a temporary table that should not continue to exist
+        conn.execute(
+            "create temporary table created_by_isolated (id integer primary key)"
+        )
+        assert table_exists(conn, "created_by_isolated")
+        # Also confirm that created_by_write does not exist
+        return table_exists(conn, "created_by_write")
+
+    # shared should not exist
+    assert not await db.execute_fn(table_exists_checker("shared"))
+
+    # Create it using isolated
+    created_by_write_exists = await db.execute_isolated_fn(create_shared_table)
+    assert not created_by_write_exists
+
+    # shared SHOULD exist now
+    assert await db.execute_fn(table_exists_checker("shared"))
+
+    # created_by_isolated should not exist, even in write connection
+    assert not await db.execute_write_fn(table_exists_checker("created_by_isolated"))
+
+    # ... and a second call to isolated should not see that connection either
+    assert not await db.execute_isolated_fn(table_exists_checker("created_by_isolated"))
 
 
 @pytest.mark.asyncio

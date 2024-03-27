@@ -7,6 +7,30 @@ You can write one-off plugins that apply to just one Datasette instance, or you 
 
 Want to start by looking at an example? The `Datasette plugins directory <https://datasette.io/plugins>`__ lists more than 90 open source plugins with code you can explore. The :ref:`plugin hooks <plugin_hooks>` page includes links to example plugins for each of the documented hooks.
 
+.. _writing_plugins_tracing:
+
+Tracing plugin hooks
+--------------------
+
+The ``DATASETTE_TRACE_PLUGINS`` environment variable turns on detailed tracing showing exactly which hooks are being run. This can be useful for understanding how Datasette is using your plugin.
+
+.. code-block:: bash
+
+    DATASETTE_TRACE_PLUGINS=1 datasette mydb.db
+
+Example output::
+
+    actor_from_request:
+    {   'datasette': <datasette.app.Datasette object at 0x100bc7220>,
+        'request': <asgi.Request method="GET" url="http://127.0.0.1:4433/">}
+    Hook implementations:
+    [   <HookImpl plugin_name='codespaces', plugin=<module 'datasette_codespaces' from '.../site-packages/datasette_codespaces/__init__.py'>>,
+        <HookImpl plugin_name='datasette.actor_auth_cookie', plugin=<module 'datasette.actor_auth_cookie' from '.../datasette/datasette/actor_auth_cookie.py'>>,
+        <HookImpl plugin_name='datasette.default_permissions', plugin=<module 'datasette.default_permissions' from '.../datasette/default_permissions.py'>>]
+    Results:
+    [{'id': 'root'}]
+
+
 .. _writing_plugins_one_off:
 
 Writing one-off plugins
@@ -184,7 +208,7 @@ This will return the ``{"latitude_column": "lat", "longitude_column": "lng"}`` i
 
 If there is no configuration for that plugin, the method will return ``None``.
 
-If it cannot find the requested configuration at the table layer, it will fall back to the database layer and then the root layer. For example, a user may have set the plugin configuration option like so:
+If it cannot find the requested configuration at the table layer, it will fall back to the database layer and then the root layer. For example, a user may have set the plugin configuration option inside ``datasette.yaml`` like so:
 
 .. [[[cog
     from metadata_doc import metadata_example
@@ -202,7 +226,7 @@ If it cannot find the requested configuration at the table layer, it will fall b
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -214,7 +238,7 @@ If it cannot find the requested configuration at the table layer, it will fall b
                 longitude_column: xlng
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -234,11 +258,10 @@ If it cannot find the requested configuration at the table layer, it will fall b
 
 In this case, the above code would return that configuration for ANY table within the ``sf-trees`` database.
 
-The plugin configuration could also be set at the top level of ``metadata.yaml``:
+The plugin configuration could also be set at the top level of ``datasette.yaml``:
 
 .. [[[cog
     metadata_example(cog, {
-        "title": "This is the top-level title in metadata.json",
         "plugins": {
             "datasette-cluster-map": {
                 "latitude_column": "xlat",
@@ -248,23 +271,21 @@ The plugin configuration could also be set at the top level of ``metadata.yaml``
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
-        title: This is the top-level title in metadata.json
         plugins:
           datasette-cluster-map:
             latitude_column: xlat
             longitude_column: xlng
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
         {
-          "title": "This is the top-level title in metadata.json",
           "plugins": {
             "datasette-cluster-map": {
               "latitude_column": "xlat",
@@ -325,3 +346,65 @@ This object is exposed in templates as the ``urls`` variable, which can be used 
     Back to the <a href="{{ urls.instance() }}">Homepage</a>
 
 See :ref:`internals_datasette_urls` for full details on this object.
+
+.. _writing_plugins_extra_hooks:
+
+Plugins that define new plugin hooks
+------------------------------------
+
+Plugins can define new plugin hooks that other plugins can use to further extend their functionality.
+
+`datasette-graphql <https://github.com/simonw/datasette-graphql>`__ is one example of a plugin that does this. It defines a new hook called ``graphql_extra_fields``, `described here <https://github.com/simonw/datasette-graphql/blob/main/README.md#adding-custom-fields-with-plugins>`__, which other plugins can use to define additional fields that should be included in the GraphQL schema.
+
+To define additional hooks, add a file to the plugin called ``datasette_your_plugin/hookspecs.py`` with content that looks like this:
+
+.. code-block:: python
+
+    from pluggy import HookspecMarker
+
+    hookspec = HookspecMarker("datasette")
+
+
+    @hookspec
+    def name_of_your_hook_goes_here(datasette):
+        "Description of your hook."
+
+You should define your own hook name and arguments here, following the documentation for `Pluggy specifications <https://pluggy.readthedocs.io/en/stable/#specs>`__. Make sure to pick a name that is unlikely to clash with hooks provided by any other plugins.
+
+Then, to register your plugin hooks, add the following code to your ``datasette_your_plugin/__init__.py`` file:
+
+.. code-block:: python
+
+    from datasette.plugins import pm
+    from . import hookspecs
+
+    pm.add_hookspecs(hookspecs)
+
+This will register your plugin hooks as part of the ``datasette`` plugin hook namespace.
+
+Within your plugin code you can trigger the hook using this pattern:
+
+.. code-block:: python
+
+    from datasette.plugins import pm
+
+    for (
+        plugin_return_value
+    ) in pm.hook.name_of_your_hook_goes_here(
+        datasette=datasette
+    ):
+        # Do something with plugin_return_value
+        pass
+
+Other plugins will then be able to register their own implementations of your hook using this syntax:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+
+
+    @hookimpl
+    def name_of_your_hook_goes_here(datasette):
+        return "Response from this plugin hook"
+
+These plugin implementations can accept 0 or more of the named arguments that you defined in your hook specification.

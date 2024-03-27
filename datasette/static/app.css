@@ -163,28 +163,22 @@ h6,
 }
 
 .page-header {
-  display: flex;
-  align-items: center;
   padding-left: 10px;
   border-left: 10px solid #666;
   margin-bottom: 0.75rem;
   margin-top: 1rem;
 }
 .page-header h1 {
-    display: inline;
     margin: 0;
     font-size: 2rem;
     padding-right: 0.2em;
 }
-.page-header details {
-    display: inline-flex;
-}
-.page-header details > summary {
+
+.page-action-menu details > summary {
     list-style: none;
-    display: inline-flex;
     cursor: pointer;
 }
-.page-header details > summary::-webkit-details-marker {
+.page-action-menu details > summary::-webkit-details-marker {
     display: none;
 }
 
@@ -275,6 +269,7 @@ header,
 footer {
     padding: 0.6rem 1rem 0.5rem 1rem;
     background-color: #276890;
+    background: linear-gradient(180deg, rgba(96,144,173,1) 0%, rgba(39,104,144,1) 50%);
     color: rgba(255,255,244,0.9);
     overflow: hidden;
     box-sizing: border-box;
@@ -352,25 +347,58 @@ details.nav-menu > summary::-webkit-details-marker {
 }
 details .nav-menu-inner {
     position: absolute;
-    top: 2rem;
+    top: 2.6rem;
     right: 10px;
     width: 180px;
     background-color: #276890;
-    padding: 1rem;
     z-index: 1000;
+    padding: 0;
+}
+.nav-menu-inner li,
+form.nav-menu-logout {
+    padding: 0.3rem 0.5rem;
+    border-top: 1px solid #ffffff69;
 }
 .nav-menu-inner a {
     display: block;
 }
 
 /* Table/database actions menu */
-.page-header {
+.page-action-menu {
     position: relative;
+    margin-bottom: 0.5em;
+}
+.actions-menu-links {
+    display: inline;
 }
 .actions-menu-links .dropdown-menu {
     position: absolute;
     top: calc(100% + 10px);
-    left: -10px;
+    left: 0;
+}
+.page-action-menu .icon-text {
+    display: inline-flex;
+    align-items: center;
+    border-radius: .25rem;
+    padding: 5px 12px 3px 7px;
+    color: #fff;
+    font-weight: 400;
+    font-size: 0.8em;
+    background: linear-gradient(180deg, #007bff 0%, #4E79C7 100%);
+    border-color: #007bff;
+}
+.page-action-menu .icon-text span {
+    /* Nudge text up a bit */
+    position: relative;
+    top: -2px;
+}
+.page-action-menu .icon-text:hover {
+    cursor: pointer;
+}
+.page-action-menu .icon {
+    width: 18px;
+    height: 18px;
+    margin-right: 4px;
 }
 
 /* Components ============================================================== */
@@ -482,20 +510,18 @@ form.sql textarea {
     font-family: monospace;
     font-size: 1.3em;
 }
+form.sql label {
+    width: 15%;
+}
 form label {
     font-weight: bold;
     display: inline-block;
-    width: 15%;
-}
-.advanced-export form label {
-    width: auto;
 }
 .advanced-export input[type=submit] {
     font-size: 0.6em;
     margin-left: 1em;
 }
 label.sort_by_desc {
-    width: auto;
     padding-right: 1em;
 }
 pre#sql-query {
@@ -538,7 +564,7 @@ form input[type=submit], form button[type=button] {
 
 form input[type=submit] {
     color: #fff;
-    background-color: #007bff;
+    background: linear-gradient(180deg, #007bff 0%, #4E79C7 100%);
     border-color: #007bff;
     -webkit-appearance: button;
 }
@@ -820,6 +846,13 @@ svg.dropdown-menu-icon {
 }
 .dropdown-menu a:hover {
     background-color: #eee;
+}
+.dropdown-menu .dropdown-description {
+    margin: 0;
+    color: #666;
+    font-size: 0.8em;
+    max-width: 80vw;
+    white-space: normal;
 }
 .dropdown-menu .hook {
     display: block;

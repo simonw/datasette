@@ -1,4 +1,4 @@
-from .utils import tilde_encode, path_with_format, HASH_LENGTH, PrefixedUrlString
+from .utils import tilde_encode, path_with_format, PrefixedUrlString
 import urllib
 
 

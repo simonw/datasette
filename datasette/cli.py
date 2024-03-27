@@ -15,7 +15,6 @@ import sys
 import textwrap
 import webbrowser
 from .app import (
-    OBSOLETE_SETTINGS,
     Datasette,
     DEFAULT_SETTINGS,
     SETTINGS,
@@ -31,6 +30,7 @@ from .utils import (
     ConnectionProblem,
     SpatialiteConnectionProblem,
     initial_path_for_datasette,
+    pairs_to_nested_config,
     temporary_docker_directory,
     value_as_boolean,
     SpatialiteNotFound,
@@ -50,81 +50,33 @@ except ImportError:
     pass
 
 
-class Config(click.ParamType):
-    # This will be removed in Datasette 1.0 in favour of class Setting
-    name = "config"
-
-    def convert(self, config, param, ctx):
-        if ":" not in config:
-            self.fail(f'"{config}" should be name:value', param, ctx)
-            return
-        name, value = config.split(":", 1)
-        if name not in DEFAULT_SETTINGS:
-            msg = (
-                OBSOLETE_SETTINGS.get(name)
-                or f"{name} is not a valid option (--help-settings to see all)"
-            )
-            self.fail(
-                msg,
-                param,
-                ctx,
-            )
-            return
-        # Type checking
-        default = DEFAULT_SETTINGS[name]
-        if isinstance(default, bool):
-            try:
-                return name, value_as_boolean(value)
-            except ValueAsBooleanError:
-                self.fail(f'"{name}" should be on/off/true/false/1/0', param, ctx)
-                return
-        elif isinstance(default, int):
-            if not value.isdigit():
-                self.fail(f'"{name}" should be an integer', param, ctx)
-                return
-            return name, int(value)
-        elif isinstance(default, str):
-            return name, value
-        else:
-            # Should never happen:
-            self.fail("Invalid option")
-
-
 class Setting(CompositeParamType):
     name = "setting"
     arity = 2
 
     def convert(self, config, param, ctx):
         name, value = config
-        if name not in DEFAULT_SETTINGS:
-            msg = (
-                OBSOLETE_SETTINGS.get(name)
-                or f"{name} is not a valid option (--help-settings to see all)"
-            )
-            self.fail(
-                msg,
-                param,
-                ctx,
-            )
-            return
-        # Type checking
-        default = DEFAULT_SETTINGS[name]
-        if isinstance(default, bool):
-            try:
-                return name, value_as_boolean(value)
-            except ValueAsBooleanError:
-                self.fail(f'"{name}" should be on/off/true/false/1/0', param, ctx)
-                return
-        elif isinstance(default, int):
-            if not value.isdigit():
-                self.fail(f'"{name}" should be an integer', param, ctx)
-                return
-            return name, int(value)
-        elif isinstance(default, str):
-            return name, value
-        else:
-            # Should never happen:
-            self.fail("Invalid option")
+        if name in DEFAULT_SETTINGS:
+            # For backwards compatibility with how this worked prior to
+            # Datasette 1.0, we turn bare setting names into setting.name
+            # Type checking for those older settings
+            default = DEFAULT_SETTINGS[name]
+            name = "settings.{}".format(name)
+            if isinstance(default, bool):
+                try:
+                    return name, "true" if value_as_boolean(value) else "false"
+                except ValueAsBooleanError:
+                    self.fail(f'"{name}" should be on/off/true/false/1/0', param, ctx)
+            elif isinstance(default, int):
+                if not value.isdigit():
+                    self.fail(f'"{name}" should be an integer', param, ctx)
+                return name, value
+            elif isinstance(default, str):
+                return name, value
+            else:
+                # Should never happen:
+                self.fail("Invalid option")
+        return name, value
 
 
 def sqlite_extensions(fn):
@@ -195,9 +147,6 @@ async def inspect_(files, sqlite_extensions):
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
     data = {}
     for name, database in app.databases.items():
-        if name == "_internal":
-            # Don't include the in-memory _internal database
-            continue
         counts = await database.table_counts(limit=3600 * 1000)
         data[name] = {
             "hash": database.hash,
@@ -455,16 +404,17 @@ def uninstall(packages, yes):
 )
 @click.option("--memory", is_flag=True, help="Make /_memory database available")
 @click.option(
+    "-c",
     "--config",
-    type=Config(),
-    help="Deprecated: set config option using configname:value. Use --setting instead.",
-    multiple=True,
+    type=click.File(mode="r"),
+    help="Path to JSON/YAML Datasette configuration file",
 )
 @click.option(
+    "-s",
     "--setting",
     "settings",
     type=Setting(),
-    help="Setting, see docs.datasette.io/en/stable/settings.html",
+    help="nested.key, value setting to use in Datasette configuration",
     multiple=True,
 )
 @click.option(
@@ -484,6 +434,10 @@ def uninstall(packages, yes):
 @click.option(
     "--token",
     help="API token to send with --get requests",
+)
+@click.option(
+    "--actor",
+    help="Actor to use for --get requests (JSON string)",
 )
 @click.option("--version-note", help="Additional note to show on /-/versions")
 @click.option("--help-settings", is_flag=True, help="Show available settings")
@@ -518,6 +472,11 @@ def uninstall(packages, yes):
     "--ssl-certfile",
     help="SSL certificate file",
 )
+@click.option(
+    "--internal",
+    type=click.Path(),
+    help="Path to a persistent Datasette internal SQLite database",
+)
 def serve(
     files,
     immutable,
@@ -539,6 +498,7 @@ def serve(
     root,
     get,
     token,
+    actor,
     version_note,
     help_settings,
     pdb,
@@ -548,6 +508,7 @@ def serve(
     nolock,
     ssl_keyfile,
     ssl_certfile,
+    internal,
     return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
@@ -568,6 +529,8 @@ def serve(
         reloader = hupper.start_reloader("datasette.cli.serve")
         if immutable:
             reloader.watch_files(immutable)
+        if config:
+            reloader.watch_files([config.name])
         if metadata:
             reloader.watch_files([metadata.name])
 
@@ -580,32 +543,36 @@ def serve(
     if metadata:
         metadata_data = parse_metadata(metadata.read())
 
-    combined_settings = {}
+    config_data = None
     if config:
-        click.echo(
-            "--config name:value will be deprecated in Datasette 1.0, use --setting name value instead",
-            err=True,
-        )
-        combined_settings.update(config)
-    combined_settings.update(settings)
+        config_data = parse_metadata(config.read())
+
+    config_data = config_data or {}
+
+    # Merge in settings from -s/--setting
+    if settings:
+        settings_updates = pairs_to_nested_config(settings)
+        config_data.update(settings_updates)
 
     kwargs = dict(
         immutables=immutable,
         cache_headers=not reload,
         cors=cors,
         inspect_data=inspect_data,
+        config=config_data,
         metadata=metadata_data,
         sqlite_extensions=sqlite_extensions,
         template_dir=template_dir,
         plugins_dir=plugins_dir,
         static_mounts=static,
-        settings=combined_settings,
+        settings=None,  # These are passed in config= now
         memory=memory,
         secret=secret,
         version_note=version_note,
         pdb=pdb,
         crossdb=crossdb,
         nolock=nolock,
+        internal=internal,
     )
 
     # if files is a single directory, use that as config_dir=
@@ -653,7 +620,10 @@ def serve(
         headers = {}
         if token:
             headers["Authorization"] = "Bearer {}".format(token)
-        response = client.get(get, headers=headers)
+        cookies = {}
+        if actor:
+            cookies["ds_actor"] = client.actor_cookie(json.loads(actor))
+        response = client.get(get, headers=headers, cookies=cookies)
         click.echo(response.text)
         exit_code = 0 if response.status == 200 else 1
         sys.exit(exit_code)

@@ -7,6 +7,11 @@
 {% block content %}
 <h1>{{ metadata.title or "Datasette" }}{% if private %} 🔒{% endif %}</h1>
 
+{% set action_links, action_title = homepage_actions, "Homepage actions" %}
+{% include "_action_menu.html" %}
+
+{{ top_homepage() }}
+
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
 {% for database in databases %}

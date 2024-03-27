@@ -42,18 +42,22 @@ EXPECTED_PLUGINS = [
             "extra_js_urls",
             "extra_template_vars",
             "forbidden",
+            "homepage_actions",
             "menu_links",
             "permission_allowed",
             "prepare_connection",
             "prepare_jinja2_environment",
+            "query_actions",
             "register_facet_classes",
             "register_magic_parameters",
             "register_permissions",
             "register_routes",
             "render_cell",
+            "row_actions",
             "skip_csrf",
             "startup",
             "table_actions",
+            "view_actions",
         ],
     },
     {
@@ -114,6 +118,7 @@ def make_app_client(
     inspect_data=None,
     static_mounts=None,
     template_dir=None,
+    config=None,
     metadata=None,
     crossdb=False,
 ):
@@ -158,6 +163,7 @@ def make_app_client(
             memory=memory,
             cors=cors,
             metadata=metadata or METADATA,
+            config=config or CONFIG,
             plugins_dir=PLUGINS_DIR,
             settings=settings,
             inspect_data=inspect_data,
@@ -296,16 +302,7 @@ def generate_sortable_rows(num):
         }
 
 
-METADATA = {
-    "title": "Datasette Fixtures",
-    "description_html": 'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>',
-    "license": "Apache License 2.0",
-    "license_url": "https://github.com/simonw/datasette/blob/main/LICENSE",
-    "source": "tests/fixtures.py",
-    "source_url": "https://github.com/simonw/datasette/blob/main/tests/fixtures.py",
-    "about": "About Datasette",
-    "about_url": "https://github.com/simonw/datasette",
-    "extra_css_urls": ["/static/extra-css-urls.css"],
+CONFIG = {
     "plugins": {
         "name-of-plugin": {"depth": "root"},
         "env-plugin": {"foo": {"$env": "FOO_ENV"}},
@@ -314,12 +311,9 @@ METADATA = {
     },
     "databases": {
         "fixtures": {
-            "description": "Test tables description",
             "plugins": {"name-of-plugin": {"depth": "database"}},
             "tables": {
                 "simple_primary_key": {
-                    "description_html": "Simple <em>primary</em> key",
-                    "title": "This <em>HTML</em> is escaped",
                     "plugins": {
                         "name-of-plugin": {
                             "depth": "table",
@@ -328,33 +322,8 @@ METADATA = {
                     },
                 },
                 "sortable": {
-                    "sortable_columns": [
-                        "sortable",
-                        "sortable_with_nulls",
-                        "sortable_with_nulls_2",
-                        "text",
-                    ],
                     "plugins": {"name-of-plugin": {"depth": "table"}},
                 },
-                "no_primary_key": {"sortable_columns": [], "hidden": True},
-                "units": {"units": {"distance": "m", "frequency": "Hz"}},
-                "primary_key_multiple_columns_explicit_label": {
-                    "label_column": "content2"
-                },
-                "simple_view": {"sortable_columns": ["content"]},
-                "searchable_view_configured_by_metadata": {
-                    "fts_table": "searchable_fts",
-                    "fts_pk": "pk",
-                },
-                "roadside_attractions": {
-                    "columns": {
-                        "name": "The name of the attraction",
-                        "address": "The street address for the attraction",
-                    }
-                },
-                "attraction_characteristic": {"sort_desc": "pk"},
-                "facet_cities": {"sort": "name"},
-                "paginated_view": {"size": 25},
             },
             "queries": {
                 "𝐜𝐢𝐭𝐢𝐞𝐬": "select id, name from facet_cities order by id limit 1;",
@@ -378,6 +347,56 @@ METADATA = {
                     "fragment": "fragment-goes-here",
                     "hide_sql": True,
                 },
+            },
+        }
+    },
+    "extra_css_urls": ["/static/extra-css-urls.css"],
+}
+
+METADATA = {
+    "title": "Datasette Fixtures",
+    "description_html": 'An example SQLite database demonstrating Datasette. <a href="/login-as-root">Sign in as root user</a>',
+    "license": "Apache License 2.0",
+    "license_url": "https://github.com/simonw/datasette/blob/main/LICENSE",
+    "source": "tests/fixtures.py",
+    "source_url": "https://github.com/simonw/datasette/blob/main/tests/fixtures.py",
+    "about": "About Datasette",
+    "about_url": "https://github.com/simonw/datasette",
+    "databases": {
+        "fixtures": {
+            "description": "Test tables description",
+            "tables": {
+                "simple_primary_key": {
+                    "description_html": "Simple <em>primary</em> key",
+                    "title": "This <em>HTML</em> is escaped",
+                },
+                "sortable": {
+                    "sortable_columns": [
+                        "sortable",
+                        "sortable_with_nulls",
+                        "sortable_with_nulls_2",
+                        "text",
+                    ],
+                },
+                "no_primary_key": {"sortable_columns": [], "hidden": True},
+                "units": {"units": {"distance": "m", "frequency": "Hz"}},
+                "primary_key_multiple_columns_explicit_label": {
+                    "label_column": "content2"
+                },
+                "simple_view": {"sortable_columns": ["content"]},
+                "searchable_view_configured_by_metadata": {
+                    "fts_table": "searchable_fts",
+                    "fts_pk": "pk",
+                },
+                "roadside_attractions": {
+                    "columns": {
+                        "name": "The name of the attraction",
+                        "address": "The street address for the attraction",
+                    }
+                },
+                "attraction_characteristic": {"sort_desc": "pk"},
+                "facet_cities": {"sort": "name"},
+                "paginated_view": {"size": 25},
             },
         }
     },
@@ -767,6 +786,7 @@ def assert_permissions_checked(datasette, actions):
     default="fixtures.db",
     type=click.Path(file_okay=True, dir_okay=False),
 )
+@click.argument("config", required=False)
 @click.argument("metadata", required=False)
 @click.argument(
     "plugins_path", type=click.Path(file_okay=False, dir_okay=True), required=False
@@ -782,7 +802,7 @@ def assert_permissions_checked(datasette, actions):
     type=click.Path(file_okay=True, dir_okay=False),
     help="Write out second test DB to this file",
 )
-def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
+def cli(db_filename, config, metadata, plugins_path, recreate, extra_db_filename):
     """Write out the fixtures database used by Datasette's test suite"""
     if metadata and not metadata.endswith(".json"):
         raise click.ClickException("Metadata should end with .json")
@@ -805,6 +825,10 @@ def cli(db_filename, metadata, plugins_path, recreate, extra_db_filename):
         with open(metadata, "w") as fp:
             fp.write(json.dumps(METADATA, indent=4))
         print(f"- metadata written to {metadata}")
+    if config:
+        with open(config, "w") as fp:
+            fp.write(json.dumps(CONFIG, indent=4))
+        print(f"- config written to {config}")
     if plugins_path:
         path = pathlib.Path(plugins_path)
         if not path.exists():

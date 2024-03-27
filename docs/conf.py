@@ -40,6 +40,8 @@ extensions = [
 if not os.environ.get("DISABLE_SPHINX_INLINE_TABS"):
     extensions += ["sphinx_inline_tabs"]
 
+autodoc_member_order = "bysource"
+
 extlinks = {
     "issue": ("https://github.com/simonw/datasette/issues/%s", "#%s"),
 }

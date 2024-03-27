@@ -8,6 +8,12 @@ import markupsafe
 
 from datasette.plugins import pm
 from datasette.database import QueryInterrupted
+from datasette.events import (
+    AlterTableEvent,
+    DropTableEvent,
+    InsertRowsEvent,
+    UpsertRowsEvent,
+)
 from datasette import tracer
 from datasette.utils import (
     add_cors_headers,
@@ -17,6 +23,7 @@ from datasette.utils import (
     append_querystring,
     compound_keys_after_sql,
     format_bytes,
+    make_slot_function,
     tilde_encode,
     escape_sqlite,
     filters_should_redirect,
@@ -74,11 +81,10 @@ class Row:
         return json.dumps(d, default=repr, indent=2)
 
 
-async def _gather_parallel(*args):
-    return await asyncio.gather(*args)
-
-
-async def _gather_sequential(*args):
+async def run_sequential(*args):
+    # This used to be swappable for asyncio.gather() to run things in
+    # parallel, but this lead to hard-to-debug locking issues with
+    # in-memory databases: https://github.com/simonw/datasette/issues/2189
     results = []
     for fn in args:
         results.append(await fn)
@@ -141,11 +147,11 @@ async def display_columns_and_rows(
     """Returns columns, rows for specified table - including fancy foreign key treatment"""
     sortable_columns = sortable_columns or set()
     db = datasette.databases[database_name]
-    table_metadata = datasette.table_metadata(database_name, table_name)
-    column_descriptions = table_metadata.get("columns") or {}
+    column_descriptions = datasette.metadata("columns", database_name, table_name) or {}
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
     }
+    table_config = await datasette.table_config(database_name, table_name)
     pks = await db.primary_keys(table_name)
     pks_for_display = pks
     if not pks_for_display:
@@ -210,7 +216,6 @@ async def display_columns_and_rows(
                     "raw": pk_path,
                     "value": markupsafe.Markup(
                         '<a href="{table_path}/{flat_pks_quoted}">{flat_pks}</a>'.format(
-                            base_url=base_url,
                             table_path=datasette.urls.table(database_name, table_name),
                             flat_pks=str(markupsafe.escape(pk_path)),
                             flat_pks_quoted=path_from_row_pks(row, pks, not pks),
@@ -254,9 +259,11 @@ async def display_columns_and_rows(
                             path_from_row_pks(row, pks, not pks),
                             column,
                         ),
-                        ' title="{}"'.format(formatted)
-                        if "bytes" not in formatted
-                        else "",
+                        (
+                            ' title="{}"'.format(formatted)
+                            if "bytes" not in formatted
+                            else ""
+                        ),
                         len(value),
                         "" if len(value) == 1 else "s",
                     )
@@ -289,9 +296,9 @@ async def display_columns_and_rows(
                         ),
                     )
                 )
-            elif column in table_metadata.get("units", {}) and value != "":
+            elif column in table_config.get("units", {}) and value != "":
                 # Interpret units using pint
-                value = value * ureg(table_metadata["units"][column])
+                value = value * ureg(table_config["units"][column])
                 # Pint uses floating point which sometimes introduces errors in the compact
                 # representation, which we have to round off to avoid ugliness. In the vast
                 # majority of cases this rounding will be inconsequential. I hope.
@@ -307,9 +314,9 @@ async def display_columns_and_rows(
                     "column": column,
                     "value": display_value,
                     "raw": value,
-                    "value_type": "none"
-                    if value is None
-                    else str(type(value).__name__),
+                    "value_type": (
+                        "none" if value is None else str(type(value).__name__)
+                    ),
                 }
             )
         cell_rows.append(Row(cells))
@@ -404,7 +411,7 @@ class TableInsertView(BaseView):
         extras = {
             key: value for key, value in data.items() if key not in ("row", "rows")
         }
-        valid_extras = {"return", "ignore", "replace"}
+        valid_extras = {"return", "ignore", "replace", "alter"}
         invalid_extras = extras.keys() - valid_extras
         if invalid_extras:
             return _errors(
@@ -413,7 +420,6 @@ class TableInsertView(BaseView):
         if extras.get("ignore") and extras.get("replace"):
             return _errors(['Cannot use "ignore" and "replace" at the same time'])
 
-        # Validate columns of each row
         columns = set(await db.table_columns(table_name))
         columns.update(pks_list)
 
@@ -428,7 +434,7 @@ class TableInsertView(BaseView):
                         )
                     )
             invalid_columns = set(row.keys()) - columns
-            if invalid_columns:
+            if invalid_columns and not extras.get("alter"):
                 errors.append(
                     "Row {} has invalid columns: {}".format(
                         i, ", ".join(sorted(invalid_columns))
@@ -456,10 +462,10 @@ class TableInsertView(BaseView):
             # Must have insert-row AND upsert-row permissions
             if not (
                 await self.ds.permission_allowed(
-                    request.actor, "insert-row", database_name, table_name
+                    request.actor, "insert-row", resource=(database_name, table_name)
                 )
                 and await self.ds.permission_allowed(
-                    request.actor, "update-row", database_name, table_name
+                    request.actor, "update-row", resource=(database_name, table_name)
                 )
             ):
                 return _error(
@@ -483,6 +489,8 @@ class TableInsertView(BaseView):
         if errors:
             return _error(errors, 400)
 
+        num_rows = len(rows)
+
         # No that we've passed pks to _validate_data it's safe to
         # fix the rowids case:
         if not pks:
@@ -490,9 +498,27 @@ class TableInsertView(BaseView):
 
         ignore = extras.get("ignore")
         replace = extras.get("replace")
+        alter = extras.get("alter")
 
         if upsert and (ignore or replace):
             return _error(["Upsert does not support ignore or replace"], 400)
+
+        if replace and not await self.ds.permission_allowed(
+            request.actor, "update-row", resource=(database_name, table_name)
+        ):
+            return _error(['Permission denied: need update-row to use "replace"'], 403)
+
+        initial_schema = None
+        if alter:
+            # Must have alter-table permission
+            if not await self.ds.permission_allowed(
+                request.actor, "alter-table", resource=(database_name, table_name)
+            ):
+                return _error(["Permission denied for alter-table"], 403)
+            # Track initial schema to check if it changed later
+            initial_schema = await db.execute_fn(
+                lambda conn: sqlite_utils.Database(conn)[table_name].schema
+            )
 
         should_return = bool(extras.get("return", False))
         row_pk_values_for_later = []
@@ -503,9 +529,13 @@ class TableInsertView(BaseView):
             table = sqlite_utils.Database(conn)[table_name]
             kwargs = {}
             if upsert:
-                kwargs["pk"] = pks[0] if len(pks) == 1 else pks
+                kwargs = {
+                    "pk": pks[0] if len(pks) == 1 else pks,
+                    "alter": alter,
+                }
             else:
-                kwargs = {"ignore": ignore, "replace": replace}
+                # Insert
+                kwargs = {"ignore": ignore, "replace": replace, "alter": alter}
             if should_return and not upsert:
                 rowids = []
                 method = table.upsert if upsert else table.insert
@@ -543,6 +573,44 @@ class TableInsertView(BaseView):
                 result["rows"] = [dict(r) for r in fetched_rows.rows]
             else:
                 result["rows"] = rows
+        # We track the number of rows requested, but do not attempt to show which were actually
+        # inserted or upserted v.s. ignored
+        if upsert:
+            await self.ds.track_event(
+                UpsertRowsEvent(
+                    actor=request.actor,
+                    database=database_name,
+                    table=table_name,
+                    num_rows=num_rows,
+                )
+            )
+        else:
+            await self.ds.track_event(
+                InsertRowsEvent(
+                    actor=request.actor,
+                    database=database_name,
+                    table=table_name,
+                    num_rows=num_rows,
+                    ignore=bool(ignore),
+                    replace=bool(replace),
+                )
+            )
+
+        if initial_schema is not None:
+            after_schema = await db.execute_fn(
+                lambda conn: sqlite_utils.Database(conn)[table_name].schema
+            )
+            if initial_schema != after_schema:
+                await self.ds.track_event(
+                    AlterTableEvent(
+                        request.actor,
+                        database=database_name,
+                        table=table_name,
+                        before_schema=initial_schema,
+                        after_schema=after_schema,
+                    )
+                )
+
         return Response.json(result, status=200 if upsert else 201)
 
 
@@ -581,7 +649,7 @@ class TableDropView(BaseView):
         try:
             data = json.loads(await request.post_body())
             confirm = data.get("confirm")
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             pass
 
         if not confirm:
@@ -603,6 +671,11 @@ class TableDropView(BaseView):
             sqlite_utils.Database(conn)[table_name].drop()
 
         await db.execute_write_fn(drop_table)
+        await self.ds.track_event(
+            DropTableEvent(
+                actor=request.actor, database=database_name, table=table_name
+            )
+        )
         return Response.json({"ok": True}, status=200)
 
 
@@ -648,7 +721,7 @@ async def _columns_to_select(table_columns, pks, request):
 
 async def _sortable_columns_for_table(datasette, database_name, table_name, use_rowid):
     db = datasette.databases[database_name]
-    table_metadata = datasette.table_metadata(database_name, table_name)
+    table_metadata = await datasette.table_config(database_name, table_name)
     if "sortable_columns" in table_metadata:
         sortable_columns = set(table_metadata["sortable_columns"])
     else:
@@ -825,7 +898,8 @@ async def table_view_traced(datasette, request):
             f"table-{to_css_class(resolved.db.name)}-{to_css_class(resolved.table)}.html",
             "table.html",
         ]
-        template = datasette.jinja_env.select_template(templates)
+        environment = datasette.get_jinja_environment(request)
+        template = environment.select_template(templates)
         alternate_url_json = datasette.absolute_url(
             request,
             datasette.urls.path(path_with_format(request=request, format="json")),
@@ -860,6 +934,13 @@ async def table_view_traced(datasette, request):
                         f"{'*' if template_name == template.name else ''}{template_name}"
                         for template_name in templates
                     ],
+                    top_table=make_slot_function(
+                        "top_table",
+                        datasette,
+                        request,
+                        database=resolved.db.name,
+                        table=resolved.table,
+                    ),
                 ),
                 request=request,
                 view_name="table",
@@ -939,7 +1020,7 @@ async def table_view_data(
         nocount = True
         nofacet = True
 
-    table_metadata = datasette.table_metadata(database_name, table_name)
+    table_metadata = await datasette.table_config(database_name, table_name)
     units = table_metadata.get("units", {})
 
     # Arguments that start with _ and don't contain a __ are
@@ -984,9 +1065,9 @@ async def table_view_data(
 
     from_sql = "from {table_name} {where}".format(
         table_name=escape_sqlite(table_name),
-        where=("where {} ".format(" and ".join(where_clauses)))
-        if where_clauses
-        else "",
+        where=(
+            ("where {} ".format(" and ".join(where_clauses))) if where_clauses else ""
+        ),
     )
     # Copy of params so we can mutate them later:
     from_sql_params = dict(**params)
@@ -1050,10 +1131,12 @@ async def table_view_data(
                             column=escape_sqlite(sort or sort_desc),
                             op=">" if sort else "<",
                             p=len(params),
-                            extra_desc_only=""
-                            if sort
-                            else " or {column2} is null".format(
-                                column2=escape_sqlite(sort or sort_desc)
+                            extra_desc_only=(
+                                ""
+                                if sort
+                                else " or {column2} is null".format(
+                                    column2=escape_sqlite(sort or sort_desc)
+                                )
                             ),
                             next_clauses=" and ".join(next_by_pk_clauses),
                         )
@@ -1162,7 +1245,7 @@ async def table_view_data(
             # Expand them
             expanded_labels.update(
                 await datasette.expand_foreign_keys(
-                    database_name, table_name, column, values
+                    request.actor, database_name, table_name, column, values
                 )
             )
         if expanded_labels:
@@ -1200,9 +1283,6 @@ async def table_view_data(
         is_view,
     )
     rows = rows[:page_size]
-
-    # For performance profiling purposes, ?_noparallel=1 turns off asyncio.gather
-    gather = _gather_sequential if request.args.get("_noparallel") else _gather_parallel
 
     # Resolve extras
     extras = _get_extras(request)
@@ -1253,7 +1333,7 @@ async def table_view_data(
                     sql=sql_no_order_no_limit,
                     params=params,
                     table=table_name,
-                    metadata=table_metadata,
+                    table_config=table_metadata,
                     row_count=extra_count,
                 )
             )
@@ -1267,7 +1347,7 @@ async def table_view_data(
         if not nofacet:
             # Run them in parallel
             facet_awaitables = [facet.facet_results() for facet in facet_instances]
-            facet_awaitable_results = await gather(*facet_awaitables)
+            facet_awaitable_results = await run_sequential(*facet_awaitables)
             for (
                 instance_facet_results,
                 instance_facets_timed_out,
@@ -1300,7 +1380,7 @@ async def table_view_data(
         ):
             # Run them in parallel
             facet_suggest_awaitables = [facet.suggest() for facet in facet_instances]
-            for suggest_result in await gather(*facet_suggest_awaitables):
+            for suggest_result in await run_sequential(*facet_suggest_awaitables):
                 suggested_facets.extend(suggest_result)
         return suggested_facets
 
@@ -1339,22 +1419,28 @@ async def table_view_data(
         "Primary keys for this table"
         return pks
 
-    async def extra_table_actions():
-        async def table_actions():
+    async def extra_actions():
+        async def actions():
             links = []
-            for hook in pm.hook.table_actions(
-                datasette=datasette,
-                table=table_name,
-                database=database_name,
-                actor=request.actor,
-                request=request,
-            ):
+            kwargs = {
+                "datasette": datasette,
+                "database": database_name,
+                "actor": request.actor,
+                "request": request,
+            }
+            if is_view:
+                kwargs["view"] = table_name
+                method = pm.hook.view_actions
+            else:
+                kwargs["table"] = table_name
+                method = pm.hook.table_actions
+            for hook in method(**kwargs):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:
                     links.extend(extra_links)
             return links
 
-        return table_actions
+        return actions
 
     async def extra_is_view():
         return is_view
@@ -1426,7 +1512,7 @@ async def table_view_data(
         return table_name
 
     async def extra_database_color():
-        return lambda _: "ff0000"
+        return db.color
 
     async def extra_form_hidden_args():
         form_hidden_args = []
@@ -1544,7 +1630,7 @@ async def table_view_data(
             "database",
             "table",
             "database_color",
-            "table_actions",
+            "actions",
             "filters",
             "renderers",
             "custom_table_templates",
@@ -1585,7 +1671,7 @@ async def table_view_data(
         extra_database,
         extra_table,
         extra_database_color,
-        extra_table_actions,
+        extra_actions,
         extra_filters,
         extra_renderers,
         extra_custom_table_templates,

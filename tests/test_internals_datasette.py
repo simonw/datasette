@@ -1,12 +1,12 @@
 """
 Tests for the datasette.app.Datasette class
 """
+
 import dataclasses
 from datasette import Forbidden, Context
 from datasette.app import Datasette, Database
 from itsdangerous import BadSignature
 import pytest
-from typing import Optional
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "actor,metadata,permissions,should_allow,expected_private",
+    "actor,config,permissions,should_allow,expected_private",
     (
         (None, ALLOW_ROOT, ["view-instance"], False, False),
         (ROOT, ALLOW_ROOT, ["view-instance"], True, True),
@@ -114,9 +114,9 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
     ),
 )
 async def test_datasette_ensure_permissions_check_visibility(
-    actor, metadata, permissions, should_allow, expected_private
+    actor, config, permissions, should_allow, expected_private
 ):
-    ds = Datasette([], memory=True, metadata=metadata)
+    ds = Datasette([], memory=True, config=config)
     await ds.invoke_startup()
     if not should_allow:
         with pytest.raises(Forbidden):
@@ -159,3 +159,17 @@ def test_datasette_error_if_string_not_list(tmpdir):
     db_path = str(tmpdir / "data.db")
     with pytest.raises(ValueError):
         ds = Datasette(db_path)
+
+
+@pytest.mark.asyncio
+async def test_get_permission(ds_client):
+    ds = ds_client.ds
+    for name_or_abbr in ("vi", "view-instance", "vt", "view-table"):
+        permission = ds.get_permission(name_or_abbr)
+        if "-" in name_or_abbr:
+            assert permission.name == name_or_abbr
+        else:
+            assert permission.abbr == name_or_abbr
+    # And test KeyError
+    with pytest.raises(KeyError):
+        ds.get_permission("missing-permission")

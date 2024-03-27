@@ -1,6 +1,7 @@
 import collections
 from datasette.app import Datasette
 from datasette.cli import cli
+from datasette.default_permissions import restrictions_allow_action
 from .fixtures import app_client, assert_permissions_checked, make_app_client
 from click.testing import CliRunner
 from bs4 import BeautifulSoup as Soup
@@ -17,7 +18,7 @@ import urllib
 @pytest.fixture(scope="module")
 def padlock_client():
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {
                     "queries": {"two": {"sql": "select 1 + 1"}},
@@ -35,6 +36,8 @@ async def perms_ds():
     one = ds.add_memory_database("perms_ds_one")
     two = ds.add_memory_database("perms_ds_two")
     await one.execute_write("create table if not exists t1 (id integer primary key)")
+    await one.execute_write("insert or ignore into t1 (id) values (1)")
+    await one.execute_write("create view if not exists v1 as select * from t1")
     await one.execute_write("create table if not exists t2 (id integer primary key)")
     await two.execute_write("create table if not exists t1 (id integer primary key)")
     return ds
@@ -53,13 +56,14 @@ async def perms_ds():
     (
         "/",
         "/fixtures",
+        "/-/api",
         "/fixtures/compound_three_primary_keys",
         "/fixtures/compound_three_primary_keys/a,a,a",
         "/fixtures/two",  # Query
     ),
 )
 def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
-    padlock_client.ds._metadata_local["allow"] = allow
+    padlock_client.ds.config["allow"] = allow
     fragment = "🔒</h1>"
     anon_response = padlock_client.get(path)
     assert expected_anon == anon_response.status
@@ -74,7 +78,7 @@ def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client)
     # Check for the padlock
     if allow and expected_anon == 403 and expected_auth == 200:
         assert fragment in auth_response.text
-    del padlock_client.ds._metadata_local["allow"]
+    del padlock_client.ds.config["allow"]
 
 
 @pytest.mark.parametrize(
@@ -85,10 +89,11 @@ def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client)
         ({"id": "root"}, 403, 200),
     ],
 )
-def test_view_database(allow, expected_anon, expected_auth):
-    with make_app_client(
-        metadata={"databases": {"fixtures": {"allow": allow}}}
-    ) as client:
+@pytest.mark.parametrize("use_metadata", (True, False))
+def test_view_database(allow, expected_anon, expected_auth, use_metadata):
+    key = "metadata" if use_metadata else "config"
+    kwargs = {key: {"databases": {"fixtures": {"allow": allow}}}}
+    with make_app_client(**kwargs) as client:
         for path in (
             "/fixtures",
             "/fixtures/compound_three_primary_keys",
@@ -115,7 +120,7 @@ def test_view_database(allow, expected_anon, expected_auth):
 
 def test_database_list_respects_view_database():
     with make_app_client(
-        metadata={"databases": {"fixtures": {"allow": {"id": "root"}}}},
+        config={"databases": {"fixtures": {"allow": {"id": "root"}}}},
         extra_databases={"data.db": "create table names (name text)"},
     ) as client:
         anon_response = client.get("/")
@@ -131,7 +136,7 @@ def test_database_list_respects_view_database():
 
 def test_database_list_respects_view_table():
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "data": {
                     "tables": {
@@ -169,16 +174,19 @@ def test_database_list_respects_view_table():
         ({"id": "root"}, 403, 200),
     ],
 )
-def test_view_table(allow, expected_anon, expected_auth):
-    with make_app_client(
-        metadata={
+@pytest.mark.parametrize("use_metadata", (True, False))
+def test_view_table(allow, expected_anon, expected_auth, use_metadata):
+    key = "metadata" if use_metadata else "config"
+    kwargs = {
+        key: {
             "databases": {
                 "fixtures": {
                     "tables": {"compound_three_primary_keys": {"allow": allow}}
                 }
             }
         }
-    ) as client:
+    }
+    with make_app_client(**kwargs) as client:
         anon_response = client.get("/fixtures/compound_three_primary_keys")
         assert expected_anon == anon_response.status
         if allow and anon_response.status == 200:
@@ -195,7 +203,7 @@ def test_view_table(allow, expected_anon, expected_auth):
 
 def test_table_list_respects_view_table():
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {
                     "tables": {
@@ -231,7 +239,7 @@ def test_table_list_respects_view_table():
 )
 def test_view_query(allow, expected_anon, expected_auth):
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {"queries": {"q": {"sql": "select 1 + 1", "allow": allow}}}
             }
@@ -251,15 +259,15 @@ def test_view_query(allow, expected_anon, expected_auth):
 
 
 @pytest.mark.parametrize(
-    "metadata",
+    "config",
     [
         {"allow_sql": {"id": "root"}},
         {"databases": {"fixtures": {"allow_sql": {"id": "root"}}}},
     ],
 )
-def test_execute_sql(metadata):
+def test_execute_sql(config):
     schema_re = re.compile("const schema = ({.*?});", re.DOTALL)
-    with make_app_client(metadata=metadata) as client:
+    with make_app_client(config=config) as client:
         form_fragment = '<form class="sql" action="/fixtures"'
 
         # Anonymous users - should not display the form:
@@ -293,7 +301,7 @@ def test_execute_sql(metadata):
 
 def test_query_list_respects_view_query():
     with make_app_client(
-        metadata={
+        config={
             "databases": {
                 "fixtures": {
                     "queries": {"q": {"sql": "select 1 + 1", "allow": {"id": "root"}}}
@@ -370,6 +378,13 @@ async def test_permissions_debug(ds_client):
     cookie = ds_client.actor_cookie({"id": "root"})
     response = await ds_client.get("/-/permissions", cookies={"ds_actor": cookie})
     assert response.status_code == 200
+    # Should have a select box listing permissions
+    for fragment in (
+        '<select name="permission" id="permission">',
+        '<option value="view-instance">view-instance (default True)</option>',
+        '<option value="insert-row">insert-row (default False)</option>',
+    ):
+        assert fragment in response.text
     # Should show one failure and one success
     soup = Soup(response.text, "html.parser")
     check_divs = soup.findAll("div", {"class": "check"})
@@ -377,9 +392,11 @@ async def test_permissions_debug(ds_client):
         {
             "action": div.select_one(".check-action").text,
             # True = green tick, False = red cross, None = gray None
-            "result": None
-            if div.select(".check-result-no-opinion")
-            else bool(div.select(".check-result-true")),
+            "result": (
+                None
+                if div.select(".check-result-no-opinion")
+                else bool(div.select(".check-result-true"))
+            ),
             "used_default": bool(div.select(".check-used-default")),
         }
         for div in check_divs
@@ -420,13 +437,13 @@ async def test_allow_debug(ds_client, actor, allow, expected_fragment):
     ],
 )
 def test_allow_unauthenticated(allow, expected):
-    with make_app_client(metadata={"allow": allow}) as client:
+    with make_app_client(config={"allow": allow}) as client:
         assert expected == client.get("/").status
 
 
 @pytest.fixture(scope="session")
 def view_instance_client():
-    with make_app_client(metadata={"allow": {}}) as client:
+    with make_app_client(config={"allow": {}}) as client:
         yield client
 
 
@@ -500,24 +517,24 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
     """Test that e.g. having view-table but NOT view-database lets you view table page, etc"""
     allow = {"id": "*"}
     deny = {}
-    previous_metadata = cascade_app_client.ds.metadata()
-    updated_metadata = copy.deepcopy(previous_metadata)
+    previous_config = cascade_app_client.ds.config
+    updated_config = copy.deepcopy(previous_config)
     actor = {"id": "test"}
     if "download" in permissions:
         actor["can_download"] = 1
     try:
         # Set up the different allow blocks
-        updated_metadata["allow"] = allow if "instance" in permissions else deny
-        updated_metadata["databases"]["fixtures"]["allow"] = (
+        updated_config["allow"] = allow if "instance" in permissions else deny
+        updated_config["databases"]["fixtures"]["allow"] = (
             allow if "database" in permissions else deny
         )
-        updated_metadata["databases"]["fixtures"]["tables"]["binary_data"] = {
+        updated_config["databases"]["fixtures"]["tables"]["binary_data"] = {
             "allow": (allow if "table" in permissions else deny)
         }
-        updated_metadata["databases"]["fixtures"]["queries"]["magic_parameters"][
+        updated_config["databases"]["fixtures"]["queries"]["magic_parameters"][
             "allow"
         ] = (allow if "query" in permissions else deny)
-        cascade_app_client.ds._metadata_local = updated_metadata
+        cascade_app_client.ds.config = updated_config
         response = cascade_app_client.get(
             path,
             cookies={"ds_actor": cascade_app_client.actor_cookie(actor)},
@@ -528,11 +545,11 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
             path, permissions, expected_status, response.status
         )
     finally:
-        cascade_app_client.ds._metadata_local = previous_metadata
+        cascade_app_client.ds.config = previous_config
 
 
 def test_padlocks_on_database_page(cascade_app_client):
-    metadata = {
+    config = {
         "databases": {
             "fixtures": {
                 "allow": {"id": "test"},
@@ -544,9 +561,9 @@ def test_padlocks_on_database_page(cascade_app_client):
             }
         }
     }
-    previous_metadata = cascade_app_client.ds._metadata_local
+    previous_config = cascade_app_client.ds.config
     try:
-        cascade_app_client.ds._metadata_local = metadata
+        cascade_app_client.ds.config = config
         response = cascade_app_client.get(
             "/fixtures",
             cookies={"ds_actor": cascade_app_client.actor_cookie({"id": "test"})},
@@ -561,7 +578,7 @@ def test_padlocks_on_database_page(cascade_app_client):
         assert ">paginated_view</a> 🔒</li>" in response.text
         assert ">simple_view</a></li>" in response.text
     finally:
-        cascade_app_client.ds._metadata_local = previous_metadata
+        cascade_app_client.ds.config = previous_config
 
 
 DEF = "USE_DEFAULT"
@@ -584,7 +601,6 @@ DEF = "USE_DEFAULT"
         ({"id": "t", "_r": {"a": ["vd"]}}, "view-database", "one", None, DEF),
         ({"id": "t", "_r": {"a": ["vt"]}}, "view-table", "one", "t1", DEF),
         # But not if it's the wrong permission
-        ({"id": "t", "_r": {"a": ["vd"]}}, "view-instance", None, None, False),
         ({"id": "t", "_r": {"a": ["vi"]}}, "view-database", "one", None, False),
         ({"id": "t", "_r": {"a": ["vd"]}}, "view-table", "one", "t1", False),
         # Works at the "d" for database level:
@@ -628,11 +644,14 @@ DEF = "USE_DEFAULT"
             "t1",
             DEF,
         ),
+        # view-instance is granted if you have view-database
+        ({"id": "t", "_r": {"a": ["vd"]}}, "view-instance", None, None, DEF),
     ),
 )
 async def test_actor_restricted_permissions(
     perms_ds, actor, permission, resource_1, resource_2, expected_result
 ):
+    perms_ds.pdb = True
     cookies = {"ds_actor": perms_ds.sign({"a": {"id": "root"}}, "actor")}
     csrftoken = (await perms_ds.client.get("/-/permissions", cookies=cookies)).cookies[
         "ds_csrftoken"
@@ -661,55 +680,56 @@ async def test_actor_restricted_permissions(
         "permission": permission,
         "resource": expected_resource,
         "result": expected_result,
+        "default": perms_ds.permissions[permission].default,
     }
     assert response.json() == expected
 
 
-PermMetadataTestCase = collections.namedtuple(
-    "PermMetadataTestCase",
-    "metadata,actor,action,resource,expected_result",
+PermConfigTestCase = collections.namedtuple(
+    "PermConfigTestCase",
+    "config,actor,action,resource,expected_result",
 )
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "metadata,actor,action,resource,expected_result",
+    "config,actor,action,resource,expected_result",
     (
         # Simple view-instance default=True example
-        PermMetadataTestCase(
-            metadata={},
+        PermConfigTestCase(
+            config={},
             actor=None,
             action="view-instance",
             resource=None,
             expected_result=True,
         ),
         # debug-menu on root
-        PermMetadataTestCase(
-            metadata={"permissions": {"debug-menu": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"debug-menu": {"id": "user"}}},
             actor={"id": "user"},
             action="debug-menu",
             resource=None,
             expected_result=True,
         ),
         # debug-menu on root, wrong actor
-        PermMetadataTestCase(
-            metadata={"permissions": {"debug-menu": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"debug-menu": {"id": "user"}}},
             actor={"id": "user2"},
             action="debug-menu",
             resource=None,
             expected_result=False,
         ),
         # create-table on root
-        PermMetadataTestCase(
-            metadata={"permissions": {"create-table": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"create-table": {"id": "user"}}},
             actor={"id": "user"},
             action="create-table",
             resource=None,
             expected_result=True,
         ),
         # create-table on database - no resource specified
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {"permissions": {"create-table": {"id": "user"}}}
                 }
@@ -720,8 +740,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=False,
         ),
         # create-table on database
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {"permissions": {"create-table": {"id": "user"}}}
                 }
@@ -732,24 +752,24 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=True,
         ),
         # insert-row on root, wrong actor
-        PermMetadataTestCase(
-            metadata={"permissions": {"insert-row": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"insert-row": {"id": "user"}}},
             actor={"id": "user2"},
             action="insert-row",
             resource=("perms_ds_one", "t1"),
             expected_result=False,
         ),
         # insert-row on root, right actor
-        PermMetadataTestCase(
-            metadata={"permissions": {"insert-row": {"id": "user"}}},
+        PermConfigTestCase(
+            config={"permissions": {"insert-row": {"id": "user"}}},
             actor={"id": "user"},
             action="insert-row",
             resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
         # insert-row on database
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {"permissions": {"insert-row": {"id": "user"}}}
                 }
@@ -760,8 +780,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=True,
         ),
         # insert-row on table, wrong table
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {
                         "tables": {
@@ -776,8 +796,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=False,
         ),
         # insert-row on table, right table
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {
                         "tables": {
@@ -792,8 +812,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=True,
         ),
         # view-query on canned query, wrong actor
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {
                         "queries": {
@@ -811,8 +831,8 @@ PermMetadataTestCase = collections.namedtuple(
             expected_result=False,
         ),
         # view-query on canned query, right actor
-        PermMetadataTestCase(
-            metadata={
+        PermConfigTestCase(
+            config={
                 "databases": {
                     "perms_ds_one": {
                         "queries": {
@@ -831,20 +851,20 @@ PermMetadataTestCase = collections.namedtuple(
         ),
     ),
 )
-async def test_permissions_in_metadata(
-    perms_ds, metadata, actor, action, resource, expected_result
+async def test_permissions_in_config(
+    perms_ds, config, actor, action, resource, expected_result
 ):
-    previous_metadata = perms_ds.metadata()
-    updated_metadata = copy.deepcopy(previous_metadata)
-    updated_metadata.update(metadata)
-    perms_ds._metadata_local = updated_metadata
+    previous_config = perms_ds.config
+    updated_config = copy.deepcopy(previous_config)
+    updated_config.update(config)
+    perms_ds.config = updated_config
     try:
         result = await perms_ds.permission_allowed(actor, action, resource)
         if result != expected_result:
             pprint(perms_ds._permission_checks)
             assert result == expected_result
     finally:
-        perms_ds._metadata_local = previous_metadata
+        perms_ds.config = previous_config
 
 
 @pytest.mark.asyncio
@@ -951,3 +971,260 @@ def test_cli_create_token(options, expected):
     )
     assert 0 == result2.exit_code, result2.output
     assert json.loads(result2.output) == {"actor": expected}
+
+
+_visible_tables_re = re.compile(r">\/((\w+)\/(\w+))\.json<\/a> - Get rows for")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "is_logged_in,config,expected_visible_tables",
+    (
+        # Unprotected instance logged out user sees everything:
+        (
+            False,
+            None,
+            ["perms_ds_one/t1", "perms_ds_one/t2", "perms_ds_two/t1"],
+        ),
+        # Fully protected instance logged out user sees nothing
+        (False, {"allow": {"id": "user"}}, None),
+        # User with visibility of just perms_ds_one sees both tables there
+        (
+            True,
+            {
+                "databases": {
+                    "perms_ds_one": {"allow": {"id": "user"}},
+                    "perms_ds_two": {"allow": False},
+                }
+            },
+            ["perms_ds_one/t1", "perms_ds_one/t2"],
+        ),
+        # User with visibility of only table perms_ds_one/t1 sees just that one
+        (
+            True,
+            {
+                "databases": {
+                    "perms_ds_one": {
+                        "allow": {"id": "user"},
+                        "tables": {"t2": {"allow": False}},
+                    },
+                    "perms_ds_two": {"allow": False},
+                }
+            },
+            ["perms_ds_one/t1"],
+        ),
+    ),
+)
+async def test_api_explorer_visibility(
+    perms_ds, is_logged_in, config, expected_visible_tables
+):
+    try:
+        prev_config = perms_ds.config
+        perms_ds.config = config or {}
+        cookies = {}
+        if is_logged_in:
+            cookies = {"ds_actor": perms_ds.client.actor_cookie({"id": "user"})}
+        response = await perms_ds.client.get("/-/api", cookies=cookies)
+        if expected_visible_tables:
+            assert response.status_code == 200
+            # Search HTML for stuff matching:
+            # '>/perms_ds_one/t2.json</a> - Get rows for'
+            visible_tables = [
+                match[0] for match in _visible_tables_re.findall(response.text)
+            ]
+            assert visible_tables == expected_visible_tables
+        else:
+            assert response.status_code == 403
+    finally:
+        perms_ds.config = prev_config
+
+
+@pytest.mark.asyncio
+async def test_view_table_token_can_access_table(perms_ds):
+    actor = {
+        "id": "restricted-token",
+        "token": "dstok",
+        # Restricted to just view-table on perms_ds_two/t1
+        "_r": {"r": {"perms_ds_two": {"t1": ["vt"]}}},
+    }
+    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
+    response = await perms_ds.client.get("/perms_ds_two/t1.json", cookies=cookies)
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "restrictions,verb,path,body,expected_status",
+    (
+        # No restrictions
+        (None, "get", "/.json", None, 200),
+        (None, "get", "/perms_ds_one.json", None, 200),
+        (None, "get", "/perms_ds_one/t1.json", None, 200),
+        (None, "get", "/perms_ds_one/t1/1.json", None, 200),
+        (None, "get", "/perms_ds_one/v1.json", None, 200),
+        # Restricted to just view-instance
+        ({"a": ["vi"]}, "get", "/.json", None, 200),
+        ({"a": ["vi"]}, "get", "/perms_ds_one.json", None, 403),
+        ({"a": ["vi"]}, "get", "/perms_ds_one/t1.json", None, 403),
+        ({"a": ["vi"]}, "get", "/perms_ds_one/t1/1.json", None, 403),
+        ({"a": ["vi"]}, "get", "/perms_ds_one/v1.json", None, 403),
+        # Restricted to just view-database
+        ({"a": ["vd"]}, "get", "/.json", None, 200),  # Can see instance too
+        ({"a": ["vd"]}, "get", "/perms_ds_one.json", None, 200),
+        ({"a": ["vd"]}, "get", "/perms_ds_one/t1.json", None, 403),
+        ({"a": ["vd"]}, "get", "/perms_ds_one/t1/1.json", None, 403),
+        ({"a": ["vd"]}, "get", "/perms_ds_one/v1.json", None, 403),
+        # Restricted to just view-table for specific database
+        (
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/.json",
+            None,
+            200,
+        ),  # Can see instance
+        (
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/perms_ds_one.json",
+            None,
+            200,
+        ),  # and this database
+        (
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/perms_ds_two.json",
+            None,
+            403,
+        ),  # But not this one
+        (
+            # Can see the table
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/perms_ds_one/t1.json",
+            None,
+            200,
+        ),
+        (
+            # And the view
+            {"d": {"perms_ds_one": ["vt"]}},
+            "get",
+            "/perms_ds_one/v1.json",
+            None,
+            200,
+        ),
+        # view-table access to a specific table
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/.json",
+            None,
+            200,
+        ),
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/perms_ds_one.json",
+            None,
+            200,
+        ),
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/perms_ds_one/t1.json",
+            None,
+            200,
+        ),
+        # But cannot see the other table
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/perms_ds_one/t2.json",
+            None,
+            403,
+        ),
+        # Or the view
+        (
+            {"r": {"perms_ds_one": {"t1": ["vt"]}}},
+            "get",
+            "/perms_ds_one/v1.json",
+            None,
+            403,
+        ),
+    ),
+)
+async def test_actor_restrictions(
+    perms_ds, restrictions, verb, path, body, expected_status
+):
+    actor = {"id": "user"}
+    if restrictions:
+        actor["_r"] = restrictions
+    method = getattr(perms_ds.client, verb)
+    kwargs = {"cookies": {"ds_actor": perms_ds.client.actor_cookie(actor)}}
+    if body:
+        kwargs["json"] = body
+    perms_ds._permission_checks.clear()
+    response = await method(path, **kwargs)
+    assert response.status_code == expected_status, json.dumps(
+        {
+            "verb": verb,
+            "path": path,
+            "body": body,
+            "restrictions": restrictions,
+            "expected_status": expected_status,
+            "response_status": response.status_code,
+            "checks": [
+                {
+                    "action": check["action"],
+                    "resource": check["resource"],
+                    "result": check["result"],
+                }
+                for check in perms_ds._permission_checks
+            ],
+        },
+        indent=2,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "restrictions,action,resource,expected",
+    (
+        ({"a": ["view-instance"]}, "view-instance", None, True),
+        # view-table and view-database implies view-instance
+        ({"a": ["view-table"]}, "view-instance", None, True),
+        ({"a": ["view-database"]}, "view-instance", None, True),
+        # update-row does not imply view-instance
+        ({"a": ["update-row"]}, "view-instance", None, False),
+        # view-table on a resource implies view-instance
+        ({"r": {"db1": {"t1": ["view-table"]}}}, "view-instance", None, True),
+        # execute-sql on a database implies view-instance, view-database
+        ({"d": {"db1": ["es"]}}, "view-instance", None, True),
+        ({"d": {"db1": ["es"]}}, "view-database", "db1", True),
+        ({"d": {"db1": ["es"]}}, "view-database", "db2", False),
+        # update-row on a resource does not imply view-instance
+        ({"r": {"db1": {"t1": ["update-row"]}}}, "view-instance", None, False),
+        # view-database on a resource implies view-instance
+        ({"d": {"db1": ["view-database"]}}, "view-instance", None, True),
+        # Having view-table on "a" allows access to any specific table
+        ({"a": ["view-table"]}, "view-table", ("dbname", "tablename"), True),
+        # Ditto for on the database
+        (
+            {"d": {"dbname": ["view-table"]}},
+            "view-table",
+            ("dbname", "tablename"),
+            True,
+        ),
+        # But not if it's allowed on a different database
+        (
+            {"d": {"dbname": ["view-table"]}},
+            "view-table",
+            ("dbname2", "tablename"),
+            False,
+        ),
+    ),
+)
+async def test_restrictions_allow_action(restrictions, action, resource, expected):
+    ds = Datasette()
+    await ds.invoke_startup()
+    actual = restrictions_allow_action(ds, restrictions, action, resource)
+    assert actual == expected

@@ -8,11 +8,11 @@ import functools
 import glob
 import hashlib
 import httpx
+import importlib.metadata
 import inspect
 from itsdangerous import BadSignature
 import json
 import os
-import pkg_resources
 import re
 import secrets
 import sys
@@ -34,6 +34,7 @@ from jinja2 import (
 from jinja2.environment import Template
 from jinja2.exceptions import TemplateNotFound
 
+from .events import Event
 from .views import Context
 from .views.base import ureg
 from .views.database import database_download, DatabaseView, TableCreateView
@@ -73,12 +74,15 @@ from .utils import (
     find_spatialite,
     format_bytes,
     module_from_path,
+    move_plugins_and_allow,
+    move_table_config,
     parse_metadata,
     resolve_env_secrets,
     resolve_routes,
     tilde_decode,
     to_css_class,
     urlsafe_components,
+    redact_keys,
     row_sql_params_pks,
 )
 from .utils.asgi import (
@@ -242,6 +246,7 @@ class Datasette:
         cache_headers=True,
         cors=False,
         inspect_data=None,
+        config=None,
         metadata=None,
         sqlite_extensions=None,
         template_dir=None,
@@ -255,6 +260,7 @@ class Datasette:
         pdb=False,
         crossdb=False,
         nolock=False,
+        internal=None,
     ):
         self._startup_invoked = False
         assert config_dir is None or isinstance(
@@ -303,19 +309,21 @@ class Datasette:
             self.add_database(
                 Database(self, is_mutable=False, is_memory=True), name="_memory"
             )
-        # memory_name is a random string so that each Datasette instance gets its own
-        # unique in-memory named database - otherwise unit tests can fail with weird
-        # errors when different instances accidentally share an in-memory database
-        self.add_database(
-            Database(self, memory_name=secrets.token_hex()), name="_internal"
-        )
-        self.internal_db_created = False
         for file in self.files:
             self.add_database(
                 Database(self, file, is_mutable=file not in self.immutables)
             )
+
+        self.internal_db_created = False
+        if internal is None:
+            self._internal_database = Database(self, memory_name=secrets.token_hex())
+        else:
+            self._internal_database = Database(self, path=internal, mode="rwc")
+        self._internal_database.name = "__INTERNAL__"
+
         self.cache_headers = cache_headers
         self.cors = cors
+        config_files = []
         metadata_files = []
         if config_dir:
             metadata_files = [
@@ -323,9 +331,26 @@ class Datasette:
                 for filename in ("metadata.json", "metadata.yaml", "metadata.yml")
                 if (config_dir / filename).exists()
             ]
+            config_files = [
+                config_dir / filename
+                for filename in ("datasette.json", "datasette.yaml", "datasette.yml")
+                if (config_dir / filename).exists()
+            ]
         if config_dir and metadata_files and not metadata:
             with metadata_files[0].open() as fp:
                 metadata = parse_metadata(fp.read())
+
+        if config_dir and config_files and not config:
+            with config_files[0].open() as fp:
+                config = parse_metadata(fp.read())
+
+        # Move any "plugins" and "allow" settings from metadata to config - updates them in place
+        metadata = metadata or {}
+        config = config or {}
+        metadata, config = move_plugins_and_allow(metadata, config)
+        # Now migrate any known table configuration settings over as well
+        metadata, config = move_table_config(metadata, config)
+
         self._metadata_local = metadata or {}
         self.sqlite_extensions = []
         for extension in sqlite_extensions or []:
@@ -344,17 +369,19 @@ class Datasette:
         if config_dir and (config_dir / "static").is_dir() and not static_mounts:
             static_mounts = [("static", str((config_dir / "static").resolve()))]
         self.static_mounts = static_mounts or []
-        if config_dir and (config_dir / "config.json").exists():
-            raise StartupError("config.json should be renamed to settings.json")
-        if config_dir and (config_dir / "settings.json").exists() and not settings:
-            settings = json.loads((config_dir / "settings.json").read_text())
-            # Validate those settings
-            for key in settings:
-                if key not in DEFAULT_SETTINGS:
-                    raise StartupError(
-                        "Invalid setting '{}' in settings.json".format(key)
-                    )
-        self._settings = dict(DEFAULT_SETTINGS, **(settings or {}))
+        if config_dir and (config_dir / "datasette.json").exists() and not config:
+            config = json.loads((config_dir / "datasette.json").read_text())
+
+        config = config or {}
+        config_settings = config.get("settings") or {}
+
+        # validate "settings" keys in datasette.json
+        for key in config_settings:
+            if key not in DEFAULT_SETTINGS:
+                raise StartupError("Invalid setting '{}' in datasette.json".format(key))
+        self.config = config
+        # CLI settings should overwrite datasette.json settings
+        self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))
         self.renderers = {}  # File extension -> (renderer, can_render) functions
         self.version_note = version_note
         if self.setting("num_sql_threads") == 0:
@@ -400,20 +427,44 @@ class Datasette:
                 ),
             ]
         )
-        self.jinja_env = Environment(
+        environment = Environment(
             loader=template_loader,
             autoescape=True,
             enable_async=True,
             # undefined=StrictUndefined,
         )
-        self.jinja_env.filters["escape_css_string"] = escape_css_string
-        self.jinja_env.filters["quote_plus"] = urllib.parse.quote_plus
-        self.jinja_env.filters["escape_sqlite"] = escape_sqlite
-        self.jinja_env.filters["to_css_class"] = to_css_class
+        environment.filters["escape_css_string"] = escape_css_string
+        environment.filters["quote_plus"] = urllib.parse.quote_plus
+        self._jinja_env = environment
+        environment.filters["escape_sqlite"] = escape_sqlite
+        environment.filters["to_css_class"] = to_css_class
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
         self.client = DatasetteClient(self)
+
+    def get_jinja_environment(self, request: Request = None) -> Environment:
+        environment = self._jinja_env
+        if request:
+            for environment in pm.hook.jinja2_environment_from_request(
+                datasette=self, request=request, env=environment
+            ):
+                pass
+        return environment
+
+    def get_permission(self, name_or_abbr: str) -> "Permission":
+        """
+        Returns a Permission object for the given name or abbreviation. Raises KeyError if not found.
+        """
+        if name_or_abbr in self.permissions:
+            return self.permissions[name_or_abbr]
+        # Try abbreviation
+        for permission in self.permissions.values():
+            if permission.abbr == name_or_abbr:
+                return permission
+        raise KeyError(
+            "No permission found with name or abbreviation {}".format(name_or_abbr)
+        )
 
     async def refresh_schemas(self):
         if self._refresh_schemas_lock.locked():
@@ -422,15 +473,14 @@ class Datasette:
             await self._refresh_schemas()
 
     async def _refresh_schemas(self):
-        internal_db = self.databases["_internal"]
+        internal_db = self.get_internal_database()
         if not self.internal_db_created:
             await init_internal_db(internal_db)
             self.internal_db_created = True
-
         current_schema_versions = {
             row["database_name"]: row["schema_version"]
             for row in await internal_db.execute(
-                "select database_name, schema_version from databases"
+                "select database_name, schema_version from catalog_databases"
             )
         }
         for database_name, db in self.databases.items():
@@ -445,7 +495,7 @@ class Datasette:
                 values = [database_name, db.is_memory, schema_version]
             await internal_db.execute_write(
                 """
-                INSERT OR REPLACE INTO databases (database_name, path, is_memory, schema_version)
+                INSERT OR REPLACE INTO catalog_databases (database_name, path, is_memory, schema_version)
                 VALUES {}
             """.format(
                     placeholders
@@ -462,6 +512,14 @@ class Datasette:
         # This must be called for Datasette to be in a usable state
         if self._startup_invoked:
             return
+        # Register event classes
+        event_classes = []
+        for hook in pm.hook.register_events(datasette=self):
+            extra_classes = await await_me_maybe(hook)
+            if extra_classes:
+                event_classes.extend(extra_classes)
+        self.event_classes = tuple(event_classes)
+
         # Register permissions, but watch out for duplicate name/abbr
         names = {}
         abbrs = {}
@@ -481,7 +539,7 @@ class Datasette:
                         abbrs[p.abbr] = p
                     self.permissions[p.name] = p
         for hook in pm.hook.prepare_jinja2_environment(
-            env=self.jinja_env, datasette=self
+            env=self._jinja_env, datasette=self
         ):
             await await_me_maybe(hook)
         for hook in pm.hook.startup(datasette=self):
@@ -540,8 +598,7 @@ class Datasette:
                 raise KeyError
             return matches[0]
         if name is None:
-            # Return first database that isn't "_internal"
-            name = [key for key in self.databases.keys() if key != "_internal"][0]
+            name = [key for key in self.databases.keys()][0]
         return self.databases[name]
 
     def add_database(self, db, name=None, route=None):
@@ -641,17 +698,48 @@ class Datasette:
     def _metadata(self):
         return self.metadata()
 
+    def get_internal_database(self):
+        return self._internal_database
+
     def plugin_config(self, plugin_name, database=None, table=None, fallback=True):
         """Return config for plugin, falling back from specified database/table"""
-        plugins = self.metadata(
-            "plugins", database=database, table=table, fallback=fallback
-        )
-        if plugins is None:
-            return None
-        plugin_config = plugins.get(plugin_name)
-        # Resolve any $file and $env keys
-        plugin_config = resolve_env_secrets(plugin_config, os.environ)
-        return plugin_config
+        if database is None and table is None:
+            config = self._plugin_config_top(plugin_name)
+        else:
+            config = self._plugin_config_nested(plugin_name, database, table, fallback)
+
+        return resolve_env_secrets(config, os.environ)
+
+    def _plugin_config_top(self, plugin_name):
+        """Returns any top-level plugin configuration for the specified plugin."""
+        return ((self.config or {}).get("plugins") or {}).get(plugin_name)
+
+    def _plugin_config_nested(self, plugin_name, database, table=None, fallback=True):
+        """Returns any database or table-level plugin configuration for the specified plugin."""
+        db_config = ((self.config or {}).get("databases") or {}).get(database)
+
+        # if there's no db-level configuration, then return early, falling back to top-level if needed
+        if not db_config:
+            return self._plugin_config_top(plugin_name) if fallback else None
+
+        db_plugin_config = (db_config.get("plugins") or {}).get(plugin_name)
+
+        if table:
+            table_plugin_config = (
+                ((db_config.get("tables") or {}).get(table) or {}).get("plugins") or {}
+            ).get(plugin_name)
+
+            # fallback to db_config or top-level config, in that order, if needed
+            if table_plugin_config is None and fallback:
+                return db_plugin_config or self._plugin_config_top(plugin_name)
+
+            return table_plugin_config
+
+        # fallback to top-level if needed
+        if db_plugin_config is None and fallback:
+            self._plugin_config_top(plugin_name)
+
+        return db_plugin_config
 
     def app_css_hash(self):
         if not hasattr(self, "_app_css_hash"):
@@ -662,7 +750,9 @@ class Datasette:
         return self._app_css_hash
 
     async def get_canned_queries(self, database_name, actor):
-        queries = self.metadata("queries", database=database_name, fallback=False) or {}
+        queries = (
+            ((self.config or {}).get("databases") or {}).get(database_name) or {}
+        ).get("queries") or {}
         for more_queries in pm.hook.canned_queries(
             datasette=self,
             database=database_name,
@@ -788,14 +878,33 @@ class Datasette:
                 )
         return crumbs
 
+    async def actors_from_ids(
+        self, actor_ids: Iterable[Union[str, int]]
+    ) -> Dict[Union[id, str], Dict]:
+        result = pm.hook.actors_from_ids(datasette=self, actor_ids=actor_ids)
+        if result is None:
+            # Do the default thing
+            return {actor_id: {"id": actor_id} for actor_id in actor_ids}
+        result = await await_me_maybe(result)
+        return result
+
+    async def track_event(self, event: Event):
+        assert isinstance(event, self.event_classes), "Invalid event type: {}".format(
+            type(event)
+        )
+        for hook in pm.hook.track_event(datasette=self, event=event):
+            await await_me_maybe(hook)
+
     async def permission_allowed(
-        self, actor, action, resource=None, default=DEFAULT_NOT_SET
+        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
     ):
         """Check permissions using the permissions_allowed plugin hook"""
         result = None
         # Use default from registered permission, if available
         if default is DEFAULT_NOT_SET and action in self.permissions:
             default = self.permissions[action].default
+        opinions = []
+        # Every plugin is consulted for their opinion
         for check in pm.hook.permission_allowed(
             datasette=self,
             actor=actor,
@@ -804,9 +913,19 @@ class Datasette:
         ):
             check = await await_me_maybe(check)
             if check is not None:
-                result = check
+                opinions.append(check)
+
+        result = None
+        # If any plugin said False it's false - the veto rule
+        if any(not r for r in opinions):
+            result = False
+        elif any(r for r in opinions):
+            # Otherwise, if any plugin said True it's true
+            result = True
+
         used_default = False
         if result is None:
+            # No plugin expressed an opinion, so use the default
             result = default
             used_default = True
         self._permission_checks.append(
@@ -904,7 +1023,7 @@ class Datasette:
             log_sql_errors=log_sql_errors,
         )
 
-    async def expand_foreign_keys(self, database, table, column, values):
+    async def expand_foreign_keys(self, actor, database, table, column, values):
         """Returns dict mapping (column, value) -> label"""
         labeled_fks = {}
         db = self.databases[database]
@@ -918,7 +1037,20 @@ class Datasette:
             ][0]
         except IndexError:
             return {}
-        label_column = await db.label_column_for_table(fk["other_table"])
+        # Ensure user has permission to view the referenced table
+        other_table = fk["other_table"]
+        other_column = fk["other_column"]
+        visible, _ = await self.check_visibility(
+            actor,
+            permissions=[
+                ("view-table", (database, other_table)),
+                ("view-database", database),
+                "view-instance",
+            ],
+        )
+        if not visible:
+            return {}
+        label_column = await db.label_column_for_table(other_table)
         if not label_column:
             return {(fk["column"], value): str(value) for value in values}
         labeled_fks = {}
@@ -927,9 +1059,9 @@ class Datasette:
             from {other_table}
             where {other_column} in ({placeholders})
         """.format(
-            other_column=escape_sqlite(fk["other_column"]),
+            other_column=escape_sqlite(other_column),
             label_column=escape_sqlite(label_column),
-            other_table=escape_sqlite(fk["other_table"]),
+            other_table=escape_sqlite(other_table),
             placeholders=", ".join(["?"] * len(set(values))),
         )
         try:
@@ -964,7 +1096,6 @@ class Datasette:
                 "hash": d.hash,
             }
             for name, d in self.databases.items()
-            if name != "_internal"
         ]
 
     def _versions(self):
@@ -1037,9 +1168,9 @@ class Datasette:
         if using_pysqlite3:
             for package in ("pysqlite3", "pysqlite3-binary"):
                 try:
-                    info["pysqlite3"] = pkg_resources.get_distribution(package).version
+                    info["pysqlite3"] = importlib.metadata.version(package)
                     break
-                except pkg_resources.DistributionNotFound:
+                except importlib.metadata.PackageNotFoundError:
                     pass
         return info
 
@@ -1086,10 +1217,11 @@ class Datasette:
     def _actor(self, request):
         return {"actor": request.actor}
 
-    def table_metadata(self, database, table):
-        """Fetch table-specific metadata."""
+    async def table_config(self, database: str, table: str) -> dict:
+        """Return dictionary of configuration for specified table"""
         return (
-            (self.metadata("databases") or {})
+            (self.config or {})
+            .get("databases", {})
             .get(database, {})
             .get("tables", {})
             .get(table, {})
@@ -1131,7 +1263,7 @@ class Datasette:
         else:
             if isinstance(templates, str):
                 templates = [templates]
-            template = self.jinja_env.select_template(templates)
+            template = self.get_jinja_environment(request).select_template(templates)
         if dataclasses.is_dataclass(context):
             context = dataclasses.asdict(context)
         body_scripts = []
@@ -1234,7 +1366,7 @@ class Datasette:
         ):
             hook = await await_me_maybe(hook)
             collected.extend(hook)
-        collected.extend(self.metadata(key) or [])
+        collected.extend((self.config or {}).get(key) or [])
         output = []
         for url_or_dict in collected:
             if isinstance(url_or_dict, dict):
@@ -1258,6 +1390,11 @@ class Datasette:
                 script["module"] = True
             output.append(script)
         return output
+
+    def _config(self):
+        return redact_keys(
+            self.config, ("secret", "key", "password", "token", "hash", "dsn")
+        )
 
     def _routes(self):
         routes = []
@@ -1318,12 +1455,8 @@ class Datasette:
             r"/-/settings(\.(?P<format>json))?$",
         )
         add_route(
-            permanent_redirect("/-/settings.json"),
-            r"/-/config.json",
-        )
-        add_route(
-            permanent_redirect("/-/settings"),
-            r"/-/config",
+            JsonDataView.as_view(self, "config.json", lambda: self._config()),
+            r"/-/config(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "threads.json", self._threads),
@@ -1481,16 +1614,6 @@ class DatasetteRouter:
     def __init__(self, datasette, routes):
         self.ds = datasette
         self.routes = routes or []
-        # Build a list of pages/blah/{name}.html matching expressions
-        pattern_templates = [
-            filepath
-            for filepath in self.ds.jinja_env.list_templates()
-            if "{" in filepath and filepath.startswith("pages/")
-        ]
-        self.page_routes = [
-            (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
-            for filepath in pattern_templates
-        ]
 
     async def __call__(self, scope, receive, send):
         # Because we care about "foo/bar" v.s. "foo%2Fbar" we decode raw_path ourselves
@@ -1590,13 +1713,24 @@ class DatasetteRouter:
             route_path = request.scope.get("route_path", request.scope["path"])
             # Jinja requires template names to use "/" even on Windows
             template_name = "pages" + route_path + ".html"
+            # Build a list of pages/blah/{name}.html matching expressions
+            environment = self.ds.get_jinja_environment(request)
+            pattern_templates = [
+                filepath
+                for filepath in environment.list_templates()
+                if "{" in filepath and filepath.startswith("pages/")
+            ]
+            page_routes = [
+                (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
+                for filepath in pattern_templates
+            ]
             try:
-                template = self.ds.jinja_env.select_template([template_name])
+                template = environment.select_template([template_name])
             except TemplateNotFound:
                 template = None
             if template is None:
                 # Try for a pages/blah/{name}.html template match
-                for regex, wildcard_template in self.page_routes:
+                for regex, wildcard_template in page_routes:
                     match = regex.match(route_path)
                     if match is not None:
                         context.update(match.groupdict())

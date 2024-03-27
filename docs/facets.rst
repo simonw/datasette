@@ -120,7 +120,7 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -132,7 +132,7 @@ Here's an example that turns on faceting by default for the ``qLegalStatus`` col
                 - qLegalStatus
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -164,7 +164,7 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -173,7 +173,7 @@ You can specify :ref:`array <facet_by_json_array>` or :ref:`date <facet_by_date>
         - date: created
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -206,7 +206,7 @@ You can change the default facet size (the number of results shown for each face
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -219,7 +219,7 @@ You can change the default facet size (the number of results shown for each face
                 facet_size: 10
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -260,14 +260,17 @@ Speeding up facets with indexes
 The performance of facets can be greatly improved by adding indexes on the columns you wish to facet by.
 Adding indexes can be performed using the ``sqlite3`` command-line utility. Here's how to add an index on the ``state`` column in a table called ``Food_Trucks``::
 
-    $ sqlite3 mydatabase.db
+    sqlite3 mydatabase.db
+
+::
+
     SQLite version 3.19.3 2017-06-27 16:48:08
     Enter ".help" for usage hints.
     sqlite> CREATE INDEX Food_Trucks_state ON Food_Trucks("state");
 
 Or using the `sqlite-utils <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-indexes>`__ command-line utility::
 
-    $ sqlite-utils create-index mydatabase.db Food_Trucks state
+    sqlite-utils create-index mydatabase.db Food_Trucks state
 
 .. _facet_by_json_array:
 

@@ -17,7 +17,7 @@ datasette| |discord|
 .. |docker: datasette| image:: https://img.shields.io/badge/docker-datasette-blue
    :target: https://hub.docker.com/r/datasetteproject/datasette
 .. |discord| image:: https://img.shields.io/discord/823971286308356157?label=discord
-   :target: https://discord.gg/ktd74dm5mw
+   :target: https://datasette.io/discord
 
 *An open source multi-tool for exploring and publishing data*
 
@@ -39,6 +39,7 @@ Contents
 
    getting_started
    installation
+   configuration
    ecosystem
    cli-reference
    pages
@@ -59,8 +60,10 @@ Contents
    custom_templates
    plugins
    writing_plugins
+   javascript_plugins
    plugin_hooks
    testing_plugins
    internals
+   events
    contributing
    changelog

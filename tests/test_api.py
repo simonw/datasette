@@ -771,7 +771,7 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
 @pytest.mark.asyncio
 async def test_metadata_json(ds_client):
     response = await ds_client.get("/-/metadata.json")
-    assert response.json() == METADATA
+    assert response.json() == ds_client.ds.metadata()
 
 
 @pytest.mark.asyncio
@@ -780,13 +780,22 @@ async def test_threads_json(ds_client):
     expected_keys = {"threads", "num_threads"}
     if sys.version_info >= (3, 7, 0):
         expected_keys.update({"tasks", "num_tasks"})
-    assert set(response.json().keys()) == expected_keys
+    data = response.json()
+    assert set(data.keys()) == expected_keys
+    # Should be at least one _execute_writes thread for __INTERNAL__
+    thread_names = [thread["name"] for thread in data["threads"]]
+    assert "_execute_writes for database __INTERNAL__" in thread_names
 
 
 @pytest.mark.asyncio
 async def test_plugins_json(ds_client):
     response = await ds_client.get("/-/plugins.json")
-    assert EXPECTED_PLUGINS == sorted(response.json(), key=lambda p: p["name"])
+    # Filter out TrackEventPlugin
+    actual_plugins = sorted(
+        [p for p in response.json() if p["name"] != "TrackEventPlugin"],
+        key=lambda p: p["name"],
+    )
+    assert EXPECTED_PLUGINS == actual_plugins
     # Try with ?all=1
     response = await ds_client.get("/-/plugins.json?all=1")
     names = {p["name"] for p in response.json()}
@@ -839,20 +848,6 @@ async def test_settings_json(ds_client):
         "trace_debug": False,
         "base_url": "/",
     }
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "path,expected_redirect",
-    (
-        ("/-/config.json", "/-/settings.json"),
-        ("/-/config", "/-/settings"),
-    ),
-)
-async def test_config_redirects_to_settings(ds_client, path, expected_redirect):
-    response = await ds_client.get(path)
-    assert response.status_code == 301
-    assert response.headers["Location"] == expected_redirect
 
 
 test_json_columns_default_expected = [
@@ -1017,7 +1012,25 @@ async def test_hidden_sqlite_stat1_table():
     await db.execute_write("analyze")
     data = (await ds.client.get("/db.json?_show_hidden=1")).json()
     tables = [(t["name"], t["hidden"]) for t in data["tables"]]
-    assert tables == [("normal", False), ("sqlite_stat1", True)]
+    assert tables in (
+        [("normal", False), ("sqlite_stat1", True)],
+        [("normal", False), ("sqlite_stat1", True), ("sqlite_stat4", True)],
+    )
+
+
+@pytest.mark.asyncio
+async def test_hide_tables_starting_with_underscore():
+    ds = Datasette()
+    db = ds.add_memory_database("test_hide_tables_starting_with_underscore")
+    await db.execute_write("create table normal (id integer primary key, name text)")
+    await db.execute_write("create table _hidden (id integer primary key, name text)")
+    data = (
+        await ds.client.get(
+            "/test_hide_tables_starting_with_underscore.json?_show_hidden=1"
+        )
+    ).json()
+    tables = [(t["name"], t["hidden"]) for t in data["tables"]]
+    assert tables == [("normal", False), ("_hidden", True)]
 
 
 @pytest.mark.asyncio
@@ -1031,3 +1044,138 @@ async def test_tilde_encoded_database_names(db_name):
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "config,expected",
+    (
+        ({}, {}),
+        ({"plugins": {"datasette-foo": "bar"}}, {"plugins": {"datasette-foo": "bar"}}),
+        # Test redaction
+        (
+            {
+                "plugins": {
+                    "datasette-auth": {"secret_key": "key"},
+                    "datasette-foo": "bar",
+                    "datasette-auth2": {"password": "password"},
+                    "datasette-sentry": {
+                        "dsn": "sentry:///foo",
+                    },
+                }
+            },
+            {
+                "plugins": {
+                    "datasette-auth": {"secret_key": "***"},
+                    "datasette-foo": "bar",
+                    "datasette-auth2": {"password": "***"},
+                    "datasette-sentry": {"dsn": "***"},
+                }
+            },
+        ),
+    ),
+)
+async def test_config_json(config, expected):
+    "/-/config.json should return redacted configuration"
+    ds = Datasette(config=config)
+    response = await ds.client.get("/-/config.json")
+    assert response.json() == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata,expected_config,expected_metadata",
+    (
+        ({}, {}, {}),
+        (
+            # Metadata input
+            {
+                "title": "Datasette Fixtures",
+                "databases": {
+                    "fixtures": {
+                        "tables": {
+                            "sortable": {
+                                "sortable_columns": [
+                                    "sortable",
+                                    "sortable_with_nulls",
+                                    "sortable_with_nulls_2",
+                                    "text",
+                                ],
+                            },
+                            "no_primary_key": {"sortable_columns": [], "hidden": True},
+                            "units": {"units": {"distance": "m", "frequency": "Hz"}},
+                            "primary_key_multiple_columns_explicit_label": {
+                                "label_column": "content2"
+                            },
+                            "simple_view": {"sortable_columns": ["content"]},
+                            "searchable_view_configured_by_metadata": {
+                                "fts_table": "searchable_fts",
+                                "fts_pk": "pk",
+                            },
+                            "roadside_attractions": {
+                                "columns": {
+                                    "name": "The name of the attraction",
+                                    "address": "The street address for the attraction",
+                                }
+                            },
+                            "attraction_characteristic": {"sort_desc": "pk"},
+                            "facet_cities": {"sort": "name"},
+                            "paginated_view": {"size": 25},
+                        },
+                    }
+                },
+            },
+            # Should produce a config with just the table configuration keys
+            {
+                "databases": {
+                    "fixtures": {
+                        "tables": {
+                            "sortable": {
+                                "sortable_columns": [
+                                    "sortable",
+                                    "sortable_with_nulls",
+                                    "sortable_with_nulls_2",
+                                    "text",
+                                ]
+                            },
+                            "units": {"units": {"distance": "m", "frequency": "Hz"}},
+                            # These one get redacted:
+                            "no_primary_key": "***",
+                            "primary_key_multiple_columns_explicit_label": "***",
+                            "simple_view": {"sortable_columns": ["content"]},
+                            "searchable_view_configured_by_metadata": {
+                                "fts_table": "searchable_fts",
+                                "fts_pk": "pk",
+                            },
+                            "attraction_characteristic": {"sort_desc": "pk"},
+                            "facet_cities": {"sort": "name"},
+                            "paginated_view": {"size": 25},
+                        }
+                    }
+                }
+            },
+            # And metadata with everything else
+            {
+                "title": "Datasette Fixtures",
+                "databases": {
+                    "fixtures": {
+                        "tables": {
+                            "roadside_attractions": {
+                                "columns": {
+                                    "name": "The name of the attraction",
+                                    "address": "The street address for the attraction",
+                                }
+                            },
+                        }
+                    }
+                },
+            },
+        ),
+    ),
+)
+async def test_upgrade_metadata(metadata, expected_config, expected_metadata):
+    ds = Datasette(metadata=metadata)
+    response = await ds.client.get("/-/config.json")
+    assert response.json() == expected_config
+    response2 = await ds.client.get("/-/metadata.json")
+    assert response2.json() == expected_metadata

@@ -10,26 +10,22 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - uses: actions/cache@v3
-      name: Configure pip caching
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        allow-prereleases: true
+        cache: pip
+        cache-dependency-path: setup.py
     - name: Build extension for --load-extension test
       run: |-
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)
     - name: Install dependencies
       run: |
-        pip install -e '.[test,docs]'
+        pip install -e '.[test]'
         pip freeze
     - name: Run tests
       run: |
@@ -37,10 +33,20 @@ jobs:
         pytest -m "serial"
         # And the test that exceeds a localhost HTTPS server
         tests/test_datasette_https_server.sh
+    - name: Install docs dependencies on Python 3.9+
+      if: matrix.python-version != '3.8'
+      run: |
+        pip install -e '.[docs]'
     - name: Check if cog needs to be run
+      if: matrix.python-version != '3.8'
       run: |
         cog --check docs/*.rst
     - name: Check if blacken-docs needs to be run
+      if: matrix.python-version != '3.8'
       run: |
         # This fails on syntax errors, or a diff was applied
         blacken-docs -l 60 docs/*.rst
+    - name: Test DATASETTE_LOAD_PLUGINS
+      run: |
+        pip install datasette-init datasette-json-html
+        tests/test-datasette-load-plugins.sh

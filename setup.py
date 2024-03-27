@@ -44,10 +44,12 @@ setup(
     install_requires=[
         "asgiref>=3.2.10",
         "click>=7.1.1",
-        "click-default-group-wheel>=1.2.2",
+        "click-default-group>=1.2.3",
         "Jinja2>=2.10.3",
         "hupper>=1.9",
         "httpx>=0.20",
+        'importlib_resources>=1.3.1; python_version < "3.9"',
+        'importlib_metadata>=4.6; python_version < "3.10"',
         "pint>=0.9",
         "pluggy>=1.0",
         "uvicorn>=0.11",
@@ -66,11 +68,10 @@ setup(
         [console_scripts]
         datasette=datasette.cli:cli
     """,
-    setup_requires=["pytest-runner"],
     extras_require={
         "docs": [
-            "Sphinx==7.1.2",
-            "furo==2023.7.26",
+            "Sphinx==7.2.6",
+            "furo==2024.1.29",
             "sphinx-autobuild",
             "codespell>=2.2.5",
             "blacken-docs",
@@ -83,15 +84,14 @@ setup(
             "pytest-xdist>=2.2.1",
             "pytest-asyncio>=0.17",
             "beautifulsoup4>=4.8.1",
-            "black==23.7.0",
-            "blacken-docs==1.15.0",
+            "black==24.2.0",
+            "blacken-docs==1.16.0",
             "pytest-timeout>=1.4.2",
             "trustme>=0.7",
             "cogapp>=3.3.0",
         ],
         "rich": ["rich"],
     },
-    tests_require=["datasette[test]"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Framework :: Datasette",

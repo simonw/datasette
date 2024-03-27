@@ -50,7 +50,7 @@ def search_filters(request, database, table, datasette):
         extra_context = {}
 
         # Figure out which fts_table to use
-        table_metadata = datasette.table_metadata(database, table)
+        table_metadata = await datasette.table_config(database, table)
         db = datasette.get_database(database)
         fts_table = request.args.get("_fts_table")
         fts_table = fts_table or table_metadata.get("fts_table")
@@ -80,9 +80,9 @@ def search_filters(request, database, table, datasette):
                     "{fts_pk} in (select rowid from {fts_table} where {fts_table} match {match_clause})".format(
                         fts_table=escape_sqlite(fts_table),
                         fts_pk=escape_sqlite(fts_pk),
-                        match_clause=":search"
-                        if search_mode_raw
-                        else "escape_fts(:search)",
+                        match_clause=(
+                            ":search" if search_mode_raw else "escape_fts(:search)"
+                        ),
                     )
                 )
                 human_descriptions.append(f'search matches "{search}"')
@@ -99,9 +99,11 @@ def search_filters(request, database, table, datasette):
                         "rowid in (select rowid from {fts_table} where {search_col} match {match_clause})".format(
                             fts_table=escape_sqlite(fts_table),
                             search_col=escape_sqlite(search_col),
-                            match_clause=":search_{}".format(i)
-                            if search_mode_raw
-                            else "escape_fts(:search_{})".format(i),
+                            match_clause=(
+                                ":search_{}".format(i)
+                                if search_mode_raw
+                                else "escape_fts(:search_{})".format(i)
+                            ),
                         )
                     )
                     human_descriptions.append(
@@ -277,6 +279,13 @@ class Filters:
                 "contains",
                 '"{c}" like :{p}',
                 '{c} contains "{v}"',
+                format="%{}%",
+            ),
+            TemplatedFilter(
+                "notcontains",
+                "does not contain",
+                '"{c}" not like :{p}',
+                '{c} does not contain "{v}"',
                 format="%{}%",
             ),
             TemplatedFilter(

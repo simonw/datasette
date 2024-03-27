@@ -9,18 +9,13 @@ jobs:
   spellcheck:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
-        python-version: 3.9
-    - uses: actions/cache@v2
-      name: Configure pip caching
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/setup.py') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        python-version: '3.11'
+        cache: 'pip'
+        cache-dependency-path: '**/setup.py'
     - name: Install dependencies
       run: |
         pip install -e '.[docs]'
@@ -29,3 +24,4 @@ jobs:
         codespell README.md --ignore-words docs/codespell-ignore-words.txt
         codespell docs/*.rst --ignore-words docs/codespell-ignore-words.txt
         codespell datasette -S datasette/static --ignore-words docs/codespell-ignore-words.txt
+        codespell tests --ignore-words docs/codespell-ignore-words.txt

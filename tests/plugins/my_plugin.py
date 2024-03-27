@@ -7,6 +7,7 @@ from datasette.utils.asgi import asgi_send_json, Response
 import base64
 import pint
 import json
+import urllib
 
 ureg = pint.UnitRegistry()
 
@@ -39,9 +40,9 @@ def extra_css_urls(template, database, table, view_name, columns, request, datas
                             "database": database,
                             "table": table,
                             "view_name": view_name,
-                            "request_path": request.path
-                            if request is not None
-                            else None,
+                            "request_path": (
+                                request.path if request is not None else None
+                            ),
                             "added": (
                                 await datasette.get_database().execute("select 3 * 5")
                             ).first()[0],
@@ -391,6 +392,50 @@ def table_actions(datasette, database, table, actor):
 
 
 @hookimpl
+def view_actions(datasette, database, view, actor):
+    if actor:
+        return [
+            {
+                "href": datasette.urls.instance(),
+                "label": f"Database: {database}",
+            },
+            {"href": datasette.urls.instance(), "label": f"View: {view}"},
+        ]
+
+
+@hookimpl
+def query_actions(datasette, database, query_name, sql):
+    # Don't explain an explain
+    if sql.lower().startswith("explain"):
+        return
+    return [
+        {
+            "href": datasette.urls.database(database)
+            + "?"
+            + urllib.parse.urlencode(
+                {
+                    "sql": "explain " + sql,
+                }
+            ),
+            "label": "Explain this query",
+            "description": "Runs a SQLite explain",
+        },
+    ]
+
+
+@hookimpl
+def row_actions(datasette, database, table, actor, row):
+    if actor:
+        return [
+            {
+                "href": datasette.urls.instance(),
+                "label": f"Row details for {actor['id']}",
+                "description": json.dumps(dict(row), default=repr),
+            },
+        ]
+
+
+@hookimpl
 def database_actions(datasette, database, actor, request):
     if actor:
         label = f"Database: {database}"
@@ -399,6 +444,18 @@ def database_actions(datasette, database, actor, request):
         return [
             {
                 "href": datasette.urls.instance(),
+                "label": label,
+            }
+        ]
+
+
+@hookimpl
+def homepage_actions(datasette, actor, request):
+    if actor:
+        label = f"Custom homepage for: {actor['id']}"
+        return [
+            {
+                "href": datasette.urls.path("/-/custom-homepage"),
                 "label": label,
             }
         ]

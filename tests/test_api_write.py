@@ -1,5 +1,6 @@
 from datasette.app import Datasette
 from datasette.utils import sqlite3
+from .utils import last_event
 import pytest
 import time
 
@@ -49,6 +50,35 @@ async def test_insert_row(ds_write):
     assert response.json()["rows"] == [expected_row]
     rows = (await ds_write.get_database("data").execute("select * from docs")).rows
     assert dict(rows[0]) == expected_row
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 1
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert not event.ignore
+    assert not event.replace
+
+
+@pytest.mark.asyncio
+async def test_insert_row_alter(ds_write):
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/docs/-/insert",
+        json={
+            "row": {"title": "Test", "score": 1.2, "age": 5, "extra": "extra"},
+            "alter": True,
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    assert response.json()["ok"] is True
+    assert response.json()["rows"][0]["extra"] == "extra"
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "alter-table"
+    assert "extra" not in event.before_schema
+    assert "extra" in event.after_schema
 
 
 @pytest.mark.asyncio
@@ -68,6 +98,16 @@ async def test_insert_rows(ds_write, return_rows):
         headers=_headers(token),
     )
     assert response.status_code == 201
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 20
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert not event.ignore
+    assert not event.replace
+
     actual_rows = [
         dict(r)
         for r in (
@@ -182,6 +222,14 @@ async def test_insert_rows(ds_write, return_rows):
             ['Cannot use "ignore" and "replace" at the same time'],
         ),
         (
+            # Replace is not allowed if you don't have update-row
+            "/data/docs/-/insert",
+            {"rows": [{"title": "Test"}], "replace": True},
+            "insert-but-not-update",
+            403,
+            ['Permission denied: need update-row to use "replace"'],
+        ),
+        (
             "/data/docs/-/insert",
             {"rows": [{"title": "Test"}], "invalid_param": True},
             None,
@@ -259,16 +307,27 @@ async def test_insert_rows(ds_write, return_rows):
             403,
             ["Permission denied: need both insert-row and update-row"],
         ),
+        # Alter table forbidden without alter permission
+        (
+            "/data/docs/-/upsert",
+            {"rows": [{"id": 1, "title": "One", "extra": "extra"}], "alter": True},
+            "update-and-insert-but-no-alter",
+            403,
+            ["Permission denied for alter-table"],
+        ),
     ),
 )
 async def test_insert_or_upsert_row_errors(
     ds_write, path, input, special_case, expected_status, expected_errors
 ):
-    token = write_token(ds_write)
+    token_permissions = []
     if special_case == "insert-but-not-update":
-        token = write_token(ds_write, permissions=["ir", "vi"])
+        token_permissions = ["ir", "vi"]
     if special_case == "update-but-not-insert":
-        token = write_token(ds_write, permissions=["ur", "vi"])
+        token_permissions = ["ur", "vi"]
+    if special_case == "update-and-insert-but-no-alter":
+        token_permissions = ["ur", "ir"]
+    token = write_token(ds_write, permissions=token_permissions)
     if special_case == "duplicate_id":
         await ds_write.get_database("data").execute_write(
             "insert into docs (id) values (1)"
@@ -279,16 +338,20 @@ async def test_insert_or_upsert_row_errors(
         json=input,
         headers={
             "Authorization": "Bearer {}".format(token),
-            "Content-Type": "text/plain"
-            if special_case == "invalid_content_type"
-            else "application/json",
+            "Content-Type": (
+                "text/plain"
+                if special_case == "invalid_content_type"
+                else "application/json"
+            ),
         },
     )
 
     actor_response = (
         await ds_write.client.get("/-/actor.json", headers=kwargs["headers"])
     ).json()
-    print(actor_response)
+    assert set((actor_response["actor"] or {}).get("_r", {}).get("a") or []) == set(
+        token_permissions
+    )
 
     if special_case == "invalid_json":
         del kwargs["json"]
@@ -308,6 +371,41 @@ async def test_insert_or_upsert_row_errors(
         await ds_write.get_database("data").execute("select count(*) from docs")
     ).rows[0][0] == 0
     assert before_count == after_count
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("allowed", (True, False))
+async def test_upsert_permissions_per_table(ds_write, allowed):
+    # https://github.com/simonw/datasette/issues/2262
+    token = "dstok_{}".format(
+        ds_write.sign(
+            {
+                "a": "root",
+                "token": "dstok",
+                "t": int(time.time()),
+                "_r": {
+                    "r": {
+                        "data": {
+                            "docs" if allowed else "other": ["ir", "ur"],
+                        }
+                    }
+                },
+            },
+            namespace="token",
+        )
+    )
+    response = await ds_write.client.post(
+        "/data/docs/-/upsert",
+        json={"rows": [{"id": 1, "title": "One"}]},
+        headers={
+            "Authorization": "Bearer {}".format(token),
+        },
+    )
+    if allowed:
+        assert response.status_code == 200
+        assert response.json()["ok"] is True
+    else:
+        assert response.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -351,6 +449,16 @@ async def test_insert_ignore_replace(
         headers=_headers(token),
     )
     assert response.status_code == 201
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "insert-rows"
+    assert event.num_rows == 1
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert event.ignore == ignore
+    assert event.replace == replace
+
     actual_rows = [
         dict(r)
         for r in (
@@ -403,6 +511,12 @@ async def test_insert_ignore_replace(
                 {"id": 1, "title": "Two", "score": 1},
             ],
         ),
+        (
+            # Upsert with an alter
+            {"rows": [{"id": 1, "title": "One"}], "pk": "id"},
+            {"rows": [{"id": 1, "title": "Two", "extra": "extra"}], "alter": True},
+            [{"id": 1, "title": "Two", "extra": "extra"}],
+        ),
     ),
 )
 @pytest.mark.parametrize("should_return", (False, True))
@@ -425,6 +539,18 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
     )
     assert response.status_code == 200
     assert response.json()["ok"] is True
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.database == "data"
+    assert event.table == "upsert_test"
+    if input.get("alter"):
+        assert event.name == "alter-table"
+        assert "extra" in event.after_schema
+    else:
+        assert event.name == "upsert-rows"
+        assert event.num_rows == 1
+
     if should_return:
         # We only expect it to return rows corresponding to those we sent
         expected_returned_rows = expected_rows[: len(input["rows"])]
@@ -528,6 +654,13 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
         headers=_headers(write_token(ds_write)),
     )
     assert delete_response.status_code == 200
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.name == "delete-row"
+    assert event.database == "data"
+    assert event.table == table
+    assert event.pks == str(delete_path).split(",")
     assert (
         await ds_write.client.get(
             "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)
@@ -536,24 +669,33 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("scenario", ("no_token", "no_perm", "bad_table"))
+@pytest.mark.parametrize(
+    "scenario", ("no_token", "no_perm", "bad_table", "cannot_alter")
+)
 async def test_update_row_check_permission(ds_write, scenario):
     if scenario == "no_token":
         token = "bad_token"
     elif scenario == "no_perm":
         token = write_token(ds_write, actor_id="not-root")
+    elif scenario == "cannot_alter":
+        # update-row but no alter-table:
+        token = write_token(ds_write, permissions=["ur"])
     else:
         token = write_token(ds_write)
 
     pk = await _insert_row(ds_write)
 
-    path = "/data/{}/{}/-/delete".format(
+    path = "/data/{}/{}/-/update".format(
         "docs" if scenario != "bad_table" else "bad_table", pk
     )
 
+    json_body = {"update": {"title": "New title"}}
+    if scenario == "cannot_alter":
+        json_body["alter"] = True
+
     response = await ds_write.client.post(
         path,
-        json={"update": {"title": "New title"}},
+        json=json_body,
         headers=_headers(token),
     )
     assert response.status_code == 403 if scenario in ("no_token", "bad_token") else 404
@@ -563,6 +705,36 @@ async def test_update_row_check_permission(ds_write, scenario):
         if scenario == "no_token"
         else ["Table not found: bad_table"]
     )
+
+
+@pytest.mark.asyncio
+async def test_update_row_invalid_key(ds_write):
+    token = write_token(ds_write)
+
+    pk = await _insert_row(ds_write)
+
+    path = "/data/docs/{}/-/update".format(pk)
+    response = await ds_write.client.post(
+        path,
+        json={"update": {"title": "New title"}, "bad_key": 1},
+        headers=_headers(token),
+    )
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "errors": ["Invalid keys: bad_key"]}
+
+
+@pytest.mark.asyncio
+async def test_update_row_alter(ds_write):
+    token = write_token(ds_write, permissions=["ur", "at"])
+    pk = await _insert_row(ds_write)
+    path = "/data/docs/{}/-/update".format(pk)
+    response = await ds_write.client.post(
+        path,
+        json={"update": {"title": "New title", "extra": "extra"}, "alter": True},
+        headers=_headers(token),
+    )
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
 
 
 @pytest.mark.asyncio
@@ -607,6 +779,13 @@ async def test_update_row(ds_write, input, expected_errors, use_return):
         assert returned_row["id"] == pk
         for k, v in input.items():
             assert returned_row[k] == v
+
+    # Analytics event
+    event = last_event(ds_write)
+    assert event.actor == {"id": "root", "token": "dstok"}
+    assert event.database == "data"
+    assert event.table == "docs"
+    assert event.pks == [str(pk)]
 
     # And fetch the row to check it's updated
     response = await ds_write.client.get(
@@ -674,18 +853,26 @@ async def test_drop_table(ds_write, scenario):
             headers=_headers(token),
         )
         assert response2.json() == {"ok": True}
+        # Check event
+        event = last_event(ds_write)
+        assert event.name == "drop-table"
+        assert event.actor == {"id": "root", "token": "dstok"}
+        assert event.table == "docs"
+        assert event.database == "data"
+        # Table should 404
         assert (await ds_write.client.get("/data/docs")).status_code == 404
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "input,expected_status,expected_response",
+    "input,expected_status,expected_response,expected_events",
     (
         # Permission error with a bad token
         (
             {"table": "bad", "row": {"id": 1}},
             403,
             {"ok": False, "errors": ["Permission denied"]},
+            [],
         ),
         # Successful creation with columns:
         (
@@ -732,6 +919,7 @@ async def test_drop_table(ds_write, scenario):
                     ")"
                 ),
             },
+            ["create-table"],
         ),
         # Successful creation with rows:
         (
@@ -767,6 +955,7 @@ async def test_drop_table(ds_write, scenario):
                 ),
                 "row_count": 2,
             },
+            ["create-table", "insert-rows"],
         ),
         # Successful creation with row:
         (
@@ -795,6 +984,7 @@ async def test_drop_table(ds_write, scenario):
                 ),
                 "row_count": 1,
             },
+            ["create-table", "insert-rows"],
         ),
         # Create with row and no primary key
         (
@@ -814,6 +1004,7 @@ async def test_drop_table(ds_write, scenario):
                 "schema": ("CREATE TABLE [four] (\n" "   [name] TEXT\n" ")"),
                 "row_count": 1,
             },
+            ["create-table", "insert-rows"],
         ),
         # Create table with compound primary key
         (
@@ -835,6 +1026,7 @@ async def test_drop_table(ds_write, scenario):
                 ),
                 "row_count": 1,
             },
+            ["create-table", "insert-rows"],
         ),
         # Error: Table is required
         (
@@ -846,6 +1038,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["Table is required"],
             },
+            [],
         ),
         # Error: Invalid table name
         (
@@ -858,6 +1051,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["Invalid table name"],
             },
+            [],
         ),
         # Error: JSON must be an object
         (
@@ -867,6 +1061,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["JSON must be an object"],
             },
+            [],
         ),
         # Error: Cannot specify columns with rows or row
         (
@@ -880,6 +1075,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["Cannot specify columns with rows or row"],
             },
+            [],
         ),
         # Error: columns, rows or row is required
         (
@@ -891,6 +1087,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["columns, rows or row is required"],
             },
+            [],
         ),
         # Error: columns must be a list
         (
@@ -903,6 +1100,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["columns must be a list"],
             },
+            [],
         ),
         # Error: columns must be a list of objects
         (
@@ -915,6 +1113,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["columns must be a list of objects"],
             },
+            [],
         ),
         # Error: Column name is required
         (
@@ -927,6 +1126,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["Column name is required"],
             },
+            [],
         ),
         # Error: Unsupported column type
         (
@@ -939,6 +1139,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["Unsupported column type: bad"],
             },
+            [],
         ),
         # Error: Duplicate column name
         (
@@ -954,6 +1155,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["Duplicate column name: id"],
             },
+            [],
         ),
         # Error: rows must be a list
         (
@@ -966,6 +1168,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["rows must be a list"],
             },
+            [],
         ),
         # Error: rows must be a list of objects
         (
@@ -978,6 +1181,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["rows must be a list of objects"],
             },
+            [],
         ),
         # Error: pk must be a string
         (
@@ -991,6 +1195,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["pk must be a string"],
             },
+            [],
         ),
         # Error: Cannot specify both pk and pks
         (
@@ -1005,6 +1210,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["Cannot specify both pk and pks"],
             },
+            [],
         ),
         # Error: pks must be a list
         (
@@ -1018,12 +1224,14 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["pks must be a list"],
             },
+            [],
         ),
         # Error: pks must be a list of strings
         (
             {"table": "bad", "row": {"id": 1, "name": "Row 1"}, "pks": [1, 2]},
             400,
             {"ok": False, "errors": ["pks must be a list of strings"]},
+            [],
         ),
         # Error: ignore and replace are mutually exclusive
         (
@@ -1039,6 +1247,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["ignore and replace are mutually exclusive"],
             },
+            [],
         ),
         # ignore and replace require row or rows
         (
@@ -1052,6 +1261,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["ignore and replace require row or rows"],
             },
+            [],
         ),
         # ignore and replace require pk or pks
         (
@@ -1065,6 +1275,7 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["ignore and replace require pk or pks"],
             },
+            [],
         ),
         (
             {
@@ -1077,10 +1288,14 @@ async def test_drop_table(ds_write, scenario):
                 "ok": False,
                 "errors": ["ignore and replace require pk or pks"],
             },
+            [],
         ),
     ),
 )
-async def test_create_table(ds_write, input, expected_status, expected_response):
+async def test_create_table(
+    ds_write, input, expected_status, expected_response, expected_events
+):
+    ds_write._tracked_events = []
     # Special case for expected status of 403
     if expected_status == 403:
         token = "bad_token"
@@ -1094,6 +1309,9 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
     assert response.status_code == expected_status
     data = response.json()
     assert data == expected_response
+    # Should have tracked the expected events
+    events = ds_write._tracked_events
+    assert [e.name for e in events] == expected_events
 
 
 @pytest.mark.asyncio
@@ -1106,7 +1324,7 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
             ["create-table"],
             {"table": "t", "rows": [{"name": "c"}]},
             403,
-            ["Permission denied - need insert-row"],
+            ["Permission denied: need insert-row"],
         ),
         # This should work:
         (
@@ -1120,7 +1338,7 @@ async def test_create_table(ds_write, input, expected_status, expected_response)
             ["create-table", "insert-row"],
             {"table": "t", "rows": [{"id": 1}], "pk": "id", "replace": True},
             403,
-            ["Permission denied - need update-row"],
+            ["Permission denied: need update-row"],
         ),
     ),
 )
@@ -1192,6 +1410,8 @@ async def test_create_table_ignore_replace(ds_write, input, expected_rows_after)
     )
     assert first_response.status_code == 201
 
+    ds_write._tracked_events = []
+
     # Try a second time
     second_response = await ds_write.client.post(
         "/data/-/create",
@@ -1202,6 +1422,10 @@ async def test_create_table_ignore_replace(ds_write, input, expected_rows_after)
     # Check that the rows are as expected
     rows = await ds_write.client.get("/data/test_insert_replace.json?_shape=array")
     assert rows.json() == expected_rows_after
+
+    # Check it fired the right events
+    event_names = [e.name for e in ds_write._tracked_events]
+    assert event_names == ["insert-rows"]
 
 
 @pytest.mark.asyncio
@@ -1283,3 +1507,88 @@ async def test_method_not_allowed(ds_write, path):
         "ok": False,
         "error": "Method not allowed",
     }
+
+
+@pytest.mark.asyncio
+async def test_create_uses_alter_by_default_for_new_table(ds_write):
+    ds_write._tracked_events = []
+    token = write_token(ds_write)
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "new_table",
+            "rows": [
+                {
+                    "name": "Row 1",
+                }
+            ]
+            * 100
+            + [
+                {"name": "Row 2", "extra": "Extra"},
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+    event_names = [e.name for e in ds_write._tracked_events]
+    assert event_names == ["create-table", "insert-rows"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("has_alter_permission", (True, False))
+async def test_create_using_alter_against_existing_table(
+    ds_write, has_alter_permission
+):
+    token = write_token(
+        ds_write, permissions=["ir", "ct"] + (["at"] if has_alter_permission else [])
+    )
+    # First create the table
+    response = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "new_table",
+            "rows": [
+                {
+                    "name": "Row 1",
+                }
+            ],
+            "pk": "id",
+        },
+        headers=_headers(token),
+    )
+    assert response.status_code == 201
+
+    ds_write._tracked_events = []
+    # Now try to insert more rows using /-/create with alter=True
+    response2 = await ds_write.client.post(
+        "/data/-/create",
+        json={
+            "table": "new_table",
+            "rows": [{"name": "Row 2", "extra": "extra"}],
+            "pk": "id",
+            "alter": True,
+        },
+        headers=_headers(token),
+    )
+    if not has_alter_permission:
+        assert response2.status_code == 403
+        assert response2.json() == {
+            "ok": False,
+            "errors": ["Permission denied: need alter-table"],
+        }
+    else:
+        assert response2.status_code == 201
+
+        event_names = [e.name for e in ds_write._tracked_events]
+        assert event_names == ["alter-table", "insert-rows"]
+
+        # It should have altered the table
+        alter_event = ds_write._tracked_events[0]
+        assert alter_event.name == "alter-table"
+        assert "extra" not in alter_event.before_schema
+        assert "extra" in alter_event.after_schema
+
+        insert_rows_event = ds_write._tracked_events[1]
+        assert insert_rows_event.name == "insert-rows"
+        assert insert_rows_event.num_rows == 1

@@ -11,8 +11,8 @@ from datasette.utils import (
 )
 
 
-def load_facet_configs(request, table_metadata):
-    # Given a request and the metadata configuration for a table, return
+def load_facet_configs(request, table_config):
+    # Given a request and the configuration for a table, return
     # a dictionary of selected facets, their lists of configs and for each
     # config whether it came from the request or the metadata.
     #
@@ -20,21 +20,21 @@ def load_facet_configs(request, table_metadata):
     #       {"source": "metadata", "config": config1},
     #       {"source": "request", "config": config2}]}
     facet_configs = {}
-    table_metadata = table_metadata or {}
-    metadata_facets = table_metadata.get("facets", [])
-    for metadata_config in metadata_facets:
-        if isinstance(metadata_config, str):
+    table_config = table_config or {}
+    table_facet_configs = table_config.get("facets", [])
+    for facet_config in table_facet_configs:
+        if isinstance(facet_config, str):
             type = "column"
-            metadata_config = {"simple": metadata_config}
+            facet_config = {"simple": facet_config}
         else:
             assert (
-                len(metadata_config.values()) == 1
+                len(facet_config.values()) == 1
             ), "Metadata config dicts should be {type: config}"
-            type, metadata_config = list(metadata_config.items())[0]
-            if isinstance(metadata_config, str):
-                metadata_config = {"simple": metadata_config}
+            type, facet_config = list(facet_config.items())[0]
+            if isinstance(facet_config, str):
+                facet_config = {"simple": facet_config}
         facet_configs.setdefault(type, []).append(
-            {"source": "metadata", "config": metadata_config}
+            {"source": "metadata", "config": facet_config}
         )
     qs_pairs = urllib.parse.parse_qs(request.query_string, keep_blank_values=True)
     for key, values in qs_pairs.items():
@@ -45,13 +45,12 @@ def load_facet_configs(request, table_metadata):
             elif key.startswith("_facet_"):
                 type = key[len("_facet_") :]
             for value in values:
-                # The value is the config - either JSON or not
-                if value.startswith("{"):
-                    config = json.loads(value)
-                else:
-                    config = {"simple": value}
+                # The value is the facet_config - either JSON or not
+                facet_config = (
+                    json.loads(value) if value.startswith("{") else {"simple": value}
+                )
                 facet_configs.setdefault(type, []).append(
-                    {"source": "request", "config": config}
+                    {"source": "request", "config": facet_config}
                 )
     return facet_configs
 
@@ -75,7 +74,7 @@ class Facet:
         sql=None,
         table=None,
         params=None,
-        metadata=None,
+        table_config=None,
         row_count=None,
     ):
         assert table or sql, "Must provide either table= or sql="
@@ -86,12 +85,12 @@ class Facet:
         self.table = table
         self.sql = sql or f"select * from [{table}]"
         self.params = params or []
-        self.metadata = metadata
+        self.table_config = table_config
         # row_count can be None, in which case we calculate it ourselves:
         self.row_count = row_count
 
     def get_configs(self):
-        configs = load_facet_configs(self.request, self.metadata)
+        configs = load_facet_configs(self.request, self.table_config)
         return configs.get(self.type) or []
 
     def get_querystring_pairs(self):
@@ -253,7 +252,7 @@ class ColumnFacet(Facet):
                     # Attempt to expand foreign keys into labels
                     values = [row["value"] for row in facet_rows]
                     expanded = await self.ds.expand_foreign_keys(
-                        self.database, self.table, column, values
+                        self.request.actor, self.database, self.table, column, values
                     )
                 else:
                     expanded = {}

@@ -17,6 +17,7 @@ jobs:
       uses: actions/checkout@v3
     - name: Set up Python
       uses: actions/setup-python@v4
+      # gcloud commmand breaks on higher Python versions, so stick with 3.9:
       with:
         python-version: "3.9"
     - uses: actions/cache@v3
@@ -37,8 +38,14 @@ jobs:
       run: |
         pytest -n auto -m "not serial"
         pytest -m "serial"
-    - name: Build fixtures.db
-      run: python tests/fixtures.py fixtures.db fixtures.json plugins --extra-db-filename extra_database.db
+    - name: Build fixtures.db and other files needed to deploy the demo
+      run: |-
+        python tests/fixtures.py \
+          fixtures.db \
+          fixtures-config.json \
+          fixtures-metadata.json \
+          plugins \
+          --extra-db-filename extra_database.db
     - name: Build docs.db
       if: ${{ github.ref == 'refs/heads/main' }}
       run: |-
@@ -87,13 +94,13 @@ jobs:
                     }
                 return queries
         EOF
-    - name: Make some modifications to metadata.json
-      run: |
-        cat fixtures.json | \
-          jq '.databases |= . + {"ephemeral": {"allow": {"id": "*"}}}' | \
-          jq '.plugins |= . + {"datasette-ephemeral-tables": {"table_ttl": 900}}' \
-          > metadata.json
-        cat metadata.json
+    # - name: Make some modifications to metadata.json
+    #   run: |
+    #     cat fixtures.json | \
+    #       jq '.databases |= . + {"ephemeral": {"allow": {"id": "*"}}}' | \
+    #       jq '.plugins |= . + {"datasette-ephemeral-tables": {"table_ttl": 900}}' \
+    #       > metadata.json
+    #     cat metadata.json
     - name: Set up Cloud Run
       uses: google-github-actions/setup-gcloud@v0
       with:
@@ -111,7 +118,7 @@ jobs:
         # Replace 1.0 with one-dot-zero in SUFFIX
         export SUFFIX=${SUFFIX//1.0/one-dot-zero}
         datasette publish cloudrun fixtures.db fixtures2.db extra_database.db \
-            -m metadata.json \
+            -m fixtures-metadata.json \
             --plugins-dir=plugins \
             --branch=$GITHUB_SHA \
             --version-note=$GITHUB_SHA \

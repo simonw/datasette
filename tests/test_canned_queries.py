@@ -19,7 +19,7 @@ def canned_write_client(tmpdir):
     with make_app_client(
         extra_databases={"data.db": "create table names (name text)"},
         template_dir=str(template_dir),
-        metadata={
+        config={
             "databases": {
                 "data": {
                     "queries": {
@@ -63,7 +63,7 @@ def canned_write_client(tmpdir):
 def canned_write_immutable_client():
     with make_app_client(
         is_immutable=True,
-        metadata={
+        config={
             "databases": {
                 "fixtures": {
                     "queries": {
@@ -172,7 +172,7 @@ def test_insert_error(canned_write_client):
     )
     assert [["UNIQUE constraint failed: names.rowid", 3]] == messages
     # How about with a custom error message?
-    canned_write_client.ds._metadata["databases"]["data"]["queries"][
+    canned_write_client.ds.config["databases"]["data"]["queries"][
         "add_name_specify_id"
     ]["on_error_message"] = "ERROR"
     response = canned_write_client.post(
@@ -316,7 +316,7 @@ def test_canned_query_permissions(canned_write_client):
 def magic_parameters_client():
     with make_app_client(
         extra_databases={"data.db": "create table logs (line text)"},
-        metadata={
+        config={
             "databases": {
                 "data": {
                     "queries": {
@@ -345,10 +345,10 @@ def magic_parameters_client():
     ],
 )
 def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re):
-    magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme_post"][
+    magic_parameters_client.ds.config["databases"]["data"]["queries"]["runme_post"][
         "sql"
     ] = f"insert into logs (line) values (:{magic_parameter})"
-    magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme_get"][
+    magic_parameters_client.ds.config["databases"]["data"]["queries"]["runme_get"][
         "sql"
     ] = f"select :{magic_parameter} as result"
     cookies = {
@@ -384,7 +384,7 @@ def test_magic_parameters(magic_parameters_client, magic_parameter, expected_re)
 @pytest.mark.parametrize("use_csrf", [True, False])
 @pytest.mark.parametrize("return_json", [True, False])
 def test_magic_parameters_csrf_json(magic_parameters_client, use_csrf, return_json):
-    magic_parameters_client.ds._metadata["databases"]["data"]["queries"]["runme_post"][
+    magic_parameters_client.ds.config["databases"]["data"]["queries"]["runme_post"][
         "sql"
     ] = "insert into logs (line) values (:_header_host)"
     qs = ""

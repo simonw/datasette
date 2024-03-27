@@ -8,7 +8,7 @@
 
 {% block content %}
 
-<h1>API Explorer</h1>
+<h1>API Explorer{% if private %} 🔒{% endif %}</h1>
 
 <p>Use this tool to try out the
   {% if datasette_version %}

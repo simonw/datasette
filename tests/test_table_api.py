@@ -305,9 +305,11 @@ async def test_paginate_compound_keys_with_extra_filters(ds_client):
             "_sort_desc=sortable_with_nulls",
             lambda row: (
                 1 if row["sortable_with_nulls"] is None else 0,
-                -row["sortable_with_nulls"]
-                if row["sortable_with_nulls"] is not None
-                else 0,
+                (
+                    -row["sortable_with_nulls"]
+                    if row["sortable_with_nulls"] is not None
+                    else 0
+                ),
                 row["content"],
             ),
             "sorted by sortable_with_nulls descending",
@@ -653,7 +655,7 @@ async def test_table_filter_extra_where_invalid(ds_client):
 
 
 def test_table_filter_extra_where_disabled_if_no_sql_allowed():
-    with make_app_client(metadata={"allow_sql": {}}) as client:
+    with make_app_client(config={"allow_sql": {}}) as client:
         response = client.get(
             "/fixtures/facetable.json?_where=_neighborhood='Dogpatch'"
         )
@@ -1362,3 +1364,37 @@ async def test_col_nocol_errors(ds_client, path, expected_error):
     response = await ds_client.get(path)
     assert response.status_code == 400
     assert response.json()["error"] == expected_error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra,expected_json",
+    (
+        (
+            "columns",
+            {
+                "ok": True,
+                "next": None,
+                "columns": ["id", "content", "content2"],
+                "rows": [{"id": "1", "content": "hey", "content2": "world"}],
+                "truncated": False,
+            },
+        ),
+        (
+            "count",
+            {
+                "ok": True,
+                "next": None,
+                "rows": [{"id": "1", "content": "hey", "content2": "world"}],
+                "truncated": False,
+                "count": 1,
+            },
+        ),
+    ),
+)
+async def test_table_extras(ds_client, extra, expected_json):
+    response = await ds_client.get(
+        "/fixtures/primary_key_multiple_columns.json?_extra=" + extra
+    )
+    assert response.status_code == 200
+    assert response.json() == expected_json

@@ -10,7 +10,6 @@ from markupsafe import escape
 
 import pint
 
-from datasette import __version__
 from datasette.database import QueryInterrupted
 from datasette.utils.asgi import Request
 from datasette.utils import (
@@ -102,9 +101,6 @@ class BaseView:
         response.body = b""
         return response
 
-    def database_color(self, database):
-        return "ff0000"
-
     async def method_not_allowed(self, request):
         if (
             request.path.endswith(".json")
@@ -146,11 +142,11 @@ class BaseView:
 
     async def render(self, templates, request, context=None):
         context = context or {}
-        template = self.ds.jinja_env.select_template(templates)
+        environment = self.ds.get_jinja_environment(request)
+        template = environment.select_template(templates)
         template_context = {
             **context,
             **{
-                "database_color": self.database_color,
                 "select_templates": [
                     f"{'*' if template_name == template.name else ''}{template_name}"
                     for template_name in templates
@@ -488,7 +484,6 @@ async def stream_csv(datasette, fetch_data, request, database):
 
     async def stream_fn(r):
         nonlocal data, trace
-        print("max_csv_mb", datasette.setting("max_csv_mb"))
         limited_writer = LimitedWriter(r, datasette.setting("max_csv_mb"))
         if trace:
             await limited_writer.write(preamble)
@@ -558,16 +553,18 @@ async def stream_csv(datasette, fetch_data, request, database):
                                 if cell is None:
                                     new_row.extend(("", ""))
                                 else:
-                                    assert isinstance(cell, dict)
-                                    new_row.append(cell["value"])
-                                    new_row.append(cell["label"])
+                                    if not isinstance(cell, dict):
+                                        new_row.extend((cell, ""))
+                                    else:
+                                        new_row.append(cell["value"])
+                                        new_row.append(cell["label"])
                             else:
                                 new_row.append(cell)
                         await writer.writerow(new_row)
-            except Exception as e:
-                sys.stderr.write("Caught this error: {}\n".format(e))
+            except Exception as ex:
+                sys.stderr.write("Caught this error: {}\n".format(ex))
                 sys.stderr.flush()
-                await r.write(str(e))
+                await r.write(str(ex))
                 return
         await limited_writer.write(postamble)
 

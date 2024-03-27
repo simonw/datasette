@@ -1,4 +1,3 @@
-import asyncio
 import httpx
 import os
 import pathlib
@@ -8,7 +7,8 @@ import re
 import subprocess
 import tempfile
 import time
-import trustme
+from dataclasses import dataclass
+from datasette import Event, hookimpl
 
 
 try:
@@ -41,7 +41,7 @@ def wait_until_responds(url, timeout=5.0, client=httpx, **kwargs):
 @pytest_asyncio.fixture
 async def ds_client():
     from datasette.app import Datasette
-    from .fixtures import METADATA, PLUGINS_DIR
+    from .fixtures import CONFIG, METADATA, PLUGINS_DIR
 
     global _ds_client
     if _ds_client is not None:
@@ -49,6 +49,7 @@ async def ds_client():
 
     ds = Datasette(
         metadata=METADATA,
+        config=CONFIG,
         plugins_dir=PLUGINS_DIR,
         settings={
             "default_page_size": 50,
@@ -161,6 +162,35 @@ def check_permission_actions_are_documented():
     pm.add_hookcall_monitoring(
         before=before, after=lambda outcome, hook_name, hook_impls, kwargs: None
     )
+
+
+class TrackEventPlugin:
+    __name__ = "TrackEventPlugin"
+
+    @dataclass
+    class OneEvent(Event):
+        name = "one"
+
+        extra: str
+
+    @hookimpl
+    def register_events(self, datasette):
+        async def inner():
+            return [self.OneEvent]
+
+        return inner
+
+    @hookimpl
+    def track_event(self, datasette, event):
+        datasette._tracked_events = getattr(datasette, "_tracked_events", [])
+        datasette._tracked_events.append(event)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def install_event_tracking_plugin():
+    from datasette.plugins import pm
+
+    pm.register(TrackEventPlugin(), name="TrackEventPlugin")
 
 
 @pytest.fixture(scope="session")

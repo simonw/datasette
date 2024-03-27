@@ -82,6 +82,34 @@ This method registers any :ref:`plugin_hook_startup` or :ref:`plugin_hook_prepar
 
 If you are using ``await datasette.client.get()`` and similar methods then you don't need to worry about this - Datasette automatically calls ``invoke_startup()`` the first time it handles a request.
 
+.. _testing_datasette_client:
+
+Using datasette.client in tests
+-------------------------------
+
+The :ref:`internals_datasette_client` mechanism is designed for use in tests. It provides access to a pre-configured `HTTPX async client <https://www.python-httpx.org/async/>`__ instance that can make GET, POST and other HTTP requests against a Datasette instance from inside a test.
+
+A simple test looks like this:
+
+.. literalinclude:: ../tests/test_docs.py
+   :language: python
+   :start-after: # -- start test_homepage --
+   :end-before: # -- end test_homepage --
+
+Or for a JSON API:
+
+.. literalinclude:: ../tests/test_docs.py
+   :language: python
+   :start-after: # -- start test_actor_is_null --
+   :end-before: # -- end test_actor_is_null --
+
+To make requests as an authenticated actor, create a signed ``ds_cookie`` using the ``datasette.client.actor_cookie()`` helper function and pass it in ``cookies=`` like this:
+
+.. literalinclude:: ../tests/test_docs.py
+   :language: python
+   :start-after: # -- start test_signed_cookie_actor --
+   :end-before: # -- end test_signed_cookie_actor --
+
 .. _testing_plugins_pdb:
 
 Using pdb for errors thrown inside Datasette
@@ -285,3 +313,19 @@ When writing tests for plugins you may find it useful to register a test plugin 
             assert response.status_code == 500
         finally:
             pm.unregister(name="undo")
+
+To reuse the same temporary plugin in multiple tests, you can register it inside a fixture in your ``conftest.py`` file like this:
+
+.. literalinclude:: ../tests/test_docs_plugins.py
+   :language: python
+   :start-after: # -- start datasette_with_plugin_fixture --
+   :end-before: # -- end datasette_with_plugin_fixture --
+
+Note the ``yield`` statement here - this ensures that the ``finally:`` block that unregisters the plugin is executed only after the test function itself has completed.
+
+Then in a test:
+
+.. literalinclude:: ../tests/test_docs_plugins.py
+   :language: python
+   :start-after: # -- start datasette_with_plugin_test --
+   :end-before: # -- end datasette_with_plugin_test --

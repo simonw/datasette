@@ -2,39 +2,128 @@ from datasette import hookimpl, Permission
 from datasette.utils import actor_matches_allow
 import itsdangerous
 import time
+from typing import Union, Tuple
 
 
 @hookimpl
 def register_permissions():
     return (
-        # name, abbr, description, takes_database, takes_resource, default
         Permission(
-            "view-instance", "vi", "View Datasette instance", False, False, True
-        ),
-        Permission("view-database", "vd", "View database", True, False, True),
-        Permission(
-            "view-database-download", "vdd", "Download database file", True, False, True
-        ),
-        Permission("view-table", "vt", "View table", True, True, True),
-        Permission("view-query", "vq", "View named query results", True, True, True),
-        Permission(
-            "execute-sql", "es", "Execute read-only SQL queries", True, False, True
+            name="view-instance",
+            abbr="vi",
+            description="View Datasette instance",
+            takes_database=False,
+            takes_resource=False,
+            default=True,
         ),
         Permission(
-            "permissions-debug",
-            "pd",
-            "Access permission debug tool",
-            False,
-            False,
-            False,
+            name="view-database",
+            abbr="vd",
+            description="View database",
+            takes_database=True,
+            takes_resource=False,
+            default=True,
+            implies_can_view=True,
         ),
-        Permission("debug-menu", "dm", "View debug menu items", False, False, False),
-        # Write API permissions
-        Permission("insert-row", "ir", "Insert rows", True, True, False),
-        Permission("delete-row", "dr", "Delete rows", True, True, False),
-        Permission("update-row", "ur", "Update rows", True, True, False),
-        Permission("create-table", "ct", "Create tables", True, False, False),
-        Permission("drop-table", "dt", "Drop tables", True, True, False),
+        Permission(
+            name="view-database-download",
+            abbr="vdd",
+            description="Download database file",
+            takes_database=True,
+            takes_resource=False,
+            default=True,
+        ),
+        Permission(
+            name="view-table",
+            abbr="vt",
+            description="View table",
+            takes_database=True,
+            takes_resource=True,
+            default=True,
+            implies_can_view=True,
+        ),
+        Permission(
+            name="view-query",
+            abbr="vq",
+            description="View named query results",
+            takes_database=True,
+            takes_resource=True,
+            default=True,
+            implies_can_view=True,
+        ),
+        Permission(
+            name="execute-sql",
+            abbr="es",
+            description="Execute read-only SQL queries",
+            takes_database=True,
+            takes_resource=False,
+            default=True,
+            implies_can_view=True,
+        ),
+        Permission(
+            name="permissions-debug",
+            abbr="pd",
+            description="Access permission debug tool",
+            takes_database=False,
+            takes_resource=False,
+            default=False,
+        ),
+        Permission(
+            name="debug-menu",
+            abbr="dm",
+            description="View debug menu items",
+            takes_database=False,
+            takes_resource=False,
+            default=False,
+        ),
+        Permission(
+            name="insert-row",
+            abbr="ir",
+            description="Insert rows",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
+        Permission(
+            name="delete-row",
+            abbr="dr",
+            description="Delete rows",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
+        Permission(
+            name="update-row",
+            abbr="ur",
+            description="Update rows",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
+        Permission(
+            name="create-table",
+            abbr="ct",
+            description="Create tables",
+            takes_database=True,
+            takes_resource=False,
+            default=False,
+        ),
+        Permission(
+            name="alter-table",
+            abbr="at",
+            description="Alter tables",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
+        Permission(
+            name="drop-table",
+            abbr="dt",
+            description="Drop tables",
+            takes_database=True,
+            takes_resource=True,
+            default=False,
+        ),
     )
 
 
@@ -47,6 +136,7 @@ def permission_allowed_default(datasette, actor, action, resource):
             "debug-menu",
             "insert-row",
             "create-table",
+            "alter-table",
             "drop-table",
             "delete-row",
             "update-row",
@@ -54,7 +144,7 @@ def permission_allowed_default(datasette, actor, action, resource):
             if actor and actor.get("id") == "root":
                 return True
 
-        # Resolve metadata view permissions
+        # Resolve view permissions in allow blocks in configuration
         if action in (
             "view-instance",
             "view-database",
@@ -62,14 +152,14 @@ def permission_allowed_default(datasette, actor, action, resource):
             "view-query",
             "execute-sql",
         ):
-            result = await _resolve_metadata_view_permissions(
+            result = await _resolve_config_view_permissions(
                 datasette, actor, action, resource
             )
             if result is not None:
                 return result
 
-        # Check custom permissions: blocks
-        result = await _resolve_metadata_permissions_blocks(
+        # Resolve custom permissions: blocks in configuration
+        result = await _resolve_config_permissions_blocks(
             datasette, actor, action, resource
         )
         if result is not None:
@@ -82,10 +172,10 @@ def permission_allowed_default(datasette, actor, action, resource):
     return inner
 
 
-async def _resolve_metadata_permissions_blocks(datasette, actor, action, resource):
+async def _resolve_config_permissions_blocks(datasette, actor, action, resource):
     # Check custom permissions: blocks
-    metadata = datasette.metadata()
-    root_block = (metadata.get("permissions", None) or {}).get(action)
+    config = datasette.config or {}
+    root_block = (config.get("permissions", None) or {}).get(action)
     if root_block:
         root_result = actor_matches_allow(actor, root_block)
         if root_result is not None:
@@ -98,7 +188,7 @@ async def _resolve_metadata_permissions_blocks(datasette, actor, action, resourc
     else:
         database = resource[0]
     database_block = (
-        (metadata.get("databases", {}).get(database, {}).get("permissions", None)) or {}
+        (config.get("databases", {}).get(database, {}).get("permissions", None)) or {}
     ).get(action)
     if database_block:
         database_result = actor_matches_allow(actor, database_block)
@@ -110,7 +200,7 @@ async def _resolve_metadata_permissions_blocks(datasette, actor, action, resourc
     database, table_or_query = resource
     table_block = (
         (
-            metadata.get("databases", {})
+            config.get("databases", {})
             .get(database, {})
             .get("tables", {})
             .get(table_or_query, {})
@@ -125,7 +215,7 @@ async def _resolve_metadata_permissions_blocks(datasette, actor, action, resourc
     # Finally the canned queries
     query_block = (
         (
-            metadata.get("databases", {})
+            config.get("databases", {})
             .get(database, {})
             .get("queries", {})
             .get(table_or_query, {})
@@ -140,27 +230,30 @@ async def _resolve_metadata_permissions_blocks(datasette, actor, action, resourc
     return None
 
 
-async def _resolve_metadata_view_permissions(datasette, actor, action, resource):
+async def _resolve_config_view_permissions(datasette, actor, action, resource):
+    config = datasette.config or {}
     if action == "view-instance":
-        allow = datasette.metadata("allow")
+        allow = config.get("allow")
         if allow is not None:
             return actor_matches_allow(actor, allow)
     elif action == "view-database":
-        if resource == "_internal" and (actor is None or actor.get("id") != "root"):
-            return False
-        database_allow = datasette.metadata("allow", database=resource)
+        database_allow = ((config.get("databases") or {}).get(resource) or {}).get(
+            "allow"
+        )
         if database_allow is None:
             return None
         return actor_matches_allow(actor, database_allow)
     elif action == "view-table":
         database, table = resource
-        tables = datasette.metadata("tables", database=database) or {}
+        tables = ((config.get("databases") or {}).get(database) or {}).get(
+            "tables"
+        ) or {}
         table_allow = (tables.get(table) or {}).get("allow")
         if table_allow is None:
             return None
         return actor_matches_allow(actor, table_allow)
     elif action == "view-query":
-        # Check if this query has a "allow" block in metadata
+        # Check if this query has a "allow" block in config
         database, query_name = resource
         query = await datasette.get_canned_query(database, query_name, actor)
         assert query is not None
@@ -170,12 +263,88 @@ async def _resolve_metadata_view_permissions(datasette, actor, action, resource)
         return actor_matches_allow(actor, allow)
     elif action == "execute-sql":
         # Use allow_sql block from database block, or from top-level
-        database_allow_sql = datasette.metadata("allow_sql", database=resource)
+        database_allow_sql = ((config.get("databases") or {}).get(resource) or {}).get(
+            "allow_sql"
+        )
         if database_allow_sql is None:
-            database_allow_sql = datasette.metadata("allow_sql")
+            database_allow_sql = config.get("allow_sql")
         if database_allow_sql is None:
             return None
         return actor_matches_allow(actor, database_allow_sql)
+
+
+def restrictions_allow_action(
+    datasette: "Datasette",
+    restrictions: dict,
+    action: str,
+    resource: Union[str, Tuple[str, str]],
+):
+    "Do these restrictions allow the requested action against the requested resource?"
+    if action == "view-instance":
+        # Special case for view-instance: it's allowed if the restrictions include any
+        # permissions that have the implies_can_view=True flag set
+        all_rules = restrictions.get("a") or []
+        for database_rules in (restrictions.get("d") or {}).values():
+            all_rules += database_rules
+        for database_resource_rules in (restrictions.get("r") or {}).values():
+            for resource_rules in database_resource_rules.values():
+                all_rules += resource_rules
+        permissions = [datasette.get_permission(action) for action in all_rules]
+        if any(p for p in permissions if p.implies_can_view):
+            return True
+
+    if action == "view-database":
+        # Special case for view-database: it's allowed if the restrictions include any
+        # permissions that have the implies_can_view=True flag set AND takes_database
+        all_rules = restrictions.get("a") or []
+        database_rules = list((restrictions.get("d") or {}).get(resource) or [])
+        all_rules += database_rules
+        resource_rules = ((restrictions.get("r") or {}).get(resource) or {}).values()
+        for resource_rules in (restrictions.get("r") or {}).values():
+            for table_rules in resource_rules.values():
+                all_rules += table_rules
+        permissions = [datasette.get_permission(action) for action in all_rules]
+        if any(p for p in permissions if p.implies_can_view and p.takes_database):
+            return True
+
+    # Does this action have an abbreviation?
+    to_check = {action}
+    permission = datasette.permissions.get(action)
+    if permission and permission.abbr:
+        to_check.add(permission.abbr)
+
+    # If restrictions is defined then we use those to further restrict the actor
+    # Crucially, we only use this to say NO (return False) - we never
+    # use it to return YES (True) because that might over-ride other
+    # restrictions placed on this actor
+    all_allowed = restrictions.get("a")
+    if all_allowed is not None:
+        assert isinstance(all_allowed, list)
+        if to_check.intersection(all_allowed):
+            return True
+    # How about for the current database?
+    if resource:
+        if isinstance(resource, str):
+            database_name = resource
+        else:
+            database_name = resource[0]
+        database_allowed = restrictions.get("d", {}).get(database_name)
+        if database_allowed is not None:
+            assert isinstance(database_allowed, list)
+            if to_check.intersection(database_allowed):
+                return True
+    # Or the current table? That's any time the resource is (database, table)
+    if resource is not None and not isinstance(resource, str) and len(resource) == 2:
+        database, table = resource
+        table_allowed = restrictions.get("r", {}).get(database, {}).get(table)
+        # TODO: What should this do for canned queries?
+        if table_allowed is not None:
+            assert isinstance(table_allowed, list)
+            if to_check.intersection(table_allowed):
+                return True
+
+    # This action is not specifically allowed, so reject it
+    return False
 
 
 @hookimpl(specname="permission_allowed")
@@ -186,40 +355,12 @@ def permission_allowed_actor_restrictions(datasette, actor, action, resource):
         # No restrictions, so we have no opinion
         return None
     _r = actor.get("_r")
-
-    # Does this action have an abbreviation?
-    to_check = {action}
-    permission = datasette.permissions.get(action)
-    if permission and permission.abbr:
-        to_check.add(permission.abbr)
-
-    # If _r is defined then we use those to further restrict the actor
-    # Crucially, we only use this to say NO (return False) - we never
-    # use it to return YES (True) because that might over-ride other
-    # restrictions placed on this actor
-    all_allowed = _r.get("a")
-    if all_allowed is not None:
-        assert isinstance(all_allowed, list)
-        if to_check.intersection(all_allowed):
-            return None
-    # How about for the current database?
-    if isinstance(resource, str):
-        database_allowed = _r.get("d", {}).get(resource)
-        if database_allowed is not None:
-            assert isinstance(database_allowed, list)
-            if to_check.intersection(database_allowed):
-                return None
-    # Or the current table? That's any time the resource is (database, table)
-    if resource is not None and not isinstance(resource, str) and len(resource) == 2:
-        database, table = resource
-        table_allowed = _r.get("r", {}).get(database, {}).get(table)
-        # TODO: What should this do for canned queries?
-        if table_allowed is not None:
-            assert isinstance(table_allowed, list)
-            if to_check.intersection(table_allowed):
-                return None
-    # This action is not specifically allowed, so reject it
-    return False
+    if restrictions_allow_action(datasette, _r, action, resource):
+        # Return None because we do not have an opinion here
+        return None
+    else:
+        # Block this permission check
+        return False
 
 
 @hookimpl

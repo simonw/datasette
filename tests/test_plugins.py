@@ -1,7 +1,6 @@
 from bs4 import BeautifulSoup as Soup
 from .fixtures import (
     app_client,
-    app_client,
     make_app_client,
     TABLES,
     TEMP_PLUGIN_SECRET_FILE,
@@ -14,9 +13,10 @@ from datasette import cli, hookimpl, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
 from datasette.utils.sqlite import sqlite3
-from datasette.utils import CustomRow, StartupError
-from jinja2.environment import Template
+from datasette.utils import StartupError
+from jinja2 import ChoiceLoader, FileSystemLoader
 import base64
+import datetime
 import importlib
 import json
 import os
@@ -231,13 +231,18 @@ async def test_plugin_config(ds_client):
 
 
 @pytest.mark.asyncio
-async def test_plugin_config_env(ds_client):
-    os.environ["FOO_ENV"] = "FROM_ENVIRONMENT"
-    assert {"foo": "FROM_ENVIRONMENT"} == ds_client.ds.plugin_config("env-plugin")
-    # Ensure secrets aren't visible in /-/metadata.json
-    metadata = await ds_client.get("/-/metadata.json")
-    assert {"foo": {"$env": "FOO_ENV"}} == metadata.json()["plugins"]["env-plugin"]
-    del os.environ["FOO_ENV"]
+async def test_plugin_config_env(ds_client, monkeypatch):
+    monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT")
+    assert ds_client.ds.plugin_config("env-plugin") == {"foo": "FROM_ENVIRONMENT"}
+
+
+@pytest.mark.asyncio
+async def test_plugin_config_env_from_config(monkeypatch):
+    monkeypatch.setenv("FOO_ENV", "FROM_ENVIRONMENT_2")
+    datasette = Datasette(
+        config={"plugins": {"env-plugin": {"setting": {"$env": "FOO_ENV"}}}}
+    )
+    assert datasette.plugin_config("env-plugin") == {"setting": "FROM_ENVIRONMENT_2"}
 
 
 @pytest.mark.asyncio
@@ -246,11 +251,6 @@ async def test_plugin_config_env_from_list(ds_client):
     assert [{"in_a_list": "FROM_ENVIRONMENT"}] == ds_client.ds.plugin_config(
         "env-plugin-list"
     )
-    # Ensure secrets aren't visible in /-/metadata.json
-    metadata = await ds_client.get("/-/metadata.json")
-    assert [{"in_a_list": {"$env": "FOO_ENV"}}] == metadata.json()["plugins"][
-        "env-plugin-list"
-    ]
     del os.environ["FOO_ENV"]
 
 
@@ -259,11 +259,6 @@ async def test_plugin_config_file(ds_client):
     with open(TEMP_PLUGIN_SECRET_FILE, "w") as fp:
         fp.write("FROM_FILE")
     assert {"foo": "FROM_FILE"} == ds_client.ds.plugin_config("file-plugin")
-    # Ensure secrets aren't visible in /-/metadata.json
-    metadata = await ds_client.get("/-/metadata.json")
-    assert {"foo": {"$file": TEMP_PLUGIN_SECRET_FILE}} == metadata.json()["plugins"][
-        "file-plugin"
-    ]
     os.remove(TEMP_PLUGIN_SECRET_FILE)
 
 
@@ -329,7 +324,7 @@ def test_hook_extra_body_script(app_client, path, expected_extra_body_script):
 @pytest.mark.asyncio
 async def test_hook_asgi_wrapper(ds_client):
     response = await ds_client.get("/fixtures")
-    assert "_internal, fixtures" == response.headers["x-databases"]
+    assert "fixtures" == response.headers["x-databases"]
 
 
 def test_hook_extra_template_vars(restore_working_directory):
@@ -576,7 +571,8 @@ async def test_hook_register_output_renderer_can_render(ds_client):
 async def test_hook_prepare_jinja2_environment(ds_client):
     ds_client.ds._HELLO = "HI"
     await ds_client.ds.invoke_startup()
-    template = ds_client.ds.jinja_env.from_string(
+    environment = ds_client.ds.get_jinja_environment(None)
+    template = environment.from_string(
         "Hello there, {{ a|format_numeric }}, {{ a|to_hello }}, {{ b|select_times_three }}",
         {"a": 3412341, "b": 5},
     )
@@ -722,7 +718,7 @@ async def test_hook_register_routes(ds_client, path, body):
 @pytest.mark.parametrize("configured_path", ("path1", "path2"))
 def test_hook_register_routes_with_datasette(configured_path):
     with make_app_client(
-        metadata={
+        config={
             "plugins": {
                 "register-route-demo": {
                     "path": configured_path,
@@ -741,7 +737,7 @@ def test_hook_register_routes_with_datasette(configured_path):
 def test_hook_register_routes_override():
     "Plugins can over-ride default paths such as /db/table"
     with make_app_client(
-        metadata={
+        config={
             "plugins": {
                 "register-route-demo": {
                     "path": "blah",
@@ -846,7 +842,7 @@ async def test_hook_canned_queries_actor(ds_client):
 def test_hook_register_magic_parameters(restore_working_directory):
     with make_app_client(
         extra_databases={"data.db": "create table logs (line text)"},
-        metadata={
+        config={
             "databases": {
                 "data": {
                     "queries": {
@@ -876,7 +872,7 @@ def test_hook_register_magic_parameters(restore_working_directory):
 def test_hook_forbidden(restore_working_directory):
     with make_app_client(
         extra_databases={"data2.db": "create table logs (line text)"},
-        metadata={"allow": {}},
+        config={"allow": {}},
     ) as client:
         response = client.get("/")
         assert response.status_code == 403
@@ -927,43 +923,128 @@ async def test_hook_menu_links(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("table_or_view", ["facetable", "simple_view"])
-async def test_hook_table_actions(ds_client, table_or_view):
-    def get_table_actions_links(html):
-        soup = Soup(html, "html.parser")
-        details = soup.find("details", {"class": "actions-menu-links"})
-        if details is None:
-            return []
-        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
-
-    response = await ds_client.get(f"/fixtures/{table_or_view}")
-    assert get_table_actions_links(response.text) == []
-
-    response_2 = await ds_client.get(f"/fixtures/{table_or_view}?_bot=1&_hello=BOB")
+async def test_hook_table_actions(ds_client):
+    response = await ds_client.get("/fixtures/facetable")
+    assert get_actions_links(response.text) == []
+    response_2 = await ds_client.get("/fixtures/facetable?_bot=1&_hello=BOB")
+    assert ">Table actions<" in response_2.text
     assert sorted(
-        get_table_actions_links(response_2.text), key=lambda link: link["label"]
+        get_actions_links(response_2.text), key=lambda link: link["label"]
     ) == [
-        {"label": "Database: fixtures", "href": "/"},
-        {"label": "From async BOB", "href": "/"},
-        {"label": f"Table: {table_or_view}", "href": "/"},
+        {"label": "Database: fixtures", "href": "/", "description": None},
+        {"label": "From async BOB", "href": "/", "description": None},
+        {"label": "Table: facetable", "href": "/", "description": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hook_view_actions(ds_client):
+    response = await ds_client.get("/fixtures/simple_view")
+    assert get_actions_links(response.text) == []
+    response_2 = await ds_client.get(
+        "/fixtures/simple_view",
+        cookies={"ds_actor": ds_client.actor_cookie({"id": "bob"})},
+    )
+    assert ">View actions<" in response_2.text
+    assert sorted(
+        get_actions_links(response_2.text), key=lambda link: link["label"]
+    ) == [
+        {"label": "Database: fixtures", "href": "/", "description": None},
+        {"label": "View: simple_view", "href": "/", "description": None},
+    ]
+
+
+def get_actions_links(html):
+    soup = Soup(html, "html.parser")
+    details = soup.find("details", {"class": "actions-menu-links"})
+    if details is None:
+        return []
+    links = []
+    for a_el in details.select("a"):
+        description = None
+        if a_el.find("p") is not None:
+            description = a_el.find("p").text.strip()
+            a_el.find("p").extract()
+        label = a_el.text.strip()
+        href = a_el["href"]
+        links.append({"label": label, "href": href, "description": description})
+    return links
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,expected_url",
+    (
+        ("/fixtures?sql=select+1", "/fixtures?sql=explain+select+1"),
+        (
+            "/fixtures/pragma_cache_size",
+            "/fixtures?sql=explain+PRAGMA+cache_size%3B",
+        ),
+        # Don't attempt to explain an explain
+        ("/fixtures?sql=explain+select+1", None),
+    ),
+)
+async def test_hook_query_actions(ds_client, path, expected_url):
+    response = await ds_client.get(path)
+    assert response.status_code == 200
+    links = get_actions_links(response.text)
+    if expected_url is None:
+        assert links == []
+    else:
+        assert links == [
+            {
+                "label": "Explain this query",
+                "href": expected_url,
+                "description": "Runs a SQLite explain",
+            }
+        ]
+
+
+@pytest.mark.asyncio
+async def test_hook_row_actions(ds_client):
+    response = await ds_client.get("/fixtures/facet_cities/1")
+    assert get_actions_links(response.text) == []
+
+    response_2 = await ds_client.get(
+        "/fixtures/facet_cities/1",
+        cookies={"ds_actor": ds_client.actor_cookie({"id": "sam"})},
+    )
+    assert get_actions_links(response_2.text) == [
+        {
+            "label": "Row details for sam",
+            "href": "/",
+            "description": '{"id": 1, "name": "San Francisco"}',
+        }
     ]
 
 
 @pytest.mark.asyncio
 async def test_hook_database_actions(ds_client):
-    def get_table_actions_links(html):
-        soup = Soup(html, "html.parser")
-        details = soup.find("details", {"class": "actions-menu-links"})
-        if details is None:
-            return []
-        return [{"label": a.text, "href": a["href"]} for a in details.select("a")]
-
     response = await ds_client.get("/fixtures")
-    assert get_table_actions_links(response.text) == []
+    assert get_actions_links(response.text) == []
 
     response_2 = await ds_client.get("/fixtures?_bot=1&_hello=BOB")
-    assert get_table_actions_links(response_2.text) == [
-        {"label": "Database: fixtures - BOB", "href": "/"},
+    assert get_actions_links(response_2.text) == [
+        {"label": "Database: fixtures - BOB", "href": "/", "description": None},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hook_homepage_actions(ds_client):
+    response = await ds_client.get("/")
+    # No button for anonymous users
+    assert "<span>Homepage actions</span>" not in response.text
+    # Signed in user gets an action
+    response2 = await ds_client.get(
+        "/", cookies={"ds_actor": ds_client.actor_cookie({"id": "troy"})}
+    )
+    assert "<span>Homepage actions</span>" in response2.text
+    assert get_actions_links(response2.text) == [
+        {
+            "label": "Custom homepage for: troy",
+            "href": "/-/custom-homepage",
+            "description": None,
+        },
     ]
 
 
@@ -1099,24 +1180,26 @@ async def test_hook_filters_from_request(ds_client):
 @pytest.mark.parametrize("extra_metadata", (False, True))
 async def test_hook_register_permissions(extra_metadata):
     ds = Datasette(
-        metadata={
-            "plugins": {
-                "datasette-register-permissions": {
-                    "permissions": [
-                        {
-                            "name": "extra-from-metadata",
-                            "abbr": "efm",
-                            "description": "Extra from metadata",
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
-                        }
-                    ]
+        config=(
+            {
+                "plugins": {
+                    "datasette-register-permissions": {
+                        "permissions": [
+                            {
+                                "name": "extra-from-metadata",
+                                "abbr": "efm",
+                                "description": "Extra from metadata",
+                                "takes_database": False,
+                                "takes_resource": False,
+                                "default": True,
+                            }
+                        ]
+                    }
                 }
             }
-        }
-        if extra_metadata
-        else None,
+            if extra_metadata
+            else None
+        ),
         plugins_dir=PLUGINS_DIR,
     )
     await ds.invoke_startup()
@@ -1151,7 +1234,7 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
     if duplicate == "abbr":
         abbr2 = "abbr1"
     ds = Datasette(
-        metadata={
+        config={
             "plugins": {
                 "datasette-register-permissions": {
                     "permissions": [
@@ -1186,7 +1269,7 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
 @pytest.mark.asyncio
 async def test_hook_register_permissions_allows_identical_duplicates():
     ds = Datasette(
-        metadata={
+        config={
             "plugins": {
                 "datasette-register-permissions": {
                     "permissions": [
@@ -1215,3 +1298,304 @@ async def test_hook_register_permissions_allows_identical_duplicates():
     await ds.invoke_startup()
     # Check that ds.permissions has only one of each
     assert len([p for p in ds.permissions.values() if p.abbr == "abbr1"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_hook_actors_from_ids():
+    # Without the hook should return default {"id": id} list
+    ds = Datasette()
+    await ds.invoke_startup()
+    db = ds.add_memory_database("actors_from_ids")
+    await db.execute_write(
+        "create table actors (id text primary key, name text, age int)"
+    )
+    await db.execute_write(
+        "insert into actors (id, name, age) values ('3', 'Cate Blanchett', 52)"
+    )
+    await db.execute_write(
+        "insert into actors (id, name, age) values ('5', 'Rooney Mara', 36)"
+    )
+    await db.execute_write(
+        "insert into actors (id, name, age) values ('7', 'Sarah Paulson', 46)"
+    )
+    await db.execute_write(
+        "insert into actors (id, name, age) values ('9', 'Helena Bonham Carter', 55)"
+    )
+    table_names = await db.table_names()
+    assert table_names == ["actors"]
+    actors1 = await ds.actors_from_ids(["3", "5", "7"])
+    assert actors1 == {
+        "3": {"id": "3"},
+        "5": {"id": "5"},
+        "7": {"id": "7"},
+    }
+
+    class ActorsFromIdsPlugin:
+        __name__ = "ActorsFromIdsPlugin"
+
+        @hookimpl
+        def actors_from_ids(self, datasette, actor_ids):
+            db = datasette.get_database("actors_from_ids")
+
+            async def inner():
+                sql = "select id, name from actors where id in ({})".format(
+                    ", ".join("?" for _ in actor_ids)
+                )
+                actors = {}
+                result = await db.execute(sql, actor_ids)
+                for row in result.rows:
+                    actor = dict(row)
+                    actors[actor["id"]] = actor
+                return actors
+
+            return inner
+
+    try:
+        pm.register(ActorsFromIdsPlugin(), name="ActorsFromIdsPlugin")
+        actors2 = await ds.actors_from_ids(["3", "5", "7"])
+        assert actors2 == {
+            "3": {"id": "3", "name": "Cate Blanchett"},
+            "5": {"id": "5", "name": "Rooney Mara"},
+            "7": {"id": "7", "name": "Sarah Paulson"},
+        }
+    finally:
+        pm.unregister(name="ReturnNothingPlugin")
+
+
+@pytest.mark.asyncio
+async def test_plugin_is_installed():
+    datasette = Datasette(memory=True)
+
+    class DummyPlugin:
+        __name__ = "DummyPlugin"
+
+        @hookimpl
+        def actors_from_ids(self, datasette, actor_ids):
+            return {}
+
+    try:
+        pm.register(DummyPlugin(), name="DummyPlugin")
+        response = await datasette.client.get("/-/plugins.json")
+        assert response.status_code == 200
+        installed_plugins = {p["name"] for p in response.json()}
+        assert "DummyPlugin" in installed_plugins
+
+    finally:
+        pm.unregister(name="DummyPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_jinja2_environment_from_request(tmpdir):
+    templates = pathlib.Path(tmpdir / "templates")
+    templates.mkdir()
+    (templates / "index.html").write_text("Hello museums!", "utf-8")
+
+    class EnvironmentPlugin:
+        @hookimpl
+        def jinja2_environment_from_request(self, request, env):
+            if request and request.host == "www.niche-museums.com":
+                return env.overlay(
+                    loader=ChoiceLoader(
+                        [
+                            FileSystemLoader(str(templates)),
+                            env.loader,
+                        ]
+                    ),
+                    enable_async=True,
+                )
+            return env
+
+    datasette = Datasette(memory=True)
+
+    try:
+        pm.register(EnvironmentPlugin(), name="EnvironmentPlugin")
+        response = await datasette.client.get("/")
+        assert response.status_code == 200
+        assert "Hello museums!" not in response.text
+        # Try again with the hostname
+        response2 = await datasette.client.get(
+            "/", headers={"host": "www.niche-museums.com"}
+        )
+        assert response2.status_code == 200
+        assert "Hello museums!" in response2.text
+    finally:
+        pm.unregister(name="EnvironmentPlugin")
+
+
+class SlotPlugin:
+    __name__ = "SlotPlugin"
+
+    @hookimpl
+    def top_homepage(self, request):
+        return "Xtop_homepage:" + request.args["z"]
+
+    @hookimpl
+    def top_database(self, request, database):
+        async def inner():
+            return "Xtop_database:{}:{}".format(database, request.args["z"])
+
+        return inner
+
+    @hookimpl
+    def top_table(self, request, database, table):
+        return "Xtop_table:{}:{}:{}".format(database, table, request.args["z"])
+
+    @hookimpl
+    def top_row(self, request, database, table, row):
+        return "Xtop_row:{}:{}:{}:{}".format(
+            database, table, row["name"], request.args["z"]
+        )
+
+    @hookimpl
+    def top_query(self, request, database, sql):
+        return "Xtop_query:{}:{}:{}".format(database, sql, request.args["z"])
+
+    @hookimpl
+    def top_canned_query(self, request, database, query_name):
+        return "Xtop_query:{}:{}:{}".format(database, query_name, request.args["z"])
+
+
+@pytest.mark.asyncio
+async def test_hook_top_homepage():
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        datasette = Datasette(memory=True)
+        response = await datasette.client.get("/?z=foo")
+        assert response.status_code == 200
+        assert "Xtop_homepage:foo" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_database():
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        datasette = Datasette(memory=True)
+        response = await datasette.client.get("/_memory?z=bar")
+        assert response.status_code == 200
+        assert "Xtop_database:_memory:bar" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_table(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/facetable?z=baz")
+        assert response.status_code == 200
+        assert "Xtop_table:fixtures:facetable:baz" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_row(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/facet_cities/1?z=bax")
+        assert response.status_code == 200
+        assert "Xtop_row:fixtures:facet_cities:San Francisco:bax" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_query(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures?sql=select+1&z=x")
+        assert response.status_code == 200
+        assert "Xtop_query:fixtures:select 1:x" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_top_canned_query(ds_client):
+    try:
+        pm.register(SlotPlugin(), name="SlotPlugin")
+        response = await ds_client.get("/fixtures/from_hook?z=xyz")
+        assert response.status_code == 200
+        assert "Xtop_query:fixtures:from_hook:xyz" in response.text
+    finally:
+        pm.unregister(name="SlotPlugin")
+
+
+@pytest.mark.asyncio
+async def test_hook_track_event():
+    datasette = Datasette(memory=True)
+    from .conftest import TrackEventPlugin
+
+    await datasette.invoke_startup()
+    await datasette.track_event(
+        TrackEventPlugin.OneEvent(actor=None, extra="extra extra")
+    )
+    assert len(datasette._tracked_events) == 1
+    assert isinstance(datasette._tracked_events[0], TrackEventPlugin.OneEvent)
+    event = datasette._tracked_events[0]
+    assert event.name == "one"
+    assert event.properties() == {"extra": "extra extra"}
+    # Should have a recent created as well
+    created = event.created
+    assert isinstance(created, datetime.datetime)
+    assert created.tzinfo == datetime.timezone.utc
+
+
+@pytest.mark.asyncio
+async def test_hook_register_events():
+    datasette = Datasette(memory=True)
+    await datasette.invoke_startup()
+    assert any(k.__name__ == "OneEvent" for k in datasette.event_classes)
+
+
+@pytest.mark.parametrize(
+    "metadata,config,expected_metadata,expected_config",
+    (
+        (
+            # Instance level
+            {"plugins": {"datasette-foo": "bar"}},
+            {},
+            {},
+            {"plugins": {"datasette-foo": "bar"}},
+        ),
+        (
+            # Database level
+            {"databases": {"foo": {"plugins": {"datasette-foo": "bar"}}}},
+            {},
+            {},
+            {"databases": {"foo": {"plugins": {"datasette-foo": "bar"}}}},
+        ),
+        (
+            # Table level
+            {
+                "databases": {
+                    "foo": {"tables": {"bar": {"plugins": {"datasette-foo": "bar"}}}}
+                }
+            },
+            {},
+            {},
+            {
+                "databases": {
+                    "foo": {"tables": {"bar": {"plugins": {"datasette-foo": "bar"}}}}
+                }
+            },
+        ),
+        (
+            # Keep other keys
+            {"plugins": {"datasette-foo": "bar"}, "other": "key"},
+            {"original_config": "original"},
+            {"other": "key"},
+            {"original_config": "original", "plugins": {"datasette-foo": "bar"}},
+        ),
+    ),
+)
+def test_metadata_plugin_config_treated_as_config(
+    metadata, config, expected_metadata, expected_config
+):
+    ds = Datasette(metadata=metadata, config=config)
+    actual_metadata = ds.metadata()
+    assert "plugins" not in actual_metadata
+    assert actual_metadata == expected_metadata
+    assert ds.config == expected_config

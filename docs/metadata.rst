@@ -26,7 +26,7 @@ Your ``metadata.yaml`` file can look something like this:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -38,7 +38,7 @@ Your ``metadata.yaml`` file can look something like this:
         source_url: http://example.com/
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -53,7 +53,7 @@ Your ``metadata.yaml`` file can look something like this:
 .. [[[end]]]
 
 
-Choosing YAML over JSON adds support for multi-line strings and comments, see :ref:`metadata_yaml`.
+Choosing YAML over JSON adds support for multi-line strings and comments.
 
 The above metadata will be displayed on the index page of your Datasette-powered
 site. The source and license information will also be included in the footer of
@@ -90,7 +90,7 @@ You can also provide metadata at the per-database or per-table level, like this:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -105,7 +105,7 @@ You can also provide metadata at the per-database or per-table level, like this:
                 license_url: https://creativecommons.org/licenses/by/3.0/us/
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -168,7 +168,7 @@ You can include descriptions for your columns by adding a ``"columns": {"name-of
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -181,7 +181,7 @@ You can include descriptions for your columns by adding a ``"columns": {"name-of
                   column2: Description of column 2
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -230,7 +230,7 @@ Column units are configured in the metadata like so:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -243,7 +243,7 @@ Column units are configured in the metadata like so:
                   column2: Hz
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -276,7 +276,7 @@ registered with Pint:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -284,7 +284,7 @@ registered with Pint:
         - decibel = [] = dB
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -320,7 +320,7 @@ By default Datasette tables are sorted by primary key. You can over-ride this de
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -331,7 +331,7 @@ By default Datasette tables are sorted by primary key. You can over-ride this de
                 sort: created
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -364,7 +364,7 @@ Or use ``"sort_desc"`` to sort in descending order:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -375,7 +375,7 @@ Or use ``"sort_desc"`` to sort in descending order:
                 sort_desc: created
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -413,7 +413,7 @@ Datasette defaults to displaying 100 rows per page, for both tables and views. Y
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -424,7 +424,7 @@ Datasette defaults to displaying 100 rows per page, for both tables and views. Y
                 size: 10
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -469,7 +469,7 @@ control which columns are available for sorting you can do so using the optional
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -482,7 +482,7 @@ control which columns are available for sorting you can do so using the optional
                 - weight
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -526,7 +526,7 @@ You can use ``sortable_columns`` to enable specific sort orders for a view calle
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -539,7 +539,7 @@ You can use ``sortable_columns`` to enable specific sort orders for a view calle
                 - impressions
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -586,7 +586,7 @@ used for the link label with the ``label_column`` property:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -597,7 +597,7 @@ used for the link label with the ``label_column`` property:
                 label_column: title
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -636,7 +636,7 @@ SpatiaLite tables are automatically hidden) using ``"hidden": true``:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: metadata.yaml
 
     .. code-block:: yaml
 
@@ -647,7 +647,7 @@ SpatiaLite tables are automatically hidden) using ``"hidden": true``:
                 hidden: true
 
 
-.. tab:: JSON
+.. tab:: metadata.json
 
     .. code-block:: json
 
@@ -664,38 +664,64 @@ SpatiaLite tables are automatically hidden) using ``"hidden": true``:
         }
 .. [[[end]]]
 
-.. _metadata_yaml:
+.. _metadata_reference:
 
-Using YAML for metadata
------------------------
+Metadata reference
+------------------
 
-Datasette accepts YAML as an alternative to JSON for your metadata configuration file.
-YAML is particularly useful for including multiline HTML and SQL strings, plus inline comments.
 
-Here's an example of a ``metadata.yml`` file, re-using an example from :ref:`canned_queries`.
+A full reference of every supported option in a ``metadata.json`` or ``metadata.yaml`` file.
 
-.. code-block:: yaml
 
-    title: Demonstrating Metadata from YAML
-    description_html: |-
-      <p>This description includes a long HTML string</p>
-      <ul>
-        <li>YAML is better for embedding HTML strings than JSON!</li>
-      </ul>
-    license: ODbL
-    license_url: https://opendatacommons.org/licenses/odbl/
-    databases:
-      fixtures:
-        tables:
-          no_primary_key:
-            hidden: true
-        queries:
-          # This query provides LIKE-based search
-          neighborhood_search:
-            sql: |-
-              select neighborhood, facet_cities.name, state
-              from facetable join facet_cities on facetable.city_id = facet_cities.id
-              where neighborhood like '%' || :text || '%' order by neighborhood;
-            title: Search neighborhoods
-            description_html: |-
-              <p>This demonstrates <em>basic</em> LIKE search
+Top-level metadata
+~~~~~~~~~~~~~~~~~~
+
+"Top-level" metadata refers to fields that can be specified at the root level  of a metadata file. These attributes are meant to describe the entire Datasette instance.
+
+The following are the full list of allowed top-level metadata fields:
+
+- ``title``
+- ``description``
+- ``description_html``
+- ``license``
+- ``license_url``
+- ``source``
+- ``source_url``
+
+Database-level metadata
+~~~~~~~~~~~~~~~~~~~~~~~
+
+"Database-level" metadata refers to fields that can be specified for each database in a Datasette instance. These attributes should be listed under a database inside the `"databases"` field.
+
+The following are the full list of allowed database-level metadata fields:
+
+- ``source``
+- ``source_url``
+- ``license``
+- ``license_url``
+- ``about``
+- ``about_url``
+
+Table-level metadata
+~~~~~~~~~~~~~~~~~~~~
+
+"Table-level" metadata refers to fields that can be specified for each table in a Datasette instance. These attributes should be listed under a specific table using the `"tables"` field.
+
+The following are the full list of allowed table-level metadata fields:
+
+- ``source``
+- ``source_url``
+- ``license``
+- ``license_url``
+- ``about``
+- ``about_url``
+- ``hidden``
+- ``sort/sort_desc``
+- ``size``
+- ``sortable_columns``
+- ``label_column``
+- ``facets``
+- ``fts_table``
+- ``fts_pk``
+- ``searchmode``
+- ``columns``

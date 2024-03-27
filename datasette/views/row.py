@@ -1,13 +1,14 @@
 from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
+from datasette.events import UpdateRowEvent, DeleteRowEvent
 from .base import DataView, BaseView, _error
 from datasette.utils import (
-    tilde_decode,
-    urlsafe_components,
+    await_me_maybe,
+    make_slot_function,
     to_css_class,
     escape_sqlite,
-    row_sql_params_pks,
 )
+from datasette.plugins import pm
 import json
 import sqlite_utils
 from .table import display_columns_and_rows
@@ -18,7 +19,8 @@ class RowView(DataView):
 
     async def data(self, request, default_labels=False):
         resolved = await self.ds.resolve_row(request)
-        database = resolved.db.name
+        db = resolved.db
+        database = db.name
         table = resolved.table
         pk_values = resolved.pk_values
 
@@ -55,11 +57,26 @@ class RowView(DataView):
             )
             for column in display_columns:
                 column["sortable"] = False
+
+            row_actions = []
+            for hook in pm.hook.row_actions(
+                datasette=self.ds,
+                actor=request.actor,
+                request=request,
+                database=database,
+                table=table,
+                row=rows[0],
+            ):
+                extra_links = await await_me_maybe(hook)
+                if extra_links:
+                    row_actions.extend(extra_links)
+
             return {
                 "private": private,
                 "foreign_key_tables": await self.foreign_key_tables(
                     database, table, pk_values
                 ),
+                "database_color": db.color,
                 "display_columns": display_columns,
                 "display_rows": display_rows,
                 "custom_table_templates": [
@@ -67,10 +84,19 @@ class RowView(DataView):
                     f"_table-row-{to_css_class(database)}-{to_css_class(table)}.html",
                     "_table.html",
                 ],
+                "row_actions": row_actions,
                 "metadata": (self.ds.metadata("databases") or {})
                 .get(database, {})
                 .get("tables", {})
                 .get(table, {}),
+                "top_row": make_slot_function(
+                    "top_row",
+                    self.ds,
+                    request,
+                    database=resolved.db.name,
+                    table=resolved.table,
+                    row=rows[0],
+                ),
             }
 
         data = {
@@ -80,7 +106,7 @@ class RowView(DataView):
             "columns": columns,
             "primary_keys": resolved.pks,
             "primary_key_values": pk_values,
-            "units": self.ds.table_metadata(database, table).get("units", {}),
+            "units": (await self.ds.table_config(database, table)).get("units", {}),
         }
 
         if "foreign_key_tables" in (request.args.get("_extras") or "").split(","):
@@ -192,6 +218,15 @@ class RowDeleteView(BaseView):
         except Exception as e:
             return _error([str(e)], 500)
 
+        await self.ds.track_event(
+            DeleteRowEvent(
+                actor=request.actor,
+                database=resolved.db.name,
+                table=resolved.table,
+                pks=resolved.pk_values,
+            )
+        )
+
         return Response.json({"ok": True}, status=200)
 
 
@@ -219,11 +254,21 @@ class RowUpdateView(BaseView):
         if not "update" in data or not isinstance(data["update"], dict):
             return _error(["JSON must contain an update dictionary"])
 
+        invalid_keys = set(data.keys()) - {"update", "return", "alter"}
+        if invalid_keys:
+            return _error(["Invalid keys: {}".format(", ".join(invalid_keys))])
+
         update = data["update"]
+
+        alter = data.get("alter")
+        if alter and not await self.ds.permission_allowed(
+            request.actor, "alter-table", resource=(resolved.db.name, resolved.table)
+        ):
+            return _error(["Permission denied for alter-table"], 403)
 
         def update_row(conn):
             sqlite_utils.Database(conn)[resolved.table].update(
-                resolved.pk_values, update
+                resolved.pk_values, update, alter=alter
             )
 
         try:
@@ -238,4 +283,14 @@ class RowUpdateView(BaseView):
             )
             rows = list(results.rows)
             result["row"] = dict(rows[0])
+
+        await self.ds.track_event(
+            UpdateRowEvent(
+                actor=request.actor,
+                database=resolved.db.name,
+                table=resolved.table,
+                pks=resolved.pk_values,
+            )
+        )
+
         return Response.json(result, status=200)

@@ -53,22 +53,29 @@ If you want to bundle some pre-written SQL queries with your Datasette-hosted da
 
 The quickest way to create views is with the SQLite command-line interface::
 
-    $ sqlite3 sf-trees.db
+    sqlite3 sf-trees.db
+
+::
+
     SQLite version 3.19.3 2017-06-27 16:48:08
     Enter ".help" for usage hints.
     sqlite> CREATE VIEW demo_view AS select qSpecies from Street_Tree_List;
     <CTRL+D>
+
+You can also use the `sqlite-utils <https://sqlite-utils.datasette.io/>`__ tool to `create a view <https://sqlite-utils.datasette.io/en/stable/cli.html#creating-views>`__::
+
+    sqlite-utils create-view sf-trees.db demo_view "select qSpecies from Street_Tree_List"
 
 .. _canned_queries:
 
 Canned queries
 --------------
 
-As an alternative to adding views to your database, you can define canned queries inside your ``metadata.yaml`` file. Here's an example:
+As an alternative to adding views to your database, you can define canned queries inside your ``datasette.yaml`` file. Here's an example:
 
 .. [[[cog
-    from metadata_doc import metadata_example
-    metadata_example(cog, {
+    from metadata_doc import config_example, config_example
+    config_example(cog, {
         "databases": {
            "sf-trees": {
                "queries": {
@@ -81,7 +88,7 @@ As an alternative to adding views to your database, you can define canned querie
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -92,7 +99,7 @@ As an alternative to adding views to your database, you can define canned querie
                 sql: select qSpecies from Street_Tree_List
 
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -140,11 +147,11 @@ Here's an example of a canned query with a named parameter:
     where neighborhood like '%' || :text || '%'
     order by neighborhood;
 
-In the canned query metadata looks like this:
+In the canned query configuration looks like this:
 
 
 .. [[[cog
-    metadata_example(cog, yaml="""
+    config_example(cog, """
     databases:
       fixtures:
         queries:
@@ -159,9 +166,10 @@ In the canned query metadata looks like this:
     """)
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
+
 
         databases:
           fixtures:
@@ -175,7 +183,8 @@ In the canned query metadata looks like this:
                   where neighborhood like '%' || :text || '%'
                   order by neighborhood
 
-.. tab:: JSON
+
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -203,7 +212,7 @@ In this example the ``:text`` named parameter is automatically extracted from th
 You can alternatively provide an explicit list of named parameters using the ``"params"`` key, like this:
 
 .. [[[cog
-    metadata_example(cog, yaml="""
+    config_example(cog, """
     databases:
       fixtures:
         queries:
@@ -220,9 +229,10 @@ You can alternatively provide an explicit list of named parameters using the ``"
     """)
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
+
 
         databases:
           fixtures:
@@ -238,7 +248,8 @@ You can alternatively provide an explicit list of named parameters using the ``"
                   where neighborhood like '%' || :text || '%'
                   order by neighborhood
 
-.. tab:: JSON
+
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -283,7 +294,7 @@ You can set a default fragment hash that will be included in the link to the can
 This example demonstrates both ``fragment`` and ``hide_sql``:
 
 .. [[[cog
-    metadata_example(cog, yaml="""
+    config_example(cog, """
     databases:
       fixtures:
         queries:
@@ -297,9 +308,10 @@ This example demonstrates both ``fragment`` and ``hide_sql``:
     """)
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
+
 
         databases:
           fixtures:
@@ -312,7 +324,8 @@ This example demonstrates both ``fragment`` and ``hide_sql``:
                   from facetable join facet_cities on facetable.city_id = facet_cities.id
                   where neighborhood like '%' || :text || '%' order by neighborhood;
 
-.. tab:: JSON
+
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -343,7 +356,7 @@ Canned queries by default are read-only. You can use the ``"write": true`` key t
 See :ref:`authentication_permissions_query` for details on how to add permission checks to canned queries, using the ``"allow"`` key.
 
 .. [[[cog
-    metadata_example(cog, {
+    config_example(cog, {
         "databases": {
             "mydatabase": {
                 "queries": {
@@ -357,7 +370,7 @@ See :ref:`authentication_permissions_query` for details on how to add permission
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -369,7 +382,7 @@ See :ref:`authentication_permissions_query` for details on how to add permission
                 write: true
 
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -400,7 +413,7 @@ You can customize how Datasette represents success and errors using the followin
 For example:
 
 .. [[[cog
-    metadata_example(cog, {
+    config_example(cog, {
         "databases": {
             "mydatabase": {
                 "queries": {
@@ -419,7 +432,7 @@ For example:
     })
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
 
@@ -437,7 +450,7 @@ For example:
                 on_error_redirect: /mydatabase
 
 
-.. tab:: JSON
+.. tab:: datasette.json
 
     .. code-block:: json
 
@@ -503,7 +516,7 @@ Available magic parameters are:
 Here's an example configuration that adds a message from the authenticated user, storing various pieces of additional metadata using magic parameters:
 
 .. [[[cog
-    metadata_example(cog, yaml="""
+    config_example(cog, """
     databases:
       mydatabase:
         queries:
@@ -520,9 +533,10 @@ Here's an example configuration that adds a message from the authenticated user,
     """)
 .. ]]]
 
-.. tab:: YAML
+.. tab:: datasette.yaml
 
     .. code-block:: yaml
+
 
         databases:
           mydatabase:
@@ -538,7 +552,8 @@ Here's an example configuration that adds a message from the authenticated user,
                   )
                 write: true
 
-.. tab:: JSON
+
+.. tab:: datasette.json
 
     .. code-block:: json
 

@@ -1553,7 +1553,7 @@ class Datasette:
             return self.get_database(route=database_route)
         except KeyError:
             raise DatabaseNotFound(
-                "Database not found: {}".format(database_route), database_route
+                "Invalid Database: The database {} was not found. Return to the previous page below to ensure your own Database was created properly.".format(database_route), database_route
             )
 
     async def resolve_table(self, request):
@@ -1566,7 +1566,7 @@ class Datasette:
             is_view = await db.view_exists(table_name)
         if not (table_exists or is_view):
             raise TableNotFound(
-                "Table not found: {}".format(table_name), db.name, table_name
+                "Invalid Table: {} was not found. Return to the previous page below, table is not present within the Database file.".format(table_name), db.name, table_name
             )
         return ResolvedTable(db, table_name, is_view)
 
@@ -1578,7 +1578,7 @@ class Datasette:
         row = results.first()
         if row is None:
             raise RowNotFound(
-                "Row not found: {}".format(pk_values), db.name, table_name, pk_values
+                "Invalid Row: The row id {} is invalid on the table. It may be spelled incorrectly or not present on the table, use the button below to go back.".format(pk_values), db.name, table_name, pk_values
             )
         return ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first())
 

@@ -1222,7 +1222,7 @@ Plugins can access this database by calling ``internal_db = datasette.get_intern
 
 Plugin authors are asked to practice good etiquette when using the internal database, as all plugins use the same database to store data. For example:
 
-1. Use a unique prefix when creating tables, indices, and triggera in the internal database. If your plugin is called ``datasette-xyz``, then prefix names with ``datasette_xyz_*``.
+1. Use a unique prefix when creating tables, indices, and triggers in the internal database. If your plugin is called ``datasette-xyz``, then prefix names with ``datasette_xyz_*``.
 2. Avoid long-running write statements that may stall or block other plugins that are trying to write at the same time.
 3. Use temporary tables or shared in-memory attached databases when possible.
 4. Avoid implementing features that could expose private data stored in the internal database by other plugins.

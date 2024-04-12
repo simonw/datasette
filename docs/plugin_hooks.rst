@@ -1993,6 +1993,49 @@ This example plugin logs details of all events to standard error:
         )
         print(msg, file=sys.stderr, flush=True)
 
+The function can also return an async function which will be awaited. This is useful for writing to a database.
+
+This example logs events to a `datasette_events` table in a database called `events`. It uses the `startup()` hook to create that table if it does not exist.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    import json
+    
+    
+    @hookimpl
+    def startup(datasette):
+        async def inner():
+            db = datasette.get_database("events")
+            await db.execute_write(
+                """
+                create table if not exists datasette_events (
+                    id integer primary key,
+                    event_type text,
+                    created text,
+                    properties text
+                )
+            """
+            )
+    
+        return inner
+    
+    
+    @hookimpl
+    def track_event(datasette, event):
+        async def inner():
+            db = datasette.get_database("events")
+            properties = event.properties()
+            await db.execute_write(
+                """
+                insert into datasette_events (event_type, created, properties)
+                values (?, strftime('%Y-%m-%d %H:%M:%S', 'now'),?)
+            """,
+                (event.name, json.dumps(properties)),
+            )
+    
+        return inner
+
 Example: `datasette-events-db <https://datasette.io/plugins/datasette-events-db>`_
 
 .. _plugin_hook_register_events:

@@ -2001,8 +2001,7 @@ This example logs events to a `datasette_events` table in a database called `eve
 
     from datasette import hookimpl
     import json
-    
-    
+
     @hookimpl
     def startup(datasette):
         async def inner():
@@ -2013,14 +2012,15 @@ This example logs events to a `datasette_events` table in a database called `eve
                     id integer primary key,
                     event_type text,
                     created text,
+                    actor text,
                     properties text
                 )
             """
             )
-    
+
         return inner
-    
-    
+
+
     @hookimpl
     def track_event(datasette, event):
         async def inner():
@@ -2028,12 +2028,12 @@ This example logs events to a `datasette_events` table in a database called `eve
             properties = event.properties()
             await db.execute_write(
                 """
-                insert into datasette_events (event_type, created, properties)
-                values (?, strftime('%Y-%m-%d %H:%M:%S', 'now'),?)
+                insert into datasette_events (event_type, created, actor, properties)
+                values (?, strftime('%Y-%m-%d %H:%M:%S', 'now'), ?, ?)
             """,
-                (event.name, json.dumps(properties)),
+                (event.name, json.dumps(event.actor), json.dumps(properties)),
             )
-    
+
         return inner
 
 Example: `datasette-events-db <https://datasette.io/plugins/datasette-events-db>`_

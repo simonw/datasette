@@ -68,6 +68,7 @@ from .utils import (
     async_call_with_supported_arguments,
     await_me_maybe,
     call_with_supported_arguments,
+    detect_json1,
     display_actor,
     escape_css_string,
     escape_sqlite,
@@ -1102,9 +1103,8 @@ class Datasette:
         conn = sqlite3.connect(":memory:")
         self._prepare_connection(conn, "_memory")
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
-        sqlite_extensions = {}
+        sqlite_extensions = {"json1": detect_json1(conn)}
         for extension, testsql, hasversion in (
-            ("json1", "SELECT json('{}')", False),
             ("spatialite", "SELECT spatialite_version()", True),
         ):
             try:

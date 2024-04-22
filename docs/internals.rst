@@ -386,7 +386,7 @@ This is useful when you need to check multiple permissions at once. For example,
 
 .. code-block:: python
 
-    await self.ds.ensure_permissions(
+    await datasette.ensure_permissions(
         request.actor,
         [
             ("view-table", (database, table)),
@@ -420,7 +420,7 @@ This example checks if the user can access a specific table, and sets ``private`
 
 .. code-block:: python
 
-    visible, private = await self.ds.check_visibility(
+    visible, private = await datasette.check_visibility(
         request.actor,
         action="view-table",
         resource=(database, table),
@@ -430,7 +430,7 @@ The following example runs three checks in a row, similar to :ref:`datasette_ens
 
 .. code-block:: python
 
-    visible, private = await self.ds.check_visibility(
+    visible, private = await datasette.check_visibility(
         request.actor,
         permissions=[
             ("view-table", (database, table)),

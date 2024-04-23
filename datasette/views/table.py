@@ -705,7 +705,12 @@ async def _sortable_columns_for_table(datasette, database_name, table_name, use_
     db = datasette.databases[database_name]
     table_metadata = await datasette.table_config(database_name, table_name)
     if "sortable_columns" in table_metadata:
-        sortable_columns = set(table_metadata["sortable_columns"])
+        # fix now allows any primary key to be sorted as well with the metadata
+        sort_col = set(table_metadata["sortable_columns"])
+        pk_col = set(await db.primary_keys(table_name))
+        sortable_columns = [sort_col.pop()]
+        if len(pk_col) > 0:
+            sortable_columns.append(pk_col.pop())
     else:
         sortable_columns = set(await db.table_columns(table_name))
     if use_rowid:
@@ -713,7 +718,8 @@ async def _sortable_columns_for_table(datasette, database_name, table_name, use_
     return sortable_columns
 
 
-async def _sort_order(table_metadata, sortable_columns, request, order_by):
+async def _sort_order(datasette, database_name, table_name, table_metadata, sortable_columns, request, order_by):
+    db = datasette.databases[database_name]
     sort = request.args.get("_sort")
     sort_desc = request.args.get("_sort_desc")
 
@@ -1042,7 +1048,7 @@ async def table_view_data(
     )
 
     sort, sort_desc, order_by = await _sort_order(
-        table_metadata, sortable_columns, request, order_by
+        datasette, database_name, table_name, table_metadata, sortable_columns, request, order_by
     )
 
     from_sql = "from {table_name} {where}".format(

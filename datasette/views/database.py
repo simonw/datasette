@@ -933,8 +933,22 @@ class TableCreateView(BaseView):
                     return _error(["columns must be a list of objects"])
                 if not column.get("name") or not isinstance(column.get("name"), str):
                     return _error(["Column name is required"])
+                    # Check if type is specified
+
                 if not column.get("type"):
-                    column["type"] = "text"
+                    # If type is not specified, check the values in the column
+                    column_values = [value for value in column.get("values", []) if value is not None]
+
+                    # Check if all values in the column are integers
+                    if all(isinstance(value, int) for value in column_values):
+                        column["type"] = "integer"
+                    # Check if all values in the column are floats
+                    elif all(isinstance(value, float) for value in column_values):
+                        column["type"] = "float"
+                    # If values are not all integers or floats, set type as "text"
+                    else:
+                        column["type"] = "text"
+
                 if column["type"] not in self._supported_column_types:
                     return _error(
                         ["Unsupported column type: {}".format(column["type"])]

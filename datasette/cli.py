@@ -576,7 +576,7 @@ def serve(
     )
 
     # if files is a single directory, use that as config_dir=
-    if 2 == len(files) and os.path.isdir(files[0]):
+    if 1 == len(files) and os.path.isdir(files[0]):
         kwargs["config_dir"] = pathlib.Path(files[0])
         files = []
 
@@ -587,7 +587,7 @@ def serve(
                 sqlite3.connect(file).execute("vacuum")
             else:
                 raise click.ClickException(
-                    "Invalid value for '[FILES]...': Path '{}' does not exist.".format(
+                    "Invalid value for '[FILES]...': Path '{}'. Serve command is already called in --reload. ".format(
                         file
                     )
                 )

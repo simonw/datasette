@@ -878,7 +878,7 @@ class LoadExtension(click.ParamType):
             path_entry = value.split(":", 2)
             if len(path_entry) < 3:
                 return value
-            #argument contains a Windows/DOS path and an entry point
+            # argument contains a Windows/DOS path and an entry point
             path = path_entry[0] + ":" + path_entry[1]
             entrypoint = path_entry[-1]
             return path, entrypoint

@@ -33,8 +33,9 @@ from datasette.utils import (
 )
 from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
+from .error_module import DatasetteError, _error
 
-from .base import BaseView, DatasetteError, View, _error, stream_csv
+from .base import BaseView, View, stream_csv
 
 
 class DatabaseView(View):

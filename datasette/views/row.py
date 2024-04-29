@@ -1,13 +1,14 @@
 from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
-from .base import DataView, BaseView, _error
+from .base import DataView, BaseView
 from datasette.utils import (
     await_me_maybe,
     make_slot_function,
     to_css_class,
     escape_sqlite,
 )
+from .error_module import _error
 from datasette.plugins import pm
 import json
 import sqlite_utils
@@ -168,12 +169,6 @@ class RowView(DataView):
             )
             foreign_key_tables.append({**fk, **{"count": count, "link": link}})
         return foreign_key_tables
-
-
-class RowError(Exception):
-    def __init__(self, error):
-        self.error = error
-
 
 async def _resolve_row_and_check_permission(datasette, request, permission):
     from datasette.app import DatabaseNotFound, TableNotFound, RowNotFound

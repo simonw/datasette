@@ -43,7 +43,8 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
 import sqlite_utils
-from .base import BaseView, DatasetteError, ureg, _error, stream_csv
+from .base import BaseView, ureg, stream_csv
+from .error_module import DatasetteError, _error
 from .database import QueryView
 
 LINK_WITH_LABEL = (

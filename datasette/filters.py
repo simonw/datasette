@@ -1,5 +1,5 @@
 from datasette import hookimpl
-from datasette.views.base import DatasetteError
+from datasette.views.error_module import DatasetteError
 from datasette.utils.asgi import BadRequest
 import json
 import numbers

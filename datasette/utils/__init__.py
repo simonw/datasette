@@ -1127,10 +1127,6 @@ class PrefixedUrlString(str):
             return super().__getattribute__(name)
 
 
-class StartupError(Exception):
-    pass
-
-
 _re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
 
 

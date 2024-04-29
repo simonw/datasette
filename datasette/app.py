@@ -60,11 +60,10 @@ from .views.row import RowView, RowDeleteView, RowUpdateView
 from .renderer import json_renderer
 from .url_builder import Urls
 from .database import Database, QueryInterrupted
-
+from datasette.views.error_module import StartupError
 from .utils import (
     PrefixedUrlString,
     SPATIALITE_FUNCTIONS,
-    StartupError,
     async_call_with_supported_arguments,
     await_me_maybe,
     call_with_supported_arguments,

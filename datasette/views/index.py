@@ -7,7 +7,7 @@ from datasette.utils import (
     make_slot_function,
     CustomJSONEncoder,
 )
-from datasette.utils.asgi import Response
+from datasette.views.error_module import Response
 from datasette.version import __version__
 
 from .base import BaseView

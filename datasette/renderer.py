@@ -6,7 +6,7 @@ from datasette.utils import (
     path_from_row_pks,
     sqlite3,
 )
-from datasette.utils.asgi import Response
+from datasette.views.error_module import Response
 
 
 def convert_specific_columns_to_json(rows, columns, json_cols):

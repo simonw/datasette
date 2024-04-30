@@ -86,19 +86,14 @@ from .utils import (
 )
 from .utils.asgi import (
     AsgiLifespan,
-    Forbidden,
-    NotFound,
-    DatabaseNotFound,
-    TableNotFound,
-    RowNotFound,
-    Request,
-    Response,
     AsgiRunOnFirstRequest,
     asgi_static,
     asgi_send,
     asgi_send_file,
     asgi_send_redirect,
 )
+from .views.error_module import (Forbidden, NotFound, DatabaseNotFound,
+                                 TableNotFound, RowNotFound, Request, Response)
 from .utils.internal_db import init_internal_db, populate_schema_tables
 from .utils.sqlite import (
     sqlite3,
@@ -239,27 +234,27 @@ class Datasette:
     ERROR = 3
 
     def __init__(
-        self,
-        files=None,
-        immutables=None,
-        cache_headers=True,
-        cors=False,
-        inspect_data=None,
-        config=None,
-        metadata=None,
-        sqlite_extensions=None,
-        template_dir=None,
-        plugins_dir=None,
-        static_mounts=None,
-        memory=False,
-        settings=None,
-        secret=None,
-        version_note=None,
-        config_dir=None,
-        pdb=False,
-        crossdb=False,
-        nolock=False,
-        internal=None,
+            self,
+            files=None,
+            immutables=None,
+            cache_headers=True,
+            cors=False,
+            inspect_data=None,
+            config=None,
+            metadata=None,
+            sqlite_extensions=None,
+            template_dir=None,
+            plugins_dir=None,
+            static_mounts=None,
+            memory=False,
+            settings=None,
+            secret=None,
+            version_note=None,
+            config_dir=None,
+            pdb=False,
+            crossdb=False,
+            nolock=False,
+            internal=None,
     ):
         self._startup_invoked = False
         assert config_dir is None or isinstance(
@@ -277,9 +272,9 @@ class Datasette:
                 db_files.extend(config_dir.glob("*.{}".format(ext)))
             self.files += tuple(str(f) for f in db_files)
         if (
-            config_dir
-            and (config_dir / "inspect-data.json").exists()
-            and not inspect_data
+                config_dir
+                and (config_dir / "inspect-data.json").exists()
+                and not inspect_data
         ):
             inspect_data = json.loads((config_dir / "inspect-data.json").read_text())
             if not immutables:
@@ -446,7 +441,7 @@ class Datasette:
         environment = self._jinja_env
         if request:
             for environment in pm.hook.jinja2_environment_from_request(
-                datasette=self, request=request, env=environment
+                    datasette=self, request=request, env=environment
             ):
                 pass
         return environment
@@ -538,7 +533,7 @@ class Datasette:
                         abbrs[p.abbr] = p
                     self.permissions[p.name] = p
         for hook in pm.hook.prepare_jinja2_environment(
-            env=self._jinja_env, datasette=self
+                env=self._jinja_env, datasette=self
         ):
             await await_me_maybe(hook)
         for hook in pm.hook.startup(datasette=self):
@@ -552,13 +547,13 @@ class Datasette:
         return URLSafeSerializer(self._secret, namespace).loads(signed)
 
     def create_token(
-        self,
-        actor_id: str,
-        *,
-        expires_after: Optional[int] = None,
-        restrict_all: Optional[Iterable[str]] = None,
-        restrict_database: Optional[Dict[str, Iterable[str]]] = None,
-        restrict_resource: Optional[Dict[str, Dict[str, Iterable[str]]]] = None,
+            self,
+            actor_id: str,
+            *,
+            expires_after: Optional[int] = None,
+            restrict_all: Optional[Iterable[str]] = None,
+            restrict_database: Optional[Dict[str, Iterable[str]]] = None,
+            restrict_resource: Optional[Dict[str, Dict[str, Iterable[str]]]] = None,
     ):
         token = {"a": actor_id, "t": int(time.time())}
         if expires_after:
@@ -651,12 +646,12 @@ class Datasette:
         Returns None if metadata value is not found.
         """
         assert not (
-            database is None and table is not None
+                database is None and table is not None
         ), "Cannot call metadata() with table= specified but not database="
         metadata = {}
 
         for hook_dbs in pm.hook.get_metadata(
-            datasette=self, key=key, database=database, table=table
+                datasette=self, key=key, database=database, table=table
         ):
             metadata = self._metadata_recursive_update(metadata, hook_dbs)
 
@@ -725,7 +720,7 @@ class Datasette:
 
         if table:
             table_plugin_config = (
-                ((db_config.get("tables") or {}).get(table) or {}).get("plugins") or {}
+                    ((db_config.get("tables") or {}).get(table) or {}).get("plugins") or {}
             ).get(plugin_name)
 
             # fallback to db_config or top-level config, in that order, if needed
@@ -744,18 +739,18 @@ class Datasette:
         if not hasattr(self, "_app_css_hash"):
             with open(os.path.join(str(app_root), "datasette/static/app.css")) as fp:
                 self._app_css_hash = hashlib.sha1(fp.read().encode("utf8")).hexdigest()[
-                    :6
-                ]
+                                     :6
+                                     ]
         return self._app_css_hash
 
     async def get_canned_queries(self, database_name, actor):
         queries = (
-            ((self.config or {}).get("databases") or {}).get(database_name) or {}
-        ).get("queries") or {}
+                          ((self.config or {}).get("databases") or {}).get(database_name) or {}
+                  ).get("queries") or {}
         for more_queries in pm.hook.canned_queries(
-            datasette=self,
-            database=database_name,
-            actor=actor,
+                datasette=self,
+                database=database_name,
+                actor=actor,
         ):
             more_queries = await await_me_maybe(more_queries)
             queries.update(more_queries or {})
@@ -781,7 +776,7 @@ class Datasette:
                 "source_url": metadata.get("source_url") or self.metadata("source_url"),
                 "license": metadata.get("license") or self.metadata("license"),
                 "license_url": metadata.get("license_url")
-                or self.metadata("license_url"),
+                               or self.metadata("license_url"),
                 "about": metadata.get("about") or self.metadata("about"),
                 "about_url": metadata.get("about_url") or self.metadata("about_url"),
             }
@@ -851,9 +846,9 @@ class Datasette:
         # Database link
         if database:
             if await self.permission_allowed(
-                actor=actor,
-                action="view-database",
-                resource=database,
+                    actor=actor,
+                    action="view-database",
+                    resource=database,
             ):
                 crumbs.append(
                     {
@@ -865,9 +860,9 @@ class Datasette:
         if table:
             assert database, "table= requires database="
             if await self.permission_allowed(
-                actor=actor,
-                action="view-table",
-                resource=(database, table),
+                    actor=actor,
+                    action="view-table",
+                    resource=(database, table),
             ):
                 crumbs.append(
                     {
@@ -878,7 +873,7 @@ class Datasette:
         return crumbs
 
     async def actors_from_ids(
-        self, actor_ids: Iterable[Union[str, int]]
+            self, actor_ids: Iterable[Union[str, int]]
     ) -> Dict[Union[id, str], Dict]:
         result = pm.hook.actors_from_ids(datasette=self, actor_ids=actor_ids)
         if result is None:
@@ -895,7 +890,7 @@ class Datasette:
             await await_me_maybe(hook)
 
     async def permission_allowed(
-        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
+            self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
     ):
         """Check permissions using the permissions_allowed plugin hook"""
         result = None
@@ -905,10 +900,10 @@ class Datasette:
         opinions = []
         # Every plugin is consulted for their opinion
         for check in pm.hook.permission_allowed(
-            datasette=self,
-            actor=actor,
-            action=action,
-            resource=resource,
+                datasette=self,
+                actor=actor,
+                action=action,
+                resource=resource,
         ):
             check = await await_me_maybe(check)
             if check is not None:
@@ -940,9 +935,9 @@ class Datasette:
         return result
 
     async def ensure_permissions(
-        self,
-        actor: dict,
-        permissions: Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]],
+            self,
+            actor: dict,
+            permissions: Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]],
     ):
         """
         permissions is a list of (action, resource) tuples or 'action' strings
@@ -975,18 +970,18 @@ class Datasette:
                     raise Forbidden(action)
 
     async def check_visibility(
-        self,
-        actor: dict,
-        action: Optional[str] = None,
-        resource: Optional[Union[str, Tuple[str, str]]] = None,
-        permissions: Optional[
-            Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]]
-        ] = None,
+            self,
+            actor: dict,
+            action: Optional[str] = None,
+            resource: Optional[Union[str, Tuple[str, str]]] = None,
+            permissions: Optional[
+                Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]]
+            ] = None,
     ):
         """Returns (visible, private) - visible = can you see it, private = can others see it too"""
         if permissions:
             assert (
-                not action and not resource
+                    not action and not resource
             ), "Can't use action= or resource= with permissions="
         else:
             permissions = [(action, resource)]
@@ -1004,14 +999,14 @@ class Datasette:
         return True, False
 
     async def execute(
-        self,
-        db_name,
-        sql,
-        params=None,
-        truncate=False,
-        custom_time_limit=None,
-        page_size=None,
-        log_sql_errors=True,
+            self,
+            db_name,
+            sql,
+            params=None,
+            truncate=False,
+            custom_time_limit=None,
+            page_size=None,
+            log_sql_errors=True,
     ):
         return await self.databases[db_name].execute(
             sql,
@@ -1075,7 +1070,7 @@ class Datasette:
     def absolute_url(self, request, path):
         url = urllib.parse.urljoin(request.url, path)
         if url.startswith("http://") and self.setting("force_https_urls"):
-            url = "https://" + url[len("http://") :]
+            url = "https://" + url[len("http://"):]
         return url
 
     def _register_custom_units(self):
@@ -1103,8 +1098,8 @@ class Datasette:
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
         sqlite_extensions = {}
         for extension, testsql, hasversion in (
-            ("json1", "SELECT json('{}')", False),
-            ("spatialite", "SELECT spatialite_version()", True),
+                ("json1", "SELECT json('{}')", False),
+                ("spatialite", "SELECT spatialite_version()", True),
         ):
             try:
                 result = conn.execute(testsql)
@@ -1248,11 +1243,11 @@ class Datasette:
             )
 
     async def render_template(
-        self,
-        templates: Union[List[str], str, Template],
-        context: Optional[Union[Dict[str, Any], Context]] = None,
-        request: Optional[Request] = None,
-        view_name: Optional[str] = None,
+            self,
+            templates: Union[List[str], str, Template],
+            context: Optional[Union[Dict[str, Any], Context]] = None,
+            request: Optional[Request] = None,
+            view_name: Optional[str] = None,
     ):
         if not self._startup_invoked:
             raise Exception("render_template() called before await ds.invoke_startup()")
@@ -1268,13 +1263,13 @@ class Datasette:
         body_scripts = []
         # pylint: disable=no-member
         for extra_script in pm.hook.extra_body_script(
-            template=template.name,
-            database=context.get("database"),
-            table=context.get("table"),
-            columns=context.get("columns"),
-            view_name=view_name,
-            request=request,
-            datasette=self,
+                template=template.name,
+                database=context.get("database"),
+                table=context.get("table"),
+                columns=context.get("columns"),
+                view_name=view_name,
+                request=request,
+                datasette=self,
         ):
             extra_script = await await_me_maybe(extra_script)
             if isinstance(extra_script, dict):
@@ -1288,13 +1283,13 @@ class Datasette:
         extra_template_vars = {}
         # pylint: disable=no-member
         for extra_vars in pm.hook.extra_template_vars(
-            template=template.name,
-            database=context.get("database"),
-            table=context.get("table"),
-            columns=context.get("columns"),
-            view_name=view_name,
-            request=request,
-            datasette=self,
+                template=template.name,
+                database=context.get("database"),
+                table=context.get("table"),
+                columns=context.get("columns"),
+                view_name=view_name,
+                request=request,
+                datasette=self,
         ):
             extra_vars = await await_me_maybe(extra_vars)
             assert isinstance(extra_vars, dict), "extra_vars is of type {}".format(
@@ -1305,9 +1300,9 @@ class Datasette:
         async def menu_links():
             links = []
             for hook in pm.hook.menu_links(
-                datasette=self,
-                actor=request.actor if request else None,
-                request=request or None,
+                    datasette=self,
+                    actor=request.actor if request else None,
+                    request=request or None,
             ):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:
@@ -1324,8 +1319,8 @@ class Datasette:
                 "menu_links": menu_links,
                 "display_actor": display_actor,
                 "show_logout": request is not None
-                and "ds_actor" in request.cookies
-                and request.actor,
+                               and "ds_actor" in request.cookies
+                               and request.actor,
                 "app_css_hash": self.app_css_hash(),
                 "zip": zip,
                 "body_scripts": body_scripts,
@@ -1355,13 +1350,13 @@ class Datasette:
         seen_urls = set()
         collected = []
         for hook in getattr(pm.hook, key)(
-            template=template.name,
-            database=context.get("database"),
-            table=context.get("table"),
-            columns=context.get("columns"),
-            view_name=view_name,
-            request=request,
-            datasette=self,
+                template=template.name,
+                database=context.get("database"),
+                table=context.get("table"),
+                columns=context.get("columns"),
+                view_name=view_name,
+                request=request,
+                datasette=self,
         ):
             hook = await await_me_maybe(hook)
             collected.extend(hook)
@@ -1552,7 +1547,8 @@ class Datasette:
             return self.get_database(route=database_route)
         except KeyError:
             raise DatabaseNotFound(
-                "Invalid Database: The database {} was not found. Return to the previous page below to ensure your own Database was created properly.".format(database_route), database_route
+                "Invalid Database: The database {} was not found. Return to the previous page below to ensure your own Database was created properly.".format(
+                    database_route), database_route
             )
 
     async def resolve_table(self, request):
@@ -1565,7 +1561,8 @@ class Datasette:
             is_view = await db.view_exists(table_name)
         if not (table_exists or is_view):
             raise TableNotFound(
-                "Invalid Table: {} was not found. Return to the previous page below, table is not present within the Database file.".format(table_name), db.name, table_name
+                "Invalid Table: {} was not found. Return to the previous page below, table is not present within the Database file.".format(
+                    table_name), db.name, table_name
             )
         return ResolvedTable(db, table_name, is_view)
 
@@ -1577,7 +1574,8 @@ class Datasette:
         row = results.first()
         if row is None:
             raise RowNotFound(
-                "Invalid Row: The row id {} is invalid on the table. It may be spelled incorrectly or not present on the table, use the button below to go back.".format(pk_values), db.name, table_name, pk_values
+                "Invalid Row: The row id {} is invalid on the table. It may be spelled incorrectly or not present on the table, use the button below to go back.".format(
+                    pk_values), db.name, table_name, pk_values
             )
         return ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first())
 
@@ -1627,7 +1625,7 @@ class DatasetteRouter:
         # Strip off base_url if present before routing
         base_url = self.ds.setting("base_url")
         if base_url != "/" and path.startswith(base_url):
-            path = "/" + path[len(base_url) :]
+            path = "/" + path[len(base_url):]
             scope = dict(scope, route_path=path)
         request = Request(scope, receive)
         # Populate request_messages if ds_messages cookie is present
@@ -1641,9 +1639,9 @@ class DatasetteRouter:
         scope_modifications = {}
         # Apply force_https_urls, if set
         if (
-            self.ds.setting("force_https_urls")
-            and scope["type"] == "http"
-            and scope.get("scheme") != "https"
+                self.ds.setting("force_https_urls")
+                and scope["type"] == "http"
+                and scope.get("scheme") != "https"
         ):
             scope_modifications["scheme"] = "https"
         # Handle authentication
@@ -1674,7 +1672,7 @@ class DatasetteRouter:
         except Forbidden as exception:
             # Try the forbidden() plugin hook
             for custom_response in pm.hook.forbidden(
-                datasette=self.ds, request=request, message=exception.args[0]
+                    datasette=self.ds, request=request, message=exception.args[0]
             ):
                 custom_response = await await_me_maybe(custom_response)
                 assert (
@@ -1720,7 +1718,7 @@ class DatasetteRouter:
                 if "{" in filepath and filepath.startswith("pages/")
             ]
             page_routes = [
-                (route_pattern_from_filepath(filepath[len("pages/") :]), filepath)
+                (route_pattern_from_filepath(filepath[len("pages/"):]), filepath)
                 for filepath in pattern_templates
             ]
             try:
@@ -1792,9 +1790,9 @@ class DatasetteRouter:
     async def handle_exception(self, request, send, exception):
         responses = []
         for hook in pm.hook.handle_exception(
-            datasette=self.ds,
-            request=request,
-            exception=exception,
+                datasette=self.ds,
+                request=request,
+                exception=exception,
         ):
             response = await await_me_maybe(hook)
             if response is not None:
@@ -1934,8 +1932,8 @@ class DatasetteClient:
 
     async def _request(self, method, path, **kwargs):
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=self.app),
-            cookies=kwargs.pop("cookies", None),
+                transport=httpx.ASGITransport(app=self.app),
+                cookies=kwargs.pop("cookies", None),
         ) as client:
             return await getattr(client, method)(self._fix(path), **kwargs)
 
@@ -1963,8 +1961,8 @@ class DatasetteClient:
     async def request(self, method, path, **kwargs):
         avoid_path_rewrites = kwargs.pop("avoid_path_rewrites", None)
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=self.app),
-            cookies=kwargs.pop("cookies", None),
+                transport=httpx.ASGITransport(app=self.app),
+                cookies=kwargs.pop("cookies", None),
         ) as client:
             return await client.request(
                 method, self._fix(path, avoid_path_rewrites), **kwargs

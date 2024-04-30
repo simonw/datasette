@@ -6,13 +6,12 @@ import textwrap
 import time
 import urllib
 from markupsafe import escape
-from .error_module import DatasetteError
+from .error_module import DatasetteError, Request, Response, NotFound, BadRequest
 
 
 import pint
 
 from datasette.database import QueryInterrupted
-from datasette.utils.asgi import Request
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -27,10 +26,7 @@ from datasette.utils import (
     sqlite3,
 )
 from datasette.utils.asgi import (
-    AsgiStream,
-    NotFound,
-    Response,
-    BadRequest,
+    AsgiStream
 )
 
 ureg = pint.UnitRegistry()

@@ -31,9 +31,9 @@ from datasette.utils import (
     truncate_url,
     InvalidSql,
 )
-from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
+from datasette.utils.asgi import AsgiFileDownload
 from datasette.plugins import pm
-from .error_module import DatasetteError, _error
+from .error_module import DatasetteError, _error, NotFound, Response, Forbidden
 
 from .base import BaseView, View, stream_csv
 
@@ -343,7 +343,7 @@ async def database_download(request, datasette):
 
 class QueryView(View):
     async def post(self, request, datasette):
-        from datasette.app import TableNotFound
+        from datasette.views.error_module import TableNotFound
 
         db = await datasette.resolve_database(request)
 
@@ -432,7 +432,7 @@ class QueryView(View):
             return Response.redirect(redirect_url or request.path)
 
     async def get(self, request, datasette):
-        from datasette.app import TableNotFound
+        from datasette.views.error_module import TableNotFound
 
         db = await datasette.resolve_database(request)
         database = db.name

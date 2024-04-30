@@ -40,7 +40,7 @@ from datasette.utils import (
     InvalidSql,
     sqlite3,
 )
-from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
+from datasette.views.error_module import  BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
 import sqlite_utils
 from .base import BaseView, ureg, stream_csv
@@ -777,7 +777,7 @@ async def table_view(datasette, request):
 
 
 async def table_view_traced(datasette, request):
-    from datasette.app import TableNotFound
+    from datasette.views.error_module import  TableNotFound
 
     try:
         resolved = await datasette.resolve_table(request)

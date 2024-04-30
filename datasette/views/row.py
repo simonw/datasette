@@ -1,4 +1,3 @@
-from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
 from .base import DataView, BaseView
@@ -8,7 +7,7 @@ from datasette.utils import (
     to_css_class,
     escape_sqlite,
 )
-from .error_module import _error
+from .error_module import _error, NotFound, Forbidden, Response
 from datasette.plugins import pm
 import json
 import sqlite_utils
@@ -171,7 +170,7 @@ class RowView(DataView):
         return foreign_key_tables
 
 async def _resolve_row_and_check_permission(datasette, request, permission):
-    from datasette.app import DatabaseNotFound, TableNotFound, RowNotFound
+    from datasette.views.error_module import DatabaseNotFound, TableNotFound, RowNotFound
 
     try:
         resolved = await datasette.resolve_row(request)

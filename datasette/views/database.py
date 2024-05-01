@@ -31,10 +31,11 @@ from datasette.utils import (
     truncate_url,
     InvalidSql,
 )
-from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
+from datasette.utils.asgi import AsgiFileDownload
 from datasette.plugins import pm
+from .error_module import DatasetteError, _error, NotFound, Response, Forbidden
 
-from .base import BaseView, DatasetteError, View, _error, stream_csv
+from .base import BaseView, View, stream_csv
 
 
 class DatabaseView(View):
@@ -342,7 +343,7 @@ async def database_download(request, datasette):
 
 class QueryView(View):
     async def post(self, request, datasette):
-        from datasette.app import TableNotFound
+        from datasette.views.error_module import TableNotFound
 
         db = await datasette.resolve_database(request)
 
@@ -431,7 +432,7 @@ class QueryView(View):
             return Response.redirect(redirect_url or request.path)
 
     async def get(self, request, datasette):
-        from datasette.app import TableNotFound
+        from datasette.views.error_module import TableNotFound
 
         db = await datasette.resolve_database(request)
         database = db.name
@@ -933,8 +934,25 @@ class TableCreateView(BaseView):
                     return _error(["columns must be a list of objects"])
                 if not column.get("name") or not isinstance(column.get("name"), str):
                     return _error(["Column name is required"])
+                    # Check if type is specified
+
                 if not column.get("type"):
-                    column["type"] = "text"
+                    # If type is not specified, check the values in the column
+                    column_values = [value for value in column.get("values", []) if value is not None]
+
+                    # Check if all values in the column are integers
+                    if all(isinstance(value, int) for value in column_values):
+                        column["type"] = "integer"
+                    # Check if all values in the column are floats
+                    elif all(isinstance(value, float) for value in column_values):
+                        column["type"] = "float"
+                    # Check if all values in the column are booleans
+                    elif all(isinstance(value, bool) for value in column_values):
+                        column["type"] = "boolean"
+                    # If values are not all integers, floats, or booleans, set type as "text"
+                    else:
+                        column["type"] = "text"
+
                 if column["type"] not in self._supported_column_types:
                     return _error(
                         ["Unsupported column type: {}".format(column["type"])]

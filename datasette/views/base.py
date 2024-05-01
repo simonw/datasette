@@ -6,12 +6,12 @@ import textwrap
 import time
 import urllib
 from markupsafe import escape
+from .error_module import DatasetteError, Request, Response, NotFound, BadRequest
 
 
 import pint
 
 from datasette.database import QueryInterrupted
-from datasette.utils.asgi import Request
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -26,30 +26,11 @@ from datasette.utils import (
     sqlite3,
 )
 from datasette.utils.asgi import (
-    AsgiStream,
-    NotFound,
-    Response,
-    BadRequest,
+    AsgiStream
 )
 
 ureg = pint.UnitRegistry()
 
-
-class DatasetteError(Exception):
-    def __init__(
-        self,
-        message,
-        title=None,
-        error_dict=None,
-        status=500,
-        template=None,
-        message_is_html=False,
-    ):
-        self.message = message
-        self.title = title
-        self.error_dict = error_dict or {}
-        self.status = status
-        self.message_is_html = message_is_html
 
 
 class View:
@@ -409,11 +390,6 @@ class DataView(BaseView):
         if self.ds.cors:
             add_cors_headers(response.headers)
         return response
-
-
-def _error(messages, status=400):
-    return Response.json({"ok": False, "errors": messages}, status=status)
-
 
 async def stream_csv(datasette, fetch_data, request, database):
     kwargs = {}

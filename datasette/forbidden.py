@@ -1,5 +1,5 @@
-from datasette import hookimpl, Response
-
+from datasette import hookimpl
+from datasette.views.error_module import Response
 
 @hookimpl(trylast=True)
 def forbidden(datasette, request, message):

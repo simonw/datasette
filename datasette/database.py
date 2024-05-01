@@ -20,7 +20,7 @@ from .utils import (
     table_columns,
     table_column_details,
 )
-from .inspect import inspect_hash
+from .my_inspect import inspect_hash
 
 connections = threading.local()
 

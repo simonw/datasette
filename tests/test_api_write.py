@@ -133,14 +133,14 @@ async def test_insert_rows(ds_write, return_rows):
             {},
             None,
             404,
-            ["Database not found: data2"],
+            ["Invalid Database: The database data2 was not found. Return to the previous page below to ensure your own Database was created properly."],
         ),
         (
             "/data/docs2/-/insert",
             {},
             None,
             404,
-            ["Table not found: docs2"],
+            ["Invalid Table: docs2 was not found. Return to the previous page below, table is not present within the Database file."],
         ),
         (
             "/data/docs/-/insert",
@@ -274,7 +274,7 @@ async def test_insert_rows(ds_write, return_rows):
             {"rows": [{"title": "Test"}]},
             None,
             404,
-            ["Table not found: badtable"],
+            ["Invalid Table: badtable was not found. Return to the previous page below, table is not present within the Database file."],
         ),
         # missing primary key
         (
@@ -598,7 +598,7 @@ async def test_delete_row_errors(ds_write, scenario):
     assert (
         response.json()["errors"] == ["Permission denied"]
         if scenario == "no_token"
-        else ["Table not found: bad_table"]
+        else ["Invalid Table: bad_table was not found. Return to the previous page below, table is not present within the Database file."]
     )
     assert len((await ds_write.client.get("/data/docs.json?_shape=array")).json()) == 1
 
@@ -703,7 +703,7 @@ async def test_update_row_check_permission(ds_write, scenario):
     assert (
         response.json()["errors"] == ["Permission denied"]
         if scenario == "no_token"
-        else ["Table not found: bad_table"]
+        else ["Invalid Table: bad_table was not found. Return to the previous page below, table is not present within the Database file."]
     )
 
 
@@ -830,7 +830,7 @@ async def test_drop_table(ds_write, scenario):
         assert response.json()["ok"] is False
         expected_error = "Permission denied"
         if scenario == "bad_table":
-            expected_error = "Table not found: bad_table"
+            expected_error = "Invalid Table: bad_table was not found. Return to the previous page below, table is not present within the Database file."
         elif scenario == "immutable":
             expected_error = "Database is immutable"
         assert response.json()["errors"] == [expected_error]

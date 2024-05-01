@@ -1,6 +1,6 @@
 import hashlib
 
-from .utils import (
+from datasette.utils import (
     detect_spatialite,
     detect_fts,
     detect_primary_keys,

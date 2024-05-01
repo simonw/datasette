@@ -469,6 +469,7 @@ def temporary_docker_directory(
     file_names = [os.path.split(f)[-1] for f in files]
     if metadata:
         metadata_content = parse_metadata(metadata.read())
+        verify_metadata(metadata_content)
     else:
         metadata_content = {}
     # Merge in the non-null values in extra_metadata
@@ -519,6 +520,25 @@ def temporary_docker_directory(
     finally:
         tmp.cleanup()
         os.chdir(saved_cwd)
+
+
+def verify_metadata(metadata_content):
+    """
+    Verify the validity of the metadata.
+    Args:
+        metadata_content (dict): The metadata to be verified.
+    Returns:
+        bool: True if the metadata is valid, False otherwise.
+    """
+    required_keys = ["title", "license", "license_url", "source", "source_url", "about", "about_url"]
+
+    # Check if all required keys are present
+    for key in required_keys:
+        if key not in metadata_content:
+            print(f"Error: Missing required key '{key}' in metadata")
+            return False
+
+    return True
 
 
 def detect_primary_keys(conn, table):
@@ -1125,10 +1145,6 @@ class PrefixedUrlString(str):
             return method.__get__(self)
         else:
             return super().__getattribute__(name)
-
-
-class StartupError(Exception):
-    pass
 
 
 _re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")

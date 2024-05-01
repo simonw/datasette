@@ -1,6 +1,6 @@
 import json
 from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
-from datasette.utils.asgi import Response, Forbidden
+from datasette.views.error_module import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
     add_cors_headers,

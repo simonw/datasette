@@ -21,9 +21,9 @@ from .app import (
     SQLITE_LIMIT_ATTACHED,
     pm,
 )
+from datasette.views.error_module import StartupError
 from .utils import (
     LoadExtension,
-    StartupError,
     check_connection,
     find_spatialite,
     parse_metadata,
@@ -248,20 +248,20 @@ def plugins(all, requirements, plugins_dir):
 @click.option("--about", help="About label for metadata")
 @click.option("--about_url", help="About URL for metadata")
 def package(
-    files,
-    tag,
-    metadata,
-    extra_options,
-    branch,
-    template_dir,
-    plugins_dir,
-    static,
-    install,
-    spatialite,
-    version_note,
-    secret,
-    port,
-    **extra_metadata,
+        files,
+        tag,
+        metadata,
+        extra_options,
+        branch,
+        template_dir,
+        plugins_dir,
+        static,
+        install,
+        spatialite,
+        version_note,
+        secret,
+        port,
+        **extra_metadata,
 ):
     """Package SQLite files into a Datasette Docker container"""
     if not shutil.which("docker"):
@@ -274,20 +274,20 @@ def package(
         )
         sys.exit(1)
     with temporary_docker_directory(
-        files,
-        "datasette",
-        metadata=metadata,
-        extra_options=extra_options,
-        branch=branch,
-        template_dir=template_dir,
-        plugins_dir=plugins_dir,
-        static=static,
-        install=install,
-        spatialite=spatialite,
-        version_note=version_note,
-        secret=secret,
-        extra_metadata=extra_metadata,
-        port=port,
+            files,
+            "datasette",
+            metadata=metadata,
+            extra_options=extra_options,
+            branch=branch,
+            template_dir=template_dir,
+            plugins_dir=plugins_dir,
+            static=static,
+            install=install,
+            spatialite=spatialite,
+            version_note=version_note,
+            secret=secret,
+            extra_metadata=extra_metadata,
+            port=port,
     ):
         args = ["docker", "build"]
         if tag:
@@ -352,9 +352,9 @@ def uninstall(packages, yes):
     "--host",
     default="127.0.0.1",
     help=(
-        "Host for server. Defaults to 127.0.0.1 which means only connections "
-        "from the local machine will be allowed. Use 0.0.0.0 to listen to "
-        "all IPs and allow access from other machines."
+            "Host for server. Defaults to 127.0.0.1 which means only connections "
+            "from the local machine will be allowed. Use 0.0.0.0 to listen to "
+            "all IPs and allow access from other machines."
     ),
 )
 @click.option(
@@ -478,38 +478,38 @@ def uninstall(packages, yes):
     help="Path to a persistent Datasette internal SQLite database",
 )
 def serve(
-    files,
-    immutable,
-    host,
-    port,
-    uds,
-    reload,
-    cors,
-    sqlite_extensions,
-    inspect_file,
-    metadata,
-    template_dir,
-    plugins_dir,
-    static,
-    memory,
-    config,
-    settings,
-    secret,
-    root,
-    get,
-    token,
-    actor,
-    version_note,
-    help_settings,
-    pdb,
-    open_browser,
-    create,
-    crossdb,
-    nolock,
-    ssl_keyfile,
-    ssl_certfile,
-    internal,
-    return_instance=False,
+        files,
+        immutable,
+        host,
+        port,
+        uds,
+        reload,
+        cors,
+        sqlite_extensions,
+        inspect_file,
+        metadata,
+        template_dir,
+        plugins_dir,
+        static,
+        memory,
+        config,
+        settings,
+        secret,
+        root,
+        get,
+        token,
+        actor,
+        version_note,
+        help_settings,
+        pdb,
+        open_browser,
+        create,
+        crossdb,
+        nolock,
+        ssl_keyfile,
+        ssl_certfile,
+        internal,
+        return_instance=False,
 ):
     """Serve up specified SQLite database files with a web UI"""
     if help_settings:
@@ -582,12 +582,16 @@ def serve(
 
     # Verify list of files, create if needed (and --create)
     for file in files:
+        files = list(files)
+        if files[0] == 'serve':
+            files.pop(0)
+        files = tuple(files)
         if not pathlib.Path(file).exists():
             if create:
                 sqlite3.connect(file).execute("vacuum")
             else:
                 raise click.ClickException(
-                    "Invalid value for '[FILES]...': Path '{}' does not exist.".format(
+                    "Invalid value for '[FILES]...': Path '{}' does not exist".format(
                         file
                     )
                 )
@@ -601,7 +605,6 @@ def serve(
         raise click.ClickException("Could not find SpatiaLite extension")
     except StartupError as e:
         raise click.ClickException(e.args[0])
-
     if return_instance:
         # Private utility mechanism for writing unit tests
         return ds
@@ -708,7 +711,7 @@ def serve(
     help="Path to directory containing custom plugins",
 )
 def create_token(
-    id, secret, expires_after, alls, databases, resources, debug, plugins_dir
+        id, secret, expires_after, alls, databases, resources, debug, plugins_dir
 ):
     """
     Create a signed API token for the specified actor ID
@@ -777,7 +780,7 @@ def create_token(
     )
     click.echo(token)
     if debug:
-        encoded = token[len("dstok_") :]
+        encoded = token[len("dstok_"):]
         click.echo("\nDecoded:\n")
         click.echo(json.dumps(ds.unsign(encoded, namespace="token"), indent=2))
 
@@ -810,9 +813,9 @@ async def check_databases(ds):
             )
     # If --crossdb and more than SQLITE_LIMIT_ATTACHED show warning
     if (
-        ds.crossdb
-        and len([db for db in ds.databases.values() if not db.is_memory])
-        > SQLITE_LIMIT_ATTACHED
+            ds.crossdb
+            and len([db for db in ds.databases.values() if not db.is_memory])
+            > SQLITE_LIMIT_ATTACHED
     ):
         msg = (
             "Warning: --crossdb only works with the first {} attached databases".format(

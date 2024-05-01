@@ -1,5 +1,5 @@
 from datasette import hookimpl
-from datasette.utils.asgi import Response, BadRequest
+from datasette.views.error_module import Response, BadRequest
 from datasette.utils import to_css_class
 import hashlib
 

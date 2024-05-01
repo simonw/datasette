@@ -946,7 +946,10 @@ class TableCreateView(BaseView):
                     # Check if all values in the column are floats
                     elif all(isinstance(value, float) for value in column_values):
                         column["type"] = "float"
-                    # If values are not all integers or floats, set type as "text"
+                    # Check if all values in the column are booleans
+                    elif all(isinstance(value, bool) for value in column_values):
+                        column["type"] = "boolean"
+                    # If values are not all integers, floats, or booleans, set type as "text"
                     else:
                         column["type"] = "text"
 

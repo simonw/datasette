@@ -274,10 +274,10 @@ class DataView(BaseView):
 
         end = time.perf_counter()
         data["query_ms"] = (end - start) * 1000
-        for key in ("source", "source_url", "license", "license_url"):
-            value = self.ds.metadata(key)
-            if value:
-                data[key] = value
+        # for key in ("source", "source_url", "license", "license_url"):
+        #    value = self.ds.metadata z(key)
+        #    if value:
+        #        data[key] = value
 
         # Special case for .jsono extension - redirect to _shape=objects
         if _format == "jsono":
@@ -385,7 +385,7 @@ class DataView(BaseView):
                 },
             }
             if "metadata" not in context:
-                context["metadata"] = self.ds.metadata()
+                context["metadata"] = {}
             r = await self.render(templates, request=request, context=context)
             if status_code is not None:
                 r.status = status_code

@@ -147,7 +147,21 @@ async def display_columns_and_rows(
     """Returns columns, rows for specified table - including fancy foreign key treatment"""
     sortable_columns = sortable_columns or set()
     db = datasette.databases[database_name]
-    column_descriptions = datasette.metadata("columns", database_name, table_name) or {}
+    column_descriptions = dict(
+        await datasette.get_internal_database().execute(
+            """
+          SELECT
+            column_name,
+            value
+          FROM datasette_metadata_column_entries
+          WHERE database_name = ?
+            AND resource_name = ?
+            AND key = 'description'
+        """,
+            [database_name, table_name],
+        )
+    )
+
     column_details = {
         col.name: col for col in await db.table_column_details(table_name)
     }
@@ -1478,14 +1492,7 @@ async def table_view_data(
 
     async def extra_metadata():
         "Metadata about the table and database"
-        metadata = (
-            (datasette.metadata("databases") or {})
-            .get(database_name, {})
-            .get("tables", {})
-            .get(table_name, {})
-        )
-        datasette.update_with_inherited_metadata(metadata)
-        return metadata
+        return await datasette.get_resource_metadata(database_name, table_name)
 
     async def extra_database():
         return database_name

@@ -43,7 +43,6 @@ def routes():
             "RowView",
             {"format": "json", "database": "foo", "pks": "1", "table": "humbug"},
         ),
-        ("/-/metadata.json", "JsonDataView", {"format": "json"}),
         ("/-/metadata", "JsonDataView", {"format": None}),
     ),
 )

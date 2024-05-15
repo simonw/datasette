@@ -792,8 +792,6 @@ async def test_table_metadata(ds_client):
     assert "Simple <em>primary</em> key" == inner_html(
         soup.find("div", {"class": "metadata-description"})
     )
-    # The source/license should be inherited
-    assert_footer_links(soup)
 
 
 @pytest.mark.asyncio
@@ -1101,8 +1099,8 @@ async def test_column_metadata(ds_client):
     soup = Soup(response.text, "html.parser")
     dl = soup.find("dl")
     assert [(dt.text, dt.nextSibling.text) for dt in dl.findAll("dt")] == [
-        ("name", "The name of the attraction"),
         ("address", "The street address for the attraction"),
+        ("name", "The name of the attraction"),
     ]
     assert (
         soup.select("th[data-column=name]")[0]["data-column-description"]

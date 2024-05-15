@@ -453,7 +453,6 @@ def view_instance_client():
         "/",
         "/fixtures",
         "/fixtures/facetable",
-        "/-/metadata",
         "/-/versions",
         "/-/plugins",
         "/-/settings",

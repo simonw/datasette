@@ -1492,7 +1492,22 @@ async def table_view_data(
 
     async def extra_metadata():
         "Metadata about the table and database"
-        return await datasette.get_resource_metadata(database_name, table_name)
+        tablemetadata = await datasette.get_resource_metadata(database_name, table_name)
+
+        rows = await datasette.get_internal_database().execute(
+            """
+              SELECT
+                column_name,
+                value
+              FROM datasette_metadata_column_entries
+              WHERE database_name = ?
+                AND resource_name = ?
+                AND key = 'description'
+            """,
+            [database_name, table_name],
+        )
+        tablemetadata["columns"] = dict(rows)
+        return tablemetadata
 
     async def extra_database():
         return database_name

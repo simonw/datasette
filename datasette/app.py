@@ -489,6 +489,15 @@ class Datasette:
                 if key == "tables":
                     continue
                 await self.set_database_metadata(dbname, key, value)
+            for tablename, table in db.get("tables", {}).items():
+                for key, value in table.items():
+                    if key == "columns":
+                        continue
+                    await self.set_resource_metadata(dbname, tablename, key, value)
+                for columnname, column_description in table.get("columns", {}).items():
+                    await self.set_column_metadata(
+                        dbname, tablename, columnname, "description", column_description
+                    )
             # else:
             #  self.set_database_metadata(database, key, value)
             #  self.set_database_metadata(database, key, value)
@@ -780,7 +789,15 @@ class Datasette:
     async def set_resource_metadata(
         self, database_name: str, resource_name: str, key: str, value: str
     ):
-        pass
+        # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
+        await self.get_internal_database().execute_write(
+            """
+              INSERT INTO datasette_metadata_resource_entries(database_name, resource_name, key, value)
+                VALUES(?, ?, ?, ?)
+                ON CONFLICT(database_name, resource_name, key) DO UPDATE SET value = excluded.value;
+            """,
+            [database_name, resource_name, key, value],
+        )
 
     async def set_column_metadata(
         self,
@@ -790,55 +807,15 @@ class Datasette:
         key: str,
         value: str,
     ):
-        pass
-
-    def __metadata(self, key=None, database=None, table=None, fallback=True):
-        """
-        Looks up metadata, cascading backwards from specified level.
-        Returns None if metadata value is not found.
-        """
-        assert not (
-            database is None and table is not None
-        ), "Cannot call metadata() with table= specified but not database="
-        metadata = {}
-
-        for hook_dbs in pm.hook.get_metadata(
-            datasette=self, key=key, database=database, table=table
-        ):
-            metadata = self._metadata_recursive_update(metadata, hook_dbs)
-
-        # security precaution!! don't allow anything in the local config
-        # to be overwritten. this is a temporary measure, not sure if this
-        # is a good idea long term or maybe if it should just be a concern
-        # of the plugin's implemtnation
-        metadata = self._metadata_recursive_update(metadata, self._metadata_local)
-
-        databases = metadata.get("databases") or {}
-
-        search_list = []
-        if database is not None:
-            search_list.append(databases.get(database) or {})
-        if table is not None:
-            table_metadata = ((databases.get(database) or {}).get("tables") or {}).get(
-                table
-            ) or {}
-            search_list.insert(0, table_metadata)
-
-        search_list.append(metadata)
-        if not fallback:
-            # No fallback allowed, so just use the first one in the list
-            search_list = search_list[:1]
-        if key is not None:
-            for item in search_list:
-                if key in item:
-                    return item[key]
-            return None
-        else:
-            # Return the merged list
-            m = {}
-            for item in search_list:
-                m.update(item)
-            return m
+        # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
+        await self.get_internal_database().execute_write(
+            """
+              INSERT INTO datasette_metadata_column_entries(database_name, resource_name, column_name, key, value)
+                VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(database_name, resource_name, column_name, key) DO UPDATE SET value = excluded.value;
+            """,
+            [database_name, resource_name, column_name, key, value],
+        )
 
     def get_internal_database(self):
         return self._internal_database

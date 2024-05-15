@@ -482,9 +482,18 @@ class Datasette:
             if key == "databases":
                 continue
             await self.set_instance_metadata(key, self._metadata_local[key])
+
+        for dbname, db in self._metadata_local.get("databases", {}).items():
+            for key, value in db.items():
+                # TODO(alex) handle table metadata
+                if key == "tables":
+                    continue
+                await self.set_database_metadata(dbname, key, value)
             # else:
             #  self.set_database_metadata(database, key, value)
             #  self.set_database_metadata(database, key, value)
+            # TODO(alex) is metadata.json was loaded in, and --internal is not memory, then log
+            # a warning to user that they should delete their metadata.json file
 
     def get_jinja_environment(self, request: Request = None) -> Environment:
         environment = self._jinja_env
@@ -1509,8 +1518,6 @@ class Datasette:
         return redact_keys(
             self.config, ("secret", "key", "password", "token", "hash", "dsn")
         )
-    async def _metadata(self):
-        return {"lox": "lol"}
 
     def _routes(self):
         routes = []

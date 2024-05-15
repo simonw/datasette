@@ -85,6 +85,14 @@ class RowView(DataView):
                     "_table.html",
                 ],
                 "row_actions": row_actions,
+                "top_row": make_slot_function(
+                    "top_row",
+                    self.ds,
+                    request,
+                    database=resolved.db.name,
+                    table=resolved.table,
+                    row=rows[0],
+                ),
                 "metadata": {},
             }
 

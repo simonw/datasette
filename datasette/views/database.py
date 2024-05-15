@@ -130,6 +130,7 @@ class DatabaseView(View):
             "table_columns": (
                 await _table_columns(datasette, database) if allow_execute_sql else {}
             ),
+            "metadata": await datasette.get_database_metadata(database),
         }
 
         if format_ == "json":

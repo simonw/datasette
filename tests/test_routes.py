@@ -43,7 +43,6 @@ def routes():
             "RowView",
             {"format": "json", "database": "foo", "pks": "1", "table": "humbug"},
         ),
-        ("/-/metadata", "JsonDataView", {"format": None}),
     ),
 )
 def test_routes(routes, path, expected_name, expected_matches):

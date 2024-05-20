@@ -478,29 +478,33 @@ class Datasette:
             """
         )
 
+        # Apply any metadata entries from metadata.json to the internal tables
+        # step 1: top-level metadata
         for key in self._metadata_local or {}:
             if key == "databases":
                 continue
             await self.set_instance_metadata(key, self._metadata_local[key])
 
+        # step 2: database-level metadata
         for dbname, db in self._metadata_local.get("databases", {}).items():
             for key, value in db.items():
-                # TODO(alex) handle table metadata
                 if key == "tables":
                     continue
                 await self.set_database_metadata(dbname, key, value)
+
+            # step 3: table-level metadata
             for tablename, table in db.get("tables", {}).items():
                 for key, value in table.items():
                     if key == "columns":
                         continue
                     await self.set_resource_metadata(dbname, tablename, key, value)
+
+                # step 4: column-level metadata (only descriptions in metadata.json)
                 for columnname, column_description in table.get("columns", {}).items():
                     await self.set_column_metadata(
                         dbname, tablename, columnname, "description", column_description
                     )
-            # else:
-            #  self.set_database_metadata(database, key, value)
-            #  self.set_database_metadata(database, key, value)
+
             # TODO(alex) is metadata.json was loaded in, and --internal is not memory, then log
             # a warning to user that they should delete their metadata.json file
 

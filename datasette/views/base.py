@@ -274,10 +274,6 @@ class DataView(BaseView):
 
         end = time.perf_counter()
         data["query_ms"] = (end - start) * 1000
-        # for key in ("source", "source_url", "license", "license_url"):
-        #    value = self.ds.metadata z(key)
-        #    if value:
-        #        data[key] = value
 
         # Special case for .jsono extension - redirect to _shape=objects
         if _format == "jsono":

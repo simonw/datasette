@@ -707,7 +707,7 @@ class Datasette:
                 orig[key] = upd_value
         return orig
 
-    async def get_instance_metadata(self) -> dict[str, any]:
+    async def get_instance_metadata(self):
         rows = await self.get_internal_database().execute(
             """
               SELECT
@@ -718,7 +718,7 @@ class Datasette:
         )
         return dict(rows)
 
-    async def get_database_metadata(self, database_name: str) -> dict[str, any]:
+    async def get_database_metadata(self, database_name: str):
         rows = await self.get_internal_database().execute(
             """
               SELECT
@@ -731,9 +731,7 @@ class Datasette:
         )
         return dict(rows)
 
-    async def get_resource_metadata(
-        self, database_name: str, resource_name: str
-    ) -> dict[str, any]:
+    async def get_resource_metadata(self, database_name: str, resource_name: str):
         rows = await self.get_internal_database().execute(
             """
               SELECT
@@ -749,7 +747,7 @@ class Datasette:
 
     async def get_column_metadata(
         self, database_name: str, resource_name: str, column_name: str
-    ) -> dict[str, any]:
+    ):
         rows = await self.get_internal_database().execute(
             """
               SELECT

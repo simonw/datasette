@@ -63,6 +63,43 @@ async def init_internal_db(db):
     """
     ).strip()
     await db.execute_write_script(create_tables_sql)
+    await initialize_metadata_tables(db)
+
+
+async def initialize_metadata_tables(db):
+    await db.execute_write_script(
+        """
+              CREATE TABLE IF NOT EXISTS datasette_metadata_instance_entries(
+                key text,
+                value text,
+                unique(key)
+              );
+
+              CREATE TABLE IF NOT EXISTS datasette_metadata_database_entries(
+                database_name text,
+                key text,
+                value text,
+                unique(database_name, key)
+              );
+
+              CREATE TABLE IF NOT EXISTS datasette_metadata_resource_entries(
+                database_name text,
+                resource_name text,
+                key text,
+                value text,
+                unique(database_name, resource_name, key)
+              );
+
+              CREATE TABLE IF NOT EXISTS datasette_metadata_column_entries(
+                database_name text,
+                resource_name text,
+                column_name text,
+                key text,
+                value text,
+                unique(database_name, resource_name, column_name, key)
+              );
+            """
+    )
 
 
 async def populate_schema_tables(internal_db, db):

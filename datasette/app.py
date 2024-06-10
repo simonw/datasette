@@ -443,41 +443,7 @@ class Datasette:
         self._root_token = secrets.token_hex(32)
         self.client = DatasetteClient(self)
 
-    async def initialize_internal_database(self):
-        await self.get_internal_database().execute_write_script(
-            """
-              CREATE TABLE IF NOT EXISTS datasette_metadata_instance_entries(
-                key text,
-                value text,
-                unique(key)
-              );
-
-              CREATE TABLE IF NOT EXISTS datasette_metadata_database_entries(
-                database_name text,
-                key text,
-                value text,
-                unique(database_name, key)
-              );
-
-              CREATE TABLE IF NOT EXISTS datasette_metadata_resource_entries(
-                database_name text,
-                resource_name text,
-                key text,
-                value text,
-                unique(database_name, resource_name, key)
-              );
-
-              CREATE TABLE IF NOT EXISTS datasette_metadata_column_entries(
-                database_name text,
-                resource_name text,
-                column_name text,
-                key text,
-                value text,
-                unique(database_name, resource_name, column_name, key)
-              );
-            """
-        )
-
+    async def apply_metadata_json(self):
         # Apply any metadata entries from metadata.json to the internal tables
         # step 1: top-level metadata
         for key in self._metadata_local or {}:
@@ -541,6 +507,7 @@ class Datasette:
         internal_db = self.get_internal_database()
         if not self.internal_db_created:
             await init_internal_db(internal_db)
+            await self.apply_metadata_json()
             self.internal_db_created = True
         current_schema_versions = {
             row["database_name"]: row["schema_version"]
@@ -1685,7 +1652,6 @@ class Datasette:
         routes = self._routes()
 
         async def setup_db():
-            await self.initialize_internal_database()
             # First time server starts up, calculate table counts for immutable databases
             for database in self.databases.values():
                 if not database.is_mutable:

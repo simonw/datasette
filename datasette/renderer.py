@@ -56,7 +56,6 @@ def json_renderer(request, args, data, error, truncated=None):
 
     if truncated is not None:
         data["truncated"] = truncated
-
     if shape == "arrayfirst":
         if not data["rows"]:
             data = []

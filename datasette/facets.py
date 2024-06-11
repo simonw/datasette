@@ -103,10 +103,15 @@ class Facet:
         max_returned_rows = self.ds.setting("max_returned_rows")
         table_facet_size = None
         if self.table:
-            tables_metadata = self.ds.metadata("tables", database=self.database) or {}
-            table_metadata = tables_metadata.get(self.table) or {}
-            if table_metadata:
-                table_facet_size = table_metadata.get("facet_size")
+            config_facet_size = (
+                self.ds.config.get("databases", {})
+                .get(self.database, {})
+                .get("tables", {})
+                .get(self.table, {})
+                .get("facet_size")
+            )
+            if config_facet_size:
+                table_facet_size = config_facet_size
         custom_facet_size = self.request.args.get("_facet_size")
         if custom_facet_size:
             if custom_facet_size == "max":

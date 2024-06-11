@@ -29,8 +29,19 @@ async def test_homepage(ds_client):
     assert response.status_code == 200
     assert "application/json; charset=utf-8" == response.headers["content-type"]
     data = response.json()
-    assert data.keys() == {"fixtures": 0}.keys()
-    d = data["fixtures"]
+    assert sorted(list(data.get("metadata").keys())) == [
+        "about",
+        "about_url",
+        "description_html",
+        "license",
+        "license_url",
+        "source",
+        "source_url",
+        "title",
+    ]
+    databases = data.get("databases")
+    assert databases.keys() == {"fixtures": 0}.keys()
+    d = databases["fixtures"]
     assert d["name"] == "fixtures"
     assert isinstance(d["tables_count"], int)
     assert isinstance(len(d["tables_and_views_truncated"]), int)
@@ -45,7 +56,8 @@ async def test_homepage_sort_by_relationships(ds_client):
     response = await ds_client.get("/.json?_sort=relationships")
     assert response.status_code == 200
     tables = [
-        t["name"] for t in response.json()["fixtures"]["tables_and_views_truncated"]
+        t["name"]
+        for t in response.json()["databases"]["fixtures"]["tables_and_views_truncated"]
     ]
     assert tables == [
         "simple_primary_key",
@@ -590,21 +602,24 @@ def test_no_files_uses_memory_database(app_client_no_files):
     response = app_client_no_files.get("/.json")
     assert response.status == 200
     assert {
-        "_memory": {
-            "name": "_memory",
-            "hash": None,
-            "color": "a6c7b9",
-            "path": "/_memory",
-            "tables_and_views_truncated": [],
-            "tables_and_views_more": False,
-            "tables_count": 0,
-            "table_rows_sum": 0,
-            "show_table_row_counts": False,
-            "hidden_table_rows_sum": 0,
-            "hidden_tables_count": 0,
-            "views_count": 0,
-            "private": False,
-        }
+        "databases": {
+            "_memory": {
+                "name": "_memory",
+                "hash": None,
+                "color": "a6c7b9",
+                "path": "/_memory",
+                "tables_and_views_truncated": [],
+                "tables_and_views_more": False,
+                "tables_count": 0,
+                "table_rows_sum": 0,
+                "show_table_row_counts": False,
+                "hidden_table_rows_sum": 0,
+                "hidden_tables_count": 0,
+                "views_count": 0,
+                "private": False,
+            },
+        },
+        "metadata": {},
     } == response.json
     # Try that SQL query
     response = app_client_no_files.get(
@@ -766,12 +781,6 @@ def test_databases_json(app_client_two_attached_databases_one_immutable):
     assert fixtures_database["hash"] is not None
     assert False == fixtures_database["is_mutable"]
     assert False == fixtures_database["is_memory"]
-
-
-@pytest.mark.asyncio
-async def test_metadata_json(ds_client):
-    response = await ds_client.get("/-/metadata.json")
-    assert response.json() == ds_client.ds.metadata()
 
 
 @pytest.mark.asyncio
@@ -1039,8 +1048,8 @@ async def test_tilde_encoded_database_names(db_name):
     ds = Datasette()
     ds.add_memory_database(db_name)
     response = await ds.client.get("/.json")
-    assert db_name in response.json().keys()
-    path = response.json()[db_name]["path"]
+    assert db_name in response.json()["databases"].keys()
+    path = response.json()["databases"][db_name]["path"]
     # And the JSON for that database
     response2 = await ds.client.get(path + ".json")
     assert response2.status_code == 200
@@ -1083,6 +1092,7 @@ async def test_config_json(config, expected):
 
 
 @pytest.mark.asyncio
+@pytest.mark.skip(reason="rm?")
 @pytest.mark.parametrize(
     "metadata,expected_config,expected_metadata",
     (

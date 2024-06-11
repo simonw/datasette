@@ -132,7 +132,13 @@ class IndexView(BaseView):
             if self.ds.cors:
                 add_cors_headers(headers)
             return Response(
-                json.dumps({db["name"]: db for db in databases}, cls=CustomJSONEncoder),
+                json.dumps(
+                    {
+                        "databases": {db["name"]: db for db in databases},
+                        "metadata": await self.ds.get_instance_metadata(),
+                    },
+                    cls=CustomJSONEncoder,
+                ),
                 content_type="application/json; charset=utf-8",
                 headers=headers,
             )
@@ -151,7 +157,7 @@ class IndexView(BaseView):
                 request=request,
                 context={
                     "databases": databases,
-                    "metadata": self.ds.metadata(),
+                    "metadata": await self.ds.get_instance_metadata(),
                     "datasette_version": __version__,
                     "private": not await self.ds.permission_allowed(
                         None, "view-instance"

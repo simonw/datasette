@@ -159,8 +159,8 @@ def test_metadata_yaml():
         internal=None,
     )
     client = _TestClient(ds)
-    response = client.get("/-/metadata.json")
-    assert {"title": "Hello from YAML"} == response.json
+    response = client.get("/.json")
+    assert {"title": "Hello from YAML"} == response.json["metadata"]
 
 
 @mock.patch("datasette.cli.run_module")

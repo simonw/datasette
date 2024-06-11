@@ -63,8 +63,7 @@ class DatabaseView(View):
         if format_ not in ("html", "json"):
             raise NotFound("Invalid format: {}".format(format_))
 
-        metadata = (datasette.metadata("databases") or {}).get(database, {})
-        datasette.update_with_inherited_metadata(metadata)
+        metadata = await datasette.get_database_metadata(database)
 
         sql_views = []
         for view_name in await db.view_names():
@@ -131,6 +130,7 @@ class DatabaseView(View):
             "table_columns": (
                 await _table_columns(datasette, database) if allow_execute_sql else {}
             ),
+            "metadata": await datasette.get_database_metadata(database),
         }
 
         if format_ == "json":
@@ -625,8 +625,7 @@ class QueryView(View):
                     )
                 }
             )
-            metadata = (datasette.metadata("databases") or {}).get(database, {})
-            datasette.update_with_inherited_metadata(metadata)
+            metadata = await datasette.get_database_metadata(database)
 
             renderers = {}
             for key, (_, can_render) in datasette.renderers.items():

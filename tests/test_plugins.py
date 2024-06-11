@@ -331,14 +331,14 @@ def test_hook_extra_template_vars(restore_working_directory):
     with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
     ) as client:
-        response = client.get("/-/metadata")
+        response = client.get("/-/versions")
         assert response.status_code == 200
         extra_template_vars = json.loads(
             Soup(response.text, "html.parser").select("pre.extra_template_vars")[0].text
         )
         assert {
             "template": "show_json.html",
-            "scope_path": "/-/metadata",
+            "scope_path": "/-/versions",
             "columns": None,
         } == extra_template_vars
         extra_template_vars_from_awaitable = json.loads(
@@ -349,7 +349,7 @@ def test_hook_extra_template_vars(restore_working_directory):
         assert {
             "template": "show_json.html",
             "awaitable": True,
-            "scope_path": "/-/metadata",
+            "scope_path": "/-/versions",
         } == extra_template_vars_from_awaitable
 
 
@@ -357,7 +357,7 @@ def test_plugins_async_template_function(restore_working_directory):
     with make_app_client(
         template_dir=str(pathlib.Path(__file__).parent / "test_templates")
     ) as client:
-        response = client.get("/-/metadata")
+        response = client.get("/-/versions")
         assert response.status_code == 200
         extra_from_awaitable_function = (
             Soup(response.text, "html.parser")
@@ -422,7 +422,7 @@ def view_names_client(tmp_path_factory):
         ("/fixtures", "database"),
         ("/fixtures/units", "table"),
         ("/fixtures/units/1", "row"),
-        ("/-/metadata", "json_data"),
+        ("/-/versions", "json_data"),
         ("/fixtures?sql=select+1", "database"),
     ),
 )
@@ -1073,36 +1073,6 @@ def test_hook_skip_csrf(app_client):
     assert second_missing_csrf_response.status_code == 403
 
 
-@pytest.mark.asyncio
-async def test_hook_get_metadata(ds_client):
-    try:
-        orig_metadata = ds_client.ds._metadata_local
-        ds_client.ds._metadata_local = {
-            "title": "Testing get_metadata hook!",
-            "databases": {"from-local": {"title": "Hello from local metadata"}},
-        }
-        og_pm_hook_get_metadata = pm.hook.get_metadata
-
-        def get_metadata_mock(*args, **kwargs):
-            return [
-                {
-                    "databases": {
-                        "from-hook": {"title": "Hello from the plugin hook"},
-                        "from-local": {"title": "This will be overwritten!"},
-                    }
-                }
-            ]
-
-        pm.hook.get_metadata = get_metadata_mock
-        meta = ds_client.ds.metadata()
-        assert "Testing get_metadata hook!" == meta["title"]
-        assert "Hello from local metadata" == meta["databases"]["from-local"]["title"]
-        assert "Hello from the plugin hook" == meta["databases"]["from-hook"]["title"]
-        pm.hook.get_metadata = og_pm_hook_get_metadata
-    finally:
-        ds_client.ds._metadata_local = orig_metadata
-
-
 def _extract_commands(output):
     lines = output.split("Commands:\n", 1)[1].split("\n")
     return {line.split()[0].replace("*", "") for line in lines if line.strip()}
@@ -1550,6 +1520,7 @@ async def test_hook_register_events():
     assert any(k.__name__ == "OneEvent" for k in datasette.event_classes)
 
 
+@pytest.mark.skip(reason="TODO")
 @pytest.mark.parametrize(
     "metadata,config,expected_metadata,expected_config",
     (

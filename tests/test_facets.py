@@ -584,9 +584,9 @@ async def test_facet_size():
     data5 = response5.json()
     assert len(data5["facet_results"]["results"]["city"]["results"]) == 20
     # Now try messing with facet_size in the table metadata
-    orig_metadata = ds._metadata_local
+    orig_config = ds.config
     try:
-        ds._metadata_local = {
+        ds.config = {
             "databases": {
                 "test_facet_size": {"tables": {"neighbourhoods": {"facet_size": 6}}}
             }
@@ -597,7 +597,7 @@ async def test_facet_size():
         data6 = response6.json()
         assert len(data6["facet_results"]["results"]["city"]["results"]) == 6
         # Setting it to max bumps it up to 50 again
-        ds._metadata_local["databases"]["test_facet_size"]["tables"]["neighbourhoods"][
+        ds.config["databases"]["test_facet_size"]["tables"]["neighbourhoods"][
             "facet_size"
         ] = "max"
         data7 = (
@@ -605,7 +605,7 @@ async def test_facet_size():
         ).json()
         assert len(data7["facet_results"]["results"]["city"]["results"]) == 20
     finally:
-        ds._metadata_local = orig_metadata
+        ds.config = orig_config
 
 
 def test_other_types_of_facet_in_metadata():
@@ -655,7 +655,6 @@ async def test_facet_against_in_memory_database():
     to_insert = [{"name": "one", "name2": "1"} for _ in range(800)] + [
         {"name": "two", "name2": "2"} for _ in range(300)
     ]
-    print(to_insert)
     await db.execute_write_many(
         "insert into t (name, name2) values (:name, :name2)", to_insert
     )

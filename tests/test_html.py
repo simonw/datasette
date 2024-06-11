@@ -21,6 +21,8 @@ def test_homepage(app_client_two_attached_databases):
     response = app_client_two_attached_databases.get("/")
     assert response.status_code == 200
     assert "text/html; charset=utf-8" == response.headers["content-type"]
+    # Should have a html lang="en" attribute
+    assert '<html lang="en">' in response.text
     soup = Soup(response.content, "html.parser")
     assert "Datasette Fixtures" == soup.find("h1").text
     assert (

@@ -6,7 +6,7 @@ set -e
 python3 -m build
 
 # Find name of wheel, strip off the dist/
-wheel=$(basename $(ls dist/*.whl))
+wheel=$(basename $(ls dist/*.whl) | head -n 1)
 
 # Create a blank index page
 echo '

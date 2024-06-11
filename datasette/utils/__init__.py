@@ -1123,7 +1123,7 @@ async def derive_named_parameters(db, sql):
     try:
         results = await db.execute(explain, {p: None for p in possible_params})
         return [row["p4"].lstrip(":") for row in results if row["opcode"] == "Variable"]
-    except sqlite3.DatabaseError:
+    except (sqlite3.DatabaseError, AttributeError):
         return possible_params
 
 

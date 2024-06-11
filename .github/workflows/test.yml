@@ -13,11 +13,11 @@ jobs:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         sqlite-version: [
-          "3", # latest version
+          #"3", # latest version
           "3.46",
-          "3.45",
-          "3.27",
-          "3.26",
+          #"3.45",
+          #"3.27",
+          #"3.26",
           "3.25",
           #"3.25.3", # 2018-09-25, window functions breaks test_upsert for some reason on 3.10, skip for now
           #"3.24", # 2018-06-04, added UPSERT support

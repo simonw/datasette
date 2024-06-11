@@ -23,7 +23,7 @@ jobs:
       uses: asg017/sqlite-versions@main
       with:
         version: ${{ matrix.sqlite-version }}
-        cflags: "-DSQLITE_ENABLE_DESERIALIZE=1 -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_RTREE"
+        cflags: "-DSQLITE_ENABLE_DESERIALIZE -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_JSON1"
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:

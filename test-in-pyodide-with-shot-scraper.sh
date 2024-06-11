@@ -18,6 +18,13 @@ cd dist
 python3 -m http.server 8529 &
 cd ..
 
+# Register the kill_server function to be called on script exit
+kill_server() {
+  pkill -f 'http.server 8529'
+}
+trap kill_server EXIT
+
+
 shot-scraper javascript http://localhost:8529/ "
 async () => {
   let pyodide = await loadPyodide();
@@ -26,6 +33,8 @@ async () => {
     import micropip
     await micropip.install('h11==0.12.0')
     await micropip.install('httpx==0.23')
+    # To avoid 'from typing_extensions import deprecated' error:
+    await micropip.install('typing-extensions>=4.12.2')
     await micropip.install('http://localhost:8529/$wheel')
     import ssl
     import setuptools
@@ -39,6 +48,3 @@ async () => {
   return 'Test passed!';
 }
 "
-
-# Shut down the server
-pkill -f 'http.server 8529'

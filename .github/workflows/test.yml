@@ -11,8 +11,17 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        sqlite-version: [
+          "3", # latest version
+          "3.24", # 2018-06-04, added UPSERT support
+          "3.23.1" # 2018-04-10 before UPSERT
+        ]
     steps:
     - uses: actions/checkout@v4
+    - name: Set up SQLite ${{ matrix.sqlite-version }}
+      uses: asg017/sqlite-versions@main
+      with:
+        version: ${{ matrix.sqlite-version }}
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
@@ -20,6 +29,7 @@ jobs:
         allow-prereleases: true
         cache: pip
         cache-dependency-path: setup.py
+    - run: python3 -c "import sqlite3; print(sqlite3.sqlite_version)"
     - name: Build extension for --load-extension test
       run: |-
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)

@@ -33,7 +33,7 @@ jobs:
         cache: pip
         cache-dependency-path: setup.py
     - name: Set up SQLite ${{ matrix.sqlite-version }}
-      uses: asg017/sqlite-versions@0a7fae91316f6311e46fa6e4324925577aafee9f
+      uses: asg017/sqlite-versions@40e2bd01c486cab03a3cd652aaa44fb1f7a40072
       with:
         version: ${{ matrix.sqlite-version }}
         cflags: "-DSQLITE_ENABLE_DESERIALIZE -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_JSON1"

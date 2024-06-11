@@ -23,6 +23,7 @@ jobs:
       uses: asg017/sqlite-versions@main
       with:
         version: ${{ matrix.sqlite-version }}
+        cflags: -DSQLITE_ENABLE_DESERIALIZE=1
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:

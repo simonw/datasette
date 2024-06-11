@@ -14,6 +14,7 @@ jobs:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         sqlite-version: [
           "3", # latest version
+          "3.46",
           "3.45",
           "3.27",
           "3.26",
@@ -25,7 +26,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Set up SQLite ${{ matrix.sqlite-version }}
-      uses: asg017/sqlite-versions@main
+      uses: asg017/sqlite-versions@054febacf545b76144b7adb11677cdaa1b87388d
       with:
         version: ${{ matrix.sqlite-version }}
         cflags: "-DSQLITE_ENABLE_DESERIALIZE -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_JSON1"

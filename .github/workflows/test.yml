@@ -26,7 +26,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Set up SQLite ${{ matrix.sqlite-version }}
-      uses: asg017/sqlite-versions@054febacf545b76144b7adb11677cdaa1b87388d
+      uses: asg017/sqlite-versions@0a7fae91316f6311e46fa6e4324925577aafee9f
       with:
         version: ${{ matrix.sqlite-version }}
         cflags: "-DSQLITE_ENABLE_DESERIALIZE -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_JSON1"
@@ -39,6 +39,8 @@ jobs:
         cache-dependency-path: setup.py
     - run: python3 -c "import sqlite3; print(sqlite3.sqlite_version)"
     - run: echo $LD_LIBRARY_PATH
+    - run: ls
+    - run: tree .
     - name: Build extension for --load-extension test
       run: |-
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)

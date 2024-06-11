@@ -8,8 +8,8 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    continue-on-error: true
     strategy:
-      continue-on-error: true
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         sqlite-version: [

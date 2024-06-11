@@ -38,6 +38,7 @@ jobs:
         cache: pip
         cache-dependency-path: setup.py
     - run: python3 -c "import sqlite3; print(sqlite3.sqlite_version)"
+    - run: echo $LD_LIBRARY_PATH
     - name: Build extension for --load-extension test
       run: |-
         (cd tests && gcc ext.c -fPIC -shared -o ext.so)

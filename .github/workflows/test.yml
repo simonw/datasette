@@ -13,8 +13,9 @@ jobs:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         sqlite-version: [
           "3", # latest version
-          "3.24", # 2018-06-04, added UPSERT support
-          "3.23.1" # 2018-04-10 before UPSERT
+          "3.25.3", # 2018-09-25, window functions
+          #"3.24", # 2018-06-04, added UPSERT support
+          #"3.23.1" # 2018-04-10, before UPSERT
         ]
     steps:
     - uses: actions/checkout@v4

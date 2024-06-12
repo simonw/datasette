@@ -1131,23 +1131,38 @@ class StartupError(Exception):
     pass
 
 
-_re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
+_single_line_comment_re = re.compile(r"--.*")
+_multi_line_comment_re = re.compile(r"/\*.*?\*/", re.DOTALL)
+_single_quote_re = re.compile(r"'(?:''|[^'])*'")
+_double_quote_re = re.compile(r'"(?:\"\"|[^"])*"')
+_named_param_re = re.compile(r":(\w+)")
 
 
 @documented
-async def derive_named_parameters(db: "Database", sql: str) -> List[str]:
+def named_parameters(sql: str) -> List[str]:
     """
     Given a SQL statement, return a list of named parameters that are used in the statement
 
     e.g. for ``select * from foo where id=:id`` this would return ``["id"]``
     """
-    explain = "explain {}".format(sql.strip().rstrip(";"))
-    possible_params = _re_named_parameter.findall(sql)
-    try:
-        results = await db.execute(explain, {p: None for p in possible_params})
-        return [row["p4"].lstrip(":") for row in results if row["opcode"] == "Variable"]
-    except (sqlite3.DatabaseError, AttributeError):
-        return possible_params
+    # Remove single-line comments
+    sql = _single_line_comment_re.sub("", sql)
+    # Remove multi-line comments
+    sql = _multi_line_comment_re.sub("", sql)
+    # Remove single-quoted strings
+    sql = _single_quote_re.sub("", sql)
+    # Remove double-quoted strings
+    sql = _double_quote_re.sub("", sql)
+    # Extract parameters from what is left
+    return _named_param_re.findall(sql)
+
+
+async def derive_named_parameters(db: "Database", sql: str) -> List[str]:
+    """
+    This undocumented but stable method exists for backwards compatibility
+    with plugins that were using it before it switched to named_parameters()
+    """
+    return named_parameters(sql)
 
 
 def add_cors_headers(headers):

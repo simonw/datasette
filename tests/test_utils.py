@@ -612,10 +612,14 @@ def test_parse_metadata(content, expected):
         ("select this is invalid :one, :two, :three", ["one", "two", "three"]),
     ),
 )
-async def test_derive_named_parameters(sql, expected):
+@pytest.mark.parametrize("use_async_version", (False, True))
+async def test_named_parameters(sql, expected, use_async_version):
     ds = Datasette([], memory=True)
     db = ds.get_database("_memory")
-    params = await utils.derive_named_parameters(db, sql)
+    if use_async_version:
+        params = await utils.derive_named_parameters(db, sql)
+    else:
+        params = utils.named_parameters(sql)
     assert params == expected
 
 

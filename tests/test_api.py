@@ -225,6 +225,7 @@ async def test_database_page(ds_client):
                 "complex_array",
                 "distinct_some_null",
                 "n",
+                "value",
             ],
             "primary_keys": ["pk"],
             "count": 15,

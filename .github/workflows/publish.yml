@@ -54,14 +54,12 @@ jobs:
           ${{ runner.os }}-publish-pip-
     - name: Install dependencies
       run: |
-        pip install setuptools wheel twine
-    - name: Publish
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        pip install setuptools wheel build
+    - name: Build
       run: |
-        python setup.py sdist bdist_wheel
-        twine upload dist/*
+        python -m build
+    - name: Publish
+      uses: pypa/gh-action-pypi-publish@release/v1
 
   deploy_static_docs:
     runs-on: ubuntu-latest

@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v0_64_7:
+
+0.64.7 (2023-06-12)
+-------------------
+
+- Fixed a bug where canned queries with named parameters threw an error when run against SQLite 3.46.0. (:issue:`2353`)
+
 .. _v1_0_a13:
 
 1.0a13 (2024-03-12)

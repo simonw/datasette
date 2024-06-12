@@ -17,7 +17,7 @@ from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
     call_with_supported_arguments,
-    derive_named_parameters,
+    named_parameters as derive_named_parameters,
     format_bytes,
     make_slot_function,
     tilde_decode,
@@ -484,9 +484,7 @@ class QueryView(View):
         if canned_query and canned_query.get("params"):
             named_parameters = canned_query["params"]
         if not named_parameters:
-            named_parameters = await derive_named_parameters(
-                datasette.get_database(database), sql
-            )
+            named_parameters = derive_named_parameters(sql)
         named_parameter_values = {
             named_parameter: params.get(named_parameter) or ""
             for named_parameter in named_parameters

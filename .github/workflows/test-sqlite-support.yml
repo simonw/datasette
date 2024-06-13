@@ -51,5 +51,3 @@ jobs:
       run: |
         pytest -n auto -m "not serial"
         pytest -m "serial"
-        # And the test that exceeds a localhost HTTPS server
-        tests/test_datasette_https_server.sh

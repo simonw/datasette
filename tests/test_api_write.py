@@ -1359,6 +1359,7 @@ async def test_create_table_permissions(
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(reason="Flaky, see https://github.com/simonw/datasette/issues/2356")
 @pytest.mark.parametrize(
     "input,expected_rows_after",
     (

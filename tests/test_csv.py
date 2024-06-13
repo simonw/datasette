@@ -189,7 +189,7 @@ async def test_csv_with_non_ascii_characters(ds_client):
     assert response.text == "text,number\r\n𝐜𝐢𝐭𝐢𝐞𝐬,1\r\nbob,2\r\n"
 
 
-@pytest.mark.skip(reason="flakey")
+@pytest.mark.xfail(reason="Flaky, see https://github.com/simonw/datasette/issues/2355")
 def test_max_csv_mb(app_client_csv_max_mb_one):
     # This query deliberately generates a really long string
     # should be 100*100*100*2 = roughly 2MB

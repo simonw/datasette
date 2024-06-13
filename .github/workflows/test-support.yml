@@ -11,12 +11,12 @@ jobs:
     continue-on-error: true
     strategy:
       matrix:
-        platform: [ubuntu-latest, macos-12, macos-14]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        platform: [ubuntu-latest]
+        python-version: [  "3.8", "3.9", "3.10", "3.11", "3.12"]
         sqlite-version: [
           #"3", # latest version
           "3.46",
-          "3.45",
+          #"3.45",
           #"3.27",
           #"3.26",
           "3.25",

@@ -1,4 +1,4 @@
-name: Test
+name: Test SQLite versions
 
 on: [push, pull_request]
 

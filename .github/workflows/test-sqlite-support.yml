@@ -1,0 +1,53 @@
+name: Test SQLite versions
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.platform }}
+    continue-on-error: true
+    strategy:
+      matrix:
+        platform: [ubuntu-latest]
+        python-version: [  "3.8", "3.9", "3.10", "3.11", "3.12"]
+        sqlite-version: [
+          #"3", # latest version
+          "3.46",
+          #"3.45",
+          #"3.27",
+          #"3.26",
+          "3.25",
+          #"3.25.3", # 2018-09-25, window functions breaks test_upsert for some reason on 3.10, skip for now
+          #"3.24", # 2018-06-04, added UPSERT support
+          #"3.23.1" # 2018-04-10, before UPSERT
+        ]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
+        cache: pip
+        cache-dependency-path: setup.py
+    - name: Set up SQLite ${{ matrix.sqlite-version }}
+      uses: asg017/sqlite-versions@71ea0de37ae739c33e447af91ba71dda8fcf22e6
+      with:
+        version: ${{ matrix.sqlite-version }}
+        cflags: "-DSQLITE_ENABLE_DESERIALIZE -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_JSON1"
+    - run: python3 -c "import sqlite3; print(sqlite3.sqlite_version)"
+    - run: echo $LD_LIBRARY_PATH
+    - name: Build extension for --load-extension test
+      run: |-
+        (cd tests && gcc ext.c -fPIC -shared -o ext.so)
+    - name: Install dependencies
+      run: |
+        pip install -e '.[test]'
+        pip freeze
+    - name: Run tests
+      run: |
+        pytest -n auto -m "not serial"
+        pytest -m "serial"

@@ -1145,13 +1145,9 @@ def named_parameters(sql: str) -> List[str]:
 
     e.g. for ``select * from foo where id=:id`` this would return ``["id"]``
     """
-    # Remove single-line comments
     sql = _single_line_comment_re.sub("", sql)
-    # Remove multi-line comments
     sql = _multi_line_comment_re.sub("", sql)
-    # Remove single-quoted strings
     sql = _single_quote_re.sub("", sql)
-    # Remove double-quoted strings
     sql = _double_quote_re.sub("", sql)
     # Extract parameters from what is left
     return _named_param_re.findall(sql)

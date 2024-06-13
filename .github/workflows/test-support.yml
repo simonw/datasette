@@ -11,8 +11,7 @@ jobs:
     continue-on-error: true
     strategy:
       matrix:
-        platform: [ubuntu-latest, #macos-12, macos-14
-        ]
+        platform: [ubuntu-latest, macos-12, macos-14]
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         sqlite-version: [
           #"3", # latest version
@@ -35,7 +34,7 @@ jobs:
         cache: pip
         cache-dependency-path: setup.py
     - name: Set up SQLite ${{ matrix.sqlite-version }}
-      uses: asg017/sqlite-versions@40e2bd01c486cab03a3cd652aaa44fb1f7a40072
+      uses: asg017/sqlite-versions@a75a81f445fdddddeef572b226d1ed6acc197ffe
       with:
         version: ${{ matrix.sqlite-version }}
         cflags: "-DSQLITE_ENABLE_DESERIALIZE -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS3_PARENTHESIS -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_JSON1"

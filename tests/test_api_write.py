@@ -537,7 +537,7 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
         json=input,
         headers=_headers(token),
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     assert response.json()["ok"] is True
 
     # Analytics event

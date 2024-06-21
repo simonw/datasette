@@ -133,7 +133,7 @@ async def test_insert_rows(ds_write, return_rows):
             {},
             None,
             404,
-            ["Database not found: data2"],
+            ["Database not found"],
         ),
         (
             "/data/docs2/-/insert",

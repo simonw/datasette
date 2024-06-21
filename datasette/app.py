@@ -1617,9 +1617,7 @@ class Datasette:
         try:
             return self.get_database(route=database_route)
         except KeyError:
-            raise DatabaseNotFound(
-                "Database not found: {}".format(database_route), database_route
-            )
+            raise DatabaseNotFound(database_route)
 
     async def resolve_table(self, request):
         db = await self.resolve_database(request)

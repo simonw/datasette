@@ -23,9 +23,9 @@ class NotFound(Base400):
 
 
 class DatabaseNotFound(NotFound):
-    def __init__(self, message, database_name):
-        super().__init__(message)
+    def __init__(self, database_name):
         self.database_name = database_name
+        super().__init__("Database not found")
 
 
 class TableNotFound(NotFound):

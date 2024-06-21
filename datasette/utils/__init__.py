@@ -402,9 +402,9 @@ def make_dockerfile(
     apt_get_extras = apt_get_extras_
     if spatialite:
         apt_get_extras.extend(["python3-dev", "gcc", "libsqlite3-mod-spatialite"])
-        environment_variables[
-            "SQLITE_EXTENSIONS"
-        ] = "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
+        environment_variables["SQLITE_EXTENSIONS"] = (
+            "/usr/lib/x86_64-linux-gnu/mod_spatialite.so"
+        )
     return """
 FROM python:3.11.0-slim-bullseye
 COPY . /app
@@ -416,9 +416,11 @@ RUN datasette inspect {files} --inspect-file inspect-data.json
 ENV PORT {port}
 EXPOSE {port}
 CMD {cmd}""".format(
-        apt_get_extras=APT_GET_DOCKERFILE_EXTRAS.format(" ".join(apt_get_extras))
-        if apt_get_extras
-        else "",
+        apt_get_extras=(
+            APT_GET_DOCKERFILE_EXTRAS.format(" ".join(apt_get_extras))
+            if apt_get_extras
+            else ""
+        ),
         environment_variables="\n".join(
             [
                 "ENV {} '{}'".format(key, value)
@@ -1114,17 +1116,24 @@ class StartupError(Exception):
     pass
 
 
-_re_named_parameter = re.compile(":([a-zA-Z0-9_]+)")
+_single_line_comment_re = re.compile(r"--.*")
+_multi_line_comment_re = re.compile(r"/\*.*?\*/", re.DOTALL)
+_single_quote_re = re.compile(r"'(?:''|[^'])*'")
+_double_quote_re = re.compile(r'"(?:\"\"|[^"])*"')
+_named_param_re = re.compile(r":(\w+)")
 
 
 async def derive_named_parameters(db, sql):
-    explain = "explain {}".format(sql.strip().rstrip(";"))
-    possible_params = _re_named_parameter.findall(sql)
-    try:
-        results = await db.execute(explain, {p: None for p in possible_params})
-        return [row["p4"].lstrip(":") for row in results if row["opcode"] == "Variable"]
-    except (sqlite3.DatabaseError, AttributeError):
-        return possible_params
+    # Remove single-line comments
+    sql = _single_line_comment_re.sub("", sql)
+    # Remove multi-line comments
+    sql = _multi_line_comment_re.sub("", sql)
+    # Remove single-quoted strings
+    sql = _single_quote_re.sub("", sql)
+    # Remove double-quoted strings
+    sql = _double_quote_re.sub("", sql)
+    # Extract parameters from what is left
+    return _named_param_re.findall(sql)
 
 
 def add_cors_headers(headers):

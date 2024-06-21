@@ -210,8 +210,7 @@ To set cookies on the response, use the ``response.set_cookie(...)`` method. The
         secure=False,
         httponly=False,
         samesite="lax",
-    ):
-        ...
+    ): ...
 
 You can use this with :ref:`datasette.sign() <datasette_sign>` to set signed cookies. Here's how you would set the :ref:`ds_actor cookie <authentication_ds_actor>` for use with Datasette :ref:`authentication <authentication>`:
 

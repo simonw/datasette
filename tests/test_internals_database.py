@@ -1,6 +1,7 @@
 """
 Tests for the datasette.database.Database class
 """
+
 from datasette.database import Database, Results, MultipleValues
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import Column

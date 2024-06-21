@@ -431,9 +431,11 @@ class QueryView(DataView):
                             display_value = markupsafe.Markup(
                                 '<a class="blob-download" href="{}"{}>&lt;Binary:&nbsp;{:,}&nbsp;byte{}&gt;</a>'.format(
                                     blob_url,
-                                    ' title="{}"'.format(formatted)
-                                    if "bytes" not in formatted
-                                    else "",
+                                    (
+                                        ' title="{}"'.format(formatted)
+                                        if "bytes" not in formatted
+                                        else ""
+                                    ),
                                     len(value),
                                     "" if len(value) == 1 else "s",
                                 )

@@ -1,6 +1,7 @@
 """
 Tests for the datasette.app.Datasette class
 """
+
 from datasette import Forbidden
 from datasette.app import Datasette, Database
 from itsdangerous import BadSignature

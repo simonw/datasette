@@ -1,6 +1,7 @@
 """
 Tests to ensure certain things are documented.
 """
+
 from click.testing import CliRunner
 from datasette import app, utils
 from datasette.cli import cli

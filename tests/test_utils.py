@@ -1,6 +1,7 @@
 """
 Tests for various datasette helper functions.
 """
+
 from datasette.app import Datasette
 from datasette import utils
 from datasette.utils.asgi import Request

@@ -36,7 +36,7 @@ async def test_table_json(ds_client):
 async def test_table_not_exists_json(ds_client):
     assert (await ds_client.get("/fixtures/blah.json")).json() == {
         "ok": False,
-        "error": "Table not found: blah",
+        "error": "Table not found",
         "status": 404,
         "title": None,
     }

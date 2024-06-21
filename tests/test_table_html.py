@@ -535,7 +535,7 @@ async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
 
 @pytest.mark.asyncio
 async def test_table_not_exists(ds_client):
-    assert "Table not found: blah" in (await ds_client.get("/fixtures/blah")).text
+    assert "Table not found" in (await ds_client.get("/fixtures/blah")).text
 
 
 @pytest.mark.asyncio

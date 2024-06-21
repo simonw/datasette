@@ -1628,9 +1628,7 @@ class Datasette:
         if not table_exists:
             is_view = await db.view_exists(table_name)
         if not (table_exists or is_view):
-            raise TableNotFound(
-                "Table not found: {}".format(table_name), db.name, table_name
-            )
+            raise TableNotFound(db.name, table_name)
         return ResolvedTable(db, table_name, is_view)
 
     async def resolve_row(self, request):

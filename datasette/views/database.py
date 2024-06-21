@@ -37,7 +37,7 @@ class DatabaseView(DataView):
         try:
             db = self.ds.get_database(route=database_route)
         except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+            raise NotFound("Database not found")
         database = db.name
 
         visible, private = await self.ds.check_visibility(
@@ -226,7 +226,7 @@ class QueryView(DataView):
         try:
             db = self.ds.get_database(route=database_route)
         except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+            raise NotFound("Database not found")
         database = db.name
         params = {key: request.args.get(key) for key in request.args}
         if "sql" in params:

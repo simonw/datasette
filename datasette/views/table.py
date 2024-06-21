@@ -96,7 +96,7 @@ class TableView(DataView):
         try:
             db = self.ds.get_database(route=database_route)
         except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+            raise NotFound("Database not found")
         database_name = db.name
         table_name = tilde_decode(request.url_vars["table"])
         # Handle POST to a canned query
@@ -169,7 +169,7 @@ class TableView(DataView):
         try:
             db = self.ds.get_database(route=database_route)
         except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+            raise NotFound("Database not found")
         database_name = db.name
 
         # We always now run queries sequentially, rather than with asyncio.gather() -
@@ -204,7 +204,7 @@ class TableView(DataView):
 
         # If table or view not found, return 404
         if not is_view and not table_exists:
-            raise NotFound(f"Table not found: {table_name}")
+            raise NotFound(f"Table not found")
 
         # Ensure user has permission to view this table
         visible, private = await self.ds.check_visibility(

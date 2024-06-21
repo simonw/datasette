@@ -19,7 +19,7 @@ class RowView(DataView):
         try:
             db = self.ds.get_database(route=database_route)
         except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+            raise NotFound("Database not found")
         database = db.name
 
         # Ensure user has permission to view this row
@@ -38,14 +38,14 @@ class RowView(DataView):
         try:
             db = self.ds.get_database(route=database_route)
         except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+            raise NotFound("Database not found")
         database = db.name
         sql, params, pks = await _sql_params_pks(db, table, pk_values)
         results = await db.execute(sql, params, truncate=True)
         columns = [r[0] for r in results.description]
         rows = list(results.rows)
         if not rows:
-            raise NotFound(f"Record not found: {pk_values}")
+            raise NotFound(f"Record not found")
 
         async def template_data():
             display_columns, display_rows = await display_columns_and_rows(

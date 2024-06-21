@@ -342,7 +342,7 @@ class DataView(BaseView):
         try:
             db = self.ds.get_database(route=database_route)
         except KeyError:
-            raise NotFound("Database not found: {}".format(database_route))
+            raise NotFound("Database not found")
         database = db.name
 
         _format = request.url_vars["format"]

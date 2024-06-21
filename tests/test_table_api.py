@@ -34,7 +34,7 @@ def test_table_json(app_client):
 def test_table_not_exists_json(app_client):
     assert {
         "ok": False,
-        "error": "Table not found: blah",
+        "error": "Table not found",
         "status": 404,
         "title": None,
     } == app_client.get("/fixtures/blah.json").json

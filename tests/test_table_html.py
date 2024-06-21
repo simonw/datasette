@@ -520,7 +520,7 @@ def test_csv_json_export_links_include_labels_if_foreign_keys(app_client):
 
 
 def test_table_not_exists(app_client):
-    assert "Table not found: blah" in app_client.get("/fixtures/blah").text
+    assert "Table not found" in app_client.get("/fixtures/blah").text
 
 
 def test_table_html_no_primary_key(app_client):

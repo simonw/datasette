@@ -1638,9 +1638,7 @@ class Datasette:
         results = await db.execute(sql, params, truncate=True)
         row = results.first()
         if row is None:
-            raise RowNotFound(
-                "Row not found: {}".format(pk_values), db.name, table_name, pk_values
-            )
+            raise RowNotFound(db.name, table_name, pk_values)
         return ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first())
 
     def app(self):

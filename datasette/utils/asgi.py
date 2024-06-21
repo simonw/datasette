@@ -36,8 +36,8 @@ class TableNotFound(NotFound):
 
 
 class RowNotFound(NotFound):
-    def __init__(self, message, database_name, table, pk_values):
-        super().__init__(message)
+    def __init__(self, database_name, table, pk_values):
+        super().__init__("Row not found")
         self.database_name = database_name
         self.table_name = table
         self.pk_values = pk_values

@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_64_8:
+
+0.64.8 (2023-06-21)
+-------------------
+
+- Security improvement: 404 pages used to reflect content from the URL path, which could be used to display misleading information to Datasette users. 404 errors no longer display additional information from the URL. (:issue:`2359`)
+- Backported a better fix for correctly extracting named parameters from canned query SQL against SQLite 3.46.0. (:issue:`2353`)
+
 .. _v0_64_7:
 
 0.64.7 (2023-06-12)

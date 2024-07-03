@@ -623,7 +623,7 @@ def test_no_files_uses_memory_database(app_client_no_files):
     } == response.json
     # Try that SQL query
     response = app_client_no_files.get(
-        "/_memory.json?sql=select+sqlite_version()&_shape=array"
+        "/_memory/-/query.json?sql=select+sqlite_version()&_shape=array"
     )
     assert 1 == len(response.json)
     assert ["sqlite_version()"] == list(response.json[0].keys())
@@ -653,7 +653,7 @@ def test_database_page_for_database_with_dot_in_name(app_client_with_dot):
 @pytest.mark.asyncio
 async def test_custom_sql(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?sql=select+content+from+simple_primary_key"
+        "/fixtures/-/query.json?sql=select+content+from+simple_primary_key",
     )
     data = response.json()
     assert data == {
@@ -670,7 +670,9 @@ async def test_custom_sql(ds_client):
 
 
 def test_sql_time_limit(app_client_shorter_time_limit):
-    response = app_client_shorter_time_limit.get("/fixtures.json?sql=select+sleep(0.5)")
+    response = app_client_shorter_time_limit.get(
+        "/fixtures/-/query.json?sql=select+sleep(0.5)",
+    )
     assert 400 == response.status
     assert response.json == {
         "ok": False,
@@ -691,16 +693,22 @@ def test_sql_time_limit(app_client_shorter_time_limit):
 
 @pytest.mark.asyncio
 async def test_custom_sql_time_limit(ds_client):
-    response = await ds_client.get("/fixtures.json?sql=select+sleep(0.01)")
+    response = await ds_client.get(
+        "/fixtures/-/query.json?sql=select+sleep(0.01)",
+    )
     assert response.status_code == 200
-    response = await ds_client.get("/fixtures.json?sql=select+sleep(0.01)&_timelimit=5")
+    response = await ds_client.get(
+        "/fixtures/-/query.json?sql=select+sleep(0.01)&_timelimit=5",
+    )
     assert response.status_code == 400
     assert response.json()["title"] == "SQL Interrupted"
 
 
 @pytest.mark.asyncio
 async def test_invalid_custom_sql(ds_client):
-    response = await ds_client.get("/fixtures.json?sql=.schema")
+    response = await ds_client.get(
+        "/fixtures/-/query.json?sql=.schema",
+    )
     assert response.status_code == 400
     assert response.json()["ok"] is False
     assert "Statement must be a SELECT" == response.json()["error"]
@@ -883,9 +891,13 @@ async def test_json_columns(ds_client, extra_args, expected):
         select 1 as intval, "s" as strval, 0.5 as floatval,
         '{"foo": "bar"}' as jsonval
     """
-    path = "/fixtures.json?" + urllib.parse.urlencode({"sql": sql, "_shape": "array"})
+    path = "/fixtures/-/query.json?" + urllib.parse.urlencode(
+        {"sql": sql, "_shape": "array"}
+    )
     path += extra_args
-    response = await ds_client.get(path)
+    response = await ds_client.get(
+        path,
+    )
     assert response.json() == expected
 
 
@@ -917,7 +929,7 @@ def test_config_force_https_urls():
         ("/fixtures.json", 200),
         ("/fixtures/no_primary_key.json", 200),
         # A 400 invalid SQL query should still have the header:
-        ("/fixtures.json?sql=select+blah", 400),
+        ("/fixtures/-/query.json?sql=select+blah", 400),
         # Write APIs
         ("/fixtures/-/create", 405),
         ("/fixtures/facetable/-/insert", 405),
@@ -930,7 +942,9 @@ def test_cors(
     path,
     status_code,
 ):
-    response = app_client_with_cors.get(path)
+    response = app_client_with_cors.get(
+        path,
+    )
     assert response.status == status_code
     assert response.headers["Access-Control-Allow-Origin"] == "*"
     assert (
@@ -946,7 +960,9 @@ def test_cors(
     # should not have those headers - I'm using that fixture because
     # regular app_client doesn't have immutable fixtures.db which means
     # the test for /fixtures.db returns a 403 error
-    response = app_client_two_attached_databases_one_immutable.get(path)
+    response = app_client_two_attached_databases_one_immutable.get(
+        path,
+    )
     assert response.status == status_code
     assert "Access-Control-Allow-Origin" not in response.headers
     assert "Access-Control-Allow-Headers" not in response.headers

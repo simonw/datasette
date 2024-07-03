@@ -25,7 +25,8 @@ def test_crossdb_join(app_client_two_attached_databases_crossdb_enabled):
       fixtures.searchable
     """
     response = app_client.get(
-        "/_memory.json?" + urllib.parse.urlencode({"sql": sql, "_shape": "array"})
+        "/_memory/-/query.json?"
+        + urllib.parse.urlencode({"sql": sql, "_shape": "array"})
     )
     assert response.status == 200
     assert response.json == [

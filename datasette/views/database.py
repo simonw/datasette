@@ -58,6 +58,11 @@ class DatabaseView(View):
 
         sql = (request.args.get("sql") or "").strip()
         if sql:
+            redirect_url = "/" + request.url_vars.get("database") + "/-/query"
+            if request.url_vars.get("format"):
+                redirect_url += "." + request.url_vars.get("format")
+            redirect_url += "?" + request.query_string
+            return Response.redirect(redirect_url)
             return await QueryView()(request, datasette)
 
         if format_ not in ("html", "json"):
@@ -433,6 +438,8 @@ class QueryView(View):
     async def get(self, request, datasette):
         from datasette.app import TableNotFound
 
+        await datasette.refresh_schemas()
+
         db = await datasette.resolve_database(request)
         database = db.name
 
@@ -686,6 +693,7 @@ class QueryView(View):
             if allow_execute_sql and is_validated_sql and ":_" not in sql:
                 edit_sql_url = (
                     datasette.urls.database(database)
+                    + "/-/query"
                     + "?"
                     + urlencode(
                         {

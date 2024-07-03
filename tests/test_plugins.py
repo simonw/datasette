@@ -45,7 +45,7 @@ def test_plugin_hooks_have_tests(plugin_hook):
 @pytest.mark.asyncio
 async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?_shape=arrayfirst&sql=select+convert_units(100%2C+'m'%2C+'ft')"
+        "/fixtures/-/query.json?_shape=arrayfirst&sql=select+convert_units(100%2C+'m'%2C+'ft')"
     )
     assert response.json()[0] == pytest.approx(328.0839)
 
@@ -53,7 +53,7 @@ async def test_hook_plugins_dir_plugin_prepare_connection(ds_client):
 @pytest.mark.asyncio
 async def test_hook_plugin_prepare_connection_arguments(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?sql=select+prepare_connection_args()&_shape=arrayfirst"
+        "/fixtures/-/query.json?sql=select+prepare_connection_args()&_shape=arrayfirst"
     )
     assert [
         "database=fixtures, datasette.plugin_config(\"name-of-plugin\")={'depth': 'root'}"
@@ -176,7 +176,7 @@ async def test_hook_render_cell_link_from_json(ds_client):
     sql = """
         select '{"href": "http://example.com/", "label":"Example"}'
     """.strip()
-    path = "/fixtures?" + urllib.parse.urlencode({"sql": sql})
+    path = "/fixtures/-/query?" + urllib.parse.urlencode({"sql": sql})
     response = await ds_client.get(path)
     td = Soup(response.text, "html.parser").find("table").find("tbody").find("td")
     a = td.find("a")
@@ -205,7 +205,11 @@ async def test_hook_render_cell_demo(ds_client):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "path", ("/fixtures?sql=select+'RENDER_CELL_ASYNC'", "/fixtures/simple_primary_key")
+    "path",
+    (
+        "/fixtures/-/query?sql=select+'RENDER_CELL_ASYNC'",
+        "/fixtures/simple_primary_key",
+    ),
 )
 async def test_hook_render_cell_async(ds_client, path):
     response = await ds_client.get(path)
@@ -423,7 +427,7 @@ def view_names_client(tmp_path_factory):
         ("/fixtures/units", "table"),
         ("/fixtures/units/1", "row"),
         ("/-/versions", "json_data"),
-        ("/fixtures?sql=select+1", "database"),
+        ("/fixtures/-/query?sql=select+1", "database"),
     ),
 )
 def test_view_names(view_names_client, path, view_name):
@@ -975,13 +979,13 @@ def get_actions_links(html):
 @pytest.mark.parametrize(
     "path,expected_url",
     (
-        ("/fixtures?sql=select+1", "/fixtures?sql=explain+select+1"),
+        ("/fixtures/-/query?sql=select+1", "/fixtures/-/query?sql=explain+select+1"),
         (
             "/fixtures/pragma_cache_size",
-            "/fixtures?sql=explain+PRAGMA+cache_size%3B",
+            "/fixtures/-/query?sql=explain+PRAGMA+cache_size%3B",
         ),
         # Don't attempt to explain an explain
-        ("/fixtures?sql=explain+select+1", None),
+        ("/fixtures/-/query?sql=explain+select+1", None),
     ),
 )
 async def test_hook_query_actions(ds_client, path, expected_url):
@@ -1475,7 +1479,7 @@ async def test_hook_top_row(ds_client):
 async def test_hook_top_query(ds_client):
     try:
         pm.register(SlotPlugin(), name="SlotPlugin")
-        response = await ds_client.get("/fixtures?sql=select+1&z=x")
+        response = await ds_client.get("/fixtures/-/query?sql=select+1&z=x")
         assert response.status_code == 200
         assert "Xtop_query:fixtures:select 1:x" in response.text
     finally:

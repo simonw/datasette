@@ -146,14 +146,14 @@ async def test_table_csv_blob_columns(ds_client):
 @pytest.mark.asyncio
 async def test_custom_sql_csv_blob_columns(ds_client):
     response = await ds_client.get(
-        "/fixtures.csv?sql=select+rowid,+data+from+binary_data"
+        "/fixtures/-/query.csv?sql=select+rowid,+data+from+binary_data"
     )
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
     assert response.text == (
         "rowid,data\r\n"
-        '1,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d"\r\n'
-        '2,"http://localhost/fixtures.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724"\r\n'
+        '1,"http://localhost/fixtures/-/query.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=f3088978da8f9aea479ffc7f631370b968d2e855eeb172bea7f6c7a04262bb6d"\r\n'
+        '2,"http://localhost/fixtures/-/query.blob?sql=select+rowid,+data+from+binary_data&_blob_column=data&_blob_hash=b835b0483cedb86130b9a2c280880bf5fadc5318ddf8c18d0df5204d40df1724"\r\n'
         "3,\r\n"
     )
 
@@ -161,7 +161,7 @@ async def test_custom_sql_csv_blob_columns(ds_client):
 @pytest.mark.asyncio
 async def test_custom_sql_csv(ds_client):
     response = await ds_client.get(
-        "/fixtures.csv?sql=select+content+from+simple_primary_key+limit+2"
+        "/fixtures/-/query.csv?sql=select+content+from+simple_primary_key+limit+2"
     )
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"
@@ -182,7 +182,7 @@ async def test_table_csv_download(ds_client):
 @pytest.mark.asyncio
 async def test_csv_with_non_ascii_characters(ds_client):
     response = await ds_client.get(
-        "/fixtures.csv?sql=select%0D%0A++%27%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC%27+as+text%2C%0D%0A++1+as+number%0D%0Aunion%0D%0Aselect%0D%0A++%27bob%27+as+text%2C%0D%0A++2+as+number%0D%0Aorder+by%0D%0A++number"
+        "/fixtures/-/query.csv?sql=select%0D%0A++%27%F0%9D%90%9C%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%A2%F0%9D%90%9E%F0%9D%90%AC%27+as+text%2C%0D%0A++1+as+number%0D%0Aunion%0D%0Aselect%0D%0A++%27bob%27+as+text%2C%0D%0A++2+as+number%0D%0Aorder+by%0D%0A++number"
     )
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; charset=utf-8"

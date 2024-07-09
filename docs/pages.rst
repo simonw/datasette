@@ -40,6 +40,12 @@ The JSON version of this page provides programmatic access to the underlying dat
 * `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
 * `global-power-plants.datasettes.com/global-power-plants.json <https://global-power-plants.datasettes.com/global-power-plants.json>`_
 
+.. _QueryView:
+
+Queries
+========
+
+TODO
 .. _DatabaseView_hidden:
 
 Hidden tables

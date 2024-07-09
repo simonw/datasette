@@ -40,7 +40,7 @@ async () => {
     import setuptools
     from datasette.app import Datasette
     ds = Datasette(memory=True, settings={'num_sql_threads': 0})
-    (await ds.client.get('/_memory.json?sql=select+55+as+itworks&_shape=array')).text
+    (await ds.client.get('/_memory/-/query.json?sql=select+55+as+itworks&_shape=array')).text
   \`);
   if (JSON.parse(output)[0].itworks != 55) {
     throw 'Got ' + output + ', expected itworks: 55';

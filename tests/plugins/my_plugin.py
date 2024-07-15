@@ -411,6 +411,7 @@ def query_actions(datasette, database, query_name, sql):
     return [
         {
             "href": datasette.urls.database(database)
+            + "/-/query"
             + "?"
             + urllib.parse.urlencode(
                 {

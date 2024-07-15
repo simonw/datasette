@@ -57,7 +57,7 @@ async def test_table_shape_arrays(ds_client):
 @pytest.mark.asyncio
 async def test_table_shape_arrayfirst(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?"
+        "/fixtures/-/query.json?"
         + urllib.parse.urlencode(
             {
                 "sql": "select content from simple_primary_key order by id",
@@ -699,7 +699,7 @@ async def test_table_through(ds_client):
 @pytest.mark.asyncio
 async def test_max_returned_rows(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?sql=select+content+from+no_primary_key"
+        "/fixtures/-/query.json?sql=select+content+from+no_primary_key"
     )
     data = response.json()
     assert data["truncated"]

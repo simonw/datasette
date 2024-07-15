@@ -412,7 +412,7 @@ def test_magic_parameters_csrf_json(magic_parameters_client, use_csrf, return_js
 
 def test_magic_parameters_cannot_be_used_in_arbitrary_queries(magic_parameters_client):
     response = magic_parameters_client.get(
-        "/data.json?sql=select+:_header_host&_shape=array"
+        "/data/-/query.json?sql=select+:_header_host&_shape=array"
     )
     assert 400 == response.status
     assert response.json["error"].startswith("You did not supply a value for binding")

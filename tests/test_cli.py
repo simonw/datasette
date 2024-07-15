@@ -250,7 +250,7 @@ def test_plugin_s_overwrite():
             "--plugins-dir",
             plugins_dir,
             "--get",
-            "/_memory.json?sql=select+prepare_connection_args()",
+            "/_memory/-/query.json?sql=select+prepare_connection_args()",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -265,7 +265,7 @@ def test_plugin_s_overwrite():
             "--plugins-dir",
             plugins_dir,
             "--get",
-            "/_memory.json?sql=select+prepare_connection_args()",
+            "/_memory/-/query.json?sql=select+prepare_connection_args()",
             "-s",
             "plugins.name-of-plugin",
             "OVERRIDE",
@@ -295,7 +295,7 @@ def test_setting_default_allow_sql(default_allow_sql):
             "default_allow_sql",
             "on" if default_allow_sql else "off",
             "--get",
-            "/_memory.json?sql=select+21&_shape=objects",
+            "/_memory/-/query.json?sql=select+21&_shape=objects",
         ],
     )
     if default_allow_sql:
@@ -309,7 +309,7 @@ def test_setting_default_allow_sql(default_allow_sql):
 
 def test_sql_errors_logged_to_stderr():
     runner = CliRunner(mix_stderr=False)
-    result = runner.invoke(cli, ["--get", "/_memory.json?sql=select+blah"])
+    result = runner.invoke(cli, ["--get", "/_memory/-/query.json?sql=select+blah"])
     assert result.exit_code == 1
     assert "sql = 'select blah', params = {}: no such column: blah\n" in result.stderr
 

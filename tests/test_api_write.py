@@ -637,7 +637,9 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     # Should be a single row
     assert (
         await ds_write.client.get(
-            "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)
+            "/data/-/query.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(
+                table
+            )
         )
     ).json() == [1]
     # Now delete the row
@@ -645,7 +647,9 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
         # Special case for that rowid table
         delete_path = (
             await ds_write.client.get(
-                "/data.json?_shape=arrayfirst&sql=select+rowid+from+{}".format(table)
+                "/data/-/query.json?_shape=arrayfirst&sql=select+rowid+from+{}".format(
+                    table
+                )
             )
         ).json()[0]
 
@@ -663,7 +667,9 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     assert event.pks == str(delete_path).split(",")
     assert (
         await ds_write.client.get(
-            "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)
+            "/data/-/query.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(
+                table
+            )
         )
     ).json() == [0]
 

@@ -1199,7 +1199,9 @@ async def test_format_of_binary_links(size, title, length_bytes):
     expected = "{}>&lt;Binary:&nbsp;{}&nbsp;bytes&gt;</a>".format(title, length_bytes)
     assert expected in response.text
     # And test with arbitrary SQL query too
-    sql_response = await ds.client.get("/{}".format(db_name), params={"sql": sql})
+    sql_response = await ds.client.get(
+        "{}/-/query".format(db_name), params={"sql": sql}
+    )
     assert sql_response.status_code == 200
     assert expected in sql_response.text
 

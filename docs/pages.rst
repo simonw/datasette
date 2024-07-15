@@ -40,12 +40,6 @@ The JSON version of this page provides programmatic access to the underlying dat
 * `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
 * `global-power-plants.datasettes.com/global-power-plants.json <https://global-power-plants.datasettes.com/global-power-plants.json>`_
 
-.. _QueryView:
-
-Queries
-========
-
-TODO
 .. _DatabaseView_hidden:
 
 Hidden tables
@@ -60,6 +54,21 @@ The following tables are hidden by default:
 - ``*_fts`` tables that implement SQLite full-text search indexes.
 - Tables relating to the inner workings of the SpatiaLite SQLite extension.
 - ``sqlite_stat`` tables used to store statistics used by the query optimizer.
+
+.. _QueryView:
+
+Queries
+=======
+
+The ``/database-name/-/query`` page can be used to execute an arbitrary SQL query against that database, if the :ref:`permissions_execute_sql` permission is enabled. This query is passed as the ``?sql=`` query string parameter.
+
+This means you can link directly to a query by constructing the following URL:
+
+``/database-name/-/query?sql=SELECT+*+FROM+table_name``
+
+Each configured :ref:`canned query <canned_queries>` has its own page, at ``/database-name/query-name``. Viewing this page will execute the query and display the results.
+
+In both cases adding a ``.json`` extension to the URL will return the results as JSON.
 
 .. _TableView:
 

@@ -268,7 +268,7 @@ def test_view_query(allow, expected_anon, expected_auth):
 def test_execute_sql(config):
     schema_re = re.compile("const schema = ({.*?});", re.DOTALL)
     with make_app_client(config=config) as client:
-        form_fragment = '<form class="sql" action="/fixtures"'
+        form_fragment = '<form class="sql" action="/fixtures/-/query"'
 
         # Anonymous users - should not display the form:
         anon_html = client.get("/fixtures").text

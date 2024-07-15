@@ -68,9 +68,10 @@ def test_crossdb_attached_database_list_display(
 ):
     app_client = app_client_two_attached_databases_crossdb_enabled
     response = app_client.get("/_memory")
+    response2 = app_client.get("/")
     for fragment in (
         "databases are attached to this connection",
         "<li><strong>fixtures</strong> - ",
-        "<li><strong>extra database</strong> - ",
+        '<li><strong>extra database</strong> - <a href="/extra+database/-/query?sql=',
     ):
         assert fragment in response.text

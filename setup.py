@@ -70,7 +70,7 @@ setup(
     """,
     extras_require={
         "docs": [
-            "Sphinx==7.3.7",
+            "Sphinx==7.4.3",
             "furo==2024.5.6",
             "sphinx-autobuild",
             "codespell>=2.2.5",

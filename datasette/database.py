@@ -85,12 +85,13 @@ class Database:
             return "db"
 
     def connect(self, write=False):
+        extra_kwargs = {}
+        if write:
+            extra_kwargs["isolation_level"] = "IMMEDIATE"
         if self.memory_name:
             uri = "file:{}?mode=memory&cache=shared".format(self.memory_name)
             conn = sqlite3.connect(
-                uri,
-                uri=True,
-                check_same_thread=False,
+                uri, uri=True, check_same_thread=False, **extra_kwargs
             )
             if not write:
                 conn.execute("PRAGMA query_only=1")
@@ -111,7 +112,7 @@ class Database:
         if self.mode is not None:
             qs = f"?mode={self.mode}"
         conn = sqlite3.connect(
-            f"file:{self.path}{qs}", uri=True, check_same_thread=False
+            f"file:{self.path}{qs}", uri=True, check_same_thread=False, **extra_kwargs
         )
         self._all_file_connections.append(conn)
         return conn

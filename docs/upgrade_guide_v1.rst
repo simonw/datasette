@@ -60,8 +60,7 @@ Previously, if you wanted to run SQL code using the Datasette HTTP API, you coul
     # DEPRECATED: Older endpoint for Datasette 0.XX
     curl http://localhost:8001/_memory?sql=select+123
 
-However, in Datasette 1.0, the endpoint wasn slightly changed to:
-
+However, in Datasette 1.0, the endpoint was slightly changed to:
 
 ::
 

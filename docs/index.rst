@@ -65,5 +65,6 @@ Contents
    testing_plugins
    internals
    events
+   upgrade_guide_v1
    contributing
    changelog

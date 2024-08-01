@@ -5,21 +5,31 @@
 ====================================
 
 
-This document specifically reviews what breaking changes Datasette ``1.0`` has when upgrading from a ``0.XX`` version. For new features that ``1.0`` offers, see the [Changelog](#TODO).
+This document specifically reviews what breaking changes Datasette ``1.0`` has when upgrading from a ``0.XX`` version.
+For new features that ``1.0`` offers, see the [Changelog](https://docs.datasette.io/en/latest/changelog.html).
 
 
 Metadata changes
 ================
 
-Metadata in Datasette.10 was completely revamped. There are a number of related breaking changes, from the ``metadata.yaml`` file to Python APIs that you'll need to consider when upgrading.
+Metadata in Datasette.10 was completely revamped.
+There are a number of related breaking changes, from the ``metadata.yaml`` file to Python APIs that you'll need to consider when upgrading.
 
 ``metadata.yaml`` split into ``datasette.yaml``
 -----------------------------------------------
 
-Before Datasette 1.0, the ``metadata.yaml`` file became a kitchen sink if a mix of metadata, configuration, and settings. Now ``metadata.yaml``
+Before Datasette 1.0, the ``metadata.yaml`` file became a kitchen sink if a mix of metadata, configuration, and settings.
+Now ``metadata.yaml`` is strictly for metaata (ex title and descriptions of database and tables, licensing info, etc).
+
 
 Metadata "fallback" has been removed
 ------------------------------------
+
+Certain keys in metadata like ``license`` used to "fallback" up the chain of ownership.
+For example, if you set an ``MIT`` to a database and a table within that database did not have a specified license,
+then that table would inherit an ``MIT`` license.
+
+This behavior has been removed in Datasette 1.0. Now license fields must be placed on all items, including individual databases and tables.
 
 The ``get_metadata()`` Plugin hook has been removed
 -------------------------------------------------
@@ -43,12 +53,21 @@ Instead, one should use the following methods on a Datasette class:
 The ``/metadata.json`` endpoint has been removed
 ------------------------------------------------
 
-As of Datasette `1.0a14` (2024-XX-XX), the
+As of Datasette `1.0a14`, the root level ``/metadata.json`` endpoint has been removed.
 
 The ``metadata()`` method on the Datasette class has been removed
 -----------------------------------------------------------------
 
-As of Datasette ``1.0a14`` (2024-XX-XX), the
+As of Datasette ``1.0a14``, the ``.metadata()`` method on the Datasette Python API has been removed.
+
+Instead, one should use the following methods on a Datasette class:
+
+
+- [`.get_instance_metadata()`](#TODO)
+- [`.get_database_metadata()`](#TODO)
+- [`.get_resource_metadata()`](#TODO)
+- [`.get_column_metadata()`](#TODO)
+
 
 New endpoint for SQL queries
 ============================

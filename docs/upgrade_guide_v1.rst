@@ -32,7 +32,7 @@ then that table would inherit an ``MIT`` license.
 This behavior has been removed in Datasette 1.0. Now license fields must be placed on all items, including individual databases and tables.
 
 The ``get_metadata()`` Plugin hook has been removed
--------------------------------------------------
+---------------------------------------------------
 
 As of Datasette ``1.0a14`` (2024-XX-XX), the ``get_metadata()`` hook has been deprecated.
 
@@ -45,10 +45,10 @@ As of Datasette ``1.0a14`` (2024-XX-XX), the ``get_metadata()`` hook has been de
 
 Instead, one should use the following methods on a Datasette class:
 
-- [`.get_instance_metadata()`](#TODO) and [`.set_instance_metadata()`](#TODO)
-- [`.get_database_metadata()`](#TODO) and [`.set_database_metadata()`](#TODO)
-- [`.get_resource_metadata()`](#TODO) and [`.set_resource_metadata()`](#TODO)
-- [`.get_column_metadata()`](#TODO) and [`.set_column_metadata()`](#TODO)
+- :ref:`get_instance_metadata() <datasette_get_instance_metadata>` and  :ref:`set_instance_metadata() <datasette_set_instance_metadata>`
+- :ref:`get_database_metadata() <datasette_get_database_metadata>` and  :ref:`set_database_metadata() <datasette_set_database_metadata>`
+- :ref:`get_resource_metadata() <datasette_get_resource_metadata>` and  :ref:`set_resource_metadata() <datasette_set_resource_metadata>`
+- :ref:`get_column_metadata() <datasette_get_column_metadata>` and  :ref:`set_column_metadata() <datasette_set_column_metadata>`
 
 The ``/metadata.json`` endpoint has been removed
 ------------------------------------------------
@@ -63,10 +63,10 @@ As of Datasette ``1.0a14``, the ``.metadata()`` method on the Datasette Python A
 Instead, one should use the following methods on a Datasette class:
 
 
-- [`.get_instance_metadata()`](#TODO)
-- [`.get_database_metadata()`](#TODO)
-- [`.get_resource_metadata()`](#TODO)
-- [`.get_column_metadata()`](#TODO)
+- :ref:`get_instance_metadata() <datasette_get_instance_metadata>`
+- :ref:`get_database_metadata() <datasette_get_database_metadata>`
+- :ref:`get_resource_metadata() <datasette_get_resource_metadata>`
+- :ref:`get_column_metadata() <datasette_get_column_metadata>`
 
 
 New endpoint for SQL queries

@@ -9,8 +9,29 @@
 Datasette 0.X -> 1.0
 ====================
 
-This section reviews breaking changes Datasette ``1.0`` has when upgrading from a ``0.XX`` version.
-For new features that ``1.0`` offers, see the :ref:`changelog`.
+This section reviews breaking changes Datasette ``1.0`` has when upgrading from a ``0.XX`` version. For new features that ``1.0`` offers, see the :ref:`changelog`.
+
+.. _upgrade_guide_v1_sql_queries:
+
+New URL for SQL queries
+-----------------------
+
+Prior to ``1.0a14`` the URL for executing a SQL query looked like this:
+
+::
+    /databasename?sql=select+1
+    # Or for JSON:
+    /databasename.json?sql=select+1
+
+This endpoint served two purposes: without a ``?sql=`` it would list the tables in the database, but with that option it would return results of a query instead.
+
+The URL for executing a SQL query now looks like this::
+
+    /databasename/-/query?sql=select+1
+    # Or for JSON:
+    /databasename/-/query.json?sql=select+1
+
+**This isn't a breaking change.** API calls to the older ``/databasename?sql=...`` endpoint will redirect to the new ``databasename/-/query?sql=...`` endpoint. Upgrading to the new URL is recommended to avoid the overhead of the additional redirect.
 
 .. _upgrade_guide_v1_metadata:
 
@@ -86,10 +107,14 @@ Instead, plugins are encouraged to interact directly with Datasette's in-memory 
 
 A plugin that stores or calculates its own metadata can implement the :ref:`plugin_hook_startup` hook to populate those items on startup, and then call those methods while it is running to persist any new metadata changes.
 
+.. _upgrade_guide_v1_metadata_json_removed:
+
 The ``/metadata.json`` endpoint has been removed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 As of Datasette ``1.0a14``, the root level ``/metadata.json`` endpoint has been removed. Metadata for tables will become available through currently in-development extras in a future alpha.
+
+.. _upgrade_guide_v1_metadata_method_removed:
 
 The ``metadata()`` method on the Datasette class has been removed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -102,24 +127,3 @@ Instead, one should use the following methods on a Datasette class:
 - :ref:`get_database_metadata() <datasette_get_database_metadata>`
 - :ref:`get_resource_metadata() <datasette_get_resource_metadata>`
 - :ref:`get_column_metadata() <datasette_get_column_metadata>`
-
-New endpoint for SQL queries
-----------------------------
-
-Previously, if you wanted to run SQL code using the Datasette HTTP API, you could call an endpoint that looked like:
-
-::
-
-    # DEPRECATED: Older endpoint for Datasette 0.XX
-    curl http://localhost:8001/_memory?sql=select+123
-
-However, in Datasette 1.0, the endpoint was slightly changed to:
-
-::
-
-    # ✅ Datasette 1.0 and beyond
-    curl http://localhost:8001/_memory/-/query?sql=select+123
-
-Specifically, now there's a ``/-/query`` "action" that should be used.
-
-**This isn't a breaking change.** API calls to the older ``/database?sql=...`` endpoint will redirect to the new ``database/-/query?sql=...`` endpoint. However, documentations and example will use the new query endpoint, so it is recommended to use that instead.

@@ -516,6 +516,128 @@ Returns the specified database object. Raises a ``KeyError`` if the database doe
 
 Returns a database object for reading and writing to the private :ref:`internal database <internals_internal>`.
 
+
+.. _datasette_get_instance_metadata:
+
+await .get_instance_metadata(self)
+----------------------------------
+
+Returns metadata keys and values for the entire Datasette instance as a dictionary.
+Internally queries the ``datasette_metadata_instance_entries`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_get_database_metadata:
+
+await .get_database_metadata(self, database_name)
+------------------------------------------------------
+
+``database_name`` - string
+    The name of the database to query.
+
+Returns metadata keys and values for the specified database as a dictionary.
+Internally queries the ``datasette_metadata_database_entries`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_get_resource_metadata:
+
+await .get_resource_metadata(self, database_name, resource_name)
+--------------------------------------------------------------------------
+
+``database_name`` - string
+    The name of the database to query.
+``resource_name`` - string
+    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+
+Returns metadata keys and values for the specified "resource" as a dictionary.
+A "resource" in this context can be a table, view, or canned query.
+Internally queries the ``datasette_metadata_resource_entries`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_get_column_metadata:
+
+await .get_column_metadata(self, database_name, resource_name, column_name)
+------------------------------------------------------------------------------------------
+
+``database_name`` - string
+    The name of the database to query.
+``resource_name`` - string
+    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+``column_name`` - string
+    The name of the column inside ``resource_name`` to query.
+
+
+Returns metadata keys and values for the specified column, resource, and table as a dictionary.
+Internally queries the ``datasette_metadata_column_entries`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_set_instance_metadata:
+
+await .set_instance_metadata(self, key, value)
+--------------------------------------------------------
+
+``key`` - string
+    The metadata entry key to insert (ex ``title``, ``description``, etc.)
+``value`` - string
+    The value of the metadata entry to insert.
+
+Adds a new metadata entry for the entire Datasette instance.
+Any previous instance-level metadata entry with the same ``key`` will be overwritten.
+Internally upserts the value into the  the ``datasette_metadata_instance_entries`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_set_database_metadata:
+
+await .set_database_metadata(self, database_name, key, value)
+----------------------------------------------------------------------------
+
+``database_name`` - string
+    The database the metadata entry belongs to.
+``key`` - string
+    The metadata entry key to insert (ex ``title``, ``description``, etc.)
+``value`` - string
+    The value of the metadata entry to insert.
+
+Adds a new metadata entry for the specified database.
+Any previous database-level metadata entry with the same ``key`` will be overwritten.
+Internally upserts the value into the  the ``datasette_metadata_database_entries`` table inside the :ref:`internal database <internals_internal>`.
+
+
+.. _datasette_set_resource_metadata:
+
+await .set_resource_metadata(self, database_name, resource_name, key, value)
+------------------------------------------------------------------------------------------------
+
+``database_name`` - string
+    The database the metadata entry belongs to.
+``resource_name`` - string
+    The resource (table, view, or canned query) the metadata entry belongs to.
+``key`` - string
+    The metadata entry key to insert (ex ``title``, ``description``, etc.)
+``value`` - string
+    The value of the metadata entry to insert.
+
+Adds a new metadata entry for the specified "resource".
+Any previous resource-level metadata entry with the same ``key`` will be overwritten.
+Internally upserts the value into the  the ``datasette_metadata_resource_entries`` table inside the :ref:`internal database <internals_internal>`.
+
+
+.. _datasette_set_column_metadata:
+
+await .set_column_metadata(self, database_name, resource_name, column_name, key, value)
+------------------------------------------------------------------------------------------------------------------
+
+``database_name`` - string
+    The database the metadata entry belongs to.
+``resource_name`` - string
+    The resource (table, view, or canned query) the metadata entry belongs to.
+``column-name`` - string
+    The column the metadata entry belongs to.
+``key`` - string
+    The metadata entry key to insert (ex ``title``, ``description``, etc.)
+``value`` - string
+    The value of the metadata entry to insert.
+
+Adds a new metadata entry for the specified column.
+Any previous column-level metadata entry with the same ``key`` will be overwritten.
+Internally upserts the value into the  the ``datasette_metadata_column_entries`` table inside the :ref:`internal database <internals_internal>`.
+
+
+
 .. _datasette_add_database:
 
 .add_database(db, name=None, route=None)

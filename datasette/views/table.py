@@ -153,7 +153,7 @@ async def display_columns_and_rows(
           SELECT
             column_name,
             value
-          FROM datasette_metadata_column_entries
+          FROM metadata_columns
           WHERE database_name = ?
             AND resource_name = ?
             AND key = 'description'
@@ -1499,7 +1499,7 @@ async def table_view_data(
               SELECT
                 column_name,
                 value
-              FROM datasette_metadata_column_entries
+              FROM metadata_columns
               WHERE database_name = ?
                 AND resource_name = ?
                 AND key = 'description'

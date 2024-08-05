@@ -68,37 +68,39 @@ async def init_internal_db(db):
 
 async def initialize_metadata_tables(db):
     await db.execute_write_script(
-        """
-              CREATE TABLE IF NOT EXISTS datasette_metadata_instance_entries(
-                key text,
-                value text,
-                unique(key)
-              );
-
-              CREATE TABLE IF NOT EXISTS datasette_metadata_database_entries(
-                database_name text,
-                key text,
-                value text,
-                unique(database_name, key)
-              );
-
-              CREATE TABLE IF NOT EXISTS datasette_metadata_resource_entries(
-                database_name text,
-                resource_name text,
-                key text,
-                value text,
-                unique(database_name, resource_name, key)
-              );
-
-              CREATE TABLE IF NOT EXISTS datasette_metadata_column_entries(
-                database_name text,
-                resource_name text,
-                column_name text,
-                key text,
-                value text,
-                unique(database_name, resource_name, column_name, key)
-              );
+        textwrap.dedent(
             """
+        CREATE TABLE IF NOT EXISTS metadata_instance (
+            key text,
+            value text,
+            unique(key)
+        );
+
+        CREATE TABLE IF NOT EXISTS metadata_databases (
+            database_name text,
+            key text,
+            value text,
+            unique(database_name, key)
+        );
+
+        CREATE TABLE IF NOT EXISTS metadata_resources (
+            database_name text,
+            resource_name text,
+            key text,
+            value text,
+            unique(database_name, resource_name, key)
+        );
+
+        CREATE TABLE IF NOT EXISTS metadata_columns (
+            database_name text,
+            resource_name text,
+            column_name text,
+            key text,
+            value text,
+            unique(database_name, resource_name, column_name, key)
+        );
+            """
+        )
     )
 
 

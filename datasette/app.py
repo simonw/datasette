@@ -684,7 +684,7 @@ class Datasette:
               SELECT
                 key,
                 value
-              FROM datasette_metadata_instance_entries
+              FROM metadata_instance
             """
         )
         return dict(rows)
@@ -695,7 +695,7 @@ class Datasette:
               SELECT
                 key,
                 value
-              FROM datasette_metadata_database_entries
+              FROM metadata_databases
               WHERE database_name = ?
             """,
             [database_name],
@@ -708,7 +708,7 @@ class Datasette:
               SELECT
                 key,
                 value
-              FROM datasette_metadata_resource_entries
+              FROM metadata_resources
               WHERE database_name = ?
                 AND resource_name = ?
             """,
@@ -724,7 +724,7 @@ class Datasette:
               SELECT
                 key,
                 value
-              FROM datasette_metadata_column_entries
+              FROM metadata_columns
               WHERE database_name = ?
                 AND resource_name = ?
                 AND column_name = ?
@@ -737,7 +737,7 @@ class Datasette:
         # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
         await self.get_internal_database().execute_write(
             """
-              INSERT INTO datasette_metadata_instance_entries(key, value)
+              INSERT INTO metadata_instance(key, value)
                 VALUES(?, ?)
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
             """,
@@ -748,7 +748,7 @@ class Datasette:
         # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
         await self.get_internal_database().execute_write(
             """
-              INSERT INTO datasette_metadata_database_entries(database_name, key, value)
+              INSERT INTO metadata_databases(database_name, key, value)
                 VALUES(?, ?, ?)
                 ON CONFLICT(database_name, key) DO UPDATE SET value = excluded.value;
             """,
@@ -761,7 +761,7 @@ class Datasette:
         # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
         await self.get_internal_database().execute_write(
             """
-              INSERT INTO datasette_metadata_resource_entries(database_name, resource_name, key, value)
+              INSERT INTO metadata_resources(database_name, resource_name, key, value)
                 VALUES(?, ?, ?, ?)
                 ON CONFLICT(database_name, resource_name, key) DO UPDATE SET value = excluded.value;
             """,
@@ -779,7 +779,7 @@ class Datasette:
         # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
         await self.get_internal_database().execute_write(
             """
-              INSERT INTO datasette_metadata_column_entries(database_name, resource_name, column_name, key, value)
+              INSERT INTO metadata_columns(database_name, resource_name, column_name, key, value)
                 VALUES(?, ?, ?, ?, ?)
                 ON CONFLICT(database_name, resource_name, column_name, key) DO UPDATE SET value = excluded.value;
             """,

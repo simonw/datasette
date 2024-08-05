@@ -19,6 +19,7 @@ New URL for SQL queries
 Prior to ``1.0a14`` the URL for executing a SQL query looked like this:
 
 ::
+
     /databasename?sql=select+1
     # Or for JSON:
     /databasename.json?sql=select+1

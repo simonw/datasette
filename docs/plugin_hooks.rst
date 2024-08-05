@@ -1951,7 +1951,7 @@ This example plugin logs details of all events to standard error:
 
 The function can also return an async function which will be awaited. This is useful for writing to a database.
 
-This example logs events to a `datasette_events` table in a database called `events`. It uses the `startup()` hook to create that table if it does not exist.
+This example logs events to a ``datasette_events`` table in a database called ``events``. It uses the :ref:`plugin_hook_startup` hook to create that table if it does not exist.
 
 .. code-block:: python
 

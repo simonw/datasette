@@ -20,7 +20,7 @@ This alpha introduces significant changes to Datasette's :ref:`metadata` system,
 - Incorrect table and row names are no longer reflected back on the resulting 404 page. (:issue:`2359`)
 - Improved documentation for async usage of the :ref:`plugin_hook_track_event` hook. (:issue:`2319`)
 - Fixed some HTTPX deprecation warnings. (:issue:`2307`)
-- Datasette now serves a ``<html lange="en">`` attribute. Thanks, `Charles Nepote <https://github.com/CharlesNepote>`__. (:issue:`2348`)
+- Datasette now serves a ``<html lang="en">`` attribute. Thanks, `Charles Nepote <https://github.com/CharlesNepote>`__. (:issue:`2348`)
 - Datasette's automated tests now run against the maximum and minimum supported versions of SQLite: 3.25 (from September 2018) and 3.46 (from May 2024). Thanks, Alex Garcia. (`#2352 <https://github.com/simonw/datasette/pull/2352>`__)
 - Fixed an issue where clicking twice on the URL output by ``datasette --root`` produced a confusing error. (:issue:`2375`)
 

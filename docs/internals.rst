@@ -516,11 +516,17 @@ Returns the specified database object. Raises a ``KeyError`` if the database doe
 
 Returns a database object for reading and writing to the private :ref:`internal database <internals_internal>`.
 
+.. _datasette_get_set_metadata:
+
+Getting and setting metadata
+----------------------------
+
+Metadata about the instance, databases, tables and columns is stored in tables in :ref:`internals_internal`. The following methods are the supported API for plugins to read and update that stored metadata.
 
 .. _datasette_get_instance_metadata:
 
 await .get_instance_metadata(self)
-----------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Returns metadata keys and values for the entire Datasette instance as a dictionary.
 Internally queries the ``metadata_instance`` table inside the :ref:`internal database <internals_internal>`.
@@ -528,7 +534,7 @@ Internally queries the ``metadata_instance`` table inside the :ref:`internal dat
 .. _datasette_get_database_metadata:
 
 await .get_database_metadata(self, database_name)
-------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``database_name`` - string
     The name of the database to query.
@@ -539,7 +545,7 @@ Internally queries the ``metadata_databases`` table inside the :ref:`internal da
 .. _datasette_get_resource_metadata:
 
 await .get_resource_metadata(self, database_name, resource_name)
---------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``database_name`` - string
     The name of the database to query.
@@ -553,7 +559,7 @@ Internally queries the ``metadata_resources`` table inside the :ref:`internal da
 .. _datasette_get_column_metadata:
 
 await .get_column_metadata(self, database_name, resource_name, column_name)
-------------------------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``database_name`` - string
     The name of the database to query.
@@ -569,7 +575,7 @@ Internally queries the ``metadata_columns`` table inside the :ref:`internal data
 .. _datasette_set_instance_metadata:
 
 await .set_instance_metadata(self, key, value)
---------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``key`` - string
     The metadata entry key to insert (ex ``title``, ``description``, etc.)
@@ -583,7 +589,7 @@ Internally upserts the value into the  the ``metadata_instance`` table inside th
 .. _datasette_set_database_metadata:
 
 await .set_database_metadata(self, database_name, key, value)
-----------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``database_name`` - string
     The database the metadata entry belongs to.
@@ -596,11 +602,10 @@ Adds a new metadata entry for the specified database.
 Any previous database-level metadata entry with the same ``key`` will be overwritten.
 Internally upserts the value into the  the ``metadata_databases`` table inside the :ref:`internal database <internals_internal>`.
 
-
 .. _datasette_set_resource_metadata:
 
 await .set_resource_metadata(self, database_name, resource_name, key, value)
-------------------------------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``database_name`` - string
     The database the metadata entry belongs to.
@@ -615,11 +620,10 @@ Adds a new metadata entry for the specified "resource".
 Any previous resource-level metadata entry with the same ``key`` will be overwritten.
 Internally upserts the value into the  the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
 
-
 .. _datasette_set_column_metadata:
 
 await .set_column_metadata(self, database_name, resource_name, column_name, key, value)
-------------------------------------------------------------------------------------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``database_name`` - string
     The database the metadata entry belongs to.
@@ -635,8 +639,6 @@ await .set_column_metadata(self, database_name, resource_name, column_name, key,
 Adds a new metadata entry for the specified column.
 Any previous column-level metadata entry with the same ``key`` will be overwritten.
 Internally upserts the value into the  the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
-
-
 
 .. _datasette_add_database:
 
@@ -1338,7 +1340,7 @@ Datasette maintains an "internal" SQLite database used for configuration, cachin
 
 Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
 
-Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the ``get_*_metadata`` and ``set_*_metadata`` methods.
+Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
 
 The internal database is not exposed in the Datasette application by default, which means private data can safely be stored without worry of accidentally leaking information through the default Datasette interface and API. However, other plugins do have full read and write access to the internal database.
 

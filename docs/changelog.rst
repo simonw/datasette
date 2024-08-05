@@ -4,6 +4,26 @@
 Changelog
 =========
 
+.. _v1_0_a14:
+
+1.0a14 (2024-08-05)
+-------------------
+
+This alpha introduces significant changes to Datasette's :ref:`metadata` system, some of which represent breaking changes in advance of the full 1.0 release. The new :ref:`upgrade_guide` document provides detailed coverage of those breaking changes and how they affect plugin authors and Datasette API consumers.
+
+- The ``/databasename?sql=`` interface and JSON API for executing arbitrary SQL queries can now be found at ``/databasename/-/query?sql=``. Requests with a ``?sql=`` parameter to the old endpoints will be redirected. Thanks, `Alex Garcia <https://github.com/asg017>`__. (:issue:`2360`)
+- Metadata about tables, databases, instances and columns is now stored in :ref:`internals_internal`. Thanks, Alex Garcia. (:issue:`2341`)
+- Database write connections now execute using the ``IMMEDIATE`` isolation level for SQLite. This should help avoid a rare ``SQLITE_BUSY`` error that could occur when a transaction upgraded to a write mid-flight. (:issue:`2358`)
+- Fix for a bug where canned queries with named parameters could fail against SQLite 3.46. (:issue:`2353`)
+- Datasette now serves ``E-Tag`` headers for static files. Thanks, `Agustin Bacigalup <https://github.com/redraw>`__. (`#2306 <https://github.com/simonw/datasette/pull/2306>`__)
+- Dropdown menus now use a ``z-index`` that should avoid them being hidden by plugins. (:issue:`2311`)
+- Incorrect table and row names are no longer reflected back on the resulting 404 page. (:issue:`2359`)
+- Improved documentation for async usage of the :ref:`plugin_hook_track_event` hook. (:issue:`2319`)
+- Fixed some HTTPX deprecation warnings. (:issue:`2307`)
+- Datasette now serves a ``<html lange="en">`` attribute. Thanks, `Charles Nepote <https://github.com/CharlesNepote>`__. (:issue:`2348`)
+- Datasette's automated tests now run against the maximum and minimum supported versions of SQLite: 3.25 (from September 2018) and 3.46 (from May 2024). Thanks, Alex Garcia. (`#2352 <https://github.com/simonw/datasette/pull/2352>`__)
+- Fixed an issue where clicking twice on the URL output by ``datasette --root`` produced a confusing error. (:issue:`2375`)
+
 .. _v0_64_8:
 
 0.64.8 (2023-06-21)
@@ -671,7 +691,7 @@ Other small fixes
 
 - New ``datasette --uds /tmp/datasette.sock`` option for binding Datasette to a Unix domain socket, see :ref:`proxy documentation <deploying_proxy>` (:issue:`1388`)
 - ``"searchmode": "raw"`` table metadata option for defaulting a table to executing SQLite full-text search syntax without first escaping it, see :ref:`full_text_search_advanced_queries`. (:issue:`1389`)
-- New plugin hook: :ref:`plugin_hook_get_metadata`, for returning custom metadata for an instance, database or table. Thanks, Brandon Roberts! (:issue:`1384`)
+- New plugin hook: ``get_metadata()``, for returning custom metadata for an instance, database or table. Thanks, Brandon Roberts! (:issue:`1384`)
 - New plugin hook: :ref:`plugin_hook_skip_csrf`, for opting out of CSRF protection based on the incoming request. (:issue:`1377`)
 - The :ref:`menu_links() <plugin_hook_menu_links>`, :ref:`table_actions() <plugin_hook_table_actions>` and :ref:`database_actions() <plugin_hook_database_actions>` plugin hooks all gained a new optional ``request`` argument providing access to the current request. (:issue:`1371`)
 - Major performance improvement for Datasette faceting. (:issue:`1394`)

@@ -673,36 +673,34 @@ async def test_hidden_tables(app_client):
     assert await db.hidden_table_names() == []
     await db.execute("create virtual table f using fts5(a)")
     assert await db.hidden_table_names() == [
-       'f_config',
-       'f_content',
-       'f_data',
-       'f_docsize',
-       'f_idx',
-   ]
+        "f_config",
+        "f_content",
+        "f_data",
+        "f_docsize",
+        "f_idx",
+    ]
 
     await db.execute("create virtual table r using rtree(id, amin, amax)")
     assert await db.hidden_table_names() == [
-       'f_config',
-       'f_content',
-       'f_data',
-       'f_docsize',
-       'f_idx',
-       'r_node',
-       'r_parent',
-       'r_rowid'
-   ]
+        "f_config",
+        "f_content",
+        "f_data",
+        "f_docsize",
+        "f_idx",
+        "r_node",
+        "r_parent",
+        "r_rowid",
+    ]
 
     await db.execute("create table _hideme(_)")
     assert await db.hidden_table_names() == [
-        '_hideme',
-       'f_config',
-       'f_content',
-       'f_data',
-       'f_docsize',
-       'f_idx',
-       'r_node',
-       'r_parent',
-       'r_rowid'
-   ]
-
-
+        "_hideme",
+        "f_config",
+        "f_content",
+        "f_data",
+        "f_docsize",
+        "f_idx",
+        "r_node",
+        "r_parent",
+        "r_rowid",
+    ]

@@ -240,6 +240,31 @@ def test_setting(args):
     assert settings["default_page_size"] == 5
 
 
+def test_setting_compatible_with_config(tmp_path):
+    # https://github.com/simonw/datasette/issues/2389
+    runner = CliRunner()
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        '{"settings": {"default_page_size": 5, "sql_time_limit_ms": 50}}', "utf-8"
+    )
+    result = runner.invoke(
+        cli,
+        [
+            "--get",
+            "/-/settings.json",
+            "--config",
+            str(config_path),
+            "--setting",
+            "default_page_size",
+            "10",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    settings = json.loads(result.output)
+    assert settings["default_page_size"] == 10
+    assert settings["sql_time_limit_ms"] == 50
+
+
 def test_plugin_s_overwrite():
     runner = CliRunner()
     plugins_dir = str(pathlib.Path(__file__).parent / "plugins")

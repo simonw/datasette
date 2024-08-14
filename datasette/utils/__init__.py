@@ -1451,3 +1451,12 @@ async def calculate_etag(filepath, chunk_size=4096):
     _etag_cache[filepath] = etag
 
     return etag
+
+
+def deep_dict_update(dict1, dict2):
+    for key, value in dict2.items():
+        if isinstance(value, dict):
+            dict1[key] = deep_dict_update(dict1.get(key, type(value)()), value)
+        else:
+            dict1[key] = value
+    return dict1

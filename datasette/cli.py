@@ -25,6 +25,7 @@ from .utils import (
     LoadExtension,
     StartupError,
     check_connection,
+    deep_dict_update,
     find_spatialite,
     parse_metadata,
     ConnectionProblem,
@@ -552,7 +553,9 @@ def serve(
     # Merge in settings from -s/--setting
     if settings:
         settings_updates = pairs_to_nested_config(settings)
-        config_data.update(settings_updates)
+        # Merge recursively, to avoid over-writing nested values
+        # https://github.com/simonw/datasette/issues/2389
+        deep_dict_update(config_data, settings_updates)
 
     kwargs = dict(
         immutables=immutable,

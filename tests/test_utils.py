@@ -722,3 +722,35 @@ async def test_calculate_etag(tmp_path):
     utils._etag_cache[path] = "hash"
     assert "hash" == await utils.calculate_etag(path)
     utils._etag_cache.clear()
+
+
+@pytest.mark.parametrize(
+    "dict1,dict2,expected",
+    [
+        # Basic update
+        ({"a": 1, "b": 2}, {"b": 3, "c": 4}, {"a": 1, "b": 3, "c": 4}),
+        # Nested dictionary update
+        (
+            {"a": 1, "b": {"x": 10, "y": 20}},
+            {"b": {"y": 30, "z": 40}},
+            {"a": 1, "b": {"x": 10, "y": 30, "z": 40}},
+        ),
+        # Deep nested update
+        (
+            {"a": {"b": {"c": 1}}},
+            {"a": {"b": {"d": 2}}},
+            {"a": {"b": {"c": 1, "d": 2}}},
+        ),
+        # Update with mixed types
+        (
+            {"a": 1, "b": {"x": 10}},
+            {"b": {"y": 20}, "c": [1, 2, 3]},
+            {"a": 1, "b": {"x": 10, "y": 20}, "c": [1, 2, 3]},
+        ),
+    ],
+)
+def test_deep_dict_update(dict1, dict2, expected):
+    result = utils.deep_dict_update(dict1, dict2)
+    assert result == expected
+    # Check that the original dict1 was modified
+    assert dict1 == expected

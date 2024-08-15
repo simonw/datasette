@@ -509,21 +509,39 @@ class Database:
                         SELECT column1 AS suffix
                         FROM (VALUES ('_data'), ('_idx'), ('_docsize'), ('_content'), ('_config'))
                       ),
-                      fts_names AS (
+                      fts5_names AS (
                         SELECT name
                         FROM sqlite_master
                         WHERE sql LIKE '%VIRTUAL TABLE%USING FTS%'
                       ),
-                      fts_shadow_tables AS (
+                      fts5_shadow_tables AS (
                         SELECT
-                          printf('%s%s', fts_names.name, fts_suffixes.suffix) AS name
-                        FROM fts_names
+                          printf('%s%s', fts5_names.name, fts_suffixes.suffix) AS name
+                        FROM fts5_names
                         JOIN fts_suffixes
+                      ),
+                      fts3_suffixes AS (
+                        SELECT column1 AS suffix
+                        FROM (VALUES ('_content'), ('_segdir'), ('_segments'), ('_stat'), ('_docsize'))
+                      ),
+                      fts3_names AS (
+                        SELECT name
+                        FROM sqlite_master
+                        WHERE sql LIKE '%VIRTUAL TABLE%USING FTS3%'
+                          OR sql LIKE '%VIRTUAL TABLE%USING FTS4%'
+                      ),
+                      fts3_shadow_tables AS (
+                        SELECT
+                          printf('%s%s', fts3_names.name, fts3_suffixes.suffix) AS name
+                        FROM fts3_names
+                        JOIN fts3_suffixes
                       ),
                       final AS (
                         SELECT name FROM base
                         UNION ALL
-                        SELECT name FROM fts_shadow_tables
+                        SELECT name FROM fts5_shadow_tables
+                        UNION ALL
+                        SELECT name FROM fts3_shadow_tables
                       )
                       SELECT name FROM final ORDER BY 1
 

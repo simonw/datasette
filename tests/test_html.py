@@ -1,3 +1,4 @@
+from asgi_csrf import Errors
 from bs4 import BeautifulSoup as Soup
 from datasette.app import Datasette
 from datasette.utils import allowed_pragmas
@@ -1158,3 +1159,16 @@ async def test_database_color(ds_client):
 
             pdb.set_trace()
         assert any(fragment in response.text for fragment in expected_fragments)
+
+
+@pytest.mark.asyncio
+async def test_custom_csrf_error(ds_client):
+    response = await ds_client.post(
+        "/-/messages",
+        data={
+            "message": "A message",
+        },
+        cookies={"csrftoken": "x"},
+    )
+    assert response.status_code == 403
+    assert "Error code is FORM_URLENCODED_MISMATCH." in response.text

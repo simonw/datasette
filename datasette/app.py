@@ -1,3 +1,4 @@
+from asgi_csrf import Errors
 import asyncio
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import asgi_csrf
@@ -1657,6 +1658,16 @@ class Datasette:
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
 
+        async def custom_csrf_error(scope, send, message_id):
+            await asgi_send(
+                send,
+                await self.render_template(
+                    "csrf_error.html",
+                    {"message_id": message_id, "message_name": Errors(message_id).name},
+                ),
+                403,
+            )
+
         asgi = asgi_csrf.asgi_csrf(
             DatasetteRouter(self, routes),
             signing_secret=self._secret,
@@ -1664,6 +1675,7 @@ class Datasette:
             skip_if_scope=lambda scope: any(
                 pm.hook.skip_csrf(datasette=self, scope=scope)
             ),
+            send_csrf_failed=custom_csrf_error,
         )
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)

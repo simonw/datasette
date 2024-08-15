@@ -499,13 +499,11 @@ class Database:
                 x[0]
                 for x in await self.execute(
                     """
-                      with final as (
-                        select name
-                        from sqlite_master
-                        WHERE  name in ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
-                          OR substr(name, 1, 1) == '_'
-                      ),
-                      select name from final order by 1
+                      SELECT name
+                      FROM sqlite_master
+                      WHERE  name IN ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
+                        OR substr(name, 1, 1) == '_'
+                      ORDER BY 1
                     """
                 )
             ]

@@ -4,7 +4,7 @@ Tests for the datasette.database.Database class
 
 from datasette.app import Datasette
 from datasette.database import Database, Results, MultipleValues
-from datasette.utils.sqlite import sqlite3
+from datasette.utils.sqlite import sqlite3, sqlite_version
 from datasette.utils import Column
 from .fixtures import app_client, app_client_two_attached_databases_crossdb_enabled
 import pytest
@@ -664,3 +664,50 @@ async def test_in_memory_databases_forbid_writes(app_client):
     # Using db.execute_write() should work:
     await db.execute_write("create table foo (t text)")
     assert await db.table_names() == ["foo"]
+
+
+def pragma_table_list_supported():
+    return sqlite_version()[1] >= 37
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not pragma_table_list_supported(), reason="Requires PRAGMA table_list support"
+)
+async def test_hidden_tables(app_client):
+    ds = app_client.ds
+    db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))
+    assert await db.hidden_table_names() == []
+    await db.execute("create virtual table f using fts5(a)")
+    assert await db.hidden_table_names() == [
+        "f_config",
+        "f_content",
+        "f_data",
+        "f_docsize",
+        "f_idx",
+    ]
+
+    await db.execute("create virtual table r using rtree(id, amin, amax)")
+    assert await db.hidden_table_names() == [
+        "f_config",
+        "f_content",
+        "f_data",
+        "f_docsize",
+        "f_idx",
+        "r_node",
+        "r_parent",
+        "r_rowid",
+    ]
+
+    await db.execute("create table _hideme(_)")
+    assert await db.hidden_table_names() == [
+        "_hideme",
+        "f_config",
+        "f_content",
+        "f_data",
+        "f_docsize",
+        "f_idx",
+        "r_node",
+        "r_parent",
+        "r_rowid",
+    ]

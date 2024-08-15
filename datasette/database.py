@@ -20,6 +20,7 @@ from .utils import (
     table_columns,
     table_column_details,
 )
+from .utils.sqlite import sqlite_version
 from .inspect import inspect_hash
 
 connections = threading.local()
@@ -459,22 +460,95 @@ class Database:
         )
 
     async def hidden_table_names(self):
-        # Mark tables 'hidden' if they relate to FTS virtual tables
-        hidden_tables = [
-            r[0]
-            for r in (
-                await self.execute(
+        hidden_tables = []
+        # Add any tables marked as hidden in config
+        db_config = self.ds.config.get("databases", {}).get(self.name, {})
+        if "tables" in db_config:
+            hidden_tables += [
+                t for t in db_config["tables"] if db_config["tables"][t].get("hidden")
+            ]
+
+        if sqlite_version()[1] >= 37:
+            hidden_tables += [
+                x[0]
+                for x in await self.execute(
                     """
-                select name from sqlite_master
-                where rootpage = 0
-                and (
-                    sql like '%VIRTUAL TABLE%USING FTS%'
-                ) or name in ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
-                or name like '\\_%' escape '\\'
-            """
+                      with shadow_tables as (
+                        select name
+                        from pragma_table_list
+                        where [type] = 'shadow'
+                        order by name
+                      ),
+                      core_tables as (
+                        select name
+                        from sqlite_master
+                        WHERE  name in ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
+                          OR substr(name, 1, 1) == '_'
+                      ),
+                      combined as (
+                        select name from shadow_tables
+                        union all
+                        select name from core_tables
+                      )
+                      select name from combined order by 1
+                    """
                 )
-            ).rows
-        ]
+            ]
+        else:
+            hidden_tables += [
+                x[0]
+                for x in await self.execute(
+                    """
+                      WITH base AS (
+                        SELECT name
+                        FROM sqlite_master
+                        WHERE  name IN ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
+                          OR substr(name, 1, 1) == '_'
+                      ),
+                      fts_suffixes AS (
+                        SELECT column1 AS suffix
+                        FROM (VALUES ('_data'), ('_idx'), ('_docsize'), ('_content'), ('_config'))
+                      ),
+                      fts5_names AS (
+                        SELECT name
+                        FROM sqlite_master
+                        WHERE sql LIKE '%VIRTUAL TABLE%USING FTS%'
+                      ),
+                      fts5_shadow_tables AS (
+                        SELECT
+                          printf('%s%s', fts5_names.name, fts_suffixes.suffix) AS name
+                        FROM fts5_names
+                        JOIN fts_suffixes
+                      ),
+                      fts3_suffixes AS (
+                        SELECT column1 AS suffix
+                        FROM (VALUES ('_content'), ('_segdir'), ('_segments'), ('_stat'), ('_docsize'))
+                      ),
+                      fts3_names AS (
+                        SELECT name
+                        FROM sqlite_master
+                        WHERE sql LIKE '%VIRTUAL TABLE%USING FTS3%'
+                          OR sql LIKE '%VIRTUAL TABLE%USING FTS4%'
+                      ),
+                      fts3_shadow_tables AS (
+                        SELECT
+                          printf('%s%s', fts3_names.name, fts3_suffixes.suffix) AS name
+                        FROM fts3_names
+                        JOIN fts3_suffixes
+                      ),
+                      final AS (
+                        SELECT name FROM base
+                        UNION ALL
+                        SELECT name FROM fts5_shadow_tables
+                        UNION ALL
+                        SELECT name FROM fts3_shadow_tables
+                      )
+                      SELECT name FROM final ORDER BY 1
+
+                    """
+                )
+            ]
+
         has_spatialite = await self.execute_fn(detect_spatialite)
         if has_spatialite:
             # Also hide Spatialite internal tables
@@ -503,19 +577,6 @@ class Database:
                     )
                 ).rows
             ]
-        # Add any tables marked as hidden in config
-        db_config = self.ds.config.get("databases", {}).get(self.name, {})
-        if "tables" in db_config:
-            hidden_tables += [
-                t for t in db_config["tables"] if db_config["tables"][t].get("hidden")
-            ]
-        # Also mark as hidden any tables which start with the name of a hidden table
-        # e.g. "searchable_fts" implies "searchable_fts_content" should be hidden
-        for table_name in await self.table_names():
-            for hidden_table in hidden_tables[:]:
-                if table_name.startswith(hidden_table):
-                    hidden_tables.append(table_name)
-                    continue
 
         return hidden_tables
 

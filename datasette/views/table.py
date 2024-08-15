@@ -364,7 +364,7 @@ class TableInsertView(BaseView):
         def _errors(errors):
             return None, errors, {}
 
-        if request.headers.get("content-type") != "application/json":
+        if not request.headers.get("content-type").startswith("application/json"):
             # TODO: handle form-encoded data
             return _errors(["Invalid content-type, must be application/json"])
         body = await request.post_body()

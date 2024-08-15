@@ -37,12 +37,22 @@ def _headers(token):
 
 
 @pytest.mark.asyncio
-async def test_insert_row(ds_write):
+@pytest.mark.parametrize(
+    "content_type",
+    (
+        "application/json",
+        "application/json; charset=utf-8",
+    ),
+)
+async def test_insert_row(ds_write, content_type):
     token = write_token(ds_write)
     response = await ds_write.client.post(
         "/data/docs/-/insert",
         json={"row": {"title": "Test", "score": 1.2, "age": 5}},
-        headers=_headers(token),
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": content_type,
+        },
     )
     expected_row = {"id": 1, "title": "Test", "score": 1.2, "age": 5}
     assert response.status_code == 201

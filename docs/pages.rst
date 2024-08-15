@@ -23,6 +23,8 @@ Add ``/.json`` to the end of the URL for the JSON version of the underlying data
 * `global-power-plants.datasettes.com/.json <https://global-power-plants.datasettes.com/.json>`_
 * `register-of-members-interests.datasettes.com/.json <https://register-of-members-interests.datasettes.com/.json>`_
 
+The index page can also be accessed at ``/-/``, useful for if the default index page has been replaced using an :ref:`index.html custom template <customization_custom_templates>`. The ``/-/`` page will always render the default Datasette ``index.html`` template.
+
 .. _DatabaseView:
 
 Database

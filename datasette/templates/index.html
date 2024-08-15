@@ -2,6 +2,10 @@
 
 {% block title %}{{ metadata.title or "Datasette" }}: {% for database in databases %}{{ database.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% endblock %}
 
+{% block extra_head %}
+{% if noindex %}<meta name="robots" content="noindex">{% endif %}
+{% endblock %}
+
 {% block body_class %}index{% endblock %}
 
 {% block content %}

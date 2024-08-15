@@ -152,8 +152,9 @@ class IndexView(BaseView):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:
                     homepage_actions.extend(extra_links)
+            alternative_homepage = request.path == "/-/"
             return await self.render(
-                ["index.html"],
+                ["default:index.html" if alternative_homepage else "index.html"],
                 request=request,
                 context={
                     "databases": databases,
@@ -166,5 +167,6 @@ class IndexView(BaseView):
                         "top_homepage", self.ds, request
                     ),
                     "homepage_actions": homepage_actions,
+                    "noindex": request.path == "/-/",
                 },
             )

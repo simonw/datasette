@@ -1,4 +1,5 @@
 from bs4 import BeautifulSoup as Soup
+from datasette.app import Datasette
 from datasette.utils import allowed_pragmas
 from .fixtures import (  # noqa
     app_client,
@@ -49,6 +50,27 @@ def test_homepage(app_client_two_attached_databases):
         {"href": r"/extra+database/searchable", "text": "searchable"},
         {"href": r"/extra+database/searchable_view", "text": "searchable_view"},
     ] == table_links
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ("/", "/-/"))
+async def test_homepage_alternative_location(path, tmp_path_factory):
+    template_dir = tmp_path_factory.mktemp("templates")
+    (template_dir / "index.html").write_text("Custom homepage", "utf-8")
+    datasette = Datasette(template_dir=str(template_dir))
+    response = await datasette.client.get(path)
+    assert response.status_code == 200
+    html = response.text
+    if path == "/":
+        assert html == "Custom homepage"
+    else:
+        assert '<meta name="robots" content="noindex">' in html
+
+
+@pytest.mark.asyncio
+async def test_homepage_alternative_redirect(ds_client):
+    response = await ds_client.get("/-")
+    assert response.status_code == 301
 
 
 @pytest.mark.asyncio

@@ -1476,6 +1476,8 @@ class Datasette:
             routes.append((regex, view))
 
         add_route(IndexView.as_view(self), r"/(\.(?P<format>jsono?))?$")
+        add_route(IndexView.as_view(self), r"/-/(\.(?P<format>jsono?))?$")
+        add_route(permanent_redirect("/-/"), r"/-$")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         add_route(favicon, "/favicon.ico")
 

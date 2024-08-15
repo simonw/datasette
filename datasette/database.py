@@ -499,11 +499,30 @@ class Database:
                 x[0]
                 for x in await self.execute(
                     """
-                      SELECT name
-                      FROM sqlite_master
-                      WHERE  name IN ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
-                        OR substr(name, 1, 1) == '_'
-                      ORDER BY 1
+                      WITH base AS (
+                        SELECT name
+                        FROM sqlite_master
+                        WHERE  name IN ('sqlite_stat1', 'sqlite_stat2', 'sqlite_stat3', 'sqlite_stat4')
+                          OR substr(name, 1, 1) == '_'
+                      ),
+                      fts_suffixes AS (
+                        select column1 as suffix
+                        from (VALUES ('_data'), ('_idx'), ('_docsize'), ('_content'))
+                      ),
+                      fts_names AS (
+                        SELECT name
+                        FROM sqlite_master
+                        WHERE sql LIKE '%VIRTUAL TABLE%USING FTS%'
+                      ),
+                      fts_shadow_tables AS (
+                        SELECT
+                          printf('%s%s', fts_tables.name, fts_suffixes.suffix) AS name
+                        FROM fts_names
+                        JOIN fts_suffixes
+                      )
+                      SELECT name FROM base
+                      UNION ALL
+                      SELECT name FROM fts_shadow_tables
                     """
                 )
             ]

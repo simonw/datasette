@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}CSRF check failed){% endblock %}
+{% block content %}
+<h1>Form origin check failed</h1>
+
+<p>Your request's origin could not be validated. Please return to the form and submit it again.</p>
+
+<details><summary>Technical details</summary>
+  <p>Developers: consult Datasette's <a href="https://docs.datasette.io/en/latest/internals.html#csrf-protection">CSRF protection documentation</a>.</p>
+  <p>Error code is {{ message_name }}.</p>
+</details>
+
+{% endblock %}

@@ -835,6 +835,10 @@ async def test_versions_json(ds_client):
     assert "version" in data["sqlite"]
     assert "fts_versions" in data["sqlite"]
     assert "compile_options" in data["sqlite"]
+    # By default, the json1 extension is enabled in the SQLite 
+    # provided by the `ubuntu-latest` github actions runner, and 
+    # all versions of SQLite from 3.38.0 onwards
+    assert data["sqlite"]["extensions"]["json1"]
 
 
 @pytest.mark.asyncio

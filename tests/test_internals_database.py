@@ -671,7 +671,9 @@ def pragma_table_list_supported():
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(not pragma_table_list_supported(), reason="Requires PRAGMA table_list support")
+@pytest.mark.skipif(
+    not pragma_table_list_supported(), reason="Requires PRAGMA table_list support"
+)
 async def test_hidden_tables(app_client):
     ds = app_client.ds
     db = ds.add_database(Database(ds, is_memory=True, is_mutable=True))

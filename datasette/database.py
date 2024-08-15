@@ -506,8 +506,8 @@ class Database:
                           OR substr(name, 1, 1) == '_'
                       ),
                       fts_suffixes AS (
-                        select column1 as suffix
-                        from (VALUES ('_data'), ('_idx'), ('_docsize'), ('_content'))
+                        SELECT column1 AS suffix
+                        FROM (VALUES ('_data'), ('_idx'), ('_docsize'), ('_content'), ('_config'))
                       ),
                       fts_names AS (
                         SELECT name
@@ -516,13 +516,17 @@ class Database:
                       ),
                       fts_shadow_tables AS (
                         SELECT
-                          printf('%s%s', fts_tables.name, fts_suffixes.suffix) AS name
+                          printf('%s%s', fts_names.name, fts_suffixes.suffix) AS name
                         FROM fts_names
                         JOIN fts_suffixes
+                      ),
+                      final AS (
+                        SELECT name FROM base
+                        UNION ALL
+                        SELECT name FROM fts_shadow_tables
                       )
-                      SELECT name FROM base
-                      UNION ALL
-                      SELECT name FROM fts_shadow_tables
+                      SELECT name FROM final ORDER BY 1
+
                     """
                 )
             ]

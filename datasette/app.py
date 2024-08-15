@@ -1661,11 +1661,12 @@ class Datasette:
         async def custom_csrf_error(scope, send, message_id):
             await asgi_send(
                 send,
-                await self.render_template(
+                content=await self.render_template(
                     "csrf_error.html",
                     {"message_id": message_id, "message_name": Errors(message_id).name},
                 ),
-                403,
+                status=403,
+                content_type="text/html; charset=utf-8",
             )
 
         asgi = asgi_csrf.asgi_csrf(

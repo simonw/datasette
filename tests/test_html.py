@@ -1171,4 +1171,5 @@ async def test_custom_csrf_error(ds_client):
         cookies={"csrftoken": "x"},
     )
     assert response.status_code == 403
+    assert response.headers["content-type"] == "text/html; charset=utf-8"
     assert "Error code is FORM_URLENCODED_MISMATCH." in response.text

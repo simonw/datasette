@@ -178,7 +178,6 @@ async def test_get_permission(ds_client):
 @pytest.mark.asyncio
 async def test_apply_metadata_json():
     ds = Datasette(
-        memory=True,
         metadata={
             "databases": {
                 "legislators": {
@@ -194,4 +193,3 @@ async def test_apply_metadata_json():
     )
     await ds.invoke_startup()
     assert (await ds.client.get("/")).status_code == 200
-    # print(root)

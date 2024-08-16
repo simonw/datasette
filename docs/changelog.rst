@@ -4,6 +4,19 @@
 Changelog
 =========
 
+.. _v1_0_a15:
+
+1.0a15 (2024-08-15)
+-------------------
+
+- Datasette now defaults to hiding SQLite "shadow" tables, as seen in extensions such as SQLite FTS and `sqlite-vec <https://github.com/asg017/sqlite-vec>`__. Virtual tables that it makes sense to display, such as FTS core tables, are no longer hidden. Thanks, `Alex Garcia <https://github.com/asg017>`__. (:issue:`2296`)
+- Fixed bug where running Datasette with one or more ``-s/--setting`` options could over-ride settings that were present in ``datasette.yml``. (:issue:`2389`)
+- The Datasette homepage is now duplicated at ``/-/``, using the default ``index.html`` template. This ensures that the information on that page is still accessible even if the Datasette homepage has been customized using a custom ``index.html`` template, for example on sites like `datasette.io <https://datasette.io/>`__. (:issue:`2393`)
+- Failed CSRF checks now display a more user-friendly error page. (:issue:`2390`)
+- Fixed a bug where the ``json1`` extension was not correctly detected on the ``/-/versions`` page. Thanks, `Seb Bacon <https://github.com/sebbacon>`__. (:issue:`2326`)
+- Fixed a bug where the Datasette write API did not correctly accept ``Content-Type: application/json; charset=utf-8``. (:issue:`2384`)
+- Fixed a bug where Datasette would fail to start if ``metadata.yml`` contained a ``queries`` block. (`#2386 <https://github.com/simonw/datasette/pull/2386>`__)
+
 .. _v1_0_a14:
 
 1.0a14 (2024-08-05)

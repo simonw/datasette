@@ -456,7 +456,7 @@ class Datasette:
         # step 2: database-level metadata
         for dbname, db in self._metadata_local.get("databases", {}).items():
             for key, value in db.items():
-                if key == "tables":
+                if key in ("tables", "queries"):
                     continue
                 await self.set_database_metadata(dbname, key, value)
 

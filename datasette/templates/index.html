@@ -21,7 +21,7 @@
 {% for database in databases %}
     <h2 style="padding-left: 10px; border-left: 10px solid #{{ database.color }}"><a href="{{ urls.database(database.name) }}">{{ database.name }}</a>{% if database.private %} 🔒{% endif %}</h2>
     <p>
-        {% if database.show_table_row_counts %}{{ "{:,}".format(database.table_rows_sum) }} rows in {% endif %}{{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}{% if database.tables_count and database.hidden_tables_count %}, {% endif -%}
+        {% if database.show_table_row_counts %}{{ "{:,}".format(database.table_rows_sum) }} rows in {% endif %}{{ database.tables_count }} table{% if database.tables_count != 1 %}s{% endif %}{% if database.hidden_tables_count %}, {% endif -%}
         {% if database.hidden_tables_count -%}
             {% if database.show_table_row_counts %}{{ "{:,}".format(database.hidden_table_rows_sum) }} rows in {% endif %}{{ database.hidden_tables_count }} hidden table{% if database.hidden_tables_count != 1 %}s{% endif -%}
         {% endif -%}

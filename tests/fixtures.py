@@ -379,7 +379,6 @@ METADATA = {
                     ],
                 },
                 "no_primary_key": {"sortable_columns": [], "hidden": True},
-                "units": {"units": {"distance": "m", "frequency": "Hz"}},
                 "primary_key_multiple_columns_explicit_label": {
                     "label_column": "content2"
                 },
@@ -506,16 +505,6 @@ CREATE TABLE "custom_foreign_key_label" (
   foreign_key_with_custom_label text,
   FOREIGN KEY ("foreign_key_with_custom_label") REFERENCES [primary_key_multiple_columns_explicit_label](id)
 );
-
-CREATE TABLE units (
-  pk integer primary key,
-  distance int,
-  frequency int
-);
-
-INSERT INTO units VALUES (1, 1, 100);
-INSERT INTO units VALUES (2, 5000, 2500);
-INSERT INTO units VALUES (3, 100000, 75000);
 
 CREATE TABLE tags (
     tag TEXT PRIMARY KEY

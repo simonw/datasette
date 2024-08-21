@@ -26,6 +26,12 @@ async def test_auth_token(ds_client):
     # Check that a second with same token fails
     assert ds_client.ds._root_token is None
     assert (await ds_client.get(path)).status_code == 403
+    # But attempting with same token while logged in as root should redirect to /
+    response = await ds_client.get(
+        path, cookies={"ds_actor": ds_client.actor_cookie({"id": "root"})}
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
 
 
 @pytest.mark.asyncio

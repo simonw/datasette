@@ -284,6 +284,10 @@ You can generate the list of issue references for a specific release by copying 
 
 To create the tag for the release, create `a new release <https://github.com/simonw/datasette/releases/new>`__ on GitHub matching the new version number. You can convert the release notes to Markdown by copying and pasting the rendered HTML into this `Paste to Markdown tool <https://euangoddard.github.io/clipboard2markdown/>`__.
 
+Don't forget to create the release from the correct branch - usually ``main``, but sometimes ``0.64.x`` or similar for a bugfix release.
+
+While the release is running you can confirm that the correct commits made it into the release using the https://github.com/simonw/datasette/compare/0.64.6...0.64.7 URL.
+
 Finally, post a news item about the release on `datasette.io <https://datasette.io/>`__ by editing the `news.yaml <https://github.com/simonw/datasette.io/blob/main/news.yaml>`__ file in that site's repository.
 
 .. _contributing_alpha_beta:

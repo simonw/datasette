@@ -40,3 +40,26 @@ def config_example(
     cog.out("    .. code-block:: json\n\n")
     cog.out(textwrap.indent(json.dumps(data, indent=2), "        "))
     cog.out("\n")
+
+
+def internal_schema(cog):
+    import asyncio
+    from datasette.app import Datasette
+    from sqlite_utils import Database
+
+    ds = Datasette()
+    db = ds.get_internal_database()
+
+    def get_schema(conn):
+        return Database(conn).schema
+
+    async def inner():
+        await ds.invoke_startup()
+        await ds._refresh_schemas()
+        return await db.execute_fn(get_schema)
+
+    schema = asyncio.run(inner())
+    cog.out("\n.. code-block:: sql")
+    cog.out("\n\n")
+    cog.out(textwrap.indent(schema, "    "))
+    cog.out("\n\n")

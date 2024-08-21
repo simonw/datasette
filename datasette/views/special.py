@@ -75,6 +75,9 @@ class AuthTokenView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
+        # If already signed in as root, redirect
+        if request.actor and request.actor.get("id") == "root":
+            return Response.redirect(self.ds.urls.instance())
         token = request.args.get("token") or ""
         if not self.ds._root_token:
             raise Forbidden("Root token has already been used")

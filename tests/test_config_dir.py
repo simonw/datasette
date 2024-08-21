@@ -99,12 +99,6 @@ def config_dir_client(config_dir):
     yield _TestClient(ds)
 
 
-def test_metadata(config_dir_client):
-    response = config_dir_client.get("/-/metadata.json")
-    assert 200 == response.status
-    assert METADATA == response.json
-
-
 def test_settings(config_dir_client):
     response = config_dir_client.get("/-/settings.json")
     assert 200 == response.status
@@ -147,17 +141,6 @@ def test_databases(config_dir_client):
     for db, expected_name in zip(databases, ("demo", "immutable", "j", "k")):
         assert expected_name == db["name"]
         assert db["is_mutable"] == (expected_name != "immutable")
-
-
-@pytest.mark.parametrize("filename", ("metadata.yml", "metadata.yaml"))
-def test_metadata_yaml(tmp_path_factory, filename):
-    config_dir = tmp_path_factory.mktemp("yaml-config-dir")
-    (config_dir / filename).write_text("title: Title from metadata", "utf-8")
-    ds = Datasette([], config_dir=config_dir)
-    client = _TestClient(ds)
-    response = client.get("/-/metadata.json")
-    assert 200 == response.status
-    assert {"title": "Title from metadata"} == response.json
 
 
 def test_store_config_dir(config_dir_client):

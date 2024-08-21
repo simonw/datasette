@@ -516,6 +516,130 @@ Returns the specified database object. Raises a ``KeyError`` if the database doe
 
 Returns a database object for reading and writing to the private :ref:`internal database <internals_internal>`.
 
+.. _datasette_get_set_metadata:
+
+Getting and setting metadata
+----------------------------
+
+Metadata about the instance, databases, tables and columns is stored in tables in :ref:`internals_internal`. The following methods are the supported API for plugins to read and update that stored metadata.
+
+.. _datasette_get_instance_metadata:
+
+await .get_instance_metadata(self)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Returns metadata keys and values for the entire Datasette instance as a dictionary.
+Internally queries the ``metadata_instance`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_get_database_metadata:
+
+await .get_database_metadata(self, database_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database_name`` - string
+    The name of the database to query.
+
+Returns metadata keys and values for the specified database as a dictionary.
+Internally queries the ``metadata_databases`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_get_resource_metadata:
+
+await .get_resource_metadata(self, database_name, resource_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database_name`` - string
+    The name of the database to query.
+``resource_name`` - string
+    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+
+Returns metadata keys and values for the specified "resource" as a dictionary.
+A "resource" in this context can be a table, view, or canned query.
+Internally queries the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_get_column_metadata:
+
+await .get_column_metadata(self, database_name, resource_name, column_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database_name`` - string
+    The name of the database to query.
+``resource_name`` - string
+    The name of the resource (table, view, or canned query) inside ``database_name`` to query.
+``column_name`` - string
+    The name of the column inside ``resource_name`` to query.
+
+
+Returns metadata keys and values for the specified column, resource, and table as a dictionary.
+Internally queries the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_set_instance_metadata:
+
+await .set_instance_metadata(self, key, value)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``key`` - string
+    The metadata entry key to insert (ex ``title``, ``description``, etc.)
+``value`` - string
+    The value of the metadata entry to insert.
+
+Adds a new metadata entry for the entire Datasette instance.
+Any previous instance-level metadata entry with the same ``key`` will be overwritten.
+Internally upserts the value into the  the ``metadata_instance`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_set_database_metadata:
+
+await .set_database_metadata(self, database_name, key, value)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database_name`` - string
+    The database the metadata entry belongs to.
+``key`` - string
+    The metadata entry key to insert (ex ``title``, ``description``, etc.)
+``value`` - string
+    The value of the metadata entry to insert.
+
+Adds a new metadata entry for the specified database.
+Any previous database-level metadata entry with the same ``key`` will be overwritten.
+Internally upserts the value into the  the ``metadata_databases`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_set_resource_metadata:
+
+await .set_resource_metadata(self, database_name, resource_name, key, value)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database_name`` - string
+    The database the metadata entry belongs to.
+``resource_name`` - string
+    The resource (table, view, or canned query) the metadata entry belongs to.
+``key`` - string
+    The metadata entry key to insert (ex ``title``, ``description``, etc.)
+``value`` - string
+    The value of the metadata entry to insert.
+
+Adds a new metadata entry for the specified "resource".
+Any previous resource-level metadata entry with the same ``key`` will be overwritten.
+Internally upserts the value into the  the ``metadata_resources`` table inside the :ref:`internal database <internals_internal>`.
+
+.. _datasette_set_column_metadata:
+
+await .set_column_metadata(self, database_name, resource_name, column_name, key, value)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``database_name`` - string
+    The database the metadata entry belongs to.
+``resource_name`` - string
+    The resource (table, view, or canned query) the metadata entry belongs to.
+``column-name`` - string
+    The column the metadata entry belongs to.
+``key`` - string
+    The metadata entry key to insert (ex ``title``, ``description``, etc.)
+``value`` - string
+    The value of the metadata entry to insert.
+
+Adds a new metadata entry for the specified column.
+Any previous column-level metadata entry with the same ``key`` will be overwritten.
+Internally upserts the value into the  the ``metadata_columns`` table inside the :ref:`internal database <internals_internal>`.
+
 .. _datasette_add_database:
 
 .add_database(db, name=None, route=None)
@@ -1216,6 +1340,8 @@ Datasette maintains an "internal" SQLite database used for configuration, cachin
 
 Datasette maintains tables called ``catalog_databases``, ``catalog_tables``, ``catalog_columns``, ``catalog_indexes``, ``catalog_foreign_keys`` with details of the attached databases and their schemas. These tables should not be considered a stable API - they may change between Datasette releases.
 
+Metadata is stored in tables ``metadata_instance``, ``metadata_databases``, ``metadata_resources`` and ``metadata_columns``. Plugins can interact with these tables via the :ref:`get_*_metadata() and set_*_metadata() methods <datasette_get_set_metadata>`.
+
 The internal database is not exposed in the Datasette application by default, which means private data can safely be stored without worry of accidentally leaking information through the default Datasette interface and API. However, other plugins do have full read and write access to the internal database.
 
 Plugins can access this database by calling ``internal_db = datasette.get_internal_database()`` and then executing queries using the :ref:`Database API <internals_database>`.
@@ -1226,6 +1352,104 @@ Plugin authors are asked to practice good etiquette when using the internal data
 2. Avoid long-running write statements that may stall or block other plugins that are trying to write at the same time.
 3. Use temporary tables or shared in-memory attached databases when possible.
 4. Avoid implementing features that could expose private data stored in the internal database by other plugins.
+
+.. _internals_internal_schema:
+
+Internal database schema
+------------------------
+
+The internal database schema is as follows:
+
+.. [[[cog
+    from metadata_doc import internal_schema
+    internal_schema(cog)
+.. ]]]
+
+.. code-block:: sql
+
+    CREATE TABLE catalog_databases (
+        database_name TEXT PRIMARY KEY,
+        path TEXT,
+        is_memory INTEGER,
+        schema_version INTEGER
+    );
+    CREATE TABLE catalog_tables (
+        database_name TEXT,
+        table_name TEXT,
+        rootpage INTEGER,
+        sql TEXT,
+        PRIMARY KEY (database_name, table_name),
+        FOREIGN KEY (database_name) REFERENCES databases(database_name)
+    );
+    CREATE TABLE catalog_columns (
+        database_name TEXT,
+        table_name TEXT,
+        cid INTEGER,
+        name TEXT,
+        type TEXT,
+        "notnull" INTEGER,
+        default_value TEXT, -- renamed from dflt_value
+        is_pk INTEGER, -- renamed from pk
+        hidden INTEGER,
+        PRIMARY KEY (database_name, table_name, name),
+        FOREIGN KEY (database_name) REFERENCES databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
+    );
+    CREATE TABLE catalog_indexes (
+        database_name TEXT,
+        table_name TEXT,
+        seq INTEGER,
+        name TEXT,
+        "unique" INTEGER,
+        origin TEXT,
+        partial INTEGER,
+        PRIMARY KEY (database_name, table_name, name),
+        FOREIGN KEY (database_name) REFERENCES databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
+    );
+    CREATE TABLE catalog_foreign_keys (
+        database_name TEXT,
+        table_name TEXT,
+        id INTEGER,
+        seq INTEGER,
+        "table" TEXT,
+        "from" TEXT,
+        "to" TEXT,
+        on_update TEXT,
+        on_delete TEXT,
+        match TEXT,
+        PRIMARY KEY (database_name, table_name, id, seq),
+        FOREIGN KEY (database_name) REFERENCES databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
+    );
+    CREATE TABLE metadata_instance (
+        key text,
+        value text,
+        unique(key)
+    );
+    CREATE TABLE metadata_databases (
+        database_name text,
+        key text,
+        value text,
+        unique(database_name, key)
+    );
+    CREATE TABLE metadata_resources (
+        database_name text,
+        resource_name text,
+        key text,
+        value text,
+        unique(database_name, resource_name, key)
+    );
+    CREATE TABLE metadata_columns (
+        database_name text,
+        resource_name text,
+        column_name text,
+        key text,
+        value text,
+        unique(database_name, resource_name, column_name, key)
+    );
+
+.. [[[end]]]
 
 .. _internals_utils:
 
@@ -1256,14 +1480,14 @@ Utility function for calling ``await`` on a return value if it is awaitable, oth
 
 .. autofunction:: datasette.utils.await_me_maybe
 
-.. _internals_utils_derive_named_parameters:
+.. _internals_utils_named_parameters:
 
-derive_named_parameters(db, sql)
---------------------------------
+named_parameters(sql)
+---------------------
 
-Derive the list of named parameters referenced in a SQL query, using an ``explain`` query executed against the provided database.
+Derive the list of ``:named`` parameters referenced in a SQL query.
 
-.. autofunction:: datasette.utils.derive_named_parameters
+.. autofunction:: datasette.utils.named_parameters
 
 .. _internals_tilde_encoding:
 

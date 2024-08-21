@@ -368,12 +368,8 @@ class Filters:
     )
     _filters_by_key = {f.key: f for f in _filters}
 
-    def __init__(self, pairs, units=None, ureg=None):
-        if units is None:
-            units = {}
+    def __init__(self, pairs):
         self.pairs = pairs
-        self.units = units
-        self.ureg = ureg
 
     def lookups(self):
         """Yields (lookup, display, no_argument) pairs"""
@@ -413,20 +409,6 @@ class Filters:
     def has_selections(self):
         return bool(self.pairs)
 
-    def convert_unit(self, column, value):
-        """If the user has provided a unit in the query, convert it into the column unit, if present."""
-        if column not in self.units:
-            return value
-
-        # Try to interpret the value as a unit
-        value = self.ureg(value)
-        if isinstance(value, numbers.Number):
-            # It's just a bare number, assume it's the column unit
-            return value
-
-        column_unit = self.ureg(self.units[column])
-        return value.to(column_unit).magnitude
-
     def build_where_clauses(self, table):
         sql_bits = []
         params = {}
@@ -434,9 +416,7 @@ class Filters:
         for column, lookup, value in self.selections():
             filter = self._filters_by_key.get(lookup, None)
             if filter:
-                sql_bit, param = filter.where_clause(
-                    table, column, self.convert_unit(column, value), i
-                )
+                sql_bit, param = filter.where_clause(table, column, value, i)
                 sql_bits.append(sql_bit)
                 if param is not None:
                     if not isinstance(param, list):

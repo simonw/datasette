@@ -1,3 +1,4 @@
+from asgi_csrf import Errors
 import asyncio
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import asgi_csrf
@@ -36,8 +37,7 @@ from jinja2.exceptions import TemplateNotFound
 
 from .events import Event
 from .views import Context
-from .views.base import ureg
-from .views.database import database_download, DatabaseView, TableCreateView
+from .views.database import database_download, DatabaseView, TableCreateView, QueryView
 from .views.index import IndexView
 from .views.special import (
     JsonDataView,
@@ -68,6 +68,7 @@ from .utils import (
     async_call_with_supported_arguments,
     await_me_maybe,
     call_with_supported_arguments,
+    detect_json1,
     display_actor,
     escape_css_string,
     escape_sqlite,
@@ -443,6 +444,37 @@ class Datasette:
         self._root_token = secrets.token_hex(32)
         self.client = DatasetteClient(self)
 
+    async def apply_metadata_json(self):
+        # Apply any metadata entries from metadata.json to the internal tables
+        # step 1: top-level metadata
+        for key in self._metadata_local or {}:
+            if key == "databases":
+                continue
+            await self.set_instance_metadata(key, self._metadata_local[key])
+
+        # step 2: database-level metadata
+        for dbname, db in self._metadata_local.get("databases", {}).items():
+            for key, value in db.items():
+                if key in ("tables", "queries"):
+                    continue
+                await self.set_database_metadata(dbname, key, value)
+
+            # step 3: table-level metadata
+            for tablename, table in db.get("tables", {}).items():
+                for key, value in table.items():
+                    if key == "columns":
+                        continue
+                    await self.set_resource_metadata(dbname, tablename, key, value)
+
+                # step 4: column-level metadata (only descriptions in metadata.json)
+                for columnname, column_description in table.get("columns", {}).items():
+                    await self.set_column_metadata(
+                        dbname, tablename, columnname, "description", column_description
+                    )
+
+            # TODO(alex) is metadata.json was loaded in, and --internal is not memory, then log
+            # a warning to user that they should delete their metadata.json file
+
     def get_jinja_environment(self, request: Request = None) -> Environment:
         environment = self._jinja_env
         if request:
@@ -476,6 +508,7 @@ class Datasette:
         internal_db = self.get_internal_database()
         if not self.internal_db_created:
             await init_internal_db(internal_db)
+            await self.apply_metadata_json()
             self.internal_db_created = True
         current_schema_versions = {
             row["database_name"]: row["schema_version"]
@@ -646,57 +679,113 @@ class Datasette:
                 orig[key] = upd_value
         return orig
 
-    def metadata(self, key=None, database=None, table=None, fallback=True):
-        """
-        Looks up metadata, cascading backwards from specified level.
-        Returns None if metadata value is not found.
-        """
-        assert not (
-            database is None and table is not None
-        ), "Cannot call metadata() with table= specified but not database="
-        metadata = {}
+    async def get_instance_metadata(self):
+        rows = await self.get_internal_database().execute(
+            """
+              SELECT
+                key,
+                value
+              FROM metadata_instance
+            """
+        )
+        return dict(rows)
 
-        for hook_dbs in pm.hook.get_metadata(
-            datasette=self, key=key, database=database, table=table
-        ):
-            metadata = self._metadata_recursive_update(metadata, hook_dbs)
+    async def get_database_metadata(self, database_name: str):
+        rows = await self.get_internal_database().execute(
+            """
+              SELECT
+                key,
+                value
+              FROM metadata_databases
+              WHERE database_name = ?
+            """,
+            [database_name],
+        )
+        return dict(rows)
 
-        # security precaution!! don't allow anything in the local config
-        # to be overwritten. this is a temporary measure, not sure if this
-        # is a good idea long term or maybe if it should just be a concern
-        # of the plugin's implemtnation
-        metadata = self._metadata_recursive_update(metadata, self._metadata_local)
+    async def get_resource_metadata(self, database_name: str, resource_name: str):
+        rows = await self.get_internal_database().execute(
+            """
+              SELECT
+                key,
+                value
+              FROM metadata_resources
+              WHERE database_name = ?
+                AND resource_name = ?
+            """,
+            [database_name, resource_name],
+        )
+        return dict(rows)
 
-        databases = metadata.get("databases") or {}
+    async def get_column_metadata(
+        self, database_name: str, resource_name: str, column_name: str
+    ):
+        rows = await self.get_internal_database().execute(
+            """
+              SELECT
+                key,
+                value
+              FROM metadata_columns
+              WHERE database_name = ?
+                AND resource_name = ?
+                AND column_name = ?
+            """,
+            [database_name, resource_name, column_name],
+        )
+        return dict(rows)
 
-        search_list = []
-        if database is not None:
-            search_list.append(databases.get(database) or {})
-        if table is not None:
-            table_metadata = ((databases.get(database) or {}).get("tables") or {}).get(
-                table
-            ) or {}
-            search_list.insert(0, table_metadata)
+    async def set_instance_metadata(self, key: str, value: str):
+        # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
+        await self.get_internal_database().execute_write(
+            """
+              INSERT INTO metadata_instance(key, value)
+                VALUES(?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+            """,
+            [key, value],
+        )
 
-        search_list.append(metadata)
-        if not fallback:
-            # No fallback allowed, so just use the first one in the list
-            search_list = search_list[:1]
-        if key is not None:
-            for item in search_list:
-                if key in item:
-                    return item[key]
-            return None
-        else:
-            # Return the merged list
-            m = {}
-            for item in search_list:
-                m.update(item)
-            return m
+    async def set_database_metadata(self, database_name: str, key: str, value: str):
+        # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
+        await self.get_internal_database().execute_write(
+            """
+              INSERT INTO metadata_databases(database_name, key, value)
+                VALUES(?, ?, ?)
+                ON CONFLICT(database_name, key) DO UPDATE SET value = excluded.value;
+            """,
+            [database_name, key, value],
+        )
 
-    @property
-    def _metadata(self):
-        return self.metadata()
+    async def set_resource_metadata(
+        self, database_name: str, resource_name: str, key: str, value: str
+    ):
+        # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
+        await self.get_internal_database().execute_write(
+            """
+              INSERT INTO metadata_resources(database_name, resource_name, key, value)
+                VALUES(?, ?, ?, ?)
+                ON CONFLICT(database_name, resource_name, key) DO UPDATE SET value = excluded.value;
+            """,
+            [database_name, resource_name, key, value],
+        )
+
+    async def set_column_metadata(
+        self,
+        database_name: str,
+        resource_name: str,
+        column_name: str,
+        key: str,
+        value: str,
+    ):
+        # TODO upsert only supported on SQLite 3.24.0 (2018-06-04)
+        await self.get_internal_database().execute_write(
+            """
+              INSERT INTO metadata_columns(database_name, resource_name, column_name, key, value)
+                VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(database_name, resource_name, column_name, key) DO UPDATE SET value = excluded.value;
+            """,
+            [database_name, resource_name, column_name, key, value],
+        )
 
     def get_internal_database(self):
         return self._internal_database
@@ -773,20 +862,6 @@ class Datasette:
         query = queries.get(query_name)
         if query:
             return query
-
-    def update_with_inherited_metadata(self, metadata):
-        # Fills in source/license with defaults, if available
-        metadata.update(
-            {
-                "source": metadata.get("source") or self.metadata("source"),
-                "source_url": metadata.get("source_url") or self.metadata("source_url"),
-                "license": metadata.get("license") or self.metadata("license"),
-                "license_url": metadata.get("license_url")
-                or self.metadata("license_url"),
-                "about": metadata.get("about") or self.metadata("about"),
-                "about_url": metadata.get("about_url") or self.metadata("about_url"),
-            }
-        )
 
     def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
@@ -1079,11 +1154,6 @@ class Datasette:
             url = "https://" + url[len("http://") :]
         return url
 
-    def _register_custom_units(self):
-        """Register any custom units defined in the metadata.json with Pint"""
-        for unit in self.metadata("custom_units") or []:
-            ureg.define(unit)
-
     def _connected_databases(self):
         return [
             {
@@ -1102,9 +1172,8 @@ class Datasette:
         conn = sqlite3.connect(":memory:")
         self._prepare_connection(conn, "_memory")
         sqlite_version = conn.execute("select sqlite_version()").fetchone()[0]
-        sqlite_extensions = {}
+        sqlite_extensions = {"json1": detect_json1(conn)}
         for extension, testsql, hasversion in (
-            ("json1", "SELECT json('{}')", False),
             ("spatialite", "SELECT spatialite_version()", True),
         ):
             try:
@@ -1407,6 +1476,8 @@ class Datasette:
             routes.append((regex, view))
 
         add_route(IndexView.as_view(self), r"/(\.(?P<format>jsono?))?$")
+        add_route(IndexView.as_view(self), r"/-/(\.(?P<format>jsono?))?$")
+        add_route(permanent_redirect("/-/"), r"/-$")
         # TODO: /favicon.ico and /-/static/ deserve far-future cache expires
         add_route(favicon, "/favicon.ico")
 
@@ -1435,10 +1506,6 @@ class Datasette:
                 "/_memory", forward_query_string=True, forward_rest=True
             ),
             r"/:memory:(?P<rest>.*)$",
-        )
-        add_route(
-            JsonDataView.as_view(self, "metadata.json", lambda: self.metadata()),
-            r"/-/metadata(\.(?P<format>json))?$",
         )
         add_route(
             JsonDataView.as_view(self, "versions.json", self._versions),
@@ -1514,6 +1581,10 @@ class Datasette:
         )
         add_route(TableCreateView.as_view(self), r"/(?P<database>[^\/\.]+)/-/create$")
         add_route(
+            wrap_view(QueryView, self),
+            r"/(?P<database>[^\/\.]+)/-/query(\.(?P<format>\w+))?$",
+        )
+        add_route(
             wrap_view(table_view, self),
             r"/(?P<database>[^\/\.]+)/(?P<table>[^\/\.]+)(\.(?P<format>\w+))?$",
         )
@@ -1552,9 +1623,7 @@ class Datasette:
         try:
             return self.get_database(route=database_route)
         except KeyError:
-            raise DatabaseNotFound(
-                "Database not found: {}".format(database_route), database_route
-            )
+            raise DatabaseNotFound(database_route)
 
     async def resolve_table(self, request):
         db = await self.resolve_database(request)
@@ -1565,9 +1634,7 @@ class Datasette:
         if not table_exists:
             is_view = await db.view_exists(table_name)
         if not (table_exists or is_view):
-            raise TableNotFound(
-                "Table not found: {}".format(table_name), db.name, table_name
-            )
+            raise TableNotFound(db.name, table_name)
         return ResolvedTable(db, table_name, is_view)
 
     async def resolve_row(self, request):
@@ -1577,21 +1644,29 @@ class Datasette:
         results = await db.execute(sql, params, truncate=True)
         row = results.first()
         if row is None:
-            raise RowNotFound(
-                "Row not found: {}".format(pk_values), db.name, table_name, pk_values
-            )
+            raise RowNotFound(db.name, table_name, pk_values)
         return ResolvedRow(db, table_name, sql, params, pks, pk_values, results.first())
 
     def app(self):
         """Returns an ASGI app function that serves the whole of Datasette"""
         routes = self._routes()
-        self._register_custom_units()
 
         async def setup_db():
             # First time server starts up, calculate table counts for immutable databases
             for database in self.databases.values():
                 if not database.is_mutable:
                     await database.table_counts(limit=60 * 60 * 1000)
+
+        async def custom_csrf_error(scope, send, message_id):
+            await asgi_send(
+                send,
+                content=await self.render_template(
+                    "csrf_error.html",
+                    {"message_id": message_id, "message_name": Errors(message_id).name},
+                ),
+                status=403,
+                content_type="text/html; charset=utf-8",
+            )
 
         asgi = asgi_csrf.asgi_csrf(
             DatasetteRouter(self, routes),
@@ -1600,6 +1675,7 @@ class Datasette:
             skip_if_scope=lambda scope: any(
                 pm.hook.skip_csrf(datasette=self, scope=scope)
             ),
+            send_csrf_failed=custom_csrf_error,
         )
         if self.setting("trace_debug"):
             asgi = AsgiTracer(asgi)

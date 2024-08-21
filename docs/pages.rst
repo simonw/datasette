@@ -23,6 +23,8 @@ Add ``/.json`` to the end of the URL for the JSON version of the underlying data
 * `global-power-plants.datasettes.com/.json <https://global-power-plants.datasettes.com/.json>`_
 * `register-of-members-interests.datasettes.com/.json <https://register-of-members-interests.datasettes.com/.json>`_
 
+The index page can also be accessed at ``/-/``, useful for if the default index page has been replaced using an :ref:`index.html custom template <customization_custom_templates>`. The ``/-/`` page will always render the default Datasette ``index.html`` template.
+
 .. _DatabaseView:
 
 Database
@@ -54,6 +56,21 @@ The following tables are hidden by default:
 - ``*_fts`` tables that implement SQLite full-text search indexes.
 - Tables relating to the inner workings of the SpatiaLite SQLite extension.
 - ``sqlite_stat`` tables used to store statistics used by the query optimizer.
+
+.. _QueryView:
+
+Queries
+=======
+
+The ``/database-name/-/query`` page can be used to execute an arbitrary SQL query against that database, if the :ref:`permissions_execute_sql` permission is enabled. This query is passed as the ``?sql=`` query string parameter.
+
+This means you can link directly to a query by constructing the following URL:
+
+``/database-name/-/query?sql=SELECT+*+FROM+table_name``
+
+Each configured :ref:`canned query <canned_queries>` has its own page, at ``/database-name/query-name``. Viewing this page will execute the query and display the results.
+
+In both cases adding a ``.json`` extension to the URL will return the results as JSON.
 
 .. _TableView:
 

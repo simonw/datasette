@@ -85,10 +85,6 @@ class RowView(DataView):
                     "_table.html",
                 ],
                 "row_actions": row_actions,
-                "metadata": (self.ds.metadata("databases") or {})
-                .get(database, {})
-                .get("tables", {})
-                .get(table, {}),
                 "top_row": make_slot_function(
                     "top_row",
                     self.ds,
@@ -97,6 +93,7 @@ class RowView(DataView):
                     table=resolved.table,
                     row=rows[0],
                 ),
+                "metadata": {},
             }
 
         data = {
@@ -106,7 +103,6 @@ class RowView(DataView):
             "columns": columns,
             "primary_keys": resolved.pks,
             "primary_key_values": pk_values,
-            "units": (await self.ds.table_config(database, table)).get("units", {}),
         }
 
         if "foreign_key_tables" in (request.args.get("_extras") or "").split(","):

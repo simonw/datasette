@@ -23,21 +23,21 @@ class NotFound(Base400):
 
 
 class DatabaseNotFound(NotFound):
-    def __init__(self, message, database_name):
-        super().__init__(message)
+    def __init__(self, database_name):
         self.database_name = database_name
+        super().__init__("Database not found")
 
 
 class TableNotFound(NotFound):
-    def __init__(self, message, database_name, table):
-        super().__init__(message)
+    def __init__(self, database_name, table):
+        super().__init__("Table not found")
         self.database_name = database_name
         self.table = table
 
 
 class RowNotFound(NotFound):
-    def __init__(self, message, database_name, table, pk_values):
-        super().__init__(message)
+    def __init__(self, database_name, table, pk_values):
+        super().__init__("Row not found")
         self.database_name = database_name
         self.table_name = table
         self.pk_values = pk_values

@@ -70,6 +70,20 @@ def test_trace_silently_fails_for_large_page():
         assert "_trace" not in big_response.json
 
 
+def test_trace_query_errors():
+    with make_app_client(settings={"trace_debug": True}) as client:
+        response = client.get(
+            "/fixtures/-/query.json",
+            params={"_trace": 1, "sql": "select * from non_existent_table"},
+        )
+        assert response.status == 400
+
+    data = response.json
+    assert "_trace" in data
+    trace_info = data["_trace"]
+    assert trace_info["traces"][-1]["error"] == "no such table: non_existent_table"
+
+
 def test_trace_parallel_queries():
     with make_app_client(settings={"trace_debug": True}) as client:
         response = client.get("/parallel-queries?_trace=1")

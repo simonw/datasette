@@ -644,6 +644,9 @@ class QueryInterrupted(Exception):
         self.sql = sql
         self.params = params
 
+    def __str__(self):
+        return "QueryInterrupted: {}".format(self.e)
+
 
 class MultipleValues(Exception):
     pass

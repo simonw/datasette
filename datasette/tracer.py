@@ -32,7 +32,7 @@ def trace_child_tasks():
 
 
 @contextmanager
-def trace(type, **kwargs):
+def trace(trace_type, **kwargs):
     assert not TRACE_RESERVED_KEYS.intersection(
         kwargs.keys()
     ), f".trace() keyword parameters cannot include {TRACE_RESERVED_KEYS}"
@@ -45,17 +45,24 @@ def trace(type, **kwargs):
         yield kwargs
         return
     start = time.perf_counter()
-    yield kwargs
-    end = time.perf_counter()
-    trace_info = {
-        "type": type,
-        "start": start,
-        "end": end,
-        "duration_ms": (end - start) * 1000,
-        "traceback": traceback.format_list(traceback.extract_stack(limit=6)[:-3]),
-    }
-    trace_info.update(kwargs)
-    tracer.append(trace_info)
+    captured_error = None
+    try:
+        yield kwargs
+    except Exception as ex:
+        captured_error = ex
+        raise
+    finally:
+        end = time.perf_counter()
+        trace_info = {
+            "type": trace_type,
+            "start": start,
+            "end": end,
+            "duration_ms": (end - start) * 1000,
+            "traceback": traceback.format_list(traceback.extract_stack(limit=6)[:-3]),
+            "error": str(captured_error) if captured_error else None,
+        }
+        trace_info.update(kwargs)
+        tracer.append(trace_info)
 
 
 @contextmanager

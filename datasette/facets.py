@@ -65,6 +65,8 @@ def register_facet_classes():
 
 class Facet:
     type = None
+    # How many rows to consider when suggesting facets:
+    suggest_consider = 1000
 
     def __init__(
         self,
@@ -145,17 +147,6 @@ class Facet:
             )
         ).columns
 
-    async def get_row_count(self):
-        if self.row_count is None:
-            self.row_count = (
-                await self.ds.execute(
-                    self.database,
-                    f"select count(*) from ({self.sql})",
-                    self.params,
-                )
-            ).rows[0][0]
-        return self.row_count
-
 
 class ColumnFacet(Facet):
     type = "column"
@@ -170,13 +161,16 @@ class ColumnFacet(Facet):
             if column in already_enabled:
                 continue
             suggested_facet_sql = """
-                select {column} as value, count(*) as n from (
-                    {sql}
-                ) where value is not null
+                with limited as (select * from ({sql}) limit {suggest_consider})
+                select {column} as value, count(*) as n from limited
+                where value is not null
                 group by value
                 limit {limit}
             """.format(
-                column=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
+                column=escape_sqlite(column),
+                sql=self.sql,
+                limit=facet_size + 1,
+                suggest_consider=self.suggest_consider,
             )
             distinct_values = None
             try:
@@ -210,6 +204,17 @@ class ColumnFacet(Facet):
             except QueryInterrupted:
                 continue
         return suggested_facets
+
+    async def get_row_count(self):
+        if self.row_count is None:
+            self.row_count = (
+                await self.ds.execute(
+                    self.database,
+                    f"select count(*) from (select * from ({self.sql}) limit {self.suggest_consider})",
+                    self.params,
+                )
+            ).rows[0][0]
+        return self.row_count
 
     async def facet_results(self):
         facet_results = []
@@ -313,11 +318,14 @@ class ArrayFacet(Facet):
                 continue
             # Is every value in this column either null or a JSON array?
             suggested_facet_sql = """
+                with limited as (select * from ({sql}) limit {suggest_consider})
                 select distinct json_type({column})
-                from ({sql})
+                from limited
                 where {column} is not null and {column} != ''
             """.format(
-                column=escape_sqlite(column), sql=self.sql
+                column=escape_sqlite(column),
+                sql=self.sql,
+                suggest_consider=self.suggest_consider,
             )
             try:
                 results = await self.ds.execute(
@@ -402,7 +410,9 @@ class ArrayFacet(Facet):
                 order by
                     count(*) desc, value limit {limit}
             """.format(
-                col=escape_sqlite(column), sql=self.sql, limit=facet_size + 1
+                col=escape_sqlite(column),
+                sql=self.sql,
+                limit=facet_size + 1,
             )
             try:
                 facet_rows_results = await self.ds.execute(

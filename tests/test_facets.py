@@ -1,6 +1,6 @@
 from datasette.app import Datasette
 from datasette.database import Database
-from datasette.facets import ColumnFacet, ArrayFacet, DateFacet
+from datasette.facets import Facet, ColumnFacet, ArrayFacet, DateFacet
 from datasette.utils.asgi import Request
 from datasette.utils import detect_json1
 from .fixtures import make_app_client
@@ -662,3 +662,39 @@ async def test_facet_against_in_memory_database():
     assert response1.status_code == 200
     response2 = await ds.client.get("/mem/t?_facet=name&_facet=name2")
     assert response2.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_facet_only_considers_first_x_rows():
+    # This test works by manually fiddling with Facet.suggest_consider
+    ds = Datasette()
+    original_suggest_consider = Facet.suggest_consider
+    try:
+        Facet.suggest_consider = 40
+        db = ds.add_memory_database("test_facet_only_x_rows")
+        await db.execute_write("create table t (id integer primary key, col text)")
+        # First 50 rows make it look like col and col_json should be faceted
+        to_insert = [{"col": "one" if i % 2 else "two"} for i in range(50)]
+        await db.execute_write_many("insert into t (col) values (:col)", to_insert)
+        # Next 50 break that assumption
+        to_insert2 = [{"col": f"x{i}"} for i in range(50)]
+        await db.execute_write_many("insert into t (col) values (:col)", to_insert2)
+        response = await ds.client.get(
+            "/test_facet_only_x_rows/t.json?_extra=suggested_facets"
+        )
+        data = response.json()
+        assert data["suggested_facets"] == [
+            {
+                "name": "col",
+                "toggle_url": "http://localhost/test_facet_only_x_rows/t.json?_extra=suggested_facets&_facet=col",
+            }
+        ]
+        # But if we set suggest_consider to 100 they are not suggested
+        Facet.suggest_consider = 100
+        response2 = await ds.client.get(
+            "/test_facet_only_x_rows/t.json?_extra=suggested_facets"
+        )
+        data2 = response2.json()
+        assert data2["suggested_facets"] == []
+    finally:
+        Facet.suggest_consider = original_suggest_consider

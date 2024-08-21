@@ -720,22 +720,6 @@ async def test_view(ds_client):
     ]
 
 
-@pytest.mark.xfail
-@pytest.mark.asyncio
-async def test_unit_filters(ds_client):
-    response = await ds_client.get(
-        "/fixtures/units.json?_shape=arrays&distance__lt=75km&frequency__gt=1kHz"
-    )
-    assert response.status_code == 200
-    data = response.json()
-
-    assert data["units"]["distance"] == "m"
-    assert data["units"]["frequency"] == "Hz"
-
-    assert len(data["rows"]) == 1
-    assert data["rows"][0][0] == 2
-
-
 def test_page_size_matching_max_returned_rows(
     app_client_returned_rows_matches_page_size,
 ):

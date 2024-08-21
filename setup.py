@@ -50,7 +50,6 @@ setup(
         "httpx>=0.20",
         'importlib_resources>=1.3.1; python_version < "3.9"',
         'importlib_metadata>=4.6; python_version < "3.10"',
-        "pint>=0.9",
         "pluggy>=1.0",
         "uvicorn>=0.11",
         "aiofiles>=0.4",

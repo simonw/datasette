@@ -422,7 +422,6 @@ async def test_table_names(db):
         "table/with/slashes.csv",
         "complex_foreign_keys",
         "custom_foreign_key_label",
-        "units",
         "tags",
         "searchable",
         "searchable_tags",

@@ -37,7 +37,6 @@ from jinja2.exceptions import TemplateNotFound
 
 from .events import Event
 from .views import Context
-from .views.base import ureg
 from .views.database import database_download, DatabaseView, TableCreateView, QueryView
 from .views.index import IndexView
 from .views.special import (

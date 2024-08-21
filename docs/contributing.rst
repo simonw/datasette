@@ -115,6 +115,10 @@ You can tell Datasette to open an interactive ``pdb`` (or ``ipdb``, if present) 
 
     datasette --pdb fixtures.db
 
+For `ipdb <https://pypi.org/project/ipdb/>`__, first run this::
+
+    datasette install ipdb
+
 .. _contributing_formatting:
 
 Code formatting

@@ -159,6 +159,7 @@ class DatabaseView(View):
             "show_hidden": request.args.get("_show_hidden"),
             "editable": True,
             "metadata": metadata,
+            "count_limit": db.count_limit,
             "allow_download": datasette.setting("allow_download")
             and not db.is_mutable
             and not db.is_memory,
@@ -272,7 +273,7 @@ class QueryContext:
 async def get_tables(datasette, request, db):
     tables = []
     database = db.name
-    table_counts = await db.table_counts(5)
+    table_counts = await db.table_counts(100)
     hidden_table_names = set(await db.hidden_table_names())
     all_foreign_keys = await db.get_all_foreign_keys()
 

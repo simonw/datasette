@@ -29,6 +29,9 @@ AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 
 
 class Database:
+    # For table counts stop at this many rows:
+    count_limit = 10000
+
     def __init__(
         self,
         ds,
@@ -376,7 +379,7 @@ class Database:
             try:
                 table_count = (
                     await self.execute(
-                        f"select count(*) from [{table}]",
+                        f"select count(*) from (select * from [{table}] limit {self.count_limit + 1})",
                         custom_time_limit=limit,
                     )
                 ).rows[0][0]

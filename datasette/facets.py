@@ -480,8 +480,8 @@ class DateFacet(Facet):
             # Does this column contain any dates in the first 100 rows?
             suggested_facet_sql = """
                 select date({column}) from (
-                    {sql}
-                ) where {column} glob "????-??-*" limit 100;
+                    select * from ({sql}) limit 100
+                ) where {column} glob "????-??-*"
             """.format(
                 column=escape_sqlite(column), sql=self.sql
             )

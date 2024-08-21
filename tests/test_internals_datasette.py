@@ -183,13 +183,16 @@ async def test_apply_metadata_json():
                 "legislators": {
                     "tables": {"offices": {"summary": "office address or sumtin"}},
                     "queries": {
-                        "millenntial_represetatives": {
+                        "millennial_representatives": {
                             "summary": "Social media accounts for current legislators"
                         }
                     },
                 }
-            }
+            },
+            "weird_instance_value": {"nested": [1, 2, 3]},
         },
     )
     await ds.invoke_startup()
     assert (await ds.client.get("/")).status_code == 200
+    value = (await ds.get_instance_metadata()).get("weird_instance_value")
+    assert value == '{"nested": [1, 2, 3]}'

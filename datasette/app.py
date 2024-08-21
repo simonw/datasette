@@ -450,7 +450,10 @@ class Datasette:
         for key in self._metadata_local or {}:
             if key == "databases":
                 continue
-            await self.set_instance_metadata(key, self._metadata_local[key])
+            value = self._metadata_local[key]
+            if not isinstance(value, str):
+                value = json.dumps(value)
+            await self.set_instance_metadata(key, value)
 
         # step 2: database-level metadata
         for dbname, db in self._metadata_local.get("databases", {}).items():

@@ -90,6 +90,7 @@ class AsgiTracer:
 
         async def wrapped_send(message):
             nonlocal accumulated_body, size_limit_exceeded, response_headers
+
             if message["type"] == "http.response.start":
                 response_headers = message["headers"]
                 await send(message)
@@ -102,11 +103,12 @@ class AsgiTracer:
             # Accumulate body until the end or until size is exceeded
             accumulated_body += message["body"]
             if len(accumulated_body) > self.max_body_bytes:
+                # Send what we have accumulated so far
                 await send(
                     {
                         "type": "http.response.body",
                         "body": accumulated_body,
-                        "more_body": True,
+                        "more_body": bool(message.get("more_body")),
                     }
                 )
                 size_limit_exceeded = True

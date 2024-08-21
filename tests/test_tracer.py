@@ -53,6 +53,23 @@ def test_trace(trace_debug):
     assert all(isinstance(trace["count"], int) for trace in execute_manys)
 
 
+def test_trace_silently_fails_for_large_page():
+    # Max HTML size is 256KB
+    with make_app_client(settings={"trace_debug": True}) as client:
+        # Small response should have trace
+        small_response = client.get("/fixtures/simple_primary_key.json?_trace=1")
+        assert small_response.status == 200
+        assert "_trace" in small_response.json
+
+        # Big response should not
+        big_response = client.get(
+            "/fixtures/-/query.json",
+            params={"_trace": 1, "sql": "select zeroblob(1024 * 256)"},
+        )
+        assert big_response.status == 200
+        assert "_trace" not in big_response.json
+
+
 def test_trace_parallel_queries():
     with make_app_client(settings={"trace_debug": True}) as client:
         response = client.get("/parallel-queries?_trace=1")

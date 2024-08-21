@@ -62,10 +62,13 @@ class TestClient:
         follow_redirects=False,
         redirect_count=0,
         method="GET",
+        params=None,
         cookies=None,
         if_none_match=None,
         headers=None,
     ):
+        if params:
+            path += "?" + urlencode(params, doseq=True)
         return await self._request(
             path=path,
             follow_redirects=follow_redirects,

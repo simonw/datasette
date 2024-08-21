@@ -18,10 +18,6 @@ def menu_links(datasette, actor):
                 "label": "Version info",
             },
             {
-                "href": datasette.urls.path("/-/metadata"),
-                "label": "Metadata",
-            },
-            {
                 "href": datasette.urls.path("/-/settings"),
                 "label": "Settings",
             },

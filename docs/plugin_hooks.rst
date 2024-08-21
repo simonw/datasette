@@ -1463,50 +1463,6 @@ This example will disable CSRF protection for that specific URL path:
 
 If any of the currently active ``skip_csrf()`` plugin hooks return ``True``, CSRF protection will be skipped for the request.
 
-.. _plugin_hook_get_metadata:
-
-get_metadata(datasette, key, database, table)
----------------------------------------------
-
-``datasette`` - :ref:`internals_datasette`
-    You can use this to access plugin configuration options via ``datasette.plugin_config(your_plugin_name)``.
-
-``actor`` - dictionary or None
-    The currently authenticated :ref:`actor <authentication_actor>`.
-
-``database`` - string or None
-    The name of the database metadata is being asked for.
-
-``table`` - string or None
-    The name of the table.
-
-``key`` - string or None
-    The name of the key for which data is being asked for.
-
-This hook is responsible for returning a dictionary corresponding to Datasette :ref:`metadata`. This function is passed the ``database``, ``table`` and ``key`` which were passed to the upstream internal request for metadata. Regardless, it is important to return a global metadata object, where ``"databases": []`` would be a top-level key. The dictionary returned here, will be merged with, and overwritten by, the contents of the physical ``metadata.yaml`` if one is present.
-
-.. warning::
-    The design of this plugin hook does not currently provide a mechanism for interacting with async code, and may change in the future. See `issue 1384 <https://github.com/simonw/datasette/issues/1384>`__.
-
-.. code-block:: python
-
-    @hookimpl
-    def get_metadata(datasette, key, database, table):
-        metadata = {
-            "title": "This will be the Datasette landing page title!",
-            "description": get_instance_description(datasette),
-            "databases": [],
-        }
-        for db_name, db_data_dict in get_my_database_meta(
-            datasette, database, table, key
-        ):
-            metadata["databases"][db_name] = db_data_dict
-        # whatever we return here will be merged with any other plugins using this hook and
-        # will be overwritten by a local metadata.yaml if one exists!
-        return metadata
-
-Example: `datasette-remote-metadata plugin <https://datasette.io/plugins/datasette-remote-metadata>`__
-
 .. _plugin_hook_menu_links:
 
 menu_links(datasette, actor, request)
@@ -1995,12 +1951,13 @@ This example plugin logs details of all events to standard error:
 
 The function can also return an async function which will be awaited. This is useful for writing to a database.
 
-This example logs events to a `datasette_events` table in a database called `events`. It uses the `startup()` hook to create that table if it does not exist.
+This example logs events to a ``datasette_events`` table in a database called ``events``. It uses the :ref:`plugin_hook_startup` hook to create that table if it does not exist.
 
 .. code-block:: python
 
     from datasette import hookimpl
     import json
+
 
     @hookimpl
     def startup(datasette):
@@ -2031,7 +1988,11 @@ This example logs events to a `datasette_events` table in a database called `eve
                 insert into datasette_events (event_type, created, actor, properties)
                 values (?, strftime('%Y-%m-%d %H:%M:%S', 'now'), ?, ?)
             """,
-                (event.name, json.dumps(event.actor), json.dumps(properties)),
+                (
+                    event.name,
+                    json.dumps(event.actor),
+                    json.dumps(properties),
+                ),
             )
 
         return inner

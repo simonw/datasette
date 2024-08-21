@@ -132,7 +132,13 @@ class IndexView(BaseView):
             if self.ds.cors:
                 add_cors_headers(headers)
             return Response(
-                json.dumps({db["name"]: db for db in databases}, cls=CustomJSONEncoder),
+                json.dumps(
+                    {
+                        "databases": {db["name"]: db for db in databases},
+                        "metadata": await self.ds.get_instance_metadata(),
+                    },
+                    cls=CustomJSONEncoder,
+                ),
                 content_type="application/json; charset=utf-8",
                 headers=headers,
             )
@@ -146,12 +152,13 @@ class IndexView(BaseView):
                 extra_links = await await_me_maybe(hook)
                 if extra_links:
                     homepage_actions.extend(extra_links)
+            alternative_homepage = request.path == "/-/"
             return await self.render(
-                ["index.html"],
+                ["default:index.html" if alternative_homepage else "index.html"],
                 request=request,
                 context={
                     "databases": databases,
-                    "metadata": self.ds.metadata(),
+                    "metadata": await self.ds.get_instance_metadata(),
                     "datasette_version": __version__,
                     "private": not await self.ds.permission_allowed(
                         None, "view-instance"
@@ -160,5 +167,6 @@ class IndexView(BaseView):
                         "top_homepage", self.ds, request
                     ),
                     "homepage_actions": homepage_actions,
+                    "noindex": request.path == "/-/",
                 },
             )

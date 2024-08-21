@@ -11,11 +11,6 @@ def startup(datasette):
 
 
 @hookspec
-def get_metadata(datasette, key, database, table):
-    """Return metadata to be merged into Datasette's metadata dictionary"""
-
-
-@hookspec
 def asgi_wrapper(datasette):
     """Returns an ASGI middleware callable to wrap our ASGI application with"""
 

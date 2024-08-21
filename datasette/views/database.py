@@ -17,7 +17,7 @@ from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
     call_with_supported_arguments,
-    derive_named_parameters,
+    named_parameters as derive_named_parameters,
     format_bytes,
     make_slot_function,
     tilde_decode,
@@ -58,13 +58,17 @@ class DatabaseView(View):
 
         sql = (request.args.get("sql") or "").strip()
         if sql:
+            redirect_url = "/" + request.url_vars.get("database") + "/-/query"
+            if request.url_vars.get("format"):
+                redirect_url += "." + request.url_vars.get("format")
+            redirect_url += "?" + request.query_string
+            return Response.redirect(redirect_url)
             return await QueryView()(request, datasette)
 
         if format_ not in ("html", "json"):
             raise NotFound("Invalid format: {}".format(format_))
 
-        metadata = (datasette.metadata("databases") or {}).get(database, {})
-        datasette.update_with_inherited_metadata(metadata)
+        metadata = await datasette.get_database_metadata(database)
 
         sql_views = []
         for view_name in await db.view_names():
@@ -131,6 +135,7 @@ class DatabaseView(View):
             "table_columns": (
                 await _table_columns(datasette, database) if allow_execute_sql else {}
             ),
+            "metadata": await datasette.get_database_metadata(database),
         }
 
         if format_ == "json":
@@ -433,6 +438,8 @@ class QueryView(View):
     async def get(self, request, datasette):
         from datasette.app import TableNotFound
 
+        await datasette.refresh_schemas()
+
         db = await datasette.resolve_database(request)
         database = db.name
 
@@ -484,9 +491,7 @@ class QueryView(View):
         if canned_query and canned_query.get("params"):
             named_parameters = canned_query["params"]
         if not named_parameters:
-            named_parameters = await derive_named_parameters(
-                datasette.get_database(database), sql
-            )
+            named_parameters = derive_named_parameters(sql)
         named_parameter_values = {
             named_parameter: params.get(named_parameter) or ""
             for named_parameter in named_parameters
@@ -625,8 +630,7 @@ class QueryView(View):
                     )
                 }
             )
-            metadata = (datasette.metadata("databases") or {}).get(database, {})
-            datasette.update_with_inherited_metadata(metadata)
+            metadata = await datasette.get_database_metadata(database)
 
             renderers = {}
             for key, (_, can_render) in datasette.renderers.items():
@@ -689,6 +693,7 @@ class QueryView(View):
             if allow_execute_sql and is_validated_sql and ":_" not in sql:
                 edit_sql_url = (
                     datasette.urls.database(database)
+                    + "/-/query"
                     + "?"
                     + urlencode(
                         {

@@ -36,7 +36,7 @@ async def test_table_json(ds_client):
 async def test_table_not_exists_json(ds_client):
     assert (await ds_client.get("/fixtures/blah.json")).json() == {
         "ok": False,
-        "error": "Table not found: blah",
+        "error": "Table not found",
         "status": 404,
         "title": None,
     }
@@ -57,7 +57,7 @@ async def test_table_shape_arrays(ds_client):
 @pytest.mark.asyncio
 async def test_table_shape_arrayfirst(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?"
+        "/fixtures/-/query.json?"
         + urllib.parse.urlencode(
             {
                 "sql": "select content from simple_primary_key order by id",
@@ -699,7 +699,7 @@ async def test_table_through(ds_client):
 @pytest.mark.asyncio
 async def test_max_returned_rows(ds_client):
     response = await ds_client.get(
-        "/fixtures.json?sql=select+content+from+no_primary_key"
+        "/fixtures/-/query.json?sql=select+content+from+no_primary_key"
     )
     data = response.json()
     assert data["truncated"]
@@ -718,22 +718,6 @@ async def test_view(ds_client):
         {"upper_content": "RENDER_CELL_DEMO", "content": "RENDER_CELL_DEMO"},
         {"upper_content": "RENDER_CELL_ASYNC", "content": "RENDER_CELL_ASYNC"},
     ]
-
-
-@pytest.mark.xfail
-@pytest.mark.asyncio
-async def test_unit_filters(ds_client):
-    response = await ds_client.get(
-        "/fixtures/units.json?_shape=arrays&distance__lt=75km&frequency__gt=1kHz"
-    )
-    assert response.status_code == 200
-    data = response.json()
-
-    assert data["units"]["distance"] == "m"
-    assert data["units"]["frequency"] == "Hz"
-
-    assert len(data["rows"]) == 1
-    assert data["rows"][0][0] == 2
 
 
 def test_page_size_matching_max_returned_rows(

@@ -12,7 +12,7 @@ import pytest
     ],
 )
 async def test_add_message_sets_cookie(ds_client, qs, expected):
-    response = await ds_client.get(f"/fixtures.message?sql=select+1&{qs}")
+    response = await ds_client.get(f"/fixtures/-/query.message?sql=select+1&{qs}")
     signed = response.cookies["ds_messages"]
     decoded = ds_client.ds.unsign(signed, "messages")
     assert expected == decoded
@@ -22,7 +22,7 @@ async def test_add_message_sets_cookie(ds_client, qs, expected):
 async def test_messages_are_displayed_and_cleared(ds_client):
     # First set the message cookie
     set_msg_response = await ds_client.get(
-        "/fixtures.message?sql=select+1&add_msg=xmessagex"
+        "/fixtures/-/query.message?sql=select+1&add_msg=xmessagex"
     )
     # Now access a page that displays messages
     response = await ds_client.get("/", cookies=set_msg_response.cookies)

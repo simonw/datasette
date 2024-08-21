@@ -268,7 +268,7 @@ def test_view_query(allow, expected_anon, expected_auth):
 def test_execute_sql(config):
     schema_re = re.compile("const schema = ({.*?});", re.DOTALL)
     with make_app_client(config=config) as client:
-        form_fragment = '<form class="sql" action="/fixtures"'
+        form_fragment = '<form class="sql" action="/fixtures/-/query"'
 
         # Anonymous users - should not display the form:
         anon_html = client.get("/fixtures").text
@@ -276,7 +276,7 @@ def test_execute_sql(config):
         # And const schema should be an empty object:
         assert "const schema = {};" in anon_html
         # This should 403:
-        assert client.get("/fixtures?sql=select+1").status == 403
+        assert client.get("/fixtures/-/query?sql=select+1").status == 403
         # ?_where= not allowed on tables:
         assert client.get("/fixtures/facet_cities?_where=id=3").status == 403
 
@@ -289,7 +289,7 @@ def test_execute_sql(config):
         assert set(schema["attraction_characteristic"]) == {"name", "pk"}
         assert schema["paginated_view"] == []
         assert form_fragment in response_text
-        query_response = client.get("/fixtures?sql=select+1", cookies=cookies)
+        query_response = client.get("/fixtures/-/query?sql=select+1", cookies=cookies)
         assert query_response.status == 200
         schema2 = json.loads(schema_re.search(query_response.text).group(1))
         assert set(schema2["attraction_characteristic"]) == {"name", "pk"}
@@ -337,7 +337,7 @@ def test_query_list_respects_view_query():
             ],
         ),
         (
-            "/fixtures?sql=select+1",
+            "/fixtures/-/query?sql=select+1",
             [
                 "view-instance",
                 ("view-database", "fixtures"),
@@ -453,7 +453,6 @@ def view_instance_client():
         "/",
         "/fixtures",
         "/fixtures/facetable",
-        "/-/metadata",
         "/-/versions",
         "/-/plugins",
         "/-/settings",

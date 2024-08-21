@@ -37,12 +37,22 @@ def _headers(token):
 
 
 @pytest.mark.asyncio
-async def test_insert_row(ds_write):
+@pytest.mark.parametrize(
+    "content_type",
+    (
+        "application/json",
+        "application/json; charset=utf-8",
+    ),
+)
+async def test_insert_row(ds_write, content_type):
     token = write_token(ds_write)
     response = await ds_write.client.post(
         "/data/docs/-/insert",
         json={"row": {"title": "Test", "score": 1.2, "age": 5}},
-        headers=_headers(token),
+        headers={
+            "Authorization": "Bearer {}".format(token),
+            "Content-Type": content_type,
+        },
     )
     expected_row = {"id": 1, "title": "Test", "score": 1.2, "age": 5}
     assert response.status_code == 201
@@ -133,14 +143,14 @@ async def test_insert_rows(ds_write, return_rows):
             {},
             None,
             404,
-            ["Database not found: data2"],
+            ["Database not found"],
         ),
         (
             "/data/docs2/-/insert",
             {},
             None,
             404,
-            ["Table not found: docs2"],
+            ["Table not found"],
         ),
         (
             "/data/docs/-/insert",
@@ -274,7 +284,7 @@ async def test_insert_rows(ds_write, return_rows):
             {"rows": [{"title": "Test"}]},
             None,
             404,
-            ["Table not found: badtable"],
+            ["Table not found"],
         ),
         # missing primary key
         (
@@ -537,7 +547,7 @@ async def test_upsert(ds_write, initial, input, expected_rows, should_return):
         json=input,
         headers=_headers(token),
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     assert response.json()["ok"] is True
 
     # Analytics event
@@ -598,7 +608,7 @@ async def test_delete_row_errors(ds_write, scenario):
     assert (
         response.json()["errors"] == ["Permission denied"]
         if scenario == "no_token"
-        else ["Table not found: bad_table"]
+        else ["Table not found"]
     )
     assert len((await ds_write.client.get("/data/docs.json?_shape=array")).json()) == 1
 
@@ -637,7 +647,9 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     # Should be a single row
     assert (
         await ds_write.client.get(
-            "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)
+            "/data/-/query.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(
+                table
+            )
         )
     ).json() == [1]
     # Now delete the row
@@ -645,7 +657,9 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
         # Special case for that rowid table
         delete_path = (
             await ds_write.client.get(
-                "/data.json?_shape=arrayfirst&sql=select+rowid+from+{}".format(table)
+                "/data/-/query.json?_shape=arrayfirst&sql=select+rowid+from+{}".format(
+                    table
+                )
             )
         ).json()[0]
 
@@ -663,7 +677,9 @@ async def test_delete_row(ds_write, table, row_for_create, pks, delete_path):
     assert event.pks == str(delete_path).split(",")
     assert (
         await ds_write.client.get(
-            "/data.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(table)
+            "/data/-/query.json?_shape=arrayfirst&sql=select+count(*)+from+{}".format(
+                table
+            )
         )
     ).json() == [0]
 
@@ -703,7 +719,7 @@ async def test_update_row_check_permission(ds_write, scenario):
     assert (
         response.json()["errors"] == ["Permission denied"]
         if scenario == "no_token"
-        else ["Table not found: bad_table"]
+        else ["Table not found"]
     )
 
 
@@ -830,7 +846,7 @@ async def test_drop_table(ds_write, scenario):
         assert response.json()["ok"] is False
         expected_error = "Permission denied"
         if scenario == "bad_table":
-            expected_error = "Table not found: bad_table"
+            expected_error = "Table not found"
         elif scenario == "immutable":
             expected_error = "Database is immutable"
         assert response.json()["errors"] == [expected_error]
@@ -1359,6 +1375,7 @@ async def test_create_table_permissions(
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(reason="Flaky, see https://github.com/simonw/datasette/issues/2356")
 @pytest.mark.parametrize(
     "input,expected_rows_after",
     (

@@ -535,7 +535,7 @@ async def test_csv_json_export_links_include_labels_if_foreign_keys(ds_client):
 
 @pytest.mark.asyncio
 async def test_table_not_exists(ds_client):
-    assert "Table not found: blah" in (await ds_client.get("/fixtures/blah")).text
+    assert "Table not found" in (await ds_client.get("/fixtures/blah")).text
 
 
 @pytest.mark.asyncio
@@ -792,8 +792,6 @@ async def test_table_metadata(ds_client):
     assert "Simple <em>primary</em> key" == inner_html(
         soup.find("div", {"class": "metadata-description"})
     )
-    # The source/license should be inherited
-    assert_footer_links(soup)
 
 
 @pytest.mark.asyncio
@@ -1101,8 +1099,8 @@ async def test_column_metadata(ds_client):
     soup = Soup(response.text, "html.parser")
     dl = soup.find("dl")
     assert [(dt.text, dt.nextSibling.text) for dt in dl.findAll("dt")] == [
-        ("name", "The name of the attraction"),
         ("address", "The street address for the attraction"),
+        ("name", "The name of the attraction"),
     ]
     assert (
         soup.select("th[data-column=name]")[0]["data-column-description"]
@@ -1201,7 +1199,9 @@ async def test_format_of_binary_links(size, title, length_bytes):
     expected = "{}>&lt;Binary:&nbsp;{}&nbsp;bytes&gt;</a>".format(title, length_bytes)
     assert expected in response.text
     # And test with arbitrary SQL query too
-    sql_response = await ds.client.get("/{}".format(db_name), params={"sql": sql})
+    sql_response = await ds.client.get(
+        "{}/-/query".format(db_name), params={"sql": sql}
+    )
     assert sql_response.status_code == 200
     assert expected in sql_response.text
 

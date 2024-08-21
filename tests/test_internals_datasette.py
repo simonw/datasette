@@ -173,3 +173,23 @@ async def test_get_permission(ds_client):
     # And test KeyError
     with pytest.raises(KeyError):
         ds.get_permission("missing-permission")
+
+
+@pytest.mark.asyncio
+async def test_apply_metadata_json():
+    ds = Datasette(
+        metadata={
+            "databases": {
+                "legislators": {
+                    "tables": {"offices": {"summary": "office address or sumtin"}},
+                    "queries": {
+                        "millenntial_represetatives": {
+                            "summary": "Social media accounts for current legislators"
+                        }
+                    },
+                }
+            }
+        },
+    )
+    await ds.invoke_startup()
+    assert (await ds.client.get("/")).status_code == 200

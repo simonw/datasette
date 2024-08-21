@@ -5,8 +5,12 @@ from .utils.asgi import (
 )
 from .views.base import DatasetteError
 from markupsafe import Markup
-import pdb
 import traceback
+
+try:
+    import ipdb as pdb
+except ImportError:
+    import pdb
 
 try:
     import rich

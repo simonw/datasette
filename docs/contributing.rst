@@ -111,9 +111,13 @@ Debugging
 
 Any errors that occur while Datasette is running while display a stack trace on the console.
 
-You can tell Datasette to open an interactive ``pdb`` debugger session if an error occurs using the ``--pdb`` option::
+You can tell Datasette to open an interactive ``pdb`` (or ``ipdb``, if present) debugger session if an error occurs using the ``--pdb`` option::
 
     datasette --pdb fixtures.db
+
+For `ipdb <https://pypi.org/project/ipdb/>`__, first run this::
+
+    datasette install ipdb
 
 .. _contributing_formatting:
 

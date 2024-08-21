@@ -8,8 +8,6 @@ import urllib
 from markupsafe import escape
 
 
-import pint
-
 from datasette.database import QueryInterrupted
 from datasette.utils.asgi import Request
 from datasette.utils import (
@@ -31,8 +29,6 @@ from datasette.utils.asgi import (
     Response,
     BadRequest,
 )
-
-ureg = pint.UnitRegistry()
 
 
 class DatasetteError(Exception):

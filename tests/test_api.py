@@ -529,16 +529,6 @@ async def test_database_page(ds_client):
             "private": False,
         },
         {
-            "name": "units",
-            "columns": ["pk", "distance", "frequency"],
-            "primary_keys": ["pk"],
-            "count": 3,
-            "hidden": False,
-            "fts_table": None,
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
             "name": "no_primary_key",
             "columns": ["content", "a", "b", "c"],
             "primary_keys": [],
@@ -1133,7 +1123,6 @@ async def test_config_json(config, expected):
                                 ],
                             },
                             "no_primary_key": {"sortable_columns": [], "hidden": True},
-                            "units": {"units": {"distance": "m", "frequency": "Hz"}},
                             "primary_key_multiple_columns_explicit_label": {
                                 "label_column": "content2"
                             },
@@ -1168,7 +1157,6 @@ async def test_config_json(config, expected):
                                     "text",
                                 ]
                             },
-                            "units": {"units": {"distance": "m", "frequency": "Hz"}},
                             # These one get redacted:
                             "no_primary_key": "***",
                             "primary_key_multiple_columns_explicit_label": "***",

@@ -424,8 +424,8 @@ def view_names_client(tmp_path_factory):
     (
         ("/", "index"),
         ("/fixtures", "database"),
-        ("/fixtures/units", "table"),
-        ("/fixtures/units/1", "row"),
+        ("/fixtures/facetable", "table"),
+        ("/fixtures/facetable/1", "row"),
         ("/-/versions", "json_data"),
         ("/fixtures/-/query?sql=select+1", "database"),
     ),

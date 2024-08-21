@@ -5,18 +5,21 @@ from datasette import tracer
 from datasette.utils import path_with_added_args
 from datasette.utils.asgi import asgi_send_json, Response
 import base64
-import pint
 import json
-import urllib
-
-ureg = pint.UnitRegistry()
+import urllib.parse
 
 
 @hookimpl
 def prepare_connection(conn, database, datasette):
     def convert_units(amount, from_, to_):
         """select convert_units(100, 'm', 'ft');"""
-        return (amount * ureg(from_)).to(to_).to_tuple()[0]
+        # Convert meters to feet
+        if from_ == "m" and to_ == "ft":
+            return amount * 3.28084
+        # Convert feet to meters
+        if from_ == "ft" and to_ == "m":
+            return amount / 3.28084
+        assert False, "Unsupported conversion"
 
     conn.create_function("convert_units", 3, convert_units)
 

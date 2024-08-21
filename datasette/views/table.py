@@ -43,7 +43,7 @@ from datasette.utils import (
 from datasette.utils.asgi import BadRequest, Forbidden, NotFound, Response
 from datasette.filters import Filters
 import sqlite_utils
-from .base import BaseView, DatasetteError, ureg, _error, stream_csv
+from .base import BaseView, DatasetteError, _error, stream_csv
 from .database import QueryView
 
 LINK_WITH_LABEL = (
@@ -292,14 +292,6 @@ async def display_columns_and_rows(
                         ),
                     )
                 )
-            elif column in table_config.get("units", {}) and value != "":
-                # Interpret units using pint
-                value = value * ureg(table_config["units"][column])
-                # Pint uses floating point which sometimes introduces errors in the compact
-                # representation, which we have to round off to avoid ugliness. In the vast
-                # majority of cases this rounding will be inconsequential. I hope.
-                value = round(value.to_compact(), 6)
-                display_value = markupsafe.Markup(f"{value:~P}".replace(" ", "&nbsp;"))
             else:
                 display_value = str(value)
                 if truncate_cells and len(display_value) > truncate_cells:
@@ -1017,7 +1009,6 @@ async def table_view_data(
         nofacet = True
 
     table_metadata = await datasette.table_config(database_name, table_name)
-    units = table_metadata.get("units", {})
 
     # Arguments that start with _ and don't contain a __ are
     # special - things like ?_search= - and should not be
@@ -1029,7 +1020,7 @@ async def table_view_data(
                 filter_args.append((key, v))
 
     # Build where clauses from query string arguments
-    filters = Filters(sorted(filter_args), units, ureg)
+    filters = Filters(sorted(filter_args))
     where_clauses, params = filters.build_where_clauses(table_name)
 
     # Execute filters_from_request plugin hooks - including the default

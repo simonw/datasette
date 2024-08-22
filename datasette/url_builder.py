@@ -31,6 +31,12 @@ class Urls:
         db = self.ds.get_database(database)
         return self.path(tilde_encode(db.route), format=format)
 
+    def database_query(self, database, sql, format=None):
+        path = f"{self.database(database)}/-/query?" + urllib.parse.urlencode(
+            {"sql": sql}
+        )
+        return self.path(path, format=format)
+
     def table(self, database, table, format=None):
         path = f"{self.database(database)}/{tilde_encode(table)}"
         if format is not None:

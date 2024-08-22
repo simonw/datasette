@@ -40,7 +40,10 @@
 {% endif %}
 
 {% if count or human_description_en %}
-    <h3>{% if count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
+    <h3>
+        {% if count == count_limit + 1 %}&gt;{{ "{:,}".format(count_limit) }} rows
+        {% if allow_execute_sql and query.sql %} <a class="count-sql" style="font-size: 0.8em; padding-left: 0.5em" href="{{ urls.database_query(database, count_sql) }}">count all rows</a>{% endif %}
+        {% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
         {% if human_description_en %}{{ human_description_en }}{% endif %}
     </h3>
 {% endif %}
@@ -170,6 +173,34 @@
 
 {% if view_definition %}
     <pre class="wrapped-sql">{{ view_definition }}</pre>
+{% endif %}
+
+{% if allow_execute_sql and query.sql %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const countLink = document.querySelector('a.count-sql');
+    if (countLink) {
+        countLink.addEventListener('click', function(ev) {
+            ev.preventDefault();
+            // Replace countLink with span with same style attribute
+            const span = document.createElement('span');
+            span.textContent = 'counting...';
+            span.setAttribute('style', countLink.getAttribute('style'));
+            countLink.replaceWith(span);
+            countLink.setAttribute('disabled', 'disabled');
+            let url = countLink.href.replace(/(\?|$)/, '.json$1');
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    const count = data['rows'][0]['count(*)'];
+                    const formattedCount = count.toLocaleString();
+                    span.closest('h3').textContent = formattedCount + ' rows';
+                })
+                .catch(error => countLink.textContent = 'error');
+        });
+    }
+});
+</script>
 {% endif %}
 
 {% endblock %}

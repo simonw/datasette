@@ -929,6 +929,7 @@ async def table_view_traced(datasette, request):
                         database=resolved.db.name,
                         table=resolved.table,
                     ),
+                    count_limit=resolved.db.count_limit,
                 ),
                 request=request,
                 view_name="table",
@@ -1280,6 +1281,9 @@ async def table_view_data(
     if extra_extras:
         extras.update(extra_extras)
 
+    async def extra_count_sql():
+        return count_sql
+
     async def extra_count():
         "Total count of rows matching these filters"
         # Calculate the total count for this query
@@ -1299,8 +1303,11 @@ async def table_view_data(
 
         # Otherwise run a select count(*) ...
         if count_sql and count is None and not nocount:
+            count_sql_limited = (
+                f"select count(*) from (select * {from_sql} limit 10001)"
+            )
             try:
-                count_rows = list(await db.execute(count_sql, from_sql_params))
+                count_rows = list(await db.execute(count_sql_limited, from_sql_params))
                 count = count_rows[0][0]
             except QueryInterrupted:
                 pass
@@ -1615,6 +1622,7 @@ async def table_view_data(
             "facet_results",
             "facets_timed_out",
             "count",
+            "count_sql",
             "human_description_en",
             "next_url",
             "metadata",
@@ -1647,6 +1655,7 @@ async def table_view_data(
 
     registry = Registry(
         extra_count,
+        extra_count_sql,
         extra_facet_results,
         extra_facets_timed_out,
         extra_suggested_facets,

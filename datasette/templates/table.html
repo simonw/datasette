@@ -42,7 +42,7 @@
 {% if count or human_description_en %}
     <h3>
         {% if count == count_limit + 1 %}&gt;{{ "{:,}".format(count_limit) }} rows
-        {% if allow_execute_sql and query.sql %} <a class="count-sql" style="font-size: 0.8em; padding-left: 0.5em" href="{{ urls.database_query(database, count_sql) }}">count all rows</a>{% endif %}
+        {% if allow_execute_sql and query.sql %} <a class="count-sql" style="font-size: 0.8em;" href="{{ urls.database_query(database, count_sql) }}">count all</a>{% endif %}
         {% elif count or count == 0 %}{{ "{:,}".format(count) }} row{% if count == 1 %}{% else %}s{% endif %}{% endif %}
         {% if human_description_en %}{{ human_description_en }}{% endif %}
     </h3>
@@ -180,7 +180,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const countLink = document.querySelector('a.count-sql');
     if (countLink) {
-        countLink.addEventListener('click', function(ev) {
+        countLink.addEventListener('click', async function(ev) {
             ev.preventDefault();
             // Replace countLink with span with same style attribute
             const span = document.createElement('span');
@@ -189,14 +189,23 @@ document.addEventListener('DOMContentLoaded', function() {
             countLink.replaceWith(span);
             countLink.setAttribute('disabled', 'disabled');
             let url = countLink.href.replace(/(\?|$)/, '.json$1');
-            fetch(url)
-                .then(response => response.json())
-                .then(data => {
-                    const count = data['rows'][0]['count(*)'];
-                    const formattedCount = count.toLocaleString();
-                    span.closest('h3').textContent = formattedCount + ' rows';
-                })
-                .catch(error => countLink.textContent = 'error');
+            try {
+                const response = await fetch(url);
+                console.log({response});
+                const data = await response.json();
+                console.log({data});
+                if (!response.ok) {
+                    console.log('throw error');
+                    throw new Error(data.title || data.error);
+                }
+                const count = data['rows'][0]['count(*)'];
+                const formattedCount = count.toLocaleString();
+                span.closest('h3').textContent = formattedCount + ' rows';
+            } catch (error) {
+                console.log('Update', span, 'with error message', error);
+                span.textContent = error.message;
+                span.style.color = 'red';
+            }
         });
     }
 });

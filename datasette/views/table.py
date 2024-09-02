@@ -558,7 +558,7 @@ class TableInsertView(BaseView):
                     ),
                     args,
                 )
-                result["rows"] = [dict(r) for r in fetched_rows.rows]
+                result["rows"] = fetched_rows.dicts()
             else:
                 result["rows"] = rows
         # We track the number of rows requested, but do not attempt to show which were actually

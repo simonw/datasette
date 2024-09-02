@@ -1093,6 +1093,9 @@ The ``Results`` object also has the following properties and methods:
 ``.rows`` - list of ``sqlite3.Row``
     This property provides direct access to the list of rows returned by the database. You can access specific rows by index using ``results.rows[0]``.
 
+``.dicts()`` - list of ``dict``
+    This method returns a list of Python dictionaries, one for each row.
+
 ``.first()`` - row or None
     Returns the first row in the results, or ``None`` if no rows were returned.
 

@@ -277,8 +277,7 @@ class RowUpdateView(BaseView):
             results = await resolved.db.execute(
                 resolved.sql, resolved.params, truncate=True
             )
-            rows = list(results.rows)
-            result["row"] = dict(rows[0])
+            result["row"] = results.dicts()[0]
 
         await self.ds.track_event(
             UpdateRowEvent(

@@ -40,6 +40,17 @@ async def test_results_bool(db, expected):
     assert bool(results) is expected
 
 
+@pytest.mark.asyncio
+async def test_results_dicts(db):
+    results = await db.execute("select pk, name from roadside_attractions")
+    assert results.dicts() == [
+        {"pk": 1, "name": "The Mystery Spot"},
+        {"pk": 2, "name": "Winchester Mystery House"},
+        {"pk": 3, "name": "Burlingame Museum of PEZ Memorabilia"},
+        {"pk": 4, "name": "Bigfoot Discovery Museum"},
+    ]
+
+
 @pytest.mark.parametrize(
     "query,expected",
     [

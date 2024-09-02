@@ -58,8 +58,8 @@ async def test_insert_row(ds_write, content_type):
     assert response.status_code == 201
     assert response.json()["ok"] is True
     assert response.json()["rows"] == [expected_row]
-    rows = (await ds_write.get_database("data").execute("select * from docs")).rows
-    assert dict(rows[0]) == expected_row
+    rows = (await ds_write.get_database("data").execute("select * from docs")).dicts()
+    assert rows[0] == expected_row
     # Analytics event
     event = last_event(ds_write)
     assert event.name == "insert-rows"
@@ -118,12 +118,9 @@ async def test_insert_rows(ds_write, return_rows):
     assert not event.ignore
     assert not event.replace
 
-    actual_rows = [
-        dict(r)
-        for r in (
-            await ds_write.get_database("data").execute("select * from docs")
-        ).rows
-    ]
+    actual_rows = (
+        await ds_write.get_database("data").execute("select * from docs")
+    ).dicts()
     assert len(actual_rows) == 20
     assert actual_rows == [
         {"id": i + 1, "title": "Test {}".format(i), "score": 1.0, "age": 5}
@@ -469,12 +466,10 @@ async def test_insert_ignore_replace(
     assert event.ignore == ignore
     assert event.replace == replace
 
-    actual_rows = [
-        dict(r)
-        for r in (
-            await ds_write.get_database("data").execute("select * from docs")
-        ).rows
-    ]
+    actual_rows = (
+        await ds_write.get_database("data").execute("select * from docs")
+    ).dicts()
+
     assert actual_rows == expected_rows
     assert response.json()["ok"] is True
     if should_return:

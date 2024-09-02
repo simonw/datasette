@@ -677,6 +677,9 @@ class Results:
         else:
             raise MultipleValues
 
+    def dicts(self):
+        return [dict(row) for row in self.rows]
+
     def __iter__(self):
         return iter(self.rows)
 

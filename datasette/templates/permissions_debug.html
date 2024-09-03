@@ -47,7 +47,7 @@ textarea {
 
 <p>This tool lets you simulate an actor and a permission check for that actor.</p>
 
-<form action="{{ urls.path('-/permissions') }}" id="debug-post" method="post" style="margin-bottom: 1em">
+<form class="core" action="{{ urls.path('-/permissions') }}" id="debug-post" method="post" style="margin-bottom: 1em">
     <input type="hidden" name="csrftoken" value="{{ csrftoken() }}">
     <div class="two-col">
         <p><label>Actor</label></p>

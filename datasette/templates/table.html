@@ -48,7 +48,7 @@
     </h3>
 {% endif %}
 
-<form class="filters" action="{{ urls.table(database, table) }}" method="get">
+<form class="core" class="filters" action="{{ urls.table(database, table) }}" method="get">
     {% if supports_search %}
         <div class="search-row"><label for="_search">Search:</label><input id="_search" type="search" name="_search" value="{{ search }}"></div>
     {% endif %}
@@ -152,7 +152,7 @@
                 <a href="{{ append_querystring(renderers['json'], '_shape=object') }}">object</a>
             {% endif %}
         </p>
-        <form action="{{ url_csv_path }}" method="get">
+        <form class="core" action="{{ url_csv_path }}" method="get">
             <p>
                 CSV options:
                 <label><input type="checkbox" name="_dl"> download file</label>

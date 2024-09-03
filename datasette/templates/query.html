@@ -36,7 +36,7 @@
 
 {% block description_source_license %}{% include "_description_source_license.html" %}{% endblock %}
 
-<form class="sql" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_query_write %}post{% else %}get{% endif %}">
+<form class="sql core" action="{{ urls.database(database) }}{% if canned_query %}/{{ canned_query }}{% endif %}" method="{% if canned_query_write %}post{% else %}get{% endif %}">
     <h3>Custom SQL query{% if display_rows %} returning {% if truncated %}more than {% endif %}{{ "{:,}".format(display_rows|length) }} row{% if display_rows|length == 1 %}{% else %}s{% endif %}{% endif %}{% if not query_error %}
         <span class="show-hide-sql">(<a href="{{ show_hide_link }}">{{ show_hide_text }}</a>)</span>
     {% endif %}</h3>

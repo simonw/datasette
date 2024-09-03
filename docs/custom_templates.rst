@@ -83,6 +83,15 @@ database column they are representing, for example:
         </tbody>
     </table>
 
+.. _customization_css:
+
+Writing custom CSS
+~~~~~~~~~~~~~~~~~~
+
+Custom templates need to take Datasette's default CSS into account. The pattern portfolio at ``/-/patterns`` (`example here <https://latest.datasette.io/-/patterns>`__) is a useful reference for understanding the available CSS classes.
+
+The ``core`` class is particularly useful - you can apply this directly to a ``<input>`` or ``<button>`` element to get Datasette's default form styles, or you can apply it to a containing element (such as ``<form>``) to apply those styles to all of the form elements within it.
+
 .. _customization_static_files:
 
 Serving static files

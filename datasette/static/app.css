@@ -528,8 +528,11 @@ label.sort_by_desc {
 pre#sql-query {
     margin-bottom: 1em;
 }
-form input[type=text],
-form input[type=search] {
+
+.core input[type=text],
+input.core[type=text],
+.core input[type=search],
+input.core[type=search] {
     border: 1px solid #ccc;
     border-radius: 3px;
     width: 60%;
@@ -540,17 +543,25 @@ form input[type=search] {
 }
 /* Stop Webkit from styling search boxes in an inconsistent way */
 /* https://css-tricks.com/webkit-html5-search-inputs/ comments */
-input[type=search] {
+.core input[type=search],
+input.core[type=search] {
     -webkit-appearance: textfield;
 }
-input[type="search"]::-webkit-search-decoration,
-input[type="search"]::-webkit-search-cancel-button,
-input[type="search"]::-webkit-search-results-button,
-input[type="search"]::-webkit-search-results-decoration {
+.core input[type="search"]::-webkit-search-decoration,
+input.core[type="search"]::-webkit-search-decoration,
+.core input[type="search"]::-webkit-search-cancel-button,
+input.core[type="search"]::-webkit-search-cancel-button,
+.core input[type="search"]::-webkit-search-results-button,
+input.core[type="search"]::-webkit-search-results-button,
+.core input[type="search"]::-webkit-search-results-decoration,
+input.core[type="search"]::-webkit-search-results-decoration {
     display: none;
 }
 
-form input[type=submit], form button[type=button] {
+.core input[type=submit],
+.core button[type=button],
+input.core[type=submit],
+button.core[type=button] {
     font-weight: 400;
     cursor: pointer;
     text-align: center;
@@ -563,14 +574,16 @@ form input[type=submit], form button[type=button] {
     border-radius: .25rem;
 }
 
-form input[type=submit] {
+.core input[type=submit],
+input.core[type=submit] {
     color: #fff;
     background: linear-gradient(180deg, #007bff 0%, #4E79C7 100%);
     border-color: #007bff;
     -webkit-appearance: button;
 }
 
-form button[type=button] {
+.core button[type=button],
+button.core[type=button] {
     color: #007bff;
     background-color: #fff;
     border-color: #007bff;

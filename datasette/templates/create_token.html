@@ -39,7 +39,7 @@
   {% endfor %}
 {% endif %}
 
-<form action="{{ urls.path('-/create-token') }}" method="post">
+<form class="core" action="{{ urls.path('-/create-token') }}" method="post">
   <div>
     <div class="select-wrapper" style="width: unset">
       <select name="expire_type">

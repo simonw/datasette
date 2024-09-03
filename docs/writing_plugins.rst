@@ -124,7 +124,6 @@ And a Python module file, ``datasette_plugin_demos.py``, that implements the plu
             "random_integer", 2, random.randint
         )
 
-
 Having built a plugin in this way you can turn it into an installable package using the following command::
 
     python3 setup.py sdist
@@ -163,6 +162,8 @@ To bundle the static assets for a plugin in the package that you publish to PyPI
 Where ``datasette_plugin_name`` is the name of the plugin package (note that it uses underscores, not hyphens) and ``static/plugin.js`` is the path within that package to the static file.
 
 `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`__ is a useful example of a plugin that includes packaged static assets in this way.
+
+See :ref:`customization_css` for tips on writing CSS that is compatible with Datasette's default CSS, including details of the ``core`` class for applying Datasette's default form element styles.
 
 .. _writing_plugins_custom_templates:
 

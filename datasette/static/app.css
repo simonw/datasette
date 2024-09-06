@@ -499,9 +499,7 @@ a.blob-download {
     margin-bottom: 0;
 }
 
-
 /* Forms =================================================================== */
-
 
 form.sql textarea {
     border: 1px solid #ccc;
@@ -514,10 +512,6 @@ form.sql textarea {
 form.sql label {
     width: 15%;
 }
-form label {
-    font-weight: bold;
-    display: inline-block;
-}
 .advanced-export input[type=submit] {
     font-size: 0.6em;
     margin-left: 1em;
@@ -527,6 +521,12 @@ label.sort_by_desc {
 }
 pre#sql-query {
     margin-bottom: 1em;
+}
+
+.core label,
+label.core {
+    font-weight: bold;
+    display: inline-block;
 }
 
 .core input[type=text],
@@ -541,10 +541,10 @@ input.core[type=search] {
     font-size: 1em;
     font-family: Helvetica, sans-serif;
 }
-/* Stop Webkit from styling search boxes in an inconsistent way */
-/* https://css-tricks.com/webkit-html5-search-inputs/ comments */
 .core input[type=search],
 input.core[type=search] {
+    /* Stop Webkit from styling search boxes in an inconsistent way */
+    /* https://css-tricks.com/webkit-html5-search-inputs/ comments */
     -webkit-appearance: textfield;
 }
 .core input[type="search"]::-webkit-search-decoration,

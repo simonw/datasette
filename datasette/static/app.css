@@ -222,12 +222,6 @@ button.button-as-link:focus {
 	color: #67C98D;
 }
 
-a img {
-  display: block;
-  max-width: 100%;
-  border: 0;
-}
-
 code,
 pre {
   font-family: monospace;

@@ -19,7 +19,7 @@
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <div class="not-footer">
-<header><nav>{% block nav %}{% block crumbs %}{{ crumbs.nav(request=request) }}{% endblock %}
+<header class="hd"><nav>{% block nav %}{% block crumbs %}{{ crumbs.nav(request=request) }}{% endblock %}
     {% set links = menu_links() %}{% if links or show_logout %}
     <details class="nav-menu details-menu">
         <summary><svg aria-labelledby="nav-menu-svg-title" role="img"

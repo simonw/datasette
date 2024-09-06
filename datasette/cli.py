@@ -468,10 +468,12 @@ def uninstall(packages, yes):
 @click.option(
     "--ssl-keyfile",
     help="SSL key file",
+    envvar="DATASETTE_SSL_KEYFILE",
 )
 @click.option(
     "--ssl-certfile",
     help="SSL certificate file",
+    envvar="DATASETTE_SSL_CERTFILE",
 )
 @click.option(
     "--internal",

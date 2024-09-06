@@ -450,28 +450,28 @@ h2 em {
 .table-wrapper {
     overflow-x: auto;
 }
-table {
+table.rows-and-columns {
     border-collapse: collapse;
 }
-td {
+table.rows-and-columns td {
     border-top: 1px solid #aaa;
     border-right: 1px solid #eee;
     padding: 4px;
     vertical-align: top;
     white-space: pre-wrap;
 }
-td.type-pk {
+table.rows-and-columns td.type-pk {
     font-weight: bold;
 }
-td em {
+table.rows-and-columns td em {
     font-style: normal;
     font-size: 0.8em;
     color: #aaa;
 }
-th {
+table.rows-and-columns th {
     padding-right: 1em;
 }
-table a:link {
+table.rows-and-columns a:link {
     text-decoration: none;
 }
 .rows-and-columns td:before {

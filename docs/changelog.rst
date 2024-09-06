@@ -4,6 +4,33 @@
 Changelog
 =========
 
+.. _v1_0_a16:
+
+1.0a16 (2024-09-05)
+-------------------
+
+This release focuses on performance, in particular against large tables, and introduces some minor breaking changes for CSS styling in Datasette plugins.
+
+- Removed the unit conversions feature and its dependency, Pint. This means Datasette is now compatible with the upcoming Python 3.13. (:issue:`2400`, :issue:`2320`)
+- The ``datasette --pdb`` option now uses the `ipdb <https://github.com/gotcha/ipdb>`__ debugger if it is installed. You can install it using ``datasette install ipdb``. Thanks, `Tiago Ilieve <https://github.com/myhro>`__. (`#2342 <https://github.com/simonw/datasette/pull/2342>`__)
+- Fixed a confusing error that occurred if ``metadata.json`` contained nested objects. (:issue:`2403`)
+- Fixed a bug with ``?_trace=1`` where it returned a blank page if the response was larger than 256KB. (:issue:`2404`)
+- Tracing mechanism now also displays SQL queries that returned errors or ran out of time. `datasette-pretty-traces 0.5 <https://github.com/simonw/datasette-pretty-traces/releases/tag/0.5>`__ includes support for displaying this new type of trace. (:issue:`2405`)
+- Fixed a text spacing with table descriptions on the homepage. (:issue:`2399`)
+- Performance improvements for large tables:
+    - Suggested facets now only consider the first 1000 rows. (:issue:`2406`)
+    - Improved performance of date facet suggestion against large tables. (:issue:`2407`)
+    - Row counts stop at 10,000 rows when listing tables. (:issue:`2398`)
+    - On table page the count stops at 10,000 rows too, with a "count all" button to execute the full count. (:issue:`2408`)
+- New ``.dicts()`` internal method on :ref:`database_results` that returns a list of dictionaries representing the results from a SQL query: (:issue:`2414`)
+
+  .. code-block:: bash
+
+        rows = (await db.execute("select * from t")).dicts()
+
+- Default Datasette core CSS that styles inputs and buttons now requires a class of ``"core"`` on the element or a containing element, for example ``<form class="core">``. (:issue:`2415`)
+- Similarly, default table styles now only apply to ``<table class="rows-and-columns">``. (:issue:`2420`)
+
 .. _v1_0_a15:
 
 1.0a15 (2024-08-15)

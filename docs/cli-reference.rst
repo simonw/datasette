@@ -141,6 +141,17 @@ Once started you can access it at ``http://localhost:8001``
 
 .. [[[end]]]
 
+.. _cli_datasette_serve_env:
+
+Environment variables
+---------------------
+
+Some of the ``datasette serve`` options can be provided by environment variables:
+
+- ``DATASETTE_SECRET``: Equivalent to the ``--secret`` option.
+- ``DATASETTE_SSL_KEYFILE``: Equivalent to the ``--ssl-keyfile`` option.
+- ``DATASETTE_SSL_CERTFILE``: Equivalent to the ``--ssl-certfile`` option.
+- ``DATASETTE_LOAD_EXTENSION``: Equivalent to the ``--load-extension`` option.
 
 .. _cli_datasette_get:
 

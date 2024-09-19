@@ -810,6 +810,74 @@ PermConfigTestCase = collections.namedtuple(
             resource=("perms_ds_one", "t1"),
             expected_result=True,
         ),
+        # insert-row: true permission at the table level should over-ride insert-row at the database level
+        # With no actor => True
+        # Github Issue #2402
+        PermConfigTestCase(
+            config={
+                "databases": {
+                    "perms_ds_one": {
+                        "permissions": {"insert-row": {"id": "user"}},
+                        "tables": {"t1": {"permissions": {"insert-row": True}}},
+                    }
+                }
+            },
+            actor=None,
+            action="insert-row",
+            resource=("perms_ds_one", "t1"),
+            expected_result=True,
+        ),
+        # insert-row: true permission at the table level should over-ride insert-row at the database level
+        # With different actor then set in the database-level permissions => True
+        # Github Issue #2402
+        PermConfigTestCase(
+            config={
+                "databases": {
+                    "perms_ds_one": {
+                        "permissions": {"insert-row": {"id": "user"}},
+                        "tables": {"t1": {"permissions": {"insert-row": True}}},
+                    }
+                }
+            },
+            actor={"id": "user2"},
+            action="insert-row",
+            resource=("perms_ds_one", "t1"),
+            expected_result=True,
+        ),
+        # insert-row: false permission at the table level should over-ride insert-row at the database level #2402
+        # With actor set in the database-level permissions => False
+        # Github Issue #2402
+        PermConfigTestCase(
+            config={
+                "databases": {
+                    "perms_ds_one": {
+                        "permissions": {"insert-row": {"id": "user"}},
+                        "tables": {"t1": {"permissions": {"insert-row": False}}},
+                    }
+                }
+            },
+            actor={"id": "user"},
+            action="insert-row",
+            resource=("perms_ds_one", "t1"),
+            expected_result=False,
+        ),
+        # insert-row: false permission at the table level should over-ride insert-row at the database level #2402
+        # With no actor => False
+        # Github Issue #2402
+        PermConfigTestCase(
+            config={
+                "databases": {
+                    "perms_ds_one": {
+                        "permissions": {"insert-row": {"id": "user"}},
+                        "tables": {"t1": {"permissions": {"insert-row": False}}},
+                    }
+                }
+            },
+            actor=None,
+            action="insert-row",
+            resource=("perms_ds_one", "t1"),
+            expected_result=False,
+        ),
         # view-query on canned query, wrong actor
         PermConfigTestCase(
             config={

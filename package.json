@@ -13,6 +13,6 @@
     "@rollup/plugin-node-resolve": "^15.0.1",
     "@rollup/plugin-terser": "^0.1.0",
     "codemirror": "^6.0.1",
-    "rollup": "^3.3.0"
+    "rollup": "^3.29.5"
   }
 }

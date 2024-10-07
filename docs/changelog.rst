@@ -4,6 +4,14 @@
 Changelog
 =========
 
+.. _v0_65:
+
+0.65 (2024-10-07)
+-----------------
+
+- Upgrade for compatibility with Python 3.13 (by vendoring Pint dependency). (:issue:`2434`)
+- Dropped support for Python 3.8.
+
 .. _v1_0_a16:
 
 1.0a16 (2024-09-05)
@@ -66,7 +74,7 @@ This alpha introduces significant changes to Datasette's :ref:`metadata` system,
 
 .. _v0_64_8:
 
-0.64.8 (2023-06-21)
+0.64.8 (2024-06-21)
 -------------------
 
 - Security improvement: 404 pages used to reflect content from the URL path, which could be used to display misleading information to Datasette users. 404 errors no longer display additional information from the URL. (:issue:`2359`)
@@ -74,7 +82,7 @@ This alpha introduces significant changes to Datasette's :ref:`metadata` system,
 
 .. _v0_64_7:
 
-0.64.7 (2023-06-12)
+0.64.7 (2024-06-12)
 -------------------
 
 - Fixed a bug where canned queries with named parameters threw an error when run against SQLite 3.46.0. (:issue:`2353`)

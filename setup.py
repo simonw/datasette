@@ -38,7 +38,9 @@ setup(
         "CI": "https://github.com/simonw/datasette/actions?query=workflow%3ATest",
     },
     packages=find_packages(exclude=("tests",)),
-    package_data={"datasette": ["templates/*.html"]},
+    package_data={
+        "datasette": ["templates/*.html", "vendored/**/*.txt"],
+    },
     include_package_data=True,
     python_requires=">=3.7",
     install_requires=[
@@ -48,7 +50,6 @@ setup(
         "Jinja2>=2.10.3",
         "hupper>=1.9",
         "httpx>=0.20",
-        "pint>=0.9",
         "pluggy>=1.0",
         "uvicorn>=0.11",
         "aiofiles>=0.4",
@@ -59,6 +60,11 @@ setup(
         "itsdangerous>=1.1",
         "setuptools",
         "pip",
+        # Needed by our vendored Pint:
+        "platformdirs>=2.1.0",
+        "typing_extensions>=4.0.0",
+        "flexcache>=0.3",
+        "flexparser>=0.3",
     ],
     entry_points="""
         [console_scripts]
@@ -95,9 +101,10 @@ setup(
         "Intended Audience :: End Users/Desktop",
         "Topic :: Database",
         "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.7",
     ],
 )

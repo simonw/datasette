@@ -8,7 +8,7 @@ import urllib
 from markupsafe import escape
 
 
-import pint
+from datasette.vendored import pint
 
 from datasette import __version__
 from datasette.database import QueryInterrupted

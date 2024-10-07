@@ -5,7 +5,7 @@ from datasette import tracer
 from datasette.utils import path_with_added_args
 from datasette.utils.asgi import asgi_send_json, Response
 import base64
-import pint
+from datasette.vendored import pint
 import json
 
 ureg = pint.UnitRegistry()

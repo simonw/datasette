@@ -38,7 +38,9 @@ setup(
         "CI": "https://github.com/simonw/datasette/actions?query=workflow%3ATest",
     },
     packages=find_packages(exclude=("tests",)),
-    package_data={"datasette": ["templates/*.html"]},
+    package_data={
+        "datasette": ["templates/*.html", "vendored/**/*.txt"],
+    },
     include_package_data=True,
     python_requires=">=3.7",
     install_requires=[

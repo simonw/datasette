@@ -1,0 +1,18 @@
+
+# a few unit definitions added to use the translations by unicode cldr
+
+dietary_calorie = 1000 * calorie = Cal = Calorie
+metric_cup = liter / 4
+square_meter = meter ** 2 = sq_m
+square_kilometer = kilometer ** 2 = sq_km
+mile_scandinavian = 10000 * meter
+cubic_mile = 1 * mile ** 3 = cu_mile = cubic_miles
+cubic_meter = 1 * meter ** 3 = cu_m
+cubic_kilometer = 1 * kilometer ** 3 = cu_km
+
+[consumption] = [volume] / [length]
+liter_per_kilometer = liter / kilometer
+liter_per_100kilometers = liter / (100 * kilometers)
+
+[US_consumption] = [length] / [volume]
+MPG = mile / gallon

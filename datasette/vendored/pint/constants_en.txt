@@ -1,0 +1,74 @@
+# Default Pint constants definition file
+# Based on the International System of Units
+# Language: english
+# Source: https://physics.nist.gov/cuu/Constants/
+#         https://physics.nist.gov/PhysRefData/XrayTrans/Html/search.html
+# :copyright: 2013,2019 by Pint Authors, see AUTHORS for more details.
+
+#### MATHEMATICAL CONSTANTS ####
+# As computed by Maxima with fpprec:50
+
+pi     = 3.1415926535897932384626433832795028841971693993751 = π  # pi
+tansec = 4.8481368111333441675396429478852851658848753880815e-6   # tangent of 1 arc-second ~ arc_second/radian
+ln10   = 2.3025850929940456840179914546843642076011014886288      # natural logarithm of 10
+wien_x = 4.9651142317442763036987591313228939440555849867973      # solution to (x-5)*exp(x)+5 = 0 => x = W(5/exp(5))+5
+wien_u = 2.8214393721220788934031913302944851953458817440731      # solution to (u-3)*exp(u)+3 = 0 => u = W(3/exp(3))+3
+eulers_number = 2.71828182845904523536028747135266249775724709369995
+
+#### DEFINED EXACT CONSTANTS ####
+
+speed_of_light = 299792458 m/s = c = c_0                      # since 1983
+planck_constant = 6.62607015e-34 J s = ℎ                      # since May 2019
+elementary_charge = 1.602176634e-19 C = e                     # since May 2019
+avogadro_number = 6.02214076e23                               # since May 2019
+boltzmann_constant = 1.380649e-23 J K^-1 = k = k_B            # since May 2019
+standard_gravity = 9.80665 m/s^2 = g_0 = g0 = g_n = gravity   # since 1901
+standard_atmosphere = 1.01325e5 Pa = atm = atmosphere         # since 1954
+conventional_josephson_constant = 4.835979e14 Hz / V = K_J90  # since Jan 1990
+conventional_von_klitzing_constant = 2.5812807e4 ohm = R_K90  # since Jan 1990
+
+#### DERIVED EXACT CONSTANTS ####
+# Floating-point conversion may introduce inaccuracies
+
+zeta = c / (cm/s) = ζ
+dirac_constant = ℎ / (2 * π) = ħ = hbar = atomic_unit_of_action = a_u_action
+avogadro_constant = avogadro_number * mol^-1 = N_A
+molar_gas_constant = k * N_A = R
+faraday_constant = e * N_A
+conductance_quantum = 2 * e ** 2 / ℎ = G_0
+magnetic_flux_quantum = ℎ / (2 * e) = Φ_0 = Phi_0
+josephson_constant = 2 * e / ℎ = K_J
+von_klitzing_constant = ℎ / e ** 2 = R_K
+stefan_boltzmann_constant = 2 / 15 * π ** 5 * k ** 4 / (ℎ ** 3 * c ** 2) = σ = sigma
+first_radiation_constant = 2 * π * ℎ * c ** 2 = c_1
+second_radiation_constant = ℎ * c / k = c_2
+wien_wavelength_displacement_law_constant = ℎ * c / (k * wien_x)
+wien_frequency_displacement_law_constant = wien_u * k / ℎ
+
+#### MEASURED CONSTANTS ####
+# Recommended CODATA-2018 values
+# To some extent, what is measured and what is derived is a bit arbitrary.
+# The choice of measured constants is based on convenience and on available uncertainty.
+# The uncertainty in the last significant digits is given in parentheses as a comment.
+
+newtonian_constant_of_gravitation = 6.67430e-11 m^3/(kg s^2) = _ = gravitational_constant  # (15)
+rydberg_constant = 1.0973731568160e7 * m^-1 = R_∞ = R_inf                                  # (21)
+electron_g_factor = -2.00231930436256 = g_e                                                # (35)
+atomic_mass_constant = 1.66053906660e-27 kg = m_u                                          # (50)
+electron_mass = 9.1093837015e-31 kg = m_e = atomic_unit_of_mass = a_u_mass                 # (28)
+proton_mass = 1.67262192369e-27 kg = m_p                                                   # (51)
+neutron_mass = 1.67492749804e-27 kg = m_n                                                  # (95)
+lattice_spacing_of_Si = 1.920155716e-10 m = d_220                                          # (32)
+K_alpha_Cu_d_220 = 0.80232719                                                              # (22)
+K_alpha_Mo_d_220 = 0.36940604                                                              # (19)
+K_alpha_W_d_220 = 0.108852175                                                              # (98)
+
+#### DERIVED CONSTANTS ####
+
+fine_structure_constant = (2 * ℎ * R_inf / (m_e * c)) ** 0.5 = α = alpha
+vacuum_permeability = 2 * α * ℎ / (e ** 2 * c) = µ_0 = mu_0 = mu0 = magnetic_constant
+vacuum_permittivity = e ** 2 / (2 * α * ℎ * c) = ε_0 = epsilon_0 = eps_0 = eps0 = electric_constant
+impedance_of_free_space = 2 * α * ℎ / e ** 2 = Z_0 = characteristic_impedance_of_vacuum
+coulomb_constant = α * hbar * c / e ** 2 = k_C
+classical_electron_radius = α * hbar / (m_e * c) = r_e
+thomson_cross_section = 8 / 3 * π * r_e ** 2 = σ_e = sigma_e

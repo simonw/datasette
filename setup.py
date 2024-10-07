@@ -48,7 +48,6 @@ setup(
         "Jinja2>=2.10.3",
         "hupper>=1.9",
         "httpx>=0.20",
-        "pint>=0.9",
         "pluggy>=1.0",
         "uvicorn>=0.11",
         "aiofiles>=0.4",
@@ -59,6 +58,11 @@ setup(
         "itsdangerous>=1.1",
         "setuptools",
         "pip",
+        # Needed by our vendored Pint:
+        "platformdirs>=2.1.0",
+        "typing_extensions>=4.0.0",
+        "flexcache>=0.3",
+        "flexparser>=0.3",
     ],
     entry_points="""
         [console_scripts]

@@ -391,7 +391,10 @@ class QueryView(View):
             or request.args.get("_json")
             or params.get("_json")
         )
-        params_for_query = MagicParameters(params, request, datasette)
+        params_for_query = MagicParameters(
+            canned_query["sql"], params, request, datasette
+        )
+        await params_for_query.execute_params()
         ok = None
         redirect_url = None
         try:
@@ -523,7 +526,8 @@ class QueryView(View):
                     validate_sql_select(sql)
                 else:
                     # Canned queries can run magic parameters
-                    params_for_query = MagicParameters(params, request, datasette)
+                    params_for_query = MagicParameters(sql, params, request, datasette)
+                    await params_for_query.execute_params()
                 results = await datasette.execute(
                     database, sql, params_for_query, truncate=True, **extra_args
                 )
@@ -792,14 +796,26 @@ class QueryView(View):
 
 
 class MagicParameters(dict):
-    def __init__(self, data, request, datasette):
+    def __init__(self, sql, data, request, datasette):
         super().__init__(data)
+        self._sql = sql
         self._request = request
         self._magics = dict(
             itertools.chain.from_iterable(
                 pm.hook.register_magic_parameters(datasette=datasette)
             )
         )
+        self._prepared = {}
+
+    async def execute_params(self):
+        for key in derive_named_parameters(self._sql):
+            if key.startswith("_") and key.count("_") >= 2:
+                prefix, suffix = key[1:].split("_", 1)
+                if prefix in self._magics:
+                    result = await await_me_maybe(
+                        self._magics[prefix](suffix, self._request)
+                    )
+                    self._prepared[key] = result
 
     def __len__(self):
         # Workaround for 'Incorrect number of bindings' error
@@ -808,6 +824,9 @@ class MagicParameters(dict):
 
     def __getitem__(self, key):
         if key.startswith("_") and key.count("_") >= 2:
+            if key in self._prepared:
+                return self._prepared[key]
+            # Try the other route
             prefix, suffix = key[1:].split("_", 1)
             if prefix in self._magics:
                 try:

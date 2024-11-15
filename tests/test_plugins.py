@@ -857,6 +857,9 @@ def test_hook_register_magic_parameters(restore_working_directory):
                         "get_uuid": {
                             "sql": "select :_uuid_new",
                         },
+                        "asyncrequest": {
+                            "sql": "select :_asyncrequest_key",
+                        },
                     }
                 }
             }
@@ -871,6 +874,10 @@ def test_hook_register_magic_parameters(restore_working_directory):
         assert 200 == response_get.status
         new_uuid = response_get.json[0][":_uuid_new"]
         assert 4 == new_uuid.count("-")
+        # And test the async one
+        response_async = client.get("/data/asyncrequest.json?_shape=array")
+        assert 200 == response_async.status
+        assert response_async.json[0][":_asyncrequest_key"] == "key"
 
 
 def test_hook_forbidden(restore_working_directory):

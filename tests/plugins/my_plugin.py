@@ -360,9 +360,13 @@ def register_magic_parameters():
         else:
             raise KeyError
 
+    async def asyncrequest(key, request):
+        return key
+
     return [
         ("request", request),
         ("uuid", uuid),
+        ("asyncrequest", asyncrequest),
     ]
 
 

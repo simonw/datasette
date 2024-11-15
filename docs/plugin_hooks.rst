@@ -1340,6 +1340,7 @@ This example registers two new magic parameters: ``:_request_http_version`` retu
     async def asynclookup(key, request):
         return await do_something_async(key)
 
+
     @hookimpl
     def register_magic_parameters(datasette):
         return [

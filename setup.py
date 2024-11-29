@@ -49,7 +49,7 @@ setup(
         "click-default-group>=1.2.3",
         "Jinja2>=2.10.3",
         "hupper>=1.9",
-        "httpx>=0.28.0",
+        "httpx>=0.20",
         "pluggy>=1.0",
         "uvicorn>=0.11",
         "aiofiles>=0.4",

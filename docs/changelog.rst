@@ -6,7 +6,7 @@ Changelog
 
 .. _v0_65_1:
 
-0.65.1 (2024-12-28)
+0.65.1 (2024-11-28)
 -------------------
 
 - Fixed bug with upgraded HTTPX 0.28.0 dependency. (:issue:`2443`)

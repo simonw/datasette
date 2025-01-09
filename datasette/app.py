@@ -234,6 +234,13 @@ ResolvedRow = collections.namedtuple(
 )
 
 
+def _to_string(value):
+    if isinstance(value, str):
+        return value
+    else:
+        return json.dumps(value, default=str)
+
+
 class Datasette:
     # Message constants:
     INFO = 1
@@ -451,23 +458,23 @@ class Datasette:
             if key == "databases":
                 continue
             value = self._metadata_local[key]
-            if not isinstance(value, str):
-                value = json.dumps(value)
-            await self.set_instance_metadata(key, value)
+            await self.set_instance_metadata(key, _to_string(value))
 
         # step 2: database-level metadata
         for dbname, db in self._metadata_local.get("databases", {}).items():
             for key, value in db.items():
                 if key in ("tables", "queries"):
                     continue
-                await self.set_database_metadata(dbname, key, value)
+                await self.set_database_metadata(dbname, key, _to_string(value))
 
             # step 3: table-level metadata
             for tablename, table in db.get("tables", {}).items():
                 for key, value in table.items():
                     if key == "columns":
                         continue
-                    await self.set_resource_metadata(dbname, tablename, key, value)
+                    await self.set_resource_metadata(
+                        dbname, tablename, key, _to_string(value)
+                    )
 
                 # step 4: column-level metadata (only descriptions in metadata.json)
                 for columnname, column_description in table.get("columns", {}).items():

@@ -9,6 +9,10 @@
 
 {% block body_class %}db db-{{ database|to_css_class }}{% endblock %}
 
+{% block crumbs %}
+{{ crumbs.nav(request=request, database=database) }}
+{% endblock %}
+
 {% block content %}
 <div class="page-header" style="border-color: #{{ database_color }}">
     <h1>{{ metadata.title or database }}{% if private %} 🔒{% endif %}</h1>

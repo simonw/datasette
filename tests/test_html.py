@@ -1089,12 +1089,16 @@ async def test_redirect_percent_encoding_to_tilde_encoding(ds_client, path, expe
 @pytest.mark.parametrize(
     "path,config,expected_links",
     (
-        ("/fixtures", {}, [("/", "home")]),
-        ("/fixtures", {"allow": False, "databases": {"fixtures": {"allow": True}}}, []),
+        ("/fixtures", {}, [("/", "home"), ("/fixtures", "fixtures")]),
+        (
+            "/fixtures",
+            {"allow": False, "databases": {"fixtures": {"allow": True}}},
+            [("/fixtures", "fixtures")],
+        ),
         (
             "/fixtures/facetable",
             {"allow": False, "databases": {"fixtures": {"allow": True}}},
-            [("/fixtures", "fixtures")],
+            [("/fixtures", "fixtures"), ("/fixtures/facetable", "facetable")],
         ),
         (
             "/fixtures/facetable/1",
@@ -1110,15 +1114,6 @@ async def test_redirect_percent_encoding_to_tilde_encoding(ds_client, path, expe
             {"allow": False, "databases": {"fixtures": {"allow": True}}},
             [("/fixtures", "fixtures"), ("/fixtures/facetable", "facetable")],
         ),
-        # TODO: what
-        # (
-        #    "/fixtures/facetable/1",
-        #    {
-        #        "allow": False,
-        #        "databases": {"fixtures": {"tables": {"facetable": {"allow": True}}}},
-        #    },
-        #    [("/fixtures/facetable", "facetable")],
-        # ),
     ),
 )
 async def test_breadcrumbs_respect_permissions(ds_client, path, config, expected_links):

@@ -279,9 +279,7 @@ def register_routes():
         # Mainly for the latest.datasette.io demo
         if request.method == "POST":
             response = Response.redirect("/")
-            response.set_cookie(
-                "ds_actor", datasette.sign({"a": {"id": "root"}}, "actor")
-            )
+            datasette.set_actor_cookie(response, {"id": "root"})
             return response
         return Response.html(
             """

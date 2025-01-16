@@ -1062,18 +1062,24 @@ Authentication plugins can set signed ``ds_actor`` cookies themselves like so:
 .. code-block:: python
 
     response = Response.redirect("/")
-    response.set_cookie(
-        "ds_actor",
-        datasette.sign({"a": {"id": "cleopaws"}}, "actor"),
-    )
+    datasette.set_actor_cookie(response, {"id": "cleopaws"})
 
-Note that you need to pass ``"actor"`` as the namespace to :ref:`datasette_sign`.
+The shape of data encoded in the cookie is as follows:
 
-The shape of data encoded in the cookie is as follows::
+.. code-block:: json
 
     {
-        "a": {... actor ...}
+      "a": {
+        "id": "cleopaws"
+      }
     }
+
+To implement logout in a plugin, use the ``delete_actor_cookie()`` method:
+
+.. code-block:: python
+
+    response = Response.redirect("/")
+    datasette.delete_actor_cookie(response)
 
 .. _authentication_ds_actor_expiry:
 
@@ -1082,25 +1088,13 @@ Including an expiry time
 
 ``ds_actor`` cookies can optionally include a signed expiry timestamp, after which the cookies will no longer be valid. Authentication plugins may chose to use this mechanism to limit the lifetime of the cookie. For example, if a plugin implements single-sign-on against another source it may decide to set short-lived cookies so that if the user is removed from the SSO system their existing Datasette cookies will stop working shortly afterwards.
 
-To include an expiry, add a ``"e"`` key to the cookie value containing a base62-encoded integer representing the timestamp when the cookie should expire. For example, here's how to set a cookie that expires after 24 hours:
+To include an expiry pass ``expire_after=`` to ``datasette.set_actor_cookie()`` with a number of seconds. For example, to expire in 24 hours:
 
 .. code-block:: python
 
-    import time
-    from datasette.utils import baseconv
-
-    expires_at = int(time.time()) + (24 * 60 * 60)
-
     response = Response.redirect("/")
-    response.set_cookie(
-        "ds_actor",
-        datasette.sign(
-            {
-                "a": {"id": "cleopaws"},
-                "e": baseconv.base62.encode(expires_at),
-            },
-            "actor",
-        ),
+    datasette.set_actor_cookie(
+        response, {"id": "cleopaws"}, expire_after=60 * 60 * 24
     )
 
 The resulting cookie will encode data that looks something like this:
@@ -1108,12 +1102,11 @@ The resulting cookie will encode data that looks something like this:
 .. code-block:: json
 
     {
-        "a": {
-            "id": "cleopaws"
-        },
-        "e": "1jjSji"
+      "a": {
+        "id": "cleopaws"
+      },
+      "e": "1jjSji"
     }
-
 
 .. _LogoutView:
 

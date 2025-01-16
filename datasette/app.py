@@ -67,6 +67,7 @@ from .utils import (
     StartupError,
     async_call_with_supported_arguments,
     await_me_maybe,
+    baseconv,
     call_with_supported_arguments,
     detect_json1,
     display_actor,
@@ -1429,6 +1430,18 @@ class Datasette:
             )
 
         return await template.render_async(template_context)
+
+    def set_actor_cookie(
+        self, response: Response, actor: dict, expire_after: Optional[int] = None
+    ):
+        data = {"a": actor}
+        if expire_after:
+            expires_at = int(time.time()) + (24 * 60 * 60)
+            data["e"] = baseconv.base62.encode(expires_at)
+        response.set_cookie("ds_actor", self.sign(data, "actor"))
+
+    def delete_actor_cookie(self, response: Response):
+        response.set_cookie("ds_actor", "", expires=0, max_age=0)
 
     async def _asset_urls(self, key, template, context, request, view_name):
         # Flatten list-of-lists from plugins:

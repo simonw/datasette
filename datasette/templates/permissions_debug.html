@@ -136,4 +136,8 @@ debugPost.addEventListener('submit', function(ev) {
     </div>
 {% endfor %}
 
+<h1>All registered permissions</h1>
+
+<pre>{{ permissions|tojson(2) }}</pre>
+
 {% endblock %}

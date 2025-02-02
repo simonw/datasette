@@ -3,6 +3,7 @@ from collections import namedtuple
 from pathlib import Path
 import janus
 import queue
+import sqlite_utils
 import sys
 import threading
 import uuid
@@ -442,7 +443,33 @@ class Database:
         )
         if explicit_label_column:
             return explicit_label_column
-        column_names = await self.execute_fn(lambda conn: table_columns(conn, table))
+
+        def column_details(conn):
+            # Returns {column_name: (type, is_unique)}
+            db = sqlite_utils.Database(conn)
+            columns = db[table].columns_dict
+            indexes = db[table].indexes
+            details = {}
+            for name in columns:
+                is_unique = any(
+                    index
+                    for index in indexes
+                    if index.columns == [name] and index.unique
+                )
+                details[name] = (columns[name], is_unique)
+            return details
+
+        column_details = await self.execute_fn(column_details)
+        # Is there just one unique column that's text?
+        unique_text_columns = [
+            name
+            for name, (type_, is_unique) in column_details.items()
+            if is_unique and type_ is str
+        ]
+        if len(unique_text_columns) == 1:
+            return unique_text_columns[0]
+
+        column_names = list(column_details.keys())
         # Is there a name or title column?
         name_or_title = [c for c in column_names if c.lower() in ("name", "title")]
         if name_or_title:
@@ -452,6 +479,7 @@ class Database:
             column_names
             and len(column_names) == 2
             and ("id" in column_names or "pk" in column_names)
+            and not set(column_names) == {"id", "pk"}
         ):
             return [c for c in column_names if c not in ("id", "pk")][0]
         # Couldn't find a label:

@@ -404,7 +404,7 @@ METADATA = {
 TABLES = (
     """
 CREATE TABLE simple_primary_key (
-  id varchar(30) primary key,
+  id integer primary key,
   content text
 );
 
@@ -441,8 +441,8 @@ CREATE INDEX idx_compound_three_primary_keys_content ON compound_three_primary_k
 
 CREATE TABLE foreign_key_references (
   pk varchar(30) primary key,
-  foreign_key_with_label varchar(30),
-  foreign_key_with_blank_label varchar(30),
+  foreign_key_with_label integer,
+  foreign_key_with_blank_label integer,
   foreign_key_with_no_label varchar(30),
   foreign_key_compound_pk1 varchar(30),
   foreign_key_compound_pk2 varchar(30),
@@ -492,9 +492,9 @@ CREATE TABLE "table/with/slashes.csv" (
 
 CREATE TABLE "complex_foreign_keys" (
   pk varchar(30) primary key,
-  f1 text,
-  f2 text,
-  f3 text,
+  f1 integer,
+  f2 integer,
+  f3 integer,
   FOREIGN KEY ("f1") REFERENCES [simple_primary_key](id),
   FOREIGN KEY ("f2") REFERENCES [simple_primary_key](id),
   FOREIGN KEY ("f3") REFERENCES [simple_primary_key](id)

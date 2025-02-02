@@ -194,7 +194,7 @@ async def test_hook_render_cell_demo(ds_client):
     soup = Soup(response.text, "html.parser")
     td = soup.find("td", {"class": "col-content"})
     assert json.loads(td.string) == {
-        "row": {"id": "4", "content": "RENDER_CELL_DEMO"},
+        "row": {"id": 4, "content": "RENDER_CELL_DEMO"},
         "column": "content",
         "table": "simple_primary_key",
         "database": "fixtures",

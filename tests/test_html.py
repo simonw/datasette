@@ -355,7 +355,7 @@ async def test_row_html_simple_primary_key(ds_client):
     assert ["id", "content"] == [th.string.strip() for th in table.select("thead th")]
     assert [
         [
-            '<td class="col-id type-str">1</td>',
+            '<td class="col-id type-int">1</td>',
             '<td class="col-content type-str">hello</td>',
         ]
     ] == [[str(td) for td in tr.select("td")] for tr in table.select("tbody tr")]

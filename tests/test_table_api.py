@@ -24,11 +24,11 @@ async def test_table_json(ds_client):
     )
     assert data["query"]["params"] == {}
     assert data["rows"] == [
-        {"id": "1", "content": "hello"},
-        {"id": "2", "content": "world"},
-        {"id": "3", "content": ""},
-        {"id": "4", "content": "RENDER_CELL_DEMO"},
-        {"id": "5", "content": "RENDER_CELL_ASYNC"},
+        {"id": 1, "content": "hello"},
+        {"id": 2, "content": "world"},
+        {"id": 3, "content": ""},
+        {"id": 4, "content": "RENDER_CELL_DEMO"},
+        {"id": 5, "content": "RENDER_CELL_ASYNC"},
     ]
 
 
@@ -46,11 +46,11 @@ async def test_table_not_exists_json(ds_client):
 async def test_table_shape_arrays(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=arrays")
     assert response.json()["rows"] == [
-        ["1", "hello"],
-        ["2", "world"],
-        ["3", ""],
-        ["4", "RENDER_CELL_DEMO"],
-        ["5", "RENDER_CELL_ASYNC"],
+        [1, "hello"],
+        [2, "world"],
+        [3, ""],
+        [4, "RENDER_CELL_DEMO"],
+        [5, "RENDER_CELL_ASYNC"],
     ]
 
 
@@ -78,11 +78,11 @@ async def test_table_shape_arrayfirst(ds_client):
 async def test_table_shape_objects(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=objects")
     assert response.json()["rows"] == [
-        {"id": "1", "content": "hello"},
-        {"id": "2", "content": "world"},
-        {"id": "3", "content": ""},
-        {"id": "4", "content": "RENDER_CELL_DEMO"},
-        {"id": "5", "content": "RENDER_CELL_ASYNC"},
+        {"id": 1, "content": "hello"},
+        {"id": 2, "content": "world"},
+        {"id": 3, "content": ""},
+        {"id": 4, "content": "RENDER_CELL_DEMO"},
+        {"id": 5, "content": "RENDER_CELL_ASYNC"},
     ]
 
 
@@ -90,11 +90,11 @@ async def test_table_shape_objects(ds_client):
 async def test_table_shape_array(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=array")
     assert response.json() == [
-        {"id": "1", "content": "hello"},
-        {"id": "2", "content": "world"},
-        {"id": "3", "content": ""},
-        {"id": "4", "content": "RENDER_CELL_DEMO"},
-        {"id": "5", "content": "RENDER_CELL_ASYNC"},
+        {"id": 1, "content": "hello"},
+        {"id": 2, "content": "world"},
+        {"id": 3, "content": ""},
+        {"id": 4, "content": "RENDER_CELL_DEMO"},
+        {"id": 5, "content": "RENDER_CELL_ASYNC"},
     ]
 
 
@@ -106,11 +106,11 @@ async def test_table_shape_array_nl(ds_client):
     lines = response.text.split("\n")
     results = [json.loads(line) for line in lines]
     assert [
-        {"id": "1", "content": "hello"},
-        {"id": "2", "content": "world"},
-        {"id": "3", "content": ""},
-        {"id": "4", "content": "RENDER_CELL_DEMO"},
-        {"id": "5", "content": "RENDER_CELL_ASYNC"},
+        {"id": 1, "content": "hello"},
+        {"id": 2, "content": "world"},
+        {"id": 3, "content": ""},
+        {"id": 4, "content": "RENDER_CELL_DEMO"},
+        {"id": 5, "content": "RENDER_CELL_ASYNC"},
     ] == results
 
 
@@ -129,11 +129,11 @@ async def test_table_shape_invalid(ds_client):
 async def test_table_shape_object(ds_client):
     response = await ds_client.get("/fixtures/simple_primary_key.json?_shape=object")
     assert response.json() == {
-        "1": {"id": "1", "content": "hello"},
-        "2": {"id": "2", "content": "world"},
-        "3": {"id": "3", "content": ""},
-        "4": {"id": "4", "content": "RENDER_CELL_DEMO"},
-        "5": {"id": "5", "content": "RENDER_CELL_ASYNC"},
+        "1": {"id": 1, "content": "hello"},
+        "2": {"id": 2, "content": "world"},
+        "3": {"id": 3, "content": ""},
+        "4": {"id": 4, "content": "RENDER_CELL_DEMO"},
+        "5": {"id": 5, "content": "RENDER_CELL_ASYNC"},
     }
 
 
@@ -522,27 +522,27 @@ async def test_searchable_invalid_column(ds_client):
     [
         (
             "/fixtures/simple_primary_key.json?_shape=arrays&content=hello",
-            [["1", "hello"]],
+            [[1, "hello"]],
         ),
         (
             "/fixtures/simple_primary_key.json?_shape=arrays&content__contains=o",
             [
-                ["1", "hello"],
-                ["2", "world"],
-                ["4", "RENDER_CELL_DEMO"],
+                [1, "hello"],
+                [2, "world"],
+                [4, "RENDER_CELL_DEMO"],
             ],
         ),
         (
             "/fixtures/simple_primary_key.json?_shape=arrays&content__exact=",
-            [["3", ""]],
+            [[3, ""]],
         ),
         (
             "/fixtures/simple_primary_key.json?_shape=arrays&content__not=world",
             [
-                ["1", "hello"],
-                ["3", ""],
-                ["4", "RENDER_CELL_DEMO"],
-                ["5", "RENDER_CELL_ASYNC"],
+                [1, "hello"],
+                [3, ""],
+                [4, "RENDER_CELL_DEMO"],
+                [5, "RENDER_CELL_ASYNC"],
             ],
         ),
     ],
@@ -558,9 +558,9 @@ async def test_table_filter_queries_multiple_of_same_type(ds_client):
         "/fixtures/simple_primary_key.json?_shape=arrays&content__not=world&content__not=hello"
     )
     assert [
-        ["3", ""],
-        ["4", "RENDER_CELL_DEMO"],
-        ["5", "RENDER_CELL_ASYNC"],
+        [3, ""],
+        [4, "RENDER_CELL_DEMO"],
+        [5, "RENDER_CELL_ASYNC"],
     ] == response.json()["rows"]
 
 
@@ -1100,8 +1100,8 @@ async def test_expand_label(ds_client):
     assert response.json() == {
         "1": {
             "pk": "1",
-            "foreign_key_with_label": {"value": "1", "label": "hello"},
-            "foreign_key_with_blank_label": "3",
+            "foreign_key_with_label": {"value": 1, "label": "hello"},
+            "foreign_key_with_blank_label": 3,
             "foreign_key_with_no_label": "1",
             "foreign_key_compound_pk1": "a",
             "foreign_key_compound_pk2": "b",
@@ -1163,8 +1163,8 @@ async def test_null_and_compound_foreign_keys_are_not_expanded(ds_client):
     assert response.json() == [
         {
             "pk": "1",
-            "foreign_key_with_label": {"value": "1", "label": "hello"},
-            "foreign_key_with_blank_label": {"value": "3", "label": ""},
+            "foreign_key_with_label": {"value": 1, "label": "hello"},
+            "foreign_key_with_blank_label": {"value": 3, "label": ""},
             "foreign_key_with_no_label": {"value": "1", "label": "1"},
             "foreign_key_compound_pk1": "a",
             "foreign_key_compound_pk2": "b",

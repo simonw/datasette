@@ -99,7 +99,19 @@ async def test_table_csv_with_nullable_labels(ds_client):
 @pytest.mark.asyncio
 async def test_table_csv_with_invalid_labels():
     # https://github.com/simonw/datasette/issues/2214
-    ds = Datasette()
+    ds = Datasette(
+        config={
+            "databases": {
+                "db_2214": {
+                    "tables": {
+                        "t2": {
+                            "label_column": "name",
+                        }
+                    }
+                }
+            }
+        }
+    )
     await ds.invoke_startup()
     db = ds.add_memory_database("db_2214")
     await db.execute_write_script(

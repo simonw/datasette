@@ -31,7 +31,7 @@ jobs:
       run: |-
         ls -lah
         cat .coveragerc
-        pytest --cov=datasette --cov-config=.coveragerc --cov-report xml:coverage.xml --cov-report term
+        pytest -m "not serial" --cov=datasette --cov-config=.coveragerc --cov-report xml:coverage.xml --cov-report term
         ls -lah
     - name: Upload coverage report
       uses: codecov/codecov-action@v1

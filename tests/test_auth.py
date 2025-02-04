@@ -307,7 +307,7 @@ async def test_auth_with_dstok_token(ds_client, scenario, should_work):
 
 
 @pytest.mark.parametrize("expires", (None, 1000, -1000))
-def test_cli_create_token(event_loop, app_client, expires):
+def test_cli_create_token(app_client, expires):
     secret = app_client.ds._secret
     runner = CliRunner(mix_stderr=False)
     args = ["create-token", "--secret", secret, "test"]

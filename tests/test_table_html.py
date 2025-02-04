@@ -1098,7 +1098,7 @@ async def test_column_metadata(ds_client):
     response = await ds_client.get("/fixtures/roadside_attractions")
     soup = Soup(response.text, "html.parser")
     dl = soup.find("dl")
-    assert [(dt.text, dt.nextSibling.text) for dt in dl.find_all("dt")] == [
+    assert [(dt.text, dt.next_sibling.text) for dt in dl.find_all("dt")] == [
         ("address", "The street address for the attraction"),
         ("name", "The name of the attraction"),
     ]

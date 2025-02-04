@@ -121,12 +121,27 @@ class PermissionsDebugView(BaseView):
         await self.ds.ensure_permissions(request.actor, ["view-instance"])
         if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
             raise Forbidden("Permission denied")
+        filter_ = request.args.get("filter") or "all"
+        permission_checks = list(reversed(self.ds._permission_checks))
+        if filter_ == "exclude-yours":
+            permission_checks = [
+                check
+                for check in permission_checks
+                if (check["actor"] or {}).get("id") != request.actor["id"]
+            ]
+        elif filter_ == "only-yours":
+            permission_checks = [
+                check
+                for check in permission_checks
+                if (check["actor"] or {}).get("id") == request.actor["id"]
+            ]
         return await self.render(
             ["permissions_debug.html"],
             request,
             # list() avoids error if check is performed during template render:
             {
-                "permission_checks": list(reversed(self.ds._permission_checks)),
+                "permission_checks": permission_checks,
+                "filter": filter_,
                 "permissions": [
                     {
                         "name": p.name,

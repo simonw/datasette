@@ -112,6 +112,12 @@ debugPost.addEventListener('submit', function(ev) {
 
 <h1>Recent permissions checks</h1>
 
+<p>
+    {% if filter != "all" %}<a href="?filter=all">All</a>{% else %}<strong>All</strong>{% endif %},
+    {% if filter != "exclude-yours" %}<a href="?filter=exclude-yours">Exclude yours</a>{% else %}<strong>Exclude yours</strong>{% endif %},
+    {% if filter != "only-yours" %}<a href="?filter=only-yours">Only yours</a>{% else %}<strong>Only yours</strong>{% endif %}
+</p>
+
 {% for check in permission_checks %}
     <div class="check">
         <h2>

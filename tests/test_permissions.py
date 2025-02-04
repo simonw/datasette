@@ -929,7 +929,6 @@ async def test_actor_endpoint_allows_any_token():
     }
 
 
-@pytest.mark.serial
 @pytest.mark.parametrize(
     "options,expected",
     (
@@ -984,7 +983,7 @@ async def test_actor_endpoint_allows_any_token():
         ),
     ),
 )
-def test_cli_create_token(options, expected):
+def test_cli_create_token(event_loop, options, expected):
     runner = CliRunner()
     result1 = runner.invoke(
         cli,

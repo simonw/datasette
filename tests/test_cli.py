@@ -36,7 +36,7 @@ def test_inspect_cli(app_client):
         assert expected_count == database["tables"][table_name]["count"]
 
 
-def test_inspect_cli_writes_to_file(app_client):
+def test_inspect_cli_writes_to_file(event_loop, app_client):
     runner = CliRunner()
     result = runner.invoke(
         cli, ["inspect", "fixtures.db", "--inspect-file", "foo.json"]

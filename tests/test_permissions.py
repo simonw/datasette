@@ -390,7 +390,7 @@ async def test_permissions_debug(ds_client, filter_):
         assert fragment in response.text
     # Should show one failure and one success
     soup = Soup(response.text, "html.parser")
-    check_divs = soup.findAll("div", {"class": "check"})
+    check_divs = soup.find_all("div", {"class": "check"})
     checks = [
         {
             "action": div.select_one(".check-action").text,

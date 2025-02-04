@@ -929,6 +929,7 @@ async def test_actor_endpoint_allows_any_token():
     }
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize(
     "options,expected",
     (

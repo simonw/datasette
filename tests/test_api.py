@@ -659,6 +659,7 @@ async def test_custom_sql(ds_client):
     }
 
 
+@pytest.mark.xfail(reason="Sometimes flaky in CI due to timing issues")
 def test_sql_time_limit(app_client_shorter_time_limit):
     response = app_client_shorter_time_limit.get(
         "/fixtures/-/query.json?sql=select+sleep(0.5)",

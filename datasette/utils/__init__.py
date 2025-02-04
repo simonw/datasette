@@ -1054,7 +1054,8 @@ def resolve_env_secrets(config, environ):
         if list(config.keys()) == ["$env"]:
             return environ.get(list(config.values())[0])
         elif list(config.keys()) == ["$file"]:
-            return open(list(config.values())[0]).read()
+            with open(list(config.values())[0]) as fp:
+                return fp.read()
         else:
             return {
                 key: resolve_env_secrets(value, environ)

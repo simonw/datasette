@@ -5,7 +5,7 @@ from pathlib import Path
 code_root = Path(__file__).parent.parent
 
 
-def test_black():
+def test_black(event_loop):
     runner = CliRunner()
     result = runner.invoke(black.main, [str(code_root), "--check"])
     assert result.exit_code == 0, result.output

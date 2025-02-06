@@ -668,6 +668,7 @@ class Datasette:
         return self.add_database(Database(self, memory_name=memory_name))
 
     def remove_database(self, name):
+        self.get_database(name).close()
         new_databases = self.databases.copy()
         new_databases.pop(name)
         self.databases = new_databases

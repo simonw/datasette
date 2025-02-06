@@ -135,6 +135,7 @@ debugPost.addEventListener('submit', function(ev) {
                 <span class="check-used-default">(used default)</span>
             {% endif %}
         </h2>
+        <p>{{ check.request_id }}</p>
         <p><strong>Actor:</strong> {{ check.actor|tojson }}</p>
         {% if check.resource %}
             <p><strong>Resource:</strong> {{ check.resource }}</p>

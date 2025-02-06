@@ -3,6 +3,7 @@ import asyncio
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import asgi_csrf
 import collections
+import contextvars
 import dataclasses
 import datetime
 import functools
@@ -21,6 +22,7 @@ import threading
 import time
 import types
 import urllib.parse
+import uuid
 from concurrent import futures
 from pathlib import Path
 
@@ -272,6 +274,7 @@ class Datasette:
         internal=None,
     ):
         self._startup_invoked = False
+        self._request_id = contextvars.ContextVar("request_id", default=None)
         assert config_dir is None or isinstance(
             config_dir, Path
         ), "config_dir= should be a pathlib.Path"
@@ -451,6 +454,10 @@ class Datasette:
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
         self.client = DatasetteClient(self)
+
+    @property
+    def request_id(self):
+        return self._request_id.get()
 
     async def apply_metadata_json(self):
         # Apply any metadata entries from metadata.json to the internal tables
@@ -1016,6 +1023,7 @@ class Datasette:
             used_default = True
         self._permission_checks.append(
             {
+                "request_id": self.request_id,
                 "when": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "actor": actor,
                 "action": action,
@@ -1721,7 +1729,11 @@ class DatasetteRouter:
         if raw_path:
             path = raw_path.decode("ascii")
         path = path.partition("?")[0]
-        return await self.route_path(scope, receive, send, path)
+        token = self.ds._request_id.set(str(uuid.uuid4()))
+        try:
+            return await self.route_path(scope, receive, send, path)
+        finally:
+            self.ds._request_id.reset(token)
 
     async def route_path(self, scope, receive, send, path):
         # Strip off base_url if present before routing

@@ -1,3 +1,4 @@
+{% block footer_content %}
 Powered by <a href="https://datasette.io/" title="Datasette v{{ datasette_version }}">Datasette</a>
 {% if query_ms %}&middot; Queries took {{ query_ms|round(3) }}ms{% endif %}
 {% if metadata %}
@@ -19,3 +20,4 @@ Powered by <a href="https://datasette.io/" title="Datasette v{{ datasette_versio
         {% endif %}{{ metadata.about or metadata.about_url }}{% if metadata.about_url %}</a>{% endif %}
     {% endif %}
 {% endif %}
+{% endblock %}

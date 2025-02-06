@@ -32,6 +32,7 @@ AttachedDatabase = namedtuple("AttachedDatabase", ("seq", "name", "file"))
 class Database:
     # For table counts stop at this many rows:
     count_limit = 10000
+    _thread_local_id_counter = 1
 
     def __init__(
         self,
@@ -43,6 +44,8 @@ class Database:
         mode=None,
     ):
         self.name = None
+        self._thread_local_id = f"x{self._thread_local_id_counter}"
+        Database._thread_local_id_counter += 1
         self.route = None
         self.ds = ds
         self.path = path
@@ -278,11 +281,11 @@ class Database:
 
         # threaded mode
         def in_thread():
-            conn = getattr(connections, self.name, None)
+            conn = getattr(connections, self._thread_local_id, None)
             if not conn:
                 conn = self.connect()
                 self.ds._prepare_connection(conn, self.name)
-                setattr(connections, self.name, conn)
+                setattr(connections, self._thread_local_id, conn)
             return fn(conn)
 
         return await asyncio.get_event_loop().run_in_executor(

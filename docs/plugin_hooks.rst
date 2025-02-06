@@ -1315,7 +1315,7 @@ Magic parameters all take this format: ``_prefix_rest_of_parameter``. The prefix
 
 To register a new function, return it as a tuple of ``(string prefix, function)`` from this hook. The function you register should take two arguments: ``key`` and ``request``, where ``key`` is the ``rest_of_parameter`` portion of the parameter and ``request`` is the current :ref:`internals_request`.
 
-This example registers two new magic parameters: ``:_request_http_version`` returning the HTTP version of the current request, and ``:_uuid_new`` which returns a new UUID. It also registers an `:_asynclookup_key` parameter, demonstrating that these functions can be asynchronous:
+This example registers two new magic parameters: ``:_request_http_version`` returning the HTTP version of the current request, and ``:_uuid_new`` which returns a new UUID. It also registers an ``:_asynclookup_key`` parameter, demonstrating that these functions can be asynchronous:
 
 .. code-block:: python
 

@@ -4,6 +4,24 @@
 Changelog
 =========
 
+.. _v1_0_a17:
+
+1.0a17 (2025-02-06)
+-------------------
+
+- ``DATASETTE_SSL_KEYFILE`` and ``DATASETTE_SSL_CERTFILE`` environment variables as alternatives to ``--ssl-keyfile`` and ``--ssl-certfile``. Thanks, Alex Garcia. (:issue:`2422`)
+- ``SQLITE_EXTENSIONS`` environment variable has been renamed to ``DATASETTE_LOAD_EXTENSION``. (:issue:`2424`)
+- ``datasette serve`` environment variables are now :ref:`documented here <cli_datasette_serve_env>`.
+- The :ref:`plugin_hook_register_magic_parameters` plugin hook can now register async functions. (:issue:`2441`)
+- Datasette is now tested against Python 3.13.
+- Breadcrumbs on database and table pages now include a consistent self-link for resetting query string parameters. (:issue:`2454`)
+- Fixed issue where Datasette could crash on ``metadata.json`` with nested values. (:issue:`2455`)
+- New internal methods ``datasette.set_actor_cookie()`` and ``datasette.delete_actor_cookie()``, :ref:`described here <authentication_ds_actor>`. (:issue:`1690`)
+- ``/-/permissions`` page now shows a list of all permissions registered by plugins. (:issue:`1943`)
+- If a table has a single unique text column Datasette now detects that as the foreign key label for that table. (:issue:`2458`)
+- The ``/-/permissions`` page now includes options for filtering or exclude permission checks recorded against the current user. (:issue:`2460`)
+- Fixed a bug where replacing a database with a new one with the same name did not pick up the new database correctly. (:issue:`2465`)
+
 .. _v0_65_1:
 
 0.65.1 (2024-11-28)

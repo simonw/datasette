@@ -1382,7 +1382,7 @@ The internal database schema is as follows:
         rootpage INTEGER,
         sql TEXT,
         PRIMARY KEY (database_name, table_name),
-        FOREIGN KEY (database_name) REFERENCES databases(database_name)
+        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );
     CREATE TABLE catalog_columns (
         database_name TEXT,
@@ -1395,8 +1395,8 @@ The internal database schema is as follows:
         is_pk INTEGER, -- renamed from pk
         hidden INTEGER,
         PRIMARY KEY (database_name, table_name, name),
-        FOREIGN KEY (database_name) REFERENCES databases(database_name),
-        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
+        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES catalog_tables(database_name, table_name)
     );
     CREATE TABLE catalog_indexes (
         database_name TEXT,
@@ -1407,8 +1407,8 @@ The internal database schema is as follows:
         origin TEXT,
         partial INTEGER,
         PRIMARY KEY (database_name, table_name, name),
-        FOREIGN KEY (database_name) REFERENCES databases(database_name),
-        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
+        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES catalog_tables(database_name, table_name)
     );
     CREATE TABLE catalog_foreign_keys (
         database_name TEXT,
@@ -1422,8 +1422,8 @@ The internal database schema is as follows:
         on_delete TEXT,
         match TEXT,
         PRIMARY KEY (database_name, table_name, id, seq),
-        FOREIGN KEY (database_name) REFERENCES databases(database_name),
-        FOREIGN KEY (database_name, table_name) REFERENCES tables(database_name, table_name)
+        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name),
+        FOREIGN KEY (database_name, table_name) REFERENCES catalog_tables(database_name, table_name)
     );
     CREATE TABLE metadata_instance (
         key text,

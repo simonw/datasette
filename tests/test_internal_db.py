@@ -1,4 +1,5 @@
 import pytest
+import sqlite_utils
 
 
 # ensure refresh_schemas() gets called before interacting with internal_db
@@ -59,3 +60,25 @@ async def test_internal_foreign_keys(ds_client):
         "table_name",
         "from",
     }
+
+
+@pytest.mark.asyncio
+async def test_internal_foreign_key_references(ds_client):
+    internal_db = await ensure_internal(ds_client)
+
+    def inner(conn):
+        db = sqlite_utils.Database(conn)
+        table_names = db.table_names()
+        for table in db.tables:
+            for fk in table.foreign_keys:
+                other_table = fk.other_table
+                other_column = fk.other_column
+                message = 'Column "{}.{}" references other column "{}.{}" which does not exist'.format(
+                    table.name, fk.column, other_table, other_column
+                )
+                assert other_table in table_names, message + " (bad table)"
+                assert other_column in db[other_table].columns_dict, (
+                    message + " (bad column)"
+                )
+
+    await internal_db.execute_fn(inner)

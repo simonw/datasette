@@ -173,56 +173,107 @@ def permission_allowed_default(datasette, actor, action, resource):
 
 
 async def _resolve_config_permissions_blocks(datasette, actor, action, resource):
-    # Check custom permissions: blocks
+    """
+    Resolve custom permissions blocks defined in the Datasette configuration.
+
+    This function checks for permission blocks at different levels of the configuration:
+    root, database, table, and query. It returns the result of the first matching
+    permission block found, or None if no matching block is found.
+
+    Args:
+        datasette (Datasette): The Datasette instance.
+        actor (dict): The actor (user) requesting the action.
+        action (str): The action being requested (e.g., "view-table", "execute-sql").
+        resource (str or tuple): The resource the action is being performed on.
+                                 Can be a string (database name) or a tuple (database name, table/query name).
+
+    Returns:
+        bool or None:
+            - True if the action is explicitly allowed
+            - False if the action is explicitly denied
+            - None if no matching permission block is found
+
+    Note:
+        This function checks permission blocks in the following order:
+        1. Root-level block for the action
+        2. Database-specific block for the action
+        3. Table-specific block for the action (if applicable)
+        4. Query-specific block for the action (if applicable)
+
+        For table and query blocks, a boolean value (True or False) will immediately
+        return that value, overriding any other permission checks.
+    """
     config = datasette.config or {}
     root_block = (config.get("permissions", None) or {}).get(action)
     if root_block:
         root_result = actor_matches_allow(actor, root_block)
         if root_result is not None:
             return root_result
-    # Now try database-specific blocks
+
     if not resource:
         return None
+
+    table_or_query = None
     if isinstance(resource, str):
         database = resource
+    elif isinstance(resource, tuple):
+        database, table_or_query = resource
     else:
-        database = resource[0]
+        return None
+
     database_block = (
         (config.get("databases", {}).get(database, {}).get("permissions", None)) or {}
     ).get(action)
+
+    table_block = None
+    query_block = None
+    if table_or_query:
+        table_block = (
+            (
+                config.get("databases", {})
+                .get(database, {})
+                .get("tables", {})
+                .get(table_or_query, {})
+                .get("permissions", None)
+            )
+            or {}
+        ).get(action)
+
+        query_block = (
+            (
+                config.get("databases", {})
+                .get(database, {})
+                .get("queries", {})
+                .get(table_or_query, {})
+                .get("permissions", None)
+            )
+            or {}
+        ).get(action)
+
+        # For table and query blocks, a boolean value (True or False) will immediately
+        # return that value, overriding any other permission checks.
+        #
+        # For example, `insert-row: true` permission at the table/query level should
+        # over-ride `insert-row` permission check at the database level.
+        # Github Issue #2402
+        if isinstance(table_block, bool):
+            return table_block
+        elif isinstance(query_block, bool):
+            return query_block
+
+    # First try database-specific permissions blocks
     if database_block:
         database_result = actor_matches_allow(actor, database_block)
         if database_result is not None:
             return database_result
-    # Finally try table/query specific blocks
-    if not isinstance(resource, tuple):
-        return None
-    database, table_or_query = resource
-    table_block = (
-        (
-            config.get("databases", {})
-            .get(database, {})
-            .get("tables", {})
-            .get(table_or_query, {})
-            .get("permissions", None)
-        )
-        or {}
-    ).get(action)
+
+    # Then try table/query specific permissions blocks
     if table_block:
         table_result = actor_matches_allow(actor, table_block)
         if table_result is not None:
             return table_result
+
     # Finally the canned queries
-    query_block = (
-        (
-            config.get("databases", {})
-            .get(database, {})
-            .get("queries", {})
-            .get(table_or_query, {})
-            .get("permissions", None)
-        )
-        or {}
-    ).get(action)
     if query_block:
         query_result = actor_matches_allow(actor, query_block)
         if query_result is not None:

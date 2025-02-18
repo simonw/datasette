@@ -116,6 +116,8 @@ app_root = Path(__file__).parent.parent
 # https://github.com/simonw/datasette/issues/283#issuecomment-781591015
 SQLITE_LIMIT_ATTACHED = 10
 
+INTERNAL_DB_NAME = "__INTERNAL__"
+
 Setting = collections.namedtuple("Setting", ("name", "default", "help"))
 SETTINGS = (
     Setting("default_page_size", 100, "Default page size for the table view"),
@@ -328,7 +330,7 @@ class Datasette:
             self._internal_database = Database(self, memory_name=secrets.token_hex())
         else:
             self._internal_database = Database(self, path=internal, mode="rwc")
-        self._internal_database.name = "__INTERNAL__"
+        self._internal_database.name = INTERNAL_DB_NAME
 
         self.cache_headers = cache_headers
         self.cors = cors
@@ -878,7 +880,7 @@ class Datasette:
     def _prepare_connection(self, conn, database):
         conn.row_factory = sqlite3.Row
         conn.text_factory = lambda x: str(x, "utf-8", "replace")
-        if self.sqlite_extensions:
+        if self.sqlite_extensions and database != INTERNAL_DB_NAME:
             conn.enable_load_extension(True)
             for extension in self.sqlite_extensions:
                 # "extension" is either a string path to the extension
@@ -891,7 +893,8 @@ class Datasette:
         if self.setting("cache_size_kb"):
             conn.execute(f"PRAGMA cache_size=-{self.setting('cache_size_kb')}")
         # pylint: disable=no-member
-        pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
+        if database != INTERNAL_DB_NAME:
+            pm.hook.prepare_connection(conn=conn, database=database, datasette=self)
         # If self.crossdb and this is _memory, connect the first SQLITE_LIMIT_ATTACHED databases
         if self.crossdb and database == "_memory":
             count = 0

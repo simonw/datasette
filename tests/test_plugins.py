@@ -59,6 +59,11 @@ async def test_hook_plugin_prepare_connection_arguments(ds_client):
         "database=fixtures, datasette.plugin_config(\"name-of-plugin\")={'depth': 'root'}"
     ] == response.json()
 
+    # Function should not be available on the internal database
+    db = ds_client.ds.get_internal_database()
+    with pytest.raises(sqlite3.OperationalError):
+        await db.execute("select prepare_connection_args()")
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(

@@ -57,6 +57,8 @@ arguments and can be called like this::
 
     select random_integer(1, 10);
 
+``prepare_connection()`` hooks are not called for Datasette's :ref:`internal database <internals_internal>`.
+
 Examples: `datasette-jellyfish <https://datasette.io/plugins/datasette-jellyfish>`__, `datasette-jq <https://datasette.io/plugins/datasette-jq>`__, `datasette-haversine <https://datasette.io/plugins/datasette-haversine>`__, `datasette-rure <https://datasette.io/plugins/datasette-rure>`__
 
 .. _plugin_hook_prepare_jinja2_environment:

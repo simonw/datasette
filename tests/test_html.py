@@ -1040,7 +1040,7 @@ async def test_alternate_url_json(ds_client, path, expected):
     response = await ds_client.get(path)
     assert response.status_code == 200
     link = response.headers["link"]
-    assert link == '{}; rel="alternate"; type="application/json+datasette"'.format(
+    assert link == '<{}>; rel="alternate"; type="application/json+datasette"'.format(
         expected
     )
     assert (

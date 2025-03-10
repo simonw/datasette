@@ -457,7 +457,7 @@ You can find this near the top of the source code of those pages, looking like t
 
 The JSON URL is also made available in a ``Link`` HTTP header for the page::
 
-    Link: https://latest.datasette.io/fixtures/sortable.json; rel="alternate"; type="application/json+datasette"
+    Link: <https://latest.datasette.io/fixtures/sortable.json>; rel="alternate"; type="application/json+datasette"
 
 .. _json_api_cors:
 

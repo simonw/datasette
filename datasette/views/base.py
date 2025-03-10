@@ -158,7 +158,7 @@ class BaseView:
             template_context["alternate_url_json"] = alternate_url_json
             headers.update(
                 {
-                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                    "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
                         alternate_url_json
                     )
                 }

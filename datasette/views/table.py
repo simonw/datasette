@@ -894,7 +894,7 @@ async def table_view_traced(datasette, request):
         )
         headers.update(
             {
-                "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
                     alternate_url_json
                 )
             }

@@ -181,7 +181,7 @@ class DatabaseView(View):
                 view_name="database",
             ),
             headers={
-                "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
                     alternate_url_json
                 )
             },
@@ -630,7 +630,7 @@ class QueryView(View):
             data = {}
             headers.update(
                 {
-                    "Link": '{}; rel="alternate"; type="application/json+datasette"'.format(
+                    "Link": '<{}>; rel="alternate"; type="application/json+datasette"'.format(
                         alternate_url_json
                     )
                 }

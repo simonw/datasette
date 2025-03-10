@@ -433,7 +433,7 @@ def test_canned_write_custom_template(canned_write_client):
     )
     assert (
         response.headers["link"]
-        == 'http://localhost/data/update_name.json; rel="alternate"; type="application/json+datasette"'
+        == '<http://localhost/data/update_name.json>; rel="alternate"; type="application/json+datasette"'
     )
 
 

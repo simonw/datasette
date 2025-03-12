@@ -1294,26 +1294,63 @@ The ``Database`` class also provides properties and methods for introspecting th
     Returns the SQL definition of the named view.
 
 ``await db.get_all_foreign_keys()`` - dictionary
-    Dictionary representing both incoming and outgoing foreign keys for this table. It has two keys, ``"incoming"`` and ``"outgoing"``, each of which is a list of dictionaries with keys ``"column"``, ``"other_table"`` and ``"other_column"``. For example:
+    Dictionary representing both incoming and outgoing foreign keys for every table in this database. Each key is a table name that points to a dictionary with two keys, ``"incoming"`` and ``"outgoing"``, each of which is a list of dictionaries with keys ``"column"``, ``"other_table"`` and ``"other_column"``. For example:
 
     .. code-block:: json
 
         {
+          "documents": {
+            "incoming": [
+              {
+                "other_table": "pages",
+                "column": "id",
+                "other_column": "document_id"
+              }
+            ],
+            "outgoing": []
+          },
+          "pages": {
+            "incoming": [
+              {
+                "other_table": "organization_pages",
+                "column": "id",
+                "other_column": "page_id"
+              }
+            ],
+            "outgoing": [
+              {
+                "other_table": "documents",
+                "column": "document_id",
+                "other_column": "id"
+              }
+            ]
+          },
+          "organization": {
+            "incoming": [
+              {
+                "other_table": "organization_pages",
+                "column": "id",
+                "other_column": "organization_id"
+              }
+            ],
+            "outgoing": []
+          },
+          "organization_pages": {
             "incoming": [],
             "outgoing": [
-                {
-                    "other_table": "attraction_characteristic",
-                    "column": "characteristic_id",
-                    "other_column": "pk",
-                },
-                {
-                    "other_table": "roadside_attractions",
-                    "column": "attraction_id",
-                    "other_column": "pk",
-                }
+              {
+                "other_table": "pages",
+                "column": "page_id",
+                "other_column": "id"
+              },
+              {
+                "other_table": "organization",
+                "column": "organization_id",
+                "other_column": "id"
+              }
             ]
+          }
         }
-
 
 .. _internals_csrf:
 

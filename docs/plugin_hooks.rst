@@ -1026,7 +1026,7 @@ actor_from_request(datasette, request)
 
 This is part of Datasette's :ref:`authentication and permissions system <authentication>`. The function should attempt to authenticate an actor (either a user or an API actor of some sort) based on information in the request.
 
-If it cannot authenticate an actor, it should return ``None``. Otherwise it should return a dictionary representing that actor.
+If it cannot authenticate an actor, it should return ``None``, otherwise it should return a dictionary representing that actor. Once a plugin has returned an actor from this hook other plugins will be ignored.
 
 Here's an example that authenticates the actor based on an incoming API key:
 

@@ -374,7 +374,7 @@ One way to generate a secure random secret is to use Python like this::
     python3 -c 'import secrets; print(secrets.token_hex(32))'
     cdb19e94283a20f9d42cca50c5a4871c0aa07392db308755d60a1a5b9bb0fa52
 
-Plugin authors can make use of this signing mechanism in their plugins using :ref:`datasette_sign` and :ref:`datasette_unsign`.
+Plugin authors can make use of this signing mechanism in their plugins using the :ref:`datasette.sign() <datasette_sign>` and :ref:`datasette.unsign() <datasette_unsign>` methods.
 
 .. _setting_publish_secrets:
 

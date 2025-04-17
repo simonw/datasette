@@ -722,6 +722,25 @@ async def test_hidden_tables(app_client):
         "r_rowid",
     ]
 
+    # A fts virtual table with a content table should be hidden too
+    await db.execute("create virtual table f2_fts using fts5(a, content='f')")
+    assert await db.hidden_table_names() == [
+        "_hideme",
+        "f2_fts_config",
+        "f2_fts_data",
+        "f2_fts_docsize",
+        "f2_fts_idx",
+        "f_config",
+        "f_content",
+        "f_data",
+        "f_docsize",
+        "f_idx",
+        "r_node",
+        "r_parent",
+        "r_rowid",
+        "f2_fts",
+    ]
+
 
 @pytest.mark.asyncio
 async def test_replace_database(tmpdir):

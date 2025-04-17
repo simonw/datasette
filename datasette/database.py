@@ -578,10 +578,22 @@ class Database:
                         SELECT name FROM fts3_shadow_tables
                       )
                       SELECT name FROM final ORDER BY 1
-
                     """
                 )
             ]
+        # Also hide any FTS tables that have a content= argument
+        hidden_tables += [
+            x[0]
+            for x in await self.execute(
+                """
+                  SELECT name
+                  FROM sqlite_master
+                  WHERE sql LIKE '%VIRTUAL TABLE%'
+                    AND sql LIKE '%USING FTS%'
+                    AND sql LIKE '%content=%'
+                """
+            )
+        ]
 
         has_spatialite = await self.execute_fn(detect_spatialite)
         if has_spatialite:

@@ -390,29 +390,6 @@ async def test_database_page(ds_client):
             "private": False,
         },
         {
-            "name": "searchable_fts",
-            "columns": [
-                "text1",
-                "text2",
-                "name with . and spaces",
-            ]
-            + (
-                [
-                    "searchable_fts",
-                    "docid",
-                    "__langid",
-                ]
-                if supports_table_xinfo()
-                else []
-            ),
-            "primary_keys": [],
-            "count": 2,
-            "hidden": False,
-            "fts_table": "searchable_fts",
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
             "name": "searchable_tags",
             "columns": ["searchable_id", "tag"],
             "primary_keys": ["searchable_id", "tag"],
@@ -536,6 +513,31 @@ async def test_database_page(ds_client):
             "hidden": True,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
+        },
+        {
+            "columns": Either(
+                [
+                    "text1",
+                    "text2",
+                    "name with . and spaces",
+                    "searchable_fts",
+                    "docid",
+                    "__langid",
+                ],
+                # Get tests to pass on SQLite 3.25 as well
+                [
+                    "text1",
+                    "text2",
+                    "name with . and spaces",
+                ],
+            ),
+            "count": 2,
+            "foreign_keys": {"incoming": [], "outgoing": []},
+            "fts_table": "searchable_fts",
+            "hidden": True,
+            "name": "searchable_fts",
+            "primary_keys": [],
             "private": False,
         },
         {
@@ -1198,3 +1200,12 @@ async def test_upgrade_metadata(metadata, expected_config, expected_metadata):
     assert response.json() == expected_config
     response2 = await ds.client.get("/-/metadata.json")
     assert response2.json() == expected_metadata
+
+
+class Either:
+    def __init__(self, a, b):
+        self.a = a
+        self.b = b
+
+    def __eq__(self, other):
+        return other == self.a or other == self.b

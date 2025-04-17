@@ -41,14 +41,13 @@ def test_homepage(app_client_two_attached_databases):
     assert "extra database" == h2.text.strip()
     counts_p, links_p = h2.find_all_next("p")[:2]
     assert (
-        "4 rows in 2 tables, 3 rows in 3 hidden tables, 1 view" == counts_p.text.strip()
+        "2 rows in 1 table, 5 rows in 4 hidden tables, 1 view" == counts_p.text.strip()
     )
     # We should only show visible, not hidden tables here:
     table_links = [
         {"href": a["href"], "text": a.text.strip()} for a in links_p.find_all("a")
     ]
     assert [
-        {"href": r"/extra+database/searchable_fts", "text": "searchable_fts"},
         {"href": r"/extra+database/searchable", "text": "searchable"},
         {"href": r"/extra+database/searchable_view", "text": "searchable_view"},
     ] == table_links

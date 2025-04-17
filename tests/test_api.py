@@ -390,29 +390,6 @@ async def test_database_page(ds_client):
             "private": False,
         },
         {
-            "name": "searchable_fts",
-            "columns": [
-                "text1",
-                "text2",
-                "name with . and spaces",
-            ]
-            + (
-                [
-                    "searchable_fts",
-                    "docid",
-                    "__langid",
-                ]
-                if supports_table_xinfo()
-                else []
-            ),
-            "primary_keys": [],
-            "count": 2,
-            "hidden": False,
-            "fts_table": "searchable_fts",
-            "foreign_keys": {"incoming": [], "outgoing": []},
-            "private": False,
-        },
-        {
             "name": "searchable_tags",
             "columns": ["searchable_id", "tag"],
             "primary_keys": ["searchable_id", "tag"],
@@ -536,6 +513,23 @@ async def test_database_page(ds_client):
             "hidden": True,
             "fts_table": None,
             "foreign_keys": {"incoming": [], "outgoing": []},
+            "private": False,
+        },
+        {
+            "columns": [
+                "text1",
+                "text2",
+                "name with . and spaces",
+                "searchable_fts",
+                "docid",
+                "__langid",
+            ],
+            "count": 2,
+            "foreign_keys": {"incoming": [], "outgoing": []},
+            "fts_table": "searchable_fts",
+            "hidden": True,
+            "name": "searchable_fts",
+            "primary_keys": [],
             "private": False,
         },
         {

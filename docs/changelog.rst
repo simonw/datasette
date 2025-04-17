@@ -4,6 +4,18 @@
 Changelog
 =========
 
+.. _v1_0_a18:
+
+1.0a18 (2025-04-16)
+-------------------
+
+- Fix for incorrect foreign key references in the internal database schema. (:issue:`2466`)
+- The ``prepare_connection()`` hook no longer runs for the internal database. (:issue:`2468`)
+- Fixed bug where ``link:`` HTTP headers used invalid syntax. (:issue:`2470`)
+- No longer tested against Python 3.8. Now tests against Python 3.13.
+- FTS tables are now hidden by default if they correspond to a content table. (:issue:`2477`)
+- Fixed bug with foreign key links to rows in databases with filenames containing a special character. Thanks, `Jack Stratton <https://github.com/phroa>`__. (`#2476 <https://github.com/simonw/datasette/pull/2476>`__)
+
 .. _v1_0_a17:
 
 1.0a17 (2025-02-06)

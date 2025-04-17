@@ -273,7 +273,7 @@ async def display_columns_and_rows(
                 link_template = LINK_WITH_LABEL if (label != value) else LINK_WITH_VALUE
                 display_value = markupsafe.Markup(
                     link_template.format(
-                        database=database_name,
+                        database=tilde_encode(database_name),
                         base_url=base_url,
                         table=tilde_encode(other_table),
                         link_id=tilde_encode(str(value)),

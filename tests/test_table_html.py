@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup as Soup
 from .fixtures import (  # noqa
     app_client,
     make_app_client,
+    app_client_with_dot,
 )
 import pathlib
 import pytest
@@ -1291,3 +1292,9 @@ async def test_foreign_key_labels_obey_permissions(config):
         "rows": [{"id": 1, "name": "world", "a_id": 1}],
         "truncated": False,
     }
+
+
+def test_foreign_keys_special_character_in_database_name(app_client_with_dot):
+    # https://github.com/simonw/datasette/pull/2476
+    response = app_client_with_dot.get("/fixtures~2Edot/complex_foreign_keys")
+    assert '<a href="/fixtures~2Edot/simple_primary_key/2">world</a>' in response.text

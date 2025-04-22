@@ -4,6 +4,13 @@
 Changelog
 =========
 
+.. _v1_0_a19:
+
+1.0a19 (2025-04-21)
+-------------------
+
+- Tiny cosmetic bug fix for mobile display of table rows. (:issue:`2479`)
+
 .. _v1_0_a18:
 
 1.0a18 (2025-04-16)

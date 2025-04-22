@@ -468,12 +468,6 @@ table.rows-and-columns th {
 table.rows-and-columns a:link {
     text-decoration: none;
 }
-.rows-and-columns td:before {
-    display: block;
-    color: black;
-    margin-left: -10%;
-    font-size: 0.8em;
-}
 .rows-and-columns td ol,
 .rows-and-columns td ul {
     list-style: initial;
@@ -765,7 +759,7 @@ p.zero-results {
         left: -9999px;
     }
 
-    .rows-and-columns tr {
+    table.rows-and-columns tr {
         border: 1px solid #ccc;
         margin-bottom: 1em;
         border-radius: 10px;
@@ -773,7 +767,7 @@ p.zero-results {
         padding: 0.2rem;
     }
 
-    .rows-and-columns td {
+    table.rows-and-columns td {
         /* Behave  like a "row" */
         border: none;
         border-bottom: 1px solid #eee;
@@ -781,7 +775,7 @@ p.zero-results {
         padding-left: 10%;
     }
 
-    .rows-and-columns td:before {
+    table.rows-and-columns td:before {
         display: block;
         color: black;
         margin-left: -10%;

@@ -14,13 +14,11 @@ Top-level index
 The root page of any Datasette installation is an index page that lists all of the currently attached databases. Some examples:
 
 * `fivethirtyeight.datasettes.com <https://fivethirtyeight.datasettes.com/>`_
-* `global-power-plants.datasettes.com <https://global-power-plants.datasettes.com/>`_
 * `register-of-members-interests.datasettes.com <https://register-of-members-interests.datasettes.com/>`_
 
 Add ``/.json`` to the end of the URL for the JSON version of the underlying data:
 
 * `fivethirtyeight.datasettes.com/.json <https://fivethirtyeight.datasettes.com/.json>`_
-* `global-power-plants.datasettes.com/.json <https://global-power-plants.datasettes.com/.json>`_
 * `register-of-members-interests.datasettes.com/.json <https://register-of-members-interests.datasettes.com/.json>`_
 
 The index page can also be accessed at ``/-/``, useful for if the default index page has been replaced using an :ref:`index.html custom template <customization_custom_templates>`. The ``/-/`` page will always render the default Datasette ``index.html`` template.
@@ -35,12 +33,12 @@ Each database has a page listing the tables, views and canned queries available 
 Examples:
 
 * `fivethirtyeight.datasettes.com/fivethirtyeight <https://fivethirtyeight.datasettes.com/fivethirtyeight>`_
-* `global-power-plants.datasettes.com/global-power-plants <https://global-power-plants.datasettes.com/global-power-plants>`_
+* `datasette.io/global-power-plants <https://datasette.io/global-power-plants>`_
 
 The JSON version of this page provides programmatic access to the underlying data:
 
 * `fivethirtyeight.datasettes.com/fivethirtyeight.json <https://fivethirtyeight.datasettes.com/fivethirtyeight.json>`_
-* `global-power-plants.datasettes.com/global-power-plants.json <https://global-power-plants.datasettes.com/global-power-plants.json>`_
+* `datasette.io/global-power-plants.json <https://datasette.io/global-power-plants.json>`_
 
 .. _DatabaseView_hidden:
 
@@ -89,7 +87,7 @@ Some examples:
 
 * `../items <https://register-of-members-interests.datasettes.com/regmem/items>`_ lists all of the line-items registered by UK MPs as potential conflicts of interest. It demonstrates Datasette's support for :ref:`full_text_search`.
 * `../antiquities-act%2Factions_under_antiquities_act <https://fivethirtyeight.datasettes.com/fivethirtyeight/antiquities-act%2Factions_under_antiquities_act>`_ is an interface for exploring the "actions under the antiquities act" data table published by FiveThirtyEight.
-* `../global-power-plants?country_long=United+Kingdom&primary_fuel=Gas <https://global-power-plants.datasettes.com/global-power-plants/global-power-plants?_facet=primary_fuel&_facet=owner&_facet=country_long&country_long__exact=United+Kingdom&primary_fuel=Gas>`_ is a filtered table page showing every Gas power plant in the United Kingdom. It includes some default facets (configured using `its metadata.json <https://global-power-plants.datasettes.com/-/metadata>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
+* `../global-power-plants?country_long=United+Kingdom&primary_fuel=Gas <https://datasette.io/global-power-plants/global-power-plants?_facet=primary_fuel&_facet=owner&_facet=country_long&country_long__exact=United+Kingdom&primary_fuel=Gas>`_ is a filtered table page showing every Gas power plant in the United Kingdom. It includes some default facets (configured using `its metadata.json <https://datasette.io/-/metadata>`_) and uses the `datasette-cluster-map <https://github.com/simonw/datasette-cluster-map>`_ plugin to show a map of the results.
 
 .. _RowView:
 

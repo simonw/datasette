@@ -33,29 +33,18 @@ You can pass a URL to a CSV, SQLite or raw SQL file directly to Datasette Lite t
 
 This `example link <https://lite.datasette.io/?url=https%3A%2F%2Fraw.githubusercontent.com%2FNUKnightLab%2Fsql-mysteries%2Fmaster%2Fsql-murder-mystery.db#/sql-murder-mystery>`__ opens Datasette Lite and loads the SQL Murder Mystery example database from `Northwestern University Knight Lab <https://github.com/NUKnightLab/sql-mysteries>`__. 
 
-.. _getting_started_glitch:
+.. _getting_started_codespaces:
 
-Try Datasette without installing anything using Glitch
-------------------------------------------------------
+Try Datasette without installing anything with Codespaces
+---------------------------------------------------------
 
-`Glitch <https://glitch.com/>`__ is a free online tool for building web apps directly from your web browser. You can use Glitch to try out Datasette without needing to install any software on your own computer.
+`GitHub Codespaces <https://github.com/features/codespaces/>`__ offers a free browser-based development environment that lets you run a development server without installing any local software.
 
-Here's a demo project on Glitch which you can use as the basis for your own experiments:
+Here's a demo project on GitHub which you can use as the basis for your own experiments:
 
-`glitch.com/~datasette-csvs <https://glitch.com/~datasette-csvs>`__
+`github.com/datasette/datasette-studio <https://github.com/datasette/datasette-studio>`__
 
-Glitch allows you to "remix" any project to create your own copy and start editing it in your browser. You can remix the ``datasette-csvs`` project by clicking this button:
-
-.. image:: https://cdn.glitch.com/2703baf2-b643-4da7-ab91-7ee2a2d00b5b%2Fremix-button.svg
-   :target: https://glitch.com/edit/#!/remix/datasette-csvs
-
-Find a CSV file and drag it onto the Glitch file explorer panel - ``datasette-csvs`` will automatically convert it to a SQLite database (using `sqlite-utils <https://github.com/simonw/sqlite-utils>`__) and allow you to start exploring it using Datasette.
-
-If your CSV file has a ``latitude`` and ``longitude`` column you can visualize it on a map by uncommenting the ``datasette-cluster-map`` line in the ``requirements.txt`` file using the Glitch file editor.
-
-Need some data? Try this `Public Art Data <https://data.seattle.gov/Community/Public-Art-Data/j7sn-tdzk>`__ for the city of Seattle - hit "Export" and select "CSV" to download it as a CSV file.
-
-For more on how this works, see `Running Datasette on Glitch <https://simonwillison.net/2019/Apr/23/datasette-glitch/>`__.
+The README file in that repository has instructions on how to get started.
 
 .. _getting_started_your_computer:
 

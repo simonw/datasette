@@ -215,7 +215,73 @@ def test_error_in_on_success_message_sql(canned_write_client):
 
 def test_custom_params(canned_write_client):
     response = canned_write_client.get("/data/update_name?extra=foo")
-    assert '<input type="text" id="qp3" name="extra" value="foo">' in response.text
+    soup = Soup(response.text, "html.parser")
+    extra_input = soup.find("input", {"name": "extra"})
+    assert extra_input is not None
+    assert extra_input.get("type") == "text"
+    assert extra_input.get("value") == "foo"
+
+
+def test_canned_query_param_dicts(tmpdir):
+    """
+    Test that canned query params as dicts (with default and description) render correctly.
+    """
+    with make_app_client(
+        extra_databases={
+            "data.db": "create table demo (id integer primary key, val text, flag integer)"
+        },
+        config={
+            "databases": {
+                "data": {
+                    "queries": {
+                        "demo_query": {
+                            "sql": "select * from demo where val = :val and flag = :flag",
+                            "params": [
+                                "id",
+                                {
+                                    "name": "val",
+                                    "default": "foo",
+                                    "description": "The value to filter on",
+                                },
+                                {
+                                    "name": "flag",
+                                    "default": "1",
+                                    "description": "A flag (1 or 0)",
+                                },
+                            ],
+                        }
+                    }
+                }
+            }
+        },
+    ) as client:
+        # Test default values and tooltips
+        response = client.get("/data/demo_query")
+        soup = Soup(response.text, "html.parser")
+        id_input = soup.find("input", {"name": "id"})
+        val_input = soup.find("input", {"name": "val"})
+        flag_input = soup.find("input", {"name": "flag"})
+        assert id_input  # Verify we still treat name-only params correctly
+        assert val_input  # Verify param dicts are treated correctly
+        assert flag_input
+        assert val_input["value"] == "foo"
+        assert flag_input["value"] == "1"
+        assert val_input["title"] == "The value to filter on"
+        assert flag_input["title"] == "A flag (1 or 0)"
+        # Test user override
+        response2 = client.get("/data/demo_query?val=bar&flag=0")
+        soup2 = Soup(response2.text, "html.parser")
+        val_input2 = soup2.find("input", {"name": "val"})
+        flag_input2 = soup2.find("input", {"name": "flag"})
+        assert val_input2["value"] == "bar"
+        assert flag_input2["value"] == "0"
+        # Test fallback to default if param is blank
+        response3 = client.get("/data/demo_query?val=&flag=")
+        soup3 = Soup(response3.text, "html.parser")
+        val_input3 = soup3.find("input", {"name": "val"})
+        flag_input3 = soup3.find("input", {"name": "flag"})
+        assert val_input3["value"] == "foo"
+        assert flag_input3["value"] == "1"
 
 
 def test_vary_header(canned_write_client):

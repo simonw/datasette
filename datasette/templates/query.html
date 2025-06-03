@@ -57,7 +57,19 @@
             >
         {% endif %}
     {% endif %}
-    {% if named_parameter_values %}
+    
+    {# Debug lines removed to avoid Jinja2 Undefined errors #}
+
+    {% if canned_query and metadata and metadata.get('params') %}
+        <h3>Query parameters</h3>
+        {% for param in metadata['params'] %}
+            <p>
+                <label for="qp{{ loop.index }}">{{ param.name }}</label>
+                <input type="text" id="qp{{ loop.index }}" name="{{ param.name }}"
+                    value="{{ named_parameter_values[param.name]|default(param.default, true) }}" {% if param['description'] %} title="{{ param['description'] }}"{% endif %}>
+            </p>
+        {% endfor %}
+    {% elif named_parameter_values %}
         <h3>Query parameters</h3>
         {% for name, value in named_parameter_values.items() %}
             <p><label for="qp{{ loop.index }}">{{ name }}</label> <input type="text" id="qp{{ loop.index }}" name="{{ name }}" value="{{ value }}"></p>

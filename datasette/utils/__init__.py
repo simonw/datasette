@@ -593,11 +593,26 @@ def detect_spatialite(conn):
 
 def detect_fts(conn, table):
     """Detect if table has a corresponding FTS virtual table and return it"""
-    rows = conn.execute(detect_fts_sql(table)).fetchall()
-    if len(rows) == 0:
+    # The SQL uses explicit parameters for table name matching for better escaping and performance.
+    sql = r"""
+        select name from sqlite_master
+        where rootpage = 0
+        and (
+            (sql like '%VIRTUAL TABLE%USING FTS%content="' || ? || '"%')
+            or (sql like '%VIRTUAL TABLE%USING FTS%content=[' || ? || ']%')
+            or (
+                tbl_name = ?
+                and sql like '%VIRTUAL TABLE%USING FTS%'
+            )
+        )
+        limit 1
+    """
+    param = (table, table, table)
+    row = conn.execute(sql, param).fetchone()
+    if row is None:
         return None
     else:
-        return rows[0][0]
+        return row[0]
 
 
 def detect_fts_sql(table):

@@ -594,7 +594,17 @@ def detect_spatialite(conn):
 def detect_fts(conn, table):
     """Detect if table has a corresponding FTS virtual table and return it"""
     # The SQL uses explicit parameters for table name matching for better escaping and performance.
-    sql = r"""
+    sql = detect_fts_sql()
+    param = (table, table, table)
+    row = conn.execute(sql, param).fetchone()
+    if row is None:
+        return None
+    else:
+        return row[0]
+
+
+def detect_fts_sql():
+    return r"""
         select name from sqlite_master
         where rootpage = 0
         and (
@@ -607,29 +617,6 @@ def detect_fts(conn, table):
         )
         limit 1
     """
-    param = (table, table, table)
-    row = conn.execute(sql, param).fetchone()
-    if row is None:
-        return None
-    else:
-        return row[0]
-
-
-def detect_fts_sql(table):
-    return r"""
-        select name from sqlite_master
-            where rootpage = 0
-            and (
-                sql like '%VIRTUAL TABLE%USING FTS%content="{table}"%'
-                or sql like '%VIRTUAL TABLE%USING FTS%content=[{table}]%'
-                or (
-                    tbl_name = "{table}"
-                    and sql like '%VIRTUAL TABLE%USING FTS%'
-                )
-            )
-    """.format(
-        table=table.replace("'", "''")
-    )
 
 
 def detect_json1(conn=None):

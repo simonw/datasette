@@ -593,7 +593,6 @@ def detect_spatialite(conn):
 
 def detect_fts(conn, table):
     """Detect if table has a corresponding FTS virtual table and return it"""
-    # The SQL uses explicit parameters for table name matching for better escaping and performance.
     sql = detect_fts_sql()
     param = (table, table, table)
     row = conn.execute(sql, param).fetchone()

@@ -502,6 +502,19 @@ class Database:
                 t for t in db_config["tables"] if db_config["tables"][t].get("hidden")
             ]
 
+        # Hide internal tables
+        hidden_tables += [
+            x[0]
+            for x in await self.execute(
+                """
+                  SELECT name
+                  FROM sqlite_master
+                  WHERE name IN ('sqlite_sequence')
+                  AND type = 'table'
+                """
+            )
+        ]
+
         if sqlite_version()[1] >= 37:
             hidden_tables += [
                 x[0]
@@ -605,7 +618,6 @@ class Database:
                 "spatial_ref_sys",
                 "spatialite_history",
                 "sql_statements_log",
-                "sqlite_sequence",
                 "views_geometry_columns",
                 "virts_geometry_columns",
                 "data_licenses",

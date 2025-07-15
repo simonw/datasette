@@ -19,6 +19,14 @@ async def init_internal_db(db):
         PRIMARY KEY (database_name, table_name),
         FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
     );
+    CREATE TABLE IF NOT EXISTS catalog_views (
+        database_name TEXT,
+        view_name TEXT,
+        rootpage INTEGER,
+        sql TEXT,
+        PRIMARY KEY (database_name, view_name),
+        FOREIGN KEY (database_name) REFERENCES catalog_databases(database_name)
+    );
     CREATE TABLE IF NOT EXISTS catalog_columns (
         database_name TEXT,
         table_name TEXT,
@@ -112,6 +120,9 @@ async def populate_schema_tables(internal_db, db):
             "DELETE FROM catalog_tables WHERE database_name = ?", [database_name]
         )
         conn.execute(
+            "DELETE FROM catalog_views WHERE database_name = ?", [database_name]
+        )
+        conn.execute(
             "DELETE FROM catalog_columns WHERE database_name = ?", [database_name]
         )
         conn.execute(
@@ -125,12 +136,20 @@ async def populate_schema_tables(internal_db, db):
     await internal_db.execute_write_fn(delete_everything)
 
     tables = (await db.execute("select * from sqlite_master WHERE type = 'table'")).rows
+    views = (await db.execute("select * from sqlite_master WHERE type = 'view'")).rows
 
     def collect_info(conn):
         tables_to_insert = []
+        views_to_insert = []
         columns_to_insert = []
         foreign_keys_to_insert = []
         indexes_to_insert = []
+
+        for view in views:
+            view_name = view["name"]
+            views_to_insert.append(
+                (database_name, view_name, view["rootpage"], view["sql"])
+            )
 
         for table in tables:
             table_name = table["name"]
@@ -165,6 +184,7 @@ async def populate_schema_tables(internal_db, db):
             )
         return (
             tables_to_insert,
+            views_to_insert,
             columns_to_insert,
             foreign_keys_to_insert,
             indexes_to_insert,
@@ -172,6 +192,7 @@ async def populate_schema_tables(internal_db, db):
 
     (
         tables_to_insert,
+        views_to_insert,
         columns_to_insert,
         foreign_keys_to_insert,
         indexes_to_insert,
@@ -183,6 +204,13 @@ async def populate_schema_tables(internal_db, db):
         values (?, ?, ?, ?)
     """,
         tables_to_insert,
+    )
+    await internal_db.execute_write_many(
+        """
+        INSERT INTO catalog_views (database_name, view_name, rootpage, sql)
+        values (?, ?, ?, ?)
+    """,
+        views_to_insert,
     )
     await internal_db.execute_write_many(
         """

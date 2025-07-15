@@ -26,6 +26,15 @@ async def test_internal_tables(ds_client):
 
 
 @pytest.mark.asyncio
+async def test_internal_views(ds_client):
+    internal_db = await ensure_internal(ds_client)
+    views = await internal_db.execute("select * from catalog_views")
+    assert len(views) >= 4
+    view = views.rows[0]
+    assert set(view.keys()) == {"rootpage", "view_name", "database_name", "sql"}
+
+
+@pytest.mark.asyncio
 async def test_internal_indexes(ds_client):
     internal_db = await ensure_internal(ds_client)
     indexes = await internal_db.execute("select * from catalog_indexes")

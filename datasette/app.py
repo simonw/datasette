@@ -1806,7 +1806,6 @@ class DatasetteRouter:
             "raw_path", request.scope["path"].encode("utf8")
         ).partition(b"?")[0]
         context = {}
-
         if path.endswith(b"/"):
             path = path.rstrip(b"/")
 

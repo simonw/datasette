@@ -1811,7 +1811,7 @@ class DatasetteRouter:
 
             # If you redirect with a // at the beginning, you end up with an open redirect, so
             # https://my.site//foo/ - will redirect to https://foo
-            path = re.sub(rb'^/+', b'/', path)
+            path = re.sub(rb"^/+", b"/", path)
 
             if request.scope["query_string"]:
                 path += b"?" + request.scope["query_string"]

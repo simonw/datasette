@@ -1,15 +1,30 @@
 import json
+import logging
 from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
     add_cors_headers,
+    await_me_maybe,
     tilde_encode,
     tilde_decode,
 )
+from datasette.utils.permissions import PluginSQL, resolve_permissions_from_catalog
+from datasette.plugins import pm
 from .base import BaseView, View
 import secrets
 import urllib
+
+
+logger = logging.getLogger(__name__)
+
+
+def _resource_path(parent, child):
+    if parent is None:
+        return "/"
+    if child is None:
+        return f"/{parent}"
+    return f"/{parent}/{child}"
 
 
 class JsonDataView(BaseView):
@@ -185,6 +200,329 @@ class PermissionsDebugView(BaseView):
                 "default": self.ds.permissions[permission].default,
             }
         )
+
+
+class AllowedResourcesView(BaseView):
+    name = "allowed"
+    has_json_alternate = False
+
+    CANDIDATE_SQL = {
+        "view-table": (
+            "SELECT database_name AS parent, table_name AS child FROM catalog_tables",
+            {},
+        ),
+        "view-database": (
+            "SELECT database_name AS parent, NULL AS child FROM catalog_databases",
+            {},
+        ),
+        "view-instance": ("SELECT NULL AS parent, NULL AS child", {}),
+        "execute-sql": (
+            "SELECT database_name AS parent, NULL AS child FROM catalog_databases",
+            {},
+        ),
+    }
+
+    async def get(self, request):
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        action = request.args.get("action")
+        if not action:
+            return Response.json({"error": "action parameter is required"}, status=400)
+        if action not in self.ds.permissions:
+            return Response.json({"error": f"Unknown action: {action}"}, status=404)
+        if action not in self.CANDIDATE_SQL:
+            return Response.json(
+                {"error": f"Action '{action}' is not supported by this endpoint"},
+                status=400,
+            )
+
+        actor_id = (request.actor or {}).get("id") if request.actor else None
+
+        try:
+            page = int(request.args.get("page", "1"))
+            page_size = int(request.args.get("page_size", "50"))
+        except ValueError:
+            return Response.json(
+                {"error": "page and page_size must be integers"}, status=400
+            )
+        if page < 1:
+            return Response.json({"error": "page must be >= 1"}, status=400)
+        if page_size < 1:
+            return Response.json({"error": "page_size must be >= 1"}, status=400)
+        max_page_size = 200
+        if page_size > max_page_size:
+            page_size = max_page_size
+        offset = (page - 1) * page_size
+
+        candidate_sql, candidate_params = self.CANDIDATE_SQL[action]
+
+        db = self.ds.get_internal_database()
+        required_tables = set()
+        if "catalog_tables" in candidate_sql:
+            required_tables.add("catalog_tables")
+        if "catalog_databases" in candidate_sql:
+            required_tables.add("catalog_databases")
+
+        for table in required_tables:
+            if not await db.table_exists(table):
+                headers = {}
+                if self.ds.cors:
+                    add_cors_headers(headers)
+                return Response.json(
+                    {
+                        "action": action,
+                        "actor_id": actor_id,
+                        "page": page,
+                        "page_size": page_size,
+                        "total": 0,
+                        "items": [],
+                    },
+                    headers=headers,
+                )
+
+        plugins = []
+        for block in pm.hook.permission_resources_sql(
+            datasette=self.ds,
+            actor_id=actor_id,
+            action=action,
+        ):
+            block = await await_me_maybe(block)
+            if block is None:
+                continue
+            if not isinstance(block, PluginSQL):
+                logger.warning(
+                    "Skipping permission_resources_sql result %r from plugin; expected PluginSQL",
+                    block,
+                )
+                continue
+            plugins.append(block)
+
+        rows = await resolve_permissions_from_catalog(
+            db,
+            actor=str(actor_id) if actor_id is not None else "",
+            plugins=plugins,
+            action=action,
+            candidate_sql=candidate_sql,
+            candidate_params=candidate_params,
+            implicit_deny=True,
+        )
+
+        allowed_rows = [row for row in rows if row["allow"] == 1]
+        total = len(allowed_rows)
+        paged_rows = allowed_rows[offset : offset + page_size]
+
+        items = [
+            {
+                "parent": row["parent"],
+                "child": row["child"],
+                "resource": row["resource"],
+                "reason": row["reason"],
+                "source_plugin": row["source_plugin"],
+            }
+            for row in paged_rows
+        ]
+
+        def build_page_url(page_number):
+            pairs = []
+            for key in request.args:
+                if key in {"page", "page_size"}:
+                    continue
+                for value in request.args.getlist(key):
+                    pairs.append((key, value))
+            pairs.append(("page", str(page_number)))
+            pairs.append(("page_size", str(page_size)))
+            query = urllib.parse.urlencode(pairs)
+            return f"{request.path}?{query}"
+
+        response = {
+            "action": action,
+            "actor_id": actor_id,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "items": items,
+        }
+
+        if total > offset + page_size:
+            response["next_url"] = build_page_url(page + 1)
+        if page > 1:
+            response["previous_url"] = build_page_url(page - 1)
+
+        headers = {}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        return Response.json(response, headers=headers)
+
+
+class PermissionRulesView(BaseView):
+    name = "permission_rules"
+    has_json_alternate = False
+
+    async def get(self, request):
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        action = request.args.get("action")
+        if not action:
+            return Response.json({"error": "action parameter is required"}, status=400)
+        if action not in self.ds.permissions:
+            return Response.json({"error": f"Unknown action: {action}"}, status=404)
+
+        actor_id = (request.actor or {}).get("id") if request.actor else None
+
+        try:
+            page = int(request.args.get("page", "1"))
+            page_size = int(request.args.get("page_size", "50"))
+        except ValueError:
+            return Response.json(
+                {"error": "page and page_size must be integers"}, status=400
+            )
+        if page < 1:
+            return Response.json({"error": "page must be >= 1"}, status=400)
+        if page_size < 1:
+            return Response.json({"error": "page_size must be >= 1"}, status=400)
+        max_page_size = 200
+        if page_size > max_page_size:
+            page_size = max_page_size
+        offset = (page - 1) * page_size
+
+        union_sql, union_params = await self.ds.allowed_resources_sql(actor_id, action)
+        db = self.ds.get_internal_database()
+
+        count_query = f"""
+        WITH rules AS (
+            {union_sql}
+        )
+        SELECT COUNT(*) AS count
+        FROM rules
+        WHERE allow = 1
+        """
+        count_row = (await db.execute(count_query, union_params)).first()
+        total = count_row["count"] if count_row else 0
+
+        data_query = f"""
+        WITH rules AS (
+            {union_sql}
+        )
+        SELECT parent, child, allow, reason, source_plugin
+        FROM rules
+        WHERE allow = 1
+        ORDER BY (parent IS NOT NULL), parent, child
+        LIMIT :limit OFFSET :offset
+        """
+        params = {**union_params, "limit": page_size, "offset": offset}
+        rows = await db.execute(data_query, params)
+
+        items = []
+        for row in rows:
+            parent = row["parent"]
+            child = row["child"]
+            items.append(
+                {
+                    "parent": parent,
+                    "child": child,
+                    "resource": _resource_path(parent, child),
+                    "reason": row["reason"],
+                    "source_plugin": row["source_plugin"],
+                }
+            )
+
+        def build_page_url(page_number):
+            pairs = []
+            for key in request.args:
+                if key in {"page", "page_size"}:
+                    continue
+                for value in request.args.getlist(key):
+                    pairs.append((key, value))
+            pairs.append(("page", str(page_number)))
+            pairs.append(("page_size", str(page_size)))
+            query = urllib.parse.urlencode(pairs)
+            return f"{request.path}?{query}"
+
+        response = {
+            "action": action,
+            "actor_id": actor_id,
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "items": items,
+        }
+
+        if total > offset + page_size:
+            response["next_url"] = build_page_url(page + 1)
+        if page > 1:
+            response["previous_url"] = build_page_url(page - 1)
+
+        headers = {}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        return Response.json(response, headers=headers)
+
+
+class PermissionCheckView(BaseView):
+    name = "permission_check"
+    has_json_alternate = False
+
+    async def get(self, request):
+        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        action = request.args.get("action")
+        if not action:
+            return Response.json({"error": "action parameter is required"}, status=400)
+        if action not in self.ds.permissions:
+            return Response.json({"error": f"Unknown action: {action}"}, status=404)
+
+        parent = request.args.get("parent")
+        child = request.args.get("child")
+        if child and not parent:
+            return Response.json(
+                {"error": "parent is required when child is provided"}, status=400
+            )
+
+        if parent and child:
+            resource = (parent, child)
+        elif parent:
+            resource = parent
+        else:
+            resource = None
+
+        before_checks = len(self.ds._permission_checks)
+        allowed = await self.ds.permission_allowed_2(request.actor, action, resource)
+
+        info = None
+        if len(self.ds._permission_checks) > before_checks:
+            for check in reversed(self.ds._permission_checks):
+                if (
+                    check.get("actor") == request.actor
+                    and check.get("action") == action
+                    and check.get("resource") == resource
+                ):
+                    info = check
+                    break
+
+        response = {
+            "action": action,
+            "allowed": bool(allowed),
+            "resource": {
+                "parent": parent,
+                "child": child,
+                "path": _resource_path(parent, child),
+            },
+        }
+
+        if request.actor and "id" in request.actor:
+            response["actor_id"] = request.actor["id"]
+
+        if info is not None:
+            response.update(
+                {
+                    "used_default": info.get("used_default"),
+                    "reason": info.get("reason"),
+                    "source_plugin": info.get("source_plugin"),
+                    "depth": info.get("depth"),
+                }
+            )
+
+        headers = {}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        return Response.json(response, headers=headers)
 
 
 class AllowDebugView(BaseView):

@@ -6,6 +6,7 @@ import collections
 import dataclasses
 import datetime
 import functools
+import logging
 import glob
 import hashlib
 import httpx
@@ -49,6 +50,9 @@ from .views.special import (
     AllowDebugView,
     PermissionsDebugView,
     MessagesDebugView,
+    AllowedResourcesView,
+    PermissionRulesView,
+    PermissionCheckView,
 )
 from .views.table import (
     TableInsertView,
@@ -110,6 +114,8 @@ from .utils.sqlite import (
 from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
+
+logger = logging.getLogger(__name__)
 from .utils.permissions import build_rules_union, PluginSQL
 
 app_root = Path(__file__).parent.parent
@@ -1046,9 +1052,11 @@ class Datasette:
             if block is None:
                 continue
             if not isinstance(block, PluginSQL):
-                raise TypeError(
-                    "permission_resources_sql plugins must return PluginSQL instances"
+                logger.warning(
+                    "Skipping permission_resources_sql result %r from plugin; expected PluginSQL",
+                    block,
                 )
+                continue
             plugin_blocks.append(block)
 
         sql, params = build_rules_union(actor=actor_id, plugins=plugin_blocks)
@@ -1132,6 +1140,7 @@ class Datasette:
 
         reason = None
         source_plugin = None
+        depth = None
         used_default = False
 
         if row is None:
@@ -1141,6 +1150,7 @@ class Datasette:
             allow = row["allow"]
             reason = row["reason"]
             source_plugin = row["source_plugin"]
+            depth = row["depth"]
             if allow is None:
                 result = default
                 used_default = True
@@ -1157,6 +1167,7 @@ class Datasette:
                 "result": result,
                 "reason": reason,
                 "source_plugin": source_plugin,
+                "depth": depth,
             }
         )
 
@@ -1717,6 +1728,18 @@ class Datasette:
         add_route(
             PermissionsDebugView.as_view(self),
             r"/-/permissions$",
+        )
+        add_route(
+            AllowedResourcesView.as_view(self),
+            r"/-/allowed$",
+        )
+        add_route(
+            PermissionRulesView.as_view(self),
+            r"/-/rules$",
+        )
+        add_route(
+            PermissionCheckView.as_view(self),
+            r"/-/check$",
         )
         add_route(
             MessagesDebugView.as_view(self),

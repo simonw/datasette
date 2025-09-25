@@ -116,6 +116,11 @@ def permission_allowed(datasette, actor, action, resource):
 
 
 @hookspec
+def permission_resources_sql(datasette, actor_id, action):
+    """Return datasette.permissions.PluginSQL()"""
+
+
+@hookspec
 def canned_queries(datasette, database, actor):
     """Return a dictionary of canned query definitions or an awaitable function that returns them"""
 

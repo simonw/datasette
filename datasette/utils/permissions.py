@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Any, List, Optional, Tuple, Iterable
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import sqlite3
 
 
@@ -10,43 +10,53 @@ import sqlite3
 # Plugin interface & utilities
 # -----------------------------
 
+
 @dataclass
 class PluginSQL:
     """
     A plugin contributes SQL that yields:
       parent TEXT NULL,
       child  TEXT NULL,
-      allow  INTEGER,   -- 1 allow, 0 deny
+      allow  INTEGER,    -- 1 allow, 0 deny
       reason TEXT
     """
-    source: str        # identifier used for auditing (e.g., plugin name)
-    sql: str           # SQL that SELECTs the 4 columns above
+
+    source: str  # identifier used for auditing (e.g., plugin name)
+    sql: str  # SQL that SELECTs the 4 columns above
     params: Dict[str, Any]  # bound params for the SQL (values only; no ':' prefix)
 
 
 def _namespace_params(i: int, params: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     """
-    Rewrite :user, :parent, :child placeholders to distinct names per plugin block.
-    Returns (rewritten_sql, namespaced_params). Only replaces those three names.
+    Rewrite :user, :parent, :child, :action placeholders to distinct names per plugin block.
+    Returns (rewritten_sql, namespaced_params). Only replaces those names.
     """
-    # We do string replace on *tokens* ":user", ":parent", ":child"
+
+    # We do string replace on *tokens* ":user", ":parent", ":child", ":action"
     # This assumes plugin SQL uses those names *verbatim* when needed.
     # Anything else is left untouched.
     def rewrite(s: str) -> str:
         return (
-            s.replace(":user",   f":user_{i}")
-             .replace(":parent", f":parent_{i}")
-             .replace(":child",  f":child_{i}")
+            s.replace(":user", f":user_{i}")
+            .replace(":parent", f":parent_{i}")
+            .replace(":child", f":child_{i}")
+            .replace(":action", f":action_{i}")
         )
 
     namespaced: Dict[str, Any] = {}
-    for key in ("user", "parent", "child"):
+    for key in ("user", "parent", "child", "action"):
         if key in params and params[key] is not None:
             namespaced[f"{key}_{i}"] = params[key]
     return rewrite, namespaced
 
 
-def build_rules_union(actor: str, plugins: List[PluginSQL]) -> Tuple[str, Dict[str, Any]]:
+PluginProvider = Callable[[str], PluginSQL]
+PluginOrFactory = Union[PluginSQL, PluginProvider]
+
+
+def build_rules_union(
+    actor: str, plugins: Sequence[PluginSQL]
+) -> Tuple[str, Dict[str, Any]]:
     """
     Compose plugin SQL into a UNION ALL with namespaced parameters.
 
@@ -83,10 +93,12 @@ def build_rules_union(actor: str, plugins: List[PluginSQL]) -> Tuple[str, Dict[s
 # Core resolvers (no temp tables, no custom UDFs)
 # -----------------------------------------------
 
+
 async def resolve_permissions_from_catalog(
     db,
     actor: str,
-    plugins: List[PluginSQL],
+    plugins: Sequence[PluginOrFactory],
+    action: str,
     candidate_sql: str,
     candidate_params: Optional[Dict[str, Any]] = None,
     *,
@@ -100,7 +112,8 @@ async def resolve_permissions_from_catalog(
         (Use child=NULL for parent-scoped actions like "execute-sql".)
       - *db* exposes: rows = await db.execute(sql, params)
         where rows is an iterable of sqlite3.Row
-      - plugins each return SQL that SELECTs (parent, child, allow, reason)
+      - plugins are either PluginSQL objects or callables accepting (action: str)
+        and returning PluginSQL instances selecting (parent, child, allow, reason)
 
     Decision policy:
       1) Specificity first: child (depth=2) > parent (depth=1) > root (depth=0)
@@ -113,8 +126,23 @@ async def resolve_permissions_from_catalog(
       - parent, child, allow, reason, source_plugin, depth
       - resource (rendered "/parent/child" or "/parent" or "/")
     """
-    union_sql, rule_params = build_rules_union(actor, plugins)
-    all_params = {**(candidate_params or {}), **rule_params, "actor": actor}
+    resolved_plugins: List[PluginSQL] = []
+    for plugin in plugins:
+        if callable(plugin) and not isinstance(plugin, PluginSQL):
+            resolved = plugin(action)  # type: ignore[arg-type]
+        else:
+            resolved = plugin  # type: ignore[assignment]
+        if not isinstance(resolved, PluginSQL):
+            raise TypeError("Plugin providers must return PluginSQL instances")
+        resolved_plugins.append(resolved)
+
+    union_sql, rule_params = build_rules_union(actor, resolved_plugins)
+    all_params = {
+        **(candidate_params or {}),
+        **rule_params,
+        "actor": actor,
+        "action": action,
+    }
 
     sql = f"""
     WITH
@@ -150,7 +178,8 @@ async def resolve_permissions_from_catalog(
         FROM matched
     ),
     winner AS (
-        SELECT parent, child, allow, reason, source_plugin, depth
+        SELECT parent, child,
+               allow, reason, source_plugin, depth
         FROM ranked WHERE rn = 1
     )
     SELECT
@@ -159,6 +188,7 @@ async def resolve_permissions_from_catalog(
       COALESCE(w.reason, CASE WHEN :implicit_deny THEN 'implicit deny' ELSE NULL END) AS reason,
       w.source_plugin,
       COALESCE(w.depth, -1) AS depth,
+      :action AS action,
       CASE
         WHEN c.parent IS NULL THEN '/'
         WHEN c.child  IS NULL THEN '/' || c.parent
@@ -172,7 +202,8 @@ async def resolve_permissions_from_catalog(
     """
 
     rows_iter: Iterable[sqlite3.Row] = await db.execute(
-        sql, {**all_params, "implicit_deny": 1 if implicit_deny else 0}
+        sql,
+        {**all_params, "implicit_deny": 1 if implicit_deny else 0},
     )
     return [dict(r) for r in rows_iter]
 
@@ -180,8 +211,9 @@ async def resolve_permissions_from_catalog(
 async def resolve_permissions_with_candidates(
     db,
     actor: str,
-    plugins: List[PluginSQL],
+    plugins: Sequence[PluginOrFactory],
     candidates: List[Tuple[str, Optional[str]]],
+    action: str,
     *,
     implicit_deny: bool = True,
 ) -> List[Dict[str, Any]]:
@@ -200,12 +232,17 @@ async def resolve_permissions_with_candidates(
         cand_params[pkey] = parent
         cand_params[ckey] = child
         cand_rows_sql.append(f"SELECT :{pkey} AS parent, :{ckey} AS child")
-    candidate_sql = "\nUNION ALL\n".join(cand_rows_sql) if cand_rows_sql else "SELECT NULL AS parent, NULL AS child WHERE 0"
+    candidate_sql = (
+        "\nUNION ALL\n".join(cand_rows_sql)
+        if cand_rows_sql
+        else "SELECT NULL AS parent, NULL AS child WHERE 0"
+    )
 
     return await resolve_permissions_from_catalog(
         db,
         actor,
         plugins,
+        action,
         candidate_sql=candidate_sql,
         candidate_params=cand_params,
         implicit_deny=implicit_deny,

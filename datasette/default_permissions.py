@@ -1,4 +1,5 @@
 from datasette import hookimpl, Permission
+from datasette.utils.permissions import PluginSQL
 from datasette.utils import actor_matches_allow
 import itsdangerous
 import time
@@ -170,6 +171,26 @@ def permission_allowed_default(datasette, actor, action, resource):
             return False
 
     return inner
+
+
+@hookimpl
+def permission_resources_sql(datasette, actor_id, action):
+    default_allow_actions = {
+        "view-instance",
+        "view-database",
+        "view-table",
+        "execute-sql",
+    }
+    if action not in default_allow_actions:
+        return None
+
+    reason = f"default allow for {action}".replace("'", "''")
+    sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, " f"'{reason}' AS reason"
+    return PluginSQL(
+        source="default_permissions",
+        sql=sql,
+        params={},
+    )
 
 
 async def _resolve_config_permissions_blocks(datasette, actor, action, resource):

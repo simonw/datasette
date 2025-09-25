@@ -110,6 +110,7 @@ from .utils.sqlite import (
 from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
+from .utils.permissions import build_rules_union, PluginSQL
 
 app_root = Path(__file__).parent.parent
 
@@ -1028,6 +1029,137 @@ class Datasette:
                 "result": result,
             }
         )
+        return result
+
+    async def allowed_resources_sql(self, actor_id: str, action: str):
+        """Combine permission_resources_sql PluginSQL blocks into a UNION query.
+
+        Returns a (sql, params) tuple suitable for execution against SQLite.
+        """
+        plugin_blocks: List[PluginSQL] = []
+        for block in pm.hook.permission_resources_sql(
+            datasette=self,
+            actor_id=actor_id,
+            action=action,
+        ):
+            block = await await_me_maybe(block)
+            if block is None:
+                continue
+            if not isinstance(block, PluginSQL):
+                raise TypeError(
+                    "permission_resources_sql plugins must return PluginSQL instances"
+                )
+            plugin_blocks.append(block)
+
+        sql, params = build_rules_union(actor=actor_id, plugins=plugin_blocks)
+        return sql, params
+
+    async def permission_allowed_2(
+        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
+    ):
+        """Permission check backed by permission_resources_sql rules."""
+
+        if default is DEFAULT_NOT_SET and action in self.permissions:
+            default = self.permissions[action].default
+
+        if isinstance(actor, dict):
+            actor_id = actor.get("id")
+        else:
+            actor_id = actor
+
+        candidate_parent = None
+        candidate_child = None
+        if isinstance(resource, str):
+            candidate_parent = resource
+        elif isinstance(resource, (tuple, list)) and len(resource) == 2:
+            candidate_parent, candidate_child = resource
+        elif resource is not None:
+            raise TypeError("resource must be None, str, or (parent, child) tuple")
+
+        union_sql, union_params = await self.allowed_resources_sql(
+            actor_id=str(actor_id) if actor_id is not None else None,
+            action=action,
+        )
+
+        query = f"""
+        WITH rules AS (
+            {union_sql}
+        ),
+        candidate AS (
+            SELECT :cand_parent AS parent, :cand_child AS child
+        ),
+        matched AS (
+            SELECT
+                r.allow,
+                r.reason,
+                r.source_plugin,
+                CASE
+                    WHEN r.child IS NOT NULL THEN 2
+                    WHEN r.parent IS NOT NULL THEN 1
+                    ELSE 0
+                END AS depth
+            FROM rules r
+            JOIN candidate c
+              ON (r.parent IS NULL OR r.parent = c.parent)
+             AND (r.child IS NULL OR r.child = c.child)
+        ),
+        ranked AS (
+            SELECT *,
+                   ROW_NUMBER() OVER (
+                       ORDER BY
+                           depth DESC,
+                           CASE WHEN allow = 0 THEN 0 ELSE 1 END,
+                           source_plugin
+                   ) AS rn
+            FROM matched
+        ),
+        winner AS (
+            SELECT allow, reason, source_plugin, depth
+            FROM ranked
+            WHERE rn = 1
+        )
+        SELECT allow, reason, source_plugin, depth FROM winner
+        """
+
+        params = {
+            **union_params,
+            "cand_parent": candidate_parent,
+            "cand_child": candidate_child,
+        }
+
+        rows = await self.get_internal_database().execute(query, params)
+        row = rows.first()
+
+        reason = None
+        source_plugin = None
+        used_default = False
+
+        if row is None:
+            result = default
+            used_default = True
+        else:
+            allow = row["allow"]
+            reason = row["reason"]
+            source_plugin = row["source_plugin"]
+            if allow is None:
+                result = default
+                used_default = True
+            else:
+                result = bool(allow)
+
+        self._permission_checks.append(
+            {
+                "when": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "actor": actor,
+                "action": action,
+                "resource": resource,
+                "used_default": used_default,
+                "result": result,
+                "reason": reason,
+                "source_plugin": source_plugin,
+            }
+        )
+
         return result
 
     async def ensure_permissions(

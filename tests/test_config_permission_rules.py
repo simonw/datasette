@@ -82,9 +82,7 @@ async def test_view_table_allow_block():
 
 @pytest.mark.asyncio
 async def test_view_table_allow_false_blocks():
-    config = {
-        "databases": {"content": {"tables": {"repos": {"allow": False}}}}
-    }
+    config = {"databases": {"content": {"tables": {"repos": {"allow": False}}}}}
     ds = await setup_datasette(config=config, databases=["content"])
 
     assert not await ds.permission_allowed_2(

@@ -1050,6 +1050,42 @@ It also provides an interface for running hypothetical permission checks against
 
 This is designed to help administrators and plugin authors understand exactly how permission checks are being carried out, in order to effectively configure Datasette's permission system.
 
+.. _AllowedResourcesView:
+
+Allowed resources view
+======================
+
+``/-/allowed`` returns a paginated JSON list of resources that the current actor
+can access for a supplied ``action`` query string argument. Optional
+``parent=`` and ``child=`` parameters filter the results.
+
+Datasette includes helper endpoints for exploring the new action-based permission resolver:
+
+``/-/allowed``
+    Returns a paginated JSON list of resources that the current actor is allowed to access for a given action. Pass ``?action=view-table`` (or another action) to select the action, and optional ``parent=``/``child=`` query parameters to narrow the results to a specific database/table pair.
+
+``/-/rules``
+    Lists the raw permission rules contributing to each resource for the supplied action. This includes configuration-derived and plugin-provided rules.
+
+``/-/check``
+    Evaluates whether the current actor can perform ``action`` against an optional ``parent``/``child`` resource tuple, returning a JSON object with the winning rule and reason.
+
+These endpoints work in conjunction with :ref:`plugin_hook_permission_resources_sql` and make it easier to verify that configuration allow blocks and plugins are behaving as intended.
+
+.. _PermissionRulesView:
+
+Permission rules view
+======================
+
+``/-/rules`` displays the winning rule for each candidate resource for the requested action.
+
+.. _PermissionCheckView:
+
+Permission check view
+======================
+
+``/-/check`` evaluates a single action/resource pair and returns a JSON object indicating whether the access was allowed along with diagnostic information.
+
 .. _authentication_ds_actor:
 
 The ds_actor cookie

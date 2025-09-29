@@ -1290,18 +1290,41 @@ Here's an example that allows users to view the ``admin_log`` table only if thei
                 if not actor:
                     return False
                 user_id = actor["id"]
-                return await datasette.get_database(
-                    "staff"
-                ).execute(
+                result = await datasette.get_database("staff").execute(
                     "select count(*) from admin_users where user_id = :user_id",
                     {"user_id": user_id},
                 )
+                return result.first()[0] > 0
 
         return inner
 
 See :ref:`built-in permissions <permissions>` for a full list of permissions that are included in Datasette core.
 
 Example: `datasette-permissions-sql <https://datasette.io/plugins/datasette-permissions-sql>`_
+
+.. _plugin_hook_permission_resources_sql:
+
+permission_resources_sql(datasette, actor, action)
+-------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    Access to the Datasette instance.
+
+``actor`` - dictionary or None
+    The current actor dictionary. ``None`` for anonymous requests.
+
+``action`` - string
+    The permission action being evaluated. Examples include ``"view-table"`` or ``"insert-row"``.
+
+Return value
+    A :class:`datasette.utils.permissions.PluginSQL` object, ``None`` or an iterable of ``PluginSQL`` objects.
+
+Datasette's action-based permission resolver calls this hook to gather SQL rows describing which
+resources an actor may access (``allow = 1``) or should be denied (``allow = 0``) for a specific action.
+Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns. Any bound parameters
+supplied via ``PluginSQL.params`` are automatically namespaced per plugin.
+
+See :ref:`permission_plugins_examples` for code samples showing how to build these SQL rules.
 
 .. _plugin_hook_register_magic_parameters:
 

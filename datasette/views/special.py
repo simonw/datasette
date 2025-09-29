@@ -224,6 +224,7 @@ class AllowedResourcesView(BaseView):
 
     async def get(self, request):
         await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        await self.ds.refresh_schemas()
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
@@ -236,6 +237,13 @@ class AllowedResourcesView(BaseView):
             )
 
         actor_id = (request.actor or {}).get("id") if request.actor else None
+        parent_filter = request.args.get("parent")
+        child_filter = request.args.get("child")
+        if child_filter and not parent_filter:
+            return Response.json(
+                {"error": "parent must be provided when child is specified"},
+                status=400,
+            )
 
         try:
             page = int(request.args.get("page", "1"))
@@ -288,13 +296,20 @@ class AllowedResourcesView(BaseView):
             block = await await_me_maybe(block)
             if block is None:
                 continue
-            if not isinstance(block, PluginSQL):
-                logger.warning(
-                    "Skipping permission_resources_sql result %r from plugin; expected PluginSQL",
-                    block,
-                )
-                continue
-            plugins.append(block)
+            if isinstance(block, (list, tuple)):
+                candidates = block
+            else:
+                candidates = [block]
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                if not isinstance(candidate, PluginSQL):
+                    logger.warning(
+                        "Skipping permission_resources_sql result %r from plugin; expected PluginSQL",
+                        candidate,
+                    )
+                    continue
+                plugins.append(candidate)
 
         rows = await resolve_permissions_from_catalog(
             db,
@@ -307,6 +322,10 @@ class AllowedResourcesView(BaseView):
         )
 
         allowed_rows = [row for row in rows if row["allow"] == 1]
+        if parent_filter is not None:
+            allowed_rows = [row for row in allowed_rows if row["parent"] == parent_filter]
+        if child_filter is not None:
+            allowed_rows = [row for row in allowed_rows if row["child"] == child_filter]
         total = len(allowed_rows)
         paged_rows = allowed_rows[offset : offset + page_size]
 
@@ -384,6 +403,7 @@ class PermissionRulesView(BaseView):
         offset = (page - 1) * page_size
 
         union_sql, union_params = await self.ds.allowed_resources_sql(actor_id, action)
+        await self.ds.refresh_schemas()
         db = self.ds.get_internal_database()
 
         count_query = f"""

@@ -1051,13 +1051,20 @@ class Datasette:
             block = await await_me_maybe(block)
             if block is None:
                 continue
-            if not isinstance(block, PluginSQL):
-                logger.warning(
-                    "Skipping permission_resources_sql result %r from plugin; expected PluginSQL",
-                    block,
-                )
-                continue
-            plugin_blocks.append(block)
+            if isinstance(block, (list, tuple)):
+                candidates = block
+            else:
+                candidates = [block]
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                if not isinstance(candidate, PluginSQL):
+                    logger.warning(
+                        "Skipping permission_resources_sql result %r from plugin; expected PluginSQL",
+                        candidate,
+                    )
+                    continue
+                plugin_blocks.append(candidate)
 
         sql, params = build_rules_union(actor=actor_id, plugins=plugin_blocks)
         return sql, params

@@ -25,7 +25,7 @@ Datasette is a tool for exploring and publishing data. It helps people take data
 
 Datasette is aimed at data journalists, museum curators, archivists, local governments and anyone else who has data that they wish to share with the world. It is part of a :ref:`wider ecosystem of tools and plugins <ecosystem>` dedicated to making working with structured data as productive as possible.
 
-`Explore a demo <https://fivethirtyeight.datasettes.com/fivethirtyeight>`__, watch `a presentation about the project <https://static.simonwillison.net/static/2018/pybay-datasette/>`__ or :ref:`getting_started_glitch`.
+`Explore a demo <https://fivethirtyeight.datasettes.com/fivethirtyeight>`__, watch `a presentation about the project <https://static.simonwillison.net/static/2018/pybay-datasette/>`__.
 
 Interested in learning Datasette? Start with `the official tutorials <https://datasette.io/tutorials>`__.
 

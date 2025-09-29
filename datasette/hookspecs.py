@@ -116,7 +116,7 @@ def permission_allowed(datasette, actor, action, resource):
 
 
 @hookspec
-def permission_resources_sql(datasette, actor_id, action):
+def permission_resources_sql(datasette, actor, action):
     """Return datasette.permissions.PluginSQL()"""
 
 

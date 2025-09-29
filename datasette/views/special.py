@@ -236,7 +236,7 @@ class AllowedResourcesView(BaseView):
                 status=400,
             )
 
-        actor_id = (request.actor or {}).get("id") if request.actor else None
+        actor = request.actor if isinstance(request.actor, dict) else None
         parent_filter = request.args.get("parent")
         child_filter = request.args.get("child")
         if child_filter and not parent_filter:
@@ -278,7 +278,7 @@ class AllowedResourcesView(BaseView):
                 return Response.json(
                     {
                         "action": action,
-                        "actor_id": actor_id,
+                        "actor_id": (actor or {}).get("id") if actor else None,
                         "page": page,
                         "page_size": page_size,
                         "total": 0,
@@ -290,7 +290,7 @@ class AllowedResourcesView(BaseView):
         plugins = []
         for block in pm.hook.permission_resources_sql(
             datasette=self.ds,
-            actor_id=actor_id,
+            actor=actor,
             action=action,
         ):
             block = await await_me_maybe(block)
@@ -311,6 +311,7 @@ class AllowedResourcesView(BaseView):
                     continue
                 plugins.append(candidate)
 
+        actor_id = actor.get("id") if actor else None
         rows = await resolve_permissions_from_catalog(
             db,
             actor=str(actor_id) if actor_id is not None else "",
@@ -323,7 +324,9 @@ class AllowedResourcesView(BaseView):
 
         allowed_rows = [row for row in rows if row["allow"] == 1]
         if parent_filter is not None:
-            allowed_rows = [row for row in allowed_rows if row["parent"] == parent_filter]
+            allowed_rows = [
+                row for row in allowed_rows if row["parent"] == parent_filter
+            ]
         if child_filter is not None:
             allowed_rows = [row for row in allowed_rows if row["child"] == child_filter]
         total = len(allowed_rows)
@@ -384,7 +387,7 @@ class PermissionRulesView(BaseView):
         if action not in self.ds.permissions:
             return Response.json({"error": f"Unknown action: {action}"}, status=404)
 
-        actor_id = (request.actor or {}).get("id") if request.actor else None
+        actor = request.actor if isinstance(request.actor, dict) else None
 
         try:
             page = int(request.args.get("page", "1"))
@@ -402,7 +405,7 @@ class PermissionRulesView(BaseView):
             page_size = max_page_size
         offset = (page - 1) * page_size
 
-        union_sql, union_params = await self.ds.allowed_resources_sql(actor_id, action)
+        union_sql, union_params = await self.ds.allowed_resources_sql(actor, action)
         await self.ds.refresh_schemas()
         db = self.ds.get_internal_database()
 
@@ -458,7 +461,7 @@ class PermissionRulesView(BaseView):
 
         response = {
             "action": action,
-            "actor_id": actor_id,
+            "actor_id": (actor or {}).get("id") if actor else None,
             "page": page,
             "page_size": page_size,
             "total": total,

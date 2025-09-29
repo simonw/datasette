@@ -1037,7 +1037,7 @@ class Datasette:
         )
         return result
 
-    async def allowed_resources_sql(self, actor_id: str, action: str):
+    async def allowed_resources_sql(self, actor: Optional[dict], action: str):
         """Combine permission_resources_sql PluginSQL blocks into a UNION query.
 
         Returns a (sql, params) tuple suitable for execution against SQLite.
@@ -1045,7 +1045,7 @@ class Datasette:
         plugin_blocks: List[PluginSQL] = []
         for block in pm.hook.permission_resources_sql(
             datasette=self,
-            actor_id=actor_id,
+            actor=actor,
             action=action,
         ):
             block = await await_me_maybe(block)
@@ -1066,7 +1066,11 @@ class Datasette:
                     continue
                 plugin_blocks.append(candidate)
 
-        sql, params = build_rules_union(actor=actor_id, plugins=plugin_blocks)
+        actor_id = actor.get("id") if actor else None
+        sql, params = build_rules_union(
+            actor=str(actor_id) if actor_id is not None else "",
+            plugins=plugin_blocks,
+        )
         return sql, params
 
     async def permission_allowed_2(
@@ -1077,10 +1081,11 @@ class Datasette:
         if default is DEFAULT_NOT_SET and action in self.permissions:
             default = self.permissions[action].default
 
-        if isinstance(actor, dict):
-            actor_id = actor.get("id")
+        if isinstance(actor, dict) or actor is None:
+            actor_dict = actor
         else:
-            actor_id = actor
+            actor_dict = {"id": actor}
+        actor_id = actor_dict.get("id") if actor_dict else None
 
         candidate_parent = None
         candidate_child = None
@@ -1091,10 +1096,7 @@ class Datasette:
         elif resource is not None:
             raise TypeError("resource must be None, str, or (parent, child) tuple")
 
-        union_sql, union_params = await self.allowed_resources_sql(
-            actor_id=str(actor_id) if actor_id is not None else None,
-            action=action,
-        )
+        union_sql, union_params = await self.allowed_resources_sql(actor_dict, action)
 
         query = f"""
         WITH rules AS (

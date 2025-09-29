@@ -28,25 +28,20 @@ class PluginSQL:
 
 def _namespace_params(i: int, params: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     """
-    Rewrite :user, :parent, :child, :action placeholders to distinct names per plugin block.
-    Returns (rewritten_sql, namespaced_params). Only replaces those names.
+    Rewrite parameter placeholders to distinct names per plugin block.
+    Returns (rewritten_sql, namespaced_params).
     """
 
-    # We do string replace on *tokens* ":user", ":parent", ":child", ":action"
-    # This assumes plugin SQL uses those names *verbatim* when needed.
-    # Anything else is left untouched.
+    replacements = {key: f"{key}_{i}" for key in params.keys()}
+
     def rewrite(s: str) -> str:
-        return (
-            s.replace(":user", f":user_{i}")
-            .replace(":parent", f":parent_{i}")
-            .replace(":child", f":child_{i}")
-            .replace(":action", f":action_{i}")
-        )
+        for key in sorted(replacements.keys(), key=len, reverse=True):
+            s = s.replace(f":{key}", f":{replacements[key]}")
+        return s
 
     namespaced: Dict[str, Any] = {}
-    for key in ("user", "parent", "child", "action"):
-        if key in params and params[key] is not None:
-            namespaced[f"{key}_{i}"] = params[key]
+    for key, value in params.items():
+        namespaced[replacements[key]] = value
     return rewrite, namespaced
 
 

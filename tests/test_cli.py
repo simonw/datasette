@@ -218,7 +218,7 @@ def test_version():
 
 @pytest.mark.parametrize("invalid_port", ["-1", "0.5", "dog", "65536"])
 def test_serve_invalid_ports(invalid_port):
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(cli, ["--port", invalid_port])
     assert result.exit_code == 2
     assert "Invalid value for '-p'" in result.stderr
@@ -304,7 +304,7 @@ def test_plugin_s_overwrite():
 
 
 def test_setting_type_validation():
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(cli, ["--setting", "default_page_size", "dog"])
     assert result.exit_code == 2
     assert '"settings.default_page_size" should be an integer' in result.stderr
@@ -333,7 +333,7 @@ def test_setting_default_allow_sql(default_allow_sql):
 
 
 def test_sql_errors_logged_to_stderr():
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(cli, ["--get", "/_memory/-/query.json?sql=select+blah"])
     assert result.exit_code == 1
     assert "sql = 'select blah', params = {}: no such column: blah\n" in result.stderr

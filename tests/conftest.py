@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -196,7 +197,7 @@ def install_event_tracking_plugin():
 @pytest.fixture(scope="session")
 def ds_localhost_http_server():
     ds_proc = subprocess.Popen(
-        ["datasette", "--memory", "-p", "8041"],
+        [sys.executable, "-m", "datasette", "--memory", "-p", "8041"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         # Avoid FileNotFoundError: [Errno 2] No such file or directory:
@@ -218,7 +219,7 @@ def ds_unix_domain_socket_server(tmp_path_factory):
     # using tempfile.gettempdir()
     uds = str(pathlib.Path(tempfile.gettempdir()) / "datasette.sock")
     ds_proc = subprocess.Popen(
-        ["datasette", "--memory", "--uds", uds],
+        [sys.executable, "-m", "datasette", "--memory", "--uds", uds],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         cwd=tempfile.gettempdir(),

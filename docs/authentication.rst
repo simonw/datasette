@@ -880,6 +880,62 @@ And for ``insert-row`` against the ``reports`` table in that ``docs`` database:
         }
 .. [[[end]]]
 
+For table and query-level permissions blocks, a boolean value (``true`` or ``false``) will immediately return that value, overriding any other permission checks. Anyone can insert a row into ``my-table``:
+
+.. [[[cog
+    config_example(cog, """
+        databases:
+          my-db:
+            permissions:
+              insert-row:
+                id: root
+            tables:
+              my-table:
+                  permissions:
+                    insert-row: true
+    """)
+.. ]]]
+
+.. tab:: datasette.yaml
+
+    .. code-block:: yaml
+
+
+            databases:
+              my-db:
+                permissions:
+                  insert-row:
+                    id: root
+                tables:
+                  my-table:
+                      permissions:
+                        insert-row: true
+
+
+.. tab:: datasette.json
+
+    .. code-block:: json
+
+        {
+          "databases": {
+            "my-db": {
+              "permissions": {
+                "insert-row": {
+                  "id": "root"
+                }
+              },
+              "tables": {
+                "my-table": {
+                  "permissions": {
+                    "insert-row": true
+                  }
+                }
+              }
+            }
+          }
+        }
+.. [[[end]]]
+
 The :ref:`permissions debug tool <PermissionsDebugView>` can be useful for helping test permissions that you have configured in this way.
 
 .. _CreateTokenView:

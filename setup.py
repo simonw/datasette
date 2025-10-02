@@ -70,7 +70,7 @@ setup(
     extras_require={
         "docs": [
             "Sphinx==7.4.7",
-            "furo==2024.8.6",
+            "furo==2025.9.25",
             "sphinx-autobuild",
             "codespell>=2.2.5",
             "blacken-docs",
@@ -83,8 +83,8 @@ setup(
             "pytest-xdist>=2.2.1",
             "pytest-asyncio>=0.17",
             "beautifulsoup4>=4.8.1",
-            "black==25.1.0",
-            "blacken-docs==1.19.1",
+            "black==25.9.0",
+            "blacken-docs==1.20.0",
             "pytest-timeout>=1.4.2",
             "trustme>=0.7",
             "cogapp>=3.3.0",

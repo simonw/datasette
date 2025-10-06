@@ -1055,36 +1055,48 @@ This is designed to help administrators and plugin authors understand exactly ho
 Allowed resources view
 ======================
 
-``/-/allowed`` returns a paginated JSON list of resources that the current actor
-can access for a supplied ``action`` query string argument. Optional
-``parent=`` and ``child=`` parameters filter the results.
+The ``/-/allowed`` endpoint displays resources that the current actor can access for a supplied ``action`` query string argument.
 
-Datasette includes helper endpoints for exploring the new action-based permission resolver:
+This endpoint returns an HTML page with pretty-formatted JSON by default. Add ``.json`` to the URL path (e.g. ``/-/allowed.json``) to get the raw JSON response.
+
+Pass ``?action=view-table`` (or another action) to select the action. Optional ``parent=`` and ``child=`` query parameters can narrow the results to a specific database/table pair.
+
+Datasette includes helper endpoints for exploring the action-based permission resolver:
 
 ``/-/allowed``
-    Returns a paginated JSON list of resources that the current actor is allowed to access for a given action. Pass ``?action=view-table`` (or another action) to select the action, and optional ``parent=``/``child=`` query parameters to narrow the results to a specific database/table pair.
+    Returns a paginated list of resources that the current actor is allowed to access for a given action. Pass ``?action=view-table`` (or another action) to select the action, and optional ``parent=``/``child=`` query parameters to narrow the results to a specific database/table pair.
 
 ``/-/rules``
     Lists the raw permission rules contributing to each resource for the supplied action. This includes configuration-derived and plugin-provided rules.
 
 ``/-/check``
-    Evaluates whether the current actor can perform ``action`` against an optional ``parent``/``child`` resource tuple, returning a JSON object with the winning rule and reason.
+    Evaluates whether the current actor can perform ``action`` against an optional ``parent``/``child`` resource tuple, returning the winning rule and reason.
 
 These endpoints work in conjunction with :ref:`plugin_hook_permission_resources_sql` and make it easier to verify that configuration allow blocks and plugins are behaving as intended.
+
+All three endpoints support both HTML and JSON responses. Visit the endpoint directly for an HTML page with formatted JSON, or add ``.json`` to the URL for a raw JSON response.
 
 .. _PermissionRulesView:
 
 Permission rules view
 ======================
 
-``/-/rules`` displays the winning rule for each candidate resource for the requested action.
+The ``/-/rules`` endpoint displays the winning rule for each candidate resource for the requested action.
+
+This endpoint returns an HTML page with pretty-formatted JSON by default. Add ``.json`` to the URL path (e.g. ``/-/rules.json?action=view-table``) to get the raw JSON response.
+
+Pass ``?action=`` as a query parameter to specify which action to check.
 
 .. _PermissionCheckView:
 
 Permission check view
 ======================
 
-``/-/check`` evaluates a single action/resource pair and returns a JSON object indicating whether the access was allowed along with diagnostic information.
+The ``/-/check`` endpoint evaluates a single action/resource pair and returns information indicating whether the access was allowed along with diagnostic information.
+
+This endpoint returns an HTML page with pretty-formatted JSON by default. Add ``.json`` to the URL path (e.g. ``/-/check.json?action=view-instance``) to get the raw JSON response.
+
+Pass ``?action=`` to specify the action to check, and optional ``?parent=`` and ``?child=`` parameters to specify the resource.
 
 .. _authentication_ds_actor:
 

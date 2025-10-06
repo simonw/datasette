@@ -1740,15 +1740,15 @@ class Datasette:
         )
         add_route(
             AllowedResourcesView.as_view(self),
-            r"/-/allowed$",
+            r"/-/allowed(\.(?P<format>json))?$",
         )
         add_route(
             PermissionRulesView.as_view(self),
-            r"/-/rules$",
+            r"/-/rules(\.(?P<format>json))?$",
         )
         add_route(
             PermissionCheckView.as_view(self),
-            r"/-/check$",
+            r"/-/check(\.(?P<format>json))?$",
         )
         add_route(
             MessagesDebugView.as_view(self),

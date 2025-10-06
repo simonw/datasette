@@ -45,32 +45,13 @@ class JsonDataView(BaseView):
         self.permission = permission
 
     async def get(self, request):
-        as_format = request.url_vars["format"]
         if self.permission:
             await self.ds.ensure_permissions(request.actor, [self.permission])
         if self.needs_request:
             data = self.data_callback(request)
         else:
             data = self.data_callback()
-        if as_format:
-            headers = {}
-            if self.ds.cors:
-                add_cors_headers(headers)
-            return Response(
-                json.dumps(data, default=repr),
-                content_type="application/json; charset=utf-8",
-                headers=headers,
-            )
-
-        else:
-            return await self.render(
-                ["show_json.html"],
-                request=request,
-                context={
-                    "filename": self.filename,
-                    "data_json": json.dumps(data, indent=4, default=repr),
-                },
-            )
+        return await self.respond_json_or_html(request, data, self.filename)
 
 
 class PatternPortfolioView(View):
@@ -369,10 +350,7 @@ class AllowedResourcesView(BaseView):
         if page > 1:
             response["previous_url"] = build_page_url(page - 1)
 
-        headers = {}
-        if self.ds.cors:
-            add_cors_headers(headers)
-        return Response.json(response, headers=headers)
+        return await self.respond_json_or_html(request, response, "allowed.json")
 
 
 class PermissionRulesView(BaseView):
@@ -473,10 +451,7 @@ class PermissionRulesView(BaseView):
         if page > 1:
             response["previous_url"] = build_page_url(page - 1)
 
-        headers = {}
-        if self.ds.cors:
-            add_cors_headers(headers)
-        return Response.json(response, headers=headers)
+        return await self.respond_json_or_html(request, response, "rules.json")
 
 
 class PermissionCheckView(BaseView):
@@ -542,10 +517,7 @@ class PermissionCheckView(BaseView):
                 }
             )
 
-        headers = {}
-        if self.ds.cors:
-            add_cors_headers(headers)
-        return Response.json(response, headers=headers)
+        return await self.respond_json_or_html(request, response, "check.json")
 
 
 class AllowDebugView(BaseView):

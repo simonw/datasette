@@ -13,6 +13,7 @@ General guidelines
 * **main should always be releasable**. Incomplete features should live in branches. This ensures that any small bug fixes can be quickly released.
 * **The ideal commit** should bundle together the implementation, unit tests and associated documentation updates. The commit message should link to an associated issue.
 * **New plugin hooks** should only be shipped if accompanied by a separate release of a non-demo plugin that uses them.
+* **New user-facing views and documentation** should be added or updated alongside their implementation. The `/docs` folder includes pages for plugin hooks and built-in views—please ensure any new hooks or views are reflected there so the documentation tests continue to pass.
 
 .. _devenvironment:
 

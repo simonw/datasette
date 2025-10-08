@@ -116,6 +116,18 @@ def permission_allowed(datasette, actor, action, resource):
 
 
 @hookspec
+def permission_resources_sql(datasette, actor, action):
+    """Return SQL query fragments for permission checks on resources.
+
+    Returns None, a PluginSQL object, or a list of PluginSQL objects.
+    Each PluginSQL contains SQL that should return rows with columns:
+    parent (str|None), child (str|None), allow (int), reason (str).
+
+    Used to efficiently check permissions across multiple resources at once.
+    """
+
+
+@hookspec
 def canned_queries(datasette, database, actor):
     """Return a dictionary of canned query definitions or an awaitable function that returns them"""
 

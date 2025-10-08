@@ -135,7 +135,8 @@ def inspect(files, inspect_file, sqlite_extensions):
     operations against immutable database files.
     """
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))
     if inspect_file == "-":
         sys.stdout.write(json.dumps(inspect_data, indent=2))
@@ -612,10 +613,12 @@ def serve(
         return ds
 
     # Run the "startup" plugin hooks
-    asyncio.get_event_loop().run_until_complete(ds.invoke_startup())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(ds.invoke_startup())
 
     # Run async soundness checks - but only if we're not under pytest
-    asyncio.get_event_loop().run_until_complete(check_databases(ds))
+    loop.run_until_complete(check_databases(ds))
 
     if token and not get:
         raise click.ClickException("--token can only be used with --get")
@@ -644,9 +647,9 @@ def serve(
     if open_browser:
         if url is None:
             # Figure out most convenient URL - to table, database or homepage
-            path = asyncio.get_event_loop().run_until_complete(
-                initial_path_for_datasette(ds)
-            )
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            path = loop.run_until_complete(initial_path_for_datasette(ds))
             url = f"http://{host}:{port}{path}"
         webbrowser.open(url)
     uvicorn_kwargs = dict(
@@ -748,7 +751,8 @@ def create_token(
     ds = Datasette(secret=secret, plugins_dir=plugins_dir)
 
     # Run ds.invoke_startup() in an event loop
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     loop.run_until_complete(ds.invoke_startup())
 
     # Warn about any unknown actions

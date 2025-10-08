@@ -117,7 +117,14 @@ def permission_allowed(datasette, actor, action, resource):
 
 @hookspec
 def permission_resources_sql(datasette, actor, action):
-    """Return datasette.permissions.PluginSQL()"""
+    """Return SQL query fragments for permission checks on resources.
+
+    Returns None, a PluginSQL object, or a list of PluginSQL objects.
+    Each PluginSQL contains SQL that should return rows with columns:
+    parent (str|None), child (str|None), allow (int), reason (str).
+
+    Used to efficiently check permissions across multiple resources at once.
+    """
 
 
 @hookspec

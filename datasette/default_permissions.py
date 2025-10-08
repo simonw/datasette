@@ -3,7 +3,6 @@ from datasette.utils.permissions import PluginSQL
 from datasette.utils import actor_matches_allow
 import itsdangerous
 import time
-from typing import List, Optional, Tuple, Union
 
 
 @hookimpl
@@ -175,7 +174,7 @@ def permission_allowed_default(datasette, actor, action, resource):
 
 @hookimpl
 async def permission_resources_sql(datasette, actor, action):
-    rules: List[PluginSQL] = []
+    rules: list[PluginSQL] = []
 
     config_rules = await _config_permission_rules(datasette, actor, action)
     rules.extend(config_rules)
@@ -206,11 +205,11 @@ async def permission_resources_sql(datasette, actor, action):
     return rules
 
 
-async def _config_permission_rules(datasette, actor, action) -> List[PluginSQL]:
+async def _config_permission_rules(datasette, actor, action) -> list[PluginSQL]:
     config = datasette.config or {}
 
     if actor is None:
-        actor_dict: Optional[dict] = None
+        actor_dict: dict | None = None
     elif isinstance(actor, dict):
         actor_dict = actor
     else:
@@ -435,7 +434,7 @@ def restrictions_allow_action(
     datasette: "Datasette",
     restrictions: dict,
     action: str,
-    resource: Union[str, Tuple[str, str]],
+    resource: str | tuple[str, str],
 ):
     "Do these restrictions allow the requested action against the requested resource?"
     if action == "view-instance":

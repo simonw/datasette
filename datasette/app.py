@@ -6,7 +6,6 @@ import collections
 import dataclasses
 import datetime
 import functools
-import logging
 import glob
 import hashlib
 import httpx
@@ -115,7 +114,6 @@ from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
-logger = logging.getLogger(__name__)
 from .utils.permissions import build_rules_union, PluginSQL
 
 app_root = Path(__file__).parent.parent
@@ -1037,7 +1035,7 @@ class Datasette:
         )
         return result
 
-    async def allowed_resources_sql(self, actor: Optional[dict], action: str):
+    async def allowed_resources_sql(self, actor: dict | None, action: str) -> tuple[str, dict]:
         """Combine permission_resources_sql PluginSQL blocks into a UNION query.
 
         Returns a (sql, params) tuple suitable for execution against SQLite.
@@ -1059,10 +1057,6 @@ class Datasette:
                 if candidate is None:
                     continue
                 if not isinstance(candidate, PluginSQL):
-                    logger.warning(
-                        "Skipping permission_resources_sql result %r from plugin; expected PluginSQL",
-                        candidate,
-                    )
                     continue
                 plugin_blocks.append(candidate)
 

@@ -204,8 +204,27 @@ class AllowedResourcesView(BaseView):
     }
 
     async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
         await self.ds.refresh_schemas()
+
+        # Check if user has permissions-debug (to show sensitive fields)
+        has_debug_permission = await self.ds.permission_allowed(
+            request.actor, "permissions-debug"
+        )
+
+        # Check if this is a request for JSON (has .json extension)
+        as_format = request.url_vars.get("format")
+
+        if not as_format:
+            # Render the HTML form (even if query parameters are present)
+            return await self.render(
+                ["debug_allowed.html"],
+                request,
+                {
+                    "supported_actions": sorted(self.CANDIDATE_SQL.keys()),
+                },
+            )
+
+        # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
@@ -313,16 +332,18 @@ class AllowedResourcesView(BaseView):
         total = len(allowed_rows)
         paged_rows = allowed_rows[offset : offset + page_size]
 
-        items = [
-            {
+        items = []
+        for row in paged_rows:
+            item = {
                 "parent": row["parent"],
                 "child": row["child"],
                 "resource": row["resource"],
-                "reason": row["reason"],
-                "source_plugin": row["source_plugin"],
             }
-            for row in paged_rows
-        ]
+            # Only include sensitive fields if user has permissions-debug
+            if has_debug_permission:
+                item["reason"] = row["reason"]
+                item["source_plugin"] = row["source_plugin"]
+            items.append(item)
 
         def build_page_url(page_number):
             pairs = []
@@ -350,7 +371,10 @@ class AllowedResourcesView(BaseView):
         if page > 1:
             response["previous_url"] = build_page_url(page - 1)
 
-        return await self.respond_json_or_html(request, response, "allowed.json")
+        headers = {}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        return Response.json(response, headers=headers)
 
 
 class PermissionRulesView(BaseView):
@@ -359,6 +383,23 @@ class PermissionRulesView(BaseView):
 
     async def get(self, request):
         await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
+            raise Forbidden("Permission denied")
+
+        # Check if this is a request for JSON (has .json extension)
+        as_format = request.url_vars.get("format")
+
+        if not as_format:
+            # Render the HTML form (even if query parameters are present)
+            return await self.render(
+                ["debug_rules.html"],
+                request,
+                {
+                    "sorted_permissions": sorted(self.ds.permissions.keys()),
+                },
+            )
+
+        # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
@@ -393,7 +434,6 @@ class PermissionRulesView(BaseView):
         )
         SELECT COUNT(*) AS count
         FROM rules
-        WHERE allow = 1
         """
         count_row = (await db.execute(count_query, union_params)).first()
         total = count_row["count"] if count_row else 0
@@ -404,8 +444,7 @@ class PermissionRulesView(BaseView):
         )
         SELECT parent, child, allow, reason, source_plugin
         FROM rules
-        WHERE allow = 1
-        ORDER BY (parent IS NOT NULL), parent, child
+        ORDER BY allow DESC, (parent IS NOT NULL), parent, child
         LIMIT :limit OFFSET :offset
         """
         params = {**union_params, "limit": page_size, "offset": offset}
@@ -420,6 +459,7 @@ class PermissionRulesView(BaseView):
                     "parent": parent,
                     "child": child,
                     "resource": _resource_path(parent, child),
+                    "allow": row["allow"],
                     "reason": row["reason"],
                     "source_plugin": row["source_plugin"],
                 }
@@ -451,7 +491,10 @@ class PermissionRulesView(BaseView):
         if page > 1:
             response["previous_url"] = build_page_url(page - 1)
 
-        return await self.respond_json_or_html(request, response, "rules.json")
+        headers = {}
+        if self.ds.cors:
+            add_cors_headers(headers)
+        return Response.json(response, headers=headers)
 
 
 class PermissionCheckView(BaseView):
@@ -459,7 +502,25 @@ class PermissionCheckView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        # Check if user has permissions-debug (to show sensitive fields)
+        has_debug_permission = await self.ds.permission_allowed(
+            request.actor, "permissions-debug"
+        )
+
+        # Check if this is a request for JSON (has .json extension)
+        as_format = request.url_vars.get("format")
+
+        if not as_format:
+            # Render the HTML form (even if query parameters are present)
+            return await self.render(
+                ["debug_check.html"],
+                request,
+                {
+                    "sorted_permissions": sorted(self.ds.permissions.keys()),
+                },
+            )
+
+        # JSON API - action parameter is required
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
@@ -508,16 +569,14 @@ class PermissionCheckView(BaseView):
             response["actor_id"] = request.actor["id"]
 
         if info is not None:
-            response.update(
-                {
-                    "used_default": info.get("used_default"),
-                    "reason": info.get("reason"),
-                    "source_plugin": info.get("source_plugin"),
-                    "depth": info.get("depth"),
-                }
-            )
+            response["used_default"] = info.get("used_default")
+            response["depth"] = info.get("depth")
+            # Only include sensitive fields if user has permissions-debug
+            if has_debug_permission:
+                response["reason"] = info.get("reason")
+                response["source_plugin"] = info.get("source_plugin")
 
-        return await self.respond_json_or_html(request, response, "check.json")
+        return Response.json(response)
 
 
 class AllowDebugView(BaseView):

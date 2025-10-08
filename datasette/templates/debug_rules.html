@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Permission Rules{% endblock %}
+
+{% block extra_head %}
+<script src="{{ base_url }}-/static/json-format-highlight-1.0.1.js"></script>
+{% include "_permission_ui_styles.html" %}
+{% endblock %}
+
+{% block content %}
+
+<h1>Permission Rules</h1>
+
+<p>Use this tool to view the permission rules that allow the current actor to access resources for a given permission action. It queries the <code>/-/rules.json</code> API endpoint.</p>
+
+{% if request.actor %}
+<p>Current actor: <strong>{{ request.actor.get("id", "anonymous") }}</strong></p>
+{% else %}
+<p>Current actor: <strong>anonymous (not logged in)</strong></p>
+{% endif %}
+
+<div class="permission-form">
+    <form id="rules-form">
+        <div class="form-section">
+            <label for="action">Action (permission name):</label>
+            <select id="action" name="action" required>
+                <option value="">Select an action...</option>
+                {% for permission_name in sorted_permissions %}
+                <option value="{{ permission_name }}">{{ permission_name }}</option>
+                {% endfor %}
+            </select>
+            <small>The permission action to check</small>
+        </div>
+
+        <div class="form-section">
+            <label for="page_size">Page size:</label>
+            <input type="number" id="page_size" name="page_size" value="50" min="1" max="200" style="max-width: 100px;">
+            <small>Number of results per page (max 200)</small>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="submit-btn" id="submit-btn">View Permission Rules</button>
+        </div>
+    </form>
+</div>
+
+<div id="results-container" style="display: none;">
+    <div class="results-header">
+        <h2>Results</h2>
+        <div class="results-count" id="results-count"></div>
+    </div>
+
+    <div id="results-content"></div>
+
+    <div id="pagination" class="pagination"></div>
+
+    <details style="margin-top: 2em;">
+        <summary style="cursor: pointer; font-weight: bold;">Raw JSON response</summary>
+        <pre id="raw-json" style="margin-top: 1em; padding: 1em; background-color: #f5f5f5; border: 1px solid #ddd; border-radius: 3px; overflow-x: auto;"></pre>
+    </details>
+</div>
+
+<script>
+const form = document.getElementById('rules-form');
+const resultsContainer = document.getElementById('results-container');
+const resultsContent = document.getElementById('results-content');
+const resultsCount = document.getElementById('results-count');
+const pagination = document.getElementById('pagination');
+const submitBtn = document.getElementById('submit-btn');
+let currentData = null;
+
+// Populate form from URL parameters on page load
+function populateFormFromURL() {
+    const params = new URLSearchParams(window.location.search);
+
+    const action = params.get('action');
+    if (action) {
+        document.getElementById('action').value = action;
+    }
+
+    const pageSize = params.get('page_size');
+    if (pageSize) {
+        document.getElementById('page_size').value = pageSize;
+    }
+
+    const page = params.get('page');
+
+    // If parameters are present, automatically fetch results
+    if (action) {
+        fetchResults(page ? parseInt(page) : 1, false);
+    }
+}
+
+// Update URL with current form values and page
+function updateURL(page = 1) {
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+        if (value) {
+            params.append(key, value);
+        }
+    }
+
+    if (page > 1) {
+        params.set('page', page.toString());
+    }
+
+    const newURL = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+    window.history.pushState({}, '', newURL);
+}
+
+form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    updateURL(1);
+    await fetchResults(1, false);
+});
+
+// Handle browser back/forward
+window.addEventListener('popstate', () => {
+    populateFormFromURL();
+});
+
+// Populate form on initial load
+populateFormFromURL();
+
+async function fetchResults(page = 1, updateHistory = true) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Loading...';
+
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+        if (value && key !== 'page_size') {
+            params.append(key, value);
+        }
+    }
+
+    const pageSize = document.getElementById('page_size').value || '50';
+    params.append('page', page.toString());
+    params.append('page_size', pageSize);
+
+    try {
+        const response = await fetch('{{ urls.path("-/rules.json") }}?' + params.toString(), {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            currentData = data;
+            displayResults(data);
+        } else {
+            displayError(data);
+        }
+    } catch (error) {
+        displayError({ error: error.message });
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'View Permission Rules';
+    }
+}
+
+function displayResults(data) {
+    resultsContainer.style.display = 'block';
+
+    // Update count
+    resultsCount.textContent = `Showing ${data.items.length} of ${data.total} total rules (page ${data.page})`;
+
+    // Display results table
+    if (data.items.length === 0) {
+        resultsContent.innerHTML = '<div class="no-results">No permission rules found for this action.</div>';
+    } else {
+        let html = '<table class="results-table">';
+        html += '<thead><tr>';
+        html += '<th>Effect</th>';
+        html += '<th>Resource Path</th>';
+        html += '<th>Parent</th>';
+        html += '<th>Child</th>';
+        html += '<th>Reason</th>';
+        html += '<th>Source Plugin</th>';
+        html += '</tr></thead>';
+        html += '<tbody>';
+
+        for (const item of data.items) {
+            const rowClass = item.allow ? 'allow-row' : 'deny-row';
+            const effectBadge = item.allow
+                ? '<span style="background: #4caf50; color: white; padding: 0.2em 0.5em; border-radius: 3px; font-weight: bold;">ALLOW</span>'
+                : '<span style="background: #f44336; color: white; padding: 0.2em 0.5em; border-radius: 3px; font-weight: bold;">DENY</span>';
+
+            html += `<tr class="${rowClass}">`;
+            html += `<td>${effectBadge}</td>`;
+            html += `<td><span class="resource-path">${escapeHtml(item.resource || '/')}</span></td>`;
+            html += `<td>${escapeHtml(item.parent || '—')}</td>`;
+            html += `<td>${escapeHtml(item.child || '—')}</td>`;
+            html += `<td>${escapeHtml(item.reason || '—')}</td>`;
+            html += `<td>${escapeHtml(item.source_plugin || '—')}</td>`;
+            html += '</tr>';
+        }
+
+        html += '</tbody></table>';
+        resultsContent.innerHTML = html;
+    }
+
+    // Update pagination
+    pagination.innerHTML = '';
+    if (data.previous_url || data.next_url) {
+        if (data.previous_url) {
+            const prevLink = document.createElement('a');
+            prevLink.href = '#';
+            prevLink.textContent = '← Previous';
+            prevLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                updateURL(data.page - 1);
+                fetchResults(data.page - 1, false);
+            });
+            pagination.appendChild(prevLink);
+        }
+
+        const pageInfo = document.createElement('span');
+        pageInfo.textContent = `Page ${data.page}`;
+        pagination.appendChild(pageInfo);
+
+        if (data.next_url) {
+            const nextLink = document.createElement('a');
+            nextLink.href = '#';
+            nextLink.textContent = 'Next →';
+            nextLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                updateURL(data.page + 1);
+                fetchResults(data.page + 1, false);
+            });
+            pagination.appendChild(nextLink);
+        }
+    }
+
+    // Update raw JSON
+    document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
+
+    // Scroll to results
+    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function displayError(data) {
+    resultsContainer.style.display = 'block';
+    resultsCount.textContent = '';
+    pagination.innerHTML = '';
+
+    resultsContent.innerHTML = `<div class="error-message">Error: ${escapeHtml(data.error || 'Unknown error')}</div>`;
+
+    document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
+
+    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}Permission Check{% endblock %}
+
+{% block extra_head %}
+<script src="{{ base_url }}-/static/json-format-highlight-1.0.1.js"></script>
+<style>
+.form-section {
+    margin-bottom: 1em;
+}
+.form-section label {
+    display: block;
+    margin-bottom: 0.3em;
+    font-weight: bold;
+}
+.form-section input[type="text"],
+.form-section select {
+    width: 100%;
+    max-width: 500px;
+    padding: 0.5em;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+.form-section input[type="text"]:focus,
+.form-section select:focus {
+    outline: 2px solid #0066cc;
+    border-color: #0066cc;
+}
+.form-section small {
+    display: block;
+    margin-top: 0.3em;
+    color: #666;
+}
+#output {
+    margin-top: 2em;
+    padding: 1em;
+    border-radius: 5px;
+}
+#output.allowed {
+    background-color: #e8f5e9;
+    border: 2px solid #4caf50;
+}
+#output.denied {
+    background-color: #ffebee;
+    border: 2px solid #f44336;
+}
+#output h2 {
+    margin-top: 0;
+}
+#output .result-badge {
+    display: inline-block;
+    padding: 0.3em 0.8em;
+    border-radius: 3px;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+#output .allowed-badge {
+    background-color: #4caf50;
+    color: white;
+}
+#output .denied-badge {
+    background-color: #f44336;
+    color: white;
+}
+.details-section {
+    margin-top: 1em;
+}
+.details-section dt {
+    font-weight: bold;
+    margin-top: 0.5em;
+}
+.details-section dd {
+    margin-left: 1em;
+}
+#submit-btn {
+    padding: 0.6em 1.5em;
+    font-size: 1em;
+    background-color: #0066cc;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+#submit-btn:hover {
+    background-color: #0052a3;
+}
+#submit-btn:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<h1>Permission Check</h1>
+
+<p>Use this tool to test permission checks for the current actor. It queries the <code>/-/check.json</code> API endpoint.</p>
+
+{% if request.actor %}
+<p>Current actor: <strong>{{ request.actor.get("id", "anonymous") }}</strong></p>
+{% else %}
+<p>Current actor: <strong>anonymous (not logged in)</strong></p>
+{% endif %}
+
+<form id="check-form" class="core">
+    <div class="form-section">
+        <label for="action">Action (permission name):</label>
+        <select id="action" name="action" required>
+            <option value="">Select an action...</option>
+            {% for permission_name in sorted_permissions %}
+            <option value="{{ permission_name }}">{{ permission_name }}</option>
+            {% endfor %}
+        </select>
+        <small>The permission action to check</small>
+    </div>
+
+    <div class="form-section">
+        <label for="parent">Parent resource (optional):</label>
+        <input type="text" id="parent" name="parent" placeholder="e.g., database name">
+        <small>For database-level permissions, specify the database name</small>
+    </div>
+
+    <div class="form-section">
+        <label for="child">Child resource (optional):</label>
+        <input type="text" id="child" name="child" placeholder="e.g., table name">
+        <small>For table-level permissions, specify the table name (requires parent)</small>
+    </div>
+
+    <button type="submit" id="submit-btn">Check Permission</button>
+</form>
+
+<div id="output" style="display: none;">
+    <h2>Result: <span class="result-badge" id="result-badge"></span></h2>
+
+    <dl class="details-section">
+        <dt>Action:</dt>
+        <dd id="result-action"></dd>
+
+        <dt>Resource Path:</dt>
+        <dd id="result-resource"></dd>
+
+        <dt>Actor ID:</dt>
+        <dd id="result-actor"></dd>
+
+        <div id="additional-details"></div>
+    </dl>
+
+    <details style="margin-top: 1em;">
+        <summary style="cursor: pointer; font-weight: bold;">Raw JSON response</summary>
+        <pre id="raw-json" style="margin-top: 1em; padding: 1em; background-color: #f5f5f5; border: 1px solid #ddd; border-radius: 3px; overflow-x: auto;"></pre>
+    </details>
+</div>
+
+<script>
+const form = document.getElementById('check-form');
+const output = document.getElementById('output');
+const submitBtn = document.getElementById('submit-btn');
+
+// Populate form from URL parameters on page load
+function populateFormFromURL() {
+    const params = new URLSearchParams(window.location.search);
+
+    const action = params.get('action');
+    if (action) {
+        document.getElementById('action').value = action;
+    }
+
+    const parent = params.get('parent');
+    if (parent) {
+        document.getElementById('parent').value = parent;
+    }
+
+    const child = params.get('child');
+    if (child) {
+        document.getElementById('child').value = child;
+    }
+
+    // If parameters are present, automatically submit the form
+    if (action) {
+        performCheck();
+    }
+}
+
+// Update URL with current form values
+function updateURL() {
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+        if (value) {
+            params.append(key, value);
+        }
+    }
+
+    const newURL = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+    window.history.pushState({}, '', newURL);
+}
+
+async function performCheck() {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Checking...';
+
+    const formData = new FormData(form);
+    const params = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+        if (value) {
+            params.append(key, value);
+        }
+    }
+
+    try {
+        const response = await fetch('{{ urls.path("-/check.json") }}?' + params.toString(), {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            displayResult(data);
+        } else {
+            displayError(data);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Check Permission';
+    }
+}
+
+form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    updateURL();
+    await performCheck();
+});
+
+// Handle browser back/forward
+window.addEventListener('popstate', () => {
+    populateFormFromURL();
+});
+
+// Populate form on initial load
+populateFormFromURL();
+
+function displayResult(data) {
+    output.style.display = 'block';
+
+    // Set badge and styling
+    const resultBadge = document.getElementById('result-badge');
+    if (data.allowed) {
+        output.className = 'allowed';
+        resultBadge.className = 'result-badge allowed-badge';
+        resultBadge.textContent = 'ALLOWED ✓';
+    } else {
+        output.className = 'denied';
+        resultBadge.className = 'result-badge denied-badge';
+        resultBadge.textContent = 'DENIED ✗';
+    }
+
+    // Basic details
+    document.getElementById('result-action').textContent = data.action || 'N/A';
+    document.getElementById('result-resource').textContent = data.resource?.path || '/';
+    document.getElementById('result-actor').textContent = data.actor_id || 'anonymous';
+
+    // Additional details
+    const additionalDetails = document.getElementById('additional-details');
+    additionalDetails.innerHTML = '';
+
+    if (data.reason !== undefined) {
+        const dt = document.createElement('dt');
+        dt.textContent = 'Reason:';
+        const dd = document.createElement('dd');
+        dd.textContent = data.reason || 'N/A';
+        additionalDetails.appendChild(dt);
+        additionalDetails.appendChild(dd);
+    }
+
+    if (data.source_plugin !== undefined) {
+        const dt = document.createElement('dt');
+        dt.textContent = 'Source Plugin:';
+        const dd = document.createElement('dd');
+        dd.textContent = data.source_plugin || 'N/A';
+        additionalDetails.appendChild(dt);
+        additionalDetails.appendChild(dd);
+    }
+
+    if (data.used_default !== undefined) {
+        const dt = document.createElement('dt');
+        dt.textContent = 'Used Default:';
+        const dd = document.createElement('dd');
+        dd.textContent = data.used_default ? 'Yes' : 'No';
+        additionalDetails.appendChild(dt);
+        additionalDetails.appendChild(dd);
+    }
+
+    if (data.depth !== undefined) {
+        const dt = document.createElement('dt');
+        dt.textContent = 'Depth:';
+        const dd = document.createElement('dd');
+        dd.textContent = data.depth;
+        additionalDetails.appendChild(dt);
+        additionalDetails.appendChild(dd);
+    }
+
+    // Raw JSON
+    document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
+
+    // Scroll to output
+    output.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function displayError(data) {
+    output.style.display = 'block';
+    output.className = 'denied';
+
+    const resultBadge = document.getElementById('result-badge');
+    resultBadge.className = 'result-badge denied-badge';
+    resultBadge.textContent = 'ERROR';
+
+    document.getElementById('result-action').textContent = 'N/A';
+    document.getElementById('result-resource').textContent = 'N/A';
+    document.getElementById('result-actor').textContent = 'N/A';
+
+    const additionalDetails = document.getElementById('additional-details');
+    additionalDetails.innerHTML = '<dt>Error:</dt><dd>' + (data.error || 'Unknown error') + '</dd>';
+
+    document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
+
+    output.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Disable child input if parent is empty
+const parentInput = document.getElementById('parent');
+const childInput = document.getElementById('child');
+
+childInput.addEventListener('focus', () => {
+    if (!parentInput.value) {
+        alert('Please specify a parent resource first before adding a child resource.');
+        parentInput.focus();
+    }
+});
+</script>
+
+{% endblock %}

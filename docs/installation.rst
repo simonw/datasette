@@ -57,7 +57,7 @@ If the latest packaged release of Datasette has not yet been made available thro
 Using pip
 ---------
 
-Datasette requires Python 3.8 or higher. The `Python.org Python For Beginners <https://www.python.org/about/gettingstarted/>`__ page has instructions for getting started.
+Datasette requires Python 3.10 or higher. The `Python.org Python For Beginners <https://www.python.org/about/gettingstarted/>`__ page has instructions for getting started.
 
 You can install Datasette and its dependencies using ``pip``::
 

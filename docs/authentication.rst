@@ -1057,9 +1057,11 @@ Allowed resources view
 
 The ``/-/allowed`` endpoint displays resources that the current actor can access for a supplied ``action`` query string argument.
 
-This endpoint returns an HTML page with pretty-formatted JSON by default. Add ``.json`` to the URL path (e.g. ``/-/allowed.json``) to get the raw JSON response.
+This endpoint provides an interactive HTML form interface. Add ``.json`` to the URL path (e.g. ``/-/allowed.json``) to get the raw JSON response instead.
 
 Pass ``?action=view-table`` (or another action) to select the action. Optional ``parent=`` and ``child=`` query parameters can narrow the results to a specific database/table pair.
+
+This endpoint is publicly accessible to help users understand their own permissions. However, potentially sensitive fields (``reason`` and ``source_plugin``) are only included in responses for users with the ``permissions-debug`` permission.
 
 Datasette includes helper endpoints for exploring the action-based permission resolver:
 
@@ -1067,25 +1069,29 @@ Datasette includes helper endpoints for exploring the action-based permission re
     Returns a paginated list of resources that the current actor is allowed to access for a given action. Pass ``?action=view-table`` (or another action) to select the action, and optional ``parent=``/``child=`` query parameters to narrow the results to a specific database/table pair.
 
 ``/-/rules``
-    Lists the raw permission rules contributing to each resource for the supplied action. This includes configuration-derived and plugin-provided rules.
+    Lists the raw permission rules (both allow and deny) contributing to each resource for the supplied action. This includes configuration-derived and plugin-provided rules. **Requires the permissions-debug permission** (only available to the root user by default).
 
 ``/-/check``
     Evaluates whether the current actor can perform ``action`` against an optional ``parent``/``child`` resource tuple, returning the winning rule and reason.
 
 These endpoints work in conjunction with :ref:`plugin_hook_permission_resources_sql` and make it easier to verify that configuration allow blocks and plugins are behaving as intended.
 
-All three endpoints support both HTML and JSON responses. Visit the endpoint directly for an HTML page with formatted JSON, or add ``.json`` to the URL for a raw JSON response.
+All three endpoints support both HTML and JSON responses. Visit the endpoint directly for an interactive HTML form interface, or add ``.json`` to the URL for a raw JSON response.
+
+**Security note:** The ``/-/check`` and ``/-/allowed`` endpoints are publicly accessible to help users understand their own permissions. However, potentially sensitive fields (``reason`` and ``source_plugin``) are only included in responses for users with the ``permissions-debug`` permission. The ``/-/rules`` endpoint requires the ``permissions-debug`` permission for all access.
 
 .. _PermissionRulesView:
 
 Permission rules view
 ======================
 
-The ``/-/rules`` endpoint displays the winning rule for each candidate resource for the requested action.
+The ``/-/rules`` endpoint displays all permission rules (both allow and deny) for each candidate resource for the requested action.
 
-This endpoint returns an HTML page with pretty-formatted JSON by default. Add ``.json`` to the URL path (e.g. ``/-/rules.json?action=view-table``) to get the raw JSON response.
+This endpoint provides an interactive HTML form interface. Add ``.json`` to the URL path (e.g. ``/-/rules.json?action=view-table``) to get the raw JSON response instead.
 
 Pass ``?action=`` as a query parameter to specify which action to check.
+
+**Requires the permissions-debug permission** - this endpoint returns a 403 Forbidden error for users without this permission. The :ref:`root user <authentication_root>` has this permission by default.
 
 .. _PermissionCheckView:
 
@@ -1094,9 +1100,11 @@ Permission check view
 
 The ``/-/check`` endpoint evaluates a single action/resource pair and returns information indicating whether the access was allowed along with diagnostic information.
 
-This endpoint returns an HTML page with pretty-formatted JSON by default. Add ``.json`` to the URL path (e.g. ``/-/check.json?action=view-instance``) to get the raw JSON response.
+This endpoint provides an interactive HTML form interface. Add ``.json`` to the URL path (e.g. ``/-/check.json?action=view-instance``) to get the raw JSON response instead.
 
 Pass ``?action=`` to specify the action to check, and optional ``?parent=`` and ``?child=`` parameters to specify the resource.
+
+This endpoint is publicly accessible to help users understand their own permissions. However, potentially sensitive fields (``reason`` and ``source_plugin``) are only included in responses for users with the ``permissions-debug`` permission.
 
 .. _authentication_ds_actor:
 

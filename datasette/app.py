@@ -1035,7 +1035,9 @@ class Datasette:
         )
         return result
 
-    async def allowed_resources_sql(self, actor: dict | None, action: str) -> tuple[str, dict]:
+    async def allowed_resources_sql(
+        self, actor: dict | None, action: str
+    ) -> tuple[str, dict]:
         """Combine permission_resources_sql PluginSQL blocks into a UNION query.
 
         Returns a (sql, params) tuple suitable for execution against SQLite.

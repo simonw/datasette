@@ -42,6 +42,18 @@ from .utils.sqlite import sqlite3
 from .utils.testing import TestClient
 from .version import __version__
 
+
+def run_sync(coro_func):
+    """Run an async callable to completion on a fresh event loop."""
+    loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro_func())
+    finally:
+        asyncio.set_event_loop(None)
+        loop.close()
+
+
 # Use Rich for tracebacks if it is installed
 try:
     from rich.traceback import install
@@ -135,9 +147,7 @@ def inspect(files, inspect_file, sqlite_extensions):
     operations against immutable database files.
     """
     app = Datasette([], immutables=files, sqlite_extensions=sqlite_extensions)
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    inspect_data = loop.run_until_complete(inspect_(files, sqlite_extensions))
+    inspect_data = run_sync(lambda: inspect_(files, sqlite_extensions))
     if inspect_file == "-":
         sys.stdout.write(json.dumps(inspect_data, indent=2))
     else:
@@ -613,12 +623,10 @@ def serve(
         return ds
 
     # Run the "startup" plugin hooks
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(ds.invoke_startup())
+    run_sync(ds.invoke_startup)
 
     # Run async soundness checks - but only if we're not under pytest
-    loop.run_until_complete(check_databases(ds))
+    run_sync(lambda: check_databases(ds))
 
     if token and not get:
         raise click.ClickException("--token can only be used with --get")
@@ -647,9 +655,7 @@ def serve(
     if open_browser:
         if url is None:
             # Figure out most convenient URL - to table, database or homepage
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            path = loop.run_until_complete(initial_path_for_datasette(ds))
+            path = run_sync(lambda: initial_path_for_datasette(ds))
             url = f"http://{host}:{port}{path}"
         webbrowser.open(url)
     uvicorn_kwargs = dict(
@@ -751,9 +757,7 @@ def create_token(
     ds = Datasette(secret=secret, plugins_dir=plugins_dir)
 
     # Run ds.invoke_startup() in an event loop
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(ds.invoke_startup())
+    run_sync(ds.invoke_startup)
 
     # Warn about any unknown actions
     actions = []

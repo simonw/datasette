@@ -80,7 +80,7 @@ setup(
         "test": [
             "pytest>=5.2.2",
             "pytest-xdist>=2.2.1",
-            "pytest-asyncio>=0.17",
+            "pytest-asyncio>=1.2.0",
             "beautifulsoup4>=4.8.1",
             "black==25.1.0",
             "blacken-docs==1.19.1",

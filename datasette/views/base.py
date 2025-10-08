@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import hashlib
+import json
 import sys
 import textwrap
 import time
@@ -172,6 +173,24 @@ class BaseView:
             ),
             headers=headers,
         )
+
+    async def respond_json_or_html(self, request, data, filename):
+        """Return JSON or HTML with pretty JSON depending on format parameter."""
+        as_format = request.url_vars.get("format")
+        if as_format:
+            headers = {}
+            if self.ds.cors:
+                add_cors_headers(headers)
+            return Response.json(data, headers=headers)
+        else:
+            return await self.render(
+                ["show_json.html"],
+                request=request,
+                context={
+                    "filename": filename,
+                    "data_json": json.dumps(data, indent=4, default=repr),
+                },
+            )
 
     @classmethod
     def as_view(cls, *class_args, **class_kwargs):

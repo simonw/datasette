@@ -1290,18 +1290,197 @@ Here's an example that allows users to view the ``admin_log`` table only if thei
                 if not actor:
                     return False
                 user_id = actor["id"]
-                return await datasette.get_database(
+                result = await datasette.get_database(
                     "staff"
                 ).execute(
                     "select count(*) from admin_users where user_id = :user_id",
                     {"user_id": user_id},
                 )
+                return result.first()[0] > 0
 
         return inner
 
 See :ref:`built-in permissions <permissions>` for a full list of permissions that are included in Datasette core.
 
 Example: `datasette-permissions-sql <https://datasette.io/plugins/datasette-permissions-sql>`_
+
+.. _plugin_hook_permission_resources_sql:
+
+permission_resources_sql(datasette, actor, action)
+-------------------------------------------------
+
+``datasette`` - :ref:`internals_datasette`
+    Access to the Datasette instance.
+
+``actor`` - dictionary or None
+    The current actor dictionary. ``None`` for anonymous requests.
+
+``action`` - string
+    The permission action being evaluated. Examples include ``"view-table"`` or ``"insert-row"``.
+
+Return value
+    A :class:`datasette.utils.permissions.PluginSQL` object, ``None`` or an iterable of ``PluginSQL`` objects.
+
+Datasette's action-based permission resolver calls this hook to gather SQL rows describing which
+resources an actor may access (``allow = 1``) or should be denied (``allow = 0``) for a specific action.
+Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns. Any bound parameters
+supplied via ``PluginSQL.params`` are automatically namespaced per plugin.
+
+
+Permission plugin examples
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These snippets show how to use the new ``permission_resources_sql`` hook to
+contribute rows to the action-based permission resolver. Each hook receives the
+current actor dictionary (or ``None``) and must return ``None`` or an instance or list of
+``datasette.utils.permissions.PluginSQL`` (or a coroutine that resolves to that).
+
+Allow Alice to view a specific table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This plugin grants the actor with ``id == "alice"`` permission to perform the
+``view-table`` action against the ``sales`` table inside the ``accounting`` database.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.utils.permissions import PluginSQL
+
+
+    @hookimpl
+    def permission_resources_sql(datasette, actor, action):
+        if action != "view-table":
+            return None
+        if not actor or actor.get("id") != "alice":
+            return None
+
+        return PluginSQL(
+            source="alice_sales_allow",
+            sql="""
+                SELECT
+                    'accounting' AS parent,
+                    'sales' AS child,
+                    1 AS allow,
+                    'alice can view accounting/sales' AS reason
+            """,
+            params={},
+        )
+
+Restrict execute-sql to a database prefix
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Only allow ``execute-sql`` against databases whose name begins with
+``analytics_``. This shows how to use parameters that the permission resolver
+will pass through to the SQL snippet.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.utils.permissions import PluginSQL
+
+
+    @hookimpl
+    def permission_resources_sql(datasette, actor, action):
+        if action != "execute-sql":
+            return None
+
+        return PluginSQL(
+            source="analytics_execute_sql",
+            sql="""
+                SELECT
+                    parent,
+                    NULL AS child,
+                    1 AS allow,
+                    'execute-sql allowed for analytics_*' AS reason
+                FROM catalog_databases
+                WHERE database_name LIKE :prefix
+            """,
+            params={
+                "prefix": "analytics_%",
+            },
+        )
+
+Read permissions from a custom table
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+This example stores grants in an internal table called ``permission_grants``
+with columns ``(actor_id, action, parent, child, allow, reason)``.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.utils.permissions import PluginSQL
+
+
+    @hookimpl
+    def permission_resources_sql(datasette, actor, action):
+        if not actor:
+            return None
+
+        return PluginSQL(
+            source="permission_grants_table",
+            sql="""
+                SELECT
+                    parent,
+                    child,
+                    allow,
+                    COALESCE(reason, 'permission_grants table') AS reason
+                FROM permission_grants
+                WHERE actor_id = :actor_id
+                  AND action = :action
+            """,
+            params={
+                "actor_id": actor.get("id"),
+                "action": action,
+            },
+        )
+
+Default deny with an exception
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Combine a root-level deny with a specific table allow for trusted users.
+The resolver will automatically apply the most specific rule.
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.utils.permissions import PluginSQL
+
+
+    TRUSTED = {"alice", "bob"}
+
+
+    @hookimpl
+    def permission_resources_sql(datasette, actor, action):
+        if action != "view-table":
+            return None
+
+        actor_id = (actor or {}).get("id")
+
+        if actor_id not in TRUSTED:
+            return PluginSQL(
+                source="view_table_root_deny",
+                sql="""
+                    SELECT NULL AS parent, NULL AS child, 0 AS allow,
+                           'default deny view-table' AS reason
+                """,
+                params={},
+            )
+
+        return PluginSQL(
+            source="trusted_allow",
+            sql="""
+                SELECT NULL AS parent, NULL AS child, 0 AS allow,
+                       'default deny view-table' AS reason
+                UNION ALL
+                SELECT 'reports' AS parent, 'daily_metrics' AS child, 1 AS allow,
+                       'trusted user access' AS reason
+            """,
+            params={"actor_id": actor_id},
+        )
+
+The ``UNION ALL`` ensures the deny rule is always present, while the second row
+adds the exception for trusted users.
 
 .. _plugin_hook_register_magic_parameters:
 

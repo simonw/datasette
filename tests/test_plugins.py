@@ -12,8 +12,9 @@ from datasette.app import Datasette
 from datasette import cli, hookimpl, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
+from datasette.utils.permissions import PluginSQL
 from datasette.utils.sqlite import sqlite3
-from datasette.utils import StartupError
+from datasette.utils import StartupError, await_me_maybe
 from jinja2 import ChoiceLoader, FileSystemLoader
 import base64
 import datetime
@@ -699,6 +700,29 @@ async def test_hook_permission_allowed(action, expected):
         assert expected == actual
     finally:
         pm.unregister(name="undo_register_extras")
+
+
+@pytest.mark.asyncio
+async def test_hook_permission_resources_sql():
+    ds = Datasette()
+    await ds.invoke_startup()
+
+    collected = []
+    for block in pm.hook.permission_resources_sql(
+        datasette=ds,
+        actor={"id": "alice"},
+        action="view-table",
+    ):
+        block = await await_me_maybe(block)
+        if block is None:
+            continue
+        if isinstance(block, (list, tuple)):
+            collected.extend(block)
+        else:
+            collected.append(block)
+
+    assert collected
+    assert all(isinstance(item, PluginSQL) for item in collected)
 
 
 @pytest.mark.asyncio

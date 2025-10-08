@@ -1,8 +1,8 @@
 from datasette import hookimpl, Permission
+from datasette.utils.permissions import PluginSQL
 from datasette.utils import actor_matches_allow
 import itsdangerous
 import time
-from typing import Union, Tuple
 
 
 @hookimpl
@@ -172,6 +172,163 @@ def permission_allowed_default(datasette, actor, action, resource):
     return inner
 
 
+@hookimpl
+async def permission_resources_sql(datasette, actor, action):
+    rules: list[PluginSQL] = []
+
+    config_rules = await _config_permission_rules(datasette, actor, action)
+    rules.extend(config_rules)
+
+    default_allow_actions = {
+        "view-instance",
+        "view-database",
+        "view-table",
+        "execute-sql",
+    }
+    if action in default_allow_actions:
+        reason = f"default allow for {action}".replace("'", "''")
+        sql = (
+            "SELECT NULL AS parent, NULL AS child, 1 AS allow, " f"'{reason}' AS reason"
+        )
+        rules.append(
+            PluginSQL(
+                source="default_permissions",
+                sql=sql,
+                params={},
+            )
+        )
+
+    if not rules:
+        return None
+    if len(rules) == 1:
+        return rules[0]
+    return rules
+
+
+async def _config_permission_rules(datasette, actor, action) -> list[PluginSQL]:
+    config = datasette.config or {}
+
+    if actor is None:
+        actor_dict: dict | None = None
+    elif isinstance(actor, dict):
+        actor_dict = actor
+    else:
+        actor_lookup = await datasette.actors_from_ids([actor])
+        actor_dict = actor_lookup.get(actor) or {"id": actor}
+
+    def evaluate(allow_block):
+        if allow_block is None:
+            return None
+        return actor_matches_allow(actor_dict, allow_block)
+
+    rows = []
+
+    def add_row(parent, child, result, scope):
+        if result is None:
+            return
+        rows.append(
+            (
+                parent,
+                child,
+                bool(result),
+                f"config {'allow' if result else 'deny'} {scope}",
+            )
+        )
+
+    root_perm = (config.get("permissions") or {}).get(action)
+    add_row(None, None, evaluate(root_perm), f"permissions for {action}")
+
+    for db_name, db_config in (config.get("databases") or {}).items():
+        db_perm = (db_config.get("permissions") or {}).get(action)
+        add_row(
+            db_name, None, evaluate(db_perm), f"permissions for {action} on {db_name}"
+        )
+
+        for table_name, table_config in (db_config.get("tables") or {}).items():
+            table_perm = (table_config.get("permissions") or {}).get(action)
+            add_row(
+                db_name,
+                table_name,
+                evaluate(table_perm),
+                f"permissions for {action} on {db_name}/{table_name}",
+            )
+
+            if action == "view-table":
+                table_allow = (table_config or {}).get("allow")
+                add_row(
+                    db_name,
+                    table_name,
+                    evaluate(table_allow),
+                    f"allow for {action} on {db_name}/{table_name}",
+                )
+
+        for query_name, query_config in (db_config.get("queries") or {}).items():
+            query_perm = (query_config.get("permissions") or {}).get(action)
+            add_row(
+                db_name,
+                query_name,
+                evaluate(query_perm),
+                f"permissions for {action} on {db_name}/{query_name}",
+            )
+            if action == "view-query":
+                query_allow = (query_config or {}).get("allow")
+                add_row(
+                    db_name,
+                    query_name,
+                    evaluate(query_allow),
+                    f"allow for {action} on {db_name}/{query_name}",
+                )
+
+        if action == "view-database":
+            db_allow = db_config.get("allow")
+            add_row(
+                db_name, None, evaluate(db_allow), f"allow for {action} on {db_name}"
+            )
+
+        if action == "execute-sql":
+            db_allow_sql = db_config.get("allow_sql")
+            add_row(db_name, None, evaluate(db_allow_sql), f"allow_sql for {db_name}")
+
+    if action == "view-instance":
+        allow_block = config.get("allow")
+        add_row(None, None, evaluate(allow_block), "allow for view-instance")
+
+    if action == "view-table":
+        # Tables handled in loop
+        pass
+
+    if action == "view-query":
+        # Queries handled in loop
+        pass
+
+    if action == "execute-sql":
+        allow_sql = config.get("allow_sql")
+        add_row(None, None, evaluate(allow_sql), "allow_sql")
+
+    if action == "view-database":
+        # already handled per-database
+        pass
+
+    if not rows:
+        return []
+
+    parts = []
+    params = {}
+    for idx, (parent, child, allow, reason) in enumerate(rows):
+        key = f"cfg_{idx}"
+        parts.append(
+            f"SELECT :{key}_parent AS parent, :{key}_child AS child, :{key}_allow AS allow, :{key}_reason AS reason"
+        )
+        params[f"{key}_parent"] = parent
+        params[f"{key}_child"] = child
+        params[f"{key}_allow"] = 1 if allow else 0
+        params[f"{key}_reason"] = reason
+
+    sql = "\nUNION ALL\n".join(parts)
+    print(sql, params)
+    return [PluginSQL(source="config_permissions", sql=sql, params=params)]
+
+
 async def _resolve_config_permissions_blocks(datasette, actor, action, resource):
     # Check custom permissions: blocks
     config = datasette.config or {}
@@ -277,7 +434,7 @@ def restrictions_allow_action(
     datasette: "Datasette",
     restrictions: dict,
     action: str,
-    resource: Union[str, Tuple[str, str]],
+    resource: str | tuple[str, str],
 ):
     "Do these restrictions allow the requested action against the requested resource?"
     if action == "view-instance":

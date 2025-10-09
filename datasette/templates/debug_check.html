@@ -4,6 +4,7 @@
 
 {% block extra_head %}
 <script src="{{ base_url }}-/static/json-format-highlight-1.0.1.js"></script>
+{% include "_debug_common_functions.html" %}
 <style>
 .form-section {
     margin-bottom: 1em;
@@ -158,46 +159,6 @@ const form = document.getElementById('check-form');
 const output = document.getElementById('output');
 const submitBtn = document.getElementById('submit-btn');
 
-// Populate form from URL parameters on page load
-function populateFormFromURL() {
-    const params = new URLSearchParams(window.location.search);
-
-    const action = params.get('action');
-    if (action) {
-        document.getElementById('action').value = action;
-    }
-
-    const parent = params.get('parent');
-    if (parent) {
-        document.getElementById('parent').value = parent;
-    }
-
-    const child = params.get('child');
-    if (child) {
-        document.getElementById('child').value = child;
-    }
-
-    // If parameters are present, automatically submit the form
-    if (action) {
-        performCheck();
-    }
-}
-
-// Update URL with current form values
-function updateURL() {
-    const formData = new FormData(form);
-    const params = new URLSearchParams();
-
-    for (const [key, value] of formData.entries()) {
-        if (value) {
-            params.append(key, value);
-        }
-    }
-
-    const newURL = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-    window.history.pushState({}, '', newURL);
-}
-
 async function performCheck() {
     submitBtn.disabled = true;
     submitBtn.textContent = 'Checking...';
@@ -236,17 +197,27 @@ async function performCheck() {
 
 form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    updateURL();
+    updateURL('check-form');
     await performCheck();
 });
 
 // Handle browser back/forward
 window.addEventListener('popstate', () => {
-    populateFormFromURL();
+    const params = populateFormFromURL();
+    const action = params.get('action');
+    if (action) {
+        performCheck();
+    }
 });
 
 // Populate form on initial load
-populateFormFromURL();
+(function() {
+    const params = populateFormFromURL();
+    const action = params.get('action');
+    if (action) {
+        performCheck();
+    }
+})();
 
 function displayResult(data) {
     output.style.display = 'block';

@@ -5,6 +5,7 @@
 {% block extra_head %}
 <script src="{{ base_url }}-/static/json-format-highlight-1.0.1.js"></script>
 {% include "_permission_ui_styles.html" %}
+{% include "_debug_common_functions.html" %}
 {% endblock %}
 
 {% block content %}
@@ -69,60 +70,31 @@ const pagination = document.getElementById('pagination');
 const submitBtn = document.getElementById('submit-btn');
 let currentData = null;
 
-// Populate form from URL parameters on page load
-function populateFormFromURL() {
-    const params = new URLSearchParams(window.location.search);
-
-    const action = params.get('action');
-    if (action) {
-        document.getElementById('action').value = action;
-    }
-
-    const pageSize = params.get('page_size');
-    if (pageSize) {
-        document.getElementById('page_size').value = pageSize;
-    }
-
-    const page = params.get('page');
-
-    // If parameters are present, automatically fetch results
-    if (action) {
-        fetchResults(page ? parseInt(page) : 1, false);
-    }
-}
-
-// Update URL with current form values and page
-function updateURL(page = 1) {
-    const formData = new FormData(form);
-    const params = new URLSearchParams();
-
-    for (const [key, value] of formData.entries()) {
-        if (value) {
-            params.append(key, value);
-        }
-    }
-
-    if (page > 1) {
-        params.set('page', page.toString());
-    }
-
-    const newURL = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-    window.history.pushState({}, '', newURL);
-}
-
 form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
-    updateURL(1);
+    updateURL('rules-form', 1);
     await fetchResults(1, false);
 });
 
 // Handle browser back/forward
 window.addEventListener('popstate', () => {
-    populateFormFromURL();
+    const params = populateFormFromURL();
+    const action = params.get('action');
+    const page = params.get('page');
+    if (action) {
+        fetchResults(page ? parseInt(page) : 1, false);
+    }
 });
 
 // Populate form on initial load
-populateFormFromURL();
+(function() {
+    const params = populateFormFromURL();
+    const action = params.get('action');
+    const page = params.get('page');
+    if (action) {
+        fetchResults(page ? parseInt(page) : 1, false);
+    }
+})();
 
 async function fetchResults(page = 1, updateHistory = true) {
     submitBtn.disabled = true;
@@ -215,7 +187,7 @@ function displayResults(data) {
             prevLink.textContent = '← Previous';
             prevLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                updateURL(data.page - 1);
+                updateURL('rules-form', data.page - 1);
                 fetchResults(data.page - 1, false);
             });
             pagination.appendChild(prevLink);
@@ -231,7 +203,7 @@ function displayResults(data) {
             nextLink.textContent = 'Next →';
             nextLink.addEventListener('click', (e) => {
                 e.preventDefault();
-                updateURL(data.page + 1);
+                updateURL('rules-form', data.page + 1);
                 fetchResults(data.page + 1, false);
             });
             pagination.appendChild(nextLink);
@@ -257,12 +229,6 @@ function displayError(data) {
     resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function escapeHtml(text) {
-    if (text === null || text === undefined) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
 </script>
 
 {% endblock %}

@@ -35,6 +35,7 @@ from datasette.utils.asgi import AsgiFileDownload, NotFound, Response, Forbidden
 from datasette.plugins import pm
 
 from .base import BaseView, DatasetteError, View, _error, stream_csv
+from . import Context
 
 
 class DatabaseView(View):
@@ -152,31 +153,43 @@ class DatabaseView(View):
         templates = (f"database-{to_css_class(database)}.html", "database.html")
         environment = datasette.get_jinja_environment(request)
         template = environment.select_template(templates)
-        context = {
-            **json_data,
-            "database_color": db.color,
-            "database_actions": database_actions,
-            "show_hidden": request.args.get("_show_hidden"),
-            "editable": True,
-            "metadata": metadata,
-            "count_limit": db.count_limit,
-            "allow_download": datasette.setting("allow_download")
-            and not db.is_mutable
-            and not db.is_memory,
-            "attached_databases": attached_databases,
-            "alternate_url_json": alternate_url_json,
-            "select_templates": [
-                f"{'*' if template_name == template.name else ''}{template_name}"
-                for template_name in templates
-            ],
-            "top_database": make_slot_function(
-                "top_database", datasette, request, database=database
-            ),
-        }
         return Response.html(
             await datasette.render_template(
                 templates,
-                context,
+                DatabaseContext(
+                    database=database,
+                    private=private,
+                    path=datasette.urls.database(database),
+                    size=db.size,
+                    tables=tables,
+                    hidden_count=len([t for t in tables if t["hidden"]]),
+                    views=sql_views,
+                    queries=canned_queries,
+                    allow_execute_sql=allow_execute_sql,
+                    table_columns=(
+                        await _table_columns(datasette, database)
+                        if allow_execute_sql
+                        else {}
+                    ),
+                    metadata=metadata,
+                    database_color=db.color,
+                    database_actions=database_actions,
+                    show_hidden=request.args.get("_show_hidden"),
+                    editable=True,
+                    count_limit=db.count_limit,
+                    allow_download=datasette.setting("allow_download")
+                    and not db.is_mutable
+                    and not db.is_memory,
+                    attached_databases=attached_databases,
+                    alternate_url_json=alternate_url_json,
+                    select_templates=[
+                        f"{'*' if template_name == template.name else ''}{template_name}"
+                        for template_name in templates
+                    ],
+                    top_database=make_slot_function(
+                        "top_database", datasette, request, database=database
+                    ),
+                ),
                 request=request,
                 view_name="database",
             ),
@@ -189,7 +202,56 @@ class DatabaseView(View):
 
 
 @dataclass
-class QueryContext:
+class DatabaseContext(Context):
+    database: str = field(metadata={"help": "The name of the database"})
+    private: bool = field(
+        metadata={"help": "Boolean indicating if this is a private database"}
+    )
+    path: str = field(metadata={"help": "The URL path to this database"})
+    size: int = field(metadata={"help": "The size of the database in bytes"})
+    tables: list = field(metadata={"help": "List of table objects in the database"})
+    hidden_count: int = field(metadata={"help": "Count of hidden tables"})
+    views: list = field(metadata={"help": "List of view objects in the database"})
+    queries: list = field(metadata={"help": "List of canned query objects"})
+    allow_execute_sql: bool = field(
+        metadata={"help": "Boolean indicating if custom SQL can be executed"}
+    )
+    table_columns: dict = field(
+        metadata={"help": "Dictionary mapping table names to their column lists"}
+    )
+    metadata: dict = field(metadata={"help": "Metadata for the database"})
+    database_color: str = field(metadata={"help": "The color assigned to the database"})
+    database_actions: callable = field(
+        metadata={
+            "help": "Callable returning list of action links for the database menu"
+        }
+    )
+    show_hidden: str = field(metadata={"help": "Value of _show_hidden query parameter"})
+    editable: bool = field(
+        metadata={"help": "Boolean indicating if the database is editable"}
+    )
+    count_limit: int = field(metadata={"help": "The maximum number of rows to count"})
+    allow_download: bool = field(
+        metadata={"help": "Boolean indicating if database download is allowed"}
+    )
+    attached_databases: list = field(
+        metadata={"help": "List of names of attached databases"}
+    )
+    alternate_url_json: str = field(
+        metadata={"help": "URL for the alternate JSON version of this page"}
+    )
+    select_templates: list = field(
+        metadata={
+            "help": "List of templates that were considered for rendering this page"
+        }
+    )
+    top_database: callable = field(
+        metadata={"help": "Callable to render the top_database slot"}
+    )
+
+
+@dataclass
+class QueryContext(Context):
     database: str = field(metadata={"help": "The name of the database being queried"})
     database_color: str = field(metadata={"help": "The color of the database"})
     query: dict = field(

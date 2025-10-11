@@ -405,6 +405,94 @@ Special table arguments
 ``?_nocount=1``
     Disable the ``select count(*)`` query used on this page - a count of ``None`` will be returned instead.
 
+Table extras
+~~~~~~~~~~~~
+
+JSON responses for table pages can include additional keys that are omitted by default. Pass one or more ``?_extra=NAME``
+parameters (either repeating the argument or providing a comma-separated list) to opt in to the data that you need. The
+following extras are available:
+
+``?_extra=count``
+    Returns the total number of rows that match the current filters, or ``null`` if the calculation times out or is
+    otherwise unavailable. ``count`` may be served from cached introspection data for immutable databases when
+    possible.【F:datasette/views/table.py†L1284-L1311】
+
+``?_extra=count_sql``
+    Returns the SQL that Datasette will execute in order to calculate the total row count.【F:datasette/views/table.py†L1284-L1290】
+
+``?_extra=facet_results``
+    Includes the full set of facet results calculated for the table view. The returned object has a ``results`` mapping
+    of facet definitions to their buckets and a ``timed_out`` list describing any facets that hit the time limit.【F:datasette/views/table.py†L1316-L1365】
+
+``?_extra=facets_timed_out``
+    Adds just the list of facets that timed out while executing, without the full facet payload.【F:datasette/views/table.py†L1592-L1617】
+
+``?_extra=suggested_facets``
+    Returns suggestions for additional facets to apply, each with a ``name`` and ``toggle_url`` that can be used to
+    activate that facet.【F:datasette/views/table.py†L1367-L1386】
+
+``?_extra=human_description_en``
+    Adds a human-readable sentence describing the current filters and sort order.【F:datasette/views/table.py†L1388-L1403】
+
+``?_extra=next_url``
+    Includes an absolute URL for the next page of results, or ``null`` if there is no next page.【F:datasette/views/table.py†L1404-L1406】
+
+``?_extra=columns``
+    Restores the ``columns`` list to the JSON output. Datasette removes this list by default to avoid duplicating
+    information unless it is explicitly requested using this extra.【F:datasette/renderer.py†L110-L123】
+
+``?_extra=primary_keys``
+    Adds the list of primary key columns for the table.【F:datasette/views/table.py†L1408-L1414】
+
+``?_extra=query``
+    Returns the SQL query and parameters used to produce the current page of results.【F:datasette/views/table.py†L1484-L1490】
+
+``?_extra=metadata``
+    Includes metadata for the table and its columns, combining values from configuration and the ``metadata_columns``
+    table.【F:datasette/views/table.py†L1491-L1527】
+
+``?_extra=database`` and ``?_extra=table``
+    Return the database name and table name for the current view.【F:datasette/views/table.py†L1510-L1517】
+
+``?_extra=database_color``
+    Adds the configured color for the database, useful for mirroring Datasette's UI styling.【F:datasette/views/table.py†L1518-L1520】
+
+``?_extra=renderers``
+    Lists the alternative output renderers available for the data, mapping renderer names to URLs that apply the
+    requested renderer.【F:datasette/views/table.py†L1554-L1577】
+
+``?_extra=custom_table_templates``
+    Returns the ordered list of template names Datasette will consider when rendering the HTML table view.【F:datasette/views/table.py†L1533-L1540】
+
+``?_extra=sorted_facet_results``
+    Provides the facet definitions sorted by the number of results they contain, ready for display in descending order.【F:datasette/views/table.py†L1541-L1549】
+
+``?_extra=table_definition`` and ``?_extra=view_definition``
+    Include the ``CREATE TABLE`` or ``CREATE VIEW`` SQL definitions where available.【F:datasette/views/table.py†L1548-L1553】
+
+``?_extra=is_view`` and ``?_extra=private``
+    Report whether the current resource is a view and whether it is private to the current actor.【F:datasette/views/table.py†L1439-L1453】【F:datasette/views/table.py†L1581-L1587】
+
+``?_extra=expandable_columns``
+    Lists foreign key columns that can be expanded, each entry pairing the foreign key description with the column used
+    for labels when expanding that relationship.【F:datasette/views/table.py†L1584-L1588】
+
+``?_extra=form_hidden_args``
+    Returns the ``("key", "value")`` pairs that Datasette includes as hidden fields in table forms for the current set
+    of ``_`` query string arguments.【F:datasette/views/table.py†L1519-L1530】
+
+``?_extra=extras``
+    Provides metadata about all available extras, including toggle URLs that can be used to turn them on and off in the
+    current query string.【F:datasette/views/table.py†L1592-L1611】
+
+``?_extra=debug`` and ``?_extra=request``
+    Return debugging context, including the resolved SQL details and request metadata such as the full URL and query
+    string arguments.【F:datasette/views/table.py†L1442-L1467】
+
+In addition to these API-friendly extras, Datasette exposes a handful of extras that are primarily intended for its HTML
+interface—``actions``, ``filters``, ``display_columns`` and ``display_rows``. These currently return Python objects such
+as callables or ``sqlite3.Row`` instances and may raise serialization errors if requested as JSON extras.【F:datasette/views/table.py†L1415-L1526】【F:datasette/renderer.py†L120-L123】
+
 .. _expand_foreign_keys:
 
 Expanding foreign key references
@@ -439,6 +527,15 @@ looks like:
 
 The column in the foreign key table that is used for the label can be specified
 in ``metadata.json`` - see :ref:`label_columns`.
+
+Row detail extras
+-----------------
+
+Row detail JSON is available at ``/<database>/<table>/<row-pks>.json``. Responses include the database and table names,
+``rows`` and ``columns`` for the matched record, the primary key column names, the primary key values, and a ``query_ms``
+timing for the lookup. Pass ``?_extras=foreign_key_tables`` (note the plural parameter name) to include a
+``foreign_key_tables`` array describing incoming foreign keys, the number of related rows and navigation links to view
+those rows.【F:datasette/views/row.py†L41-L111】
 
 .. _json_api_discover_alternate:
 

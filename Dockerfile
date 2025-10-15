@@ -1,4 +1,4 @@
-FROM python:3.11.0-slim-bullseye as build
+FROM python:3.14-slim-trixie as build
 
 # Version of Datasette to install, e.g. 0.55
 #   docker build . -t datasette --build-arg VERSION=0.55

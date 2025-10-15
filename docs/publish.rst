@@ -150,7 +150,7 @@ Here's example output for the package command::
 
     datasette package parlgov.db --extra-options="--setting sql_time_limit_ms 2500"
     Sending build context to Docker daemon  4.459MB
-    Step 1/7 : FROM python:3.11.0-slim-bullseye
+    Step 1/7 : FROM python:3.14-slim-trixie
      ---> 79e1dc9af1c1
     Step 2/7 : COPY . /app
      ---> Using cache

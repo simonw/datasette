@@ -242,7 +242,7 @@ def test_publish_cloudrun_plugin_secrets(
     )
     expected = textwrap.dedent(
         r"""
-    FROM python:3.11.0-slim-bullseye
+    FROM python:3.14-slim-trixie
     COPY . /app
     WORKDIR /app
 
@@ -309,7 +309,7 @@ def test_publish_cloudrun_apt_get_install(
     )
     expected = textwrap.dedent(
         r"""
-    FROM python:3.11.0-slim-bullseye
+    FROM python:3.14-slim-trixie
     COPY . /app
     WORKDIR /app
 

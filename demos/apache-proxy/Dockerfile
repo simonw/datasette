@@ -1,4 +1,4 @@
-FROM python:3.11.0-slim-bullseye
+FROM python:3.14-slim-trixie
 
 RUN apt-get update && \
     apt-get install -y apache2 supervisor && \

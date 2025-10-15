@@ -12,7 +12,7 @@ class CaptureDockerfile:
 
 
 EXPECTED_DOCKERFILE = """
-FROM python:3.11.0-slim-bullseye
+FROM python:3.14-slim-trixie
 COPY . /app
 WORKDIR /app
 

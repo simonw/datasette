@@ -374,12 +374,25 @@ class Database:
             self.cached_size = Path(self.path).stat().st_size
             return self.cached_size
 
-    async def table_counts(self, limit=10):
+    async def table_counts(self, limit=10, tables=None):
+        # Determine which tables we need counts for
+        if tables is None:
+            tables_to_count = await self.table_names()
+        else:
+            tables_to_count = tables
+
+        # If we have cached counts for immutable database, use them
         if not self.is_mutable and self.cached_table_counts is not None:
-            return self.cached_table_counts
+            # Return only the requested tables from cache
+            return {
+                table: self.cached_table_counts.get(table)
+                for table in tables_to_count
+                if table in self.cached_table_counts
+            }
+
         # Try to get counts for each table, $limit timeout for each count
         counts = {}
-        for table in await self.table_names():
+        for table in tables_to_count:
             try:
                 table_count = (
                     await self.execute(
@@ -392,8 +405,11 @@ class Database:
             # QueryInterrupted - so we catch that too:
             except (QueryInterrupted, sqlite3.OperationalError, sqlite3.DatabaseError):
                 counts[table] = None
-        if not self.is_mutable:
+
+        # Only cache if we counted all tables
+        if tables is None and not self.is_mutable:
             self._cached_table_counts = counts
+
         return counts
 
     @property

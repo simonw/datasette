@@ -273,34 +273,157 @@ class QueryContext:
 async def get_tables(datasette, request, db):
     tables = []
     database = db.name
-    table_counts = await db.table_counts(100)
     hidden_table_names = set(await db.hidden_table_names())
     all_foreign_keys = await db.get_all_foreign_keys()
 
-    for table in table_counts:
-        table_visible, table_private = await datasette.check_visibility(
-            request.actor,
-            permissions=[
-                ("view-table", (database, table)),
-                ("view-database", database),
-                "view-instance",
-            ],
+    # Use the new SQL-based permission system to check all tables at once
+    from datasette.utils.permissions import resolve_permissions_from_catalog, PluginSQL
+    from datasette.plugins import pm
+    from datasette.utils import await_me_maybe
+
+    # Get all table names from catalog (cheap operation, no scanning)
+    internal_db = datasette.get_internal_database()
+    table_names_result = await internal_db.execute(
+        "SELECT table_name FROM catalog_tables WHERE database_name = ?", [database]
+    )
+    table_names = [row["table_name"] for row in table_names_result.rows]
+
+    if table_names:
+        # Use catalog_tables for candidate SQL to query all tables in this database at once
+        candidate_sql = "SELECT :database AS parent, table_name AS child FROM catalog_tables WHERE database_name = :database"
+        candidate_params = {"database": database}
+
+        # Get plugin SQL blocks for view-table permission
+        plugins = []
+        for block in pm.hook.permission_resources_sql(
+            datasette=datasette,
+            actor=request.actor,
+            action="view-table",
+        ):
+            block = await await_me_maybe(block)
+            if block is None:
+                continue
+            if isinstance(block, (list, tuple)):
+                candidates = block
+            else:
+                candidates = [block]
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                if not isinstance(candidate, PluginSQL):
+                    continue
+                plugins.append(candidate)
+
+        # Resolve permissions for all tables at once
+        if isinstance(request.actor, dict):
+            actor_id = request.actor.get("id")
+        elif request.actor:
+            actor_id = request.actor
+        else:
+            actor_id = None
+        internal_db = datasette.get_internal_database()
+        permission_results = await resolve_permissions_from_catalog(
+            internal_db,
+            actor=str(actor_id) if actor_id is not None else "",
+            plugins=plugins,
+            action="view-table",
+            candidate_sql=candidate_sql,
+            candidate_params=candidate_params,
+            implicit_deny=True,
         )
-        if not table_visible:
-            continue
+
+        # Create a lookup dict for allowed tables and their privacy status
+        allowed_tables = {}
+        for result in permission_results:
+            table_name = result["child"]
+            if result["allow"] == 1:
+                allowed_tables[table_name] = result
+
+        # Check which tables are visible to anonymous users (for determining "private" status)
+        # A table is visible to anonymous users if BOTH view-database AND view-table pass
+        anon_allowed_tables = set()
+        if request.actor:
+            # Check if anonymous users can view the database
+            anon_can_view_database = await datasette.permission_allowed(
+                None, "view-database", database
+            )
+
+            # Generate new plugin SQL blocks for anonymous user to check table permissions
+            anon_plugins = []
+            for block in pm.hook.permission_resources_sql(
+                datasette=datasette,
+                actor="",
+                action="view-table",
+            ):
+                block = await await_me_maybe(block)
+                if block is None:
+                    continue
+                if isinstance(block, (list, tuple)):
+                    candidates = block
+                else:
+                    candidates = [block]
+                for candidate in candidates:
+                    if candidate is None:
+                        continue
+                    if not isinstance(candidate, PluginSQL):
+                        continue
+                    anon_plugins.append(candidate)
+
+            anon_permission_results = await resolve_permissions_from_catalog(
+                internal_db,
+                actor="",
+                plugins=anon_plugins,
+                action="view-table",
+                candidate_sql=candidate_sql,
+                candidate_params=candidate_params,
+                implicit_deny=True,
+            )
+
+            # A table is not private if anonymous users can view it
+            # This requires passing BOTH view-table AND view-database checks
+            # UNLESS the table has an explicit allow block that overrides database restrictions
+            # We approximate this by checking if the permission result has a specific "config allow" reason
+            # which indicates an explicit table-level allow block
+            for result in anon_permission_results:
+                if result["allow"] == 1:
+                    # Check if this is from an explicit table-level allow block
+                    # or if the anonymous user can also view the database
+                    reason = result.get("reason", "")
+                    has_explicit_table_allow = (
+                        "config allow allow for view-table" in reason
+                    )
+                    if has_explicit_table_allow or anon_can_view_database:
+                        anon_allowed_tables.add(result["child"])
+    else:
+        allowed_tables = {}
+        anon_allowed_tables = set()
+
+    # Build the tables list for allowed tables only
+    # Only get table counts for the tables we're actually going to display
+    allowed_table_names = list(allowed_tables.keys())
+
+    # Get counts only for allowed tables (uses caching mechanism)
+    if allowed_table_names:
+        table_counts = await db.table_counts(limit=10, tables=allowed_table_names)
+    else:
+        table_counts = {}
+
+    for table in allowed_table_names:
+        # Determine if table is private (not visible to anonymous users)
+        table_private = bool(request.actor and table not in anon_allowed_tables)
+
         table_columns = await db.table_columns(table)
-        tables.append(
-            {
-                "name": table,
-                "columns": table_columns,
-                "primary_keys": await db.primary_keys(table),
-                "count": table_counts[table],
-                "hidden": table in hidden_table_names,
-                "fts_table": await db.fts_table(table),
-                "foreign_keys": all_foreign_keys[table],
-                "private": table_private,
-            }
-        )
+        table_dict = {
+            "name": table,
+            "columns": table_columns,
+            "primary_keys": await db.primary_keys(table),
+            "count": table_counts.get(table),
+            "hidden": table in hidden_table_names,
+            "fts_table": await db.fts_table(table),
+            "foreign_keys": all_foreign_keys.get(table, {}),
+            "private": table_private,
+        }
+        tables.append(table_dict)
     tables.sort(key=lambda t: (t["hidden"], t["name"]))
     return tables
 

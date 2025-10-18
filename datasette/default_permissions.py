@@ -263,6 +263,9 @@ async def _config_permission_rules(datasette, actor, action) -> list[PluginSQL]:
                 )
 
         for query_name, query_config in (db_config.get("queries") or {}).items():
+            # query_config can be a string (just SQL) or a dict
+            if isinstance(query_config, str):
+                continue
             query_perm = (query_config.get("permissions") or {}).get(action)
             add_row(
                 db_name,
@@ -325,7 +328,6 @@ async def _config_permission_rules(datasette, actor, action) -> list[PluginSQL]:
         params[f"{key}_reason"] = reason
 
     sql = "\nUNION ALL\n".join(parts)
-    print(sql, params)
     return [PluginSQL(source="config_permissions", sql=sql, params=params)]
 
 

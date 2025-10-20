@@ -782,6 +782,9 @@ The plugin hook can then be used to register the new facet class like this:
 register_permissions(datasette)
 --------------------------------
 
+.. note::
+    This hook is deprecated. Use :ref:`plugin_register_actions` instead, which provides a more flexible resource-based permission system.
+
 If your plugin needs to register additional permissions unique to that plugin - ``upload-csvs`` for example - you can return a list of those permissions from this hook.
 
 .. code-block:: python
@@ -823,6 +826,141 @@ The fields of the ``Permission`` class are as follows:
     The default value for this permission if it is not explicitly granted to a user. ``True`` means the permission is granted by default, ``False`` means it is not.
 
     This should only be ``True`` if you want anonymous users to be able to take this action.
+
+.. _plugin_register_actions:
+
+register_actions(datasette)
+----------------------------
+
+If your plugin needs to register actions that can be checked with Datasette's new resource-based permission system, return a list of those actions from this hook.
+
+Actions define what operations can be performed on resources (like viewing a table, executing SQL, or custom plugin actions).
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.permissions import Action, Resource
+
+
+    class DocumentCollectionResource(Resource):
+        """A collection of documents."""
+
+        name = "document-collection"
+        parent_name = None
+
+        def __init__(self, collection: str):
+            super().__init__(parent=collection, child=None)
+
+        @classmethod
+        def resources_sql(cls) -> str:
+            return """
+                SELECT collection_name AS parent, NULL AS child
+                FROM document_collections
+            """
+
+
+    class DocumentResource(Resource):
+        """A document in a collection."""
+
+        name = "document"
+        parent_name = "document-collection"
+
+        def __init__(self, collection: str, document: str):
+            super().__init__(parent=collection, child=document)
+
+        @classmethod
+        def resources_sql(cls) -> str:
+            return """
+                SELECT collection_name AS parent, document_id AS child
+                FROM documents
+            """
+
+
+    @hookimpl
+    def register_actions(datasette):
+        return [
+            Action(
+                name="list-documents",
+                abbr="ld",
+                description="List documents in a collection",
+                takes_parent=True,
+                takes_child=False,
+                resource_class=DocumentCollectionResource,
+            ),
+            Action(
+                name="view-document",
+                abbr="vdoc",
+                description="View document",
+                takes_parent=True,
+                takes_child=True,
+                resource_class=DocumentResource,
+            ),
+            Action(
+                name="edit-document",
+                abbr="edoc",
+                description="Edit document",
+                takes_parent=True,
+                takes_child=True,
+                resource_class=DocumentResource,
+            ),
+        ]
+
+The fields of the ``Action`` dataclass are as follows:
+
+``name`` - string
+    The name of the action, e.g. ``view-document``. This should be unique across all plugins.
+
+``abbr`` - string or None
+    An abbreviation of the action, e.g. ``vdoc``. This is optional. Since this needs to be unique across all installed plugins it's best to choose carefully or use ``None``.
+
+``description`` - string or None
+    A human-readable description of what the action allows you to do.
+
+``takes_parent`` - boolean
+    ``True`` if this action requires a parent identifier (like a database name).
+
+``takes_child`` - boolean
+    ``True`` if this action requires a child identifier (like a table or document name).
+
+``resource_class`` - type[Resource]
+    The Resource subclass that defines what kind of resource this action applies to. Your Resource subclass must:
+
+    - Define a ``name`` class attribute (e.g., ``"document"``)
+    - Optionally define a ``parent_name`` class attribute (e.g., ``"collection"``)
+    - Implement a ``resources_sql()`` classmethod that returns SQL returning all resources as ``(parent, child)`` columns
+    - Have an ``__init__`` method that accepts appropriate parameters and calls ``super().__init__(parent=..., child=...)``
+
+The ``resources_sql()`` method
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``resources_sql()`` classmethod is crucial to Datasette's permission system. It returns a SQL query that lists all resources of that type that exist in the system.
+
+This SQL query is used by Datasette to efficiently check permissions across multiple resources at once. When a user requests a list of resources (like tables, documents, or other entities), Datasette uses this SQL to:
+
+1. Get all resources of this type from your data catalog
+2. Combine it with permission rules from the ``permission_resources_sql`` hook
+3. Use SQL joins and filtering to determine which resources the actor can access
+4. Return only the permitted resources
+
+The SQL query **must** return exactly two columns:
+
+- ``parent`` - The parent identifier (e.g., database name, collection name), or ``NULL`` for top-level resources
+- ``child`` - The child identifier (e.g., table name, document ID), or ``NULL`` for parent-only resources
+
+For example, if you're building a document management plugin with collections and documents stored in a ``documents`` table, your ``resources_sql()`` might look like:
+
+.. code-block:: python
+
+    @classmethod
+    def resources_sql(cls) -> str:
+        return """
+            SELECT collection_name AS parent, document_id AS child
+            FROM documents
+        """
+
+This tells Datasette "here's how to find all documents in the system - look in the documents table and get the collection name and document ID for each one."
+
+The permission system then uses this query along with rules from plugins to determine which documents each user can access, all efficiently in SQL rather than loading everything into Python.
 
 .. _plugin_asgi_wrapper:
 

@@ -52,6 +52,7 @@ from .views.special import (
     AllowedResourcesView,
     PermissionRulesView,
     PermissionCheckView,
+    TablesView,
 )
 from .views.table import (
     TableInsertView,
@@ -308,6 +309,7 @@ class Datasette:
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
         self.permissions = {}  # .invoke_startup() will populate this
+        self.actions = {}  # .invoke_startup() will populate this
         try:
             self._refresh_schemas_lock = asyncio.Lock()
         except RuntimeError as rex:
@@ -589,6 +591,33 @@ class Datasette:
                     if p.abbr:
                         abbrs[p.abbr] = p
                     self.permissions[p.name] = p
+
+        # Register actions, but watch out for duplicate name/abbr
+        action_names = {}
+        action_abbrs = {}
+        for hook in pm.hook.register_actions(datasette=self):
+            if hook:
+                for action in hook:
+                    if (
+                        action.name in action_names
+                        and action != action_names[action.name]
+                    ):
+                        raise StartupError(
+                            "Duplicate action name: {}".format(action.name)
+                        )
+                    if (
+                        action.abbr
+                        and action.abbr in action_abbrs
+                        and action != action_abbrs[action.abbr]
+                    ):
+                        raise StartupError(
+                            "Duplicate action abbr: {}".format(action.abbr)
+                        )
+                    action_names[action.name] = action
+                    if action.abbr:
+                        action_abbrs[action.abbr] = action
+                    self.actions[action.name] = action
+
         for hook in pm.hook.prepare_jinja2_environment(
             env=self._jinja_env, datasette=self
         ):
@@ -1242,6 +1271,107 @@ class Datasette:
         # It's visible to everyone
         return True, False
 
+    async def allowed_resources(
+        self,
+        action: str,
+        actor: dict | None = None,
+    ) -> list["Resource"]:
+        """
+        Return all resources the actor can access for the given action.
+
+        Uses SQL to filter resources based on cascading permission rules.
+        Returns instances of the appropriate Resource subclass.
+
+        Example:
+            tables = await datasette.allowed_resources("view-table", actor)
+            for table in tables:
+                print(f"{table.parent}/{table.child}")
+        """
+        from datasette.utils.actions_sql import build_allowed_resources_sql
+        from datasette.permissions import Resource
+
+        action_obj = self.actions.get(action)
+        if not action_obj:
+            raise ValueError(f"Unknown action: {action}")
+
+        query, params = await build_allowed_resources_sql(self, actor, action)
+        result = await self.get_internal_database().execute(query, params)
+
+        # Instantiate the appropriate Resource subclass for each row
+        resource_class = action_obj.resource_class
+        resources = []
+        for row in result.rows:
+            # row[0]=parent, row[1]=child, row[2]=reason (ignored)
+            # Create instance directly with parent/child from base class
+            resource = object.__new__(resource_class)
+            Resource.__init__(resource, parent=row[0], child=row[1])
+            resources.append(resource)
+
+        return resources
+
+    async def allowed_resources_with_reasons(
+        self,
+        action: str,
+        actor: dict | None = None,
+    ) -> list["AllowedResource"]:
+        """
+        Return allowed resources with permission reasons for debugging.
+
+        Uses SQL to filter resources and includes the reason each was allowed.
+        Returns list of AllowedResource named tuples with (resource, reason).
+
+        Example:
+            debug_info = await datasette.allowed_resources_with_reasons("view-table", actor)
+            for allowed in debug_info:
+                print(f"{allowed.resource}: {allowed.reason}")
+        """
+        from datasette.utils.actions_sql import build_allowed_resources_sql
+        from datasette.permissions import AllowedResource, Resource
+
+        action_obj = self.actions.get(action)
+        if not action_obj:
+            raise ValueError(f"Unknown action: {action}")
+
+        query, params = await build_allowed_resources_sql(self, actor, action)
+        result = await self.get_internal_database().execute(query, params)
+
+        resource_class = action_obj.resource_class
+        resources = []
+        for row in result.rows:
+            # Create instance directly with parent/child from base class
+            resource = object.__new__(resource_class)
+            Resource.__init__(resource, parent=row[0], child=row[1])
+            reason = row[2]
+            resources.append(AllowedResource(resource=resource, reason=reason))
+
+        return resources
+
+    async def allowed(
+        self,
+        action: str,
+        resource: "Resource",
+        actor: dict | None = None,
+    ) -> bool:
+        """
+        Check if actor can perform action on specific resource.
+
+        Uses SQL to check permission for a single resource without fetching all resources.
+        This is efficient - it does NOT call allowed_resources() and check membership.
+
+        Example:
+            from datasette.default_actions import TableResource
+            can_view = await datasette.allowed(
+                "view-table",
+                TableResource(database="analytics", table="users"),
+                actor
+            )
+        """
+        from datasette.utils.actions_sql import check_permission_for_resource
+
+        return await check_permission_for_resource(
+            self, actor, action, resource.parent, resource.child
+        )
+
     async def execute(
         self,
         db_name,
@@ -1725,6 +1855,10 @@ class Datasette:
         add_route(
             ApiExplorerView.as_view(self),
             r"/-/api$",
+        )
+        add_route(
+            TablesView.as_view(self),
+            r"/-/tables$",
         )
         add_route(
             LogoutView.as_view(self),

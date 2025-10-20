@@ -923,3 +923,48 @@ class ApiExplorerView(BaseView):
                 "private": private,
             },
         )
+
+
+class TablesView(BaseView):
+    """
+    Simple endpoint that uses the new allowed_resources() API.
+    Returns JSON list of all tables the actor can view.
+
+    Supports ?q=foo+bar to filter tables matching .*foo.*bar.* pattern,
+    ordered by shortest name first.
+    """
+
+    name = "tables"
+    has_json_alternate = False
+
+    async def get(self, request):
+        # Use the new allowed_resources() method
+        tables = await self.ds.allowed_resources("view-table", request.actor)
+
+        # Convert to list of matches with name and url
+        matches = [
+            {
+                "name": f"{table.parent}/{table.child}",
+                "url": self.ds.urls.table(table.parent, table.child),
+            }
+            for table in tables
+        ]
+
+        # Apply search filter if q parameter is present
+        q = request.args.get("q", "").strip()
+        if q:
+            import re
+
+            # Split search terms by whitespace
+            terms = q.split()
+            # Build regex pattern: .*term1.*term2.*term3.*
+            pattern = ".*" + ".*".join(re.escape(term) for term in terms) + ".*"
+            regex = re.compile(pattern, re.IGNORECASE)
+
+            # Filter tables matching the pattern (extract table name from "db/table")
+            matches = [m for m in matches if regex.match(m["name"].split("/", 1)[1])]
+
+            # Sort by shortest table name first
+            matches.sort(key=lambda m: len(m["name"].split("/", 1)[1]))
+
+        return Response.json({"matches": matches})

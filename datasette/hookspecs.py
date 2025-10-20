@@ -75,6 +75,11 @@ def register_permissions(datasette):
 
 
 @hookspec
+def register_actions(datasette):
+    """Register actions: returns a list of datasette.permission.Action objects"""
+
+
+@hookspec
 def register_routes(datasette):
     """Register URL routes: return a list of (regex, view_function) pairs"""
 

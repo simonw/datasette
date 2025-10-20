@@ -289,6 +289,13 @@ async def _config_permission_rules(datasette, actor, action) -> list[PluginSQL]:
             db_allow_sql = db_config.get("allow_sql")
             add_row(db_name, None, evaluate(db_allow_sql), f"allow_sql for {db_name}")
 
+        if action == "view-table":
+            # Database-level allow block affects all tables in that database
+            db_allow = db_config.get("allow")
+            add_row(
+                db_name, None, evaluate(db_allow), f"allow for {action} on {db_name}"
+            )
+
     if action == "view-instance":
         allow_block = config.get("allow")
         add_row(None, None, evaluate(allow_block), "allow for view-instance")
@@ -325,7 +332,6 @@ async def _config_permission_rules(datasette, actor, action) -> list[PluginSQL]:
         params[f"{key}_reason"] = reason
 
     sql = "\nUNION ALL\n".join(parts)
-    print(sql, params)
     return [PluginSQL(source="config_permissions", sql=sql, params=params)]
 
 

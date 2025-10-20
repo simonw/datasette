@@ -144,6 +144,47 @@ Shows currently attached databases. `Databases example <https://latest.datasette
         }
     ]
 
+.. _TablesView:
+
+/-/tables
+---------
+
+Returns a JSON list of all tables that the current actor has permission to view. This endpoint uses the resource-based permission system and respects database and table-level access controls.
+
+The endpoint supports a ``?q=`` query parameter for filtering tables by name using case-insensitive regex matching.
+
+`Tables example <https://latest.datasette.io/-/tables>`_:
+
+.. code-block:: json
+
+    {
+        "matches": [
+            {
+                "name": "fixtures/facetable",
+                "url": "/fixtures/facetable"
+            },
+            {
+                "name": "fixtures/searchable",
+                "url": "/fixtures/searchable"
+            }
+        ]
+    }
+
+Search example with ``?q=facet`` returns only tables matching ``.*facet.*``:
+
+.. code-block:: json
+
+    {
+        "matches": [
+            {
+                "name": "fixtures/facetable",
+                "url": "/fixtures/facetable"
+            }
+        ]
+    }
+
+When multiple search terms are provided (e.g., ``?q=user+profile``), tables must match the pattern ``.*user.*profile.*``. Results are ordered by shortest table name first.
+
 .. _JsonDataView_threads:
 
 /-/threads

@@ -1,17 +1,17 @@
 class NavigationSearch extends HTMLElement {
-    constructor() {
-        super();
-        this.attachShadow({ mode: 'open' });
-        this.selectedIndex = -1;
-        this.matches = [];
-        this.debounceTimer = null;
-        
-        this.render();
-        this.setupEventListeners();
-    }
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this.selectedIndex = -1;
+    this.matches = [];
+    this.debounceTimer = null;
 
-    render() {
-        this.shadowRoot.innerHTML = `
+    this.render();
+    this.setupEventListeners();
+  }
+
+  render() {
+    this.shadowRoot.innerHTML = `
             <style>
                 :host {
                     display: contents;
@@ -183,143 +183,150 @@ class NavigationSearch extends HTMLElement {
                 </div>
             </dialog>
         `;
+  }
+
+  setupEventListeners() {
+    const dialog = this.shadowRoot.querySelector("dialog");
+    const input = this.shadowRoot.querySelector(".search-input");
+    const resultsContainer =
+      this.shadowRoot.querySelector(".results-container");
+
+    // Global keyboard listener for "/"
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "/" && !this.isInputFocused() && !dialog.open) {
+        e.preventDefault();
+        this.openMenu();
+      }
+    });
+
+    // Input event
+    input.addEventListener("input", (e) => {
+      this.handleSearch(e.target.value);
+    });
+
+    // Keyboard navigation
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        this.moveSelection(1);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        this.moveSelection(-1);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        this.selectCurrentItem();
+      } else if (e.key === "Escape") {
+        this.closeMenu();
+      }
+    });
+
+    // Click on result item
+    resultsContainer.addEventListener("click", (e) => {
+      const item = e.target.closest(".result-item");
+      if (item) {
+        const index = parseInt(item.dataset.index);
+        this.selectItem(index);
+      }
+    });
+
+    // Close on backdrop click
+    dialog.addEventListener("click", (e) => {
+      if (e.target === dialog) {
+        this.closeMenu();
+      }
+    });
+
+    // Initial load
+    this.loadInitialData();
+  }
+
+  isInputFocused() {
+    const activeElement = document.activeElement;
+    return (
+      activeElement &&
+      (activeElement.tagName === "INPUT" ||
+        activeElement.tagName === "TEXTAREA" ||
+        activeElement.isContentEditable)
+    );
+  }
+
+  loadInitialData() {
+    const itemsAttr = this.getAttribute("items");
+    if (itemsAttr) {
+      try {
+        this.allItems = JSON.parse(itemsAttr);
+        this.matches = this.allItems;
+      } catch (e) {
+        console.error("Failed to parse items attribute:", e);
+        this.allItems = [];
+        this.matches = [];
+      }
+    }
+  }
+
+  handleSearch(query) {
+    clearTimeout(this.debounceTimer);
+
+    this.debounceTimer = setTimeout(() => {
+      const url = this.getAttribute("url");
+
+      if (url) {
+        // Fetch from API
+        this.fetchResults(url, query);
+      } else {
+        // Filter local items
+        this.filterLocalItems(query);
+      }
+    }, 200);
+  }
+
+  async fetchResults(url, query) {
+    try {
+      const searchUrl = `${url}?q=${encodeURIComponent(query)}`;
+      const response = await fetch(searchUrl);
+      const data = await response.json();
+      this.matches = data.matches || [];
+      this.selectedIndex = this.matches.length > 0 ? 0 : -1;
+      this.renderResults();
+    } catch (e) {
+      console.error("Failed to fetch search results:", e);
+      this.matches = [];
+      this.renderResults();
+    }
+  }
+
+  filterLocalItems(query) {
+    if (!query.trim()) {
+      this.matches = [];
+    } else {
+      const lowerQuery = query.toLowerCase();
+      this.matches = (this.allItems || []).filter(
+        (item) =>
+          item.name.toLowerCase().includes(lowerQuery) ||
+          item.url.toLowerCase().includes(lowerQuery),
+      );
+    }
+    this.selectedIndex = this.matches.length > 0 ? 0 : -1;
+    this.renderResults();
+  }
+
+  renderResults() {
+    const container = this.shadowRoot.querySelector(".results-container");
+    const input = this.shadowRoot.querySelector(".search-input");
+
+    if (this.matches.length === 0) {
+      const message = input.value.trim()
+        ? "No results found"
+        : "Start typing to search...";
+      container.innerHTML = `<div class="no-results">${message}</div>`;
+      return;
     }
 
-    setupEventListeners() {
-        const dialog = this.shadowRoot.querySelector('dialog');
-        const input = this.shadowRoot.querySelector('.search-input');
-        const resultsContainer = this.shadowRoot.querySelector('.results-container');
-
-        // Global keyboard listener for "/"
-        document.addEventListener('keydown', (e) => {
-            if (e.key === '/' && !this.isInputFocused() && !dialog.open) {
-                e.preventDefault();
-                this.openMenu();
-            }
-        });
-
-        // Input event
-        input.addEventListener('input', (e) => {
-            this.handleSearch(e.target.value);
-        });
-
-        // Keyboard navigation
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                this.moveSelection(1);
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                this.moveSelection(-1);
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                this.selectCurrentItem();
-            } else if (e.key === 'Escape') {
-                this.closeMenu();
-            }
-        });
-
-        // Click on result item
-        resultsContainer.addEventListener('click', (e) => {
-            const item = e.target.closest('.result-item');
-            if (item) {
-                const index = parseInt(item.dataset.index);
-                this.selectItem(index);
-            }
-        });
-
-        // Close on backdrop click
-        dialog.addEventListener('click', (e) => {
-            if (e.target === dialog) {
-                this.closeMenu();
-            }
-        });
-
-        // Initial load
-        this.loadInitialData();
-    }
-
-    isInputFocused() {
-        const activeElement = document.activeElement;
-        return activeElement && (
-            activeElement.tagName === 'INPUT' ||
-            activeElement.tagName === 'TEXTAREA' ||
-            activeElement.isContentEditable
-        );
-    }
-
-    loadInitialData() {
-        const itemsAttr = this.getAttribute('items');
-        if (itemsAttr) {
-            try {
-                this.allItems = JSON.parse(itemsAttr);
-                this.matches = this.allItems;
-            } catch (e) {
-                console.error('Failed to parse items attribute:', e);
-                this.allItems = [];
-                this.matches = [];
-            }
-        }
-    }
-
-    handleSearch(query) {
-        clearTimeout(this.debounceTimer);
-        
-        this.debounceTimer = setTimeout(() => {
-            const url = this.getAttribute('url');
-            
-            if (url) {
-                // Fetch from API
-                this.fetchResults(url, query);
-            } else {
-                // Filter local items
-                this.filterLocalItems(query);
-            }
-        }, 200);
-    }
-
-    async fetchResults(url, query) {
-        try {
-            const searchUrl = `${url}?q=${encodeURIComponent(query)}`;
-            const response = await fetch(searchUrl);
-            const data = await response.json();
-            this.matches = data.matches || [];
-            this.selectedIndex = this.matches.length > 0 ? 0 : -1;
-            this.renderResults();
-        } catch (e) {
-            console.error('Failed to fetch search results:', e);
-            this.matches = [];
-            this.renderResults();
-        }
-    }
-
-    filterLocalItems(query) {
-        if (!query.trim()) {
-            this.matches = [];
-        } else {
-            const lowerQuery = query.toLowerCase();
-            this.matches = (this.allItems || []).filter(item =>
-                item.name.toLowerCase().includes(lowerQuery) ||
-                item.url.toLowerCase().includes(lowerQuery)
-            );
-        }
-        this.selectedIndex = this.matches.length > 0 ? 0 : -1;
-        this.renderResults();
-    }
-
-    renderResults() {
-        const container = this.shadowRoot.querySelector('.results-container');
-        const input = this.shadowRoot.querySelector('.search-input');
-        
-        if (this.matches.length === 0) {
-            const message = input.value.trim() ? 'No results found' : 'Start typing to search...';
-            container.innerHTML = `<div class="no-results">${message}</div>`;
-            return;
-        }
-
-        container.innerHTML = this.matches.map((match, index) => `
+    container.innerHTML = this.matches
+      .map(
+        (match, index) => `
             <div 
-                class="result-item ${index === this.selectedIndex ? 'selected' : ''}" 
+                class="result-item ${index === this.selectedIndex ? "selected" : ""}" 
                 data-index="${index}"
                 role="option"
                 aria-selected="${index === this.selectedIndex}"
@@ -329,73 +336,77 @@ class NavigationSearch extends HTMLElement {
                     <div class="result-url">${this.escapeHtml(match.url)}</div>
                 </div>
             </div>
-        `).join('');
+        `,
+      )
+      .join("");
 
-        // Scroll selected item into view
-        if (this.selectedIndex >= 0) {
-            const selectedItem = container.children[this.selectedIndex];
-            if (selectedItem) {
-                selectedItem.scrollIntoView({ block: 'nearest' });
-            }
-        }
+    // Scroll selected item into view
+    if (this.selectedIndex >= 0) {
+      const selectedItem = container.children[this.selectedIndex];
+      if (selectedItem) {
+        selectedItem.scrollIntoView({ block: "nearest" });
+      }
     }
+  }
 
-    moveSelection(direction) {
-        const newIndex = this.selectedIndex + direction;
-        if (newIndex >= 0 && newIndex < this.matches.length) {
-            this.selectedIndex = newIndex;
-            this.renderResults();
-        }
+  moveSelection(direction) {
+    const newIndex = this.selectedIndex + direction;
+    if (newIndex >= 0 && newIndex < this.matches.length) {
+      this.selectedIndex = newIndex;
+      this.renderResults();
     }
+  }
 
-    selectCurrentItem() {
-        if (this.selectedIndex >= 0 && this.selectedIndex < this.matches.length) {
-            this.selectItem(this.selectedIndex);
-        }
+  selectCurrentItem() {
+    if (this.selectedIndex >= 0 && this.selectedIndex < this.matches.length) {
+      this.selectItem(this.selectedIndex);
     }
+  }
 
-    selectItem(index) {
-        const match = this.matches[index];
-        if (match) {
-            // Dispatch custom event
-            this.dispatchEvent(new CustomEvent('select', {
-                detail: match,
-                bubbles: true,
-                composed: true
-            }));
-            
-            // Navigate to URL
-            window.location.href = match.url;
-            
-            this.closeMenu();
-        }
-    }
+  selectItem(index) {
+    const match = this.matches[index];
+    if (match) {
+      // Dispatch custom event
+      this.dispatchEvent(
+        new CustomEvent("select", {
+          detail: match,
+          bubbles: true,
+          composed: true,
+        }),
+      );
 
-    openMenu() {
-        const dialog = this.shadowRoot.querySelector('dialog');
-        const input = this.shadowRoot.querySelector('.search-input');
-        
-        dialog.showModal();
-        input.value = '';
-        input.focus();
-        
-        // Reset state - start with no items shown
-        this.matches = [];
-        this.selectedIndex = -1;
-        this.renderResults();
-    }
+      // Navigate to URL
+      window.location.href = match.url;
 
-    closeMenu() {
-        const dialog = this.shadowRoot.querySelector('dialog');
-        dialog.close();
+      this.closeMenu();
     }
+  }
 
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
+  openMenu() {
+    const dialog = this.shadowRoot.querySelector("dialog");
+    const input = this.shadowRoot.querySelector(".search-input");
+
+    dialog.showModal();
+    input.value = "";
+    input.focus();
+
+    // Reset state - start with no items shown
+    this.matches = [];
+    this.selectedIndex = -1;
+    this.renderResults();
+  }
+
+  closeMenu() {
+    const dialog = this.shadowRoot.querySelector("dialog");
+    dialog.close();
+  }
+
+  escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
 }
 
 // Register the custom element
-customElements.define('navigation-search', NavigationSearch);
+customElements.define("navigation-search", NavigationSearch);

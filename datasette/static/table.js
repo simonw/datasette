@@ -132,7 +132,7 @@ const initDatasetteTable = function (manager) {
     /* Only show "Facet by this" if it's not the first column, not selected,
        not a single PK and the Datasette allow_facet setting is True */
     var displayedFacets = Array.from(
-      document.querySelectorAll(".facet-info")
+      document.querySelectorAll(".facet-info"),
     ).map((el) => el.dataset.column);
     var isFirstColumn =
       th.parentElement.querySelector("th:first-of-type") == th;
@@ -152,7 +152,7 @@ const initDatasetteTable = function (manager) {
     }
     /* Show notBlank option if not selected AND at least one visible blank value */
     var tdsForThisColumn = Array.from(
-      th.closest("table").querySelectorAll("td." + th.className)
+      th.closest("table").querySelectorAll("td." + th.className),
     );
     if (
       params.get(`${column}__notblank`) != "1" &&
@@ -191,29 +191,31 @@ const initDatasetteTable = function (manager) {
     // Plugin hook: allow adding JS-based additional menu items
     const columnActionsPayload = {
       columnName: th.dataset.column,
-      columnNotNull: th.dataset.columnNotNull === '1',
+      columnNotNull: th.dataset.columnNotNull === "1",
       columnType: th.dataset.columnType,
-      isPk: th.dataset.isPk === '1'
+      isPk: th.dataset.isPk === "1",
     };
     const columnItemConfigs = manager.makeColumnActions(columnActionsPayload);
 
-    const menuList = menu.querySelector('ul');
-    columnItemConfigs.forEach(itemConfig => {
+    const menuList = menu.querySelector("ul");
+    columnItemConfigs.forEach((itemConfig) => {
       // Remove items from previous render. We assume entries have unique labels.
       const existingItems = menuList.querySelectorAll(`li`);
-      Array.from(existingItems).filter(item => item.innerText === itemConfig.label).forEach(node => {
-        node.remove();
-      });
+      Array.from(existingItems)
+        .filter((item) => item.innerText === itemConfig.label)
+        .forEach((node) => {
+          node.remove();
+        });
 
-      const newLink = document.createElement('a');
+      const newLink = document.createElement("a");
       newLink.textContent = itemConfig.label;
-      newLink.href = itemConfig.href ?? '#';
+      newLink.href = itemConfig.href ?? "#";
       if (itemConfig.onClick) {
         newLink.onclick = itemConfig.onClick;
       }
 
       // Attach new elements to DOM
-      const menuItem = document.createElement('li');
+      const menuItem = document.createElement("li");
       menuItem.appendChild(newLink);
       menuList.appendChild(menuItem);
     });
@@ -225,17 +227,17 @@ const initDatasetteTable = function (manager) {
       menu.style.left = windowWidth - menuWidth - 20 + "px";
     }
     // Align menu .hook arrow with the column cog icon
-    const hook = menu.querySelector('.hook');
-    const icon = th.querySelector('.dropdown-menu-icon');
+    const hook = menu.querySelector(".hook");
+    const icon = th.querySelector(".dropdown-menu-icon");
     const iconRect = icon.getBoundingClientRect();
-    const hookLeft = (iconRect.left - menuLeft + 1) + 'px';
+    const hookLeft = iconRect.left - menuLeft + 1 + "px";
     hook.style.left = hookLeft;
     // Move the whole menu right if the hook is too far right
     const menuRect = menu.getBoundingClientRect();
     if (iconRect.right > menuRect.right) {
-      menu.style.left = (iconRect.right - menuWidth) + 'px';
+      menu.style.left = iconRect.right - menuWidth + "px";
       // And move hook tip as well
-      hook.style.left = (menuWidth - 13) + 'px';
+      hook.style.left = menuWidth - 13 + "px";
     }
   }
 
@@ -250,7 +252,9 @@ const initDatasetteTable = function (manager) {
   menu.style.display = "none";
   document.body.appendChild(menu);
 
-  var ths = Array.from(document.querySelectorAll(manager.selectors.tableHeaders));
+  var ths = Array.from(
+    document.querySelectorAll(manager.selectors.tableHeaders),
+  );
   ths.forEach((th) => {
     if (!th.querySelector("a")) {
       return;
@@ -264,9 +268,9 @@ const initDatasetteTable = function (manager) {
 /* Add x buttons to the filter rows */
 function addButtonsToFilterRows(manager) {
   var x = "✖";
-  var rows = Array.from(document.querySelectorAll(manager.selectors.filterRow)).filter((el) =>
-    el.querySelector(".filter-op")
-  );
+  var rows = Array.from(
+    document.querySelectorAll(manager.selectors.filterRow),
+  ).filter((el) => el.querySelector(".filter-op"));
   rows.forEach((row) => {
     var a = document.createElement("a");
     a.setAttribute("href", "#");
@@ -287,18 +291,18 @@ function addButtonsToFilterRows(manager) {
       a.style.display = "none";
     }
   });
-};
+}
 
 /* Set up datalist autocomplete for filter values */
 function initAutocompleteForFilterValues(manager) {
   function createDataLists() {
     var facetResults = document.querySelectorAll(
-      manager.selectors.facetResults
+      manager.selectors.facetResults,
     );
     Array.from(facetResults).forEach(function (facetResult) {
       // Use link text from all links in the facet result
       var links = Array.from(
-        facetResult.querySelectorAll("li:not(.facet-truncated) a")
+        facetResult.querySelectorAll("li:not(.facet-truncated) a"),
       );
       // Create a datalist element
       var datalist = document.createElement("datalist");
@@ -324,7 +328,7 @@ function initAutocompleteForFilterValues(manager) {
         .setAttribute("list", "datalist-" + event.target.value);
     }
   });
-};
+}
 
 // Ensures Table UI is initialized only after the Manager is ready.
 document.addEventListener("datasette_init", function (evt) {

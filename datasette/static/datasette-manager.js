@@ -93,12 +93,12 @@ const datasetteManager = {
    */
   renderAboveTablePanel: () => {
     const aboveTablePanel = document.querySelector(
-      DOM_SELECTORS.aboveTablePanel
+      DOM_SELECTORS.aboveTablePanel,
     );
 
     if (!aboveTablePanel) {
       console.warn(
-        "This page does not have a table, the renderAboveTablePanel cannot be used."
+        "This page does not have a table, the renderAboveTablePanel cannot be used.",
       );
       return;
     }

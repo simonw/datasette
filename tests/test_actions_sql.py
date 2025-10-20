@@ -13,7 +13,7 @@ import pytest_asyncio
 from datasette.app import Datasette
 from datasette.plugins import pm
 from datasette.utils.permissions import PluginSQL
-from datasette.default_actions import TableResource
+from datasette.resources import TableResource
 from datasette import hookimpl
 
 

@@ -1359,7 +1359,7 @@ class Datasette:
         This is efficient - it does NOT call allowed_resources() and check membership.
 
         Example:
-            from datasette.default_actions import TableResource
+            from datasette.resources import TableResource
             can_view = await datasette.allowed(
                 "view-table",
                 TableResource(database="analytics", table="users"),

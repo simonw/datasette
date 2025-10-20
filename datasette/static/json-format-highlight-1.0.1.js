@@ -7,8 +7,8 @@ MIT Licensed
   typeof exports === "object" && typeof module !== "undefined"
     ? (module.exports = factory())
     : typeof define === "function" && define.amd
-    ? define(factory)
-    : (global.jsonFormatHighlight = factory());
+      ? define(factory)
+      : (global.jsonFormatHighlight = factory());
 })(this, function () {
   "use strict";
 
@@ -42,13 +42,13 @@ MIT Licensed
           color = /true/.test(match)
             ? colors.trueColor
             : /false/.test(match)
-            ? colors.falseColor
-            : /null/.test(match)
-            ? colors.nullColor
-            : color;
+              ? colors.falseColor
+              : /null/.test(match)
+                ? colors.nullColor
+                : color;
         }
         return '<span style="color: ' + color + '">' + match + "</span>";
-      }
+      },
     );
   }
 

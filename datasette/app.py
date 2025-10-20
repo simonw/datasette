@@ -1271,6 +1271,29 @@ class Datasette:
         # It's visible to everyone
         return True, False
 
+    async def allowed_resources_sql(
+        self,
+        action: str,
+        actor: dict | None = None,
+    ) -> tuple[str, dict]:
+        """
+        Build SQL query to get all resources the actor can access for the given action.
+
+        Returns a tuple of (query, params) that can be executed against the internal database.
+        The query returns rows with (parent, child, reason) columns.
+
+        Example:
+            query, params = await datasette.allowed_resources_sql("view-table", actor)
+            result = await datasette.get_internal_database().execute(query, params)
+        """
+        from datasette.utils.actions_sql import build_allowed_resources_sql
+
+        action_obj = self.actions.get(action)
+        if not action_obj:
+            raise ValueError(f"Unknown action: {action}")
+
+        return await build_allowed_resources_sql(self, actor, action)
+
     async def allowed_resources(
         self,
         action: str,
@@ -1287,14 +1310,13 @@ class Datasette:
             for table in tables:
                 print(f"{table.parent}/{table.child}")
         """
-        from datasette.utils.actions_sql import build_allowed_resources_sql
         from datasette.permissions import Resource
 
         action_obj = self.actions.get(action)
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
 
-        query, params = await build_allowed_resources_sql(self, actor, action)
+        query, params = await self.allowed_resources_sql(action, actor)
         result = await self.get_internal_database().execute(query, params)
 
         # Instantiate the appropriate Resource subclass for each row
@@ -1325,14 +1347,13 @@ class Datasette:
             for allowed in debug_info:
                 print(f"{allowed.resource}: {allowed.reason}")
         """
-        from datasette.utils.actions_sql import build_allowed_resources_sql
         from datasette.permissions import AllowedResource, Resource
 
         action_obj = self.actions.get(action)
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
 
-        query, params = await build_allowed_resources_sql(self, actor, action)
+        query, params = await self.allowed_resources_sql(action, actor)
         result = await self.get_internal_database().execute(query, params)
 
         resource_class = action_obj.resource_class

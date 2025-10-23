@@ -198,3 +198,37 @@ Shows the currently authenticated actor. Useful for debugging Datasette authenti
 -----------
 
 The debug tool at ``/-/messages`` can be used to set flash messages to try out that feature. See :ref:`datasette_add_message` for details of this feature.
+
+.. _TablesSearchView:
+
+/-/tables.json
+--------------
+
+The ``/-/tables.json`` endpoint provides a JSON API for searching tables that the current user has permission to access.
+
+Pass a ``?q=`` query parameter with your search term to find matching tables. The search matches against table names using a case-insensitive substring match.
+
+This endpoint returns JSON only and respects the current user's permissions - only tables they are allowed to view will be included in the results.
+
+Example request:
+
+``/-/tables.json?q=users``
+
+Example response:
+
+.. code-block:: json
+
+    {
+        "matches": [
+            {
+                "url": "/mydb/users",
+                "name": "mydb: users"
+            },
+            {
+                "url": "/otherdb/users_archive",
+                "name": "otherdb: users_archive"
+            }
+        ]
+    }
+
+If no search query is provided, the endpoint returns an empty matches array.

@@ -776,6 +776,43 @@ class CreateTokenView(BaseView):
         return await self.render(["create_token.html"], request, context)
 
 
+class TablesSearchView(BaseView):
+    name = "tables_search"
+    has_json_alternate = False
+
+    async def get(self, request):
+        # Get the search query parameter
+        query = request.args.get("q", "").strip()
+
+        if not query:
+            return Response.json({"matches": []})
+
+        # Use the new get_allowed_tables() method with search
+        extra_sql = "table_name LIKE :search"
+        extra_params = {"search": f"%{query}%"}
+
+        allowed_tables = await self.ds.get_allowed_tables(
+            actor=request.actor, extra_sql=extra_sql, extra_params=extra_params
+        )
+
+        # Format the response
+        matches = []
+        for item in allowed_tables:
+            database = item["database"]
+            table = item["table"]
+            matches.append(
+                {
+                    "url": self.ds.urls.table(database, table),
+                    "name": f"{database}: {table}",
+                }
+            )
+
+        response = Response.json({"matches": matches})
+        if self.ds.cors:
+            add_cors_headers(response.headers)
+        return response
+
+
 class ApiExplorerView(BaseView):
     name = "api_explorer"
     has_json_alternate = False

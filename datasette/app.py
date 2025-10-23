@@ -52,6 +52,7 @@ from .views.special import (
     AllowedResourcesView,
     PermissionRulesView,
     PermissionCheckView,
+    TablesSearchView,
 )
 from .views.table import (
     TableInsertView,
@@ -1069,8 +1070,161 @@ class Datasette:
         )
         return sql, params
 
-    async def permission_allowed_2(
-        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
+    async def get_allowed_tables(
+        self,
+        actor,
+        database: Optional[str] = None,
+        extra_sql: str = "",
+        extra_params: Optional[dict] = None,
+    ):
+        """
+        Get list of tables the actor is allowed to view.
+
+        Args:
+            actor: The actor dict (or None for anonymous)
+            database: Optional database name to filter by
+            extra_sql: Optional extra SQL to add to the WHERE clause
+            extra_params: Optional parameters for the extra SQL
+
+        Returns:
+            List of dicts with keys: database, table, resource
+        """
+        from datasette.utils.permissions import resolve_permissions_from_catalog
+
+        await self.refresh_schemas()
+        internal_db = self.get_internal_database()
+
+        # Build the candidate SQL query
+        where_clauses = []
+        params = extra_params.copy() if extra_params else {}
+
+        if database:
+            where_clauses.append("database_name = :database")
+            params["database"] = database
+
+        if extra_sql:
+            where_clauses.append(f"({extra_sql})")
+
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+        candidate_sql = f"""
+            SELECT database_name AS parent, table_name AS child
+            FROM catalog_tables
+            WHERE {where_sql}
+        """
+
+        # Collect plugin SQL blocks for view-table permission
+        table_plugins = []
+        for block in pm.hook.permission_resources_sql(
+            datasette=self,
+            actor=actor,
+            action="view-table",
+        ):
+            block = await await_me_maybe(block)
+            if block is None:
+                continue
+            if isinstance(block, (list, tuple)):
+                candidates = block
+            else:
+                candidates = [block]
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                if not isinstance(candidate, PluginSQL):
+                    continue
+                table_plugins.append(candidate)
+
+        # Collect plugin SQL blocks for view-database permission
+        db_plugins = []
+        for block in pm.hook.permission_resources_sql(
+            datasette=self,
+            actor=actor,
+            action="view-database",
+        ):
+            block = await await_me_maybe(block)
+            if block is None:
+                continue
+            if isinstance(block, (list, tuple)):
+                candidates = block
+            else:
+                candidates = [block]
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                if not isinstance(candidate, PluginSQL):
+                    continue
+                db_plugins.append(candidate)
+
+        # Get actor_id for resolve_permissions_from_catalog
+        if isinstance(actor, dict):
+            actor_id = actor.get("id")
+        elif actor:
+            actor_id = actor
+        else:
+            actor_id = None
+
+        actor_str = str(actor_id) if actor_id is not None else ""
+
+        # Resolve permissions for all matching tables
+        table_permission_results = await resolve_permissions_from_catalog(
+            internal_db,
+            actor=actor_str,
+            plugins=table_plugins,
+            action="view-table",
+            candidate_sql=candidate_sql,
+            candidate_params=params,
+            implicit_deny=True,
+        )
+
+        # Get unique database names from table results
+        database_names = list(
+            set(r["parent"] for r in table_permission_results if r["allow"] == 1)
+        )
+
+        # Check view-database permissions for those databases
+        if database_names:
+            # Build placeholders and params dict for database check
+            placeholders = ",".join(f":db{i}" for i in range(len(database_names)))
+            db_params = {f"db{i}": db_name for i, db_name in enumerate(database_names)}
+
+            db_candidate_sql = f"""
+                SELECT database_name AS parent, NULL AS child
+                FROM catalog_databases
+                WHERE database_name IN ({placeholders})
+            """
+            db_permission_results = await resolve_permissions_from_catalog(
+                internal_db,
+                actor=actor_str,
+                plugins=db_plugins,
+                action="view-database",
+                candidate_sql=db_candidate_sql,
+                candidate_params=db_params,
+                implicit_deny=True,
+            )
+
+            # Create set of allowed databases
+            allowed_databases = {
+                r["parent"] for r in db_permission_results if r["allow"] == 1
+            }
+        else:
+            allowed_databases = set()
+
+        # Filter to only tables in allowed databases
+        allowed = []
+        for result in table_permission_results:
+            if result["allow"] == 1 and result["parent"] in allowed_databases:
+                allowed.append(
+                    {
+                        "database": result["parent"],
+                        "table": result["child"],
+                        "resource": result["resource"],
+                    }
+                )
+
+        return allowed
+
+    async def allowed(
+        self, *, actor, action, resource=None, default=DEFAULT_NOT_SET
     ):
         """Permission check backed by permission_resources_sql rules."""
 
@@ -1177,6 +1331,14 @@ class Datasette:
         )
 
         return result
+
+    async def permission_allowed_2(
+        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
+    ):
+        """Legacy method that delegates to allowed()."""
+        return await self.allowed(
+            actor=actor, action=action, resource=resource, default=default
+        )
 
     async def ensure_permissions(
         self,
@@ -1753,6 +1915,10 @@ class Datasette:
         add_route(
             AllowDebugView.as_view(self),
             r"/-/allow-debug$",
+        )
+        add_route(
+            TablesSearchView.as_view(self),
+            r"/-/tables(\.(?P<format>json))?$",
         )
         add_route(
             wrap_view(PatternPortfolioView, self),

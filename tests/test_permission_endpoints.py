@@ -30,6 +30,7 @@ async def ds_with_permissions():
             }
         }
     )
+    ds.root_enabled = True
     await ds.invoke_startup()
     # Add some test databases
     ds.add_memory_database("content")

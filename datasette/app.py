@@ -1066,12 +1066,13 @@ class Datasette:
         )
         return result
 
-    async def allowed_resources_sql(
+    async def _build_permission_rules_sql(
         self, actor: dict | None, action: str
     ) -> tuple[str, dict]:
         """Combine permission_resources_sql PermissionSQL blocks into a UNION query.
 
         Returns a (sql, params) tuple suitable for execution against SQLite.
+        Internal helper for permission_allowed_2.
         """
         plugin_blocks: List[PermissionSQL] = []
         for block in pm.hook.permission_resources_sql(
@@ -1093,9 +1094,8 @@ class Datasette:
                     continue
                 plugin_blocks.append(candidate)
 
-        actor_id = actor.get("id") if actor else None
         sql, params = build_rules_union(
-            actor=str(actor_id) if actor_id is not None else "",
+            actor=actor,
             plugins=plugin_blocks,
         )
         return sql, params
@@ -1123,7 +1123,7 @@ class Datasette:
         elif resource is not None:
             raise TypeError("resource must be None, str, or (parent, child) tuple")
 
-        union_sql, union_params = await self.allowed_resources_sql(actor_dict, action)
+        union_sql, union_params = await self._build_permission_rules_sql(actor_dict, action)
 
         query = f"""
         WITH rules AS (
@@ -1275,6 +1275,7 @@ class Datasette:
 
     async def allowed_resources_sql(
         self,
+        *,
         action: str,
         actor: dict | None = None,
     ) -> tuple[str, dict]:
@@ -1285,7 +1286,7 @@ class Datasette:
         The query returns rows with (parent, child, reason) columns.
 
         Example:
-            query, params = await datasette.allowed_resources_sql("view-table", actor)
+            query, params = await datasette.allowed_resources_sql(action="view-table", actor=actor)
             result = await datasette.get_internal_database().execute(query, params)
         """
         from datasette.utils.actions_sql import build_allowed_resources_sql
@@ -1318,7 +1319,7 @@ class Datasette:
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
 
-        query, params = await self.allowed_resources_sql(action, actor)
+        query, params = await self.allowed_resources_sql(action=action, actor=actor)
         result = await self.get_internal_database().execute(query, params)
 
         # Instantiate the appropriate Resource subclass for each row
@@ -1355,7 +1356,7 @@ class Datasette:
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
 
-        query, params = await self.allowed_resources_sql(action, actor)
+        query, params = await self.allowed_resources_sql(action=action, actor=actor)
         result = await self.get_internal_database().execute(query, params)
 
         resource_class = action_obj.resource_class

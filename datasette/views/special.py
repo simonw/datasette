@@ -953,36 +953,35 @@ class TablesView(BaseView):
         terms = q.split()
         pattern = "%" + "%".join(terms) + "%"
 
-        matches = []
-        # Query each database's sqlite_master for matching tables
-        for db_name in self.ds.databases.keys():
-            db = self.ds.databases[db_name]
-            try:
-                # Use SQL to find matching table names, ordered by shortest first
-                result = await db.execute(
-                    """
-                    SELECT name
-                    FROM sqlite_master
-                    WHERE type='table'
-                    AND name LIKE ? COLLATE NOCASE
-                    ORDER BY length(name), name
-                    """,
-                    [pattern]
-                )
-                # Check permissions for each matching table
-                for row in result.rows:
-                    table_name = row[0]
-                    if await self.ds.permission_allowed(
-                        request.actor,
-                        "view-table",
-                        resource=(db_name, table_name)
-                    ):
-                        matches.append({
-                            "name": f"{db_name}: {table_name}",
-                            "url": self.ds.urls.table(db_name, table_name),
-                        })
-            except Exception:
-                # Skip databases that can't be queried
-                continue
+        # Get SQL for allowed resources using the permission system
+        permission_sql, params = await self.ds.allowed_resources_sql(
+            action="view-table", actor=request.actor
+        )
+
+        # Build query with CTE to filter by search pattern
+        sql = f"""
+        WITH allowed_tables AS (
+            {permission_sql}
+        )
+        SELECT parent, child
+        FROM allowed_tables
+        WHERE child LIKE :pattern COLLATE NOCASE
+        ORDER BY length(child), child
+        """
+
+        # Merge params from permission SQL with our pattern param
+        all_params = {**params, "pattern": pattern}
+
+        # Execute against internal database
+        result = await self.ds.get_internal_database().execute(sql, all_params)
+
+        # Build response
+        matches = [
+            {
+                "name": f"{row['parent']}: {row['child']}",
+                "url": self.ds.urls.table(row["parent"], row["child"]),
+            }
+            for row in result.rows
+        ]
 
         return Response.json({"matches": matches})

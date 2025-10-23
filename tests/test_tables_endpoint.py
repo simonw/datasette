@@ -523,7 +523,9 @@ async def test_tables_endpoint_config_database_allow():
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
         for t in root_tables
     ]
-    restricted_tables_root = [m for m in root_list if m["name"].startswith("restricted_db/")]
+    restricted_tables_root = [
+        m for m in root_list if m["name"].startswith("restricted_db/")
+    ]
     assert len(restricted_tables_root) == 2
     table_names = {m["name"] for m in restricted_tables_root}
     assert "restricted_db/users" in table_names
@@ -535,7 +537,9 @@ async def test_tables_endpoint_config_database_allow():
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
         for t in alice_tables
     ]
-    restricted_tables_alice = [m for m in alice_list if m["name"].startswith("restricted_db/")]
+    restricted_tables_alice = [
+        m for m in alice_list if m["name"].startswith("restricted_db/")
+    ]
     assert len(restricted_tables_alice) == 0
 
     # But Alice should see public_db tables (no restrictions)

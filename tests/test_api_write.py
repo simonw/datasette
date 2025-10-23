@@ -18,6 +18,7 @@ def ds_write(tmp_path_factory):
             "create table docs (id integer primary key, title text, score float, age integer)"
         )
     ds = Datasette([db_path], immutables=[db_path_immutable])
+    ds.root_enabled = True
     yield ds
     db.close()
 

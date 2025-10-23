@@ -130,33 +130,15 @@ def register_permissions():
 @hookimpl(tryfirst=True, specname="permission_allowed")
 async def permission_allowed_sql_bridge(datasette, actor, action, resource):
     """
-    Bridge the old permission_allowed API to the new SQL-based system.
+    Bridge config-based permission rules to the old permission_allowed API.
 
     This allows views using the old string/tuple resource API to benefit from
-    the SQL-based permission rules including config blocks.
+    config blocks defined in datasette.yaml without using the new resource-based system.
+
+    Note: This does NOT apply default allow rules - those should come from the
+    Permission object's default value to maintain backward compatibility.
     """
-    # First try to use the new resource-based system if possible
-    if action in datasette.actions:
-        action_obj = datasette.actions[action]
-        if action_obj and action_obj.resource_class:
-            # Try to convert string/tuple resource to Resource object
-            resource_obj = None
-            try:
-                if resource is None:
-                    # Can't create a resource object without a resource identifier
-                    pass  # Fall through to config checking below
-                elif isinstance(resource, str):
-                    resource_obj = action_obj.resource_class(database=resource)
-                elif isinstance(resource, tuple) and len(resource) == 2:
-                    resource_obj = action_obj.resource_class(database=resource[0], table=resource[1])
-            except Exception:
-                pass  # Fall through to config checking below
-
-            if resource_obj is not None:
-                # Successfully created resource object, use new system
-                return await datasette.allowed(action=action, resource=resource_obj, actor=actor)
-
-    # Fall back to checking config permission blocks manually via SQL
+    # Only check config-based rules - don't apply defaults
     config_rules = await _config_permission_rules(datasette, actor, action)
     if not config_rules:
         return None

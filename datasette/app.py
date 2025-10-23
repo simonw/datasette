@@ -460,6 +460,7 @@ class Datasette:
         self._register_renderers()
         self._permission_checks = collections.deque(maxlen=200)
         self._root_token = secrets.token_hex(32)
+        self.root_enabled = False
         self.client = DatasetteClient(self)
 
     async def apply_metadata_json(self):

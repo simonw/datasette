@@ -28,7 +28,17 @@ Using the "root" actor
 
 Datasette currently leaves almost all forms of authentication to plugins - `datasette-auth-github <https://github.com/simonw/datasette-auth-github>`__ for example.
 
-The one exception is the "root" account, which you can sign into while using Datasette on your local machine. This provides access to a small number of debugging features.
+The one exception is the "root" account, which you can sign into while using Datasette on your local machine. The root user has **all permissions** - they can perform any action regardless of other permission rules.
+
+The ``--root`` flag is designed for local development and testing. When you start Datasette with ``--root``, the root user automatically receives every permission, including:
+
+* All view permissions (view-instance, view-database, view-table, etc.)
+* All write permissions (insert-row, update-row, delete-row, create-table, alter-table, drop-table)
+* Debug permissions (permissions-debug, debug-menu)
+* Any custom permissions defined by plugins
+
+.. warning::
+    The ``--root`` flag should only be used for local development. Never use it in production or on publicly accessible servers.
 
 To sign in as root, start Datasette using the ``--root`` command-line option, like this::
 
@@ -1091,7 +1101,7 @@ This endpoint provides an interactive HTML form interface. Add ``.json`` to the 
 
 Pass ``?action=`` as a query parameter to specify which action to check.
 
-**Requires the permissions-debug permission** - this endpoint returns a 403 Forbidden error for users without this permission. The :ref:`root user <authentication_root>` has this permission by default.
+**Requires the permissions-debug permission** - this endpoint returns a 403 Forbidden error for users without this permission.
 
 .. _PermissionCheckView:
 

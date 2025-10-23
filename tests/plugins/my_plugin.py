@@ -2,6 +2,8 @@ import asyncio
 from datasette import hookimpl, Permission
 from datasette.facets import Facet
 from datasette import tracer
+from datasette.permissions import Action
+from datasette.resources import DatabaseResource
 from datasette.utils import path_with_added_args
 from datasette.utils.asgi import asgi_send_json, Response
 import base64
@@ -498,3 +500,17 @@ def register_permissions(datasette):
             for p in extras["permissions"]
         )
     return permissions
+
+
+@hookimpl
+def register_actions(datasette):
+    return [
+        Action(
+            name="view-collection",
+            abbr="vc",
+            description="View a collection",
+            takes_parent=True,
+            takes_child=False,
+            resource_class=DatabaseResource,
+        )
+    ]

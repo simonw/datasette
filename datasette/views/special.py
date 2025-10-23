@@ -425,7 +425,9 @@ class PermissionRulesView(BaseView):
             page_size = max_page_size
         offset = (page - 1) * page_size
 
-        union_sql, union_params = await self.ds._build_permission_rules_sql(actor, action)
+        union_sql, union_params = await self.ds._build_permission_rules_sql(
+            actor, action
+        )
         await self.ds.refresh_schemas()
         db = self.ds.get_internal_database()
 

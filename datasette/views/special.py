@@ -948,31 +948,41 @@ class TablesView(BaseView):
         if not q:
             return Response.json({"matches": []})
 
-        # Use the new allowed_resources() method
-        tables = await self.ds.allowed_resources("view-table", request.actor)
-
-        # Convert to list of matches with name and url
-        matches = [
-            {
-                "name": f"{table.parent}: {table.child}",
-                "url": self.ds.urls.table(table.parent, table.child),
-            }
-            for table in tables
-        ]
-
-        # Apply search filter
-        import re
-
-        # Split search terms by whitespace
+        # Build SQL LIKE pattern from search terms
+        # Split search terms by whitespace and build pattern: %term1%term2%term3%
         terms = q.split()
-        # Build regex pattern: .*term1.*term2.*term3.*
-        pattern = ".*" + ".*".join(re.escape(term) for term in terms) + ".*"
-        regex = re.compile(pattern, re.IGNORECASE)
+        pattern = "%" + "%".join(terms) + "%"
 
-        # Filter tables matching the pattern (extract table name from "db: table")
-        matches = [m for m in matches if regex.match(m["name"].split(": ", 1)[1])]
-
-        # Sort by shortest table name first
-        matches.sort(key=lambda m: len(m["name"].split(": ", 1)[1]))
+        matches = []
+        # Query each database's sqlite_master for matching tables
+        for db_name in self.ds.databases.keys():
+            db = self.ds.databases[db_name]
+            try:
+                # Use SQL to find matching table names, ordered by shortest first
+                result = await db.execute(
+                    """
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type='table'
+                    AND name LIKE ? COLLATE NOCASE
+                    ORDER BY length(name), name
+                    """,
+                    [pattern]
+                )
+                # Check permissions for each matching table
+                for row in result.rows:
+                    table_name = row[0]
+                    if await self.ds.permission_allowed(
+                        request.actor,
+                        "view-table",
+                        resource=(db_name, table_name)
+                    ):
+                        matches.append({
+                            "name": f"{db_name}: {table_name}",
+                            "url": self.ds.urls.table(db_name, table_name),
+                        })
+            except Exception:
+                # Skip databases that can't be queried
+                continue
 
         return Response.json({"matches": matches})

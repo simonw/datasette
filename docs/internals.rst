@@ -369,6 +369,48 @@ If neither ``metadata.json`` nor any of the plugins provide an answer to the per
 
 See :ref:`permissions` for a full list of permission actions included in Datasette core.
 
+.. _datasette_allowed:
+
+await .allowed(\*, action, resource, actor=None)
+------------------------------------------------
+
+``action`` - string
+    The name of the action that is being permission checked.
+
+``resource`` - Resource object
+    A Resource object representing the database, table, or other resource. Must be an instance of a Resource class such as ``TableResource``, ``DatabaseResource``, ``QueryResource``, or ``InstanceResource``.
+
+``actor`` - dictionary, optional
+    The authenticated actor. This is usually ``request.actor``. Defaults to ``None`` for unauthenticated requests.
+
+This method checks if the given actor has permission to perform the given action on the given resource. All parameters must be passed as keyword arguments.
+
+This is the modern resource-based permission checking method. It works with Resource objects that provide structured information about what is being accessed.
+
+Example usage:
+
+.. code-block:: python
+
+    from datasette.resources import TableResource, DatabaseResource
+
+    # Check if actor can view a specific table
+    can_view = await datasette.allowed(
+        action="view-table",
+        resource=TableResource(database="fixtures", table="facetable"),
+        actor=request.actor
+    )
+
+    # Check if actor can execute SQL on a database
+    can_execute = await datasette.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="fixtures"),
+        actor=request.actor
+    )
+
+The method returns ``True`` if the permission is granted, ``False`` if denied.
+
+For legacy string/tuple based permission checking, use :ref:`datasette_permission_allowed` instead.
+
 .. _datasette_ensure_permissions:
 
 await .ensure_permissions(actor, permissions)
@@ -1000,6 +1042,132 @@ These functions can be accessed via the ``{{ urls }}`` object in Datasette templ
 Use the ``format="json"`` (or ``"csv"`` or other formats supported by plugins) arguments to get back URLs to the JSON representation. This is the path with ``.json`` added on the end.
 
 These methods each return a ``datasette.utils.PrefixedUrlString`` object, which is a subclass of the Python ``str`` type. This allows the logic that considers the ``base_url`` setting to detect if that prefix has already been applied to the path.
+
+.. _internals_permission_classes:
+
+Permission classes and utilities
+=================================
+
+.. _internals_permission_sql:
+
+PermissionSQL class
+-------------------
+
+The ``PermissionSQL`` class is used by plugins to contribute SQL-based permission rules through the :ref:`plugin_hook_permission_resources_sql` hook. This enables efficient permission checking across multiple resources by leveraging SQLite's query engine.
+
+.. code-block:: python
+
+    from datasette.permissions import PermissionSQL
+
+    @dataclass
+    class PermissionSQL:
+        source: str          # Plugin name for auditing
+        sql: str             # SQL query returning permission rules
+        params: Dict[str, Any]  # Parameters for the SQL query
+
+**Attributes:**
+
+``source`` - string
+    An identifier for the source of these permission rules, typically the plugin name. This is used for debugging and auditing.
+
+``sql`` - string
+    A SQL query that returns permission rules. The query must return rows with the following columns:
+
+    - ``parent`` (TEXT or NULL) - The parent resource identifier (e.g., database name)
+    - ``child`` (TEXT or NULL) - The child resource identifier (e.g., table name)
+    - ``allow`` (INTEGER) - 1 for allow, 0 for deny
+    - ``reason`` (TEXT) - A human-readable explanation of why this permission was granted or denied
+
+``params`` - dictionary
+    A dictionary of parameters to bind into the SQL query. Parameter names should not include the ``:`` prefix.
+
+.. _permission_sql_parameters:
+
+Available SQL parameters
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+When writing SQL for ``PermissionSQL``, the following parameters are automatically available:
+
+``:actor`` - JSON string or NULL
+    The full actor dictionary serialized as JSON. Use SQLite's ``json_extract()`` function to access fields:
+
+    .. code-block:: sql
+
+        json_extract(:actor, '$.role') = 'admin'
+        json_extract(:actor, '$.team') = 'engineering'
+
+``:actor_id`` - string or NULL
+    The actor's ``id`` field, for simple equality comparisons:
+
+    .. code-block:: sql
+
+        :actor_id = 'alice'
+
+``:action`` - string
+    The action being checked (e.g., ``"view-table"``, ``"insert-row"``, ``"execute-sql"``).
+
+**Example usage:**
+
+Here's an example plugin that grants view-table permissions to users with an "analyst" role for tables in the "analytics" database:
+
+.. code-block:: python
+
+    from datasette import hookimpl
+    from datasette.permissions import PermissionSQL
+
+    @hookimpl
+    def permission_resources_sql(datasette, actor, action):
+        if action != "view-table":
+            return None
+
+        return PermissionSQL(
+            source="my_analytics_plugin",
+            sql="""
+                SELECT 'analytics' AS parent,
+                       NULL AS child,
+                       1 AS allow,
+                       'Analysts can view analytics database' AS reason
+                WHERE json_extract(:actor, '$.role') = 'analyst'
+                  AND :action = 'view-table'
+            """,
+            params={}
+        )
+
+A more complex example that uses custom parameters:
+
+.. code-block:: python
+
+    @hookimpl
+    def permission_resources_sql(datasette, actor, action):
+        if not actor:
+            return None
+
+        user_teams = actor.get("teams", [])
+
+        return PermissionSQL(
+            source="team_permissions_plugin",
+            sql="""
+                SELECT
+                    team_database AS parent,
+                    team_table AS child,
+                    1 AS allow,
+                    'User is member of team: ' || team_name AS reason
+                FROM team_permissions
+                WHERE user_id = :user_id
+                  AND :action IN ('view-table', 'insert-row', 'update-row')
+            """,
+            params={
+                "user_id": actor.get("id")
+            }
+        )
+
+**Permission resolution rules:**
+
+When multiple ``PermissionSQL`` objects return conflicting rules for the same resource, Datasette applies the following precedence:
+
+1. **Specificity**: Child-level rules (with both ``parent`` and ``child``) override parent-level rules (with only ``parent``), which override root-level rules (with neither ``parent`` nor ``child``)
+2. **Deny over allow**: At the same specificity level, deny (``allow=0``) takes precedence over allow (``allow=1``)
+3. **Implicit deny**: If no rules match a resource, access is denied by default
 
 .. _internals_database:
 

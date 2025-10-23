@@ -1445,7 +1445,7 @@ Example: `datasette-permissions-sql <https://datasette.io/plugins/datasette-perm
 .. _plugin_hook_permission_resources_sql:
 
 permission_resources_sql(datasette, actor, action)
--------------------------------------------------
+---------------------------------------------------
 
 ``datasette`` - :ref:`internals_datasette`
     Access to the Datasette instance.

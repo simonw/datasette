@@ -1560,6 +1560,17 @@ async def test_hook_register_events():
     assert any(k.__name__ == "OneEvent" for k in datasette.event_classes)
 
 
+@pytest.mark.asyncio
+async def test_hook_register_actions():
+    datasette = Datasette(memory=True, plugins_dir=PLUGINS_DIR)
+    await datasette.invoke_startup()
+    # Check that the custom action from my_plugin.py is registered
+    assert "view-collection" in datasette.actions
+    action = datasette.actions["view-collection"]
+    assert action.abbr == "vc"
+    assert action.description == "View a collection"
+
+
 @pytest.mark.skip(reason="TODO")
 @pytest.mark.parametrize(
     "metadata,config,expected_metadata,expected_config",

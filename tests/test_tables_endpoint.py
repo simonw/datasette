@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from datasette.app import Datasette
 from datasette.plugins import pm
-from datasette.utils.permissions import PluginSQL
+from datasette.permissions import PermissionSQL
 from datasette import hookimpl
 
 
@@ -57,7 +57,7 @@ async def test_tables_endpoint_global_access(test_ds):
     def rules_callback(datasette, actor, action):
         if actor and actor.get("id") == "alice":
             sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'global: alice has access' AS reason"
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -97,7 +97,7 @@ async def test_tables_endpoint_database_restriction(test_ds):
         if actor and actor.get("role") == "analyst":
             # Allow only analytics database
             sql = "SELECT 'analytics' AS parent, NULL AS child, 1 AS allow, 'analyst access' AS reason"
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -144,7 +144,7 @@ async def test_tables_endpoint_table_exception(test_ds):
                 UNION ALL
                 SELECT 'analytics' AS parent, 'users' AS child, 1 AS allow, 'carol exception' AS reason
             """
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -186,7 +186,7 @@ async def test_tables_endpoint_deny_overrides_allow(test_ds):
                 UNION ALL
                 SELECT 'analytics' AS parent, 'sensitive' AS child, 0 AS allow, 'deny sensitive' AS reason
             """
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -252,7 +252,7 @@ async def test_tables_endpoint_specific_table_only(test_ds):
                 UNION ALL
                 SELECT 'production' AS parent, 'orders' AS child, 1 AS allow, 'specific table 2' AS reason
             """
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -290,7 +290,7 @@ async def test_tables_endpoint_empty_result(test_ds):
         if actor and actor.get("id") == "blocked":
             # Global deny
             sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'global deny' AS reason"
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)

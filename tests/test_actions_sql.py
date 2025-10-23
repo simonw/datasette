@@ -12,7 +12,7 @@ import pytest
 import pytest_asyncio
 from datasette.app import Datasette
 from datasette.plugins import pm
-from datasette.utils.permissions import PluginSQL
+from datasette.permissions import PermissionSQL
 from datasette.resources import TableResource
 from datasette import hookimpl
 
@@ -63,7 +63,7 @@ async def test_allowed_resources_global_allow(test_ds):
     def rules_callback(datasette, actor, action):
         if actor and actor.get("id") == "alice":
             sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'global: alice has access' AS reason"
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -101,7 +101,7 @@ async def test_allowed_specific_resource(test_ds):
                 UNION ALL
                 SELECT 'analytics' AS parent, NULL AS child, 1 AS allow, 'analyst access' AS reason
             """
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -145,7 +145,7 @@ async def test_allowed_resources_with_reasons(test_ds):
                 SELECT 'analytics' AS parent, 'sensitive' AS child, 0 AS allow,
                        'child: sensitive data denied' AS reason
             """
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -185,7 +185,7 @@ async def test_child_deny_overrides_parent_allow(test_ds):
                 SELECT 'analytics' AS parent, 'sensitive' AS child, 0 AS allow,
                        'child: deny sensitive' AS reason
             """
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -233,7 +233,7 @@ async def test_child_allow_overrides_parent_deny(test_ds):
                 SELECT 'production' AS parent, 'orders' AS child, 1 AS allow,
                        'child: carol can see orders' AS reason
             """
-            return PluginSQL(source="test", sql=sql, params={})
+            return PermissionSQL(source="test", sql=sql, params={})
         return None
 
     plugin = PermissionRulesPlugin(rules_callback)
@@ -304,7 +304,7 @@ async def test_sql_does_filtering_not_python(test_ds):
             SELECT 'analytics' AS parent, 'users' AS child, 1 AS allow,
                    'specific allow' AS reason
         """
-        return PluginSQL(source="test", sql=sql, params={})
+        return PermissionSQL(source="test", sql=sql, params={})
 
     plugin = PermissionRulesPlugin(rules_callback)
     pm.register(plugin, name="test_plugin")

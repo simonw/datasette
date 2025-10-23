@@ -22,7 +22,7 @@ The core pattern is:
 from typing import Optional
 from datasette.plugins import pm
 from datasette.utils import await_me_maybe
-from datasette.utils.permissions import PluginSQL
+from datasette.permissions import PermissionSQL
 
 
 async def build_allowed_resources_sql(
@@ -80,10 +80,10 @@ async def build_allowed_resources_sql(
             continue
         if isinstance(result, list):
             for plugin_sql in result:
-                if isinstance(plugin_sql, PluginSQL):
+                if isinstance(plugin_sql, PermissionSQL):
                     rule_sqls.append(plugin_sql.sql)
                     all_params.update(plugin_sql.params)
-        elif isinstance(result, PluginSQL):
+        elif isinstance(result, PermissionSQL):
             rule_sqls.append(result.sql)
             all_params.update(result.params)
 
@@ -211,10 +211,10 @@ async def check_permission_for_resource(
             continue
         if isinstance(result, list):
             for plugin_sql in result:
-                if isinstance(plugin_sql, PluginSQL):
+                if isinstance(plugin_sql, PermissionSQL):
                     rule_sqls.append(plugin_sql.sql)
                     all_params.update(plugin_sql.params)
-        elif isinstance(result, PluginSQL):
+        elif isinstance(result, PermissionSQL):
             rule_sqls.append(result.sql)
             all_params.update(result.params)
 

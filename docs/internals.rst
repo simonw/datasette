@@ -391,20 +391,25 @@ Example usage:
 
 .. code-block:: python
 
-    from datasette.resources import TableResource, DatabaseResource
+    from datasette.resources import (
+        TableResource,
+        DatabaseResource,
+    )
 
     # Check if actor can view a specific table
     can_view = await datasette.allowed(
         action="view-table",
-        resource=TableResource(database="fixtures", table="facetable"),
-        actor=request.actor
+        resource=TableResource(
+            database="fixtures", table="facetable"
+        ),
+        actor=request.actor,
     )
 
     # Check if actor can execute SQL on a database
     can_execute = await datasette.allowed(
         action="execute-sql",
         resource=DatabaseResource(database="fixtures"),
-        actor=request.actor
+        actor=request.actor,
     )
 
 The method returns ``True`` if the permission is granted, ``False`` if denied.
@@ -1059,10 +1064,11 @@ The ``PermissionSQL`` class is used by plugins to contribute SQL-based permissio
 
     from datasette.permissions import PermissionSQL
 
+
     @dataclass
     class PermissionSQL:
-        source: str          # Plugin name for auditing
-        sql: str             # SQL query returning permission rules
+        source: str  # Plugin name for auditing
+        sql: str  # SQL query returning permission rules
         params: Dict[str, Any]  # Parameters for the SQL query
 
 **Attributes:**
@@ -1115,6 +1121,7 @@ Here's an example plugin that grants view-table permissions to users with an "an
     from datasette import hookimpl
     from datasette.permissions import PermissionSQL
 
+
     @hookimpl
     def permission_resources_sql(datasette, actor, action):
         if action != "view-table":
@@ -1130,7 +1137,7 @@ Here's an example plugin that grants view-table permissions to users with an "an
                 WHERE json_extract(:actor, '$.role') = 'analyst'
                   AND :action = 'view-table'
             """,
-            params={}
+            params={},
         )
 
 A more complex example that uses custom parameters:
@@ -1156,9 +1163,7 @@ A more complex example that uses custom parameters:
                 WHERE user_id = :user_id
                   AND :action IN ('view-table', 'insert-row', 'update-row')
             """,
-            params={
-                "user_id": actor.get("id")
-            }
+            params={"user_id": actor.get("id")},
         )
 
 **Permission resolution rules:**

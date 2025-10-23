@@ -32,7 +32,7 @@ def plugin_allow_all_for_user(user: str) -> PluginProvider:
             """
             SELECT NULL AS parent, NULL AS child, 1 AS allow,
                    'global allow for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            WHERE :actor_id = :user
             """,
             {"user": user, "action": action},
         )
@@ -47,7 +47,7 @@ def plugin_deny_specific_table(user: str, parent: str, child: str) -> PluginProv
             """
             SELECT :parent AS parent, :child AS child, 0 AS allow,
                    'deny ' || :parent || '/' || :child || ' for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            WHERE :actor_id = :user
             """,
             {"parent": parent, "child": child, "user": user, "action": action},
         )
@@ -76,7 +76,7 @@ def plugin_allow_parent_for_user(user: str, parent: str) -> PluginProvider:
             """
             SELECT :parent AS parent, NULL AS child, 1 AS allow,
                    'allow full parent for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            WHERE :actor_id = :user
             """,
             {"parent": parent, "user": user, "action": action},
         )
@@ -91,7 +91,7 @@ def plugin_child_allow_for_user(user: str, parent: str, child: str) -> PluginPro
             """
             SELECT :parent AS parent, :child AS child, 1 AS allow,
                    'allow child for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            WHERE :actor_id = :user
             """,
             {"parent": parent, "child": child, "user": user, "action": action},
         )
@@ -121,7 +121,7 @@ def plugin_conflicting_same_child_rules(
             """
             SELECT :parent AS parent, :child AS child, 1 AS allow,
                    'team grant at child for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            WHERE :actor_id = :user
             """,
             {"parent": parent, "child": child, "user": user, "action": action},
         )
@@ -132,7 +132,7 @@ def plugin_conflicting_same_child_rules(
             """
             SELECT :parent AS parent, :child AS child, 0 AS allow,
                    'exception deny at child for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            WHERE :actor_id = :user
             """,
             {"parent": parent, "child": child, "user": user, "action": action},
         )
@@ -153,7 +153,7 @@ def plugin_allow_all_for_action(user: str, allowed_action: str) -> PluginProvide
             """
             SELECT NULL AS parent, NULL AS child, 1 AS allow,
                    'global allow for ' || :user || ' on ' || :action AS reason
-            WHERE :actor = :user
+            WHERE :actor_id = :user
             """,
             {"user": user, "action": action},
         )
@@ -247,7 +247,12 @@ async def test_alice_global_allow_with_specific_denies_catalog(db):
         plugin_org_policy_deny_parent("hr"),
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "alice", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "alice"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
     )
     # Alice can see everything except accounting/sales and hr/*
     assert "/accounting/sales" in res_denied(rows)
@@ -269,7 +274,12 @@ async def test_carol_parent_allow_but_child_conflict_deny_wins_catalog(db):
         *plugin_conflicting_same_child_rules("carol", "analytics", "secret"),
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "carol", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "carol"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
     )
     allowed_analytics = res_allowed(rows, parent="analytics")
     denied_analytics = res_denied(rows, parent="analytics")
@@ -290,7 +300,12 @@ async def test_specificity_child_allow_overrides_parent_deny_catalog(db):
         ),  # child allow beats parent deny
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "alice", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "alice"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
     )
 
     # table02 allowed, other analytics tables denied
@@ -311,7 +326,7 @@ async def test_root_deny_all_but_parent_allow_rescues_specific_parent_catalog(db
         ),  # parent allow (more specific)
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "bob", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db, {"id": "bob"}, plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
     )
     for r in rows:
         if r["parent"] == "accounting":
@@ -328,7 +343,12 @@ async def test_parent_scoped_candidates(db):
         plugin_allow_parent_for_user("carol", "analytics"),
     ]
     rows = await resolve_permissions_from_catalog(
-        db, "carol", plugins, VIEW_TABLE, PARENT_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "carol"},
+        plugins,
+        VIEW_TABLE,
+        PARENT_CANDIDATES_SQL,
+        implicit_deny=True,
     )
     d = {r["resource"]: r["allow"] for r in rows}
     assert d["/analytics"] == 1
@@ -342,13 +362,23 @@ async def test_implicit_deny_behavior(db):
 
     # implicit_deny=True -> everything denied with reason 'implicit deny'
     rows = await resolve_permissions_from_catalog(
-        db, "erin", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=True
+        db,
+        {"id": "erin"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
     )
     assert all(r["allow"] == 0 and r["reason"] == "implicit deny" for r in rows)
 
     # implicit_deny=False -> no winner => allow is None, reason is None
     rows2 = await resolve_permissions_from_catalog(
-        db, "erin", plugins, VIEW_TABLE, TABLE_CANDIDATES_SQL, implicit_deny=False
+        db,
+        {"id": "erin"},
+        plugins,
+        VIEW_TABLE,
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=False,
     )
     assert all(r["allow"] is None and r["reason"] is None for r in rows2)
 
@@ -384,7 +414,7 @@ async def test_candidate_filters_via_params(db):
     # Case 1: exclude memory dbs, require schema_version >= 2 -> only analytics appear, and thus are allowed
     rows = await resolve_permissions_from_catalog(
         db,
-        "dev",
+        {"id": "dev"},
         plugins,
         VIEW_TABLE,
         candidate_sql,
@@ -398,7 +428,7 @@ async def test_candidate_filters_via_params(db):
     # but root deny wins except where specifically allowed (none except analytics parent allow doesn’t apply to table depth if candidate includes children; still fine—policy is explicit).
     rows2 = await resolve_permissions_from_catalog(
         db,
-        "dev",
+        {"id": "dev"},
         plugins,
         VIEW_TABLE,
         candidate_sql,
@@ -418,7 +448,7 @@ async def test_action_specific_rules(db):
 
     view_rows = await resolve_permissions_from_catalog(
         db,
-        "dana",
+        {"id": "dana"},
         plugins,
         VIEW_TABLE,
         TABLE_CANDIDATES_SQL,
@@ -429,7 +459,7 @@ async def test_action_specific_rules(db):
 
     insert_rows = await resolve_permissions_from_catalog(
         db,
-        "dana",
+        {"id": "dana"},
         plugins,
         "insert-row",
         TABLE_CANDIDATES_SQL,
@@ -438,3 +468,49 @@ async def test_action_specific_rules(db):
     assert insert_rows and all(r["allow"] == 0 for r in insert_rows)
     assert all(r["reason"] == "implicit deny" for r in insert_rows)
     assert all(r["action"] == "insert-row" for r in insert_rows)
+
+
+@pytest.mark.asyncio
+async def test_actor_actor_id_action_parameters_available(db):
+    """Test that :actor (JSON), :actor_id, and :action are all available in SQL"""
+    await seed_catalog(db)
+
+    def plugin_using_all_parameters() -> PluginProvider:
+        def provider(action: str) -> PermissionSQL:
+            return PermissionSQL(
+                "test_all_params",
+                """
+                SELECT NULL AS parent, NULL AS child, 1 AS allow,
+                       'Actor ID: ' || COALESCE(:actor_id, 'null') ||
+                       ', Actor JSON: ' || COALESCE(:actor, 'null') ||
+                       ', Action: ' || :action AS reason
+                WHERE :actor_id = 'test_user' AND :action = 'view-table'
+                AND json_extract(:actor, '$.role') = 'admin'
+                """,
+                {},
+            )
+
+        return provider
+
+    plugins = [plugin_using_all_parameters()]
+
+    # Test with full actor dict
+    rows = await resolve_permissions_from_catalog(
+        db,
+        {"id": "test_user", "role": "admin"},
+        plugins,
+        "view-table",
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=True,
+    )
+
+    # Should have allowed rows with reason containing all the info
+    allowed = [r for r in rows if r["allow"] == 1]
+    assert len(allowed) > 0
+
+    # Check that the reason string contains evidence of all parameters
+    reason = allowed[0]["reason"]
+    assert "test_user" in reason
+    assert "view-table" in reason
+    # The :actor parameter should be the JSON string
+    assert "Actor JSON:" in reason

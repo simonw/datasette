@@ -118,7 +118,7 @@ Once started you can access it at ``http://localhost:8001``
       --secret TEXT                   Secret used for signing secure values, such as
                                       signed cookies
       --root                          Output URL that sets a cookie authenticating
-                                      the root user
+                                      the root user with all permissions
       --get TEXT                      Run an HTTP GET request against this path,
                                       print results and exit
       --token TEXT                    API token to send with --get requests

@@ -375,7 +375,8 @@ def test_permissions_checked(app_client, path, permissions):
 async def test_permissions_debug(ds_client, filter_):
     ds_client.ds._permission_checks.clear()
     assert (await ds_client.get("/-/permissions")).status_code == 403
-    # With the cookie it should work
+    # With the cookie it should work (need to set root_enabled for root user)
+    ds_client.ds.root_enabled = True
     cookie = ds_client.actor_cookie({"id": "root"})
     response = await ds_client.get(
         f"/-/permissions?filter={filter_}", cookies={"ds_actor": cookie}
@@ -418,8 +419,8 @@ async def test_permissions_debug(ds_client, filter_):
         },
         {
             "action": "view-instance",
-            "result": None,
-            "used_default": True,
+            "result": True,
+            "used_default": False,
             "actor": {"id": "root"},
         },
         {"action": "debug-menu", "result": False, "used_default": True, "actor": None},
@@ -691,6 +692,7 @@ async def test_actor_restricted_permissions(
     perms_ds, actor, permission, resource_1, resource_2, expected_result
 ):
     perms_ds.pdb = True
+    perms_ds.root_enabled = True  # Allow root actor to access /-/permissions
     cookies = {"ds_actor": perms_ds.sign({"a": {"id": "root"}}, "actor")}
     csrftoken = (await perms_ds.client.get("/-/permissions", cookies=cookies)).cookies[
         "ds_csrftoken"

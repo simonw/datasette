@@ -648,6 +648,7 @@ def serve(
     # Start the server
     url = None
     if root:
+        ds.root_enabled = True
         url = "http://{}:{}{}?token={}".format(
             host, port, ds.urls.path("-/auth-token"), ds._root_token
         )

@@ -941,33 +941,38 @@ class TablesView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
+        # Get search query parameter
+        q = request.args.get("q", "").strip()
+
+        # Only return matches if there's a non-empty search query
+        if not q:
+            return Response.json({"matches": []})
+
         # Use the new allowed_resources() method
         tables = await self.ds.allowed_resources("view-table", request.actor)
 
         # Convert to list of matches with name and url
         matches = [
             {
-                "name": f"{table.parent}/{table.child}",
+                "name": f"{table.parent}: {table.child}",
                 "url": self.ds.urls.table(table.parent, table.child),
             }
             for table in tables
         ]
 
-        # Apply search filter if q parameter is present
-        q = request.args.get("q", "").strip()
-        if q:
-            import re
+        # Apply search filter
+        import re
 
-            # Split search terms by whitespace
-            terms = q.split()
-            # Build regex pattern: .*term1.*term2.*term3.*
-            pattern = ".*" + ".*".join(re.escape(term) for term in terms) + ".*"
-            regex = re.compile(pattern, re.IGNORECASE)
+        # Split search terms by whitespace
+        terms = q.split()
+        # Build regex pattern: .*term1.*term2.*term3.*
+        pattern = ".*" + ".*".join(re.escape(term) for term in terms) + ".*"
+        regex = re.compile(pattern, re.IGNORECASE)
 
-            # Filter tables matching the pattern (extract table name from "db/table")
-            matches = [m for m in matches if regex.match(m["name"].split("/", 1)[1])]
+        # Filter tables matching the pattern (extract table name from "db: table")
+        matches = [m for m in matches if regex.match(m["name"].split(": ", 1)[1])]
 
-            # Sort by shortest table name first
-            matches.sort(key=lambda m: len(m["name"].split("/", 1)[1]))
+        # Sort by shortest table name first
+        matches.sort(key=lambda m: len(m["name"].split(": ", 1)[1]))
 
         return Response.json({"matches": matches})

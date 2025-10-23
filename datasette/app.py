@@ -1885,7 +1885,7 @@ class Datasette:
         )
         add_route(
             TablesView.as_view(self),
-            r"/-/tables$",
+            r"/-/tables(\.(?P<format>json))?$",
         )
         add_route(
             LogoutView.as_view(self),

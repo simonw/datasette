@@ -1369,6 +1369,7 @@ class Datasette:
 
     async def allowed(
         self,
+        *,
         action: str,
         resource: "Resource",
         actor: dict | None = None,
@@ -1382,9 +1383,9 @@ class Datasette:
         Example:
             from datasette.resources import TableResource
             can_view = await datasette.allowed(
-                "view-table",
-                TableResource(database="analytics", table="users"),
-                actor
+                action="view-table",
+                resource=TableResource(database="analytics", table="users"),
+                actor=actor
             )
         """
         from datasette.utils.actions_sql import check_permission_for_resource

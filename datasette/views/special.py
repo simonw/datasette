@@ -238,6 +238,7 @@ class AllowedResourcesView(BaseView):
             )
 
         actor = request.actor if isinstance(request.actor, dict) else None
+        actor_id = actor.get("id") if actor else None
         parent_filter = request.args.get("parent")
         child_filter = request.args.get("child")
         if child_filter and not parent_filter:
@@ -424,7 +425,7 @@ class PermissionRulesView(BaseView):
             page_size = max_page_size
         offset = (page - 1) * page_size
 
-        union_sql, union_params = await self.ds.allowed_resources_sql(actor, action)
+        union_sql, union_params = await self.ds._build_permission_rules_sql(actor, action)
         await self.ds.refresh_schemas()
         db = self.ds.get_internal_database()
 

@@ -305,12 +305,6 @@ class AllowedResourcesView(BaseView):
             for candidate in candidates:
                 if candidate is None:
                     continue
-                if not isinstance(candidate, PermissionSQL):
-                    logger.warning(
-                        "Skipping permission_resources_sql result %r from plugin; expected PermissionSQL",
-                        candidate,
-                    )
-                    continue
                 plugins.append(candidate)
 
         rows = await resolve_permissions_from_catalog(

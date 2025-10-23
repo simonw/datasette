@@ -188,8 +188,9 @@ class NavigationSearch extends HTMLElement {
   setupEventListeners() {
     const dialog = this.shadowRoot.querySelector("dialog");
     const input = this.shadowRoot.querySelector(".search-input");
-    const resultsContainer =
-      this.shadowRoot.querySelector(".results-container");
+    const resultsContainer = this.shadowRoot.querySelector(
+      ".results-container"
+    );
 
     // Global keyboard listener for "/"
     document.addEventListener("keydown", (e) => {
@@ -303,7 +304,7 @@ class NavigationSearch extends HTMLElement {
       this.matches = (this.allItems || []).filter(
         (item) =>
           item.name.toLowerCase().includes(lowerQuery) ||
-          item.url.toLowerCase().includes(lowerQuery),
+          item.url.toLowerCase().includes(lowerQuery)
       );
     }
     this.selectedIndex = this.matches.length > 0 ? 0 : -1;
@@ -326,17 +327,21 @@ class NavigationSearch extends HTMLElement {
       .map(
         (match, index) => `
             <div 
-                class="result-item ${index === this.selectedIndex ? "selected" : ""}" 
+                class="result-item ${
+                  index === this.selectedIndex ? "selected" : ""
+                }" 
                 data-index="${index}"
                 role="option"
                 aria-selected="${index === this.selectedIndex}"
             >
                 <div>
-                    <div class="result-name">${this.escapeHtml(match.name)}</div>
+                    <div class="result-name">${this.escapeHtml(
+                      match.name
+                    )}</div>
                     <div class="result-url">${this.escapeHtml(match.url)}</div>
                 </div>
             </div>
-        `,
+        `
       )
       .join("");
 
@@ -372,7 +377,7 @@ class NavigationSearch extends HTMLElement {
           detail: match,
           bubbles: true,
           composed: true,
-        }),
+        })
       );
 
       // Navigate to URL

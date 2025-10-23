@@ -1090,8 +1090,6 @@ class Datasette:
             for candidate in candidates:
                 if candidate is None:
                     continue
-                if not isinstance(candidate, PermissionSQL):
-                    continue
                 plugin_blocks.append(candidate)
 
         sql, params = build_rules_union(

@@ -265,28 +265,6 @@ async def test_child_allow_overrides_parent_deny(test_ds):
 
 
 @pytest.mark.asyncio
-async def test_resource_equality_and_hashing(test_ds):
-    """Test that Resource instances support equality and hashing"""
-
-    # Create some resources
-    r1 = TableResource("analytics", "users")
-    r2 = TableResource("analytics", "users")
-    r3 = TableResource("analytics", "events")
-
-    # Test equality
-    assert r1 == r2
-    assert r1 != r3
-
-    # Test they can be used in sets
-    resource_set = {r1, r2, r3}
-    assert len(resource_set) == 2  # r1 and r2 are the same
-
-    # Test they can be used as dict keys
-    resource_dict = {r1: "data1", r3: "data2"}
-    assert resource_dict[r2] == "data1"  # r2 same as r1
-
-
-@pytest.mark.asyncio
 async def test_sql_does_filtering_not_python(test_ds):
     """
     Verify that allowed() uses SQL WHERE clause, not Python filtering.

@@ -9,7 +9,8 @@ from datasette.utils import (
     tilde_encode,
     tilde_decode,
 )
-from datasette.utils.permissions import PluginSQL, resolve_permissions_from_catalog
+from datasette.permissions import PermissionSQL
+from datasette.utils.permissions import resolve_permissions_from_catalog
 from datasette.plugins import pm
 from .base import BaseView, View
 import secrets
@@ -303,9 +304,9 @@ class AllowedResourcesView(BaseView):
             for candidate in candidates:
                 if candidate is None:
                     continue
-                if not isinstance(candidate, PluginSQL):
+                if not isinstance(candidate, PermissionSQL):
                     logger.warning(
-                        "Skipping permission_resources_sql result %r from plugin; expected PluginSQL",
+                        "Skipping permission_resources_sql result %r from plugin; expected PermissionSQL",
                         candidate,
                     )
                     continue

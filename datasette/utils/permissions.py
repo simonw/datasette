@@ -1,29 +1,15 @@
 # perm_utils.py
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 import sqlite3
+
+from datasette.permissions import PermissionSQL
 
 
 # -----------------------------
 # Plugin interface & utilities
 # -----------------------------
-
-
-@dataclass
-class PluginSQL:
-    """
-    A plugin contributes SQL that yields:
-      parent TEXT NULL,
-      child  TEXT NULL,
-      allow  INTEGER,    -- 1 allow, 0 deny
-      reason TEXT
-    """
-
-    source: str  # identifier used for auditing (e.g., plugin name)
-    sql: str  # SQL that SELECTs the 4 columns above
-    params: Dict[str, Any]  # bound params for the SQL (values only; no ':' prefix)
 
 
 def _namespace_params(i: int, params: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
@@ -45,12 +31,12 @@ def _namespace_params(i: int, params: Dict[str, Any]) -> Tuple[str, Dict[str, An
     return rewrite, namespaced
 
 
-PluginProvider = Callable[[str], PluginSQL]
-PluginOrFactory = Union[PluginSQL, PluginProvider]
+PluginProvider = Callable[[str], PermissionSQL]
+PluginOrFactory = Union[PermissionSQL, PluginProvider]
 
 
 def build_rules_union(
-    actor: str, plugins: Sequence[PluginSQL]
+    actor: str, plugins: Sequence[PermissionSQL]
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Compose plugin SQL into a UNION ALL with namespaced parameters.
@@ -107,8 +93,8 @@ async def resolve_permissions_from_catalog(
         (Use child=NULL for parent-scoped actions like "execute-sql".)
       - *db* exposes: rows = await db.execute(sql, params)
         where rows is an iterable of sqlite3.Row
-      - plugins are either PluginSQL objects or callables accepting (action: str)
-        and returning PluginSQL instances selecting (parent, child, allow, reason)
+      - plugins are either PermissionSQL objects or callables accepting (action: str)
+        and returning PermissionSQL instances selecting (parent, child, allow, reason)
 
     Decision policy:
       1) Specificity first: child (depth=2) > parent (depth=1) > root (depth=0)
@@ -121,14 +107,14 @@ async def resolve_permissions_from_catalog(
       - parent, child, allow, reason, source_plugin, depth
       - resource (rendered "/parent/child" or "/parent" or "/")
     """
-    resolved_plugins: List[PluginSQL] = []
+    resolved_plugins: List[PermissionSQL] = []
     for plugin in plugins:
-        if callable(plugin) and not isinstance(plugin, PluginSQL):
+        if callable(plugin) and not isinstance(plugin, PermissionSQL):
             resolved = plugin(action)  # type: ignore[arg-type]
         else:
             resolved = plugin  # type: ignore[assignment]
-        if not isinstance(resolved, PluginSQL):
-            raise TypeError("Plugin providers must return PluginSQL instances")
+        if not isinstance(resolved, PermissionSQL):
+            raise TypeError("Plugin providers must return PermissionSQL instances")
         resolved_plugins.append(resolved)
 
     union_sql, rule_params = build_rules_union(actor, resolved_plugins)

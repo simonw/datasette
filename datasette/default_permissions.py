@@ -1,5 +1,5 @@
 from datasette import hookimpl, Permission
-from datasette.utils.permissions import PluginSQL
+from datasette.permissions import PermissionSQL
 from datasette.utils import actor_matches_allow
 import itsdangerous
 import time
@@ -174,7 +174,7 @@ def permission_allowed_default(datasette, actor, action, resource):
 
 @hookimpl
 async def permission_resources_sql(datasette, actor, action):
-    rules: list[PluginSQL] = []
+    rules: list[PermissionSQL] = []
 
     config_rules = await _config_permission_rules(datasette, actor, action)
     rules.extend(config_rules)
@@ -191,7 +191,7 @@ async def permission_resources_sql(datasette, actor, action):
             "SELECT NULL AS parent, NULL AS child, 1 AS allow, " f"'{reason}' AS reason"
         )
         rules.append(
-            PluginSQL(
+            PermissionSQL(
                 source="default_permissions",
                 sql=sql,
                 params={},
@@ -205,7 +205,7 @@ async def permission_resources_sql(datasette, actor, action):
     return rules
 
 
-async def _config_permission_rules(datasette, actor, action) -> list[PluginSQL]:
+async def _config_permission_rules(datasette, actor, action) -> list[PermissionSQL]:
     config = datasette.config or {}
 
     if actor is None:
@@ -332,7 +332,7 @@ async def _config_permission_rules(datasette, actor, action) -> list[PluginSQL]:
         params[f"{key}_reason"] = reason
 
     sql = "\nUNION ALL\n".join(parts)
-    return [PluginSQL(source="config_permissions", sql=sql, params=params)]
+    return [PermissionSQL(source="config_permissions", sql=sql, params=params)]
 
 
 async def _resolve_config_permissions_blocks(datasette, actor, action, resource):

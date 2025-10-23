@@ -12,7 +12,7 @@ from datasette.app import Datasette
 from datasette import cli, hookimpl, Permission
 from datasette.filters import FilterArguments
 from datasette.plugins import get_plugins, DEFAULT_PLUGINS, pm
-from datasette.utils.permissions import PluginSQL
+from datasette.permissions import PermissionSQL
 from datasette.utils.sqlite import sqlite3
 from datasette.utils import StartupError, await_me_maybe
 from jinja2 import ChoiceLoader, FileSystemLoader
@@ -722,7 +722,7 @@ async def test_hook_permission_resources_sql():
             collected.append(block)
 
     assert collected
-    assert all(isinstance(item, PluginSQL) for item in collected)
+    assert all(isinstance(item, PermissionSQL) for item in collected)
 
 
 @pytest.mark.asyncio

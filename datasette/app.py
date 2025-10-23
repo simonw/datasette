@@ -115,7 +115,8 @@ from .tracer import AsgiTracer
 from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
-from .utils.permissions import build_rules_union, PluginSQL
+from .permissions import PermissionSQL
+from .utils.permissions import build_rules_union
 
 app_root = Path(__file__).parent.parent
 
@@ -1067,11 +1068,11 @@ class Datasette:
     async def allowed_resources_sql(
         self, actor: dict | None, action: str
     ) -> tuple[str, dict]:
-        """Combine permission_resources_sql PluginSQL blocks into a UNION query.
+        """Combine permission_resources_sql PermissionSQL blocks into a UNION query.
 
         Returns a (sql, params) tuple suitable for execution against SQLite.
         """
-        plugin_blocks: List[PluginSQL] = []
+        plugin_blocks: List[PermissionSQL] = []
         for block in pm.hook.permission_resources_sql(
             datasette=self,
             actor=actor,
@@ -1087,7 +1088,7 @@ class Datasette:
             for candidate in candidates:
                 if candidate is None:
                     continue
-                if not isinstance(candidate, PluginSQL):
+                if not isinstance(candidate, PermissionSQL):
                     continue
                 plugin_blocks.append(candidate)
 

@@ -171,6 +171,22 @@ async def permission_allowed_sql_bridge(datasette, actor, action, resource):
 
 
 @hookimpl(tryfirst=True, specname="permission_allowed")
+def permission_allowed_default_allow_sql(datasette, actor, action, resource):
+    """
+    Enforce the default_allow_sql setting for execute-sql permission.
+
+    When default_allow_sql is set to False, deny all execute-sql permissions.
+    This runs before other permission checks to ensure the setting is respected.
+    """
+    if action == "execute-sql":
+        default_allow_sql_setting = datasette.setting("default_allow_sql")
+        # Handle both boolean False and string "false" (from CLI)
+        if default_allow_sql_setting in (False, "false"):
+            return False
+    return None
+
+
+@hookimpl(tryfirst=True, specname="permission_allowed")
 def permission_allowed_root(datasette, actor, action, resource):
     """
     Grant all permissions to root user when Datasette started with --root flag.
@@ -211,7 +227,9 @@ async def permission_resources_sql(datasette, actor, action):
     rules.extend(config_rules)
 
     # Check default_allow_sql setting for execute-sql action
-    if action == "execute-sql" and not datasette.setting("default_allow_sql"):
+    default_allow_sql_setting = datasette.setting("default_allow_sql")
+    # Handle both boolean False and string "false" (from CLI)
+    if action == "execute-sql" and default_allow_sql_setting in (False, "false"):
         # Return a deny rule for all databases
         sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'default_allow_sql is false' AS reason"
         rules.append(
@@ -221,6 +239,12 @@ async def permission_resources_sql(datasette, actor, action):
                 params={},
             )
         )
+        # Early return - don't add default allow rule
+        if not rules:
+            return None
+        if len(rules) == 1:
+            return rules[0]
+        return rules
 
     default_allow_actions = {
         "view-instance",

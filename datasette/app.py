@@ -1123,7 +1123,9 @@ class Datasette:
         elif resource is not None:
             raise TypeError("resource must be None, str, or (parent, child) tuple")
 
-        union_sql, union_params = await self._build_permission_rules_sql(actor_dict, action)
+        union_sql, union_params = await self._build_permission_rules_sql(
+            actor_dict, action
+        )
 
         query = f"""
         WITH rules AS (

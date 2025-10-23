@@ -312,10 +312,9 @@ class AllowedResourcesView(BaseView):
                     continue
                 plugins.append(candidate)
 
-        actor_id = actor.get("id") if actor else None
         rows = await resolve_permissions_from_catalog(
             db,
-            actor=str(actor_id) if actor_id is not None else "",
+            actor=actor,
             plugins=plugins,
             action=action,
             candidate_sql=candidate_sql,

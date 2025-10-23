@@ -962,6 +962,9 @@ def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
 async def test_navigation_menu_links(
     ds_client, actor_id, should_have_links, should_not_have_links
 ):
+    # Enable root user if testing with root actor
+    if actor_id == "root":
+        ds_client.ds.root_enabled = True
     cookies = {}
     if actor_id:
         cookies = {"ds_actor": ds_client.actor_cookie({"id": actor_id})}

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, NamedTuple
+from typing import Any, Dict, Optional, NamedTuple
 
 
 class Resource(ABC):
@@ -84,6 +84,21 @@ class Action:
     takes_parent: bool
     takes_child: bool
     resource_class: type[Resource]
+
+
+@dataclass
+class PermissionSQL:
+    """
+    A plugin contributes SQL that yields:
+      parent TEXT NULL,
+      child  TEXT NULL,
+      allow  INTEGER,    -- 1 allow, 0 deny
+      reason TEXT
+    """
+
+    source: str  # identifier used for auditing (e.g., plugin name)
+    sql: str  # SQL that SELECTs the 4 columns above
+    params: Dict[str, Any]  # bound params for the SQL (values only; no ':' prefix)
 
 
 # This is obsolete, replaced by Action and ResourceType

@@ -1,7 +1,7 @@
 import pytest
 from datasette.app import Datasette
+from datasette.permissions import PermissionSQL
 from datasette.utils.permissions import (
-    PluginSQL,
     PluginProvider,
     resolve_permissions_from_catalog,
 )
@@ -26,8 +26,8 @@ NO_RULES_SQL = (
 
 
 def plugin_allow_all_for_user(user: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             "allow_all",
             """
             SELECT NULL AS parent, NULL AS child, 1 AS allow,
@@ -41,8 +41,8 @@ def plugin_allow_all_for_user(user: str) -> PluginProvider:
 
 
 def plugin_deny_specific_table(user: str, parent: str, child: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             "deny_specific_table",
             """
             SELECT :parent AS parent, :child AS child, 0 AS allow,
@@ -56,8 +56,8 @@ def plugin_deny_specific_table(user: str, parent: str, child: str) -> PluginProv
 
 
 def plugin_org_policy_deny_parent(parent: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             "org_policy_parent_deny",
             """
             SELECT :parent AS parent, NULL AS child, 0 AS allow,
@@ -70,8 +70,8 @@ def plugin_org_policy_deny_parent(parent: str) -> PluginProvider:
 
 
 def plugin_allow_parent_for_user(user: str, parent: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             "allow_parent",
             """
             SELECT :parent AS parent, NULL AS child, 1 AS allow,
@@ -85,8 +85,8 @@ def plugin_allow_parent_for_user(user: str, parent: str) -> PluginProvider:
 
 
 def plugin_child_allow_for_user(user: str, parent: str, child: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             "allow_child",
             """
             SELECT :parent AS parent, :child AS child, 1 AS allow,
@@ -100,8 +100,8 @@ def plugin_child_allow_for_user(user: str, parent: str, child: str) -> PluginPro
 
 
 def plugin_root_deny_for_all() -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
-        return PluginSQL(
+    def provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             "root_deny",
             """
             SELECT NULL AS parent, NULL AS child, 0 AS allow, 'root deny for all on ' || :action AS reason
@@ -115,8 +115,8 @@ def plugin_root_deny_for_all() -> PluginProvider:
 def plugin_conflicting_same_child_rules(
     user: str, parent: str, child: str
 ) -> List[PluginProvider]:
-    def allow_provider(action: str) -> PluginSQL:
-        return PluginSQL(
+    def allow_provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             "conflict_child_allow",
             """
             SELECT :parent AS parent, :child AS child, 1 AS allow,
@@ -126,8 +126,8 @@ def plugin_conflicting_same_child_rules(
             {"parent": parent, "child": child, "user": user, "action": action},
         )
 
-    def deny_provider(action: str) -> PluginSQL:
-        return PluginSQL(
+    def deny_provider(action: str) -> PermissionSQL:
+        return PermissionSQL(
             "conflict_child_deny",
             """
             SELECT :parent AS parent, :child AS child, 0 AS allow,
@@ -141,14 +141,14 @@ def plugin_conflicting_same_child_rules(
 
 
 def plugin_allow_all_for_action(user: str, allowed_action: str) -> PluginProvider:
-    def provider(action: str) -> PluginSQL:
+    def provider(action: str) -> PermissionSQL:
         if action != allowed_action:
-            return PluginSQL(
+            return PermissionSQL(
                 f"allow_all_{allowed_action}_noop",
                 NO_RULES_SQL,
                 {},
             )
-        return PluginSQL(
+        return PermissionSQL(
             f"allow_all_{allowed_action}",
             """
             SELECT NULL AS parent, NULL AS child, 1 AS allow,

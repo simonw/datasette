@@ -113,13 +113,19 @@ async def test_allowed_specific_resource(test_ds):
         # Check specific resources using allowed()
         # This should use SQL WHERE clause, not fetch all resources
         assert await test_ds.allowed(
-            "view-table", TableResource("analytics", "users"), actor
+            action="view-table",
+            resource=TableResource("analytics", "users"),
+            actor=actor,
         )
         assert await test_ds.allowed(
-            "view-table", TableResource("analytics", "events"), actor
+            action="view-table",
+            resource=TableResource("analytics", "events"),
+            actor=actor,
         )
         assert not await test_ds.allowed(
-            "view-table", TableResource("production", "orders"), actor
+            action="view-table",
+            resource=TableResource("production", "orders"),
+            actor=actor,
         )
 
     finally:
@@ -200,10 +206,14 @@ async def test_child_deny_overrides_parent_allow(test_ds):
 
         # Verify with allowed() method
         assert await test_ds.allowed(
-            "view-table", TableResource("analytics", "users"), actor
+            action="view-table",
+            resource=TableResource("analytics", "users"),
+            actor=actor,
         )
         assert not await test_ds.allowed(
-            "view-table", TableResource("analytics", "sensitive"), actor
+            action="view-table",
+            resource=TableResource("analytics", "sensitive"),
+            actor=actor,
         )
 
     finally:
@@ -240,10 +250,14 @@ async def test_child_allow_overrides_parent_deny(test_ds):
 
         # Verify with allowed() method
         assert await test_ds.allowed(
-            "view-table", TableResource("production", "orders"), actor
+            action="view-table",
+            resource=TableResource("production", "orders"),
+            actor=actor,
         )
         assert not await test_ds.allowed(
-            "view-table", TableResource("production", "customers"), actor
+            action="view-table",
+            resource=TableResource("production", "customers"),
+            actor=actor,
         )
 
     finally:
@@ -301,10 +315,14 @@ async def test_sql_does_filtering_not_python(test_ds):
         # allowed() should execute a targeted SQL query
         # NOT fetch all resources and filter in Python
         assert await test_ds.allowed(
-            "view-table", TableResource("analytics", "users"), actor
+            action="view-table",
+            resource=TableResource("analytics", "users"),
+            actor=actor,
         )
         assert not await test_ds.allowed(
-            "view-table", TableResource("analytics", "events"), actor
+            action="view-table",
+            resource=TableResource("analytics", "events"),
+            actor=actor,
         )
 
         # allowed_resources() should also use SQL filtering

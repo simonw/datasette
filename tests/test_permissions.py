@@ -344,16 +344,13 @@ def test_query_list_respects_view_query():
                 ("execute-sql", "fixtures"),
             ],
         ),
-        pytest.param(
+        (
             "/fixtures.db",
             [
                 "view-instance",
                 ("view-database", "fixtures"),
                 ("view-database-download", "fixtures"),
             ],
-            marks=pytest.mark.xfail(
-                reason="ensure_permissions() short-circuits, not checking all permissions - see #2526"
-            ),
         ),
         (
             "/fixtures/neighborhood_search",

@@ -501,44 +501,44 @@ async def test_tables_endpoint_search_no_matches():
 async def test_tables_endpoint_config_database_allow():
     """Test that database-level allow blocks work for view-table action"""
 
-    # Simulate: -s databases.fixtures.allow.id root
-    config = {"databases": {"fixtures": {"allow": {"id": "root"}}}}
+    # Simulate: -s databases.restricted_db.allow.id root
+    config = {"databases": {"restricted_db": {"allow": {"id": "root"}}}}
 
     ds = Datasette(config=config)
     await ds.invoke_startup()
 
     # Create databases
-    fixtures_db = ds.add_memory_database("fixtures")
-    await fixtures_db.execute_write("CREATE TABLE users (id INTEGER)")
-    await fixtures_db.execute_write("CREATE TABLE posts (id INTEGER)")
+    restricted_db = ds.add_memory_database("restricted_db")
+    await restricted_db.execute_write("CREATE TABLE users (id INTEGER)")
+    await restricted_db.execute_write("CREATE TABLE posts (id INTEGER)")
 
-    content_db = ds.add_memory_database("content")
-    await content_db.execute_write("CREATE TABLE articles (id INTEGER)")
+    public_db = ds.add_memory_database("public_db")
+    await public_db.execute_write("CREATE TABLE articles (id INTEGER)")
 
     await ds._refresh_schemas()
 
-    # Root user should see fixtures tables
+    # Root user should see restricted_db tables
     root_tables = await ds.allowed_resources("view-table", {"id": "root"})
     root_list = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
         for t in root_tables
     ]
-    fixtures_tables_root = [m for m in root_list if m["name"].startswith("fixtures/")]
-    assert len(fixtures_tables_root) == 2
-    table_names = {m["name"] for m in fixtures_tables_root}
-    assert "fixtures/users" in table_names
-    assert "fixtures/posts" in table_names
+    restricted_tables_root = [m for m in root_list if m["name"].startswith("restricted_db/")]
+    assert len(restricted_tables_root) == 2
+    table_names = {m["name"] for m in restricted_tables_root}
+    assert "restricted_db/users" in table_names
+    assert "restricted_db/posts" in table_names
 
-    # Alice should NOT see fixtures tables
+    # Alice should NOT see restricted_db tables
     alice_tables = await ds.allowed_resources("view-table", {"id": "alice"})
     alice_list = [
         {"name": f"{t.parent}/{t.child}", "url": ds.urls.table(t.parent, t.child)}
         for t in alice_tables
     ]
-    fixtures_tables_alice = [m for m in alice_list if m["name"].startswith("fixtures/")]
-    assert len(fixtures_tables_alice) == 0
+    restricted_tables_alice = [m for m in alice_list if m["name"].startswith("restricted_db/")]
+    assert len(restricted_tables_alice) == 0
 
-    # But Alice should see content tables (no restrictions)
-    content_tables_alice = [m for m in alice_list if m["name"].startswith("content/")]
-    assert len(content_tables_alice) == 1
-    assert "content/articles" in {m["name"] for m in content_tables_alice}
+    # But Alice should see public_db tables (no restrictions)
+    public_tables_alice = [m for m in alice_list if m["name"].startswith("public_db/")]
+    assert len(public_tables_alice) == 1
+    assert "public_db/articles" in {m["name"] for m in public_tables_alice}

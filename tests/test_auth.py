@@ -357,64 +357,92 @@ async def test_root_with_root_enabled_gets_all_permissions(ds_client):
     root_actor = {"id": "root"}
 
     # Test instance-level permissions (no resource)
-    assert await ds_client.ds.permission_allowed(root_actor, "permissions-debug", None) is True
+    assert (
+        await ds_client.ds.permission_allowed(root_actor, "permissions-debug", None)
+        is True
+    )
     assert await ds_client.ds.permission_allowed(root_actor, "debug-menu", None) is True
 
     # Test view permissions using the new ds.allowed() method
-    assert await ds_client.ds.allowed(
-        action="view-instance",
-        resource=InstanceResource(),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="view-instance", resource=InstanceResource(), actor=root_actor
+        )
+        is True
+    )
 
-    assert await ds_client.ds.allowed(
-        action="view-database",
-        resource=DatabaseResource("fixtures"),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="view-database",
+            resource=DatabaseResource("fixtures"),
+            actor=root_actor,
+        )
+        is True
+    )
 
-    assert await ds_client.ds.allowed(
-        action="view-table",
-        resource=TableResource("fixtures", "facetable"),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="view-table",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
 
     # Test write permissions using ds.allowed()
-    assert await ds_client.ds.allowed(
-        action="insert-row",
-        resource=TableResource("fixtures", "facetable"),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="insert-row",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
 
-    assert await ds_client.ds.allowed(
-        action="delete-row",
-        resource=TableResource("fixtures", "facetable"),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="delete-row",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
 
-    assert await ds_client.ds.allowed(
-        action="update-row",
-        resource=TableResource("fixtures", "facetable"),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="update-row",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
 
-    assert await ds_client.ds.allowed(
-        action="create-table",
-        resource=DatabaseResource("fixtures"),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="create-table",
+            resource=DatabaseResource("fixtures"),
+            actor=root_actor,
+        )
+        is True
+    )
 
-    assert await ds_client.ds.allowed(
-        action="alter-table",
-        resource=TableResource("fixtures", "facetable"),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="alter-table",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
 
-    assert await ds_client.ds.allowed(
-        action="drop-table",
-        resource=TableResource("fixtures", "facetable"),
-        actor=root_actor
-    ) is True
+    assert (
+        await ds_client.ds.allowed(
+            action="drop-table",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is True
+    )
 
 
 @pytest.mark.asyncio
@@ -433,32 +461,46 @@ async def test_root_without_root_enabled_no_special_permissions(ds_client):
     # Without root_enabled, root should follow normal permission rules
 
     # View permissions should still work (default=True)
-    assert await ds_client.ds.allowed(
-        action="view-instance",
-        resource=InstanceResource(),
-        actor=root_actor
-    ) is True  # Default permission
+    assert (
+        await ds_client.ds.allowed(
+            action="view-instance", resource=InstanceResource(), actor=root_actor
+        )
+        is True
+    )  # Default permission
 
-    assert await ds_client.ds.allowed(
-        action="view-database",
-        resource=DatabaseResource("fixtures"),
-        actor=root_actor
-    ) is True  # Default permission
+    assert (
+        await ds_client.ds.allowed(
+            action="view-database",
+            resource=DatabaseResource("fixtures"),
+            actor=root_actor,
+        )
+        is True
+    )  # Default permission
 
     # But restricted permissions should NOT automatically be granted
     # Test with instance-level permission (no resource class)
-    result = await ds_client.ds.permission_allowed(root_actor, "permissions-debug", None)
-    assert result is not True, "Root without root_enabled should not automatically get permissions-debug"
+    result = await ds_client.ds.permission_allowed(
+        root_actor, "permissions-debug", None
+    )
+    assert (
+        result is not True
+    ), "Root without root_enabled should not automatically get permissions-debug"
 
     # Test with resource-based permissions using ds.allowed()
-    assert await ds_client.ds.allowed(
-        action="create-table",
-        resource=DatabaseResource("fixtures"),
-        actor=root_actor
-    ) is not True, "Root without root_enabled should not automatically get create-table"
+    assert (
+        await ds_client.ds.allowed(
+            action="create-table",
+            resource=DatabaseResource("fixtures"),
+            actor=root_actor,
+        )
+        is not True
+    ), "Root without root_enabled should not automatically get create-table"
 
-    assert await ds_client.ds.allowed(
-        action="drop-table",
-        resource=TableResource("fixtures", "facetable"),
-        actor=root_actor
-    ) is not True, "Root without root_enabled should not automatically get drop-table"
+    assert (
+        await ds_client.ds.allowed(
+            action="drop-table",
+            resource=TableResource("fixtures", "facetable"),
+            actor=root_actor,
+        )
+        is not True
+    ), "Root without root_enabled should not automatically get drop-table"

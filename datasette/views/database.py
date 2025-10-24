@@ -71,17 +71,26 @@ class DatabaseView(View):
 
         metadata = await datasette.get_database_metadata(database)
 
+        # Get all tables/views this actor can see in bulk
+        from datasette.resources import TableResource
+
+        allowed_tables = await datasette.allowed_resources("view-table", request.actor)
+        allowed_table_set = {
+            (r.parent, r.child) for r in allowed_tables if r.parent == database
+        }
+
         sql_views = []
         for view_name in await db.view_names():
-            view_visible, view_private = await datasette.check_visibility(
-                request.actor,
-                permissions=[
-                    ("view-table", (database, view_name)),
-                    ("view-database", database),
-                    "view-instance",
-                ],
-            )
-            if view_visible:
+            if (database, view_name) in allowed_table_set:
+                # Check if it's private (requires elevated permissions)
+                _, view_private = await datasette.check_visibility(
+                    request.actor,
+                    permissions=[
+                        ("view-table", (database, view_name)),
+                        ("view-database", database),
+                        "view-instance",
+                    ],
+                )
                 sql_views.append(
                     {
                         "name": view_name,
@@ -89,7 +98,7 @@ class DatabaseView(View):
                     }
                 )
 
-        tables = await get_tables(datasette, request, db)
+        tables = await get_tables(datasette, request, db, allowed_table_set)
         canned_queries = []
         for query in (
             await datasette.get_canned_queries(database, request.actor)
@@ -332,7 +341,7 @@ class QueryContext(Context):
     )
 
 
-async def get_tables(datasette, request, db):
+async def get_tables(datasette, request, db, allowed_table_set):
     tables = []
     database = db.name
     table_counts = await db.table_counts(100)
@@ -340,7 +349,11 @@ async def get_tables(datasette, request, db):
     all_foreign_keys = await db.get_all_foreign_keys()
 
     for table in table_counts:
-        table_visible, table_private = await datasette.check_visibility(
+        if (database, table) not in allowed_table_set:
+            continue
+
+        # Check if it's private (requires elevated permissions)
+        _, table_private = await datasette.check_visibility(
             request.actor,
             permissions=[
                 ("view-table", (database, table)),
@@ -348,8 +361,7 @@ async def get_tables(datasette, request, db):
                 "view-instance",
             ],
         )
-        if not table_visible:
-            continue
+
         table_columns = await db.table_columns(table)
         tables.append(
             {
@@ -508,6 +520,14 @@ class QueryView(View):
 
         db = await datasette.resolve_database(request)
         database = db.name
+
+        # Get all tables/views this actor can see in bulk
+        from datasette.resources import TableResource
+
+        allowed_tables = await datasette.allowed_resources("view-table", request.actor)
+        allowed_table_set = {
+            (r.parent, r.child) for r in allowed_tables if r.parent == database
+        }
 
         # Are we a canned query?
         canned_query = None
@@ -808,7 +828,9 @@ class QueryView(View):
                         show_hide_text=show_hide_text,
                         editable=not canned_query,
                         allow_execute_sql=allow_execute_sql,
-                        tables=await get_tables(datasette, request, db),
+                        tables=await get_tables(
+                            datasette, request, db, allowed_table_set
+                        ),
                         named_parameter_values=named_parameter_values,
                         edit_sql_url=edit_sql_url,
                         display_rows=await display_rows(

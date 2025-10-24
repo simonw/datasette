@@ -306,20 +306,20 @@ def restrictions_allow_action(
     "Do these restrictions allow the requested action against the requested resource?"
     if action == "view-instance":
         # Special case for view-instance: it's allowed if the restrictions include any
-        # permissions that have the implies_can_view=True flag set
+        # actions that have the implies_can_view=True flag set
         all_rules = restrictions.get("a") or []
         for database_rules in (restrictions.get("d") or {}).values():
             all_rules += database_rules
         for database_resource_rules in (restrictions.get("r") or {}).values():
             for resource_rules in database_resource_rules.values():
                 all_rules += resource_rules
-        permissions = [datasette.get_permission(action) for action in all_rules]
-        if any(p for p in permissions if p.implies_can_view):
+        actions = [datasette.get_action(action) for action in all_rules]
+        if any(a for a in actions if a and a.implies_can_view):
             return True
 
     if action == "view-database":
         # Special case for view-database: it's allowed if the restrictions include any
-        # permissions that have the implies_can_view=True flag set AND takes_database
+        # actions that have the implies_can_view=True flag set AND takes_parent
         all_rules = restrictions.get("a") or []
         database_rules = list((restrictions.get("d") or {}).get(resource) or [])
         all_rules += database_rules
@@ -327,15 +327,15 @@ def restrictions_allow_action(
         for resource_rules in (restrictions.get("r") or {}).values():
             for table_rules in resource_rules.values():
                 all_rules += table_rules
-        permissions = [datasette.get_permission(action) for action in all_rules]
-        if any(p for p in permissions if p.implies_can_view and p.takes_database):
+        actions = [datasette.get_action(action) for action in all_rules]
+        if any(a for a in actions if a and a.implies_can_view and a.takes_parent):
             return True
 
     # Does this action have an abbreviation?
     to_check = {action}
-    permission = datasette.permissions.get(action)
-    if permission and permission.abbr:
-        to_check.add(permission.abbr)
+    action_obj = datasette.actions.get(action)
+    if action_obj and action_obj.abbr:
+        to_check.add(action_obj.abbr)
 
     # If restrictions is defined then we use those to further restrict the actor
     # Crucially, we only use this to say NO (return False) - we never

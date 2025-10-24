@@ -547,6 +547,18 @@ class Datasette:
             "No permission found with name or abbreviation {}".format(name_or_abbr)
         )
 
+    def get_action(self, name_or_abbr: str):
+        """
+        Returns an Action object for the given name or abbreviation. Returns None if not found.
+        """
+        if name_or_abbr in self.actions:
+            return self.actions[name_or_abbr]
+        # Try abbreviation
+        for action in self.actions.values():
+            if action.abbr == name_or_abbr:
+                return action
+        return None
+
     async def refresh_schemas(self):
         if self._refresh_schemas_lock.locked():
             return
@@ -1281,6 +1293,23 @@ class Datasette:
             parent=resource.parent,
             child=resource.child,
         )
+
+        # Check actor restrictions after SQL permissions
+        # If the SQL check says "yes" but actor has restrictions, verify action is allowed
+        if result and actor and "_r" in actor:
+            from datasette.default_permissions import restrictions_allow_action
+
+            # Convert Resource to old-style format for restrictions check
+            if resource.parent and resource.child:
+                old_style_resource = (resource.parent, resource.child)
+            elif resource.parent:
+                old_style_resource = resource.parent
+            else:
+                old_style_resource = None
+
+            # If restrictions don't allow this action, deny it
+            if not restrictions_allow_action(self, actor["_r"], action, old_style_resource):
+                result = False
 
         # Log the permission check for debugging
         # Convert Resource to old-style format for backward compatibility with debug tools

@@ -179,9 +179,7 @@ def permission_allowed_default_allow_sql(datasette, actor, action, resource):
     This runs before other permission checks to ensure the setting is respected.
     """
     if action == "execute-sql":
-        default_allow_sql_setting = datasette.setting("default_allow_sql")
-        # Handle both boolean False and string "false" (from CLI)
-        if default_allow_sql_setting in (False, "false"):
+        if not datasette.setting("default_allow_sql"):
             return False
     return None
 
@@ -227,9 +225,7 @@ async def permission_resources_sql(datasette, actor, action):
     rules.extend(config_rules)
 
     # Check default_allow_sql setting for execute-sql action
-    default_allow_sql_setting = datasette.setting("default_allow_sql")
-    # Handle both boolean False and string "false" (from CLI)
-    if action == "execute-sql" and default_allow_sql_setting in (False, "false"):
+    if action == "execute-sql" and not datasette.setting("default_allow_sql"):
         # Return a deny rule for all databases
         sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'default_allow_sql is false' AS reason"
         rules.append(

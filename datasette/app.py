@@ -394,10 +394,37 @@ class Datasette:
         config = config or {}
         config_settings = config.get("settings") or {}
 
-        # validate "settings" keys in datasette.json
-        for key in config_settings:
+        # Validate settings from config file
+        for key, value in config_settings.items():
             if key not in DEFAULT_SETTINGS:
-                raise StartupError("Invalid setting '{}' in datasette.json".format(key))
+                raise StartupError(f"Invalid setting '{key}' in config file")
+            # Validate type matches expected type from DEFAULT_SETTINGS
+            if value is not None:  # Allow None/null values
+                expected_type = type(DEFAULT_SETTINGS[key])
+                actual_type = type(value)
+                if actual_type != expected_type:
+                    raise StartupError(
+                        f"Setting '{key}' in config file has incorrect type. "
+                        f"Expected {expected_type.__name__}, got {actual_type.__name__}. "
+                        f"Value: {value!r}. "
+                        f"Hint: In YAML/JSON config files, remove quotes from boolean and integer values."
+                    )
+
+        # Validate settings from constructor parameter
+        if settings:
+            for key, value in settings.items():
+                if key not in DEFAULT_SETTINGS:
+                    raise StartupError(f"Invalid setting '{key}' in settings parameter")
+                if value is not None:
+                    expected_type = type(DEFAULT_SETTINGS[key])
+                    actual_type = type(value)
+                    if actual_type != expected_type:
+                        raise StartupError(
+                            f"Setting '{key}' in settings parameter has incorrect type. "
+                            f"Expected {expected_type.__name__}, got {actual_type.__name__}. "
+                            f"Value: {value!r}"
+                        )
+
         self.config = config
         # CLI settings should overwrite datasette.json settings
         self._settings = dict(DEFAULT_SETTINGS, **(config_settings), **(settings or {}))

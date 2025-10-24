@@ -307,7 +307,57 @@ def test_setting_type_validation():
     runner = CliRunner()
     result = runner.invoke(cli, ["--setting", "default_page_size", "dog"])
     assert result.exit_code == 2
-    assert '"settings.default_page_size" should be an integer' in result.stderr
+    assert '"settings.default_page_size" should be an integer' in result.output
+
+
+def test_setting_boolean_validation_invalid():
+    """Test that invalid boolean values are rejected"""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli, ["--setting", "default_allow_sql", "invalid", "--get", "/-/settings.json"]
+    )
+    assert result.exit_code == 2
+    assert (
+        '"settings.default_allow_sql" should be on/off/true/false/1/0' in result.output
+    )
+
+
+@pytest.mark.parametrize("value", ("off", "false", "0"))
+def test_setting_boolean_validation_false_values(value):
+    """Test that 'off', 'false', '0' work for boolean settings"""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--setting",
+            "default_allow_sql",
+            value,
+            "--get",
+            "/_memory/-/query.json?sql=select+1",
+        ],
+    )
+    # Should be forbidden (setting is false)
+    assert result.exit_code == 1, result.output
+    assert "Forbidden" in result.output
+
+
+@pytest.mark.parametrize("value", ("on", "true", "1"))
+def test_setting_boolean_validation_true_values(value):
+    """Test that 'on', 'true', '1' work for boolean settings"""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "--setting",
+            "default_allow_sql",
+            value,
+            "--get",
+            "/_memory/-/query.json?sql=select+1&_shape=objects",
+        ],
+    )
+    # Should succeed (setting is true)
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["rows"][0] == {"1": 1}
 
 
 @pytest.mark.parametrize("default_allow_sql", (True, False))

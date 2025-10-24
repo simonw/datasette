@@ -147,8 +147,8 @@ def check_permission_actions_are_documented():
     def before(hook_name, hook_impls, kwargs):
         if hook_name == "permission_allowed":
             datasette = kwargs["datasette"]
-            assert kwargs["action"] in datasette.permissions, (
-                "'{}' has not been registered with register_permissions()".format(
+            assert kwargs["action"] in datasette.actions, (
+                "'{}' has not been registered with register_actions()".format(
                     kwargs["action"]
                 )
                 + " (or maybe a test forgot to do await ds.invoke_startup())"

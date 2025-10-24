@@ -36,6 +36,7 @@ def register_actions():
             takes_parent=True,
             takes_child=False,
             resource_class=DatabaseResource,
+            also_requires="view-database",
         ),
         Action(
             name="view-table",

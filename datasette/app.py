@@ -1249,6 +1249,17 @@ class Datasette:
         if resource is None:
             resource = InstanceResource()
 
+        # Check if this action has also_requires - if so, check that action first
+        action_obj = self.actions.get(action)
+        if action_obj and action_obj.also_requires:
+            # Must have the required action first
+            if not await self.allowed(
+                action=action_obj.also_requires,
+                resource=resource,
+                actor=actor,
+            ):
+                return False
+
         result = await check_permission_for_resource(
             datasette=self,
             actor=actor,

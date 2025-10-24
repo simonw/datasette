@@ -122,6 +122,7 @@ async def permission_resources_sql(datasette, actor, action):
     default_allow_actions = {
         "view-instance",
         "view-database",
+        "view-database-download",
         "view-table",
         "execute-sql",
     }

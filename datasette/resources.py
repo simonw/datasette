@@ -48,6 +48,9 @@ class TableResource(Resource):
         return """
             SELECT database_name AS parent, table_name AS child
             FROM catalog_tables
+            UNION ALL
+            SELECT database_name AS parent, view_name AS child
+            FROM catalog_views
         """
 
 

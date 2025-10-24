@@ -37,7 +37,9 @@ def plugin_allow_all_for_user(user: str) -> Callable[[str], PermissionSQL]:
     return provider
 
 
-def plugin_deny_specific_table(user: str, parent: str, child: str) -> Callable[[str], PermissionSQL]:
+def plugin_deny_specific_table(
+    user: str, parent: str, child: str
+) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "deny_specific_table",
@@ -66,7 +68,9 @@ def plugin_org_policy_deny_parent(parent: str) -> Callable[[str], PermissionSQL]
     return provider
 
 
-def plugin_allow_parent_for_user(user: str, parent: str) -> Callable[[str], PermissionSQL]:
+def plugin_allow_parent_for_user(
+    user: str, parent: str
+) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "allow_parent",
@@ -81,7 +85,9 @@ def plugin_allow_parent_for_user(user: str, parent: str) -> Callable[[str], Perm
     return provider
 
 
-def plugin_child_allow_for_user(user: str, parent: str, child: str) -> Callable[[str], PermissionSQL]:
+def plugin_child_allow_for_user(
+    user: str, parent: str, child: str
+) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "allow_child",
@@ -137,7 +143,9 @@ def plugin_conflicting_same_child_rules(
     return [allow_provider, deny_provider]
 
 
-def plugin_allow_all_for_action(user: str, allowed_action: str) -> Callable[[str], PermissionSQL]:
+def plugin_allow_all_for_action(
+    user: str, allowed_action: str
+) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         if action != allowed_action:
             return PermissionSQL(

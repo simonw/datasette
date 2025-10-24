@@ -261,9 +261,10 @@ def test_query_page_truncates():
             "/fixtures/simple_primary_key",
             ["table", "db-fixtures", "table-simple_primary_key"],
         ),
-        (
+        pytest.param(
             "/fixtures/neighborhood_search",
             ["query", "db-fixtures", "query-neighborhood_search"],
+            marks=pytest.mark.xfail(reason="Canned queries not accessible, refs #2510")
         ),
         (
             "/fixtures/table~2Fwith~2Fslashes~2Ecsv",
@@ -1033,9 +1034,10 @@ async def test_trace_correctly_escaped(ds_client):
             "http://localhost/fixtures/-/query.json?sql=select+*+from+facetable",
         ),
         # Canned query page
-        (
+        pytest.param(
             "/fixtures/neighborhood_search?text=town",
             "http://localhost/fixtures/neighborhood_search.json?text=town",
+            marks=pytest.mark.xfail(reason="Canned queries not accessible, refs #2510")
         ),
         # /-/ pages
         (

@@ -339,28 +339,15 @@ async def build_allowed_resources_sql(
     return query, all_params
 
 
-async def check_permission_for_resource(
-    datasette: "Datasette",
-    actor: dict | None,
-    action: str,
-    parent: str | None,
-    child: str | None,
-) -> bool:
+async def build_permission_rules_sql(
+    datasette: "Datasette", actor: dict | None, action: str
+) -> tuple[str, dict]:
     """
-    Check if an actor has permission for a specific action on a specific resource.
-
-    Args:
-        datasette: The Datasette instance
-        actor: The actor dict (or None)
-        action: The action name
-        parent: The parent resource identifier (e.g., database name, or None)
-        child: The child resource identifier (e.g., table name, or None)
+    Build the UNION SQL and params for all permission rules for a given actor and action.
 
     Returns:
-        True if the actor is allowed, False otherwise
-
-    This builds the cascading permission query and checks if the specific
-    resource is in the allowed set.
+        A tuple of (sql, params) where sql is a UNION ALL query that returns
+        (parent, child, allow, reason, source_plugin) rows.
     """
     # Get the Action object
     action_obj = datasette.actions.get(action)
@@ -384,12 +371,44 @@ async def check_permission_for_resource(
         rule_sqls.extend(sqls)
         all_params.update(params)
 
-    # If no rules, default deny
+    # Build the UNION query
     if not rule_sqls:
-        return False
+        # Return empty result set
+        return "SELECT NULL AS parent, NULL AS child, 0 AS allow, NULL AS reason, NULL AS source_plugin WHERE 0", {}
 
-    # Build a simplified query that just checks for this one resource
     rules_union = " UNION ALL ".join(rule_sqls)
+    return rules_union, all_params
+
+
+async def check_permission_for_resource(
+    *,
+    datasette: "Datasette",
+    actor: dict | None,
+    action: str,
+    parent: str | None,
+    child: str | None,
+) -> bool:
+    """
+    Check if an actor has permission for a specific action on a specific resource.
+
+    Args:
+        datasette: The Datasette instance
+        actor: The actor dict (or None)
+        action: The action name
+        parent: The parent resource identifier (e.g., database name, or None)
+        child: The child resource identifier (e.g., table name, or None)
+
+    Returns:
+        True if the actor is allowed, False otherwise
+
+    This builds the cascading permission query and checks if the specific
+    resource is in the allowed set.
+    """
+    rules_union, all_params = await build_permission_rules_sql(datasette, actor, action)
+
+    # If no rules (empty SQL), default deny
+    if not rules_union or rules_union.endswith("WHERE 0"):
+        return False
 
     # Add parameters for the resource we're checking
     all_params["_check_parent"] = parent

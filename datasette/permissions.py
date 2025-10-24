@@ -26,6 +26,29 @@ class Resource(ABC):
         """
         self.parent = parent
         self.child = child
+        self._private = None  # Sentinel to track if private was set
+
+    @property
+    def private(self) -> bool:
+        """
+        Whether this resource is private (accessible to actor but not anonymous).
+
+        This property is only available on Resource objects returned from
+        allowed_resources() when include_is_private=True is used.
+
+        Raises:
+            AttributeError: If accessed without calling include_is_private=True
+        """
+        if self._private is None:
+            raise AttributeError(
+                "The 'private' attribute is only available when using "
+                "allowed_resources(..., include_is_private=True)"
+            )
+        return self._private
+
+    @private.setter
+    def private(self, value: bool):
+        self._private = value
 
     @classmethod
     @abstractmethod

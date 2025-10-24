@@ -1305,15 +1305,28 @@ class Datasette:
         *,
         action: str,
         actor: dict | None = None,
+        parent: str | None = None,
+        include_is_private: bool = False,
     ) -> tuple[str, dict]:
         """
         Build SQL query to get all resources the actor can access for the given action.
 
+        Args:
+            action: The action name (e.g., "view-table")
+            actor: The actor dict (or None for unauthenticated)
+            parent: Optional parent filter (e.g., database name) to limit results
+            include_is_private: If True, include is_private column showing if anonymous cannot access
+
         Returns a tuple of (query, params) that can be executed against the internal database.
-        The query returns rows with (parent, child, reason) columns.
+        The query returns rows with (parent, child, reason) columns, plus is_private if requested.
 
         Example:
-            query, params = await datasette.allowed_resources_sql(action="view-table", actor=actor)
+            query, params = await datasette.allowed_resources_sql(
+                action="view-table",
+                actor=actor,
+                parent="mydb",
+                include_is_private=True
+            )
             result = await datasette.get_internal_database().execute(query, params)
         """
         from datasette.utils.actions_sql import build_allowed_resources_sql
@@ -1322,12 +1335,17 @@ class Datasette:
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
 
-        return await build_allowed_resources_sql(self, actor, action)
+        return await build_allowed_resources_sql(
+            self, actor, action, parent=parent, include_is_private=include_is_private
+        )
 
     async def allowed_resources(
         self,
         action: str,
         actor: dict | None = None,
+        *,
+        parent: str | None = None,
+        include_is_private: bool = False,
     ) -> list["Resource"]:
         """
         Return all resources the actor can access for the given action.
@@ -1335,10 +1353,25 @@ class Datasette:
         Uses SQL to filter resources based on cascading permission rules.
         Returns instances of the appropriate Resource subclass.
 
+        Args:
+            action: The action name (e.g., "view-table")
+            actor: The actor dict (or None for unauthenticated)
+            parent: Optional parent filter (e.g., database name) to limit results
+            include_is_private: If True, adds a .private attribute to each Resource
+
         Example:
+            # Get all tables
             tables = await datasette.allowed_resources("view-table", actor)
             for table in tables:
                 print(f"{table.parent}/{table.child}")
+
+            # Get tables for specific database with private flag
+            tables = await datasette.allowed_resources(
+                "view-table", actor, parent="mydb", include_is_private=True
+            )
+            for table in tables:
+                if table.private:
+                    print(f"{table.child} is private")
         """
         from datasette.permissions import Resource
 
@@ -1346,17 +1379,24 @@ class Datasette:
         if not action_obj:
             raise ValueError(f"Unknown action: {action}")
 
-        query, params = await self.allowed_resources_sql(action=action, actor=actor)
+        query, params = await self.allowed_resources_sql(
+            action=action,
+            actor=actor,
+            parent=parent,
+            include_is_private=include_is_private,
+        )
         result = await self.get_internal_database().execute(query, params)
 
         # Instantiate the appropriate Resource subclass for each row
         resource_class = action_obj.resource_class
         resources = []
         for row in result.rows:
-            # row[0]=parent, row[1]=child, row[2]=reason (ignored)
+            # row[0]=parent, row[1]=child, row[2]=reason (ignored), row[3]=is_private (if requested)
             # Create instance directly with parent/child from base class
             resource = object.__new__(resource_class)
             Resource.__init__(resource, parent=row[0], child=row[1])
+            if include_is_private:
+                resource.private = bool(row[3])
             resources.append(resource)
 
         return resources

@@ -1,5 +1,6 @@
 import json
 
+from datasette import Forbidden
 from datasette.plugins import pm
 from datasette.utils import (
     add_cors_headers,
@@ -25,7 +26,8 @@ class IndexView(BaseView):
 
     async def get(self, request):
         as_format = request.url_vars["format"]
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.allowed(action="view-instance", actor=request.actor):
+            raise Forbidden("view-instance")
 
         # Get all allowed databases and tables in bulk
         allowed_databases = await self.ds.allowed_resources(

@@ -50,10 +50,8 @@ class DatabaseView(View):
 
         visible, private = await datasette.check_visibility(
             request.actor,
-            permissions=[
-                ("view-database", database),
-                "view-instance",
-            ],
+            action="view-database",
+            resource=database,
         )
         if not visible:
             raise Forbidden("You do not have permission to view this database")
@@ -96,11 +94,8 @@ class DatabaseView(View):
         ).values():
             query_visible, query_private = await datasette.check_visibility(
                 request.actor,
-                permissions=[
-                    ("view-query", (database, query["name"])),
-                    ("view-database", database),
-                    "view-instance",
-                ],
+                action="view-query",
+                resource=(database, query["name"]),
             )
             if query_visible:
                 canned_queries.append(dict(query, private=query_private))
@@ -370,15 +365,15 @@ async def get_tables(datasette, request, db, allowed_dict):
 
 
 async def database_download(request, datasette):
+    from datasette.resources import DatabaseResource
+
     database = tilde_decode(request.url_vars["database"])
-    await datasette.ensure_permissions(
-        request.actor,
-        [
-            ("view-database-download", database),
-            ("view-database", database),
-            "view-instance",
-        ],
-    )
+    if not await datasette.allowed(
+        action="view-database-download",
+        resource=DatabaseResource(database=database),
+        actor=request.actor,
+    ):
+        raise Forbidden("view-database-download")
     try:
         db = datasette.get_database(route=database)
     except KeyError:
@@ -540,19 +535,19 @@ class QueryView(View):
             # Respect canned query permissions
             visible, private = await datasette.check_visibility(
                 request.actor,
-                permissions=[
-                    ("view-query", (database, canned_query["name"])),
-                    ("view-database", database),
-                    "view-instance",
-                ],
+                action="view-query",
+                resource=(database, canned_query["name"]),
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")
 
         else:
-            await datasette.ensure_permissions(
-                request.actor, [("execute-sql", database)]
-            )
+            if not await datasette.allowed(
+                action="execute-sql",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
+            ):
+                raise Forbidden("execute-sql")
 
         # Flattened because of ?sql=&name1=value1&name2=value2 feature
         params = {key: request.args.get(key) for key in request.args}

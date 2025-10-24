@@ -44,7 +44,8 @@ class JsonDataView(BaseView):
 
     async def get(self, request):
         if self.permission:
-            await self.ds.ensure_permissions(request.actor, [self.permission])
+            if not await self.ds.allowed(action=self.permission, actor=request.actor):
+                raise Forbidden(self.permission)
         if self.needs_request:
             data = self.data_callback(request)
         else:
@@ -54,7 +55,8 @@ class JsonDataView(BaseView):
 
 class PatternPortfolioView(View):
     async def get(self, request, datasette):
-        await datasette.ensure_permissions(request.actor, ["view-instance"])
+        if not await datasette.allowed(action="view-instance", actor=request.actor):
+            raise Forbidden("view-instance")
         return Response.html(
             await datasette.render_template(
                 "patterns.html",
@@ -112,7 +114,8 @@ class PermissionsDebugView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.allowed(action="view-instance", actor=request.actor):
+            raise Forbidden("view-instance")
         if not await self.ds.allowed(action="permissions-debug", actor=request.actor):
             raise Forbidden("Permission denied")
         filter_ = request.args.get("filter") or "all"
@@ -151,7 +154,8 @@ class PermissionsDebugView(BaseView):
         )
 
     async def post(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.allowed(action="view-instance", actor=request.actor):
+            raise Forbidden("view-instance")
         if not await self.ds.allowed(action="permissions-debug", actor=request.actor):
             raise Forbidden("Permission denied")
         vars = await request.post_vars()
@@ -362,7 +366,8 @@ class PermissionRulesView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.allowed(action="view-instance", actor=request.actor):
+            raise Forbidden("view-instance")
         if not await self.ds.allowed(action="permissions-debug", actor=request.actor):
             raise Forbidden("Permission denied")
 
@@ -607,11 +612,13 @@ class MessagesDebugView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.allowed(action="view-instance", actor=request.actor):
+            raise Forbidden("view-instance")
         return await self.render(["messages_debug.html"], request)
 
     async def post(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        if not await self.ds.allowed(action="view-instance", actor=request.actor):
+            raise Forbidden("view-instance")
         post = await request.post_vars()
         message = post.get("message", "")
         message_type = post.get("message_type") or "INFO"
@@ -774,7 +781,7 @@ class ApiExplorerView(BaseView):
             if name == "_internal":
                 continue
             database_visible, _ = await self.ds.check_visibility(
-                request.actor, permissions=[("view-database", name), "view-instance"]
+                request.actor, action="view-database", resource=name
             )
             if not database_visible:
                 continue
@@ -783,11 +790,8 @@ class ApiExplorerView(BaseView):
             for table in table_names:
                 visible, _ = await self.ds.check_visibility(
                     request.actor,
-                    permissions=[
-                        ("view-table", (name, table)),
-                        ("view-database", name),
-                        "view-instance",
-                    ],
+                    action="view-table",
+                    resource=(name, table),
                 )
                 if not visible:
                     continue
@@ -886,7 +890,7 @@ class ApiExplorerView(BaseView):
     async def get(self, request):
         visible, private = await self.ds.check_visibility(
             request.actor,
-            permissions=["view-instance"],
+            action="view-instance",
         )
         if not visible:
             raise Forbidden("You do not have permission to view this instance")

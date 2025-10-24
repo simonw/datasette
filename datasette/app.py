@@ -1041,79 +1041,42 @@ class Datasette:
         for hook in pm.hook.track_event(datasette=self, event=event):
             await await_me_maybe(hook)
 
-    async def ensure_permissions(
-        self,
-        actor: dict,
-        permissions: Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]],
-    ):
-        """
-        permissions is a list of (action, resource) tuples or 'action' strings
-
-        Raises datasette.Forbidden() if any of the checks fail
-        """
-        assert actor is None or isinstance(actor, dict), "actor must be None or a dict"
-        for permission in permissions:
-            if isinstance(permission, str):
-                action = permission
-                resource_obj = None
-            elif isinstance(permission, (tuple, list)) and len(permission) == 2:
-                action, resource = permission
-                # Convert old-style resource to Resource object
-                if isinstance(resource, str):
-                    resource_obj = DatabaseResource(database=resource)
-                elif isinstance(resource, (tuple, list)) and len(resource) == 2:
-                    resource_obj = TableResource(database=resource[0], table=resource[1])
-                else:
-                    resource_obj = None
-            else:
-                assert (
-                    False
-                ), "permission should be string or tuple of two items: {}".format(
-                    repr(permission)
-                )
-            ok = await self.allowed(
-                action=action,
-                resource=resource_obj,
-                actor=actor,
-            )
-            if ok:
-                return
-        # If we got here, none of the permissions were granted
-        # Raise Forbidden with the first action
-        first_permission = permissions[0]
-        if isinstance(first_permission, str):
-            first_action = first_permission
-        else:
-            first_action = first_permission[0]
-        raise Forbidden(first_action)
 
     async def check_visibility(
         self,
         actor: dict,
-        action: Optional[str] = None,
+        action: str,
         resource: Optional[Union[str, Tuple[str, str]]] = None,
-        permissions: Optional[
-            Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]]
-        ] = None,
     ):
-        """Returns (visible, private) - visible = can you see it, private = can others see it too"""
-        if permissions:
-            assert (
-                not action and not resource
-            ), "Can't use action= or resource= with permissions="
+        """
+        Check if actor can see a resource and if it's private.
+
+        Returns (visible, private) tuple:
+        - visible: bool - can the actor see it?
+        - private: bool - if visible, can anonymous users NOT see it?
+        """
+        from datasette.resources import DatabaseResource, TableResource
+
+        # Convert old-style resource to Resource object
+        if resource is None:
+            resource_obj = None
+        elif isinstance(resource, str):
+            resource_obj = DatabaseResource(database=resource)
+        elif isinstance(resource, tuple) and len(resource) == 2:
+            resource_obj = TableResource(database=resource[0], table=resource[1])
         else:
-            permissions = [(action, resource)]
-        try:
-            await self.ensure_permissions(actor, permissions)
-        except Forbidden:
+            resource_obj = None
+
+        # Check if actor can see it
+        if not await self.allowed(action=action, resource=resource_obj, actor=actor):
             return False, False
-        # User can see it, but can the anonymous user see it?
-        try:
-            await self.ensure_permissions(None, permissions)
-        except Forbidden:
-            # It's visible but private
+
+        # Check if anonymous user can see it (for "private" flag)
+        if not await self.allowed(action=action, resource=resource_obj, actor=None):
+            # Actor can see it but anonymous cannot - it's private
             return True, True
-        # It's visible to everyone
+
+        # Both actor and anonymous can see it - it's public
         return True, False
 
     async def allowed_resources_sql(

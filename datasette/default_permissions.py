@@ -211,7 +211,7 @@ async def permission_resources_sql(datasette, actor, action):
         # Add a single global-level allow rule (NULL, NULL) for root
         # This allows root to access everything by default, but database-level
         # and table-level deny rules in config can still block specific resources
-        sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'root user' AS reason"
+        sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'root user' AS reason, 'root_permissions' AS source_plugin"
         rules.append(
             PermissionSQL(
                 source="root_permissions",
@@ -226,7 +226,7 @@ async def permission_resources_sql(datasette, actor, action):
     # Check default_allow_sql setting for execute-sql action
     if action == "execute-sql" and not datasette.setting("default_allow_sql"):
         # Return a deny rule for all databases
-        sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'default_allow_sql is false' AS reason"
+        sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'default_allow_sql is false' AS reason, 'default_allow_sql_setting' AS source_plugin"
         rules.append(
             PermissionSQL(
                 source="default_allow_sql_setting",
@@ -250,7 +250,8 @@ async def permission_resources_sql(datasette, actor, action):
     if action in default_allow_actions:
         reason = f"default allow for {action}".replace("'", "''")
         sql = (
-            "SELECT NULL AS parent, NULL AS child, 1 AS allow, " f"'{reason}' AS reason"
+            "SELECT NULL AS parent, NULL AS child, 1 AS allow, "
+            f"'{reason}' AS reason, 'default_permissions' AS source_plugin"
         )
         rules.append(
             PermissionSQL(
@@ -407,7 +408,7 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
     for idx, (parent, child, allow, reason) in enumerate(rows):
         key = f"cfg_{idx}"
         parts.append(
-            f"SELECT :{key}_parent AS parent, :{key}_child AS child, :{key}_allow AS allow, :{key}_reason AS reason"
+            f"SELECT :{key}_parent AS parent, :{key}_child AS child, :{key}_allow AS allow, :{key}_reason AS reason, 'config_permissions' AS source_plugin"
         )
         params[f"{key}_parent"] = parent
         params[f"{key}_child"] = child

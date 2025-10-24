@@ -203,23 +203,22 @@ def permission_allowed_root(datasette, actor, action, resource):
 
 @hookimpl
 async def permission_resources_sql(datasette, actor, action):
-    # Root user with root_enabled gets all permissions
+    rules: list[PermissionSQL] = []
+
+    # Root user with root_enabled gets all permissions at global level
+    # Config rules at more specific levels (database/table) can still override
     if datasette.root_enabled and actor and actor.get("id") == "root":
-        # Return SQL that grants access to ALL resources for this action
-        action_obj = datasette.actions.get(action)
-        if action_obj and action_obj.resource_class:
-            resources_sql = action_obj.resource_class.resources_sql()
-            sql = f"""
-                SELECT parent, child, 1 AS allow, 'root user' AS reason
-                FROM ({resources_sql})
-            """
-            return PermissionSQL(
+        # Add a single global-level allow rule (NULL, NULL) for root
+        # This allows root to access everything by default, but database-level
+        # and table-level deny rules in config can still block specific resources
+        sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'root user' AS reason"
+        rules.append(
+            PermissionSQL(
                 source="root_permissions",
                 sql=sql,
                 params={},
             )
-
-    rules: list[PermissionSQL] = []
+        )
 
     config_rules = await _config_permission_rules(datasette, actor, action)
     rules.extend(config_rules)

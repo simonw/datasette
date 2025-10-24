@@ -100,6 +100,82 @@ async def build_allowed_resources_sql(
     if not action_obj:
         raise ValueError(f"Unknown action: {action}")
 
+    # If this action also_requires another action, we need to combine the queries
+    if action_obj.also_requires:
+        # Build both queries
+        main_sql, main_params = await _build_single_action_sql(
+            datasette,
+            actor,
+            action,
+            parent=parent,
+            include_is_private=include_is_private,
+        )
+        required_sql, required_params = await _build_single_action_sql(
+            datasette,
+            actor,
+            action_obj.also_requires,
+            parent=parent,
+            include_is_private=False,
+        )
+
+        # Merge parameters - they should have identical values for :actor, :actor_id, etc.
+        all_params = {**main_params, **required_params}
+        if parent is not None:
+            all_params["filter_parent"] = parent
+
+        # Combine with INNER JOIN - only resources allowed by both actions
+        combined_sql = f"""
+WITH
+main_allowed AS (
+{main_sql}
+),
+required_allowed AS (
+{required_sql}
+)
+SELECT m.parent, m.child, m.reason"""
+
+        if include_is_private:
+            combined_sql += ", m.is_private"
+
+        combined_sql += """
+FROM main_allowed m
+INNER JOIN required_allowed r
+  ON ((m.parent = r.parent) OR (m.parent IS NULL AND r.parent IS NULL))
+ AND ((m.child = r.child) OR (m.child IS NULL AND r.child IS NULL))
+"""
+
+        if parent is not None:
+            combined_sql += "WHERE m.parent = :filter_parent\n"
+
+        combined_sql += "ORDER BY m.parent, m.child"
+
+        return combined_sql, all_params
+
+    # No also_requires, build single action query
+    return await _build_single_action_sql(
+        datasette, actor, action, parent=parent, include_is_private=include_is_private
+    )
+
+
+async def _build_single_action_sql(
+    datasette: "Datasette",
+    actor: dict | None,
+    action: str,
+    *,
+    parent: str | None = None,
+    include_is_private: bool = False,
+) -> tuple[str, dict]:
+    """
+    Build SQL for a single action (internal helper for build_allowed_resources_sql).
+
+    This contains the original logic from build_allowed_resources_sql, extracted
+    to allow combining multiple actions when also_requires is used.
+    """
+    # Get the Action object
+    action_obj = datasette.actions.get(action)
+    if not action_obj:
+        raise ValueError(f"Unknown action: {action}")
+
     # Get base resources SQL from the resource class
     base_resources_sql = action_obj.resource_class.resources_sql()
 

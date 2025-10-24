@@ -289,35 +289,125 @@ class AllowedResourcesView(BaseView):
                     headers=headers,
                 )
 
-        plugins = []
-        for block in pm.hook.permission_resources_sql(
-            datasette=self.ds,
-            actor=actor,
-            action=action,
-        ):
-            block = await await_me_maybe(block)
-            if block is None:
-                continue
-            if isinstance(block, (list, tuple)):
-                candidates = block
-            else:
-                candidates = [block]
-            for candidate in candidates:
-                if candidate is None:
+        # Check if this action requires another action
+        action_obj = self.ds.actions.get(action)
+        if action_obj and action_obj.also_requires:
+            # Need to combine results from both actions
+            # Get allowed resources for the main action
+            plugins = []
+            for block in pm.hook.permission_resources_sql(
+                datasette=self.ds,
+                actor=actor,
+                action=action,
+            ):
+                block = await await_me_maybe(block)
+                if block is None:
                     continue
-                plugins.append(candidate)
+                if isinstance(block, (list, tuple)):
+                    candidates = block
+                else:
+                    candidates = [block]
+                for candidate in candidates:
+                    if candidate is None:
+                        continue
+                    plugins.append(candidate)
 
-        rows = await resolve_permissions_from_catalog(
-            db,
-            actor=actor,
-            plugins=plugins,
-            action=action,
-            candidate_sql=candidate_sql,
-            candidate_params=candidate_params,
-            implicit_deny=True,
-        )
+            main_rows = await resolve_permissions_from_catalog(
+                db,
+                actor=actor,
+                plugins=plugins,
+                action=action,
+                candidate_sql=candidate_sql,
+                candidate_params=candidate_params,
+                implicit_deny=True,
+            )
+            main_allowed = {
+                (row["parent"], row["child"]) for row in main_rows if row["allow"] == 1
+            }
 
-        allowed_rows = [row for row in rows if row["allow"] == 1]
+            # Get allowed resources for the required action
+            required_action = action_obj.also_requires
+            required_candidate_sql, required_candidate_params = self.CANDIDATE_SQL.get(
+                required_action, (None, None)
+            )
+            if not required_candidate_sql:
+                # If the required action doesn't have candidate SQL, deny everything
+                allowed_rows = []
+            else:
+                required_plugins = []
+                for block in pm.hook.permission_resources_sql(
+                    datasette=self.ds,
+                    actor=actor,
+                    action=required_action,
+                ):
+                    block = await await_me_maybe(block)
+                    if block is None:
+                        continue
+                    if isinstance(block, (list, tuple)):
+                        candidates = block
+                    else:
+                        candidates = [block]
+                    for candidate in candidates:
+                        if candidate is None:
+                            continue
+                        required_plugins.append(candidate)
+
+                required_rows = await resolve_permissions_from_catalog(
+                    db,
+                    actor=actor,
+                    plugins=required_plugins,
+                    action=required_action,
+                    candidate_sql=required_candidate_sql,
+                    candidate_params=required_candidate_params,
+                    implicit_deny=True,
+                )
+                required_allowed = {
+                    (row["parent"], row["child"])
+                    for row in required_rows
+                    if row["allow"] == 1
+                }
+
+                # Intersect the two sets - only resources allowed by BOTH actions
+                allowed_resources = main_allowed & required_allowed
+
+                # Get full row data for the allowed resources
+                allowed_rows = [
+                    row
+                    for row in main_rows
+                    if row["allow"] == 1
+                    and (row["parent"], row["child"]) in allowed_resources
+                ]
+        else:
+            # No also_requires, use normal path
+            plugins = []
+            for block in pm.hook.permission_resources_sql(
+                datasette=self.ds,
+                actor=actor,
+                action=action,
+            ):
+                block = await await_me_maybe(block)
+                if block is None:
+                    continue
+                if isinstance(block, (list, tuple)):
+                    candidates = block
+                else:
+                    candidates = [block]
+                for candidate in candidates:
+                    if candidate is None:
+                        continue
+                    plugins.append(candidate)
+
+            rows = await resolve_permissions_from_catalog(
+                db,
+                actor=actor,
+                plugins=plugins,
+                action=action,
+                candidate_sql=candidate_sql,
+                candidate_params=candidate_params,
+                implicit_deny=True,
+            )
+
+            allowed_rows = [row for row in rows if row["allow"] == 1]
         if parent_filter is not None:
             allowed_rows = [
                 row for row in allowed_rows if row["parent"] == parent_filter

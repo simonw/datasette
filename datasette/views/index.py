@@ -177,8 +177,8 @@ class IndexView(BaseView):
                     "databases": databases,
                     "metadata": await self.ds.get_instance_metadata(),
                     "datasette_version": __version__,
-                    "private": not await self.ds.permission_allowed(
-                        None, "view-instance"
+                    "private": not await self.ds.allowed(
+                        action="view-instance", actor=None
                     ),
                     "top_homepage": make_slot_function(
                         "top_homepage", self.ds, request

@@ -900,7 +900,16 @@ async def test_permissions_in_config(
     updated_config.update(config)
     perms_ds.config = updated_config
     try:
-        result = await perms_ds.permission_allowed(actor, action, resource)
+        # Convert old-style resource to Resource object
+        from datasette.resources import DatabaseResource, TableResource
+        resource_obj = None
+        if resource:
+            if isinstance(resource, str):
+                resource_obj = DatabaseResource(database=resource)
+            elif isinstance(resource, tuple) and len(resource) == 2:
+                resource_obj = TableResource(database=resource[0], table=resource[1])
+
+        result = await perms_ds.allowed(action=action, resource=resource_obj, actor=actor)
         if result != expected_result:
             pprint(perms_ds._permission_checks)
             assert result == expected_result

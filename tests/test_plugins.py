@@ -696,7 +696,7 @@ async def test_hook_permission_allowed(action, expected):
     try:
         ds = Datasette(plugins_dir=PLUGINS_DIR)
         await ds.invoke_startup()
-        actual = await ds.permission_allowed({"id": "actor"}, action)
+        actual = await ds.allowed(action=action, actor={"id": "actor"})
         assert expected == actual
     finally:
         pm.unregister(name="undo_register_extras")

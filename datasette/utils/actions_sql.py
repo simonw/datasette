@@ -116,7 +116,7 @@ async def build_allowed_resources_sql(
 
     # If no rules, return empty result (deny all)
     if not rule_sqls:
-        return "SELECT NULL AS parent, NULL AS child WHERE 0", {}
+        return "SELECT NULL AS parent, NULL AS child, NULL AS reason WHERE 0", {}
 
     # Build the cascading permission query
     rules_union = " UNION ALL ".join(rule_sqls)

@@ -311,3 +311,59 @@ async def test_sql_does_filtering_not_python(test_ds):
 
     finally:
         pm.unregister(plugin, name="test_plugin")
+
+
+@pytest.mark.asyncio
+async def test_no_permission_rules_returns_correct_schema():
+    """
+    Test that when no permission rules exist, the empty result has correct schema.
+
+    This is a regression test for a bug where the empty result returned only
+    2 columns (parent, child) instead of the documented 3 columns
+    (parent, child, reason), causing schema mismatches.
+
+    See: https://github.com/simonw/datasette/pull/2515#discussion_r2457803901
+    """
+    from datasette.utils.actions_sql import build_allowed_resources_sql
+
+    # Create a fresh datasette instance
+    ds = Datasette()
+    await ds.invoke_startup()
+
+    # Add a test database
+    db = ds.add_memory_database("testdb")
+    await db.execute_write(
+        "CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY)"
+    )
+    await ds._refresh_schemas()
+
+    # Temporarily block all permission_resources_sql hooks to simulate no rules
+    original_hook = pm.hook.permission_resources_sql
+
+    def empty_hook(*args, **kwargs):
+        return []
+
+    pm.hook.permission_resources_sql = empty_hook
+
+    try:
+        # Call build_allowed_resources_sql directly which will hit the no-rules code path
+        sql, params = await build_allowed_resources_sql(
+            ds, actor={"id": "nobody"}, action="view-table"
+        )
+
+        # Execute the query to verify it has correct column structure
+        result = await ds.get_internal_database().execute(sql, params)
+
+        # Should have 3 columns: parent, child, reason
+        # This assertion would fail if the empty result only had 2 columns
+        assert (
+            len(result.columns) == 3
+        ), f"Expected 3 columns, got {len(result.columns)}: {result.columns}"
+        assert result.columns == ["parent", "child", "reason"]
+
+        # Should have no rows (no rules = no access)
+        assert len(result.rows) == 0
+
+    finally:
+        # Restore original hook
+        pm.hook.permission_resources_sql = original_hook

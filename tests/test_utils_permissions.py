@@ -1,11 +1,8 @@
 import pytest
 from datasette.app import Datasette
 from datasette.permissions import PermissionSQL
-from datasette.utils.permissions import (
-    PluginProvider,
-    resolve_permissions_from_catalog,
-)
-from typing import List
+from datasette.utils.permissions import resolve_permissions_from_catalog
+from typing import Callable, List
 
 
 @pytest.fixture
@@ -25,7 +22,7 @@ NO_RULES_SQL = (
 )
 
 
-def plugin_allow_all_for_user(user: str) -> PluginProvider:
+def plugin_allow_all_for_user(user: str) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "allow_all",
@@ -40,7 +37,7 @@ def plugin_allow_all_for_user(user: str) -> PluginProvider:
     return provider
 
 
-def plugin_deny_specific_table(user: str, parent: str, child: str) -> PluginProvider:
+def plugin_deny_specific_table(user: str, parent: str, child: str) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "deny_specific_table",
@@ -55,7 +52,7 @@ def plugin_deny_specific_table(user: str, parent: str, child: str) -> PluginProv
     return provider
 
 
-def plugin_org_policy_deny_parent(parent: str) -> PluginProvider:
+def plugin_org_policy_deny_parent(parent: str) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "org_policy_parent_deny",
@@ -69,7 +66,7 @@ def plugin_org_policy_deny_parent(parent: str) -> PluginProvider:
     return provider
 
 
-def plugin_allow_parent_for_user(user: str, parent: str) -> PluginProvider:
+def plugin_allow_parent_for_user(user: str, parent: str) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "allow_parent",
@@ -84,7 +81,7 @@ def plugin_allow_parent_for_user(user: str, parent: str) -> PluginProvider:
     return provider
 
 
-def plugin_child_allow_for_user(user: str, parent: str, child: str) -> PluginProvider:
+def plugin_child_allow_for_user(user: str, parent: str, child: str) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "allow_child",
@@ -99,7 +96,7 @@ def plugin_child_allow_for_user(user: str, parent: str, child: str) -> PluginPro
     return provider
 
 
-def plugin_root_deny_for_all() -> PluginProvider:
+def plugin_root_deny_for_all() -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "root_deny",
@@ -114,7 +111,7 @@ def plugin_root_deny_for_all() -> PluginProvider:
 
 def plugin_conflicting_same_child_rules(
     user: str, parent: str, child: str
-) -> List[PluginProvider]:
+) -> List[Callable[[str], PermissionSQL]]:
     def allow_provider(action: str) -> PermissionSQL:
         return PermissionSQL(
             "conflict_child_allow",
@@ -140,7 +137,7 @@ def plugin_conflicting_same_child_rules(
     return [allow_provider, deny_provider]
 
 
-def plugin_allow_all_for_action(user: str, allowed_action: str) -> PluginProvider:
+def plugin_allow_all_for_action(user: str, allowed_action: str) -> Callable[[str], PermissionSQL]:
     def provider(action: str) -> PermissionSQL:
         if action != allowed_action:
             return PermissionSQL(
@@ -475,7 +472,7 @@ async def test_actor_actor_id_action_parameters_available(db):
     """Test that :actor (JSON), :actor_id, and :action are all available in SQL"""
     await seed_catalog(db)
 
-    def plugin_using_all_parameters() -> PluginProvider:
+    def plugin_using_all_parameters() -> Callable[[str], PermissionSQL]:
         def provider(action: str) -> PermissionSQL:
             return PermissionSQL(
                 "test_all_params",

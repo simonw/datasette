@@ -677,13 +677,23 @@ async def test_existing_scope_actor_respected(ds_client):
     ],
 )
 async def test_hook_permission_allowed(action, expected):
+    from datasette.permissions import Action
+    from datasette.resources import InstanceResource
+
     class TestPlugin:
         __name__ = "TestPlugin"
 
         @hookimpl
-        def register_permissions(self):
+        def register_actions(self):
             return [
-                Permission(name, None, None, False, False, False)
+                Action(
+                    name=name,
+                    abbr=None,
+                    description=None,
+                    takes_parent=False,
+                    takes_child=False,
+                    resource_class=InstanceResource,
+                )
                 for name in (
                     "this_is_allowed",
                     "this_is_denied",
@@ -1188,20 +1198,23 @@ async def test_hook_filters_from_request(ds_client):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("extra_metadata", (False, True))
-async def test_hook_register_permissions(extra_metadata):
+async def test_hook_register_actions(extra_metadata):
+    from datasette.permissions import Action
+    from datasette.resources import DatabaseResource, InstanceResource
+
     ds = Datasette(
         config=(
             {
                 "plugins": {
-                    "datasette-register-permissions": {
-                        "permissions": [
+                    "datasette-register-actions": {
+                        "actions": [
                             {
                                 "name": "extra-from-metadata",
                                 "abbr": "efm",
                                 "description": "Extra from metadata",
-                                "takes_database": False,
-                                "takes_resource": False,
-                                "default": True,
+                                "takes_parent": False,
+                                "takes_child": False,
+                                "resource_class": "InstanceResource",
                             }
                         ]
                     }
@@ -1213,30 +1226,30 @@ async def test_hook_register_permissions(extra_metadata):
         plugins_dir=PLUGINS_DIR,
     )
     await ds.invoke_startup()
-    assert ds.permissions["permission-from-plugin"] == Permission(
-        name="permission-from-plugin",
-        abbr="np",
-        description="New permission added by a plugin",
-        takes_database=True,
-        takes_resource=False,
-        default=False,
+    assert ds.actions["action-from-plugin"] == Action(
+        name="action-from-plugin",
+        abbr="ap",
+        description="New action added by a plugin",
+        takes_parent=True,
+        takes_child=False,
+        resource_class=DatabaseResource,
     )
     if extra_metadata:
-        assert ds.permissions["extra-from-metadata"] == Permission(
+        assert ds.actions["extra-from-metadata"] == Action(
             name="extra-from-metadata",
             abbr="efm",
             description="Extra from metadata",
-            takes_database=False,
-            takes_resource=False,
-            default=True,
+            takes_parent=False,
+            takes_child=False,
+            resource_class=InstanceResource,
         )
     else:
-        assert "extra-from-metadata" not in ds.permissions
+        assert "extra-from-metadata" not in ds.actions
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("duplicate", ("name", "abbr"))
-async def test_hook_register_permissions_no_duplicates(duplicate):
+async def test_hook_register_actions_no_duplicates(duplicate):
     name1, name2 = "name1", "name2"
     abbr1, abbr2 = "abbr1", "abbr2"
     if duplicate == "name":
@@ -1246,23 +1259,23 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
     ds = Datasette(
         config={
             "plugins": {
-                "datasette-register-permissions": {
-                    "permissions": [
+                "datasette-register-actions": {
+                    "actions": [
                         {
                             "name": name1,
                             "abbr": abbr1,
                             "description": None,
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
+                            "takes_parent": False,
+                            "takes_child": False,
+                            "resource_class": "InstanceResource",
                         },
                         {
                             "name": name2,
                             "abbr": abbr2,
                             "description": None,
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
+                            "takes_parent": False,
+                            "takes_child": False,
+                            "resource_class": "InstanceResource",
                         },
                     ]
                 }
@@ -1273,31 +1286,31 @@ async def test_hook_register_permissions_no_duplicates(duplicate):
     # This should error:
     with pytest.raises(StartupError) as ex:
         await ds.invoke_startup()
-        assert "Duplicate permission {}".format(duplicate) in str(ex.value)
+        assert "Duplicate action {}".format(duplicate) in str(ex.value)
 
 
 @pytest.mark.asyncio
-async def test_hook_register_permissions_allows_identical_duplicates():
+async def test_hook_register_actions_allows_identical_duplicates():
     ds = Datasette(
         config={
             "plugins": {
-                "datasette-register-permissions": {
-                    "permissions": [
+                "datasette-register-actions": {
+                    "actions": [
                         {
                             "name": "name1",
                             "abbr": "abbr1",
                             "description": None,
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
+                            "takes_parent": False,
+                            "takes_child": False,
+                            "resource_class": "InstanceResource",
                         },
                         {
                             "name": "name1",
                             "abbr": "abbr1",
                             "description": None,
-                            "takes_database": False,
-                            "takes_resource": False,
-                            "default": True,
+                            "takes_parent": False,
+                            "takes_child": False,
+                            "resource_class": "InstanceResource",
                         },
                     ]
                 }
@@ -1306,8 +1319,8 @@ async def test_hook_register_permissions_allows_identical_duplicates():
         plugins_dir=PLUGINS_DIR,
     )
     await ds.invoke_startup()
-    # Check that ds.permissions has only one of each
-    assert len([p for p in ds.permissions.values() if p.abbr == "abbr1"]) == 1
+    # Check that ds.actions has only one of each
+    assert len([p for p in ds.actions.values() if p.abbr == "abbr1"]) == 1
 
 
 @pytest.mark.asyncio

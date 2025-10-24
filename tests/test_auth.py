@@ -5,7 +5,6 @@ from click.testing import CliRunner
 from datasette.utils import baseconv
 from datasette.cli import cli
 from datasette.resources import (
-    InstanceResource,
     DatabaseResource,
     TableResource,
 )
@@ -366,7 +365,7 @@ async def test_root_with_root_enabled_gets_all_permissions(ds_client):
     # Test view permissions using the new ds.allowed() method
     assert (
         await ds_client.ds.allowed(
-            action="view-instance", resource=InstanceResource(), actor=root_actor
+            action="view-instance", actor=root_actor
         )
         is True
     )
@@ -463,7 +462,7 @@ async def test_root_without_root_enabled_no_special_permissions(ds_client):
     # View permissions should still work (default=True)
     assert (
         await ds_client.ds.allowed(
-            action="view-instance", resource=InstanceResource(), actor=root_actor
+            action="view-instance", actor=root_actor
         )
         is True
     )  # Default permission

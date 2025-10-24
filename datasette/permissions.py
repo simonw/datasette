@@ -76,6 +76,7 @@ class Action:
     takes_parent: bool
     takes_child: bool
     resource_class: type[Resource]
+    also_requires: str | None = None  # Optional action name that must also be allowed
 
 
 @dataclass

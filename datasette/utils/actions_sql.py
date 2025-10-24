@@ -255,9 +255,9 @@ async def build_allowed_resources_sql(
                 "      ELSE 0",
                 "    END AS anon_is_allowed",
                 "  FROM base b",
-                "  JOIN anon_child_lvl acl USING (parent, child)",
-                "  JOIN anon_parent_lvl apl USING (parent, child)",
-                "  JOIN anon_global_lvl agl USING (parent, child)",
+                "  JOIN anon_child_lvl acl ON b.parent = acl.parent AND (b.child = acl.child OR (b.child IS NULL AND acl.child IS NULL))",
+                "  JOIN anon_parent_lvl apl ON b.parent = apl.parent AND (b.child = apl.child OR (b.child IS NULL AND apl.child IS NULL))",
+                "  JOIN anon_global_lvl agl ON b.parent = agl.parent AND (b.child = agl.child OR (b.child IS NULL AND agl.child IS NULL))",
                 "),",
             ]
         )
@@ -306,14 +306,16 @@ async def build_allowed_resources_sql(
     query_parts.extend(
         [
             "  FROM base b",
-            "  JOIN child_lvl cl USING (parent, child)",
-            "  JOIN parent_lvl pl USING (parent, child)",
-            "  JOIN global_lvl gl USING (parent, child)",
+            "  JOIN child_lvl cl ON b.parent = cl.parent AND (b.child = cl.child OR (b.child IS NULL AND cl.child IS NULL))",
+            "  JOIN parent_lvl pl ON b.parent = pl.parent AND (b.child = pl.child OR (b.child IS NULL AND pl.child IS NULL))",
+            "  JOIN global_lvl gl ON b.parent = gl.parent AND (b.child = gl.child OR (b.child IS NULL AND gl.child IS NULL))",
         ]
     )
 
     if include_is_private:
-        query_parts.append("  JOIN anon_decisions ad USING (parent, child)")
+        query_parts.append(
+            "  JOIN anon_decisions ad ON b.parent = ad.parent AND (b.child = ad.child OR (b.child IS NULL AND ad.child IS NULL))"
+        )
 
     query_parts.append(")")
 

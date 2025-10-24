@@ -1240,25 +1240,30 @@ async def test_actor_restrictions(
 @pytest.mark.parametrize(
     "restrictions,action,resource,expected",
     (
+        # Exact match: view-instance restriction allows view-instance action
         ({"a": ["view-instance"]}, "view-instance", None, True),
-        # view-table and view-database implies view-instance
-        ({"a": ["view-table"]}, "view-instance", None, True),
-        ({"a": ["view-database"]}, "view-instance", None, True),
+        # No implication: view-table does NOT imply view-instance
+        ({"a": ["view-table"]}, "view-instance", None, False),
+        ({"a": ["view-database"]}, "view-instance", None, False),
         # update-row does not imply view-instance
         ({"a": ["update-row"]}, "view-instance", None, False),
-        # view-table on a resource implies view-instance
-        ({"r": {"db1": {"t1": ["view-table"]}}}, "view-instance", None, True),
-        # execute-sql on a database implies view-instance, view-database
-        ({"d": {"db1": ["es"]}}, "view-instance", None, True),
-        ({"d": {"db1": ["es"]}}, "view-database", "db1", True),
+        # view-table on a resource does NOT imply view-instance
+        ({"r": {"db1": {"t1": ["view-table"]}}}, "view-instance", None, False),
+        # execute-sql on a database does NOT imply view-instance or view-database
+        ({"d": {"db1": ["es"]}}, "view-instance", None, False),
+        ({"d": {"db1": ["es"]}}, "view-database", "db1", False),
         ({"d": {"db1": ["es"]}}, "view-database", "db2", False),
+        # But execute-sql abbreviation DOES allow execute-sql action on that database
+        ({"d": {"db1": ["es"]}}, "execute-sql", "db1", True),
         # update-row on a resource does not imply view-instance
         ({"r": {"db1": {"t1": ["update-row"]}}}, "view-instance", None, False),
-        # view-database on a resource implies view-instance
-        ({"d": {"db1": ["view-database"]}}, "view-instance", None, True),
+        # view-database on a database does NOT imply view-instance
+        ({"d": {"db1": ["view-database"]}}, "view-instance", None, False),
+        # But it DOES allow view-database on that specific database
+        ({"d": {"db1": ["view-database"]}}, "view-database", "db1", True),
         # Having view-table on "a" allows access to any specific table
         ({"a": ["view-table"]}, "view-table", ("dbname", "tablename"), True),
-        # Ditto for on the database
+        # Having view-table on a database allows access to tables in that database
         (
             {"d": {"dbname": ["view-table"]}},
             "view-table",

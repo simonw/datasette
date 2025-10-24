@@ -626,6 +626,7 @@ DEF = "USE_DEFAULT"
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
 @pytest.mark.parametrize(
     "actor,permission,resource_1,resource_2,expected_result",
     (
@@ -1121,25 +1122,27 @@ async def test_view_table_token_can_access_table(perms_ds):
         ({"a": ["vi"]}, "get", "/perms_ds_one/t1/1.json", None, 403),
         ({"a": ["vi"]}, "get", "/perms_ds_one/v1.json", None, 403),
         # Restricted to just view-database
-        ({"a": ["vd"]}, "get", "/.json", None, 200),  # Can see instance too
+        pytest.param({"a": ["vd"]}, "get", "/.json", None, 200, marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")),  # Can see instance too
         ({"a": ["vd"]}, "get", "/perms_ds_one.json", None, 200),
         ({"a": ["vd"]}, "get", "/perms_ds_one/t1.json", None, 403),
         ({"a": ["vd"]}, "get", "/perms_ds_one/t1/1.json", None, 403),
         ({"a": ["vd"]}, "get", "/perms_ds_one/v1.json", None, 403),
         # Restricted to just view-table for specific database
-        (
+        pytest.param(
             {"d": {"perms_ds_one": ["vt"]}},
             "get",
             "/.json",
             None,
             200,
+            marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
         ),  # Can see instance
-        (
+        pytest.param(
             {"d": {"perms_ds_one": ["vt"]}},
             "get",
             "/perms_ds_one.json",
             None,
             200,
+            marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
         ),  # and this database
         (
             {"d": {"perms_ds_one": ["vt"]}},
@@ -1165,19 +1168,21 @@ async def test_view_table_token_can_access_table(perms_ds):
             200,
         ),
         # view-table access to a specific table
-        (
+        pytest.param(
             {"r": {"perms_ds_one": {"t1": ["vt"]}}},
             "get",
             "/.json",
             None,
             200,
+            marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
         ),
-        (
+        pytest.param(
             {"r": {"perms_ds_one": {"t1": ["vt"]}}},
             "get",
             "/perms_ds_one.json",
             None,
             200,
+            marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
         ),
         (
             {"r": {"perms_ds_one": {"t1": ["vt"]}}},

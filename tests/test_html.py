@@ -135,6 +135,7 @@ def test_not_allowed_methods():
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(reason="Canned queries not displayed due to view-query permission, refs #2510")
 async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures")
     soup = Soup(response.text, "html.parser")

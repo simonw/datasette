@@ -519,3 +519,77 @@ async def test_actor_actor_id_action_parameters_available(db):
     assert "view-table" in reason
     # The :actor parameter should be the JSON string
     assert "Actor JSON:" in reason
+
+
+@pytest.mark.asyncio
+async def test_multiple_plugins_with_own_parameters(db):
+    """
+    Test that multiple plugins can use their own parameter names without conflict.
+
+    This verifies that the parameter naming convention works: plugins prefix their
+    parameters (e.g., :plugin1_pattern, :plugin2_message) and both sets of parameters
+    are successfully bound in the SQL queries.
+    """
+    await seed_catalog(db)
+
+    def plugin_one() -> Callable[[str], PermissionSQL]:
+        def provider(action: str) -> PermissionSQL:
+            if action != "view-table":
+                return PermissionSQL("plugin_one", "SELECT NULL WHERE 0", {})
+            return PermissionSQL(
+                "plugin_one",
+                """
+                SELECT database_name AS parent, table_name AS child,
+                       1 AS allow, 'Plugin one used param: ' || :plugin1_param AS reason
+                FROM catalog_tables
+                WHERE database_name = 'accounting'
+                """,
+                {
+                    "plugin1_param": "value1",
+                },
+            )
+
+        return provider
+
+    def plugin_two() -> Callable[[str], PermissionSQL]:
+        def provider(action: str) -> PermissionSQL:
+            if action != "view-table":
+                return PermissionSQL("plugin_two", "SELECT NULL WHERE 0", {})
+            return PermissionSQL(
+                "plugin_two",
+                """
+                SELECT database_name AS parent, table_name AS child,
+                       1 AS allow, 'Plugin two used param: ' || :plugin2_param AS reason
+                FROM catalog_tables
+                WHERE database_name = 'hr'
+                """,
+                {
+                    "plugin2_param": "value2",
+                },
+            )
+
+        return provider
+
+    plugins = [plugin_one(), plugin_two()]
+
+    rows = await resolve_permissions_from_catalog(
+        db,
+        {"id": "test_user"},
+        plugins,
+        "view-table",
+        TABLE_CANDIDATES_SQL,
+        implicit_deny=False,
+    )
+
+    # Both plugins should contribute results with their parameters successfully bound
+    plugin_one_rows = [r for r in rows if r.get("reason") and "Plugin one" in r["reason"]]
+    plugin_two_rows = [r for r in rows if r.get("reason") and "Plugin two" in r["reason"]]
+
+    assert len(plugin_one_rows) > 0, "Plugin one should contribute rules"
+    assert len(plugin_two_rows) > 0, "Plugin two should contribute rules"
+
+    # Verify each plugin's parameters were successfully bound in the SQL
+    assert any("value1" in r.get("reason", "") for r in plugin_one_rows), \
+        "Plugin one's :plugin1_param should be bound"
+    assert any("value2" in r.get("reason", "") for r in plugin_two_rows), \
+        "Plugin two's :plugin2_param should be bound"

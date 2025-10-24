@@ -1,6 +1,7 @@
 from datasette.utils.asgi import NotFound, Forbidden, Response
 from datasette.database import QueryInterrupted
 from datasette.events import UpdateRowEvent, DeleteRowEvent
+from datasette.resources import TableResource
 from .base import DataView, BaseView, _error
 from datasette.utils import (
     await_me_maybe,
@@ -184,8 +185,8 @@ async def _resolve_row_and_check_permission(datasette, request, permission):
         return False, _error(["Record not found: {}".format(e.pk_values)], 404)
 
     # Ensure user has permission to delete this row
-    if not await datasette.permission_allowed(
-        request.actor, permission, resource=(resolved.db.name, resolved.table)
+    if not await datasette.allowed(
+        action=permission, resource=TableResource(database=resolved.db.name, table=resolved.table), actor=request.actor
     ):
         return False, _error(["Permission denied"], 403)
 
@@ -257,8 +258,8 @@ class RowUpdateView(BaseView):
         update = data["update"]
 
         alter = data.get("alter")
-        if alter and not await self.ds.permission_allowed(
-            request.actor, "alter-table", resource=(resolved.db.name, resolved.table)
+        if alter and not await self.ds.allowed(
+            action="alter-table", resource=TableResource(database=resolved.db.name, table=resolved.table), actor=request.actor
         ):
             return _error(["Permission denied for alter-table"], 403)
 

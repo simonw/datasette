@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 import sqlite3
 
 from datasette.permissions import PermissionSQL
@@ -32,12 +32,8 @@ def _namespace_params(i: int, params: Dict[str, Any]) -> Tuple[str, Dict[str, An
     return rewrite, namespaced
 
 
-PluginProvider = Callable[[str], PermissionSQL]
-PluginOrFactory = Union[PermissionSQL, PluginProvider]
-
-
 def build_rules_union(
-    actor: Optional[dict], plugins: Sequence[PermissionSQL]
+    actor: dict | None, plugins: Sequence[PermissionSQL]
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Compose plugin SQL into a UNION ALL with namespaced parameters.
@@ -80,11 +76,11 @@ def build_rules_union(
 
 async def resolve_permissions_from_catalog(
     db,
-    actor: Optional[dict],
-    plugins: Sequence[PluginOrFactory],
+    actor: dict | None,
+    plugins: Sequence[Any],
     action: str,
     candidate_sql: str,
-    candidate_params: Optional[Dict[str, Any]] = None,
+    candidate_params: Dict[str, Any] | None = None,
     *,
     implicit_deny: bool = True,
 ) -> List[Dict[str, Any]]:
@@ -96,8 +92,8 @@ async def resolve_permissions_from_catalog(
         (Use child=NULL for parent-scoped actions like "execute-sql".)
       - *db* exposes: rows = await db.execute(sql, params)
         where rows is an iterable of sqlite3.Row
-      - plugins are either PermissionSQL objects or callables accepting (action: str)
-        and returning PermissionSQL instances selecting (parent, child, allow, reason)
+      - plugins: hook results handled by await_me_maybe - can be sync/async,
+        single PermissionSQL, list, or callable returning PermissionSQL
       - actor is the actor dict (or None), made available as :actor (JSON), :actor_id, and :action
 
     Decision policy:
@@ -194,9 +190,9 @@ async def resolve_permissions_from_catalog(
 
 async def resolve_permissions_with_candidates(
     db,
-    actor: Optional[dict],
-    plugins: Sequence[PluginOrFactory],
-    candidates: List[Tuple[str, Optional[str]]],
+    actor: dict | None,
+    plugins: Sequence[Any],
+    candidates: List[Tuple[str, str | None]],
     action: str,
     *,
     implicit_deny: bool = True,

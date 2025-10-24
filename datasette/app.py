@@ -602,25 +602,6 @@ class Datasette:
                 event_classes.extend(extra_classes)
         self.event_classes = tuple(event_classes)
 
-        # Register permissions, but watch out for duplicate name/abbr
-        names = {}
-        abbrs = {}
-        for hook in pm.hook.register_permissions(datasette=self):
-            if hook:
-                for p in hook:
-                    if p.name in names and p != names[p.name]:
-                        raise StartupError(
-                            "Duplicate permission name: {}".format(p.name)
-                        )
-                    if p.abbr and p.abbr in abbrs and p != abbrs[p.abbr]:
-                        raise StartupError(
-                            "Duplicate permission abbr: {}".format(p.abbr)
-                        )
-                    names[p.name] = p
-                    if p.abbr:
-                        abbrs[p.abbr] = p
-                    self.permissions[p.name] = p
-
         # Register actions, but watch out for duplicate name/abbr
         action_names = {}
         action_abbrs = {}

@@ -4,7 +4,7 @@ from datasette import hookimpl
 @hookimpl
 def menu_links(datasette, actor):
     async def inner():
-        if not await datasette.permission_allowed(actor, "debug-menu"):
+        if not await datasette.allowed(action="debug-menu", actor=actor):
             return []
 
         return [

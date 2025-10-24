@@ -494,3 +494,84 @@ async def test_html_endpoints_return_html(ds_with_permissions, path, needs_debug
     # Check for HTML structure
     text = response.text
     assert "<!DOCTYPE html>" in text or "<html" in text
+
+
+@pytest.mark.asyncio
+async def test_root_user_respects_settings_deny():
+    """
+    Test for issue #2509: Settings-based deny rules should override root user privileges.
+
+    When a database has `allow: false` in settings, the root user should NOT see
+    that database in /-/allowed.json?action=view-database, even though root normally
+    has all permissions.
+    """
+    ds = Datasette(
+        config={
+            "databases": {
+                "content": {
+                    "allow": False,  # Deny everyone, including root
+                }
+            }
+        }
+    )
+    ds.root_enabled = True
+    await ds.invoke_startup()
+    ds.add_memory_database("content")
+
+    # Root user should NOT see the content database because settings deny it
+    response = await ds.client.get(
+        "/-/allowed.json?action=view-database",
+        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Check that content database is NOT in the allowed list
+    allowed_databases = [item["parent"] for item in data["items"]]
+    assert "content" not in allowed_databases, (
+        f"Root user should not see 'content' database when settings deny it, "
+        f"but found it in: {allowed_databases}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_root_user_respects_settings_deny_tables():
+    """
+    Test for issue #2509: Settings-based deny rules should override root for tables too.
+
+    When a database has `allow: false` in settings, the root user should NOT see
+    tables from that database in /-/allowed.json?action=view-table.
+    """
+    ds = Datasette(
+        config={
+            "databases": {
+                "content": {
+                    "allow": False,  # Deny everyone, including root
+                }
+            }
+        }
+    )
+    ds.root_enabled = True
+    await ds.invoke_startup()
+
+    # Add a database with a table
+    db = ds.add_memory_database("content")
+    await db.execute_write("CREATE TABLE repos (id INTEGER PRIMARY KEY, name TEXT)")
+    await ds.refresh_schemas()
+
+    # Root user should NOT see tables from the content database
+    response = await ds.client.get(
+        "/-/allowed.json?action=view-table",
+        cookies={"ds_actor": ds.client.actor_cookie({"id": "root"})},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Check that content.repos table is NOT in the allowed list
+    content_tables = [
+        item["child"] for item in data["items"] if item["parent"] == "content"
+    ]
+    assert "repos" not in content_tables, (
+        f"Root user should not see tables from 'content' database when settings deny it, "
+        f"but found: {content_tables}"
+    )

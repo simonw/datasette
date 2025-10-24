@@ -1337,11 +1337,8 @@ class Datasette:
         other_column = fk["other_column"]
         visible, _ = await self.check_visibility(
             actor,
-            permissions=[
-                ("view-table", (database, other_table)),
-                ("view-database", database),
-                "view-instance",
-            ],
+            action="view-table",
+            resource=(database, other_table),
         )
         if not visible:
             return {}

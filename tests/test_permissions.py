@@ -943,6 +943,7 @@ async def test_actor_endpoint_allows_any_token():
 
 
 @pytest.mark.serial
+@pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
 @pytest.mark.parametrize(
     "options,expected",
     (

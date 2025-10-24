@@ -1461,8 +1461,12 @@ Return value
 
 Datasette's action-based permission resolver calls this hook to gather SQL rows describing which
 resources an actor may access (``allow = 1``) or should be denied (``allow = 0``) for a specific action.
-Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns. Any bound parameters
-supplied via ``PluginSQL.params`` are automatically namespaced per plugin.
+Each SQL snippet should return ``parent``, ``child``, ``allow`` and ``reason`` columns.
+
+**Parameter naming convention:** Plugin parameters in ``PluginSQL.params`` should use unique names
+to avoid conflicts with other plugins. The recommended convention is to prefix parameters with your
+plugin's source name (e.g., ``myplugin_user_id``). The system reserves these parameter names:
+``:actor``, ``:actor_id``, ``:action``, and ``:filter_parent``.
 
 
 Permission plugin examples
@@ -1531,10 +1535,10 @@ will pass through to the SQL snippet.
                     1 AS allow,
                     'execute-sql allowed for analytics_*' AS reason
                 FROM catalog_databases
-                WHERE database_name LIKE :prefix
+                WHERE database_name LIKE :analytics_prefix
             """,
             params={
-                "prefix": "analytics_%",
+                "analytics_prefix": "analytics_%",
             },
         )
 
@@ -1564,12 +1568,12 @@ with columns ``(actor_id, action, parent, child, allow, reason)``.
                     allow,
                     COALESCE(reason, 'permission_grants table') AS reason
                 FROM permission_grants
-                WHERE actor_id = :actor_id
-                  AND action = :action
+                WHERE actor_id = :grants_actor_id
+                  AND action = :grants_action
             """,
             params={
-                "actor_id": actor.get("id"),
-                "action": action,
+                "grants_actor_id": actor.get("id"),
+                "grants_action": action,
             },
         )
 

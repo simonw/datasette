@@ -13,49 +13,33 @@ from datasette.permissions import PermissionSQL
 # -----------------------------
 
 
-def _namespace_params(i: int, params: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
-    """
-    Rewrite parameter placeholders to distinct names per plugin block.
-    Returns (rewritten_sql, namespaced_params).
-    """
-
-    replacements = {key: f"{key}_{i}" for key in params.keys()}
-
-    def rewrite(s: str) -> str:
-        for key in sorted(replacements.keys(), key=len, reverse=True):
-            s = s.replace(f":{key}", f":{replacements[key]}")
-        return s
-
-    namespaced: Dict[str, Any] = {}
-    for key, value in params.items():
-        namespaced[replacements[key]] = value
-    return rewrite, namespaced
-
-
 def build_rules_union(
     actor: dict | None, plugins: Sequence[PermissionSQL]
 ) -> Tuple[str, Dict[str, Any]]:
     """
-    Compose plugin SQL into a UNION ALL with namespaced parameters.
+    Compose plugin SQL into a UNION ALL.
 
     Returns:
       union_sql: a SELECT with columns (parent, child, allow, reason, source_plugin)
-      params:    dict of bound parameters including :actor (JSON), :actor_id, and namespaced plugin params
+      params:    dict of bound parameters including :actor (JSON), :actor_id, and plugin params
+
+    Note: Plugins are responsible for ensuring their parameter names don't conflict.
+    The system reserves these parameter names: :actor, :actor_id, :action, :filter_parent
+    Plugin parameters should be prefixed with a unique identifier (e.g., source name).
     """
     parts: List[str] = []
     actor_json = json.dumps(actor) if actor else None
     actor_id = actor.get("id") if actor else None
     params: Dict[str, Any] = {"actor": actor_json, "actor_id": actor_id}
 
-    for i, p in enumerate(plugins):
-        rewrite, ns_params = _namespace_params(i, p.params)
-        sql_block = rewrite(p.sql)
-        params.update(ns_params)
+    for p in plugins:
+        # No namespacing - just use plugin params as-is
+        params.update(p.params)
 
         parts.append(
             f"""
             SELECT parent, child, allow, reason, '{p.source}' AS source_plugin FROM (
-                {sql_block}
+                {p.sql}
             )
             """.strip()
         )

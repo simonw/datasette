@@ -28,11 +28,8 @@ class RowView(DataView):
         # Ensure user has permission to view this row
         visible, private = await self.ds.check_visibility(
             request.actor,
-            permissions=[
-                ("view-table", (database, table)),
-                ("view-database", database),
-                "view-instance",
-            ],
+            action="view-table",
+            resource=(database, table),
         )
         if not visible:
             raise Forbidden("You do not have permission to view this table")

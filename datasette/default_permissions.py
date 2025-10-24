@@ -303,50 +303,33 @@ def restrictions_allow_action(
     action: str,
     resource: str | tuple[str, str],
 ):
-    "Do these restrictions allow the requested action against the requested resource?"
-    if action == "view-instance":
-        # Special case for view-instance: it's allowed if the restrictions include any
-        # actions that have the implies_can_view=True flag set
-        all_rules = restrictions.get("a") or []
-        for database_rules in (restrictions.get("d") or {}).values():
-            all_rules += database_rules
-        for database_resource_rules in (restrictions.get("r") or {}).values():
-            for resource_rules in database_resource_rules.values():
-                all_rules += resource_rules
-        actions = [datasette.get_action(action) for action in all_rules]
-        if any(a for a in actions if a and a.implies_can_view):
-            return True
+    """
+    Check if actor restrictions allow the requested action against the requested resource.
 
-    if action == "view-database":
-        # Special case for view-database: it's allowed if the restrictions include any
-        # actions that have the implies_can_view=True flag set AND takes_parent
-        all_rules = restrictions.get("a") or []
-        database_rules = list((restrictions.get("d") or {}).get(resource) or [])
-        all_rules += database_rules
-        resource_rules = ((restrictions.get("r") or {}).get(resource) or {}).values()
-        for resource_rules in (restrictions.get("r") or {}).values():
-            for table_rules in resource_rules.values():
-                all_rules += table_rules
-        actions = [datasette.get_action(action) for action in all_rules]
-        if any(a for a in actions if a and a.implies_can_view and a.takes_parent):
-            return True
-
+    Restrictions work on an exact-match basis: if an actor has view-table permission,
+    they can view tables, but NOT automatically view-instance or view-database.
+    Each permission is checked independently without implication logic.
+    """
     # Does this action have an abbreviation?
     to_check = {action}
     action_obj = datasette.actions.get(action)
     if action_obj and action_obj.abbr:
         to_check.add(action_obj.abbr)
 
-    # If restrictions is defined then we use those to further restrict the actor
-    # Crucially, we only use this to say NO (return False) - we never
-    # use it to return YES (True) because that might over-ride other
-    # restrictions placed on this actor
+    # Check if restrictions explicitly allow this action
+    # Restrictions can be at three levels:
+    # - "a": global (any resource)
+    # - "d": per-database
+    # - "r": per-table/resource
+
+    # Check global level (any resource)
     all_allowed = restrictions.get("a")
     if all_allowed is not None:
         assert isinstance(all_allowed, list)
         if to_check.intersection(all_allowed):
             return True
-    # How about for the current database?
+
+    # Check database level
     if resource:
         if isinstance(resource, str):
             database_name = resource
@@ -357,17 +340,17 @@ def restrictions_allow_action(
             assert isinstance(database_allowed, list)
             if to_check.intersection(database_allowed):
                 return True
-    # Or the current table? That's any time the resource is (database, table)
+
+    # Check table/resource level
     if resource is not None and not isinstance(resource, str) and len(resource) == 2:
         database, table = resource
         table_allowed = restrictions.get("r", {}).get(database, {}).get(table)
-        # TODO: What should this do for canned queries?
         if table_allowed is not None:
             assert isinstance(table_allowed, list)
             if to_check.intersection(table_allowed):
                 return True
 
-    # This action is not specifically allowed, so reject it
+    # This action is not explicitly allowed, so reject it
     return False
 
 

@@ -450,7 +450,10 @@ async def build_permission_rules_sql(
     # Build the UNION query
     if not rule_sqls:
         # Return empty result set
-        return "SELECT NULL AS parent, NULL AS child, 0 AS allow, NULL AS reason, NULL AS source_plugin WHERE 0", {}
+        return (
+            "SELECT NULL AS parent, NULL AS child, 0 AS allow, NULL AS reason, NULL AS source_plugin WHERE 0",
+            {},
+        )
 
     rules_union = " UNION ALL ".join(rule_sqls)
     return rules_union, all_params

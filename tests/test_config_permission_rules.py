@@ -19,8 +19,16 @@ async def test_root_permissions_allow():
     config = {"permissions": {"execute-sql": {"id": "alice"}}}
     ds = await setup_datasette(config=config, databases=["content"])
 
-    assert await ds.allowed(action="execute-sql", resource=DatabaseResource(database="content"), actor={"id": "alice"})
-    assert not await ds.allowed(action="execute-sql", resource=DatabaseResource(database="content"), actor={"id": "bob"})
+    assert await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="content"),
+        actor={"id": "alice"},
+    )
+    assert not await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="content"),
+        actor={"id": "bob"},
+    )
 
 
 @pytest.mark.asyncio
@@ -37,10 +45,14 @@ async def test_database_permission():
     ds = await setup_datasette(config=config, databases=["content"])
 
     assert await ds.allowed(
-        action="insert-row", resource=TableResource(database="content", table="repos"), actor={"id": "alice"}
+        action="insert-row",
+        resource=TableResource(database="content", table="repos"),
+        actor={"id": "alice"},
     )
     assert not await ds.allowed(
-        action="insert-row", resource=TableResource(database="content", table="repos"), actor={"id": "bob"}
+        action="insert-row",
+        resource=TableResource(database="content", table="repos"),
+        actor={"id": "bob"},
     )
 
 
@@ -56,10 +68,14 @@ async def test_table_permission():
     ds = await setup_datasette(config=config, databases=["content"])
 
     assert await ds.allowed(
-        action="delete-row", resource=TableResource(database="content", table="repos"), actor={"id": "alice"}
+        action="delete-row",
+        resource=TableResource(database="content", table="repos"),
+        actor={"id": "alice"},
     )
     assert not await ds.allowed(
-        action="delete-row", resource=TableResource(database="content", table="repos"), actor={"id": "bob"}
+        action="delete-row",
+        resource=TableResource(database="content", table="repos"),
+        actor={"id": "bob"},
     )
 
 
@@ -71,13 +87,19 @@ async def test_view_table_allow_block():
     ds = await setup_datasette(config=config, databases=["content"])
 
     assert await ds.allowed(
-        action="view-table", resource=TableResource(database="content", table="repos"), actor={"id": "alice"}
+        action="view-table",
+        resource=TableResource(database="content", table="repos"),
+        actor={"id": "alice"},
     )
     assert not await ds.allowed(
-        action="view-table", resource=TableResource(database="content", table="repos"), actor={"id": "bob"}
+        action="view-table",
+        resource=TableResource(database="content", table="repos"),
+        actor={"id": "bob"},
     )
     assert await ds.allowed(
-        action="view-table", resource=TableResource(database="content", table="other"), actor={"id": "bob"}
+        action="view-table",
+        resource=TableResource(database="content", table="other"),
+        actor={"id": "bob"},
     )
 
 
@@ -87,7 +109,9 @@ async def test_view_table_allow_false_blocks():
     ds = await setup_datasette(config=config, databases=["content"])
 
     assert not await ds.allowed(
-        action="view-table", resource=TableResource(database="content", table="repos"), actor={"id": "alice"}
+        action="view-table",
+        resource=TableResource(database="content", table="repos"),
+        actor={"id": "alice"},
     )
 
 
@@ -96,18 +120,38 @@ async def test_allow_sql_blocks():
     config = {"allow_sql": {"id": "alice"}}
     ds = await setup_datasette(config=config, databases=["content"])
 
-    assert await ds.allowed(action="execute-sql", resource=DatabaseResource(database="content"), actor={"id": "alice"})
-    assert not await ds.allowed(action="execute-sql", resource=DatabaseResource(database="content"), actor={"id": "bob"})
+    assert await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="content"),
+        actor={"id": "alice"},
+    )
+    assert not await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="content"),
+        actor={"id": "bob"},
+    )
 
     config = {"databases": {"content": {"allow_sql": {"id": "bob"}}}}
     ds = await setup_datasette(config=config, databases=["content"])
 
-    assert await ds.allowed(action="execute-sql", resource=DatabaseResource(database="content"), actor={"id": "bob"})
-    assert not await ds.allowed(action="execute-sql", resource=DatabaseResource(database="content"), actor={"id": "alice"})
+    assert await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="content"),
+        actor={"id": "bob"},
+    )
+    assert not await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="content"),
+        actor={"id": "alice"},
+    )
 
     config = {"allow_sql": False}
     ds = await setup_datasette(config=config, databases=["content"])
-    assert not await ds.allowed(action="execute-sql", resource=DatabaseResource(database="content"), actor={"id": "alice"})
+    assert not await ds.allowed(
+        action="execute-sql",
+        resource=DatabaseResource(database="content"),
+        actor={"id": "alice"},
+    )
 
 
 @pytest.mark.asyncio

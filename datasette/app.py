@@ -1041,7 +1041,6 @@ class Datasette:
         for hook in pm.hook.track_event(datasette=self, event=event):
             await await_me_maybe(hook)
 
-
     async def check_visibility(
         self,
         actor: dict,
@@ -1282,7 +1281,9 @@ class Datasette:
                 old_style_resource = None
 
             # If restrictions don't allow this action, deny it
-            if not restrictions_allow_action(self, actor["_r"], action, old_style_resource):
+            if not restrictions_allow_action(
+                self, actor["_r"], action, old_style_resource
+            ):
                 result = False
 
         # Log the permission check for debugging

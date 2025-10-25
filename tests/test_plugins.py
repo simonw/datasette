@@ -848,7 +848,9 @@ async def test_hook_startup(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Canned queries not yet migrated to new permission system, refs #2510")
+@pytest.mark.xfail(
+    reason="Canned queries not yet migrated to new permission system, refs #2510"
+)
 async def test_hook_canned_queries(ds_client):
     queries = (await ds_client.get("/fixtures.json")).json()["queries"]
     queries_by_name = {q["name"]: q for q in queries}
@@ -865,21 +867,27 @@ async def test_hook_canned_queries(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Canned queries not yet migrated to new permission system, refs #2510")
+@pytest.mark.xfail(
+    reason="Canned queries not yet migrated to new permission system, refs #2510"
+)
 async def test_hook_canned_queries_non_async(ds_client):
     response = await ds_client.get("/fixtures/from_hook.json?_shape=array")
     assert [{"1": 1, "actor_id": "null"}] == response.json()
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Canned queries not yet migrated to new permission system, refs #2510")
+@pytest.mark.xfail(
+    reason="Canned queries not yet migrated to new permission system, refs #2510"
+)
 async def test_hook_canned_queries_async(ds_client):
     response = await ds_client.get("/fixtures/from_async_hook.json?_shape=array")
     assert [{"2": 2}] == response.json()
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Canned queries not yet migrated to new permission system, refs #2510")
+@pytest.mark.xfail(
+    reason="Canned queries not yet migrated to new permission system, refs #2510"
+)
 async def test_hook_canned_queries_actor(ds_client):
     assert (
         await ds_client.get("/fixtures/from_hook.json?_bot=1&_shape=array")
@@ -1541,7 +1549,9 @@ async def test_hook_top_query(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Canned queries not yet migrated to new permission system, refs #2510")
+@pytest.mark.xfail(
+    reason="Canned queries not yet migrated to new permission system, refs #2510"
+)
 async def test_hook_top_canned_query(ds_client):
     try:
         pm.register(SlotPlugin(), name="SlotPlugin")

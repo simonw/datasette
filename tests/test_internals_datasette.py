@@ -121,7 +121,9 @@ async def test_datasette_check_visibility(
 ):
     ds = Datasette([], memory=True, config=config)
     await ds.invoke_startup()
-    visible, private = await ds.check_visibility(actor, action=action, resource=resource)
+    visible, private = await ds.check_visibility(
+        actor, action=action, resource=resource
+    )
     assert visible == should_allow
     assert private == expected_private
 

@@ -1442,3 +1442,137 @@ async def test_actor_restrictions_empty_allowlist(perms_ds):
 
     result = await perms_ds.allowed(action="view-instance", actor=actor)
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_cannot_be_overridden_by_config():
+    """Test that config permissions cannot override actor restrictions - issue #2534"""
+    from datasette.app import Datasette
+    from datasette.resources import TableResource
+
+    # Create datasette with config that allows user to access both t1 AND t2
+    config = {
+        "databases": {
+            "test_db": {
+                "tables": {
+                    "t1": {"allow": {"id": "user"}},
+                    "t2": {"allow": {"id": "user"}},
+                }
+            }
+        }
+    }
+
+    ds = Datasette(config=config)
+    await ds.invoke_startup()
+    db = ds.add_memory_database("test_db")
+    await db.execute_write("create table t1 (id integer primary key)")
+    await db.execute_write("create table t2 (id integer primary key)")
+
+    # Actor restricted to ONLY t1 (not t2)
+    # Even though config allows t2, restrictions should deny it
+    actor = {"id": "user", "_r": {"r": {"test_db": {"t1": ["vt"]}}}}
+
+    # t1 should be allowed (in restrictions AND config allows)
+    result = await ds.allowed(
+        action="view-table", resource=TableResource("test_db", "t1"), actor=actor
+    )
+    assert result is True, "t1 should be allowed - in restriction allowlist"
+
+    # t2 should be DENIED (not in restrictions, even though config allows)
+    result = await ds.allowed(
+        action="view-table", resource=TableResource("test_db", "t2"), actor=actor
+    )
+    assert (
+        result is False
+    ), "t2 should be denied - NOT in restriction allowlist, config cannot override"
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_with_database_level_config(perms_ds):
+    """Test database-level restrictions with table-level config - issue #2534"""
+    from datasette.resources import TableResource
+
+    # Config allows specific tables only
+    perms_ds._config = {
+        "databases": {
+            "perms_ds_one": {
+                "tables": {
+                    "t1": {"allow": {"id": "user"}},
+                    "t2": {"allow": {"id": "user"}},
+                }
+            }
+        }
+    }
+
+    # Actor has database-level restriction (all tables in perms_ds_one)
+    # Should only access tables that pass BOTH restrictions AND config
+    actor = {"id": "user", "_r": {"d": {"perms_ds_one": ["vt"]}}}
+
+    # t1 - in restrictions (all tables) AND config allows
+    result = await perms_ds.allowed(
+        action="view-table", resource=TableResource("perms_ds_one", "t1"), actor=actor
+    )
+    assert result is True
+
+    # t2 - in restrictions (all tables) AND config allows
+    result = await perms_ds.allowed(
+        action="view-table", resource=TableResource("perms_ds_one", "t2"), actor=actor
+    )
+    assert result is True
+
+    # v1 (view) - in restrictions (all tables) AND config doesn't mention it
+    # Since actor has database-level restriction allowing all tables, v1 is allowed
+    # Config is additive, not restrictive - it doesn't create implicit denies
+    result = await perms_ds.allowed(
+        action="view-table", resource=TableResource("perms_ds_one", "v1"), actor=actor
+    )
+    assert result is True, "v1 should be allowed - actor has db-level restriction"
+
+    # Clean up
+    perms_ds._config = None
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_parent_deny_blocks_config_child_allow(perms_ds):
+    """
+    Test that table-level restrictions add parent-level deny to block
+    other tables in the same database, even if config allows them
+    """
+    from datasette.resources import TableResource
+
+    # Config allows both t1 and t2
+    perms_ds._config = {
+        "databases": {
+            "perms_ds_one": {
+                "tables": {
+                    "t1": {"allow": {"id": "user"}},
+                    "t2": {"allow": {"id": "user"}},
+                }
+            }
+        }
+    }
+
+    # Restriction allows ONLY t1 in perms_ds_one
+    # This should add:
+    # - parent-level DENY for perms_ds_one (to block other tables)
+    # - child-level ALLOW for t1
+    actor = {"id": "user", "_r": {"r": {"perms_ds_one": {"t1": ["vt"]}}}}
+
+    # t1 should work (child-level allow beats parent-level deny)
+    result = await perms_ds.allowed(
+        action="view-table", resource=TableResource("perms_ds_one", "t1"), actor=actor
+    )
+    assert result is True
+
+    # t2 should be DENIED by parent-level deny from restrictions
+    # even though config has child-level allow
+    # Because restrictions should run first
+    result = await perms_ds.allowed(
+        action="view-table", resource=TableResource("perms_ds_one", "t2"), actor=actor
+    )
+    assert (
+        result is False
+    ), "t2 should be denied - restriction parent deny should beat config child allow"
+
+    # Clean up
+    perms_ds._config = None

@@ -441,14 +441,15 @@ Example:
     # Will raise Forbidden if actor cannot view the table
     await datasette.ensure_permission(
         action="view-table",
-        resource=TableResource(database="fixtures", table="cities"),
-        actor=request.actor
+        resource=TableResource(
+            database="fixtures", table="cities"
+        ),
+        actor=request.actor,
     )
 
     # For instance-level actions, resource can be omitted:
     await datasette.ensure_permission(
-        action="permissions-debug",
-        actor=request.actor
+        action="permissions-debug", actor=request.actor
     )
 
 .. _datasette_check_visibility:

@@ -1301,7 +1301,6 @@ class Datasette:
                 "actor": actor,
                 "action": action,
                 "resource": old_style_resource,
-                "used_default": False,  # New system doesn't use defaults in the same way
                 "result": result,
                 "reason": None,  # Not tracked in new system
                 "source_plugin": None,  # Not tracked in new system

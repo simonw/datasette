@@ -234,7 +234,6 @@ def test_table_list_respects_view_table():
             assert html_fragment in auth_response.text
 
 
-@pytest.mark.xfail(reason="view-query not yet migrated to new permission system")
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [

@@ -900,7 +900,6 @@ async def test_hook_canned_queries_actor(ds_client):
     ).json() == [{"1": 1, "actor_id": "bot"}]
 
 
-@pytest.mark.xfail(reason="Magic parameters used with canned queries, refs #2510")
 def test_hook_register_magic_parameters(restore_working_directory):
     with make_app_client(
         extra_databases={"data.db": "create table logs (line text)"},

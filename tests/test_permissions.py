@@ -622,46 +622,50 @@ def test_padlocks_on_database_page(cascade_app_client):
         cascade_app_client.ds.config = previous_config
 
 
-DEF = "USE_DEFAULT"
-
-
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Test expects old API behavior that no longer exists, refs #2534")
 @pytest.mark.parametrize(
     "actor,permission,resource_1,resource_2,expected_result",
     (
         # Without restrictions the defaults apply
-        ({"id": "t"}, "view-instance", None, None, DEF),
-        ({"id": "t"}, "view-database", "one", None, DEF),
-        ({"id": "t"}, "view-table", "one", "t1", DEF),
+        ({"id": "t"}, "view-instance", None, None, True),
+        ({"id": "t"}, "view-database", "one", None, True),
+        ({"id": "t"}, "view-table", "one", "t1", True),
         # If there is an _r block, everything gets denied unless explicitly allowed
         ({"id": "t", "_r": {}}, "view-instance", None, None, False),
         ({"id": "t", "_r": {}}, "view-database", "one", None, False),
         ({"id": "t", "_r": {}}, "view-table", "one", "t1", False),
         # Explicit allowing works at the "a" for all level:
-        ({"id": "t", "_r": {"a": ["vi"]}}, "view-instance", None, None, DEF),
-        ({"id": "t", "_r": {"a": ["vd"]}}, "view-database", "one", None, DEF),
-        ({"id": "t", "_r": {"a": ["vt"]}}, "view-table", "one", "t1", DEF),
+        ({"id": "t", "_r": {"a": ["vi"]}}, "view-instance", None, None, True),
+        ({"id": "t", "_r": {"a": ["vd"]}}, "view-database", "one", None, True),
+        ({"id": "t", "_r": {"a": ["vt"]}}, "view-table", "one", "t1", True),
         # But not if it's the wrong permission
         ({"id": "t", "_r": {"a": ["vi"]}}, "view-database", "one", None, False),
         ({"id": "t", "_r": {"a": ["vd"]}}, "view-table", "one", "t1", False),
         # Works at the "d" for database level:
-        ({"id": "t", "_r": {"d": {"one": ["vd"]}}}, "view-database", "one", None, DEF),
+        ({"id": "t", "_r": {"d": {"one": ["vd"]}}}, "view-database", "one", None, True),
         (
-            {"id": "t", "_r": {"d": {"one": ["vdd"]}}},
+            # view-database-download requires view-database too (also_requires)
+            {"id": "t", "_r": {"d": {"one": ["vdd", "vd"]}}},
             "view-database-download",
             "one",
             None,
-            DEF,
+            True,
         ),
-        ({"id": "t", "_r": {"d": {"one": ["es"]}}}, "execute-sql", "one", None, DEF),
+        (
+            # execute-sql requires view-database too (also_requires)
+            {"id": "t", "_r": {"d": {"one": ["es", "vd"]}}},
+            "execute-sql",
+            "one",
+            None,
+            True,
+        ),
         # Works at the "r" for table level:
         (
             {"id": "t", "_r": {"r": {"one": {"t1": ["vt"]}}}},
             "view-table",
             "one",
             "t1",
-            DEF,
+            True,
         ),
         (
             {"id": "t", "_r": {"r": {"one": {"t1": ["vt"]}}}},
@@ -671,23 +675,23 @@ DEF = "USE_DEFAULT"
             False,
         ),
         # non-abbreviations should work too
-        ({"id": "t", "_r": {"a": ["view-instance"]}}, "view-instance", None, None, DEF),
+        ({"id": "t", "_r": {"a": ["view-instance"]}}, "view-instance", None, None, True),
         (
             {"id": "t", "_r": {"d": {"one": ["view-database"]}}},
             "view-database",
             "one",
             None,
-            DEF,
+            True,
         ),
         (
             {"id": "t", "_r": {"r": {"one": {"t1": ["view-table"]}}}},
             "view-table",
             "one",
             "t1",
-            DEF,
+            True,
         ),
-        # view-instance is granted if you have view-database
-        ({"id": "t", "_r": {"a": ["vd"]}}, "view-instance", None, None, DEF),
+        # view-database does NOT grant view-instance (no upward cascading)
+        ({"id": "t", "_r": {"a": ["vd"]}}, "view-instance", None, None, False),
     ),
 )
 async def test_actor_restricted_permissions(
@@ -711,13 +715,16 @@ async def test_actor_restricted_permissions(
         },
         cookies=cookies,
     )
-    expected_resource = []
-    if resource_1:
-        expected_resource.append(resource_1)
-    if resource_2:
-        expected_resource.append(resource_2)
-    if len(expected_resource) == 1:
-        expected_resource = expected_resource[0]
+    # Build expected_resource to match API behavior:
+    # - None when no resources
+    # - Single string when only resource_1
+    # - List when both resource_1 and resource_2 (JSON serializes tuples as lists)
+    if resource_1 and resource_2:
+        expected_resource = [resource_1, resource_2]
+    elif resource_1:
+        expected_resource = resource_1
+    else:
+        expected_resource = None
     expected = {
         "actor": actor,
         "permission": permission,
@@ -945,7 +952,6 @@ async def test_actor_endpoint_allows_any_token():
 
 
 @pytest.mark.serial
-@pytest.mark.xfail(reason="Test expects old API behavior that no longer exists, refs #2534")
 @pytest.mark.parametrize(
     "options,expected",
     (

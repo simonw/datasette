@@ -88,17 +88,21 @@ class DatabaseView(View):
         ]
 
         tables = await get_tables(datasette, request, db, allowed_dict)
+
+        # Get allowed queries using the new permission system
+        allowed_query_resources = await datasette.allowed_resources(
+            "view-query", request.actor, parent=database, include_is_private=True
+        )
+
+        # Build canned_queries list by looking up each allowed query
+        all_queries = await datasette.get_canned_queries(database, request.actor)
         canned_queries = []
-        for query in (
-            await datasette.get_canned_queries(database, request.actor)
-        ).values():
-            query_visible, query_private = await datasette.check_visibility(
-                request.actor,
-                action="view-query",
-                resource=(database, query["name"]),
-            )
-            if query_visible:
-                canned_queries.append(dict(query, private=query_private))
+        for query_resource in allowed_query_resources:
+            query_name = query_resource.child
+            if query_name in all_queries:
+                canned_queries.append(
+                    dict(all_queries[query_name], private=query_resource.private)
+                )
 
         async def database_actions():
             links = []

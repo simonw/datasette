@@ -898,9 +898,6 @@ async def test_json_columns(ds_client, extra_args, expected):
     assert response.json() == expected
 
 
-@pytest.mark.xfail(
-    reason="Canned queries not accessible due to view-query permission not migrated, refs #2510"
-)
 def test_config_cache_size(app_client_larger_cache_size):
     response = app_client_larger_cache_size.get("/fixtures/pragma_cache_size.json")
     assert response.json["rows"] == [{"cache_size": -2500}]

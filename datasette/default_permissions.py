@@ -181,6 +181,13 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
                 db_name, None, db_allow, f"allow for {action} on {db_name}"
             )
 
+        if action == "view-query":
+            # Database-level allow block affects all queries in that database
+            db_allow = db_config.get("allow")
+            add_row_allow_block(
+                db_name, None, db_allow, f"allow for {action} on {db_name}"
+            )
+
     # Root-level allow block applies to all view-* actions
     if action == "view-instance":
         allow_block = config.get("allow")

@@ -660,10 +660,12 @@ class CreateTokenView(BaseView):
             tables = []
             for table_resource in allowed_tables:
                 if table_resource.parent == database_name:
-                    tables.append({
-                        "name": table_resource.child,
-                        "encoded": tilde_encode(table_resource.child)
-                    })
+                    tables.append(
+                        {
+                            "name": table_resource.child,
+                            "encoded": tilde_encode(table_resource.child),
+                        }
+                    )
 
             database_with_tables.append(
                 {

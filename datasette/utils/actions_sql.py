@@ -486,7 +486,7 @@ async def check_permission_for_resource(
     rules_union, all_params = await build_permission_rules_sql(datasette, actor, action)
 
     # If no rules (empty SQL), default deny
-    if not rules_union or rules_union.endswith("WHERE 0"):
+    if not rules_union:
         return False
 
     # Add parameters for the resource we're checking

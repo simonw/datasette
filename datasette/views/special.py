@@ -156,16 +156,22 @@ class PermissionsDebugView(BaseView):
         permission = vars["permission"]
         resource_1 = vars["resource_1"]
         resource_2 = vars["resource_2"]
-        # Convert to Resource object
-        if resource_1 and resource_2:
-            resource_obj = TableResource(database=resource_1, table=resource_2)
+
+        # Use the action's properties to create the appropriate resource object
+        action = self.ds.actions.get(permission)
+        if not action:
+            return Response.json({"error": f"Unknown action: {permission}"}, status=400)
+
+        if action.takes_parent and action.takes_child:
+            resource_obj = action.resource_class(database=resource_1, table=resource_2)
             resource_for_response = (resource_1, resource_2)
-        elif resource_1:
-            resource_obj = DatabaseResource(database=resource_1)
+        elif action.takes_parent:
+            resource_obj = action.resource_class(database=resource_1)
             resource_for_response = resource_1
         else:
-            resource_obj = InstanceResource()
+            resource_obj = action.resource_class()
             resource_for_response = None
+
         result = await self.ds.allowed(
             action=permission, resource=resource_obj, actor=actor
         )
@@ -510,15 +516,19 @@ class PermissionCheckView(BaseView):
                 {"error": "parent is required when child is provided"}, status=400
             )
 
-        # Convert to Resource object
-        if parent and child:
-            resource_obj = TableResource(database=parent, table=child)
+        # Use the action's properties to create the appropriate resource object
+        action_obj = self.ds.actions.get(action)
+        if not action_obj:
+            return Response.json({"error": f"Unknown action: {action}"}, status=400)
+
+        if action_obj.takes_parent and action_obj.takes_child:
+            resource_obj = action_obj.resource_class(database=parent, table=child)
             resource = (parent, child)
-        elif parent:
-            resource_obj = DatabaseResource(database=parent)
+        elif action_obj.takes_parent:
+            resource_obj = action_obj.resource_class(database=parent)
             resource = parent
         else:
-            resource_obj = InstanceResource()
+            resource_obj = action_obj.resource_class()
             resource = None
 
         before_checks = len(self.ds._permission_checks)

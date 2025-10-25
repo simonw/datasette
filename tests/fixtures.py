@@ -755,16 +755,41 @@ def assert_permissions_checked(datasette, actions):
             resource = None
         else:
             action, resource = action
+
+        # Convert PermissionCheck dataclass to old resource format for comparison
+        def check_matches(pc, action, resource):
+            if pc.action != action:
+                return False
+            # Convert parent/child to old resource format
+            if pc.parent and pc.child:
+                pc_resource = (pc.parent, pc.child)
+            elif pc.parent:
+                pc_resource = pc.parent
+            else:
+                pc_resource = None
+            return pc_resource == resource
+
         assert [
             pc
             for pc in datasette._permission_checks
-            if pc["action"] == action and pc["resource"] == resource
+            if check_matches(pc, action, resource)
         ], """Missing expected permission check: action={}, resource={}
         Permission checks seen: {}
         """.format(
             action,
             resource,
-            json.dumps(list(datasette._permission_checks), indent=4),
+            json.dumps(
+                [
+                    {
+                        "action": pc.action,
+                        "parent": pc.parent,
+                        "child": pc.child,
+                        "result": pc.result,
+                    }
+                    for pc in datasette._permission_checks
+                ],
+                indent=4,
+            ),
         )
 
 

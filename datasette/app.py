@@ -1052,6 +1052,37 @@ class Datasette:
         for hook in pm.hook.track_event(datasette=self, event=event):
             await await_me_maybe(hook)
 
+    def resource_for_action(
+        self, action: str, parent: Optional[str], child: Optional[str]
+    ):
+        """
+        Create a Resource instance for the given action with parent/child values.
+
+        Looks up the action's resource_class and instantiates it with the
+        provided parent and child identifiers.
+
+        Args:
+            action: The action name (e.g., "view-table", "view-query")
+            parent: The parent resource identifier (e.g., database name)
+            child: The child resource identifier (e.g., table/query name)
+
+        Returns:
+            A Resource instance of the appropriate subclass
+
+        Raises:
+            ValueError: If the action is unknown
+        """
+        from datasette.permissions import Resource
+
+        action_obj = self.actions.get(action)
+        if not action_obj:
+            raise ValueError(f"Unknown action: {action}")
+
+        resource_class = action_obj.resource_class
+        instance = object.__new__(resource_class)
+        Resource.__init__(instance, parent=parent, child=child)
+        return instance
+
     async def check_visibility(
         self,
         actor: dict,
@@ -1065,25 +1096,17 @@ class Datasette:
         - visible: bool - can the actor see it?
         - private: bool - if visible, can anonymous users NOT see it?
         """
-        from datasette.permissions import Resource
-
-        # Convert old-style resource to Resource object using action's resource_class
-        action_obj = self.actions.get(action)
-        if not action_obj:
-            raise ValueError(f"Unknown action: {action}")
-
-        resource_class = action_obj.resource_class
-
+        # Convert old-style resource to Resource object
         if resource is None:
             resource_obj = None
         elif isinstance(resource, str):
             # Database resource
-            resource_obj = object.__new__(resource_class)
-            Resource.__init__(resource_obj, parent=resource, child=None)
+            resource_obj = self.resource_for_action(action, parent=resource, child=None)
         elif isinstance(resource, tuple) and len(resource) == 2:
             # Database + child resource (table or query)
-            resource_obj = object.__new__(resource_class)
-            Resource.__init__(resource_obj, parent=resource[0], child=resource[1])
+            resource_obj = self.resource_for_action(
+                action, parent=resource[0], child=resource[1]
+            )
         else:
             resource_obj = None
 
@@ -1187,13 +1210,10 @@ class Datasette:
         result = await self.get_internal_database().execute(query, params)
 
         # Instantiate the appropriate Resource subclass for each row
-        resource_class = action_obj.resource_class
         resources = []
         for row in result.rows:
             # row[0]=parent, row[1]=child, row[2]=reason (ignored), row[3]=is_private (if requested)
-            # Create instance directly with parent/child from base class
-            resource = object.__new__(resource_class)
-            Resource.__init__(resource, parent=row[0], child=row[1])
+            resource = self.resource_for_action(action, parent=row[0], child=row[1])
             if include_is_private:
                 resource.private = bool(row[3])
             resources.append(resource)
@@ -1225,12 +1245,9 @@ class Datasette:
         query, params = await self.allowed_resources_sql(action=action, actor=actor)
         result = await self.get_internal_database().execute(query, params)
 
-        resource_class = action_obj.resource_class
         resources = []
         for row in result.rows:
-            # Create instance directly with parent/child from base class
-            resource = object.__new__(resource_class)
-            Resource.__init__(resource, parent=row[0], child=row[1])
+            resource = self.resource_for_action(action, parent=row[0], child=row[1])
             reason = row[2]
             resources.append(AllowedResource(resource=resource, reason=reason))
 

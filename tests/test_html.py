@@ -135,9 +135,6 @@ def test_not_allowed_methods():
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="Canned queries not displayed due to view-query permission, refs #2510"
-)
 async def test_database_page(ds_client):
     response = await ds_client.get("/fixtures")
     soup = Soup(response.text, "html.parser")
@@ -263,10 +260,9 @@ def test_query_page_truncates():
             "/fixtures/simple_primary_key",
             ["table", "db-fixtures", "table-simple_primary_key"],
         ),
-        pytest.param(
+        (
             "/fixtures/neighborhood_search",
             ["query", "db-fixtures", "query-neighborhood_search"],
-            marks=pytest.mark.xfail(reason="Canned queries not accessible, refs #2510"),
         ),
         (
             "/fixtures/table~2Fwith~2Fslashes~2Ecsv",
@@ -599,9 +595,6 @@ async def test_404_content_type(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="Canned queries not yet migrated to new permission system, refs #2510"
-)
 async def test_canned_query_default_title(ds_client):
     response = await ds_client.get("/fixtures/magic_parameters")
     assert response.status_code == 200
@@ -610,9 +603,6 @@ async def test_canned_query_default_title(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="Canned queries not yet migrated to new permission system, refs #2510"
-)
 async def test_canned_query_with_custom_metadata(ds_client):
     response = await ds_client.get("/fixtures/neighborhood_search?text=town")
     assert response.status_code == 200
@@ -675,9 +665,6 @@ async def test_show_hide_sql_query(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="Canned queries not yet migrated to new permission system, refs #2510"
-)
 async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
     # For a canned query the show/hide should NOT have a hidden SQL field
     # https://github.com/simonw/datasette/issues/1411
@@ -689,9 +676,6 @@ async def test_canned_query_with_hide_has_no_hidden_sql(ds_client):
     ] == [(hidden["name"], hidden["value"]) for hidden in hiddens]
 
 
-@pytest.mark.xfail(
-    reason="Canned queries not yet migrated to new permission system, refs #2510"
-)
 @pytest.mark.parametrize(
     "hide_sql,querystring,expected_hidden,expected_show_hide_link,expected_show_hide_text",
     (
@@ -941,9 +925,6 @@ def test_base_url_affects_metadata_extra_css_urls(app_client_base_url_prefix):
         ("/fixtures/magic_parameters", None),
     ],
 )
-@pytest.mark.xfail(
-    reason="Canned queries not yet migrated to new permission system, refs #2510"
-)
 async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
     response = await ds_client.get(path)
     assert response.status_code == 200
@@ -959,9 +940,6 @@ async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
     [
         pytest.param(
             True,
-            marks=pytest.mark.xfail(
-                reason="Canned queries not accessible due to view-query permission not migrated, refs #2510"
-            ),
         ),
         False,
     ],
@@ -1057,10 +1035,9 @@ async def test_trace_correctly_escaped(ds_client):
             "http://localhost/fixtures/-/query.json?sql=select+*+from+facetable",
         ),
         # Canned query page
-        pytest.param(
+        (
             "/fixtures/neighborhood_search?text=town",
             "http://localhost/fixtures/neighborhood_search.json?text=town",
-            marks=pytest.mark.xfail(reason="Canned queries not accessible, refs #2510"),
         ),
         # /-/ pages
         (
@@ -1180,7 +1157,7 @@ async def test_database_color(ds_client):
         "/fixtures",
         "/fixtures/facetable",
         "/fixtures/paginated_view",
-        # "/fixtures/pragma_cache_size",  # Canned query - skipped due to view-query not migrated, refs #2510
+        "/fixtures/pragma_cache_size",
     ):
         response = await ds_client.get(path)
         assert any(

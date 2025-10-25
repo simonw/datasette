@@ -1147,9 +1147,6 @@ async def test_infinity_returned_as_invalid_json_if_requested(ds_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="Canned queries not accessible due to view-query permission not migrated, refs #2510"
-)
 async def test_custom_query_with_unicode_characters(ds_client):
     # /fixtures/𝐜𝐢𝐭𝐢𝐞𝐬.json
     response = await ds_client.get(

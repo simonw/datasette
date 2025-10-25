@@ -234,7 +234,6 @@ def test_table_list_respects_view_table():
             assert html_fragment in auth_response.text
 
 
-@pytest.mark.xfail(reason="view-query not yet migrated to new permission system")
 @pytest.mark.parametrize(
     "allow,expected_anon,expected_auth",
     [
@@ -365,9 +364,6 @@ def test_query_list_respects_view_query():
                 ("view-database", "fixtures"),
                 ("view-query", ("fixtures", "neighborhood_search")),
             ],
-            marks=pytest.mark.xfail(
-                reason="Canned queries not accessible due to view-query permission not migrated, refs #2510"
-            ),
         ),
     ],
 )
@@ -593,9 +589,6 @@ def test_permissions_cascade(cascade_app_client, path, permissions, expected_sta
         cascade_app_client.ds.config = previous_config
 
 
-@pytest.mark.xfail(
-    reason="Canned queries not accessible due to view-query permission not migrated, refs #2510"
-)
 def test_padlocks_on_database_page(cascade_app_client):
     config = {
         "databases": {

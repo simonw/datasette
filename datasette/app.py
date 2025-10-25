@@ -922,9 +922,7 @@ class Datasette:
         return self._app_css_hash
 
     async def get_canned_queries(self, database_name, actor):
-        queries = (
-            ((self.config or {}).get("databases") or {}).get(database_name) or {}
-        ).get("queries") or {}
+        queries = {}
         for more_queries in pm.hook.canned_queries(
             datasette=self,
             database=database_name,

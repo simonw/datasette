@@ -50,6 +50,7 @@ async def permission_resources_sql(datasette, actor, action):
         "view-database",
         "view-database-download",
         "view-table",
+        "view-query",
         "execute-sql",
     }
     if action in default_allow_actions:
@@ -335,3 +336,12 @@ def skip_csrf(scope):
         headers = scope.get("headers") or {}
         if dict(headers).get(b"content-type") == b"application/json":
             return True
+
+
+@hookimpl
+def canned_queries(datasette, database, actor):
+    """Return canned queries from datasette configuration."""
+    queries = (
+        ((datasette.config or {}).get("databases") or {}).get(database) or {}
+    ).get("queries") or {}
+    return queries

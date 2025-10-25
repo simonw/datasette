@@ -137,7 +137,6 @@ async def test_no_logout_button_in_navigation_if_no_ds_actor_cookie(ds_client, p
     )
 
 
-@pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
 @pytest.mark.parametrize(
     "post_data,errors,expected_duration,expected_r",
     (

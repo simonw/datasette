@@ -1290,25 +1290,6 @@ class Datasette:
             child=resource.child,
         )
 
-        # Check actor restrictions after SQL permissions
-        # If the SQL check says "yes" but actor has restrictions, verify action is allowed
-        if result and actor and "_r" in actor:
-            from datasette.default_permissions import restrictions_allow_action
-
-            # Convert Resource to old-style format for restrictions check
-            if resource.parent and resource.child:
-                old_style_resource = (resource.parent, resource.child)
-            elif resource.parent:
-                old_style_resource = resource.parent
-            else:
-                old_style_resource = None
-
-            # If restrictions don't allow this action, deny it
-            if not restrictions_allow_action(
-                self, actor["_r"], action, old_style_resource
-            ):
-                result = False
-
         # Log the permission check for debugging
         self._permission_checks.append(
             PermissionCheck(

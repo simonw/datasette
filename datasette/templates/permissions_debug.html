@@ -133,8 +133,14 @@ debugPost.addEventListener('submit', function(ev) {
             {% endif %}
         </h2>
         <p><strong>Actor:</strong> {{ check.actor|tojson }}</p>
-        {% if check.resource %}
-            <p><strong>Resource:</strong> {{ check.resource }}</p>
+        {% if check.parent %}
+            <p><strong>Resource:</strong>
+            {% if check.child %}
+                {{ check.parent }} / {{ check.child }}
+            {% else %}
+                {{ check.parent }}
+            {% endif %}
+            </p>
         {% endif %}
     </div>
 {% endfor %}

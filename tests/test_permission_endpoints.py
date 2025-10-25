@@ -174,7 +174,10 @@ async def test_allowed_json_total_count(ds_with_permissions):
 
     # We created 4 tables total (2 in analytics, 2 in production)
     import json
-    assert data["total"] == 4, f"Expected total=4, got: {json.dumps(data, separators=(',', ':'))}"
+
+    assert (
+        data["total"] == 4
+    ), f"Expected total=4, got: {json.dumps(data, separators=(',', ':'))}"
 
 
 # /-/rules.json tests

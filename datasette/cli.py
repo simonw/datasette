@@ -766,7 +766,7 @@ def create_token(
     actions.extend([p[1] for p in databases])
     actions.extend([p[2] for p in resources])
     for action in actions:
-        if not ds.permissions.get(action):
+        if not ds.actions.get(action):
             click.secho(
                 f"  Unknown permission: {action} ",
                 fg="red",

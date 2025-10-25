@@ -40,6 +40,8 @@ async def perms_ds():
     await one.execute_write("create view if not exists v1 as select * from t1")
     await one.execute_write("create table if not exists t2 (id integer primary key)")
     await two.execute_write("create table if not exists t1 (id integer primary key)")
+    # Trigger catalog refresh so allowed_resources() can be called
+    await ds.client.get("/")
     return ds
 
 
@@ -1308,3 +1310,135 @@ async def test_restrictions_allow_action(restrictions, action, resource, expecte
     await ds.invoke_startup()
     actual = restrictions_allow_action(ds, restrictions, action, resource)
     assert actual == expected
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_filters_allowed_resources(perms_ds):
+    """Test that allowed_resources() respects actor restrictions - issue #2534"""
+
+    # Actor restricted to just perms_ds_one/t1
+    actor = {"id": "user", "_r": {"r": {"perms_ds_one": {"t1": ["vt"]}}}}
+
+    # Should only return t1
+    allowed_tables = await perms_ds.allowed_resources("view-table", actor)
+    assert len(allowed_tables) == 1
+    assert allowed_tables[0].parent == "perms_ds_one"
+    assert allowed_tables[0].child == "t1"
+
+    # Database listing should be empty (no view-database permission)
+    allowed_dbs = await perms_ds.allowed_resources("view-database", actor)
+    assert len(allowed_dbs) == 0
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_database_level(perms_ds):
+    """Test database-level restrictions allow all tables in database - issue #2534"""
+
+    actor = {"id": "user", "_r": {"d": {"perms_ds_one": ["vt"]}}}
+
+    allowed_tables = await perms_ds.allowed_resources(
+        "view-table", actor, parent="perms_ds_one"
+    )
+
+    # Should return all tables in perms_ds_one
+    table_names = {r.child for r in allowed_tables}
+    assert "t1" in table_names
+    assert "t2" in table_names
+    assert "v1" in table_names  # views too
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_global_level(perms_ds):
+    """Test global-level restrictions allow all resources - issue #2534"""
+
+    actor = {"id": "user", "_r": {"a": ["vt"]}}
+
+    allowed_tables = await perms_ds.allowed_resources("view-table", actor)
+
+    # Should return all tables in all databases
+    assert len(allowed_tables) > 0
+    dbs = {r.parent for r in allowed_tables}
+    assert "perms_ds_one" in dbs
+    assert "perms_ds_two" in dbs
+
+
+@pytest.mark.asyncio
+async def test_restrictions_gate_before_config(perms_ds):
+    """Test that restrictions act as gating filter before config permissions - issue #2534"""
+    from datasette.resources import TableResource
+
+    # Actor restricted to just t1 (not t2)
+    actor = {"id": "user", "_r": {"r": {"perms_ds_one": {"t1": ["vt"]}}}}
+
+    # Config doesn't matter - restrictions gate what's checked
+    # t2 is not in restriction allowlist, so should be DENIED
+    result = await perms_ds.allowed(
+        action="view-table",
+        resource=TableResource("perms_ds_one", "t2"),
+        actor=actor,
+    )
+    assert result is False
+
+    # t1 is in restrictions AND passes normal permission check - should be ALLOWED
+    result = await perms_ds.allowed(
+        action="view-table",
+        resource=TableResource("perms_ds_one", "t1"),
+        actor=actor,
+    )
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_json_endpoints_show_filtered_listings(perms_ds):
+    """Test that /.json and /db.json show correct filtered listings - issue #2534"""
+
+    actor = {"id": "user", "_r": {"r": {"perms_ds_one": {"t1": ["vt"]}}}}
+    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
+
+    # /.json should be 403 (no view-instance permission)
+    response = await perms_ds.client.get("/.json", cookies=cookies)
+    assert response.status_code == 403
+
+    # /perms_ds_one.json should be 403 (no view-database permission)
+    response = await perms_ds.client.get("/perms_ds_one.json", cookies=cookies)
+    assert response.status_code == 403
+
+    # /perms_ds_one/t1.json should be 200
+    response = await perms_ds.client.get("/perms_ds_one/t1.json", cookies=cookies)
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_view_instance_only(perms_ds):
+    """Test actor restricted to view-instance only - issue #2534"""
+
+    actor = {"id": "user", "_r": {"a": ["vi"]}}
+    cookies = {"ds_actor": perms_ds.client.actor_cookie(actor)}
+
+    # /.json should be 200 (has view-instance permission)
+    response = await perms_ds.client.get("/.json", cookies=cookies)
+    assert response.status_code == 200
+
+    # But no databases should be visible (no view-database permission)
+    data = response.json()
+    # The instance is visible but databases list should be empty or minimal
+    # Actually, let's check via allowed_resources
+    allowed_dbs = await perms_ds.allowed_resources("view-database", actor)
+    assert len(allowed_dbs) == 0
+
+
+@pytest.mark.asyncio
+async def test_actor_restrictions_empty_allowlist(perms_ds):
+    """Test actor with empty restrictions allowlist denies everything - issue #2534"""
+
+    actor = {"id": "user", "_r": {}}
+
+    # No actions in allowlist, so everything should be denied
+    allowed_tables = await perms_ds.allowed_resources("view-table", actor)
+    assert len(allowed_tables) == 0
+
+    allowed_dbs = await perms_ds.allowed_resources("view-database", actor)
+    assert len(allowed_dbs) == 0
+
+    result = await perms_ds.allowed(action="view-instance", actor=actor)
+    assert result is False

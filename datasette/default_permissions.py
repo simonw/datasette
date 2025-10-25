@@ -5,80 +5,6 @@ import itsdangerous
 import time
 
 
-@hookimpl(tryfirst=True, specname="permission_allowed")
-async def permission_allowed_sql_bridge(datasette, actor, action, resource):
-    """
-    Bridge config-based permission rules to the old permission_allowed API.
-
-    This allows views using the old string/tuple resource API to benefit from
-    config blocks defined in datasette.yaml without using the new resource-based system.
-
-    Note: This does NOT apply default allow rules - those should come from the
-    Permission object's default value to maintain backward compatibility.
-    """
-    # Only check config-based rules - don't apply defaults
-    config_rules = await _config_permission_rules(datasette, actor, action)
-    if not config_rules:
-        return None
-
-    # Evaluate config rules for this specific resource
-    for rule in config_rules:
-        if rule.params:  # Has config-based rules
-            from datasette.utils.permissions import resolve_permissions_with_candidates
-
-            # Build candidate based on resource
-            if resource is None:
-                candidates = [(None, None)]
-            elif isinstance(resource, str):
-                candidates = [(resource, None)]
-            elif isinstance(resource, tuple):
-                candidates = [(resource[0], resource[1])]
-            else:
-                return None
-
-            db = datasette.get_internal_database()
-            results = await resolve_permissions_with_candidates(
-                db, actor, [rule], candidates, action, implicit_deny=False
-            )
-            if results:
-                # Use the first result's allow value
-                for result in results:
-                    if result.get("allow") is not None:
-                        return bool(result["allow"])
-    return None
-
-
-@hookimpl(tryfirst=True, specname="permission_allowed")
-def permission_allowed_default_allow_sql(datasette, actor, action, resource):
-    """
-    Enforce the default_allow_sql setting for execute-sql permission.
-
-    When default_allow_sql is set to False, deny all execute-sql permissions.
-    This runs before other permission checks to ensure the setting is respected.
-    """
-    if action == "execute-sql":
-        if not datasette.setting("default_allow_sql"):
-            return False
-    return None
-
-
-@hookimpl(tryfirst=True, specname="permission_allowed")
-def permission_allowed_root(datasette, actor, action, resource):
-    """
-    Grant all permissions to root user when Datasette started with --root flag.
-
-    The --root flag is a localhost development tool. When used, it sets
-    datasette.root_enabled = True and creates an actor with id="root".
-    This hook grants that actor all permissions.
-
-    Other plugins can use the same pattern: check datasette.root_enabled
-    to decide whether to honor root users.
-    """
-    if datasette.root_enabled and actor and actor.get("id") == "root":
-        return True
-    return None
-
-
 @hookimpl
 async def permission_resources_sql(datasette, actor, action):
     rules: list[PermissionSQL] = []
@@ -89,7 +15,7 @@ async def permission_resources_sql(datasette, actor, action):
         # Add a single global-level allow rule (NULL, NULL) for root
         # This allows root to access everything by default, but database-level
         # and table-level deny rules in config can still block specific resources
-        sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'root user' AS reason, 'root_permissions' AS source_plugin"
+        sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'root user' AS reason"
         rules.append(
             PermissionSQL(
                 source="root_permissions",
@@ -104,7 +30,7 @@ async def permission_resources_sql(datasette, actor, action):
     # Check default_allow_sql setting for execute-sql action
     if action == "execute-sql" and not datasette.setting("default_allow_sql"):
         # Return a deny rule for all databases
-        sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'default_allow_sql is false' AS reason, 'default_allow_sql_setting' AS source_plugin"
+        sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'default_allow_sql is false' AS reason"
         rules.append(
             PermissionSQL(
                 source="default_allow_sql_setting",
@@ -129,8 +55,7 @@ async def permission_resources_sql(datasette, actor, action):
     if action in default_allow_actions:
         reason = f"default allow for {action}".replace("'", "''")
         sql = (
-            "SELECT NULL AS parent, NULL AS child, 1 AS allow, "
-            f"'{reason}' AS reason, 'default_permissions' AS source_plugin"
+            "SELECT NULL AS parent, NULL AS child, 1 AS allow, " f"'{reason}' AS reason"
         )
         rules.append(
             PermissionSQL(
@@ -287,7 +212,7 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
     for idx, (parent, child, allow, reason) in enumerate(rows):
         key = f"cfg_{idx}"
         parts.append(
-            f"SELECT :{key}_parent AS parent, :{key}_child AS child, :{key}_allow AS allow, :{key}_reason AS reason, 'config_permissions' AS source_plugin"
+            f"SELECT :{key}_parent AS parent, :{key}_child AS child, :{key}_allow AS allow, :{key}_reason AS reason"
         )
         params[f"{key}_parent"] = parent
         params[f"{key}_child"] = child
@@ -353,22 +278,6 @@ def restrictions_allow_action(
 
     # This action is not explicitly allowed, so reject it
     return False
-
-
-@hookimpl(specname="permission_allowed")
-def permission_allowed_actor_restrictions(datasette, actor, action, resource):
-    if actor is None:
-        return None
-    if "_r" not in actor:
-        # No restrictions, so we have no opinion
-        return None
-    _r = actor.get("_r")
-    if restrictions_allow_action(datasette, _r, action, resource):
-        # Return None because we do not have an opinion here
-        return None
-    else:
-        # Block this permission check
-        return False
 
 
 @hookimpl

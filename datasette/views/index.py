@@ -26,8 +26,7 @@ class IndexView(BaseView):
 
     async def get(self, request):
         as_format = request.url_vars["format"]
-        if not await self.ds.allowed(action="view-instance", actor=request.actor):
-            raise Forbidden("view-instance")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
 
         # Get all allowed databases and tables in bulk
         allowed_databases = await self.ds.allowed_resources(

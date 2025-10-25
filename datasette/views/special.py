@@ -44,8 +44,7 @@ class JsonDataView(BaseView):
 
     async def get(self, request):
         if self.permission:
-            if not await self.ds.allowed(action=self.permission, actor=request.actor):
-                raise Forbidden(self.permission)
+            await self.ds.ensure_permission(action=self.permission, actor=request.actor)
         if self.needs_request:
             data = self.data_callback(request)
         else:
@@ -55,8 +54,7 @@ class JsonDataView(BaseView):
 
 class PatternPortfolioView(View):
     async def get(self, request, datasette):
-        if not await datasette.allowed(action="view-instance", actor=request.actor):
-            raise Forbidden("view-instance")
+        await datasette.ensure_permission(action="view-instance", actor=request.actor)
         return Response.html(
             await datasette.render_template(
                 "patterns.html",
@@ -114,10 +112,8 @@ class PermissionsDebugView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        if not await self.ds.allowed(action="view-instance", actor=request.actor):
-            raise Forbidden("view-instance")
-        if not await self.ds.allowed(action="permissions-debug", actor=request.actor):
-            raise Forbidden("Permission denied")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
         filter_ = request.args.get("filter") or "all"
         permission_checks = list(reversed(self.ds._permission_checks))
         if filter_ == "exclude-yours":
@@ -153,10 +149,8 @@ class PermissionsDebugView(BaseView):
         )
 
     async def post(self, request):
-        if not await self.ds.allowed(action="view-instance", actor=request.actor):
-            raise Forbidden("view-instance")
-        if not await self.ds.allowed(action="permissions-debug", actor=request.actor):
-            raise Forbidden("Permission denied")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
         vars = await request.post_vars()
         actor = json.loads(vars["actor"])
         permission = vars["permission"]
@@ -362,10 +356,8 @@ class PermissionRulesView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        if not await self.ds.allowed(action="view-instance", actor=request.actor):
-            raise Forbidden("view-instance")
-        if not await self.ds.allowed(action="permissions-debug", actor=request.actor):
-            raise Forbidden("Permission denied")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
 
         # Check if this is a request for JSON (has .json extension)
         as_format = request.url_vars.get("format")
@@ -607,13 +599,11 @@ class MessagesDebugView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        if not await self.ds.allowed(action="view-instance", actor=request.actor):
-            raise Forbidden("view-instance")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
         return await self.render(["messages_debug.html"], request)
 
     async def post(self, request):
-        if not await self.ds.allowed(action="view-instance", actor=request.actor):
-            raise Forbidden("view-instance")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
         post = await request.post_vars()
         message = post.get("message", "")
         message_type = post.get("message_type") or "INFO"

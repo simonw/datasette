@@ -1310,6 +1310,39 @@ class Datasette:
 
         return result
 
+    async def ensure_permission(
+        self,
+        *,
+        action: str,
+        resource: "Resource" = None,
+        actor: dict | None = None,
+    ):
+        """
+        Check if actor can perform action on resource, raising Forbidden if not.
+
+        This is a convenience wrapper around allowed() that raises Forbidden
+        instead of returning False. Use this when you want to enforce a permission
+        check and halt execution if it fails.
+
+        Example:
+            from datasette.resources import TableResource
+
+            # Will raise Forbidden if actor cannot view the table
+            await datasette.ensure_permission(
+                action="view-table",
+                resource=TableResource(database="analytics", table="users"),
+                actor=request.actor
+            )
+
+            # For instance-level actions, resource can be omitted:
+            await datasette.ensure_permission(
+                action="permissions-debug",
+                actor=request.actor
+            )
+        """
+        if not await self.allowed(action=action, resource=resource, actor=actor):
+            raise Forbidden(action)
+
     async def execute(
         self,
         db_name,

@@ -370,12 +370,11 @@ async def database_download(request, datasette):
     from datasette.resources import DatabaseResource
 
     database = tilde_decode(request.url_vars["database"])
-    if not await datasette.allowed(
+    await datasette.ensure_permission(
         action="view-database-download",
         resource=DatabaseResource(database=database),
         actor=request.actor,
-    ):
-        raise Forbidden("view-database-download")
+    )
     try:
         db = datasette.get_database(route=database)
     except KeyError:
@@ -544,12 +543,11 @@ class QueryView(View):
                 raise Forbidden("You do not have permission to view this query")
 
         else:
-            if not await datasette.allowed(
+            await datasette.ensure_permission(
                 action="execute-sql",
                 resource=DatabaseResource(database=database),
                 actor=request.actor,
-            ):
-                raise Forbidden("execute-sql")
+            )
 
         # Flattened because of ?sql=&name1=value1&name2=value2 feature
         params = {key: request.args.get(key) for key in request.args}

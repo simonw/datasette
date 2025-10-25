@@ -682,10 +682,10 @@ class Datasette:
 
         def abbreviate_action(action):
             # rename to abbr if possible
-            permission = self.permissions.get(action)
-            if not permission:
+            action_obj = self.actions.get(action)
+            if not action_obj:
                 return action
-            return permission.abbr or action
+            return action_obj.abbr or action
 
         if expires_after:
             token["d"] = expires_after

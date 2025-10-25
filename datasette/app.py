@@ -120,6 +120,17 @@ from .resources import InstanceResource, DatabaseResource, TableResource
 
 app_root = Path(__file__).parent.parent
 
+
+@dataclasses.dataclass
+class PermissionCheck:
+    """Represents a logged permission check for debugging purposes."""
+    when: str
+    actor: Optional[Dict[str, Any]]
+    action: str
+    parent: Optional[str]
+    child: Optional[str]
+    result: bool
+
 # https://github.com/simonw/datasette/issues/283#issuecomment-781591015
 SQLITE_LIMIT_ATTACHED = 10
 
@@ -1287,25 +1298,15 @@ class Datasette:
                 result = False
 
         # Log the permission check for debugging
-        # Convert Resource to old-style format for backward compatibility with debug tools
-        if resource.parent and resource.child:
-            old_style_resource = (resource.parent, resource.child)
-        elif resource.parent:
-            old_style_resource = resource.parent
-        else:
-            old_style_resource = None
-
         self._permission_checks.append(
-            {
-                "when": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "actor": actor,
-                "action": action,
-                "resource": old_style_resource,
-                "result": result,
-                "reason": None,  # Not tracked in new system
-                "source_plugin": None,  # Not tracked in new system
-                "depth": None,  # Not tracked in new system
-            }
+            PermissionCheck(
+                when=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                actor=actor,
+                action=action,
+                parent=resource.parent,
+                child=resource.child,
+                result=result,
+            )
         )
 
         return result

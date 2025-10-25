@@ -101,6 +101,39 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
             return None
         return actor_matches_allow(actor_dict, allow_block)
 
+    # Check if actor has restrictions - if so, we'll filter config rules
+    has_restrictions = actor_dict and "_r" in actor_dict if actor_dict else False
+    restrictions = actor_dict.get("_r", {}) if actor_dict else {}
+
+    def is_in_restriction_allowlist(parent, child, action):
+        """Check if a resource is in the actor's restriction allowlist for this action"""
+        if not has_restrictions:
+            return True  # No restrictions, all resources allowed
+
+        # Check action with abbreviations
+        action_obj = datasette.actions.get(action)
+        action_checks = {action}
+        if action_obj and action_obj.abbr:
+            action_checks.add(action_obj.abbr)
+
+        # Check global allowlist
+        if action_checks.intersection(restrictions.get("a", [])):
+            return True
+
+        # Check database-level allowlist
+        if parent and action_checks.intersection(
+            restrictions.get("d", {}).get(parent, [])
+        ):
+            return True
+
+        # Check table-level allowlist
+        if parent and child:
+            table_actions = restrictions.get("r", {}).get(parent, {}).get(child, [])
+            if action_checks.intersection(table_actions):
+                return True
+
+        return False
+
     rows = []
 
     def add_row(parent, child, result, scope):
@@ -119,6 +152,12 @@ async def _config_permission_rules(datasette, actor, action) -> list[PermissionS
         """For 'allow' blocks, always add a row if the block exists - deny if no match"""
         if allow_block is None:
             return
+
+        # If actor has restrictions and this resource is NOT in allowlist, skip this config rule
+        # Restrictions act as a gating filter - config cannot grant access to restricted-out resources
+        if not is_in_restriction_allowlist(parent, child, action):
+            return
+
         result = evaluate(allow_block)
         # If result is None (no match) or False, treat as deny
         rows.append(

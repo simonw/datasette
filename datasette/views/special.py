@@ -144,11 +144,10 @@ class PermissionsDebugView(BaseView):
                         "name": p.name,
                         "abbr": p.abbr,
                         "description": p.description,
-                        "takes_database": p.takes_database,
-                        "takes_resource": p.takes_resource,
-                        "default": p.default,
+                        "takes_parent": p.takes_parent,
+                        "takes_child": p.takes_child,
                     }
-                    for p in self.ds.permissions.values()
+                    for p in self.ds.actions.values()
                 ],
             },
         )
@@ -182,7 +181,6 @@ class PermissionsDebugView(BaseView):
                 "permission": permission,
                 "resource": resource_for_response,
                 "result": result,
-                "default": self.ds.permissions[permission].default,
             }
         )
 
@@ -232,7 +230,7 @@ class AllowedResourcesView(BaseView):
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
-        if action not in self.ds.permissions:
+        if action not in self.ds.actions:
             return Response.json({"error": f"Unknown action: {action}"}, status=404)
         if action not in self.CANDIDATE_SQL:
             return Response.json(
@@ -313,8 +311,6 @@ class AllowedResourcesView(BaseView):
             # Add debug fields if available
             if has_debug_permission and hasattr(resource, "_reason"):
                 row["reason"] = resource._reason
-            if has_debug_permission and hasattr(resource, "_source_plugin"):
-                row["source_plugin"] = resource._source_plugin
 
             allowed_rows.append(row)
 
@@ -380,7 +376,7 @@ class PermissionRulesView(BaseView):
                 ["debug_rules.html"],
                 request,
                 {
-                    "sorted_permissions": sorted(self.ds.permissions.keys()),
+                    "sorted_actions": sorted(self.ds.actions.keys()),
                 },
             )
 
@@ -388,7 +384,7 @@ class PermissionRulesView(BaseView):
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
-        if action not in self.ds.permissions:
+        if action not in self.ds.actions:
             return Response.json({"error": f"Unknown action: {action}"}, status=404)
 
         actor = request.actor if isinstance(request.actor, dict) else None
@@ -431,7 +427,7 @@ class PermissionRulesView(BaseView):
         WITH rules AS (
             {union_sql}
         )
-        SELECT parent, child, allow, reason, source_plugin
+        SELECT parent, child, allow, reason
         FROM rules
         ORDER BY allow DESC, (parent IS NOT NULL), parent, child
         LIMIT :limit OFFSET :offset
@@ -450,7 +446,6 @@ class PermissionRulesView(BaseView):
                     "resource": _resource_path(parent, child),
                     "allow": row["allow"],
                     "reason": row["reason"],
-                    "source_plugin": row["source_plugin"],
                 }
             )
 
@@ -505,7 +500,7 @@ class PermissionCheckView(BaseView):
                 ["debug_check.html"],
                 request,
                 {
-                    "sorted_permissions": sorted(self.ds.permissions.keys()),
+                    "sorted_actions": sorted(self.ds.actions.keys()),
                 },
             )
 
@@ -513,7 +508,7 @@ class PermissionCheckView(BaseView):
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
-        if action not in self.ds.permissions:
+        if action not in self.ds.actions:
             return Response.json({"error": f"Unknown action: {action}"}, status=404)
 
         parent = request.args.get("parent")
@@ -564,12 +559,10 @@ class PermissionCheckView(BaseView):
             response["actor_id"] = request.actor["id"]
 
         if info is not None:
-            response["used_default"] = info.get("used_default")
             response["depth"] = info.get("depth")
             # Only include sensitive fields if user has permissions-debug
             if has_debug_permission:
                 response["reason"] = info.get("reason")
-                response["source_plugin"] = info.get("source_plugin")
 
         return Response.json(response)
 
@@ -687,16 +680,12 @@ class CreateTokenView(BaseView):
             )
         return {
             "actor": request.actor,
-            "all_permissions": self.ds.permissions.keys(),
+            "all_permissions": self.ds.actions.keys(),
             "database_permissions": [
-                key
-                for key, value in self.ds.permissions.items()
-                if value.takes_database
+                key for key, value in self.ds.actions.items() if value.takes_database
             ],
             "resource_permissions": [
-                key
-                for key, value in self.ds.permissions.items()
-                if value.takes_resource
+                key for key, value in self.ds.actions.items() if value.takes_resource
             ],
             "database_with_tables": database_with_tables,
         }

@@ -114,24 +114,6 @@ def actor_from_request(datasette, request):
 
 
 @hookimpl
-def permission_allowed(datasette, actor, action):
-    # Testing asyncio version of permission_allowed
-    async def inner():
-        assert (
-            2
-            == (
-                await datasette.get_internal_database().execute("select 1 + 1")
-            ).first()[0]
-        )
-        if action == "this_is_allowed_async":
-            return True
-        elif action == "this_is_denied_async":
-            return False
-
-    return inner
-
-
-@hookimpl
 def prepare_jinja2_environment(env, datasette):
     env.filters["format_numeric"] = lambda s: f"{float(s):,.0f}"
     env.filters["to_hello"] = lambda s: datasette._HELLO

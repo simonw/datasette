@@ -111,11 +111,6 @@ def filters_from_request(request, database, table, datasette):
 
 
 @hookspec
-def permission_allowed(datasette, actor, action, resource):
-    """Check if actor is allowed to perform this action - return True, False or None"""
-
-
-@hookspec
 def permission_resources_sql(datasette, actor, action):
     """Return SQL query fragments for permission checks on resources.
 

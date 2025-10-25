@@ -1065,15 +1065,25 @@ class Datasette:
         - visible: bool - can the actor see it?
         - private: bool - if visible, can anonymous users NOT see it?
         """
-        from datasette.resources import DatabaseResource, TableResource
+        from datasette.permissions import Resource
 
-        # Convert old-style resource to Resource object
+        # Convert old-style resource to Resource object using action's resource_class
+        action_obj = self.actions.get(action)
+        if not action_obj:
+            raise ValueError(f"Unknown action: {action}")
+
+        resource_class = action_obj.resource_class
+
         if resource is None:
             resource_obj = None
         elif isinstance(resource, str):
-            resource_obj = DatabaseResource(database=resource)
+            # Database resource
+            resource_obj = object.__new__(resource_class)
+            Resource.__init__(resource_obj, parent=resource, child=None)
         elif isinstance(resource, tuple) and len(resource) == 2:
-            resource_obj = TableResource(database=resource[0], table=resource[1])
+            # Database + child resource (table or query)
+            resource_obj = object.__new__(resource_class)
+            Resource.__init__(resource_obj, parent=resource[0], child=resource[1])
         else:
             resource_obj = None
 

@@ -930,44 +930,58 @@ class TablesView(BaseView):
         # Get search query parameter
         q = request.args.get("q", "").strip()
 
-        # Only return matches if there's a non-empty search query
-        if not q:
-            return Response.json({"matches": []})
-
-        # Build SQL LIKE pattern from search terms
-        # Split search terms by whitespace and build pattern: %term1%term2%term3%
-        terms = q.split()
-        pattern = "%" + "%".join(terms) + "%"
-
         # Get SQL for allowed resources using the permission system
         permission_sql, params = await self.ds.allowed_resources_sql(
             action="view-table", actor=request.actor
         )
 
-        # Build query with CTE to filter by search pattern
-        sql = f"""
-        WITH allowed_tables AS (
-            {permission_sql}
-        )
-        SELECT parent, child
-        FROM allowed_tables
-        WHERE child LIKE :pattern COLLATE NOCASE
-        ORDER BY length(child), child
-        """
+        # Build query based on whether we have a search query
+        if q:
+            # Build SQL LIKE pattern from search terms
+            # Split search terms by whitespace and build pattern: %term1%term2%term3%
+            terms = q.split()
+            pattern = "%" + "%".join(terms) + "%"
 
-        # Merge params from permission SQL with our pattern param
-        all_params = {**params, "pattern": pattern}
+            # Build query with CTE to filter by search pattern
+            sql = f"""
+            WITH allowed_tables AS (
+                {permission_sql}
+            )
+            SELECT parent, child
+            FROM allowed_tables
+            WHERE child LIKE :pattern COLLATE NOCASE
+            ORDER BY length(child), child
+            """
+            all_params = {**params, "pattern": pattern}
+        else:
+            # No search query - return all tables, ordered by name
+            # Fetch 101 to detect if we need to truncate
+            sql = f"""
+            WITH allowed_tables AS (
+                {permission_sql}
+            )
+            SELECT parent, child
+            FROM allowed_tables
+            ORDER BY parent, child
+            LIMIT 101
+            """
+            all_params = params
 
         # Execute against internal database
         result = await self.ds.get_internal_database().execute(sql, all_params)
 
-        # Build response
+        # Build response with truncation
+        rows = list(result.rows)
+        truncated = len(rows) > 100
+        if truncated:
+            rows = rows[:100]
+
         matches = [
             {
                 "name": f"{row['parent']}: {row['child']}",
                 "url": self.ds.urls.table(row["parent"], row["child"]),
             }
-            for row in result.rows
+            for row in rows
         ]
 
-        return Response.json({"matches": matches})
+        return Response.json({"matches": matches, "truncated": truncated})

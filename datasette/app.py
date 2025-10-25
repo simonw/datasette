@@ -322,7 +322,6 @@ class Datasette:
         self.inspect_data = inspect_data
         self.immutables = set(immutables or [])
         self.databases = collections.OrderedDict()
-        self.permissions = {}  # .invoke_startup() will populate this
         self.actions = {}  # .invoke_startup() will populate this
         try:
             self._refresh_schemas_lock = asyncio.Lock()
@@ -545,20 +544,6 @@ class Datasette:
             ):
                 pass
         return environment
-
-    def get_permission(self, name_or_abbr: str) -> "Permission":
-        """
-        Returns a Permission object for the given name or abbreviation. Raises KeyError if not found.
-        """
-        if name_or_abbr in self.permissions:
-            return self.permissions[name_or_abbr]
-        # Try abbreviation
-        for permission in self.permissions.values():
-            if permission.abbr == name_or_abbr:
-                return permission
-        raise KeyError(
-            "No permission found with name or abbreviation {}".format(name_or_abbr)
-        )
 
     def get_action(self, name_or_abbr: str):
         """

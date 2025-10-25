@@ -675,7 +675,13 @@ def test_padlocks_on_database_page(cascade_app_client):
             False,
         ),
         # non-abbreviations should work too
-        ({"id": "t", "_r": {"a": ["view-instance"]}}, "view-instance", None, None, True),
+        (
+            {"id": "t", "_r": {"a": ["view-instance"]}},
+            "view-instance",
+            None,
+            None,
+            True,
+        ),
         (
             {"id": "t", "_r": {"d": {"one": ["view-database"]}}},
             "view-database",

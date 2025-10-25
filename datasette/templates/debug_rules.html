@@ -26,7 +26,7 @@
             <label for="action">Action (permission name):</label>
             <select id="action" name="action" required>
                 <option value="">Select an action...</option>
-                {% for permission_name in sorted_permissions %}
+                {% for permission_name in sorted_actions %}
                 <option value="{{ permission_name }}">{{ permission_name }}</option>
                 {% endfor %}
             </select>

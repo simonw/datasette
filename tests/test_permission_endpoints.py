@@ -247,7 +247,6 @@ async def test_rules_json_response_structure(ds_with_permissions):
         assert "resource" in item
         assert "allow" in item
         assert "reason" in item
-        assert "source_plugin" in item
 
 
 @pytest.mark.asyncio

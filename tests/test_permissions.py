@@ -59,7 +59,12 @@ async def perms_ds():
         "/-/api",
         "/fixtures/compound_three_primary_keys",
         "/fixtures/compound_three_primary_keys/a,a,a",
-        pytest.param("/fixtures/two", marks=pytest.mark.xfail(reason="view-query not yet migrated to new permission system")),  # Query
+        pytest.param(
+            "/fixtures/two",
+            marks=pytest.mark.xfail(
+                reason="view-query not yet migrated to new permission system"
+            ),
+        ),  # Query
     ),
 )
 def test_view_padlock(allow, expected_anon, expected_auth, path, padlock_client):
@@ -904,6 +909,7 @@ async def test_permissions_in_config(
     try:
         # Convert old-style resource to Resource object
         from datasette.resources import DatabaseResource, TableResource
+
         resource_obj = None
         if resource:
             if isinstance(resource, str):
@@ -911,7 +917,9 @@ async def test_permissions_in_config(
             elif isinstance(resource, tuple) and len(resource) == 2:
                 resource_obj = TableResource(database=resource[0], table=resource[1])
 
-        result = await perms_ds.allowed(action=action, resource=resource_obj, actor=actor)
+        result = await perms_ds.allowed(
+            action=action, resource=resource_obj, actor=actor
+        )
         if result != expected_result:
             pprint(perms_ds._permission_checks)
             assert result == expected_result
@@ -1123,7 +1131,16 @@ async def test_view_table_token_can_access_table(perms_ds):
         ({"a": ["vi"]}, "get", "/perms_ds_one/t1/1.json", None, 403),
         ({"a": ["vi"]}, "get", "/perms_ds_one/v1.json", None, 403),
         # Restricted to just view-database
-        pytest.param({"a": ["vd"]}, "get", "/.json", None, 200, marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")),  # Can see instance too
+        pytest.param(
+            {"a": ["vd"]},
+            "get",
+            "/.json",
+            None,
+            200,
+            marks=pytest.mark.xfail(
+                reason="Actor restrictions need additional work, refs #2534"
+            ),
+        ),  # Can see instance too
         ({"a": ["vd"]}, "get", "/perms_ds_one.json", None, 200),
         ({"a": ["vd"]}, "get", "/perms_ds_one/t1.json", None, 403),
         ({"a": ["vd"]}, "get", "/perms_ds_one/t1/1.json", None, 403),
@@ -1135,7 +1152,9 @@ async def test_view_table_token_can_access_table(perms_ds):
             "/.json",
             None,
             200,
-            marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
+            marks=pytest.mark.xfail(
+                reason="Actor restrictions need additional work, refs #2534"
+            ),
         ),  # Can see instance
         pytest.param(
             {"d": {"perms_ds_one": ["vt"]}},
@@ -1143,7 +1162,9 @@ async def test_view_table_token_can_access_table(perms_ds):
             "/perms_ds_one.json",
             None,
             200,
-            marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
+            marks=pytest.mark.xfail(
+                reason="Actor restrictions need additional work, refs #2534"
+            ),
         ),  # and this database
         (
             {"d": {"perms_ds_one": ["vt"]}},
@@ -1175,7 +1196,9 @@ async def test_view_table_token_can_access_table(perms_ds):
             "/.json",
             None,
             200,
-            marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
+            marks=pytest.mark.xfail(
+                reason="Actor restrictions need additional work, refs #2534"
+            ),
         ),
         pytest.param(
             {"r": {"perms_ds_one": {"t1": ["vt"]}}},
@@ -1183,7 +1206,9 @@ async def test_view_table_token_can_access_table(perms_ds):
             "/perms_ds_one.json",
             None,
             200,
-            marks=pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
+            marks=pytest.mark.xfail(
+                reason="Actor restrictions need additional work, refs #2534"
+            ),
         ),
         (
             {"r": {"perms_ds_one": {"t1": ["vt"]}}},

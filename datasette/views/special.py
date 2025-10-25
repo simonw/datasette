@@ -535,7 +535,9 @@ class PermissionCheckView(BaseView):
             resource = None
 
         before_checks = len(self.ds._permission_checks)
-        allowed = await self.ds.allowed(action=action, resource=resource_obj, actor=request.actor)
+        allowed = await self.ds.allowed(
+            action=action, resource=resource_obj, actor=request.actor
+        )
 
         info = None
         if len(self.ds._permission_checks) > before_checks:
@@ -659,7 +661,9 @@ class CreateTokenView(BaseView):
             if database.name == "_memory":
                 continue
             if not await self.ds.allowed(
-                action="view-database", resource=DatabaseResource(database=database.name), actor=request.actor
+                action="view-database",
+                resource=DatabaseResource(database=database.name),
+                actor=request.actor,
             ):
                 continue
             hidden_tables = await database.hidden_table_names()
@@ -670,7 +674,7 @@ class CreateTokenView(BaseView):
                 if not await self.ds.allowed(
                     action="view-table",
                     resource=TableResource(database=database.name, table=table),
-                    actor=request.actor
+                    actor=request.actor,
                 ):
                     continue
                 tables.append({"name": table, "encoded": tilde_encode(table)})
@@ -809,7 +813,9 @@ class ApiExplorerView(BaseView):
                     continue
 
                 if await self.ds.allowed(
-                    action="insert-row", resource=TableResource(database=name, table=table), actor=request.actor
+                    action="insert-row",
+                    resource=TableResource(database=name, table=table),
+                    actor=request.actor,
                 ):
                     pks = await db.primary_keys(table)
                     table_links.extend(
@@ -845,7 +851,9 @@ class ApiExplorerView(BaseView):
                         ]
                     )
                 if await self.ds.allowed(
-                    action="drop-table", resource=TableResource(database=name, table=table), actor=request.actor
+                    action="drop-table",
+                    resource=TableResource(database=name, table=table),
+                    actor=request.actor,
                 ):
                     table_links.append(
                         {
@@ -857,7 +865,11 @@ class ApiExplorerView(BaseView):
                     )
             database_links = []
             if (
-                await self.ds.allowed(action="create-table", resource=DatabaseResource(database=name), actor=request.actor)
+                await self.ds.allowed(
+                    action="create-table",
+                    resource=DatabaseResource(database=name),
+                    actor=request.actor,
+                )
                 and db.is_mutable
             ):
                 database_links.append(

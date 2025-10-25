@@ -495,7 +495,7 @@ def register_actions(datasette):
             takes_parent=True,
             takes_child=False,
             resource_class=DatabaseResource,
-        )
+        ),
     ]
 
     # Support old-style config for backwards compatibility
@@ -509,7 +509,11 @@ def register_actions(datasette):
                     description=p["description"],
                     takes_parent=p.get("takes_database", False),
                     takes_child=p.get("takes_resource", False),
-                    resource_class=DatabaseResource if p.get("takes_database") else InstanceResource,
+                    resource_class=(
+                        DatabaseResource
+                        if p.get("takes_database")
+                        else InstanceResource
+                    ),
                 )
             )
 
@@ -521,7 +525,9 @@ def register_actions(datasette):
                 "InstanceResource": InstanceResource,
                 "DatabaseResource": DatabaseResource,
             }
-            resource_class = resource_class_map.get(a.get("resource_class", "InstanceResource"), InstanceResource)
+            resource_class = resource_class_map.get(
+                a.get("resource_class", "InstanceResource"), InstanceResource
+            )
 
             actions.append(
                 Action(
@@ -561,7 +567,13 @@ def permission_resources_sql(datasette, actor, action):
         else:
             return None  # No opinion
         return PermissionSQL(source="my_plugin", sql=sql, params={})
-    elif action in ("insert-row", "create-table", "drop-table", "delete-row", "update-row"):
+    elif action in (
+        "insert-row",
+        "create-table",
+        "drop-table",
+        "delete-row",
+        "update-row",
+    ):
         # Special permissions for latest.datasette.io demos
         actor_id = actor.get("id") if actor else None
         if actor_id == "todomvc":

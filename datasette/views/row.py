@@ -183,7 +183,9 @@ async def _resolve_row_and_check_permission(datasette, request, permission):
 
     # Ensure user has permission to delete this row
     if not await datasette.allowed(
-        action=permission, resource=TableResource(database=resolved.db.name, table=resolved.table), actor=request.actor
+        action=permission,
+        resource=TableResource(database=resolved.db.name, table=resolved.table),
+        actor=request.actor,
     ):
         return False, _error(["Permission denied"], 403)
 
@@ -256,7 +258,9 @@ class RowUpdateView(BaseView):
 
         alter = data.get("alter")
         if alter and not await self.ds.allowed(
-            action="alter-table", resource=TableResource(database=resolved.db.name, table=resolved.table), actor=request.actor
+            action="alter-table",
+            resource=TableResource(database=resolved.db.name, table=resolved.table),
+            actor=request.actor,
         ):
             return _error(["Permission denied for alter-table"], 403)
 

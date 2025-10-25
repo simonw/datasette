@@ -116,7 +116,9 @@ class DatabaseView(View):
         attached_databases = [d.name for d in await db.attached_databases()]
 
         allow_execute_sql = await datasette.allowed(
-            action="execute-sql", resource=DatabaseResource(database=database), actor=request.actor
+            action="execute-sql",
+            resource=DatabaseResource(database=database),
+            actor=request.actor,
         )
         json_data = {
             "database": database,
@@ -726,7 +728,9 @@ class QueryView(View):
                     )
 
             allow_execute_sql = await datasette.allowed(
-                action="execute-sql", resource=DatabaseResource(database=database), actor=request.actor
+                action="execute-sql",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
             )
 
             show_hide_hidden = ""
@@ -937,7 +941,9 @@ class TableCreateView(BaseView):
 
         # Must have create-table permission
         if not await self.ds.allowed(
-            action="create-table", resource=DatabaseResource(database=database_name), actor=request.actor
+            action="create-table",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
         ):
             return _error(["Permission denied"], 403)
 
@@ -974,7 +980,9 @@ class TableCreateView(BaseView):
         if replace:
             # Must have update-row permission
             if not await self.ds.allowed(
-                action="update-row", resource=DatabaseResource(database=database_name), actor=request.actor
+                action="update-row",
+                resource=DatabaseResource(database=database_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied: need update-row"], 403)
 
@@ -998,7 +1006,9 @@ class TableCreateView(BaseView):
         if rows or row:
             # Must have insert-row permission
             if not await self.ds.allowed(
-                action="insert-row", resource=DatabaseResource(database=database_name), actor=request.actor
+                action="insert-row",
+                resource=DatabaseResource(database=database_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied: need insert-row"], 403)
 
@@ -1011,7 +1021,9 @@ class TableCreateView(BaseView):
                 # alter=True only if they request it AND they have permission
                 if data.get("alter"):
                     if not await self.ds.allowed(
-                        action="alter-table", resource=DatabaseResource(database=database_name), actor=request.actor
+                        action="alter-table",
+                        resource=DatabaseResource(database=database_name),
+                        actor=request.actor,
                     ):
                         return _error(["Permission denied: need alter-table"], 403)
                     alter = True

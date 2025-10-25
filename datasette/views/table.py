@@ -451,10 +451,14 @@ class TableInsertView(BaseView):
             # Must have insert-row AND upsert-row permissions
             if not (
                 await self.ds.allowed(
-                    action="insert-row", resource=TableResource(database=database_name, table=table_name), actor=request.actor
+                    action="insert-row",
+                    resource=TableResource(database=database_name, table=table_name),
+                    actor=request.actor,
                 )
                 and await self.ds.allowed(
-                    action="update-row", resource=TableResource(database=database_name, table=table_name), actor=request.actor
+                    action="update-row",
+                    resource=TableResource(database=database_name, table=table_name),
+                    actor=request.actor,
                 )
             ):
                 return _error(
@@ -463,7 +467,9 @@ class TableInsertView(BaseView):
         else:
             # Must have insert-row permission
             if not await self.ds.allowed(
-                action="insert-row", resource=TableResource(database=database_name, table=table_name), actor=request.actor
+                action="insert-row",
+                resource=TableResource(database=database_name, table=table_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied"], 403)
 
@@ -493,7 +499,9 @@ class TableInsertView(BaseView):
             return _error(["Upsert does not support ignore or replace"], 400)
 
         if replace and not await self.ds.allowed(
-            action="update-row", resource=TableResource(database=database_name, table=table_name), actor=request.actor
+            action="update-row",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
         ):
             return _error(['Permission denied: need update-row to use "replace"'], 403)
 
@@ -501,7 +509,9 @@ class TableInsertView(BaseView):
         if alter:
             # Must have alter-table permission
             if not await self.ds.allowed(
-                action="alter-table", resource=TableResource(database=database_name, table=table_name), actor=request.actor
+                action="alter-table",
+                resource=TableResource(database=database_name, table=table_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied for alter-table"], 403)
             # Track initial schema to check if it changed later
@@ -629,7 +639,9 @@ class TableDropView(BaseView):
         if not await db.table_exists(table_name):
             return _error(["Table not found: {}".format(table_name)], 404)
         if not await self.ds.allowed(
-            action="drop-table", resource=TableResource(database=database_name, table=table_name), actor=request.actor
+            action="drop-table",
+            resource=TableResource(database=database_name, table=table_name),
+            actor=request.actor,
         ):
             return _error(["Permission denied"], 403)
         if not db.is_mutable:
@@ -916,7 +928,9 @@ async def table_view_traced(datasette, request):
                     ),
                     is_sortable=any(c["sortable"] for c in data["display_columns"]),
                     allow_execute_sql=await datasette.allowed(
-                        action="execute-sql", resource=DatabaseResource(database=resolved.db.name), actor=request.actor
+                        action="execute-sql",
+                        resource=DatabaseResource(database=resolved.db.name),
+                        actor=request.actor,
                     ),
                     query_ms=1.2,
                     select_templates=[

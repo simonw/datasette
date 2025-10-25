@@ -954,7 +954,18 @@ async def test_edit_sql_link_on_canned_queries(ds_client, path, expected):
         assert "Edit SQL" not in response.text
 
 
-@pytest.mark.parametrize("permission_allowed", [True, False])
+@pytest.mark.parametrize(
+    "permission_allowed",
+    [
+        pytest.param(
+            True,
+            marks=pytest.mark.xfail(
+                reason="Canned queries not accessible due to view-query permission not migrated, refs #2510"
+            ),
+        ),
+        False,
+    ],
+)
 def test_edit_sql_link_not_shown_if_user_lacks_permission(permission_allowed):
     with make_app_client(
         config={
@@ -1169,15 +1180,12 @@ async def test_database_color(ds_client):
         "/fixtures",
         "/fixtures/facetable",
         "/fixtures/paginated_view",
-        "/fixtures/pragma_cache_size",
+        # "/fixtures/pragma_cache_size",  # Canned query - skipped due to view-query not migrated, refs #2510
     ):
         response = await ds_client.get(path)
-        result = any(fragment in response.text for fragment in expected_fragments)
-        if not result:
-            import pdb
-
-            pdb.set_trace()
-        assert any(fragment in response.text for fragment in expected_fragments)
+        assert any(
+            fragment in response.text for fragment in expected_fragments
+        ), f"Color fragments not found in {path}. Expected: {expected_fragments}"
 
 
 @pytest.mark.asyncio

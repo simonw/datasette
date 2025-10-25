@@ -61,21 +61,23 @@ async def ds_with_tables():
 
 # /-/tables.json tests
 @pytest.mark.asyncio
-async def test_tables_empty_query(ds_with_tables):
-    """Test that empty query returns empty matches."""
-    response = await ds_with_tables.client.get("/-/tables.json")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/-/tables.json",
+        "/-/tables.json?q=",
+    ],
+)
+async def test_tables_no_query_returns_all(ds_with_tables, url):
+    """Test that missing or empty query parameter returns all accessible tables."""
+    response = await ds_with_tables.client.get(url)
     assert response.status_code == 200
     data = response.json()
-    assert data == {"matches": []}
-
-
-@pytest.mark.asyncio
-async def test_tables_no_query_param(ds_with_tables):
-    """Test that missing q parameter returns empty matches."""
-    response = await ds_with_tables.client.get("/-/tables.json?q=")
-    assert response.status_code == 200
-    data = response.json()
-    assert data == {"matches": []}
+    # Anonymous user should see content.comments and public.articles
+    assert len(data["matches"]) == 2
+    assert data["truncated"] == False
+    names = {match["name"] for match in data["matches"]}
+    assert names == {"content: comments", "public: articles"}
 
 
 @pytest.mark.asyncio
@@ -170,7 +172,7 @@ async def test_tables_search_no_matches(ds_with_tables):
     assert response.status_code == 200
     data = response.json()
 
-    assert data == {"matches": []}
+    assert data == {"matches": [], "truncated": False}
 
 
 @pytest.mark.asyncio

@@ -28,20 +28,23 @@ export DATASETTE_SECRET := "not_a_secret"
   pipenv run cog -r README.md docs/*.rst
 
 # Serve live docs on localhost:8000
-@docs: cog
-  pipenv run blacken-docs -l 60 docs/*.rst
+@docs: cog blacken-docs
   cd docs && pipenv run make livehtml
 
 # Apply Black
 @black:
   pipenv run black .
 
+# Apply blacken-docs
+@blacken-docs:
+  pipenv run blacken-docs -l 60 docs/*.rst
+
 # Apply prettier
 @prettier:
   npm run fix
 
 # Format code with both black and prettier
-@format: black prettier
+@format: black prettier blacken-docs
 
 @serve:
   pipenv run sqlite-utils create-database data.db

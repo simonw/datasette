@@ -124,12 +124,14 @@ app_root = Path(__file__).parent.parent
 @dataclasses.dataclass
 class PermissionCheck:
     """Represents a logged permission check for debugging purposes."""
+
     when: str
     actor: Optional[Dict[str, Any]]
     action: str
     parent: Optional[str]
     child: Optional[str]
     result: bool
+
 
 # https://github.com/simonw/datasette/issues/283#issuecomment-781591015
 SQLITE_LIMIT_ATTACHED = 10

@@ -416,30 +416,39 @@ The method returns ``True`` if the permission is granted, ``False`` if denied.
 
 For legacy string/tuple based permission checking, use :ref:`datasette_permission_allowed` instead.
 
-.. _datasette_ensure_permissions:
+.. _datasette_ensure_permission:
 
-await .ensure_permissions(actor, permissions)
----------------------------------------------
+await .ensure_permission(action, resource=None, actor=None)
+------------------------------------------------------------
 
-``actor`` - dictionary
+``action`` - string
+    The action to check. See :ref:`permissions` for a list of available actions.
+
+``resource`` - Resource object (optional)
+    The resource to check the permission against. Must be an instance of ``InstanceResource``, ``DatabaseResource``, or ``TableResource`` from the ``datasette.resources`` module. If omitted, defaults to ``InstanceResource()`` for instance-level permissions.
+
+``actor`` - dictionary (optional)
     The authenticated actor. This is usually ``request.actor``.
 
-``permissions`` - list
-    A list of permissions to check. Each permission in that list can be a string ``action`` name or a 2-tuple of ``(action, resource)``.
+This is a convenience wrapper around :ref:`datasette_allowed` that raises a ``datasette.Forbidden`` exception if the permission check fails. Use this when you want to enforce a permission check and halt execution if the actor is not authorized.
 
-This method allows multiple permissions to be checked at once. It raises a ``datasette.Forbidden`` exception if any of the checks are denied before one of them is explicitly granted.
-
-This is useful when you need to check multiple permissions at once. For example, an actor should be able to view a table if either one of the following checks returns ``True`` or not a single one of them returns ``False``:
+Example:
 
 .. code-block:: python
 
-    await datasette.ensure_permissions(
-        request.actor,
-        [
-            ("view-table", (database, table)),
-            ("view-database", database),
-            "view-instance",
-        ],
+    from datasette.resources import TableResource
+
+    # Will raise Forbidden if actor cannot view the table
+    await datasette.ensure_permission(
+        action="view-table",
+        resource=TableResource(database="fixtures", table="cities"),
+        actor=request.actor
+    )
+
+    # For instance-level actions, resource can be omitted:
+    await datasette.ensure_permission(
+        action="permissions-debug",
+        actor=request.actor
     )
 
 .. _datasette_check_visibility:
@@ -473,7 +482,7 @@ This example checks if the user can access a specific table, and sets ``private`
         resource=(database, table),
     )
 
-The following example runs three checks in a row, similar to :ref:`datasette_ensure_permissions`. If any of the checks are denied before one of them is explicitly granted then ``visible`` will be ``False``. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.
+The following example runs three checks in a row. If any of the checks are denied before one of them is explicitly granted then ``visible`` will be ``False``. ``private`` will be ``True`` if an anonymous user would not be able to view the resource.
 
 .. code-block:: python
 

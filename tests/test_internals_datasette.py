@@ -164,14 +164,13 @@ def test_datasette_error_if_string_not_list(tmpdir):
 async def test_get_permission(ds_client):
     ds = ds_client.ds
     for name_or_abbr in ("vi", "view-instance", "vt", "view-table"):
-        permission = ds.get_permission(name_or_abbr)
+        action = ds.get_action(name_or_abbr)
         if "-" in name_or_abbr:
-            assert permission.name == name_or_abbr
+            assert action.name == name_or_abbr
         else:
-            assert permission.abbr == name_or_abbr
-    # And test KeyError
-    with pytest.raises(KeyError):
-        ds.get_permission("missing-permission")
+            assert action.abbr == name_or_abbr
+    # And test None return for missing action
+    assert ds.get_action("missing-permission") is None
 
 
 @pytest.mark.asyncio

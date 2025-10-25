@@ -626,7 +626,7 @@ DEF = "USE_DEFAULT"
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
+@pytest.mark.xfail(reason="Test expects old API behavior that no longer exists, refs #2534")
 @pytest.mark.parametrize(
     "actor,permission,resource_1,resource_2,expected_result",
     (
@@ -723,7 +723,6 @@ async def test_actor_restricted_permissions(
         "permission": permission,
         "resource": expected_resource,
         "result": expected_result,
-        "default": perms_ds.permissions[permission].default,
     }
     assert response.json() == expected
 
@@ -946,7 +945,7 @@ async def test_actor_endpoint_allows_any_token():
 
 
 @pytest.mark.serial
-@pytest.mark.xfail(reason="Actor restrictions need additional work, refs #2534")
+@pytest.mark.xfail(reason="Test expects old API behavior that no longer exists, refs #2534")
 @pytest.mark.parametrize(
     "options,expected",
     (

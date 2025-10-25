@@ -166,9 +166,40 @@ async def test_allowed_json_pagination():
 
 
 @pytest.mark.asyncio
-async def test_allowed_json_total_count(ds_with_permissions):
+async def test_allowed_json_total_count(tmp_path_factory):
     """Test that /-/allowed.json returns correct total count."""
-    response = await ds_with_permissions.client.get("/-/allowed.json?action=view-table")
+    from datasette.database import Database
+
+    # Use temporary file databases to avoid leakage from other tests
+    tmp_dir = tmp_path_factory.mktemp("test_allowed_json_total_count")
+
+    ds = Datasette()
+    await ds.invoke_startup()
+
+    # Create test databases with tables
+    analytics_db = ds.add_database(
+        Database(ds, path=str(tmp_dir / "analytics.db")), name="analytics"
+    )
+    await analytics_db.execute_write(
+        "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)"
+    )
+    await analytics_db.execute_write(
+        "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, event_type TEXT, user_id INTEGER)"
+    )
+
+    production_db = ds.add_database(
+        Database(ds, path=str(tmp_dir / "production.db")), name="production"
+    )
+    await production_db.execute_write(
+        "CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, total REAL)"
+    )
+    await production_db.execute_write(
+        "CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY, name TEXT)"
+    )
+
+    await ds.refresh_schemas()
+
+    response = await ds.client.get("/-/allowed.json?action=view-table")
     assert response.status_code == 200
     data = response.json()
 

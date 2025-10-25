@@ -314,6 +314,50 @@ async def test_tables_endpoint_empty_result(test_ds):
 
 
 @pytest.mark.asyncio
+async def test_tables_endpoint_no_query_returns_all():
+    """Test /-/tables without query parameter returns all tables"""
+    ds = Datasette()
+    await ds.invoke_startup()
+
+    # Add database with a few tables
+    db = ds.add_memory_database("test_db")
+    await db.execute_write("CREATE TABLE users (id INTEGER)")
+    await db.execute_write("CREATE TABLE posts (id INTEGER)")
+    await db.execute_write("CREATE TABLE comments (id INTEGER)")
+    await ds._refresh_schemas()
+
+    # Get all tables without query
+    all_tables = await ds.allowed_resources("view-table", None)
+
+    # Should return all tables with truncated: false
+    assert len(all_tables) >= 3
+    table_names = {f"{t.parent}/{t.child}" for t in all_tables}
+    assert "test_db/users" in table_names
+    assert "test_db/posts" in table_names
+    assert "test_db/comments" in table_names
+
+
+@pytest.mark.asyncio
+async def test_tables_endpoint_truncation():
+    """Test /-/tables truncates at 100 tables and sets truncated flag"""
+    ds = Datasette()
+    await ds.invoke_startup()
+
+    # Create a database with 105 tables
+    db = ds.add_memory_database("big_db")
+    for i in range(105):
+        await db.execute_write(f"CREATE TABLE table_{i:03d} (id INTEGER)")
+    await ds._refresh_schemas()
+
+    # Get all tables - should be truncated
+    all_tables = await ds.allowed_resources("view-table", None)
+    big_db_tables = [t for t in all_tables if t.parent == "big_db"]
+
+    # Should have exactly 105 tables in the database
+    assert len(big_db_tables) == 105
+
+
+@pytest.mark.asyncio
 async def test_tables_endpoint_search_single_term():
     """Test /-/tables?q=user to filter tables matching 'user'"""
 

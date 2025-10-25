@@ -1259,9 +1259,10 @@ async def test_actor_restrictions(
             "response_status": response.status_code,
             "checks": [
                 {
-                    "action": check["action"],
-                    "resource": check["resource"],
-                    "result": check["result"],
+                    "action": check.action,
+                    "parent": check.parent,
+                    "child": check.child,
+                    "result": check.result,
                 }
                 for check in perms_ds._permission_checks
             ],

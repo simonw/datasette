@@ -120,13 +120,13 @@ class PermissionsDebugView(BaseView):
             permission_checks = [
                 check
                 for check in permission_checks
-                if (check["actor"] or {}).get("id") != request.actor["id"]
+                if (check.actor or {}).get("id") != request.actor["id"]
             ]
         elif filter_ == "only-yours":
             permission_checks = [
                 check
                 for check in permission_checks
-                if (check["actor"] or {}).get("id") == request.actor["id"]
+                if (check.actor or {}).get("id") == request.actor["id"]
             ]
         return await self.render(
             ["permissions_debug.html"],
@@ -540,9 +540,10 @@ class PermissionCheckView(BaseView):
         if len(self.ds._permission_checks) > before_checks:
             for check in reversed(self.ds._permission_checks):
                 if (
-                    check.get("actor") == request.actor
-                    and check.get("action") == action
-                    and check.get("resource") == resource
+                    check.actor == request.actor
+                    and check.action == action
+                    and check.parent == parent
+                    and check.child == child
                 ):
                     info = check
                     break
@@ -559,12 +560,6 @@ class PermissionCheckView(BaseView):
 
         if request.actor and "id" in request.actor:
             response["actor_id"] = request.actor["id"]
-
-        if info is not None:
-            response["depth"] = info.get("depth")
-            # Only include sensitive fields if user has permissions-debug
-            if has_debug_permission:
-                response["reason"] = info.get("reason")
 
         return Response.json(response)
 

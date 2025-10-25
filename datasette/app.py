@@ -116,9 +116,22 @@ from .plugins import pm, DEFAULT_PLUGINS, get_plugins
 from .version import __version__
 
 from .permissions import PermissionSQL
-from .utils.permissions import build_rules_union
+from .resources import InstanceResource, DatabaseResource, TableResource
 
 app_root = Path(__file__).parent.parent
+
+
+@dataclasses.dataclass
+class PermissionCheck:
+    """Represents a logged permission check for debugging purposes."""
+
+    when: str
+    actor: Optional[Dict[str, Any]]
+    action: str
+    parent: Optional[str]
+    child: Optional[str]
+    result: bool
+
 
 # https://github.com/simonw/datasette/issues/283#issuecomment-781591015
 SQLITE_LIMIT_ATTACHED = 10
@@ -547,6 +560,18 @@ class Datasette:
             "No permission found with name or abbreviation {}".format(name_or_abbr)
         )
 
+    def get_action(self, name_or_abbr: str):
+        """
+        Returns an Action object for the given name or abbreviation. Returns None if not found.
+        """
+        if name_or_abbr in self.actions:
+            return self.actions[name_or_abbr]
+        # Try abbreviation
+        for action in self.actions.values():
+            if action.abbr == name_or_abbr:
+                return action
+        return None
+
     async def refresh_schemas(self):
         if self._refresh_schemas_lock.locked():
             return
@@ -601,25 +626,6 @@ class Datasette:
             if extra_classes:
                 event_classes.extend(extra_classes)
         self.event_classes = tuple(event_classes)
-
-        # Register permissions, but watch out for duplicate name/abbr
-        names = {}
-        abbrs = {}
-        for hook in pm.hook.register_permissions(datasette=self):
-            if hook:
-                for p in hook:
-                    if p.name in names and p != names[p.name]:
-                        raise StartupError(
-                            "Duplicate permission name: {}".format(p.name)
-                        )
-                    if p.abbr and p.abbr in abbrs and p != abbrs[p.abbr]:
-                        raise StartupError(
-                            "Duplicate permission abbr: {}".format(p.abbr)
-                        )
-                    names[p.name] = p
-                    if p.abbr:
-                        abbrs[p.abbr] = p
-                    self.permissions[p.name] = p
 
         # Register actions, but watch out for duplicate name/abbr
         action_names = {}
@@ -916,9 +922,7 @@ class Datasette:
         return self._app_css_hash
 
     async def get_canned_queries(self, database_name, actor):
-        queries = (
-            ((self.config or {}).get("databases") or {}).get(database_name) or {}
-        ).get("queries") or {}
+        queries = {}
         for more_queries in pm.hook.canned_queries(
             datasette=self,
             database=database_name,
@@ -1000,14 +1004,14 @@ class Datasette:
         if request:
             actor = request.actor
         # Top-level link
-        if await self.permission_allowed(actor=actor, action="view-instance"):
+        if await self.allowed(action="view-instance", actor=actor):
             crumbs.append({"href": self.urls.instance(), "label": "home"})
         # Database link
         if database:
-            if await self.permission_allowed(
-                actor=actor,
+            if await self.allowed(
                 action="view-database",
-                resource=database,
+                resource=DatabaseResource(database=database),
+                actor=actor,
             ):
                 crumbs.append(
                     {
@@ -1018,10 +1022,10 @@ class Datasette:
         # Table link
         if table:
             assert database, "table= requires database="
-            if await self.permission_allowed(
-                actor=actor,
+            if await self.allowed(
                 action="view-table",
-                resource=(database, table),
+                resource=TableResource(database=database, table=table),
+                actor=actor,
             ):
                 crumbs.append(
                     {
@@ -1048,256 +1052,41 @@ class Datasette:
         for hook in pm.hook.track_event(datasette=self, event=event):
             await await_me_maybe(hook)
 
-    async def permission_allowed(
-        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
-    ):
-        """Check permissions using the permissions_allowed plugin hook"""
-        result = None
-        # Use default from registered permission, if available
-        if default is DEFAULT_NOT_SET and action in self.permissions:
-            default = self.permissions[action].default
-        opinions = []
-        # Every plugin is consulted for their opinion
-        for check in pm.hook.permission_allowed(
-            datasette=self,
-            actor=actor,
-            action=action,
-            resource=resource,
-        ):
-            check = await await_me_maybe(check)
-            if check is not None:
-                opinions.append(check)
-
-        result = None
-        # If any plugin said False it's false - the veto rule
-        if any(not r for r in opinions):
-            result = False
-        elif any(r for r in opinions):
-            # Otherwise, if any plugin said True it's true
-            result = True
-
-        used_default = False
-        if result is None:
-            # No plugin expressed an opinion, so use the default
-            result = default
-            used_default = True
-        self._permission_checks.append(
-            {
-                "when": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "actor": actor,
-                "action": action,
-                "resource": resource,
-                "used_default": used_default,
-                "result": result,
-            }
-        )
-        return result
-
-    async def _build_permission_rules_sql(
-        self, actor: dict | None, action: str
-    ) -> tuple[str, dict]:
-        """Combine permission_resources_sql PermissionSQL blocks into a UNION query.
-
-        Returns a (sql, params) tuple suitable for execution against SQLite.
-        Internal helper for permission_allowed_2.
-        """
-        plugin_blocks: List[PermissionSQL] = []
-        for block in pm.hook.permission_resources_sql(
-            datasette=self,
-            actor=actor,
-            action=action,
-        ):
-            block = await await_me_maybe(block)
-            if block is None:
-                continue
-            if isinstance(block, (list, tuple)):
-                candidates = block
-            else:
-                candidates = [block]
-            for candidate in candidates:
-                if candidate is None:
-                    continue
-                plugin_blocks.append(candidate)
-
-        sql, params = build_rules_union(
-            actor=actor,
-            plugins=plugin_blocks,
-        )
-        return sql, params
-
-    async def permission_allowed_2(
-        self, actor, action, resource=None, *, default=DEFAULT_NOT_SET
-    ):
-        """Permission check backed by permission_resources_sql rules."""
-
-        if default is DEFAULT_NOT_SET and action in self.permissions:
-            default = self.permissions[action].default
-
-        if isinstance(actor, dict) or actor is None:
-            actor_dict = actor
-        else:
-            actor_dict = {"id": actor}
-        actor_id = actor_dict.get("id") if actor_dict else None
-
-        candidate_parent = None
-        candidate_child = None
-        if isinstance(resource, str):
-            candidate_parent = resource
-        elif isinstance(resource, (tuple, list)) and len(resource) == 2:
-            candidate_parent, candidate_child = resource
-        elif resource is not None:
-            raise TypeError("resource must be None, str, or (parent, child) tuple")
-
-        union_sql, union_params = await self._build_permission_rules_sql(
-            actor_dict, action
-        )
-
-        query = f"""
-        WITH rules AS (
-            {union_sql}
-        ),
-        candidate AS (
-            SELECT :cand_parent AS parent, :cand_child AS child
-        ),
-        matched AS (
-            SELECT
-                r.allow,
-                r.reason,
-                r.source_plugin,
-                CASE
-                    WHEN r.child IS NOT NULL THEN 2
-                    WHEN r.parent IS NOT NULL THEN 1
-                    ELSE 0
-                END AS depth
-            FROM rules r
-            JOIN candidate c
-              ON (r.parent IS NULL OR r.parent = c.parent)
-             AND (r.child IS NULL OR r.child = c.child)
-        ),
-        ranked AS (
-            SELECT *,
-                   ROW_NUMBER() OVER (
-                       ORDER BY
-                           depth DESC,
-                           CASE WHEN allow = 0 THEN 0 ELSE 1 END,
-                           source_plugin
-                   ) AS rn
-            FROM matched
-        ),
-        winner AS (
-            SELECT allow, reason, source_plugin, depth
-            FROM ranked
-            WHERE rn = 1
-        )
-        SELECT allow, reason, source_plugin, depth FROM winner
-        """
-
-        params = {
-            **union_params,
-            "cand_parent": candidate_parent,
-            "cand_child": candidate_child,
-        }
-
-        rows = await self.get_internal_database().execute(query, params)
-        row = rows.first()
-
-        reason = None
-        source_plugin = None
-        depth = None
-        used_default = False
-
-        if row is None:
-            result = default
-            used_default = True
-        else:
-            allow = row["allow"]
-            reason = row["reason"]
-            source_plugin = row["source_plugin"]
-            depth = row["depth"]
-            if allow is None:
-                result = default
-                used_default = True
-            else:
-                result = bool(allow)
-
-        self._permission_checks.append(
-            {
-                "when": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "actor": actor,
-                "action": action,
-                "resource": resource,
-                "used_default": used_default,
-                "result": result,
-                "reason": reason,
-                "source_plugin": source_plugin,
-                "depth": depth,
-            }
-        )
-
-        return result
-
-    async def ensure_permissions(
-        self,
-        actor: dict,
-        permissions: Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]],
-    ):
-        """
-        permissions is a list of (action, resource) tuples or 'action' strings
-
-        Raises datasette.Forbidden() if any of the checks fail
-        """
-        assert actor is None or isinstance(actor, dict), "actor must be None or a dict"
-        for permission in permissions:
-            if isinstance(permission, str):
-                action = permission
-                resource = None
-            elif isinstance(permission, (tuple, list)) and len(permission) == 2:
-                action, resource = permission
-            else:
-                assert (
-                    False
-                ), "permission should be string or tuple of two items: {}".format(
-                    repr(permission)
-                )
-            ok = await self.permission_allowed(
-                actor,
-                action,
-                resource=resource,
-                default=None,
-            )
-            if ok is not None:
-                if ok:
-                    return
-                else:
-                    raise Forbidden(action)
-
     async def check_visibility(
         self,
         actor: dict,
-        action: Optional[str] = None,
+        action: str,
         resource: Optional[Union[str, Tuple[str, str]]] = None,
-        permissions: Optional[
-            Sequence[Union[Tuple[str, Union[str, Tuple[str, str]]], str]]
-        ] = None,
     ):
-        """Returns (visible, private) - visible = can you see it, private = can others see it too"""
-        if permissions:
-            assert (
-                not action and not resource
-            ), "Can't use action= or resource= with permissions="
+        """
+        Check if actor can see a resource and if it's private.
+
+        Returns (visible, private) tuple:
+        - visible: bool - can the actor see it?
+        - private: bool - if visible, can anonymous users NOT see it?
+        """
+        from datasette.resources import DatabaseResource, TableResource
+
+        # Convert old-style resource to Resource object
+        if resource is None:
+            resource_obj = None
+        elif isinstance(resource, str):
+            resource_obj = DatabaseResource(database=resource)
+        elif isinstance(resource, tuple) and len(resource) == 2:
+            resource_obj = TableResource(database=resource[0], table=resource[1])
         else:
-            permissions = [(action, resource)]
-        try:
-            await self.ensure_permissions(actor, permissions)
-        except Forbidden:
+            resource_obj = None
+
+        # Check if actor can see it
+        if not await self.allowed(action=action, resource=resource_obj, actor=actor):
             return False, False
-        # User can see it, but can the anonymous user see it?
-        try:
-            await self.ensure_permissions(None, permissions)
-        except Forbidden:
-            # It's visible but private
+
+        # Check if anonymous user can see it (for "private" flag)
+        if not await self.allowed(action=action, resource=resource_obj, actor=None):
+            # Actor can see it but anonymous cannot - it's private
             return True, True
-        # It's visible to everyone
+
+        # Both actor and anonymous can see it - it's public
         return True, False
 
     async def allowed_resources_sql(
@@ -1441,7 +1230,7 @@ class Datasette:
         self,
         *,
         action: str,
-        resource: "Resource",
+        resource: "Resource" = None,
         actor: dict | None = None,
     ) -> bool:
         """
@@ -1450,6 +1239,8 @@ class Datasette:
         Uses SQL to check permission for a single resource without fetching all resources.
         This is efficient - it does NOT call allowed_resources() and check membership.
 
+        If resource is not provided, defaults to InstanceResource() for instance-level actions.
+
         Example:
             from datasette.resources import TableResource
             can_view = await datasette.allowed(
@@ -1457,12 +1248,101 @@ class Datasette:
                 resource=TableResource(database="analytics", table="users"),
                 actor=actor
             )
+
+            # For instance-level actions, resource can be omitted:
+            can_debug = await datasette.allowed(action="permissions-debug", actor=actor)
         """
         from datasette.utils.actions_sql import check_permission_for_resource
+        from datasette.resources import InstanceResource
+        import datetime
 
-        return await check_permission_for_resource(
-            self, actor, action, resource.parent, resource.child
+        if resource is None:
+            resource = InstanceResource()
+
+        # Check if this action has also_requires - if so, check that action first
+        action_obj = self.actions.get(action)
+        if action_obj and action_obj.also_requires:
+            # Must have the required action first
+            if not await self.allowed(
+                action=action_obj.also_requires,
+                resource=resource,
+                actor=actor,
+            ):
+                return False
+
+        result = await check_permission_for_resource(
+            datasette=self,
+            actor=actor,
+            action=action,
+            parent=resource.parent,
+            child=resource.child,
         )
+
+        # Check actor restrictions after SQL permissions
+        # If the SQL check says "yes" but actor has restrictions, verify action is allowed
+        if result and actor and "_r" in actor:
+            from datasette.default_permissions import restrictions_allow_action
+
+            # Convert Resource to old-style format for restrictions check
+            if resource.parent and resource.child:
+                old_style_resource = (resource.parent, resource.child)
+            elif resource.parent:
+                old_style_resource = resource.parent
+            else:
+                old_style_resource = None
+
+            # If restrictions don't allow this action, deny it
+            if not restrictions_allow_action(
+                self, actor["_r"], action, old_style_resource
+            ):
+                result = False
+
+        # Log the permission check for debugging
+        self._permission_checks.append(
+            PermissionCheck(
+                when=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                actor=actor,
+                action=action,
+                parent=resource.parent,
+                child=resource.child,
+                result=result,
+            )
+        )
+
+        return result
+
+    async def ensure_permission(
+        self,
+        *,
+        action: str,
+        resource: "Resource" = None,
+        actor: dict | None = None,
+    ):
+        """
+        Check if actor can perform action on resource, raising Forbidden if not.
+
+        This is a convenience wrapper around allowed() that raises Forbidden
+        instead of returning False. Use this when you want to enforce a permission
+        check and halt execution if it fails.
+
+        Example:
+            from datasette.resources import TableResource
+
+            # Will raise Forbidden if actor cannot view the table
+            await datasette.ensure_permission(
+                action="view-table",
+                resource=TableResource(database="analytics", table="users"),
+                actor=request.actor
+            )
+
+            # For instance-level actions, resource can be omitted:
+            await datasette.ensure_permission(
+                action="permissions-debug",
+                actor=request.actor
+            )
+        """
+        if not await self.allowed(action=action, resource=resource, actor=actor):
+            raise Forbidden(action)
 
     async def execute(
         self,
@@ -1502,11 +1382,8 @@ class Datasette:
         other_column = fk["other_column"]
         visible, _ = await self.check_visibility(
             actor,
-            permissions=[
-                ("view-table", (database, other_table)),
-                ("view-database", database),
-                "view-instance",
-            ],
+            action="view-table",
+            resource=(database, other_table),
         )
         if not visible:
             return {}

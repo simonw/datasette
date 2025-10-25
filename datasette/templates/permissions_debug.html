@@ -57,7 +57,7 @@ textarea {
         <p><label for="permission" style="display:block">Permission</label>
         <select name="permission" id="permission">
             {% for permission in permissions %}
-                <option value="{{ permission.name }}">{{ permission.name }} (default {{ permission.default }})</option>
+                <option value="{{ permission.name }}">{{ permission.name }}</option>
             {% endfor %}
         </select>
         <p><label for="resource_1">Database name</label><input type="text" id="resource_1" name="resource_1"></p>
@@ -131,13 +131,16 @@ debugPost.addEventListener('submit', function(ev) {
             {% else %}
                 <span class="check-result check-result-false">✗</span>
             {% endif %}
-            {% if check.used_default %}
-                <span class="check-used-default">(used default)</span>
-            {% endif %}
         </h2>
         <p><strong>Actor:</strong> {{ check.actor|tojson }}</p>
-        {% if check.resource %}
-            <p><strong>Resource:</strong> {{ check.resource }}</p>
+        {% if check.parent %}
+            <p><strong>Resource:</strong>
+            {% if check.child %}
+                {{ check.parent }} / {{ check.child }}
+            {% else %}
+                {{ check.parent }}
+            {% endif %}
+            </p>
         {% endif %}
     </div>
 {% endfor %}

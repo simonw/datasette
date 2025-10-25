@@ -85,21 +85,23 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "actor,config,permissions,should_allow,expected_private",
+    "actor,config,action,resource,should_allow,expected_private",
     (
-        (None, ALLOW_ROOT, ["view-instance"], False, False),
-        (ROOT, ALLOW_ROOT, ["view-instance"], True, True),
+        (None, ALLOW_ROOT, "view-instance", None, False, False),
+        (ROOT, ALLOW_ROOT, "view-instance", None, True, True),
         (
             None,
             {"databases": {"_memory": ALLOW_ROOT}},
-            [("view-database", "_memory")],
+            "view-database",
+            "_memory",
             False,
             False,
         ),
         (
             ROOT,
             {"databases": {"_memory": ALLOW_ROOT}},
-            [("view-database", "_memory")],
+            "view-database",
+            "_memory",
             True,
             True,
         ),
@@ -107,24 +109,21 @@ ALLOW_ROOT = {"allow": {"id": "root"}}
         (
             ROOT,
             {"allow": True},
-            ["view-instance"],
+            "view-instance",
+            None,
             True,
             False,
         ),
     ),
 )
-async def test_datasette_ensure_permissions_check_visibility(
-    actor, config, permissions, should_allow, expected_private
+async def test_datasette_check_visibility(
+    actor, config, action, resource, should_allow, expected_private
 ):
     ds = Datasette([], memory=True, config=config)
     await ds.invoke_startup()
-    if not should_allow:
-        with pytest.raises(Forbidden):
-            await ds.ensure_permissions(actor, permissions)
-    else:
-        await ds.ensure_permissions(actor, permissions)
-    # And try check_visibility too:
-    visible, private = await ds.check_visibility(actor, permissions=permissions)
+    visible, private = await ds.check_visibility(
+        actor, action=action, resource=resource
+    )
     assert visible == should_allow
     assert private == expected_private
 
@@ -165,14 +164,13 @@ def test_datasette_error_if_string_not_list(tmpdir):
 async def test_get_permission(ds_client):
     ds = ds_client.ds
     for name_or_abbr in ("vi", "view-instance", "vt", "view-table"):
-        permission = ds.get_permission(name_or_abbr)
+        action = ds.get_action(name_or_abbr)
         if "-" in name_or_abbr:
-            assert permission.name == name_or_abbr
+            assert action.name == name_or_abbr
         else:
-            assert permission.abbr == name_or_abbr
-    # And test KeyError
-    with pytest.raises(KeyError):
-        ds.get_permission("missing-permission")
+            assert action.abbr == name_or_abbr
+    # And test None return for missing action
+    assert ds.get_action("missing-permission") is None
 
 
 @pytest.mark.asyncio

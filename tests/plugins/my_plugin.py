@@ -1,9 +1,9 @@
 import asyncio
-from datasette import hookimpl, Permission
+from datasette import hookimpl
 from datasette.facets import Facet
 from datasette import tracer
 from datasette.permissions import Action
-from datasette.resources import DatabaseResource
+from datasette.resources import DatabaseResource, InstanceResource
 from datasette.utils import path_with_added_args
 from datasette.utils.asgi import asgi_send_json, Response
 import base64
@@ -212,29 +212,6 @@ def asgi_wrapper():
         return maybe_set_actor_in_scope
 
     return wrap
-
-
-@hookimpl
-def permission_allowed(actor, action):
-    if action == "this_is_allowed":
-        return True
-    elif action == "this_is_denied":
-        return False
-    elif action == "view-database-download":
-        return actor.get("can_download") if actor else None
-    # Special permissions for latest.datasette.io demos
-    # See https://github.com/simonw/todomvc-datasette/issues/2
-    actor_id = None
-    if actor:
-        actor_id = actor.get("id")
-    if actor_id == "todomvc" and action in (
-        "insert-row",
-        "create-table",
-        "drop-table",
-        "delete-row",
-        "update-row",
-    ):
-        return True
 
 
 @hookimpl
@@ -475,36 +452,19 @@ def skip_csrf(scope):
 
 
 @hookimpl
-def register_permissions(datasette):
-    extras = datasette.plugin_config("datasette-register-permissions") or {}
-    permissions = [
-        Permission(
-            name="permission-from-plugin",
-            abbr="np",
-            description="New permission added by a plugin",
-            takes_database=True,
-            takes_resource=False,
-            default=False,
-        )
-    ]
-    if extras:
-        permissions.extend(
-            Permission(
-                name=p["name"],
-                abbr=p["abbr"],
-                description=p["description"],
-                takes_database=p["takes_database"],
-                takes_resource=p["takes_resource"],
-                default=p["default"],
-            )
-            for p in extras["permissions"]
-        )
-    return permissions
-
-
-@hookimpl
 def register_actions(datasette):
-    return [
+    extras_old = datasette.plugin_config("datasette-register-permissions") or {}
+    extras_new = datasette.plugin_config("datasette-register-actions") or {}
+
+    actions = [
+        Action(
+            name="action-from-plugin",
+            abbr="ap",
+            description="New action added by a plugin",
+            takes_parent=True,
+            takes_child=False,
+            resource_class=DatabaseResource,
+        ),
         Action(
             name="view-collection",
             abbr="vc",
@@ -512,5 +472,95 @@ def register_actions(datasette):
             takes_parent=True,
             takes_child=False,
             resource_class=DatabaseResource,
-        )
+        ),
     ]
+
+    # Support old-style config for backwards compatibility
+    if extras_old:
+        for p in extras_old["permissions"]:
+            # Map old takes_database/takes_resource to new takes_parent/takes_child
+            actions.append(
+                Action(
+                    name=p["name"],
+                    abbr=p["abbr"],
+                    description=p["description"],
+                    takes_parent=p.get("takes_database", False),
+                    takes_child=p.get("takes_resource", False),
+                    resource_class=(
+                        DatabaseResource
+                        if p.get("takes_database")
+                        else InstanceResource
+                    ),
+                )
+            )
+
+    # Support new-style config
+    if extras_new:
+        for a in extras_new["actions"]:
+            # Map string resource_class to actual class
+            resource_class_map = {
+                "InstanceResource": InstanceResource,
+                "DatabaseResource": DatabaseResource,
+            }
+            resource_class = resource_class_map.get(
+                a.get("resource_class", "InstanceResource"), InstanceResource
+            )
+
+            actions.append(
+                Action(
+                    name=a["name"],
+                    abbr=a["abbr"],
+                    description=a["description"],
+                    takes_parent=a.get("takes_parent", False),
+                    takes_child=a.get("takes_child", False),
+                    resource_class=resource_class,
+                )
+            )
+
+    return actions
+
+
+@hookimpl
+def permission_resources_sql(datasette, actor, action):
+    from datasette.permissions import PermissionSQL
+
+    # Handle test actions used in test_hook_permission_allowed
+    if action == "this_is_allowed":
+        sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'test plugin allows this_is_allowed' AS reason"
+        return PermissionSQL(source="my_plugin", sql=sql, params={})
+    elif action == "this_is_denied":
+        sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'test plugin denies this_is_denied' AS reason"
+        return PermissionSQL(source="my_plugin", sql=sql, params={})
+    elif action == "this_is_allowed_async":
+        sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'test plugin allows this_is_allowed_async' AS reason"
+        return PermissionSQL(source="my_plugin", sql=sql, params={})
+    elif action == "this_is_denied_async":
+        sql = "SELECT NULL AS parent, NULL AS child, 0 AS allow, 'test plugin denies this_is_denied_async' AS reason"
+        return PermissionSQL(source="my_plugin", sql=sql, params={})
+    elif action == "view-database-download":
+        # Return rule based on actor's can_download permission
+        if actor and actor.get("can_download"):
+            sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'actor has can_download' AS reason"
+        else:
+            return None  # No opinion
+        return PermissionSQL(source="my_plugin", sql=sql, params={})
+    elif action == "view-database":
+        # Also grant view-database if actor has can_download (needed for download to work)
+        if actor and actor.get("can_download"):
+            sql = "SELECT NULL AS parent, NULL AS child, 1 AS allow, 'actor has can_download, grants view-database' AS reason"
+            return PermissionSQL(source="my_plugin", sql=sql, params={})
+        return None
+    elif action in (
+        "insert-row",
+        "create-table",
+        "drop-table",
+        "delete-row",
+        "update-row",
+    ):
+        # Special permissions for latest.datasette.io demos
+        actor_id = actor.get("id") if actor else None
+        if actor_id == "todomvc":
+            sql = f"SELECT NULL AS parent, NULL AS child, 1 AS allow, 'todomvc actor allowed for {action}' AS reason"
+            return PermissionSQL(source="my_plugin", sql=sql, params={})
+
+    return None

@@ -13,6 +13,7 @@ from typing import List
 
 from datasette.events import AlterTableEvent, CreateTableEvent, InsertRowsEvent
 from datasette.database import QueryInterrupted
+from datasette.resources import DatabaseResource
 from datasette.utils import (
     add_cors_headers,
     await_me_maybe,
@@ -49,10 +50,8 @@ class DatabaseView(View):
 
         visible, private = await datasette.check_visibility(
             request.actor,
-            permissions=[
-                ("view-database", database),
-                "view-instance",
-            ],
+            action="view-database",
+            resource=database,
         )
         if not visible:
             raise Forbidden("You do not have permission to view this database")
@@ -95,11 +94,8 @@ class DatabaseView(View):
         ).values():
             query_visible, query_private = await datasette.check_visibility(
                 request.actor,
-                permissions=[
-                    ("view-query", (database, query["name"])),
-                    ("view-database", database),
-                    "view-instance",
-                ],
+                action="view-query",
+                resource=(database, query["name"]),
             )
             if query_visible:
                 canned_queries.append(dict(query, private=query_private))
@@ -119,8 +115,10 @@ class DatabaseView(View):
 
         attached_databases = [d.name for d in await db.attached_databases()]
 
-        allow_execute_sql = await datasette.permission_allowed(
-            request.actor, "execute-sql", database
+        allow_execute_sql = await datasette.allowed(
+            action="execute-sql",
+            resource=DatabaseResource(database=database),
+            actor=request.actor,
         )
         json_data = {
             "database": database,
@@ -369,14 +367,13 @@ async def get_tables(datasette, request, db, allowed_dict):
 
 
 async def database_download(request, datasette):
+    from datasette.resources import DatabaseResource
+
     database = tilde_decode(request.url_vars["database"])
-    await datasette.ensure_permissions(
-        request.actor,
-        [
-            ("view-database-download", database),
-            ("view-database", database),
-            "view-instance",
-        ],
+    await datasette.ensure_permission(
+        action="view-database-download",
+        resource=DatabaseResource(database=database),
+        actor=request.actor,
     )
     try:
         db = datasette.get_database(route=database)
@@ -539,18 +536,17 @@ class QueryView(View):
             # Respect canned query permissions
             visible, private = await datasette.check_visibility(
                 request.actor,
-                permissions=[
-                    ("view-query", (database, canned_query["name"])),
-                    ("view-database", database),
-                    "view-instance",
-                ],
+                action="view-query",
+                resource=(database, canned_query["name"]),
             )
             if not visible:
                 raise Forbidden("You do not have permission to view this query")
 
         else:
-            await datasette.ensure_permissions(
-                request.actor, [("execute-sql", database)]
+            await datasette.ensure_permission(
+                action="execute-sql",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
             )
 
         # Flattened because of ?sql=&name1=value1&name2=value2 feature
@@ -729,8 +725,10 @@ class QueryView(View):
                         path_with_format(request=request, format=key)
                     )
 
-            allow_execute_sql = await datasette.permission_allowed(
-                request.actor, "execute-sql", database
+            allow_execute_sql = await datasette.allowed(
+                action="execute-sql",
+                resource=DatabaseResource(database=database),
+                actor=request.actor,
             )
 
             show_hide_hidden = ""
@@ -940,8 +938,10 @@ class TableCreateView(BaseView):
         database_name = db.name
 
         # Must have create-table permission
-        if not await self.ds.permission_allowed(
-            request.actor, "create-table", resource=database_name
+        if not await self.ds.allowed(
+            action="create-table",
+            resource=DatabaseResource(database=database_name),
+            actor=request.actor,
         ):
             return _error(["Permission denied"], 403)
 
@@ -977,8 +977,10 @@ class TableCreateView(BaseView):
 
         if replace:
             # Must have update-row permission
-            if not await self.ds.permission_allowed(
-                request.actor, "update-row", resource=database_name
+            if not await self.ds.allowed(
+                action="update-row",
+                resource=DatabaseResource(database=database_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied: need update-row"], 403)
 
@@ -1001,8 +1003,10 @@ class TableCreateView(BaseView):
 
         if rows or row:
             # Must have insert-row permission
-            if not await self.ds.permission_allowed(
-                request.actor, "insert-row", resource=database_name
+            if not await self.ds.allowed(
+                action="insert-row",
+                resource=DatabaseResource(database=database_name),
+                actor=request.actor,
             ):
                 return _error(["Permission denied: need insert-row"], 403)
 
@@ -1014,8 +1018,10 @@ class TableCreateView(BaseView):
             else:
                 # alter=True only if they request it AND they have permission
                 if data.get("alter"):
-                    if not await self.ds.permission_allowed(
-                        request.actor, "alter-table", resource=database_name
+                    if not await self.ds.allowed(
+                        action="alter-table",
+                        resource=DatabaseResource(database=database_name),
+                        actor=request.actor,
                     ):
                         return _error(["Permission denied: need alter-table"], 403)
                     alter = True

@@ -145,10 +145,10 @@ def check_permission_actions_are_documented():
     )
 
     def before(hook_name, hook_impls, kwargs):
-        if hook_name == "permission_allowed":
+        if hook_name == "permission_resources_sql":
             datasette = kwargs["datasette"]
-            assert kwargs["action"] in datasette.permissions, (
-                "'{}' has not been registered with register_permissions()".format(
+            assert kwargs["action"] in datasette.actions, (
+                "'{}' has not been registered with register_actions()".format(
                     kwargs["action"]
                 )
                 + " (or maybe a test forgot to do await ds.invoke_startup())"
@@ -156,9 +156,7 @@ def check_permission_actions_are_documented():
             action = kwargs.get("action").replace("-", "_")
             assert (
                 action in documented_permission_actions
-            ), "Undocumented permission action: {}, resource: {}".format(
-                action, kwargs["resource"]
-            )
+            ), "Undocumented permission action: {}".format(action)
 
     pm.add_hookcall_monitoring(
         before=before, after=lambda outcome, hook_name, hook_impls, kwargs: None

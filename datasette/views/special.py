@@ -1,6 +1,7 @@
 import json
 import logging
 from datasette.events import LogoutEvent, LoginEvent, CreateTokenEvent
+from datasette.resources import DatabaseResource, TableResource, InstanceResource
 from datasette.utils.asgi import Response, Forbidden
 from datasette.utils import (
     actor_matches_allow,
@@ -43,7 +44,7 @@ class JsonDataView(BaseView):
 
     async def get(self, request):
         if self.permission:
-            await self.ds.ensure_permissions(request.actor, [self.permission])
+            await self.ds.ensure_permission(action=self.permission, actor=request.actor)
         if self.needs_request:
             data = self.data_callback(request)
         else:
@@ -53,7 +54,7 @@ class JsonDataView(BaseView):
 
 class PatternPortfolioView(View):
     async def get(self, request, datasette):
-        await datasette.ensure_permissions(request.actor, ["view-instance"])
+        await datasette.ensure_permission(action="view-instance", actor=request.actor)
         return Response.html(
             await datasette.render_template(
                 "patterns.html",
@@ -111,22 +112,21 @@ class PermissionsDebugView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
-        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
-            raise Forbidden("Permission denied")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
         filter_ = request.args.get("filter") or "all"
         permission_checks = list(reversed(self.ds._permission_checks))
         if filter_ == "exclude-yours":
             permission_checks = [
                 check
                 for check in permission_checks
-                if (check["actor"] or {}).get("id") != request.actor["id"]
+                if (check.actor or {}).get("id") != request.actor["id"]
             ]
         elif filter_ == "only-yours":
             permission_checks = [
                 check
                 for check in permission_checks
-                if (check["actor"] or {}).get("id") == request.actor["id"]
+                if (check.actor or {}).get("id") == request.actor["id"]
             ]
         return await self.render(
             ["permissions_debug.html"],
@@ -140,42 +140,47 @@ class PermissionsDebugView(BaseView):
                         "name": p.name,
                         "abbr": p.abbr,
                         "description": p.description,
-                        "takes_database": p.takes_database,
-                        "takes_resource": p.takes_resource,
-                        "default": p.default,
+                        "takes_parent": p.takes_parent,
+                        "takes_child": p.takes_child,
                     }
-                    for p in self.ds.permissions.values()
+                    for p in self.ds.actions.values()
                 ],
             },
         )
 
     async def post(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
-        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
-            raise Forbidden("Permission denied")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
         vars = await request.post_vars()
         actor = json.loads(vars["actor"])
         permission = vars["permission"]
         resource_1 = vars["resource_1"]
         resource_2 = vars["resource_2"]
-        resource = []
-        if resource_1:
-            resource.append(resource_1)
-        if resource_2:
-            resource.append(resource_2)
-        resource = tuple(resource)
-        if len(resource) == 1:
-            resource = resource[0]
-        result = await self.ds.permission_allowed(
-            actor, permission, resource, default="USE_DEFAULT"
+
+        # Use the action's properties to create the appropriate resource object
+        action = self.ds.actions.get(permission)
+        if not action:
+            return Response.json({"error": f"Unknown action: {permission}"}, status=400)
+
+        if action.takes_parent and action.takes_child:
+            resource_obj = action.resource_class(database=resource_1, table=resource_2)
+            resource_for_response = (resource_1, resource_2)
+        elif action.takes_parent:
+            resource_obj = action.resource_class(database=resource_1)
+            resource_for_response = resource_1
+        else:
+            resource_obj = action.resource_class()
+            resource_for_response = None
+
+        result = await self.ds.allowed(
+            action=permission, resource=resource_obj, actor=actor
         )
         return Response.json(
             {
                 "actor": actor,
                 "permission": permission,
-                "resource": resource,
+                "resource": resource_for_response,
                 "result": result,
-                "default": self.ds.permissions[permission].default,
             }
         )
 
@@ -204,8 +209,8 @@ class AllowedResourcesView(BaseView):
         await self.ds.refresh_schemas()
 
         # Check if user has permissions-debug (to show sensitive fields)
-        has_debug_permission = await self.ds.permission_allowed(
-            request.actor, "permissions-debug"
+        has_debug_permission = await self.ds.allowed(
+            action="permissions-debug", actor=request.actor
         )
 
         # Check if this is a request for JSON (has .json extension)
@@ -225,7 +230,7 @@ class AllowedResourcesView(BaseView):
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
-        if action not in self.ds.permissions:
+        if action not in self.ds.actions:
             return Response.json({"error": f"Unknown action: {action}"}, status=404)
         if action not in self.CANDIDATE_SQL:
             return Response.json(
@@ -306,8 +311,6 @@ class AllowedResourcesView(BaseView):
             # Add debug fields if available
             if has_debug_permission and hasattr(resource, "_reason"):
                 row["reason"] = resource._reason
-            if has_debug_permission and hasattr(resource, "_source_plugin"):
-                row["source_plugin"] = resource._source_plugin
 
             allowed_rows.append(row)
 
@@ -359,9 +362,8 @@ class PermissionRulesView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
-        if not await self.ds.permission_allowed(request.actor, "permissions-debug"):
-            raise Forbidden("Permission denied")
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
+        await self.ds.ensure_permission(action="permissions-debug", actor=request.actor)
 
         # Check if this is a request for JSON (has .json extension)
         as_format = request.url_vars.get("format")
@@ -372,7 +374,7 @@ class PermissionRulesView(BaseView):
                 ["debug_rules.html"],
                 request,
                 {
-                    "sorted_permissions": sorted(self.ds.permissions.keys()),
+                    "sorted_actions": sorted(self.ds.actions.keys()),
                 },
             )
 
@@ -380,7 +382,7 @@ class PermissionRulesView(BaseView):
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
-        if action not in self.ds.permissions:
+        if action not in self.ds.actions:
             return Response.json({"error": f"Unknown action: {action}"}, status=404)
 
         actor = request.actor if isinstance(request.actor, dict) else None
@@ -401,8 +403,10 @@ class PermissionRulesView(BaseView):
             page_size = max_page_size
         offset = (page - 1) * page_size
 
-        union_sql, union_params = await self.ds._build_permission_rules_sql(
-            actor, action
+        from datasette.utils.actions_sql import build_permission_rules_sql
+
+        union_sql, union_params = await build_permission_rules_sql(
+            self.ds, actor, action
         )
         await self.ds.refresh_schemas()
         db = self.ds.get_internal_database()
@@ -421,7 +425,7 @@ class PermissionRulesView(BaseView):
         WITH rules AS (
             {union_sql}
         )
-        SELECT parent, child, allow, reason, source_plugin
+        SELECT parent, child, allow, reason
         FROM rules
         ORDER BY allow DESC, (parent IS NOT NULL), parent, child
         LIMIT :limit OFFSET :offset
@@ -440,7 +444,6 @@ class PermissionRulesView(BaseView):
                     "resource": _resource_path(parent, child),
                     "allow": row["allow"],
                     "reason": row["reason"],
-                    "source_plugin": row["source_plugin"],
                 }
             )
 
@@ -482,8 +485,8 @@ class PermissionCheckView(BaseView):
 
     async def get(self, request):
         # Check if user has permissions-debug (to show sensitive fields)
-        has_debug_permission = await self.ds.permission_allowed(
-            request.actor, "permissions-debug"
+        has_debug_permission = await self.ds.allowed(
+            action="permissions-debug", actor=request.actor
         )
 
         # Check if this is a request for JSON (has .json extension)
@@ -495,7 +498,7 @@ class PermissionCheckView(BaseView):
                 ["debug_check.html"],
                 request,
                 {
-                    "sorted_permissions": sorted(self.ds.permissions.keys()),
+                    "sorted_actions": sorted(self.ds.actions.keys()),
                 },
             )
 
@@ -503,7 +506,7 @@ class PermissionCheckView(BaseView):
         action = request.args.get("action")
         if not action:
             return Response.json({"error": "action parameter is required"}, status=400)
-        if action not in self.ds.permissions:
+        if action not in self.ds.actions:
             return Response.json({"error": f"Unknown action: {action}"}, status=404)
 
         parent = request.args.get("parent")
@@ -513,23 +516,34 @@ class PermissionCheckView(BaseView):
                 {"error": "parent is required when child is provided"}, status=400
             )
 
-        if parent and child:
+        # Use the action's properties to create the appropriate resource object
+        action_obj = self.ds.actions.get(action)
+        if not action_obj:
+            return Response.json({"error": f"Unknown action: {action}"}, status=400)
+
+        if action_obj.takes_parent and action_obj.takes_child:
+            resource_obj = action_obj.resource_class(database=parent, table=child)
             resource = (parent, child)
-        elif parent:
+        elif action_obj.takes_parent:
+            resource_obj = action_obj.resource_class(database=parent)
             resource = parent
         else:
+            resource_obj = action_obj.resource_class()
             resource = None
 
         before_checks = len(self.ds._permission_checks)
-        allowed = await self.ds.permission_allowed_2(request.actor, action, resource)
+        allowed = await self.ds.allowed(
+            action=action, resource=resource_obj, actor=request.actor
+        )
 
         info = None
         if len(self.ds._permission_checks) > before_checks:
             for check in reversed(self.ds._permission_checks):
                 if (
-                    check.get("actor") == request.actor
-                    and check.get("action") == action
-                    and check.get("resource") == resource
+                    check.actor == request.actor
+                    and check.action == action
+                    and check.parent == parent
+                    and check.child == child
                 ):
                     info = check
                     break
@@ -546,14 +560,6 @@ class PermissionCheckView(BaseView):
 
         if request.actor and "id" in request.actor:
             response["actor_id"] = request.actor["id"]
-
-        if info is not None:
-            response["used_default"] = info.get("used_default")
-            response["depth"] = info.get("depth")
-            # Only include sensitive fields if user has permissions-debug
-            if has_debug_permission:
-                response["reason"] = info.get("reason")
-                response["source_plugin"] = info.get("source_plugin")
 
         return Response.json(response)
 
@@ -598,11 +604,11 @@ class MessagesDebugView(BaseView):
     has_json_alternate = False
 
     async def get(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
         return await self.render(["messages_debug.html"], request)
 
     async def post(self, request):
-        await self.ds.ensure_permissions(request.actor, ["view-instance"])
+        await self.ds.ensure_permission(action="view-instance", actor=request.actor)
         post = await request.post_vars()
         message = post.get("message", "")
         message_type = post.get("message_type") or "INFO"
@@ -638,45 +644,44 @@ class CreateTokenView(BaseView):
     async def shared(self, request):
         self.check_permission(request)
         # Build list of databases and tables the user has permission to view
+        allowed_databases = await self.ds.allowed_resources(
+            "view-database", request.actor
+        )
+        allowed_tables = await self.ds.allowed_resources("view-table", request.actor)
+
+        # Build database -> tables mapping
         database_with_tables = []
-        for database in self.ds.databases.values():
-            if database.name == "_memory":
+        for db_resource in allowed_databases:
+            database_name = db_resource.parent
+            if database_name == "_memory":
                 continue
-            if not await self.ds.permission_allowed(
-                request.actor, "view-database", database.name
-            ):
-                continue
-            hidden_tables = await database.hidden_table_names()
+
+            # Find tables for this database
             tables = []
-            for table in await database.table_names():
-                if table in hidden_tables:
-                    continue
-                if not await self.ds.permission_allowed(
-                    request.actor,
-                    "view-table",
-                    resource=(database.name, table),
-                ):
-                    continue
-                tables.append({"name": table, "encoded": tilde_encode(table)})
+            for table_resource in allowed_tables:
+                if table_resource.parent == database_name:
+                    tables.append(
+                        {
+                            "name": table_resource.child,
+                            "encoded": tilde_encode(table_resource.child),
+                        }
+                    )
+
             database_with_tables.append(
                 {
-                    "name": database.name,
-                    "encoded": tilde_encode(database.name),
+                    "name": database_name,
+                    "encoded": tilde_encode(database_name),
                     "tables": tables,
                 }
             )
         return {
             "actor": request.actor,
-            "all_permissions": self.ds.permissions.keys(),
-            "database_permissions": [
-                key
-                for key, value in self.ds.permissions.items()
-                if value.takes_database
+            "all_actions": self.ds.actions.keys(),
+            "database_actions": [
+                key for key, value in self.ds.actions.items() if value.takes_parent
             ],
-            "resource_permissions": [
-                key
-                for key, value in self.ds.permissions.items()
-                if value.takes_resource
+            "child_actions": [
+                key for key, value in self.ds.actions.items() if value.takes_child
             ],
             "database_with_tables": database_with_tables,
         }
@@ -765,7 +770,7 @@ class ApiExplorerView(BaseView):
             if name == "_internal":
                 continue
             database_visible, _ = await self.ds.check_visibility(
-                request.actor, permissions=[("view-database", name), "view-instance"]
+                request.actor, action="view-database", resource=name
             )
             if not database_visible:
                 continue
@@ -774,11 +779,8 @@ class ApiExplorerView(BaseView):
             for table in table_names:
                 visible, _ = await self.ds.check_visibility(
                     request.actor,
-                    permissions=[
-                        ("view-table", (name, table)),
-                        ("view-database", name),
-                        "view-instance",
-                    ],
+                    action="view-table",
+                    resource=(name, table),
                 )
                 if not visible:
                     continue
@@ -795,8 +797,10 @@ class ApiExplorerView(BaseView):
                 if not db.is_mutable:
                     continue
 
-                if await self.ds.permission_allowed(
-                    request.actor, "insert-row", (name, table)
+                if await self.ds.allowed(
+                    action="insert-row",
+                    resource=TableResource(database=name, table=table),
+                    actor=request.actor,
                 ):
                     pks = await db.primary_keys(table)
                     table_links.extend(
@@ -831,8 +835,10 @@ class ApiExplorerView(BaseView):
                             },
                         ]
                     )
-                if await self.ds.permission_allowed(
-                    request.actor, "drop-table", (name, table)
+                if await self.ds.allowed(
+                    action="drop-table",
+                    resource=TableResource(database=name, table=table),
+                    actor=request.actor,
                 ):
                     table_links.append(
                         {
@@ -844,7 +850,11 @@ class ApiExplorerView(BaseView):
                     )
             database_links = []
             if (
-                await self.ds.permission_allowed(request.actor, "create-table", name)
+                await self.ds.allowed(
+                    action="create-table",
+                    resource=DatabaseResource(database=name),
+                    actor=request.actor,
+                )
                 and db.is_mutable
             ):
                 database_links.append(
@@ -877,7 +887,7 @@ class ApiExplorerView(BaseView):
     async def get(self, request):
         visible, private = await self.ds.check_visibility(
             request.actor,
-            permissions=["view-instance"],
+            action="view-instance",
         )
         if not visible:
             raise Forbidden("You do not have permission to view this instance")

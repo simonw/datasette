@@ -70,11 +70,6 @@ def register_facet_classes():
 
 
 @hookspec
-def register_permissions(datasette):
-    """Register permissions: returns a list of datasette.permission.Permission named tuples"""
-
-
-@hookspec
 def register_actions(datasette):
     """Register actions: returns a list of datasette.permission.Action objects"""
 
@@ -113,11 +108,6 @@ def filters_from_request(request, database, table, datasette):
         human_descriptions=[str, str, str],
         extra_context={}
     ) based on the request"""
-
-
-@hookspec
-def permission_allowed(datasette, actor, action, resource):
-    """Check if actor is allowed to perform this action - return True, False or None"""
 
 
 @hookspec

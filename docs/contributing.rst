@@ -131,6 +131,15 @@ These formatters are enforced by Datasette's continuous integration: if a commit
 
 When developing locally, you can verify and correct the formatting of your code using these tools.
 
+If you are using `Just <https://github.com/casey/just>`__ the quickest way to run these is like so::
+
+    just black
+    just prettier
+
+Or run both at the same time::
+
+    just format
+
 .. _contributing_formatting_black:
 
 Running Black

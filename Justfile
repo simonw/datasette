@@ -36,6 +36,13 @@ export DATASETTE_SECRET := "not_a_secret"
 @black:
   pipenv run black .
 
+# Apply prettier
+@prettier:
+  npm run fix
+
+# Format code with both black and prettier
+@format: black prettier
+
 @serve:
   pipenv run sqlite-utils create-database data.db
   pipenv run sqlite-utils create-table data.db docs id integer title text --pk id --ignore

@@ -649,43 +649,42 @@ class CreateTokenView(BaseView):
     async def shared(self, request):
         self.check_permission(request)
         # Build list of databases and tables the user has permission to view
+        allowed_databases = await self.ds.allowed_resources(
+            "view-database", request.actor
+        )
+        allowed_tables = await self.ds.allowed_resources("view-table", request.actor)
+
+        # Build database -> tables mapping
         database_with_tables = []
-        for database in self.ds.databases.values():
-            if database.name == "_memory":
+        for db_resource in allowed_databases:
+            database_name = db_resource.parent
+            if database_name == "_memory":
                 continue
-            if not await self.ds.allowed(
-                action="view-database",
-                resource=DatabaseResource(database=database.name),
-                actor=request.actor,
-            ):
-                continue
-            hidden_tables = await database.hidden_table_names()
+
+            # Find tables for this database
             tables = []
-            for table in await database.table_names():
-                if table in hidden_tables:
-                    continue
-                if not await self.ds.allowed(
-                    action="view-table",
-                    resource=TableResource(database=database.name, table=table),
-                    actor=request.actor,
-                ):
-                    continue
-                tables.append({"name": table, "encoded": tilde_encode(table)})
+            for table_resource in allowed_tables:
+                if table_resource.parent == database_name:
+                    tables.append({
+                        "name": table_resource.child,
+                        "encoded": tilde_encode(table_resource.child)
+                    })
+
             database_with_tables.append(
                 {
-                    "name": database.name,
-                    "encoded": tilde_encode(database.name),
+                    "name": database_name,
+                    "encoded": tilde_encode(database_name),
                     "tables": tables,
                 }
             )
         return {
             "actor": request.actor,
-            "all_permissions": self.ds.actions.keys(),
-            "database_permissions": [
-                key for key, value in self.ds.actions.items() if value.takes_database
+            "all_actions": self.ds.actions.keys(),
+            "database_actions": [
+                key for key, value in self.ds.actions.items() if value.takes_parent
             ],
-            "resource_permissions": [
-                key for key, value in self.ds.actions.items() if value.takes_resource
+            "child_actions": [
+                key for key, value in self.ds.actions.items() if value.takes_child
             ],
             "database_with_tables": database_with_tables,
         }

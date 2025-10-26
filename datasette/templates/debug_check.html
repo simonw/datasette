@@ -4,35 +4,9 @@
 
 {% block extra_head %}
 <script src="{{ base_url }}-/static/json-format-highlight-1.0.1.js"></script>
+{% include "_permission_ui_styles.html" %}
 {% include "_debug_common_functions.html" %}
 <style>
-.form-section {
-    margin-bottom: 1em;
-}
-.form-section label {
-    display: block;
-    margin-bottom: 0.3em;
-    font-weight: bold;
-}
-.form-section input[type="text"],
-.form-section select {
-    width: 100%;
-    max-width: 500px;
-    padding: 0.5em;
-    box-sizing: border-box;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-}
-.form-section input[type="text"]:focus,
-.form-section select:focus {
-    outline: 2px solid #0066cc;
-    border-color: #0066cc;
-}
-.form-section small {
-    display: block;
-    margin-top: 0.3em;
-    color: #666;
-}
 #output {
     margin-top: 2em;
     padding: 1em;
@@ -74,28 +48,14 @@
 .details-section dd {
     margin-left: 1em;
 }
-#submit-btn {
-    padding: 0.6em 1.5em;
-    font-size: 1em;
-    background-color: #0066cc;
-    color: white;
-    border: none;
-    border-radius: 3px;
-    cursor: pointer;
-}
-#submit-btn:hover {
-    background-color: #0052a3;
-}
-#submit-btn:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
-}
 </style>
 {% endblock %}
 
 {% block content %}
+<h1>Permission check</h1>
 
-<h1>Permission Check</h1>
+{% set current_tab = "check" %}
+{% include "_permissions_debug_tabs.html" %}
 
 <p>Use this tool to test permission checks for the current actor. It queries the <code>/-/check.json</code> API endpoint.</p>
 
@@ -105,32 +65,36 @@
 <p>Current actor: <strong>anonymous (not logged in)</strong></p>
 {% endif %}
 
-<form id="check-form" class="core">
-    <div class="form-section">
-        <label for="action">Action (permission name):</label>
-        <select id="action" name="action" required>
-            <option value="">Select an action...</option>
-            {% for action_name in sorted_actions %}
-            <option value="{{ action_name }}">{{ action_name }}</option>
-            {% endfor %}
-        </select>
-        <small>The permission action to check</small>
-    </div>
+<div class="permission-form">
+    <form id="check-form">
+        <div class="form-section">
+            <label for="action">Action (permission name):</label>
+            <select id="action" name="action" required>
+                <option value="">Select an action...</option>
+                {% for action_name in sorted_actions %}
+                <option value="{{ action_name }}">{{ action_name }}</option>
+                {% endfor %}
+            </select>
+            <small>The permission action to check</small>
+        </div>
 
-    <div class="form-section">
-        <label for="parent">Parent resource (optional):</label>
-        <input type="text" id="parent" name="parent" placeholder="e.g., database name">
-        <small>For database-level permissions, specify the database name</small>
-    </div>
+        <div class="form-section">
+            <label for="parent">Parent resource (optional):</label>
+            <input type="text" id="parent" name="parent" placeholder="e.g., database name">
+            <small>For database-level permissions, specify the database name</small>
+        </div>
 
-    <div class="form-section">
-        <label for="child">Child resource (optional):</label>
-        <input type="text" id="child" name="child" placeholder="e.g., table name">
-        <small>For table-level permissions, specify the table name (requires parent)</small>
-    </div>
+        <div class="form-section">
+            <label for="child">Child resource (optional):</label>
+            <input type="text" id="child" name="child" placeholder="e.g., table name">
+            <small>For table-level permissions, specify the table name (requires parent)</small>
+        </div>
 
-    <button type="submit" id="submit-btn">Check Permission</button>
-</form>
+        <div class="form-actions">
+            <button type="submit" class="submit-btn" id="submit-btn">Check Permission</button>
+        </div>
+    </form>
+</div>
 
 <div id="output" style="display: none;">
     <h2>Result: <span class="result-badge" id="result-badge"></span></h2>

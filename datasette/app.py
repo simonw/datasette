@@ -1233,7 +1233,22 @@ class Datasette:
         resources = []
         for row in result.rows:
             resource = self.resource_for_action(action, parent=row[0], child=row[1])
-            reason = row[2]
+            reason_json = row[2]
+
+            # Parse JSON array of reasons and filter out nulls
+            try:
+                import json
+
+                reasons_array = (
+                    json.loads(reason_json) if isinstance(reason_json, str) else []
+                )
+                reasons_filtered = [r for r in reasons_array if r is not None]
+                # Store as list for multiple reasons, or keep empty list
+                reason = reasons_filtered
+            except (json.JSONDecodeError, TypeError):
+                # Fallback for backward compatibility
+                reason = [reason_json] if reason_json else []
+
             resources.append(AllowedResource(resource=resource, reason=reason))
 
         return resources

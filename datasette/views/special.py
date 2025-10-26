@@ -327,7 +327,7 @@ class AllowedResourcesView(BaseView):
                 "resource": resource_path,
             }
 
-            # Add reason if we have it
+            # Add reason if we have it (it's already a list from allowed_resources_with_reasons)
             if reason is not None:
                 row["reason"] = reason
 

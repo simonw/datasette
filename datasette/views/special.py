@@ -189,22 +189,6 @@ class AllowedResourcesView(BaseView):
     name = "allowed"
     has_json_alternate = False
 
-    CANDIDATE_SQL = {
-        "view-table": (
-            "SELECT database_name AS parent, table_name AS child FROM catalog_tables",
-            {},
-        ),
-        "view-database": (
-            "SELECT database_name AS parent, NULL AS child FROM catalog_databases",
-            {},
-        ),
-        "view-instance": ("SELECT NULL AS parent, NULL AS child", {}),
-        "execute-sql": (
-            "SELECT database_name AS parent, NULL AS child FROM catalog_databases",
-            {},
-        ),
-    }
-
     async def get(self, request):
         await self.ds.refresh_schemas()
 
@@ -218,11 +202,29 @@ class AllowedResourcesView(BaseView):
 
         if not as_format:
             # Render the HTML form (even if query parameters are present)
+            # Put most common/interesting actions first
+            priority_actions = [
+                "view-instance",
+                "view-database",
+                "view-table",
+                "view-query",
+                "execute-sql",
+                "insert-row",
+                "update-row",
+                "delete-row",
+            ]
+            actions = list(self.ds.actions.keys())
+            # Priority actions first (in order), then remaining alphabetically
+            sorted_actions = [a for a in priority_actions if a in actions]
+            sorted_actions.extend(
+                sorted(a for a in actions if a not in priority_actions)
+            )
+
             return await self.render(
                 ["debug_allowed.html"],
                 request,
                 {
-                    "supported_actions": sorted(self.CANDIDATE_SQL.keys()),
+                    "supported_actions": sorted_actions,
                 },
             )
 
@@ -232,11 +234,6 @@ class AllowedResourcesView(BaseView):
             return Response.json({"error": "action parameter is required"}, status=400)
         if action not in self.ds.actions:
             return Response.json({"error": f"Unknown action: {action}"}, status=404)
-        if action not in self.CANDIDATE_SQL:
-            return Response.json(
-                {"error": f"Action '{action}' is not supported by this endpoint"},
-                status=400,
-            )
 
         actor = request.actor if isinstance(request.actor, dict) else None
         actor_id = actor.get("id") if actor else None

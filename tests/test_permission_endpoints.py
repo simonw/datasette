@@ -69,8 +69,12 @@ async def ds_with_permissions():
         ("/-/allowed.json", 400, {"error"}),
         # Invalid action
         ("/-/allowed.json?action=nonexistent", 404, {"error"}),
-        # Unsupported action (valid but not in CANDIDATE_SQL)
-        ("/-/allowed.json?action=insert-row", 400, {"error"}),
+        # Any valid action works, even if no permission rules exist for it
+        (
+            "/-/allowed.json?action=insert-row",
+            200,
+            {"action", "items", "total", "page"},
+        ),
     ],
 )
 async def test_allowed_json_basic(

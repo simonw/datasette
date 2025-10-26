@@ -1093,7 +1093,7 @@ All three endpoints support both HTML and JSON responses. Visit the endpoint dir
 .. _PermissionRulesView:
 
 Permission rules view
-======================
+=====================
 
 The ``/-/rules`` endpoint displays all permission rules (both allow and deny) for each candidate resource for the requested action.
 
@@ -1106,7 +1106,7 @@ Pass ``?action=`` as a query parameter to specify which action to check.
 .. _PermissionCheckView:
 
 Permission check view
-======================
+=====================
 
 The ``/-/check`` endpoint evaluates a single action/resource pair and returns information indicating whether the access was allowed along with diagnostic information.
 
@@ -1212,7 +1212,7 @@ Default *allow*.
 .. _permissions_view_database_download:
 
 view-database-download
------------------------
+----------------------
 
 Actor is allowed to download a database, e.g. https://latest.datasette.io/fixtures.db
 

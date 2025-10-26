@@ -419,7 +419,7 @@ For legacy string/tuple based permission checking, use :ref:`datasette_permissio
 .. _datasette_ensure_permission:
 
 await .ensure_permission(action, resource=None, actor=None)
-------------------------------------------------------------
+-----------------------------------------------------------
 
 ``action`` - string
     The action to check. See :ref:`permissions` for a list of available actions.
@@ -1047,7 +1047,7 @@ These methods each return a ``datasette.utils.PrefixedUrlString`` object, which 
 .. _internals_permission_classes:
 
 Permission classes and utilities
-=================================
+================================
 
 .. _internals_permission_sql:
 
@@ -1296,7 +1296,7 @@ Example usage:
 .. _database_execute_write:
 
 await db.execute_write(sql, params=None, block=True)
------------------------------------------------------
+----------------------------------------------------
 
 SQLite only allows one database connection to write at a time. Datasette handles this for you by maintaining a queue of writes to be executed against a given database. Plugins can submit write operations to this queue and they will be executed in the order in which they are received.
 
@@ -1313,7 +1313,7 @@ Each call to ``execute_write()`` will be executed inside a transaction.
 .. _database_execute_write_script:
 
 await db.execute_write_script(sql, block=True)
------------------------------------------------
+----------------------------------------------
 
 Like ``execute_write()`` but can be used to send multiple SQL statements in a single string separated by semicolons, using the ``sqlite3`` `conn.executescript() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executescript>`__ method.
 
@@ -1322,7 +1322,7 @@ Each call to ``execute_write_script()`` will be executed inside a transaction.
 .. _database_execute_write_many:
 
 await db.execute_write_many(sql, params_seq, block=True)
----------------------------------------------------------
+--------------------------------------------------------
 
 Like ``execute_write()`` but uses the ``sqlite3`` `conn.executemany() <https://docs.python.org/3/library/sqlite3.html#sqlite3.Cursor.executemany>`__ method. This will efficiently execute the same SQL statement against each of the parameters in the ``params_seq`` iterator, for example:
 

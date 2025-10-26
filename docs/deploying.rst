@@ -79,7 +79,7 @@ Datasette will not be accessible from outside the server because it is listening
 .. _deploying_openrc:
 
 Running Datasette using OpenRC
-===============================
+==============================
 OpenRC is the service manager on non-systemd Linux distributions like `Alpine Linux <https://www.alpinelinux.org/>`__ and `Gentoo <https://www.gentoo.org/>`__.
 
 Create an init script at ``/etc/init.d/datasette`` with the following contents:

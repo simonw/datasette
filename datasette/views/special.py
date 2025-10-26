@@ -225,6 +225,7 @@ class AllowedResourcesView(BaseView):
                 request,
                 {
                     "supported_actions": sorted_actions,
+                    "has_debug_permission": has_debug_permission,
                 },
             )
 
@@ -262,12 +263,19 @@ class AllowedResourcesView(BaseView):
         offset = (page - 1) * page_size
 
         # Use the simplified allowed_resources method
+        # If user has debug permission, use the with_reasons variant
         try:
-            allowed_resources = await self.ds.allowed_resources(
-                action=action,
-                actor=actor,
-                parent=parent_filter,
-            )
+            if has_debug_permission:
+                allowed_resources = await self.ds.allowed_resources_with_reasons(
+                    action=action,
+                    actor=actor,
+                )
+            else:
+                allowed_resources = await self.ds.allowed_resources(
+                    action=action,
+                    actor=actor,
+                    parent=parent_filter,
+                )
         except Exception:
             # If catalog tables don't exist yet, return empty results
             headers = {}
@@ -287,9 +295,23 @@ class AllowedResourcesView(BaseView):
 
         # Convert to list of dicts with resource path
         allowed_rows = []
-        for resource in allowed_resources:
+        for item in allowed_resources:
+            # Extract resource and reason depending on what we got back
+            if has_debug_permission:
+                # allowed_resources_with_reasons returns AllowedResource(resource, reason)
+                resource = item.resource
+                reason = item.reason
+            else:
+                # allowed_resources returns plain Resource objects
+                resource = item
+                reason = None
+
             parent_val = resource.parent
             child_val = resource.child
+
+            # Apply parent filter if needed (when using with_reasons, we need to filter manually)
+            if parent_filter is not None and parent_val != parent_filter:
+                continue
 
             # Build resource path
             if parent_val is None:
@@ -305,9 +327,9 @@ class AllowedResourcesView(BaseView):
                 "resource": resource_path,
             }
 
-            # Add debug fields if available
-            if has_debug_permission and hasattr(resource, "_reason"):
-                row["reason"] = resource._reason
+            # Add reason if we have it
+            if reason is not None:
+                row["reason"] = reason
 
             allowed_rows.append(row)
 

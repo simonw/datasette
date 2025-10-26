@@ -165,7 +165,6 @@ function displayResults(data) {
         html += '<th>Parent</th>';
         html += '<th>Child</th>';
         html += '<th>Reason</th>';
-        html += '<th>Source Plugin</th>';
         html += '</tr></thead>';
         html += '<tbody>';
 
@@ -175,7 +174,6 @@ function displayResults(data) {
             html += `<td>${escapeHtml(item.parent || '—')}</td>`;
             html += `<td>${escapeHtml(item.child || '—')}</td>`;
             html += `<td>${escapeHtml(item.reason || '—')}</td>`;
-            html += `<td>${escapeHtml(item.source_plugin || '—')}</td>`;
             html += '</tr>';
         }
 

@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from asgi_csrf import Errors
 import asyncio
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List
 import asgi_csrf
 import collections
 import dataclasses
@@ -126,10 +128,10 @@ class PermissionCheck:
     """Represents a logged permission check for debugging purposes."""
 
     when: str
-    actor: Optional[Dict[str, Any]]
+    actor: Dict[str, Any] | None
     action: str
-    parent: Optional[str]
-    child: Optional[str]
+    parent: str | None
+    child: str | None
     result: bool
 
 
@@ -656,10 +658,10 @@ class Datasette:
         self,
         actor_id: str,
         *,
-        expires_after: Optional[int] = None,
-        restrict_all: Optional[Iterable[str]] = None,
-        restrict_database: Optional[Dict[str, Iterable[str]]] = None,
-        restrict_resource: Optional[Dict[str, Dict[str, Iterable[str]]]] = None,
+        expires_after: int | None = None,
+        restrict_all: Iterable[str] | None = None,
+        restrict_database: Dict[str, Iterable[str]] | None = None,
+        restrict_resource: Dict[str, Dict[str, Iterable[str]]] | None = None,
     ):
         token = {"a": actor_id, "t": int(time.time())}
         if expires_after:
@@ -1021,8 +1023,8 @@ class Datasette:
         return crumbs
 
     async def actors_from_ids(
-        self, actor_ids: Iterable[Union[str, int]]
-    ) -> Dict[Union[id, str], Dict]:
+        self, actor_ids: Iterable[str | int]
+    ) -> Dict[int | str, Dict]:
         result = pm.hook.actors_from_ids(datasette=self, actor_ids=actor_ids)
         if result is None:
             # Do the default thing
@@ -1037,9 +1039,7 @@ class Datasette:
         for hook in pm.hook.track_event(datasette=self, event=event):
             await await_me_maybe(hook)
 
-    def resource_for_action(
-        self, action: str, parent: Optional[str], child: Optional[str]
-    ):
+    def resource_for_action(self, action: str, parent: str | None, child: str | None):
         """
         Create a Resource instance for the given action with parent/child values.
 
@@ -1072,7 +1072,7 @@ class Datasette:
         self,
         actor: dict,
         action: str,
-        resource: Optional["Resource"] = None,
+        resource: "Resource" | None = None,
     ):
         """
         Check if actor can see a resource and if it's private.
@@ -1587,10 +1587,10 @@ class Datasette:
 
     async def render_template(
         self,
-        templates: Union[List[str], str, Template],
-        context: Optional[Union[Dict[str, Any], Context]] = None,
-        request: Optional[Request] = None,
-        view_name: Optional[str] = None,
+        templates: List[str] | str | Template,
+        context: Dict[str, Any] | Context | None = None,
+        request: Request | None = None,
+        view_name: str | None = None,
     ):
         if not self._startup_invoked:
             raise Exception("render_template() called before await ds.invoke_startup()")
@@ -1689,7 +1689,7 @@ class Datasette:
         return await template.render_async(template_context)
 
     def set_actor_cookie(
-        self, response: Response, actor: dict, expire_after: Optional[int] = None
+        self, response: Response, actor: dict, expire_after: int | None = None
     ):
         data = {"a": actor}
         if expire_after:

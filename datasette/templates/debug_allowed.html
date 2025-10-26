@@ -42,7 +42,7 @@
         <div class="form-section">
             <label for="child">Filter by child (optional):</label>
             <input type="text" id="child" name="child" placeholder="e.g., table name">
-            <small>Filter results to a specific child resource (requires parent)</small>
+            <small>Filter results to a specific child resource (requires parent to be set)</small>
         </div>
 
         <div class="form-section">
@@ -236,12 +236,15 @@ function displayError(data) {
 const parentInput = document.getElementById('parent');
 const childInput = document.getElementById('child');
 
-childInput.addEventListener('focus', () => {
+parentInput.addEventListener('input', () => {
+    childInput.disabled = !parentInput.value;
     if (!parentInput.value) {
-        alert('Please specify a parent resource first before filtering by child resource.');
-        parentInput.focus();
+        childInput.value = '';
     }
 });
+
+// Initialize disabled state
+childInput.disabled = !parentInput.value;
 </script>
 
 {% endblock %}

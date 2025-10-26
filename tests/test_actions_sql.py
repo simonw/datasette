@@ -163,10 +163,11 @@ async def test_allowed_resources_with_reasons(test_ds):
         # Check we can access both resource and reason
         for item in allowed:
             assert isinstance(item.resource, TableResource)
-            assert isinstance(item.reason, str)
+            assert isinstance(item.reason, list)
             if item.resource.parent == "analytics":
-                # Should mention parent-level reason
-                assert "analyst access" in item.reason.lower()
+                # Should mention parent-level reason in at least one of the reasons
+                reasons_text = " ".join(item.reason).lower()
+                assert "analyst access" in reasons_text
 
     finally:
         pm.unregister(plugin, name="test_plugin")

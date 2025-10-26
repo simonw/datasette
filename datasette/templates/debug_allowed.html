@@ -177,7 +177,12 @@ function displayResults(data) {
             html += `<td>${escapeHtml(item.parent || '—')}</td>`;
             html += `<td>${escapeHtml(item.child || '—')}</td>`;
             if (hasDebugPermission) {
-                html += `<td>${escapeHtml(item.reason || '—')}</td>`;
+                // Display reason as JSON array
+                let reasonHtml = '—';
+                if (item.reason && Array.isArray(item.reason)) {
+                    reasonHtml = `<code>${escapeHtml(JSON.stringify(item.reason))}</code>`;
+                }
+                html += `<td>${reasonHtml}</td>`;
             }
             html += '</tr>';
         }

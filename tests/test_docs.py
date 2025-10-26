@@ -109,13 +109,13 @@ def test_functions_marked_with_documented_are_documented(documented_fns, fn):
 def test_rst_heading_underlines_match_title_length():
     """Test that RST heading underlines are the same length as their titles."""
     # Common RST underline characters
-    underline_chars = ['-', '=', '~', '^', '+', '*', '#']
+    underline_chars = ["-", "=", "~", "^", "+", "*", "#"]
 
     errors = []
 
     for rst_file in docs_path.glob("*.rst"):
         content = rst_file.read_text()
-        lines = content.split('\n')
+        lines = content.split("\n")
 
         for i in range(len(lines) - 1):
             current_line = lines[i]
@@ -123,10 +123,12 @@ def test_rst_heading_underlines_match_title_length():
 
             # Check if next line is entirely made of a single underline character
             # and is at least 5 characters long (to avoid false positives)
-            if (next_line and
-                len(next_line) >= 5 and
-                len(set(next_line)) == 1 and
-                next_line[0] in underline_chars):
+            if (
+                next_line
+                and len(next_line) >= 5
+                and len(set(next_line)) == 1
+                and next_line[0] in underline_chars
+            ):
                 # Skip if the previous line is empty (blank line before underline)
                 if not current_line:
                     continue
@@ -135,11 +137,13 @@ def test_rst_heading_underlines_match_title_length():
                 # Look at the line before current_line to see if it's also an underline
                 if i > 0:
                     prev_line = lines[i - 1]
-                    if (prev_line and
-                        len(prev_line) >= 5 and
-                        len(set(prev_line)) == 1 and
-                        prev_line[0] in underline_chars and
-                        len(prev_line) == len(next_line)):
+                    if (
+                        prev_line
+                        and len(prev_line) >= 5
+                        and len(set(prev_line)) == 1
+                        and prev_line[0] in underline_chars
+                        and len(prev_line) == len(next_line)
+                    ):
                         # This is overline+underline style, skip it
                         continue
 
@@ -156,8 +160,8 @@ def test_rst_heading_underlines_match_title_length():
 
     if errors:
         raise AssertionError(
-            f"Found {len(errors)} RST heading(s) with mismatched underline length:\n\n" +
-            "\n\n".join(errors)
+            f"Found {len(errors)} RST heading(s) with mismatched underline length:\n\n"
+            + "\n\n".join(errors)
         )
 
 

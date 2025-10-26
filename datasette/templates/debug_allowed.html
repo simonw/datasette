@@ -9,8 +9,10 @@
 {% endblock %}
 
 {% block content %}
+<h1>Allowed resources</h1>
 
-<h1>Allowed Resources</h1>
+{% set current_tab = "allowed" %}
+{% include "_permissions_debug_tabs.html" %}
 
 <p>Use this tool to check which resources the current actor is allowed to access for a given permission action. It queries the <code>/-/allowed.json</code> API endpoint.</p>
 
@@ -225,9 +227,6 @@ function displayResults(data) {
 
     // Update raw JSON
     document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
-
-    // Scroll to results
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function displayError(data) {
@@ -238,8 +237,6 @@ function displayError(data) {
     resultsContent.innerHTML = `<div class="error-message">Error: ${escapeHtml(data.error || 'Unknown error')}</div>`;
 
     document.getElementById('raw-json').innerHTML = jsonFormatHighlight(data);
-
-    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // Disable child input if parent is empty

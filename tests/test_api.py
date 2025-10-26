@@ -835,8 +835,14 @@ async def test_versions_json(ds_client):
 
 @pytest.mark.asyncio
 async def test_actions_json(ds_client):
-    response = await ds_client.get("/-/actions.json")
-    data = response.json()
+    original_root_enabled = ds_client.ds.root_enabled
+    try:
+        ds_client.ds.root_enabled = True
+        cookies = {"ds_actor": ds_client.actor_cookie({"id": "root"})}
+        response = await ds_client.get("/-/actions.json", cookies=cookies)
+        data = response.json()
+    finally:
+        ds_client.ds.root_enabled = original_root_enabled
     assert isinstance(data, list)
     assert len(data) > 0
     # Check structure of first action

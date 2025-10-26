@@ -9,8 +9,10 @@
 {% endblock %}
 
 {% block content %}
+<h1>Permission rules</h1>
 
-<h1>Permission Rules</h1>
+{% set current_tab = "rules" %}
+{% include "_permissions_debug_tabs.html" %}
 
 <p>Use this tool to view the permission rules that allow the current actor to access resources for a given permission action. It queries the <code>/-/rules.json</code> API endpoint.</p>
 

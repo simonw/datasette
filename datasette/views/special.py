@@ -27,6 +27,7 @@ def _resource_path(parent, child):
 
 class JsonDataView(BaseView):
     name = "json_data"
+    template = "show_json.html"  # Can be overridden in subclasses
 
     def __init__(
         self,
@@ -35,12 +36,15 @@ class JsonDataView(BaseView):
         data_callback,
         needs_request=False,
         permission="view-instance",
+        template=None,
     ):
         self.ds = datasette
         self.filename = filename
         self.data_callback = data_callback
         self.needs_request = needs_request
         self.permission = permission
+        if template is not None:
+            self.template = template
 
     async def get(self, request):
         if self.permission:
@@ -49,7 +53,24 @@ class JsonDataView(BaseView):
             data = self.data_callback(request)
         else:
             data = self.data_callback()
-        return await self.respond_json_or_html(request, data, self.filename)
+
+        # Return JSON or HTML depending on format parameter
+        as_format = request.url_vars.get("format")
+        if as_format:
+            headers = {}
+            if self.ds.cors:
+                add_cors_headers(headers)
+            return Response.json(data, headers=headers)
+        else:
+            return await self.render(
+                [self.template],
+                request=request,
+                context={
+                    "filename": self.filename,
+                    "data": data,
+                    "data_json": json.dumps(data, indent=4, default=repr),
+                },
+            )
 
 
 class PatternPortfolioView(View):

@@ -1554,6 +1554,20 @@ class Datasette:
     def _actor(self, request):
         return {"actor": request.actor}
 
+    def _actions(self):
+        return [
+            {
+                "name": action.name,
+                "abbr": action.abbr,
+                "description": action.description,
+                "takes_parent": action.takes_parent,
+                "takes_child": action.takes_child,
+                "resource_class": action.resource_class.__name__,
+                "also_requires": action.also_requires,
+            }
+            for action in sorted(self.actions.values(), key=lambda a: a.name)
+        ]
+
     async def table_config(self, database: str, table: str) -> dict:
         """Return dictionary of configuration for specified table"""
         return (
@@ -1818,6 +1832,12 @@ class Datasette:
                 self, "actor.json", self._actor, needs_request=True, permission=None
             ),
             r"/-/actor(\.(?P<format>json))?$",
+        )
+        add_route(
+            JsonDataView.as_view(
+                self, "actions.json", self._actions, template="actions.html"
+            ),
+            r"/-/actions(\.(?P<format>json))?$",
         )
         add_route(
             AuthTokenView.as_view(self),

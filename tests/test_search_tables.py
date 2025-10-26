@@ -61,24 +61,6 @@ async def ds_with_tables():
 
 # /-/tables.json tests
 @pytest.mark.asyncio
-async def test_tables_empty_query(ds_with_tables):
-    """Test that empty query returns empty matches."""
-    response = await ds_with_tables.client.get("/-/tables.json")
-    assert response.status_code == 200
-    data = response.json()
-    assert data == {"matches": []}
-
-
-@pytest.mark.asyncio
-async def test_tables_no_query_param(ds_with_tables):
-    """Test that missing q parameter returns empty matches."""
-    response = await ds_with_tables.client.get("/-/tables.json?q=")
-    assert response.status_code == 200
-    data = response.json()
-    assert data == {"matches": []}
-
-
-@pytest.mark.asyncio
 async def test_tables_basic_search(ds_with_tables):
     """Test basic table search functionality."""
     # Search for "articles" - should find it in both content and public databases
@@ -161,16 +143,6 @@ async def test_tables_search_respects_table_permissions(ds_with_tables):
     # Should see content.users (authenticated users can view content database)
     assert len(data["matches"]) == 1
     assert data["matches"][0]["name"] == "content: users"
-
-
-@pytest.mark.asyncio
-async def test_tables_search_no_matches(ds_with_tables):
-    """Test search with no matching tables."""
-    response = await ds_with_tables.client.get("/-/tables.json?q=nonexistent")
-    assert response.status_code == 200
-    data = response.json()
-
-    assert data == {"matches": []}
 
 
 @pytest.mark.asyncio

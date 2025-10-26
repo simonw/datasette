@@ -1576,3 +1576,33 @@ async def test_actor_restrictions_parent_deny_blocks_config_child_allow(perms_ds
 
     # Clean up
     perms_ds._config = None
+
+
+@pytest.mark.asyncio
+async def test_permission_check_view_requires_debug_permission():
+    """Test that /-/check requires permissions-debug permission"""
+    # Anonymous user should be denied
+    ds = Datasette()
+    response = await ds.client.get("/-/check.json?action=view-instance")
+    assert response.status_code == 403
+    assert "permissions-debug" in response.text
+
+    # User without permissions-debug should be denied
+    response = await ds.client.get(
+        "/-/check.json?action=view-instance",
+        cookies={"ds_actor": ds.sign({"id": "user"}, "actor")},
+    )
+    assert response.status_code == 403
+
+    # Root user should have access (root has all permissions)
+    ds_with_root = Datasette()
+    ds_with_root.root_enabled = True
+    root_token = ds_with_root.create_token("root")
+    response = await ds_with_root.client.get(
+        "/-/check.json?action=view-instance",
+        headers={"Authorization": f"Bearer {root_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["action"] == "view-instance"
+    assert data["allowed"] is True

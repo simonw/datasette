@@ -80,6 +80,7 @@ const resultsContent = document.getElementById('results-content');
 const resultsCount = document.getElementById('results-count');
 const pagination = document.getElementById('pagination');
 const submitBtn = document.getElementById('submit-btn');
+const hasDebugPermission = {{ 'true' if has_debug_permission else 'false' }};
 let currentData = null;
 
 form.addEventListener('submit', async (ev) => {
@@ -164,7 +165,9 @@ function displayResults(data) {
         html += '<th>Resource Path</th>';
         html += '<th>Parent</th>';
         html += '<th>Child</th>';
-        html += '<th>Reason</th>';
+        if (hasDebugPermission) {
+            html += '<th>Reason</th>';
+        }
         html += '</tr></thead>';
         html += '<tbody>';
 
@@ -173,7 +176,9 @@ function displayResults(data) {
             html += `<td><span class="resource-path">${escapeHtml(item.resource || '/')}</span></td>`;
             html += `<td>${escapeHtml(item.parent || '—')}</td>`;
             html += `<td>${escapeHtml(item.child || '—')}</td>`;
-            html += `<td>${escapeHtml(item.reason || '—')}</td>`;
+            if (hasDebugPermission) {
+                html += `<td>${escapeHtml(item.reason || '—')}</td>`;
+            }
             html += '</tr>';
         }
 

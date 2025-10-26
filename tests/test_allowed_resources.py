@@ -1,7 +1,8 @@
 """
-Tests for the /-/tables endpoint.
+Tests for the allowed_resources() API.
 
-These tests verify that the new TablesView correctly uses the allowed_resources() API.
+These tests verify that the allowed_resources() API correctly filters resources
+based on permission rules from plugins and configuration.
 """
 
 import pytest
